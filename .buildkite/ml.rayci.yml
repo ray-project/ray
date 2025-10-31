@@ -164,7 +164,11 @@ steps:
         --parallelism-per-worker 3
         --only-tags needs_credentials
         --test-env=WANDB_API_KEY --test-env=COMET_API_KEY
-    depends_on: [ "mlbuild", "forge" ]
+        --build-name mlbuild-py3.10
+        --python-version 3.10
+    depends_on:
+      - mlbuild-multipy
+      - forge
 
   - label: ":train: ml: tune tests"
     tags: tune
@@ -173,7 +177,11 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml
         --parallelism-per-worker 3
         --except-tags doctest,soft_imports,rllib
-    depends_on: [ "mlbuild", "forge" ]
+        --build-name mlbuild-py3.10
+        --python-version 3.10
+    depends_on:
+      - mlbuild-multipy
+      - forge
 
   - label: ":train: ml: tune soft import tests"
     tags: tune
@@ -192,11 +200,17 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/air/... ml
         --parallelism-per-worker 3
         --except-tags gpu,doctest
+        --build-name mlbuild-py3.10
+        --python-version 3.10
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... ml
         --parallelism-per-worker 3
         --only-tags ray_air
         --skip-ray-installation
-    depends_on: [ "mlbuild", "forge" ]
+        --build-name mlbuild-py3.10
+        --python-version 3.10
+    depends_on:
+      - mlbuild-multipy
+      - forge
 
   - label: ":train: ml: train+tune tests"
     tags: train
@@ -206,7 +220,11 @@ steps:
         --parallelism-per-worker 3
         --only-tags tune
         --except-tags ray_air,gpu,doctest,needs_credentials
-    depends_on: [ "mlbuild", "forge" ]
+        --build-name mlbuild-py3.10
+        --python-version 3.10
+    depends_on:
+      - mlbuild-multipy
+      - forge
 
   - label: ":train: ml: rllib+tune tests"
     tags:
@@ -218,7 +236,11 @@ steps:
         --parallelism-per-worker 3
         --only-tags rllib
         --except-tags gpu
-    depends_on: [ "mlbuild", "forge" ]
+        --build-name mlbuild-py3.10
+        --python-version 3.10
+    depends_on:
+      - mlbuild-multipy
+      - forge
 
   - label: ":train: ml: release tests"
     tags:
@@ -229,7 +251,11 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //release/... ml
         --parallelism-per-worker 3
-    depends_on: [ "mlbuild", "forge" ]
+        --build-name mlbuild-py3.10
+        --python-version 3.10
+    depends_on:
+      - mlbuild-multipy
+      - forge
 
   - label: ":train: ml: train minimal"
     tags: train
@@ -241,7 +267,9 @@ steps:
         --build-name minbuild-ml-py3.10
         --python-version 3.10
         --only-tags minimal
-    depends_on: [ "minbuild-ml-multipy", "forge" ]
+    depends_on:
+      - minbuild-ml-multipy
+      - forge
 
   - label: ":train: ml: doc tests"
     tags:
@@ -257,13 +285,19 @@ steps:
         --only-tags doctest
         --except-tags gpu
         --parallelism-per-worker 3
+        --build-name mlbuild-py3.10
+        --python-version 3.10
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... ml
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --except-tags gpu,post_wheel_build,doctest,highly_parallel
         --parallelism-per-worker 3
         --skip-ray-installation
-    depends_on: [ "mlbuild", "forge" ]
+        --build-name mlbuild-py3.10
+        --python-version 3.10
+    depends_on:
+      - mlbuild-multipy
+      - forge
 
   - label: ":train: ml: train gpu lightning 2.0 tests"
     tags:
