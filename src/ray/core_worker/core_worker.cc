@@ -1864,7 +1864,8 @@ void CoreWorker::BuildCommonTaskSpec(
     int64_t generator_backpressure_num_objects,
     bool enable_task_events,
     const std::unordered_map<std::string, std::string> &labels,
-    const std::unordered_map<std::string, std::string> &label_selector,
+    const LabelSelector &label_selector,
+    const std::vector<FallbackOption> &fallback_strategy,
     const rpc::TensorTransport &tensor_transport) {
   // Build common task spec.
   auto override_runtime_env_info =
@@ -1915,6 +1916,7 @@ void CoreWorker::BuildCommonTaskSpec(
       enable_task_events,
       labels,
       label_selector,
+      fallback_strategy,
       tensor_transport);
   // Set task arguments.
   for (const auto &arg : args) {
@@ -1995,7 +1997,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       task_options.generator_backpressure_num_objects,
                       /*enable_task_events=*/task_options.enable_task_events,
                       task_options.labels,
-                      task_options.label_selector);
+                      task_options.label_selector,
+                      task_options.fallback_strategy);
   ActorID root_detached_actor_id;
   if (!worker_context_->GetRootDetachedActorID().IsNil()) {
     root_detached_actor_id = worker_context_->GetRootDetachedActorID();
@@ -2091,7 +2094,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       /*generator_backpressure_num_objects=*/-1,
                       /*enable_task_events=*/actor_creation_options.enable_task_events,
                       actor_creation_options.labels,
-                      actor_creation_options.label_selector);
+                      actor_creation_options.label_selector,
+                      actor_creation_options.fallback_strategy);
 
   // If the namespace is not specified, get it from the job.
   const auto ray_namespace = (actor_creation_options.ray_namespace.empty()
@@ -2395,6 +2399,7 @@ Status CoreWorker::SubmitActorTask(
                       /*enable_task_events=*/task_options.enable_task_events,
                       /*labels=*/{},
                       /*label_selector=*/{},
+                      /*fallback_strategy=*/{},
                       /*tensor_transport=*/task_options.tensor_transport);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.

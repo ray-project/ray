@@ -97,6 +97,7 @@ ray_cc_library(
     ],
     deps = [
         ":ray_event",
+        "//src/ray/common/scheduling:label_selector",
         "//src/ray/protobuf/public:events_actor_definition_event_cc_proto",
     ],
 )

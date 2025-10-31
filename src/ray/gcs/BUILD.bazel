@@ -372,6 +372,7 @@ ray_cc_library(
         "//src/ray/common:lease",
         "//src/ray/common:task_common",
         "//src/ray/common/scheduling:cluster_resource_data",
+        "//src/ray/common/scheduling:label_selector",
         "//src/ray/observability:ray_actor_definition_event",
         "//src/ray/observability:ray_actor_lifecycle_event",
         "//src/ray/observability:ray_event_recorder_interface",

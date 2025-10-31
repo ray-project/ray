@@ -6102,10 +6102,21 @@ class Dataset:
 
         .. testoutput::
 
+            <BLANKLINE>
             -------- Logical Plan --------
-            Map(<lambda>)
-            +- ReadRange
+            MapRows[Map(<lambda>)]
+            +- Read[ReadRange]
+            <BLANKLINE>
+            -------- Logical Plan (Optimized) --------
+            MapRows[Map(<lambda>)]
+            +- Read[ReadRange]
+            <BLANKLINE>
             -------- Physical Plan --------
+            TaskPoolMapOperator[Map(<lambda>)]
+            +- TaskPoolMapOperator[ReadRange]
+               +- InputDataBuffer[Input]
+            <BLANKLINE>
+            -------- Physical Plan (Optimized) --------
             TaskPoolMapOperator[ReadRange->Map(<lambda>)]
             +- InputDataBuffer[Input]
             <BLANKLINE>

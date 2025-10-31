@@ -161,7 +161,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
           if (ok) {
             SendNext();
           } else {
-            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to send the message to: "
+            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to send a message to node: "
                                          << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
           }
@@ -180,7 +180,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
           }
 
           if (!ok) {
-            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to read the message from: "
+            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to read a message from node: "
                                          << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
             return;

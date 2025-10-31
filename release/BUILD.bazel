@@ -12,56 +12,6 @@ compile_pip_requirements(
     visibility = ["//visibility:private"],
 )
 
-compile_pip_requirements(
-    name = "requirements_byod_3.9",
-    requirements_in = "ray_release/byod/requirements_byod_3.9.in",
-    requirements_txt = "ray_release/byod/requirements_byod_3.9.txt",
-    tags = [
-        "team:ci",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-compile_pip_requirements(
-    name = "requirements_byod_3.11",
-    requirements_in = "ray_release/byod/requirements_byod_3.11.in",
-    requirements_txt = "ray_release/byod/requirements_byod_3.11.txt",
-    tags = [
-        "team:ci",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-compile_pip_requirements(
-    name = "requirements_byod_3.12",
-    requirements_in = "ray_release/byod/requirements_byod_3.12.in",
-    requirements_txt = "ray_release/byod/requirements_byod_3.12.txt",
-    tags = [
-        "team:ci",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-compile_pip_requirements(
-    name = "requirements_ml_byod_3.9",
-    requirements_in = "ray_release/byod/requirements_ml_byod_3.9.in",
-    requirements_txt = "ray_release/byod/requirements_ml_byod_3.9.txt",
-    tags = [
-        "team:ci",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-compile_pip_requirements(
-    name = "requirements_ml_byod_3.10",
-    requirements_in = "ray_release/byod/requirements_ml_byod_3.10.in",
-    requirements_txt = "ray_release/byod/requirements_ml_byod_3.10.txt",
-    tags = [
-        "team:ci",
-    ],
-    visibility = ["//visibility:private"],
-)
-
 test_srcs = glob(["**/*.py"])
 
 ####
