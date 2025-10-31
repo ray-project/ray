@@ -763,6 +763,7 @@
 # Tune fault tolerance tests
 ############################
 - name: tune_worker_fault_tolerance
+  python: "3.10"
   group: Tune fault tolerance tests
   working_dir: tune_tests/fault_tolerance_tests
 
@@ -1272,6 +1273,7 @@
 ########################
 
 - name: jobs_basic_local_working_dir
+  python: "3.10"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1301,6 +1303,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_basic_remote_working_dir
+  python: "3.10"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1330,6 +1333,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_remote_multi_node
+  python: "3.10"
   group: Jobs tests
   team: serve
   frequency: nightly
@@ -1354,6 +1358,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_check_cuda_available
+  python: "3.10"
   group: Jobs tests
   team: serve
 
@@ -1378,6 +1383,7 @@
         cluster_compute: compute_tpl_gce_gpu_node.yaml
 
 - name: jobs_specify_num_gpus
+  python: "3.10"
   group: Jobs tests
   team: serve
 
@@ -4098,6 +4104,23 @@
     timeout: 3600
     script: >
       pytest -sv test_batch_multi_node_vllm.py
+
+- name: llm_batch_single_node_baseline_benchmark
+  group: llm-batch
+  working_dir: llm_tests/batch
+  frequency: weekly
+  team: llm
+
+  cluster:
+    byod:
+      runtime_env:
+        - VLLM_DISABLE_COMPILE_CACHE=1
+      type: gpu
+    cluster_compute: llm_single_node_benchmark_l4.yaml
+
+  run:
+    timeout: 3600
+    script: pytest -v test_batch_single_node_vllm.py::test_single_node_baseline_benchmark
 
 
 - name: text_embeddings_benchmark_{{scaling}}
