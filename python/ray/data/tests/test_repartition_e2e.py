@@ -346,7 +346,11 @@ def test_repartition_guarantee_row_num_to_be_exact(
         )
         ds = ds.materialize()
 
-        block_row_counts = []
+        block_row_counts = [
+            metadata.num_rows
+            for bundle in ds.iter_internal_ref_bundles()
+            for metadata in bundle.metadata
+        ]
         # Assert that every block has exactly target_num_rows_per_block rows except the last block
         # The last block may have fewer rows if the total doesn't divide evenly
         expected_full_blocks = num_rows // target_num_rows_per_block
