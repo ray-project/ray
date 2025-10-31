@@ -41,7 +41,7 @@ class SumStats(SeriesStats):
 
     def initialize_throughput_reference_time(self, time: float) -> None:
         assert (
-            self._is_root_stats
+            self.is_root
         ), "initialize_throughput_reference_time can only be called on root stats"
         self._last_throughput_measure_time = time
 

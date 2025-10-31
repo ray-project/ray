@@ -48,7 +48,7 @@ class LifetimeSumStats(StatsBase):
 
     def initialize_throughput_reference_time(self, time: float) -> None:
         assert (
-            self._is_root_stats
+            self.is_root
         ), "initialize_throughput_reference_time can only be called on root stats"
         self._last_reduce_time = time
         self._last_restore_time = time
@@ -94,14 +94,13 @@ class LifetimeSumStats(StatsBase):
         Args:
             compile: If True, the result is compiled into a single value if possible.
             latest_merged_only: If True, only considers the latest merged values.
-                This parameter only works on root stats objects (_is_root_stats=True).
+                This parameter only works on root stats objects.
                 When enabled, peek() will only return the sum that was added in the most recent merge operation.
         """
         # Check latest_merged_only validity
-        if latest_merged_only and not self._is_root_stats:
+        if latest_merged_only and not self.is_root:
             raise ValueError(
-                "latest_merged_only can only be used on root stats objects "
-                "(_is_root_stats=True)"
+                "latest_merged_only can only be used on root stats objects."
             )
 
         # If latest_merged_only is True, use only the latest merged sum
@@ -144,11 +143,13 @@ class LifetimeSumStats(StatsBase):
                 PyTorch GPU tensors are kept on GPU until reduce() or peek().
                 TensorFlow tensors are moved to CPU immediately.
         """
-        # Root stats objects should not be pushed to
-        if self._is_root_stats:
+        # Root stats objects that are not leaf stats (i.e., aggregated from other components)
+        # should not be pushed to
+        if self.is_root and not self.is_leaf:
             raise ValueError(
-                "Cannot push values to root stats objects. "
-                "Root stats are only updated through merge operations."
+                "Cannot push values to root stats objects that are aggregated from other components. "
+                "These stats are only updated through merge operations. "
+                "Use leaf stats (created via direct logging) for push operations."
             )
         # Convert TensorFlow tensors to CPU immediately
         if tf and tf.is_tensor(value):
@@ -207,7 +208,7 @@ class LifetimeSumStats(StatsBase):
         if torch and isinstance(value, torch.Tensor):
             value = value.detach().cpu().item()
 
-        if not self._is_root_stats:
+        if not self.is_root:
             # Reset to 0 with same type (tensor or scalar)
             if torch and isinstance(self._lifetime_sum, torch.Tensor):
                 self._lifetime_sum = torch.tensor(0.0, device=self._lifetime_sum.device)
@@ -225,9 +226,7 @@ class LifetimeSumStats(StatsBase):
         return return_stats
 
     def merge(self, incoming_stats: List["LifetimeSumStats"]):
-        assert (
-            self._is_root_stats
-        ), "LifetimeSumStats should only be merged at root level"
+        assert self.is_root, "LifetimeSumStats should only be merged at root level"
         incoming_sum = sum([stat._lifetime_sum for stat in incoming_stats])
 
         # Directly update _lifetime_sum instead of calling push (which is disabled for root stats)
@@ -239,7 +238,7 @@ class LifetimeSumStats(StatsBase):
         self._lifetime_sum += incoming_sum
 
         # Track merged values for latest_merged_only peek functionality
-        if self._is_root_stats:
+        if self.is_root:
             # Store the sum that was added in this merge operation
             self.latest_merged = incoming_sum
 

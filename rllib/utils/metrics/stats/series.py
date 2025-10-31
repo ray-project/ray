@@ -102,8 +102,8 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
     def _set_values(self, new_values):
         # For stats with window, use a deque with maxlen=window.
         # This way, we never store more values than absolutely necessary.
-        if self._window and not self._is_root_stats:
-            # Window always counts at leafs only
+        if self._window and self.is_leaf:
+            # Window always counts at leafs only (or non-root stats)
             self.values = deque(new_values, maxlen=self._window)
         # For infinite windows, use `new_values` as-is (a list).
         else:
@@ -117,11 +117,13 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
                 PyTorch GPU tensors are kept on GPU until reduce() or peek().
                 TensorFlow tensors are moved to CPU immediately.
         """
-        # Root stats objects should not be pushed to
-        if self._is_root_stats:
+        # Root stats objects that are not leaf stats (i.e., aggregated from other components)
+        # should not be pushed to
+        if not self.is_leaf:
             raise ValueError(
-                "Cannot push values to root stats objects. "
-                "Root stats are only updated through merge operations."
+                "Cannot push values to non-leaf stats objects. "
+                "These stats are only updated through merge operations. "
+                "Use leaf stats (created via direct logging) for push operations."
             )
         # Convert TensorFlow tensors to CPU immediately, keep PyTorch tensors as-is
         if tf and tf.is_tensor(value):
@@ -148,7 +150,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         Returns:
             The merged SeriesStats object.
         """
-        assert self._is_root_stats, "SeriesStats should only be merged at root level"
+        assert self.is_root, "SeriesStats should only be merged at root level"
 
         if len(incoming_stats) == 0:
             return
@@ -161,7 +163,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         self.values = all_items
 
         # Track merged values for latest_merged_only peek functionality
-        if self._is_root_stats:
+        if self.is_root:
             # Store the values that were merged in this operation (from incoming_stats only)
             merged_values = list(
                 chain.from_iterable([s.values for s in incoming_stats])
@@ -178,7 +180,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         Args:
             compile: If True, the result is compiled into a single value if possible.
             latest_merged_only: If True, only considers the latest merged values.
-                This parameter only works on root stats objects (_is_root_stats=True).
+                This parameter only works on root stats objects (is_root=True).
                 When enabled, peek() will only use the values from the most recent merge operation.
 
         Returns:
@@ -186,10 +188,10 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         """
         # If latest_merged_only is True, use look at the latest merged values
         if latest_merged_only:
-            if not self._is_root_stats:
+            if not self.is_root:
                 raise ValueError(
                     "latest_merged_only can only be used on root stats objects "
-                    "(_is_root_stats=True)"
+                    "(is_root=True)"
                 )
             if self.latest_merged is None:
                 # No merged values yet, return NaN or empty list

@@ -11,12 +11,7 @@ from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.metrics.stats import (
     MeanStats,
     EmaStats,
-    MinStats,
-    MaxStats,
-    SumStats,
     LifetimeSumStats,
-    PercentilesStats,
-    ItemSeriesStats,
 )
 
 
@@ -593,134 +588,50 @@ def test_log_dict():
     check(logger.peek("metric2"), 2.5)
 
 
-def test_log_dict_root_logger_restriction(root_logger):
-    """Test that root loggers cannot use log_dict - they can only aggregate."""
+def test_log_dict_root_logger(root_logger):
+    """Test that root loggers can use log_dict and create leaf stats."""
     flat_dict = {
         "metric1": 1.0,
         "metric2": 2.0,
     }
 
-    # Root loggers should raise an assertion when trying to use log_dict
-    with pytest.raises(AssertionError, match="Root loggers cannot use log_dict"):
-        root_logger.log_dict(flat_dict, reduce="mean")
+    # Root loggers should be able to use log_dict
+    root_logger.log_dict(flat_dict, reduce="mean")
+
+    check(root_logger.peek("metric1"), 1.0)
+    check(root_logger.peek("metric2"), 2.0)
+
+    # Should be able to push to these leaf stats
+    root_logger.log_value("metric1", 2.0)
+    check(root_logger.peek("metric1"), 1.5)
+
+    root_logger.log_value("metric3", 3.0)
+    check(root_logger.peek("metric3"), 3.0)
 
 
-@pytest.mark.parametrize(
-    "stats_cls,reduce_method,log_kwargs,initial_values,external_values,expected_after_merge",
-    [
-        # MeanStats with window
-        (
-            MeanStats,
-            "mean",
-            {"window": 5},
-            [1.0, 2.0, 3.0],
-            [4.0, 5.0],
-            3.0,  # mean of [1, 2, 3, 4, 5]
-        ),
-        # MinStats with window
-        (
-            MinStats,
-            "min",
-            {"window": 5},
-            [10.0, 5.0, 8.0],
-            [3.0, 7.0],
-            3.0,  # min of [10, 5, 8, 3, 7]
-        ),
-        # MaxStats with window
-        (
-            MaxStats,
-            "max",
-            {"window": 5},
-            [10.0, 5.0, 8.0],
-            [15.0, 7.0],
-            15.0,  # max of [10, 5, 8, 15, 7]
-        ),
-        # SumStats with window
-        (
-            SumStats,
-            "sum",
-            {"window": 5},
-            [10.0, 20.0, 30.0],
-            [40.0, 50.0],
-            150.0,  # sum of [10, 20, 30, 40, 50]
-        ),
-        # LifetimeSumStats
-        (
-            LifetimeSumStats,
-            "lifetime_sum",
-            {},
-            [100.0, 200.0],
-            [150.0, 250.0],
-            700.0,  # 300 + 400
-        ),
-        # PercentilesStats with window
-        (
-            PercentilesStats,
-            "percentiles",
-            {"window": 10, "percentiles": [50]},
-            [1.0, 2.0, 3.0],
-            [4.0, 5.0],
-            {50: 3.0},  # median of [1, 2, 3, 4, 5]
-        ),
-        # ItemSeriesStats with window
-        (
-            ItemSeriesStats,
-            "item_series",
-            {"window": 5},
-            ["a", "b", "c", "d"],
-            ["e", "f"],
-            [
-                "a",
-                "b",
-                "c",
-                "d",
-                "e",
-                "f",
-            ],  # incoming first, then existing, values should not (yet) be reduced
-        ),
-    ],
-)
-def test_log_value_with_stats_objects(
-    root_logger,
-    stats_cls,
-    reduce_method,
-    log_kwargs,
-    initial_values,
-    external_values,
-    expected_after_merge,
-):
-    """Test logging Stats objects directly with MetricsLogger.log_value().
+def test_aggregated_stats_cannot_be_pushed_to():
+    """Test that aggregated stats (non-leaf) cannot be pushed to."""
+    # Create non-root loggers
+    logger1 = MetricsLogger(root=False)
+    logger2 = MetricsLogger(root=False)
 
-    This test verifies that when Stats objects are logged via log_value(value=<stats_object>),
-    the internal stats objects are correctly extended/merged with the logged stats values.
+    # Log values to non-root loggers
+    logger1.log_value("loss", 0.1, reduce="mean")
+    logger2.log_value("loss", 0.2, reduce="mean")
 
-    Note: Not all Stats types support merging with replace=False (which is what log_value uses).
-    EmaStats and ItemStats require replace=True during merge, so they are not included in this
-    parameterized test. SeriesStats-based classes (MeanStats, MinStats, MaxStats, SumStats) and
-    PercentilesStats, ItemSeriesStats, and LifetimeSumStats support replace=False merging.
-    """
-    metric_name = f"{reduce_method}_metric"
+    # Reduce both loggers
+    results1 = logger1.reduce()
+    results2 = logger2.reduce()
 
-    # Log initial values to the logger
-    for i, value in enumerate(initial_values):
-        if i == 0:
-            root_logger.log_value(
-                metric_name, value, reduce=reduce_method, **log_kwargs
-            )
-        else:
-            root_logger.log_value(metric_name, value)
+    # Create root logger and aggregate
+    root_logger = MetricsLogger(root=True)
+    root_logger.aggregate([results1, results2])
 
-    # Create an external Stats object and push values
-    # Use non-root stats so we can push values to it
-    external_stats = stats_cls(is_root_stats=False, **log_kwargs)
-    for value in external_values:
-        external_stats.push(value)
-
-    # Log the external stats object - should merge the values
-    root_logger.log_value(metric_name, value=external_stats)
-
-    # Check that the merge worked correctly
-    check(root_logger.peek(metric_name), expected_after_merge)
+    # Should not be able to push to aggregated stats
+    with pytest.raises(
+        ValueError, match="Cannot push values to root stats objects that are aggregated"
+    ):
+        root_logger.log_value("loss", 0.3)
 
 
 def test_compatibility_logic(root_logger):

@@ -29,8 +29,8 @@ class ItemSeriesStats(StatsBase):
     def _set_items(self, new_items):
         # For stats with window, use a deque with maxlen=window.
         # This way, we never store more values than absolutely necessary.
-        if self._window and not self._is_root_stats:
-            # Window always counts at leafs only
+        if self._window and self.is_leaf:
+            # Window always counts at leafs only (or non-root stats)
             self.items = deque(new_items, maxlen=self._window)
         # For infinite windows, use `new_values` as-is (a list).
         else:
@@ -55,11 +55,13 @@ class ItemSeriesStats(StatsBase):
         Args:
             item: The item to push. Can be of any type but data should be in CPU memory.
         """
-        # Root stats objects should not be pushed to
-        if self._is_root_stats:
+        # Root stats objects that are not leaf stats (i.e., aggregated from other components)
+        # should not be pushed to
+        if not self.is_leaf:
             raise ValueError(
-                "Cannot push values to root stats objects. "
-                "Root stats are only updated through merge operations."
+                "Cannot push values to non-leaf stats objects that are aggregated from other components. "
+                "These stats are only updated through merge operations. "
+                "Use leaf stats (created via direct logging) for push operations."
             )
         self.items.append(item)
         if self._window and len(self.items) > self._window:
@@ -97,17 +99,17 @@ class ItemSeriesStats(StatsBase):
         Args:
             compile: Argument is ignored for ItemSeriesStats.
             latest_merged_only: If True, only considers the latest merged values.
-                This parameter only works on root stats objects (_is_root_stats=True).
+                This parameter only works on root stats objects.
                 When enabled, peek() will only use the items from the most recent merge operation.
 
         Returns:
             The internal items list.
         """
         # Check latest_merged_only validity
-        if latest_merged_only and not self._is_root_stats:
+        if latest_merged_only and not self.is_root:
             raise ValueError(
                 "latest_merged_only can only be used on root stats objects "
-                "(_is_root_stats=True)"
+                "(is_root=True)"
             )
 
         # If latest_merged_only is True, use only the latest merged items
@@ -130,9 +132,7 @@ class ItemSeriesStats(StatsBase):
         Returns:
             The merged ItemSeriesStats object.
         """
-        assert (
-            self._is_root_stats
-        ), "ItemSeriesStats should only be merged at root level"
+        assert self.is_root, "ItemSeriesStats should only be merged at root level"
 
         new_items = [s.items for s in incoming_stats]
         new_items = list(chain.from_iterable(new_items))
@@ -140,7 +140,7 @@ class ItemSeriesStats(StatsBase):
         self.items = all_items
 
         # Track merged values for latest_merged_only peek functionality
-        if self._is_root_stats:
+        if self.is_root:
             # Store the items that were merged in this operation (from incoming_stats only)
             self.latest_merged = new_items
 

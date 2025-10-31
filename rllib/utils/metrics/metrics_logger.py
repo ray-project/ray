@@ -43,27 +43,23 @@ DEFAULT_STATS_CLS_LOOKUP = {
 
 # Note(Artur): Delete this in a couple of Ray releases.
 @DeveloperAPI
-def stats_from_legacy_state(
-    state: Dict[str, Any], is_root_stats: bool = False
-) -> StatsBase:
+def stats_from_legacy_state(state: Dict[str, Any], is_root: bool = False) -> StatsBase:
     """Creates a Stats object from a legacy state."""
     cls_identifier = state["reduce"]
+    new_state = {
+        # Always set is_leaf to True for legacy stats for compatibility
+        "is_leaf": True,
+        "is_root": is_root,
+    }
     if state.get("clear_on_reduce", True) is False:
         if cls_identifier == "sum":
-            # lifetime sum
-
-            if is_root_stats:
-                # With the new stats, only the root logger tracks values for lifetime sum.
-                new_state = {
-                    "_is_root_stats": True,
-                    "lifetime_sum": np.nansum(state["values"]),
-                }
-            else:
-                new_state = {
-                    "_is_root_stats": False,
-                    "lifetime_sum": 0.0,
-                }
             new_state["stats_cls_identifier"] = "lifetime_sum"
+            # lifetime sum
+            if is_root:
+                # With the new stats, only the root logger tracks values for lifetime sum.
+                new_state["lifetime_sum"] = (np.nansum(state["values"]),)
+            else:
+                new_state["lifetime_sum"] = 0.0
 
             # old lifetime sum checkpoints always track a througput
             if state.get("throughput_stats") is not None:
@@ -80,10 +76,6 @@ def stats_from_legacy_state(
                 error=False,
             )
 
-    new_state = {
-        "_is_root_stats": is_root_stats,
-        "stats_cls_identifier": cls_identifier,
-    }
     if cls_identifier == "mean":
         if state["ema_coeff"] is not None:
             cls_identifier = "ema"
@@ -114,6 +106,7 @@ def stats_from_legacy_state(
         new_state["percentiles"] = state["percentiles"]
 
     _cls = DEFAULT_STATS_CLS_LOOKUP[cls_identifier]
+    new_state["stats_cls_identifier"] = cls_identifier
     stats = _cls.from_state(state=new_state)
     return stats
 
@@ -346,11 +339,16 @@ class MetricsLogger:
                 if with_throughput is not None:
                     kwargs["with_throughput"] = with_throughput
 
-                stats_object = stats_cls(**kwargs)
-                # Don't mark stats as root stats when created via log_value - they should only
-                # be root stats when used for aggregating from other loggers (via aggregate())
-                # Root loggers can directly push to non-root stats objects
+                # Set is_leaf=True for root loggers when creating stats via direct logging
+                # This allows root loggers to push to these stats
+                if self._is_root_logger:
+                    kwargs["is_root"] = True
+                    kwargs["is_leaf"] = True
+                else:
+                    kwargs["is_root"] = False
+                    kwargs["is_leaf"] = True
 
+                stats_object = stats_cls(**kwargs)
                 self._set_key(key, stats_object)
 
     def log_value(
@@ -440,14 +438,7 @@ class MetricsLogger:
             reduce_per_index_on_aggregate=reduce_per_index_on_aggregate,
         )
         stats = self._get_key(key)
-        if isinstance(value, StatsBase):
-            # When merging Stats objects, mark the receiving stats as root stats
-            # so they can accept merge operations
-            if self._is_root_logger:
-                stats._is_root_stats = True
-            stats.merge(incoming_stats=[value])
-        else:
-            stats.push(value)
+        stats.push(value)
 
     def log_dict(
         self,
@@ -476,14 +467,7 @@ class MetricsLogger:
         have been reduced by other, parallel components.
 
         See MetricsLogger.log_value for more details on the arguments.
-
-        Note: Root loggers cannot use log_dict. They can only aggregate metrics using aggregate().
-        Use non-root loggers for direct logging via log_dict.
         """
-        assert (
-            not self._is_root_logger
-        ), "Root loggers cannot use log_dict. Use aggregate() to merge metrics from non-root loggers instead."
-
         assert isinstance(
             value_dict, dict
         ), f"`stats_dict` ({value_dict}) must be dict!"
@@ -592,14 +576,16 @@ class MetricsLogger:
             if own_stats is None:
                 # This should happen the first time we reduce this stat to the root logger.
                 own_stats = incoming_stats[0].clone(incoming_stats[0])
-                own_stats._is_root_stats = True
+                own_stats.is_root = True
+                own_stats.is_leaf = False  # Aggregated stats are not leaf stats
                 if own_stats.has_throughputs:
                     own_stats.initialize_throughput_reference_time(
                         self._time_when_initialized
                     )
             else:
                 # Mark existing stats as root stats so they can accept merge operations
-                own_stats._is_root_stats = True
+                # but keep is_leaf as is (if it was a leaf, it stays a leaf)
+                own_stats.is_root = True
                 if own_stats.has_throughputs:
                     own_stats.initialize_throughput_reference_time(
                         self._time_when_initialized
@@ -764,7 +750,7 @@ class MetricsLogger:
                     # We want to preserve compatibility with old checkpoints
                     # as much as possible.
                     stats = stats_from_legacy_state(
-                        state=stats_state, is_root_stats=self._is_root_logger
+                        state=stats_state, is_root=self._is_root_logger
                     )
 
                 self._set_key(flat_key.split("--"), stats)

@@ -68,7 +68,7 @@ class EmaStats(StatsBase):
         self._values_to_merge.extend(all_values)
 
         # Track merged values for latest_merged_only peek functionality
-        if self._is_root_stats:
+        if self.is_root:
             # Store the values that were merged in this operation
             self.latest_merged = all_values
 
@@ -80,11 +80,13 @@ class EmaStats(StatsBase):
                 PyTorch GPU tensors are kept on GPU until reduce() or peek().
                 TensorFlow tensors are moved to CPU immediately.
         """
-        # Root stats objects should not be pushed to
-        if self._is_root_stats:
+        # Root stats objects that are not leaf stats (i.e., aggregated from other components)
+        # should not be pushed to
+        if self.is_root and not self.is_leaf:
             raise ValueError(
-                "Cannot push values to root stats objects. "
-                "Root stats are only updated through merge operations."
+                "Cannot push values to root stats objects that are aggregated from other components. "
+                "These stats are only updated through merge operations. "
+                "Use leaf stats (created via direct logging) for push operations."
             )
         # Convert TensorFlow tensors to CPU immediately
         if tf and tf.is_tensor(value):
@@ -131,14 +133,13 @@ class EmaStats(StatsBase):
         Args:
             compile: If True, the result is compiled into a single value if possible.
             latest_merged_only: If True, only considers the latest merged values.
-                This parameter only works on root stats objects (_is_root_stats=True).
+                This parameter only works on root stats objects.
                 When enabled, peek() will only use the values from the most recent merge operation.
         """
         # Check latest_merged_only validity
-        if latest_merged_only and not self._is_root_stats:
+        if latest_merged_only and not self.is_root:
             raise ValueError(
-                "latest_merged_only can only be used on root stats objects "
-                "(_is_root_stats=True)"
+                "latest_merged_only can only be used on root stats objects."
             )
 
         # If latest_merged_only is True, use only the latest merged values

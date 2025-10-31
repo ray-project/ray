@@ -24,15 +24,27 @@ class StatsBase(metaclass=ABCMeta):
 
     def __init__(
         self,
-        is_root_stats: bool = False,
+        is_root: bool = False,
+        is_leaf: bool = True,
     ):
-        self._is_root_stats = is_root_stats
+        """Initializes a StatsBase object.
+
+        We log to stats in two different ways:
+        - On a parallel component (leaf), in which case we aggregate at the root level
+        - On a root level, in which case the root is also a leaf
+
+        Args:
+            is_root: If True, the Stats object is a root stats object.
+            is_leaf: If True, the Stats object is a leaf stats object.
+        """
+        self.is_root = is_root
+        self.is_leaf = is_leaf
         # Used to keep track of start times when using the `with` context manager.
         # This helps us measure times with threads in parallel.
         self._start_times = {}
         # For root stats, track the latest merged values
         # This is overwritten on each merge operation
-        if self._is_root_stats:
+        if self.is_root:
             self.latest_merged: Union[List[Any], Any] = None
 
         assert (
@@ -161,9 +173,10 @@ class StatsBase(metaclass=ABCMeta):
         """Returns the state of the stats object."""
         state = {
             "stats_cls_identifier": self.stats_cls_identifier,
-            "_is_root_stats": self._is_root_stats,
+            "is_root": self.is_root,
+            "is_leaf": self.is_leaf,
         }
-        if self._is_root_stats:
+        if self.is_root:
             state["latest_merged"] = self.latest_merged
         return state
 
@@ -171,10 +184,12 @@ class StatsBase(metaclass=ABCMeta):
     def set_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of the stats object."""
 
-        self._is_root_stats = state["_is_root_stats"]
+        # Handle legacy state that uses old attribute names
+        self.is_root = state["is_root"]
+        self.is_leaf = state["is_leaf"]
         # Prevent setting a state with a different stats class identifier
         assert self.stats_cls_identifier == state["stats_cls_identifier"]
-        if self._is_root_stats:
+        if self.is_root:
             # Handle legacy state that doesn't have latest_merged
             self.latest_merged = state.get("latest_merged", None)
 
@@ -183,12 +198,17 @@ class StatsBase(metaclass=ABCMeta):
     def _get_init_args(stats_object=None, state=None) -> Dict[str, Any]:
         """Returns the initialization arguments for this Stats object."""
         if state is not None:
+            # Handle legacy state that uses old attribute names
+            is_root = state["is_root"]
+            is_leaf = state["is_leaf"]
             return {
-                "is_root_stats": state["_is_root_stats"],
+                "is_root": is_root,
+                "is_leaf": is_leaf,
             }
         elif stats_object is not None:
             return {
-                "is_root_stats": stats_object._is_root_stats,
+                "is_root": stats_object.is_root,
+                "is_leaf": stats_object.is_leaf,
             }
         else:
             raise ValueError("Either stats_object or state must be provided")

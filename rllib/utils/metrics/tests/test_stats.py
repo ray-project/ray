@@ -266,7 +266,7 @@ def test_state_save_and_load(stats_class, init_kwargs, test_values):
     ],
 )
 def test_merge(stats_class, init_kwargs, values1, values2, expected_result):
-    root_stats = stats_class(**init_kwargs, is_root_stats=True)
+    root_stats = stats_class(**init_kwargs, is_root=True)
 
     stats1 = stats_class(**init_kwargs)
     for value in values1:
@@ -285,7 +285,7 @@ def test_merge(stats_class, init_kwargs, values1, values2, expected_result):
 
 # Items stats only allow us to log a single item that should not be reduced.
 def test_merge_item_stats():
-    root_stats = ItemStats(is_root_stats=True)
+    root_stats = ItemStats(is_root=True)
 
     # ItemStats can only be merged with a single incoming stats object
     incoming_stats = ItemStats()
@@ -321,7 +321,7 @@ def test_merge_item_stats():
         (MinStats, {"window": 5}),
         (SumStats, {"window": 5}),
         (LifetimeSumStats, {}),
-        (LifetimeSumStats, {"is_root_stats": True}),
+        (LifetimeSumStats, {"is_root": True}),
         (EmaStats, {"ema_coeff": 0.1}),
         (PercentilesStats, {"percentiles": [50], "window": 10}),
         (ItemSeriesStats, {"window": 5}),
@@ -330,7 +330,7 @@ def test_merge_item_stats():
 def test_clone(stats_class, init_kwargs):
     original = stats_class(**init_kwargs)
     # Skip pushing for root stats (they can't be pushed to)
-    if not original._is_root_stats:
+    if not original.is_root:
         original.push(123)
 
     # Create similar stats
@@ -344,8 +344,8 @@ def test_clone(stats_class, init_kwargs):
         check(similar._ema_coeff, original._ema_coeff)
     if hasattr(original, "_percentiles"):
         check(similar._percentiles, original._percentiles)
-    if hasattr(original, "_is_root_stats"):
-        check(similar._is_root_stats, original._is_root_stats)
+    if hasattr(original, "is_root"):
+        check(similar.is_root, original.is_root)
 
     result = similar.peek()
 
@@ -647,7 +647,7 @@ def test_stats_merge(
     Root stats cannot be pushed to, so they only include values from merged child stats.
     """
     # Create root stats
-    root_stats = stats_class(**init_kwargs, is_root_stats=True)
+    root_stats = stats_class(**init_kwargs, is_root=True)
 
     # Create first child stats
     child1 = stats_class(**init_kwargs)
@@ -763,7 +763,7 @@ def test_latest_merged_only_stats_types(
     first_batch_values = [[1.0, 2.0], [3.0, 4.0]]
     second_batch_values = [[10.0, 20.0], [30.0]]
 
-    root_stats = stats_class(**kwargs, is_root_stats=True)
+    root_stats = stats_class(**kwargs, is_root=True)
 
     first_batch_stats = []
     for values in first_batch_values:
@@ -814,7 +814,7 @@ def test_latest_merged_only_stats_types(
 
 def test_latest_merged_only_no_merge_yet():
     """Test latest_merged_only when no merge has occurred yet."""
-    root_stats = MeanStats(window=10, is_root_stats=True)
+    root_stats = MeanStats(window=10, is_root=True)
 
     # Before any merge, latest_merged_only should return NaN
     result = root_stats.peek(compile=True, latest_merged_only=True)
@@ -839,10 +839,23 @@ def test_latest_merged_only_non_root_stats():
 
 def test_push_on_root_stats():
     """Test that push raises error on root stats."""
-    root_stats = MeanStats(window=10, is_root_stats=True)
+    for cls in [
+        MeanStats,
+        EmaStats,
+        ItemSeriesStats,
+        PercentilesStats,
+        LifetimeSumStats,
+        ItemStats,
+        SumStats,
+        MaxStats,
+        MinStats,
+    ]:
+        root_stats = cls(is_leaf=False)
 
     # Should raise error when trying to push to root stats
-    with pytest.raises(ValueError, match="Cannot push values to root stats objects"):
+    with pytest.raises(
+        ValueError, match="Cannot push values to non-leaf stats objects"
+    ):
         root_stats.push(1.0)
 
 
