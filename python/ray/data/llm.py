@@ -5,6 +5,7 @@ from ray._common.deprecation import Deprecated
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.processor import (
     HttpRequestProcessorConfig as _HttpRequestProcessorConfig,
+    MultimodalProcessorConfig as _MultimodalProcessorConfig,
     Processor,
     ProcessorConfig as _ProcessorConfig,
     ServeDeploymentProcessorConfig as _ServeDeploymentProcessorConfig,
@@ -94,6 +95,57 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
 
 
 @PublicAPI(stability="alpha")
+class MultimodalProcessorConfig(_MultimodalProcessorConfig):
+    """The configuration for the multimodal processor.
+
+    Args:
+        model_source: Name or path of the Hugging Face model to use for the multimodal processor.
+        prepare_multimodal_stage: Prepare multimodal stage config (bool | dict | PrepareMultimodalStageConfig).
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, num_cpus, and memory.
+
+    Examples:
+        .. testcode::
+            :skipif: True
+
+            import ray
+            from ray.data.llm import MultimodalProcessorConfig, build_llm_processor
+            from ray.llm._internal.batch.stages.configs import PrepareMultimodalStageConfig
+
+            config = MultimodalProcessorConfig(
+                model_source="Qwen/Qwen2.5-VL-3B-Instruct",
+                prepare_multimodal_stage=PrepareMultimodalStageConfig(
+                    enabled=True,
+                ),
+                concurrency=1,
+            )
+            processor = build_llm_processor(
+                config,
+                preprocess=lambda row: dict(
+                    messages=[
+                        {"role": "system", "content": "You are a helpful video summarizer."},
+                        {"role": "user", "content": [
+                                {"type": "text", "text": f"Describe this video in {row['id']} sentences."},
+                                {
+                                    "type": "video_url",
+                                    "video_url": {"url": "https://content.pexels.com/videos/free-videos.mp4"},
+                                }
+                            ]
+                        },
+                    ],
+                ),
+            )
+
+            ds = ray.data.range(10)
+            ds = processor(ds)
+            for row in ds.take_all():
+                print(row)
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
 class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
     """The configuration for the vLLM engine processor.
 
@@ -136,8 +188,9 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             ``detokenize`` field is deprecated but still supported.
         prepare_image_stage: Prepare image stage config (bool | dict | PrepareImageStageConfig).
             Defaults to False. Use nested config for per-stage control over batch_size,
-            concurrency, runtime_env, num_cpus, and memory. Legacy ``has_image`` field
-            is deprecated but still supported.
+            concurrency, runtime_env, num_cpus, and memory. Both the legacy ``has_image`` field
+            and ``prepare_image_stage`` are deprecated but still supported. Prefer to use multimodal
+            processor to process multimodal data instead.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
@@ -584,6 +637,7 @@ __all__ = [
     "ProcessorConfig",
     "Processor",
     "HttpRequestProcessorConfig",
+    "MultimodalProcessorConfig",
     "vLLMEngineProcessorConfig",
     "SGLangEngineProcessorConfig",
     "ServeDeploymentProcessorConfig",

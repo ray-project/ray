@@ -2,7 +2,7 @@ import logging
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
-from pydantic import Field, field_validator, root_validator
+from pydantic import Field, field_validator, model_validator
 
 import ray
 from ray.data import Dataset
@@ -182,7 +182,8 @@ class OfflineProcessorConfig(ProcessorConfig):
     )
     has_image: bool = Field(
         default=False,
-        description="[DEPRECATED] Prefer `prepare_image_stage`. Whether the input messages have images.",
+        description="[DEPRECATED] Prefer `prepare_multimodal_stage` for processing multimodal data. "
+        "Whether the input messages have images.",
     )
 
     # New nested stage configuration (bool | dict | typed config).
@@ -200,10 +201,10 @@ class OfflineProcessorConfig(ProcessorConfig):
     )
     prepare_image_stage: Any = Field(
         default=False,
-        description="Prepare image stage config (bool | dict | PrepareImageStageConfig).",
+        description="[DEPRECATED] Prefer `prepare_multimodal_stage` for processing multimodal data. Prepare image stage config (bool | dict | PrepareImageStageConfig).",
     )
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
     def _coerce_legacy_to_stage_config(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         # Only set stage fields if not explicitly provided.
         # Emit deprecation warnings when legacy boolean flags are used.
