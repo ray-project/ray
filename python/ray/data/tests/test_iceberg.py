@@ -206,9 +206,8 @@ def test_read_basic():
     )
     table: pa.Table = pa.concat_tables((ray.get(ref) for ref in ray_ds.to_arrow_refs()))
 
-    # string -> large_string because pyiceberg by default chooses large_string
     expected_schema = pa.schema(
-        [pa.field("col_a", pa.int32()), pa.field("col_b", pa.large_string())]
+        [pa.field("col_a", pa.int32()), pa.field("col_b", pa.string())]
     )
     assert table.schema.equals(expected_schema)
 
@@ -291,6 +290,173 @@ def test_write_concurrency():
     )
     df = read_ds.to_pandas().sort_values("col_a").reset_index(drop=True)
     assert df["col_a"].tolist() == [1, 2, 3, 4]
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_predicate_pushdown():
+    """Test that predicate pushdown works correctly with Iceberg datasource."""
+    import pandas as pd
+
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+    from ray.data.expressions import col
+
+    # Read the table and apply filters using Ray Data expressions
+    ds = ray.data.read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+
+    # Apply filter using Ray Data expression syntax
+    filtered_ds = ds.filter(expr=col("col_c") >= 5)
+
+    # Verify the filter is pushed down to the read operation
+    # by checking the optimized logical plan
+    logical_plan = filtered_ds._plan._logical_plan
+    optimized_plan = LogicalOptimizer().optimize(logical_plan)
+    actual_plan = optimized_plan.dag.dag_str
+
+    # The plan should only contain the Read operator, with no Filter operator
+    # This indicates the filter was pushed down to the datasource
+    assert (
+        "Filter[Filter" not in actual_plan
+    ), f"Filter should be pushed down to read, got plan: {actual_plan}"
+    assert (
+        "Read[ReadIceberg]" in actual_plan
+    ), f"Expected ReadIceberg in plan, got: {actual_plan}"
+
+    # Verify the results are correct
+    result = filtered_ds.to_pandas()
+    assert all(result["col_c"] >= 5), "All rows should have col_c >= 5"
+    assert len(result) > 0, "Should have some results"
+
+    # Verify against direct PyIceberg read with the same filter
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    expected_table = (
+        sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+        .scan(row_filter=pyi_expr.GreaterThanOrEqual("col_c", 5))
+        .to_pandas()
+        .sort_values(["col_a", "col_b", "col_c"])
+        .reset_index(drop=True)
+    )
+
+    result_sorted = result.sort_values(["col_a", "col_b", "col_c"]).reset_index(
+        drop=True
+    )
+    pd.testing.assert_frame_equal(result_sorted, expected_table)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_predicate_pushdown_with_initial_filter():
+    """Test that predicate pushdown works when combined with initial row_filter."""
+    import pandas as pd
+
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+    from ray.data.expressions import col
+
+    # Read with an initial PyIceberg filter
+    initial_filter = pyi_expr.LessThan("col_a", 50)
+
+    # Expect deprecation warning for row_filter
+    with pytest.warns(DeprecationWarning, match="row_filter.*deprecated"):
+        ds = ray.data.read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            row_filter=initial_filter,
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+
+    # Apply additional filter using Ray Data expression
+    filtered_ds = ds.filter(expr=col("col_c") >= 5)
+
+    # Verify both filters are pushed down
+    logical_plan = filtered_ds._plan._logical_plan
+    optimized_plan = LogicalOptimizer().optimize(logical_plan)
+    actual_plan = optimized_plan.dag.dag_str
+
+    # No Filter operator should remain in the plan
+    assert (
+        "Filter[Filter" not in actual_plan
+    ), f"Filters should be pushed down to read, got plan: {actual_plan}"
+
+    # Verify the results satisfy both conditions
+    result = filtered_ds.to_pandas()
+    assert all(result["col_a"] < 50), "All rows should have col_a < 50"
+    assert all(result["col_c"] >= 5), "All rows should have col_c >= 5"
+    assert len(result) > 0, "Should have some results"
+
+    # Verify against direct PyIceberg read with combined filter
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    combined_filter = pyi_expr.And(
+        pyi_expr.LessThan("col_a", 50), pyi_expr.GreaterThanOrEqual("col_c", 5)
+    )
+    expected_table = (
+        sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+        .scan(row_filter=combined_filter)
+        .to_pandas()
+        .sort_values(["col_a", "col_b", "col_c"])
+        .reset_index(drop=True)
+    )
+
+    result_sorted = result.sort_values(["col_a", "col_b", "col_c"]).reset_index(
+        drop=True
+    )
+    pd.testing.assert_frame_equal(result_sorted, expected_table)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_predicate_pushdown_complex_expression():
+    """Test predicate pushdown with complex expressions."""
+    import pandas as pd
+
+    from ray.data.expressions import col
+
+    # Apply a complex filter expression
+    ds = ray.data.read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+
+    # Complex expression: (col_c >= 3) & (col_c <= 7) & (col_a <= 50)
+    filtered_ds = ds.filter(
+        expr=(col("col_c") >= 3) & (col("col_c") <= 7) & (col("col_a") <= 50)
+    )
+
+    # Verify the results
+    result = filtered_ds.to_pandas()
+    assert all(result["col_c"] >= 3), "All rows should have col_c >= 3"
+    assert all(result["col_c"] <= 7), "All rows should have col_c <= 7"
+    assert all(result["col_a"] <= 50), "All rows should have col_a <= 50"
+    assert len(result) > 0, "Should have some results"
+
+    # Verify against direct PyIceberg read
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    combined_filter = pyi_expr.And(
+        pyi_expr.And(
+            pyi_expr.GreaterThanOrEqual("col_c", 3),
+            pyi_expr.LessThanOrEqual("col_c", 7),
+        ),
+        pyi_expr.LessThanOrEqual("col_a", 50),
+    )
+    expected_table = (
+        sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+        .scan(row_filter=combined_filter)
+        .to_pandas()
+        .sort_values(["col_a", "col_b", "col_c"])
+        .reset_index(drop=True)
+    )
+
+    result_sorted = result.sort_values(["col_a", "col_b", "col_c"]).reset_index(
+        drop=True
+    )
+    pd.testing.assert_frame_equal(result_sorted, expected_table)
 
 
 if __name__ == "__main__":

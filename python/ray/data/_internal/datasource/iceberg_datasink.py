@@ -105,7 +105,7 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         if unsupported_partitions := [
             field
             for field in self._table_metadata.spec().fields
-            if not field.transform.supports_pyarrow_transform
+            if not field.transform.pyarrow_transform
         ]:
             raise ValueError(
                 f"Not all partition types are supported for writes. Following partitions cannot be written using pyarrow: {unsupported_partitions}."

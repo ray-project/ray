@@ -25,6 +25,8 @@ if TYPE_CHECKING:
     from pyiceberg.table import DataScan, FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
 
+    from ray.data.expressions import Expr
+
 logger = logging.getLogger(__name__)
 
 
@@ -113,11 +115,26 @@ class IcebergDatasource(Datasource):
             catalog_kwargs: Optional arguments to use when setting up the Iceberg
                 catalog
         """
+        # Initialize parent class to set up predicate pushdown mixin
+        super().__init__()
+
         _check_import(self, module="pyiceberg", package="pyiceberg")
         from pyiceberg.expressions import AlwaysTrue
 
         self._scan_kwargs = scan_kwargs if scan_kwargs is not None else {}
         self._catalog_kwargs = catalog_kwargs if catalog_kwargs is not None else {}
+
+        # Deprecation warning for row_filter parameter
+        if row_filter is not None:
+            import warnings
+
+            warnings.warn(
+                "The 'row_filter' parameter is deprecated and will be removed in a "
+                "future release. Use the .filter() method on the dataset instead. "
+                "For example: ds = ray.data.read_iceberg(...).filter(expr=col('column') > 5)",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         if "name" in self._catalog_kwargs:
             self._catalog_name = self._catalog_kwargs.pop("name")
@@ -162,10 +179,30 @@ class IcebergDatasource(Datasource):
 
         return self._plan_files
 
+    def _get_combined_filter(self) -> "BooleanExpression":
+        """Get the combined filter including both row_filter and pushed-down predicates."""
+        combined_filter = self._row_filter
+
+        if self._predicate_expr is not None:
+            # Convert Ray Data expression to PyIceberg expression
+            iceberg_filter = self._predicate_expr.to_iceberg()
+
+            # Combine with existing row_filter using AND
+            from pyiceberg.expressions import AlwaysTrue, And
+
+            if not isinstance(combined_filter, AlwaysTrue):
+                combined_filter = And(combined_filter, iceberg_filter)
+            else:
+                combined_filter = iceberg_filter
+
+        return combined_filter
+
     def _get_data_scan(self) -> "DataScan":
+        # Get the combined filter
+        combined_filter = self._get_combined_filter()
 
         data_scan = self.table.scan(
-            row_filter=self._row_filter,
+            row_filter=combined_filter,
             selected_fields=self._selected_fields,
             **self._scan_kwargs,
         )
@@ -177,6 +214,33 @@ class IcebergDatasource(Datasource):
         # incorporate the deletes, but that's a reasonable approximation
         # task
         return sum(task.file.file_size_in_bytes for task in self.plan_files)
+
+    def supports_predicate_pushdown(self) -> bool:
+        """Returns True to indicate this datasource supports predicate pushdown."""
+        return True
+
+    def apply_predicate(self, predicate_expr: "Expr") -> "IcebergDatasource":
+        """Apply a predicate to this datasource.
+
+        Overrides the base implementation to also invalidate cached plan_files.
+        """
+        import copy
+
+        clone = copy.copy(self)
+
+        # Combine with existing predicate using AND
+        clone._predicate_expr = (
+            predicate_expr
+            if clone._predicate_expr is None
+            else clone._predicate_expr & predicate_expr
+        )
+
+        # Invalidate cached plan_files and table so they get recalculated
+        # with the new predicate
+        clone._plan_files = None
+        clone._table = None
+
+        return clone
 
     @staticmethod
     def _distribute_tasks_into_equal_chunks(
@@ -242,7 +306,7 @@ class IcebergDatasource(Datasource):
         # See https://github.com/ray-project/ray/issues/49107 for more context
         table_io = self.table.io
         table_metadata = self.table.metadata
-        row_filter = self._row_filter
+        row_filter = self._get_combined_filter()
         case_sensitive = self._scan_kwargs.get("case_sensitive", True)
         limit = self._scan_kwargs.get("limit")
 
