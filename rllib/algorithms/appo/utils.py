@@ -6,6 +6,7 @@ https://arxiv.org/pdf/1912.00167
 import threading
 import time
 from collections import deque
+from typing import Any, Optional
 
 import numpy as np
 
@@ -132,6 +133,181 @@ class CircularBuffer:
         """Returns the number of actually valid (non-expired) batches in the buffer."""
         with self._lock:
             return len(self._indices)
+
+
+class FastRingBuffer:
+    """
+    High-performance ring buffer optimized for multi-producer, single-consumer scenarios.
+
+    Key optimizations:
+    - Separate read/write locks minimize contention
+    - Semaphore-based blocking is more efficient than condition variables
+    - Manual capacity management prevents semaphore desync issues
+    - Optimized for IMPALA/APPO learner workloads with many env-runners
+
+    Best for: 50+ producers, 1 consumer, high throughput (10k+ items/sec)
+    """
+
+    def __init__(self, capacity: int):
+        """
+        Initialize ring buffer with fixed capacity.
+
+        Args:
+            capacity: Maximum number of items in buffer
+                     For IMPALA: Use smaller buffer (32-64) for freshness
+                     Use larger buffer (256+) for maximum throughput
+        """
+        if capacity <= 0:
+            raise ValueError("Capacity must be positive")
+
+        self._capacity = capacity
+        self._buffer = deque()
+        self._ages = deque()  # Track insertion order for monitoring
+        self._insertion_counter = 0
+        # Separate locks for read/write operations reduce contention
+        self._write_lock = threading.Lock()
+        self._read_lock = threading.Lock()
+        # Semaphore for efficient blocking (OS-level, not Python spin-wait)
+        self._items_available = threading.Semaphore(0)
+        # Statistics
+        self._total_puts = 0
+        self._total_gets = 0
+        self._total_evictions = 0
+        self._total_stale_drops = 0  # For compatibility with get_stats()
+
+    def put(self, item: Any) -> Optional[Any]:
+        """
+        Add item to buffer. If full, oldest item is evicted.
+        Non-blocking, optimized for high-throughput producers.
+
+        Args:
+            item: Item to add
+
+        Returns:
+            Evicted item if buffer was full, None otherwise
+        """
+        with self._write_lock:
+            evicted = None
+            self._insertion_counter += 1
+            self._total_puts += 1
+
+            # Manual eviction ensures semaphore stays in sync
+            if len(self._buffer) >= self._capacity:
+                evicted = self._buffer.popleft()
+                self._ages.popleft()
+                self._total_evictions += 1
+                # Don't increment semaphore since we're replacing, not adding
+            else:
+                # Only release semaphore when actually adding (not replacing)
+                self._items_available.release()
+
+            self._buffer.append(item)
+            self._ages.append(self._insertion_counter)
+            return evicted
+
+    def get(self, block: bool = True, timeout: Optional[float] = None) -> Any:
+        """
+        Remove and return oldest item from buffer.
+
+        Args:
+            block: If True, block until item is available
+            timeout: Maximum time to wait in seconds (None = wait forever)
+
+        Returns:
+            Oldest item in buffer
+
+        Raises:
+            IndexError: If buffer is empty and block=False
+            TimeoutError: If timeout expires while waiting
+        """
+        if block:
+            acquired = self._items_available.acquire(blocking=True, timeout=timeout)
+            if not acquired:
+                raise TimeoutError("Timeout waiting for item")
+        else:
+            acquired = self._items_available.acquire(blocking=False)
+            if not acquired:
+                raise IndexError("Buffer is empty")
+
+        # Item guaranteed available after semaphore acquisition
+        with self._read_lock:
+            if not self._buffer:
+                # Edge case: shouldn't happen if semaphore is correct
+                raise IndexError("Buffer is empty")
+
+            self._total_gets += 1
+            self._ages.popleft()
+            return self._buffer.popleft()
+
+    def get_nowait(self) -> Any:
+        """Non-blocking get. Alias for get(block=False)."""
+        return self.get(block=False)
+
+    def qsize(self) -> int:
+        """Return current number of items in buffer. Alias for __len__."""
+        return len(self)
+
+    def __len__(self) -> int:
+        """Return current number of items in buffer."""
+        with self._write_lock:
+            return len(self._buffer)
+
+    def is_empty(self) -> bool:
+        """Check if buffer is empty."""
+        with self._write_lock:
+            return len(self._buffer) == 0
+
+    def is_full(self) -> bool:
+        """Check if buffer is at capacity."""
+        with self._write_lock:
+            return len(self._buffer) >= self._capacity
+
+    def get_stats(self) -> dict:
+        """
+        Get buffer statistics for monitoring.
+
+        Returns:
+            Dictionary with buffer statistics
+        """
+        with self._write_lock:
+            oldest_age = None
+            newest_age = None
+            avg_age = None
+            num_very_stale = 0  # Items older than 2x capacity
+
+            if self._ages:
+                oldest_age = self._insertion_counter - self._ages[0]
+                newest_age = self._insertion_counter - self._ages[-1]
+
+                # Calculate average age
+                ages = [self._insertion_counter - age for age in self._ages]
+                avg_age = sum(ages) / len(ages)
+
+                # Count "very stale" items (older than 2x capacity)
+                stale_threshold = self._capacity * 2
+                num_very_stale = sum(1 for age in ages if age > stale_threshold)
+
+            return {
+                "size": len(self._buffer),
+                "capacity": self._capacity,
+                "total_puts": self._total_puts,
+                "total_gets": self._total_gets,
+                "total_evictions": self._total_evictions,
+                "total_stale_drops": self._total_stale_drops,
+                "oldest_item_age": oldest_age,
+                "newest_item_age": newest_age,
+                "avg_item_age": avg_age,
+                "num_very_stale_items": num_very_stale,
+                "insertion_counter": self._insertion_counter,
+            }
+
+    def task_done(self):
+        """Compatibility method for queue.Queue interface. No-op for RingBuffer."""
+        pass
+
+    def join(self):
+        """Compatibility method for queue.Queue interface. No-op for RingBuffer."""
+        pass
 
 
 @OldAPIStack

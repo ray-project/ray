@@ -1,8 +1,8 @@
 import abc
-import queue
 from typing import Any, Dict, Optional
 
 from ray.rllib.algorithms.appo.appo import APPOConfig
+from ray.rllib.algorithms.appo.utils import FastRingBuffer
 from ray.rllib.algorithms.impala.impala_learner import IMPALALearner
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.utils import update_target_network
@@ -29,9 +29,10 @@ class APPOLearner(IMPALALearner):
 
     @override(IMPALALearner)
     def build(self):
-        # TODO (simon): Convert to a circular queue once the dataflow works.
-        self._learner_thread_in_queue = queue.Queue(maxsize=2)
+        # TODO (simon): Make capacity user-defined parameter.
+        self._learner_thread_in_queue = FastRingBuffer(capacity=32)
 
+        # Now build the super class. Otherwise the learner-queue would overriden.
         super().build()
 
         # Make target networks.

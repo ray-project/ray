@@ -341,14 +341,13 @@ class LearnerGroup(Checkpointable):
                         "updates."
                     )
                 # Only solve refs here if NOT deferring. When deferring, the Learner/GPU
-            # loader thread will call `training_data.solve_refs()` and build the CPU MAB.
-            if not defer_solve:
-
-                # Ray metrics
-                with TimerAndPrometheusLogger(
-                    self._metrics_local_learner_training_data_solve_refs
-                ):
-                    training_data.solve_refs()
+                # loader thread will call `training_data.solve_refs()` and build the CPU MAB.
+                if not defer_solve:
+                    # Ray metrics
+                    with TimerAndPrometheusLogger(
+                        self._metrics_local_learner_training_data_solve_refs
+                    ):
+                        training_data.solve_refs()
 
                 if return_state:
                     kwargs["return_state"] = return_state

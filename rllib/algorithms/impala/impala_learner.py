@@ -1,7 +1,7 @@
 import logging
 import queue
 import threading
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import ray
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
@@ -45,6 +45,9 @@ QUEUE_SIZE_RESULTS_QUEUE = "queue_size_results_queue"
 
 # Aggregation cycle size.
 BATCHES_PER_AGGREGATION = 20
+
+# Stop sentinel for the `_LearnerThread`
+_STOP_SENTINEL = object()
 
 
 class IMPALALearner(Learner):
@@ -106,6 +109,12 @@ class IMPALALearner(Learner):
         self._num_updates = 0  # learner-side counter
         self._num_updates_lock = threading.Lock()
 
+        self._model_io_lock = threading.RLock()
+
+        self._learner_state_queue = queue.Queue(maxsize=1)
+        self._learner_state_lock = threading.Lock()
+        self._learner_state = None
+
         # Dict mapping module IDs to entropy Scheduler instances.
         self.entropy_coeff_schedulers_per_module: Dict[
             ModuleID, Scheduler
@@ -123,20 +132,34 @@ class IMPALALearner(Learner):
         # GPU memory usage.
 
         # Small loader in-queue to keep threads busy without flooding.
-        loader_qsize = max(2, 2 * self.config.num_gpu_loader_threads)
+        # TODO (simon): Do extensive testing to find an optimal queue size.
+        loader_qsize = max(2, 10 * self.config.num_gpu_loader_threads)
         # Note, we are passing now the timesteps dictionary through the queue.
         self._gpu_loader_in_queue: "queue.Queue[tuple[TrainingData, Dict[str, Any]]]" = queue.Queue(
             maxsize=loader_qsize
         )
 
         # Learner in-queue must be tiny. 1 strictly serializes GPU-resident batches.
+        # TODO (simon): Add `FastRingBuffer` to APPO. And check, if deque is better here.
+        # TODO (simon): Add a parameter to define queue size.
         self._learner_thread_in_queue: "queue.Queue[tuple[Any, Dict[str, Any]]]" = (
             queue.Queue(maxsize=2)
         )
 
+        # Get the rank of this learner, if necessary.
+        if torch.distributed.is_initialized():
+            self._rank: int = torch.distributed.get_rank()
+        # For single-learner setups the rank is always 0.
+        else:
+            self._rank: int = 0
+
+        # Define the out-queue for the metrics from the `_LearnerThread`.
+        # TODO (simon): Add types for items.
+        self._learner_thread_out_queue: "queue.Queue[Dict[str, Any]]" = queue.Queue()
+
         # Create and start `_GPULoaderThread`(s).
         if self.config.num_gpus_per_learner > 0:
-            self._gpu_loader_threads = [
+            self._gpu_loader_threads: List[threading.Thread] = [
                 _GPULoaderThread(
                     in_queue=self._gpu_loader_in_queue,
                     out_queue=self._learner_thread_in_queue,
@@ -149,9 +172,10 @@ class IMPALALearner(Learner):
                 t.start()
 
         # Create and start the `_LearnerThread`.
-        self._learner_thread = _LearnerThread(
+        self._learner_thread: threading.Thread = _LearnerThread(
             update_method=Learner.update,
             in_queue=self._learner_thread_in_queue,
+            out_queue=self._learner_thread_out_queue,
             learner=self,
         )
         self._learner_thread.start()
@@ -181,14 +205,15 @@ class IMPALALearner(Learner):
         Returns:
 
         """
-        global _CURRENT_GLOBAL_TIMESTEPS
-        _CURRENT_GLOBAL_TIMESTEPS = timesteps or {}
 
         with TimerAndPrometheusLogger(self._metrics_learner_impala_update):
             # Get the train batch from the object store.
             with TimerAndPrometheusLogger(
                 self._metrics_learner_impala_update_solve_refs
             ):
+                # Resolve object refs and ensure we have a proper batch object.
+                # TODO (simon): Check, if we can resolve the object references and
+                # run the pipeline on the GPULoaderThreads.
                 training_data.solve_refs()
 
             with TimerAndPrometheusLogger(
@@ -208,42 +233,45 @@ class IMPALALearner(Learner):
                     self._gpu_loader_in_queue.qsize(),
                     window=1,
                 )
+                # TODO (simon): Check, if we want to get here stats from the
+                # RingBuffer.
         else:
             # No GPU loader: directly enqueue to learner queue.
             _LearnerThread.enqueue(
                 self._learner_thread_in_queue, (batch, timesteps), self.metrics
             )
 
+        # Return the module state, if requested and available.
+        if return_state:
+            try:
+                with self._learner_state_lock:
+                    self._learner_state = self._learner_state_queue.get_nowait()
+            except queue.Empty:
+                pass
+
         # Every 20th block call we submit results. Otherwise we keep the
         # thread running without interruption to avoid thread contention.
         self._submitted_updates += 1
         if (self._submitted_updates % BATCHES_PER_AGGREGATION) != 0:
-            return {}
+            result = {}
+            if return_state and self._learner_state:
+                result["_rl_module_state_after_update"] = self._learner_state
+            return result
 
-        # 20th submission: wait until learner finished 20 updates (blocking).
+        # Result submission: wait until learner finished 20 updates (blocking).
         self._agg_event.wait()
         # Reset the aggregation event to keep the `_LearnerThread` running.
         self._agg_event.clear()
 
-        # Reduce metrics outside of any locks.
-        # TODO (simon): Check, if we need to call this before we call `clear`.
-        result = self.metrics.reduce()
+        if self._learner_thread_out_queue:
+            try:
+                result = self._learner_thread_out_queue.get(timeout=0.001)
+            except queue.Empty:
+                result = {}
 
         # Return the module state, if requested.
         if return_state:
-            learner_state = self.get_state(
-                # Only return the state of those RLModules that are trainable.
-                components=[
-                    COMPONENT_RL_MODULE + "/" + mid
-                    for mid in self.module.keys()
-                    if self.should_module_be_updated(mid)
-                ],
-                inference_only=True,
-            )
-            learner_state[COMPONENT_RL_MODULE] = ray.put(
-                learner_state[COMPONENT_RL_MODULE]
-            )
-            result["_rl_module_state_after_update"] = learner_state
+            result["_rl_module_state_after_update"] = self._learner_state
 
         return result
 
@@ -306,17 +334,6 @@ class _GPULoaderThread(threading.Thread):
             torch.cuda.Stream(device=self._device) if self._use_cuda_stream else None
         )
 
-    # Robust pinned-memory copy: fall back if batch contains CUDA tensors already.
-    # TODO (simon): Find a more compliant solution.
-    def _to_device_safe(self, batch):
-        try:
-            return batch.to_device(self._device, pin_memory=True)
-        except RuntimeError as e:
-            msg = str(e)
-            if "only dense CPU tensors can be pinned" in msg or "pin_memory" in msg:
-                return batch.to_device(self._device, pin_memory=False)
-            raise
-
         self._metrics_impala_gpu_loader_thread_step_time = Histogram(
             name="rllib_learner_impala_gpu_loader_thread_step_time",
             description="Time taken in seconds for gpu loader thread _step.",
@@ -356,6 +373,17 @@ class _GPULoaderThread(threading.Thread):
             {"rllib": "IMPALA/GPULoaderThread"}
         )
 
+    # Robust pinned-memory copy: fall back if batch contains CUDA tensors already.
+    # TODO (simon): Find a more compliant solution.
+    def _to_device_safe(self, batch):
+        try:
+            return batch.to_device(self._device, pin_memory=True)
+        except RuntimeError as e:
+            msg = str(e)
+            if "only dense CPU tensors can be pinned" in msg or "pin_memory" in msg:
+                return batch.to_device(self._device, pin_memory=False)
+            raise
+
     def run(self) -> None:
         while True:
             with TimerAndPrometheusLogger(
@@ -391,16 +419,13 @@ class _GPULoaderThread(threading.Thread):
         )
 
 
-# Put this once near the top of the file (module-level):
-_STOP_SENTINEL = object()
-
-
 class _LearnerThread(threading.Thread):
     def __init__(
         self,
         *,
         update_method,
         in_queue: "queue.Queue[tuple[Any, Dict[str, Any]]]",
+        out_queue,
         learner: IMPALALearner,
     ):
         super().__init__(name="_LearnerThread")
@@ -409,8 +434,51 @@ class _LearnerThread(threading.Thread):
         self._update_method = update_method
         # Note, we pass now the timesteps dictionary through the queue.
         self._in_queue: "queue.Queue[tuple[Any, Dict[str, Any]]]" = in_queue
-
+        # TODO (simon): Type hints.
+        self._out_queue = out_queue
         self._stop_event = threading.Event()
+
+        # Ray metrics
+        self._metrics_learner_impala_thread_step = Histogram(
+            name="rllib_learner_impala_learner_thread_step_time",
+            description="Time taken in seconds for learner thread _step.",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_learner_impala_thread_step.set_default_tags(
+            {"rllib": "IMPALA/LearnerThread"}
+        )
+
+        self._metrics_learner_impala_thread_step_update = Histogram(
+            name="rllib_learner_impala_learner_thread_step_update_time",
+            description="Time taken in seconds for learner thread _step update.",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_learner_impala_thread_step_update.set_default_tags(
+            {"rllib": "IMPALA/LearnerThread"}
+        )
+
+        # Ray metrics
+        self._metrics_learner_impala_thread_step = Histogram(
+            name="rllib_learner_impala_learner_thread_step_time",
+            description="Time taken in seconds for learner thread _step.",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_learner_impala_thread_step.set_default_tags(
+            {"rllib": "IMPALA/LearnerThread"}
+        )
+
+        self._metrics_learner_impala_thread_step_update = Histogram(
+            name="rllib_learner_impala_learner_thread_step_update_time",
+            description="Time taken in seconds for learner thread _step update.",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_learner_impala_thread_step_update.set_default_tags(
+            {"rllib": "IMPALA/LearnerThread"}
+        )
 
     # Keeps compatibility, but thread-safe.
     @property
@@ -426,48 +494,6 @@ class _LearnerThread(threading.Thread):
         except queue.Full:
             # If the queue is full, the consumer will wake soon anyway.
             pass
-
-        # Ray metrics
-        self._metrics_learner_impala_thread_step = Histogram(
-            name="rllib_learner_impala_learner_thread_step_time",
-            description="Time taken in seconds for learner thread _step.",
-            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
-            tag_keys=("rllib",),
-        )
-        self._metrics_learner_impala_thread_step.set_default_tags(
-            {"rllib": "IMPALA/LearnerThread"}
-        )
-
-        self._metrics_learner_impala_thread_step_update = Histogram(
-            name="rllib_learner_impala_learner_thread_step_update_time",
-            description="Time taken in seconds for learner thread _step update.",
-            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
-            tag_keys=("rllib",),
-        )
-        self._metrics_learner_impala_thread_step_update.set_default_tags(
-            {"rllib": "IMPALA/LearnerThread"}
-        )
-
-        # Ray metrics
-        self._metrics_learner_impala_thread_step = Histogram(
-            name="rllib_learner_impala_learner_thread_step_time",
-            description="Time taken in seconds for learner thread _step.",
-            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
-            tag_keys=("rllib",),
-        )
-        self._metrics_learner_impala_thread_step.set_default_tags(
-            {"rllib": "IMPALA/LearnerThread"}
-        )
-
-        self._metrics_learner_impala_thread_step_update = Histogram(
-            name="rllib_learner_impala_learner_thread_step_update_time",
-            description="Time taken in seconds for learner thread _step update.",
-            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
-            tag_keys=("rllib",),
-        )
-        self._metrics_learner_impala_thread_step_update.set_default_tags(
-            {"rllib": "IMPALA/LearnerThread"}
-        )
 
     def run(self) -> None:
         while True:
@@ -514,9 +540,57 @@ class _LearnerThread(threading.Thread):
             # Set the Aggregation counter and signal this event (atomic).
             with self.learner._num_updates_lock:
                 self.learner._num_updates += 1
-                if self.learner._num_updates == BATCHES_PER_AGGREGATION:
+                # Check, if we need to aggregate.
+                do_agg = self.learner._num_updates == BATCHES_PER_AGGREGATION
+                if do_agg:
+                    # Reset the update counter inside the lock.
                     self.learner._num_updates = 0
-                    self.learner._agg_event.set()
+
+            # If we need to aggregate, reduce metrics and queue them.
+            if do_agg:
+                # If in multi-learner setup, safeguard state retrieval within barriers.
+                if torch.distributed.is_initialized():
+                    torch.distributed.barrier()
+                # Only the first rank retrieves the state.
+                if self.learner._rank == 0:
+                    with self.learner._model_io_lock, torch.inference_mode():
+                        learner_state = self.learner.get_state(
+                            # Only return the state of those RLModules that are trainable.
+                            components=[
+                                COMPONENT_RL_MODULE + "/" + mid
+                                for mid in self.learner.module.keys()
+                                if self.learner.should_module_be_updated(mid)
+                            ],
+                            inference_only=True,
+                        )
+                        learner_state[COMPONENT_RL_MODULE] = ray.put(
+                            learner_state[COMPONENT_RL_MODULE]
+                        )
+                    try:
+                        with self.learner._learner_state_lock:
+                            self.learner.metrics.log_value(
+                                ("ALL_MODULES", "learner_thread_state_queue_size"),
+                                self.learner._learner_state_queue.qsize(),
+                                window=1,
+                            )
+                        # Remove any old learner state in the queue.
+                        self.learner._learner_state_queue.get_nowait()
+                    except queue.Empty:
+                        pass
+                    # Pass the learner state into the queue to the main process.
+                    self.learner._learner_state_queue.put_nowait(learner_state)
+                self.learner.metrics.log_value(
+                    ("ALL_MODULES", "learner_thread_out_queue_size"),
+                    self._out_queue.qsize(),
+                    window=1,
+                )
+                # Reduce metrics and pass them into the queue for the main process.
+                self._out_queue.put(self.learner.metrics.reduce())
+                # Notify all listeners that aggregation is done and results can be
+                # retrieved.
+                self.learner._agg_event.set()
+                if self.learner.config.num_learners > 1:
+                    torch.distributed.barrier()
 
         # Keep running (see `run` method).
         return True
@@ -532,7 +606,7 @@ class _LearnerThread(threading.Thread):
             learner_queue.put(batch_with_ts, block=True)
         except queue.Full:
             # TODO (simon): Write mechanism to drop the oldest batch.
-            batch, _ts = batch_with_ts
+            batch, _ = batch_with_ts
             try:
                 env_steps = batch.env_steps() if hasattr(batch, "env_steps") else 0
                 metrics.log_value(
