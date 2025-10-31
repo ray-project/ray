@@ -28,6 +28,8 @@ from ray.util.accelerators.accelerators import (
     NVIDIA_TESLA_V100,
     AMD_INSTINCT_MI250x,
     AMD_INSTINCT_MI300x,
+    METAX_C500,
+    METAX_C550,
 )
 
 __all__ = [
@@ -60,6 +62,8 @@ __all__ = [
     "GOOGLE_TPU_V5P",
     "GOOGLE_TPU_V5LITEPOD",
     "GOOGLE_TPU_V6E",
+    "METAX_C500",
+    "METAX_C550",
     # Deprecated
     "NVIDIA_TESLA_A100",
 ]
