@@ -14,8 +14,8 @@ from ci.ray_ci.automation.ray_wheels_lib import (
 @click.option("--ray_version", required=True, type=str)
 @click.option("--commit_hash", required=True, type=str)
 @click.option("--pypi_env", required=True, type=click.Choice(["test", "prod"]))
-@click.option("--build_tag", required=False, type=str)
 @click.option("--branch", required=False, type=str)
+@click.option("--build_tag", required=False, type=str)
 def main(
     ray_version: str,
     commit_hash: str,

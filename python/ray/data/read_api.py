@@ -1009,6 +1009,15 @@ def read_parquet(
     _emit_meta_provider_deprecation_warning(meta_provider)
     _validate_shuffle_arg(shuffle)
 
+    # Check for deprecated filter parameter
+    if "filter" in arrow_parquet_args:
+        warnings.warn(
+            "The `filter` argument is deprecated and will not supported in a future release. "
+            "Use `dataset.filter(expr=expr)` instead to filter rows.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     arrow_parquet_args = _resolve_parquet_args(
         tensor_column_schema,
         **arrow_parquet_args,

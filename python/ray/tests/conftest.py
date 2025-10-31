@@ -42,6 +42,13 @@ from ray._private.test_utils import (
     teardown_tls,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
+from ray.tests.authentication_test_utils import (
+    authentication_env_guard,
+    clear_auth_token_sources,
+    reset_auth_token_state,
+    set_auth_mode,
+    set_env_auth_token,
+)
 
 import psutil
 
@@ -1483,3 +1490,62 @@ def make_httpserver(httpserver_listen_address, httpserver_ssl_context):
     server.clear()
     if server.is_running():
         server.stop()
+
+
+@pytest.fixture
+def cleanup_auth_token_env():
+    """Reset authentication environment variables, files, and caches."""
+
+    with authentication_env_guard():
+        clear_auth_token_sources(remove_default=True)
+        reset_auth_token_state()
+        yield
+        reset_auth_token_state()
+
+
+@pytest.fixture
+def setup_cluster_with_token_auth(cleanup_auth_token_env):
+    """Spin up a Ray cluster with token authentication enabled."""
+
+    test_token = "test_token_12345678901234567890123456789012"
+    set_auth_mode("token")
+    set_env_auth_token(test_token)
+    reset_auth_token_state()
+
+    cluster = Cluster()
+    cluster.add_node()
+
+    try:
+        context = ray.init(address=cluster.address)
+        dashboard_url = context.address_info["webui_url"]
+        yield {
+            "cluster": cluster,
+            "dashboard_url": f"http://{dashboard_url}",
+            "token": test_token,
+        }
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+@pytest.fixture
+def setup_cluster_without_token_auth(cleanup_auth_token_env):
+    """Spin up a Ray cluster with authentication disabled."""
+
+    set_auth_mode("disabled")
+    clear_auth_token_sources(remove_default=True)
+    reset_auth_token_state()
+
+    cluster = Cluster()
+    cluster.add_node()
+
+    try:
+        context = ray.init(address=cluster.address)
+        dashboard_url = context.address_info["webui_url"]
+        yield {
+            "cluster": cluster,
+            "dashboard_url": f"http://{dashboard_url}",
+        }
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
