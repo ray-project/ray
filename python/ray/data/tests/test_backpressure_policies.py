@@ -193,9 +193,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         mock_resource_manager = MagicMock()
 
         # Mock object store memory usage ratio above threshold
-        threshold = (
-            ConcurrencyCapBackpressurePolicy.OBJECT_STORE_USAGE_RATIO
-        )
+        threshold = ConcurrencyCapBackpressurePolicy.OBJECT_STORE_USAGE_RATIO
         mock_usage = MagicMock()
         mock_usage.object_store_memory = 1000  # usage
         mock_budget = MagicMock()
@@ -235,9 +233,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         mock_resource_manager = MagicMock()
 
         # Mock object store memory usage ratio below threshold
-        threshold = (
-            ConcurrencyCapBackpressurePolicy.OBJECT_STORE_USAGE_RATIO
-        )
+        threshold = ConcurrencyCapBackpressurePolicy.OBJECT_STORE_USAGE_RATIO
         mock_usage = MagicMock()
         mock_usage.object_store_memory = 1000  # usage
         mock_budget = MagicMock()
@@ -285,9 +281,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         topology = {map_op: MagicMock(), input_op: MagicMock()}
 
         mock_resource_manager = MagicMock()
-        threshold = (
-            ConcurrencyCapBackpressurePolicy.OBJECT_STORE_USAGE_RATIO
-        )
+        threshold = ConcurrencyCapBackpressurePolicy.OBJECT_STORE_USAGE_RATIO
         mock_usage = MagicMock()
         mock_usage.object_store_memory = 1000
         mock_budget = MagicMock()

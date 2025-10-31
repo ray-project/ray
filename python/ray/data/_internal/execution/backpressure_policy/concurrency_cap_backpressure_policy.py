@@ -49,7 +49,9 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     # Factor to ramp up when the queue is too small.
     RAMPUP_FACTOR = env_float("RAY_DATA_CONCURRENCY_CAP_RAMPUP_FACTOR", 1)
     # Threshold for object store memory usage ratio to enable dynamic output queue size backpressure.
-    OBJECT_STORE_USAGE_RATIO = env_float("RAY_DATA_CONCURRENCY_CAP_OBJECT_STORE_USAGE_RATIO", 0.1)
+    OBJECT_STORE_USAGE_RATIO = env_float(
+        "RAY_DATA_CONCURRENCY_CAP_OBJECT_STORE_USAGE_RATIO", 0.1
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -169,7 +171,9 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
 
         # Update EWMA state (level & dev) and compute effective cap
         self._update_level_and_dev(op, current_queue_size_bytes)
-        effective_cap = self._effective_cap(op, num_tasks_running, current_queue_size_bytes)
+        effective_cap = self._effective_cap(
+            op, num_tasks_running, current_queue_size_bytes
+        )
 
         last = self._last_effective_caps.get(op, None)
         if last != effective_cap:
