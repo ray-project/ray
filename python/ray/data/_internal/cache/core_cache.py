@@ -4,12 +4,13 @@ Manages two caches: local in-memory dict for small objects (< 50KB) and
 Ray object store for medium objects (50KB - 10MB).
 """
 
+import sys
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
-from .cache_strategies import CacheStrategy, get_cache_strategy
 from .constants import (
     DEFAULT_MAX_CACHE_SIZE_BYTES,
     LOCAL_CACHE_THRESHOLD_BYTES,
@@ -23,6 +24,26 @@ from ray.data._internal.logical.interfaces import LogicalPlan
 
 if TYPE_CHECKING:
     from ray.data import DataContext
+
+
+class CacheStrategy(Enum):
+    """Cache placement strategies."""
+
+    LOCAL = "local"
+    RAY = "ray"
+    NONE = "none"
+
+
+def _get_cache_strategy(operation_name: str, result: Any) -> CacheStrategy:
+    """Determine where to cache a result based on its size."""
+    size_bytes = sys.getsizeof(result)
+
+    if size_bytes < LOCAL_CACHE_THRESHOLD_BYTES:
+        return CacheStrategy.LOCAL
+    elif size_bytes < RAY_CACHE_THRESHOLD_BYTES:
+        return CacheStrategy.RAY
+    else:
+        return CacheStrategy.NONE
 
 
 @dataclass
@@ -140,7 +161,7 @@ class DatasetCache:
         Determines where to cache (local vs Ray) based on size, with LRU eviction.
         """
         cache_key = make_cache_key(logical_plan, operation_name, **params)
-        strategy = get_cache_strategy(operation_name, result)
+        strategy = _get_cache_strategy(operation_name, result)
 
         if strategy == CacheStrategy.LOCAL:
             with self._lock:
