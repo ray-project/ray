@@ -108,13 +108,14 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir):
     check_telemetry(ServeUsageTag.REST_API_VERSION, expected=None)
 
     config = {
+        "http_options": {"host": "127.0.0.1"},
         "applications": [
             {
                 "name": "stub_app",
                 "import_path": "ray.serve.tests.test_telemetry_1.stub_app",
                 "route_prefix": "/stub",
             },
-        ]
+        ],
     }
     config_file_path = f"{tmp_dir}/config.yaml"
     with open(config_file_path, "w+") as f:
@@ -152,7 +153,7 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir):
     assert ServeUsageTag.AUTO_NUM_REPLICAS_USED.get_value_from_report(report) is None
 
     # Check that app deletions are tracked.
-    new_config = {"applications": []}
+    new_config = {"http_options": {"host": "127.0.0.1"}, "applications": []}
 
     with open(config_file_path, "w+") as f:
         yaml.safe_dump(new_config, f)
