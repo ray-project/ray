@@ -1,8 +1,10 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Type, TypeVar, Union
 
 from pydantic import Field
 
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
+
+T = TypeVar("T", bound="_StageConfigBase")
 
 
 class _StageConfigBase(BaseModelExtended):
@@ -33,3 +35,47 @@ class DetokenizeStageConfig(_StageConfigBase):
 
 class PrepareImageStageConfig(_StageConfigBase):
     pass
+
+
+def resolve_stage_config(
+    stage_cfg_value: Union[bool, Dict[str, Any], _StageConfigBase],
+    stage_config_cls: Type[T],
+    processor_defaults: Optional[Dict[str, Any]] = None,
+) -> T:
+    """Resolve a stage config value (bool | dict | StageConfig) into a typed StageConfig.
+
+    Args:
+        stage_cfg_value: The stage config value (bool, dict, or typed StageConfig).
+        stage_config_cls: The StageConfig class to instantiate.
+        processor_defaults: Optional dict of processor-level defaults to merge in.
+            Expected keys: 'batch_size', 'concurrency', 'runtime_env', 'model_source'.
+
+    Returns:
+        Resolved StageConfig instance with defaults merged.
+    """
+    processor_defaults = processor_defaults or {}
+
+    # If already a typed config, use it directly (but still merge defaults)
+    if isinstance(stage_cfg_value, stage_config_cls):
+        resolved = stage_cfg_value
+    # If bool, create minimal config with enabled flag
+    elif isinstance(stage_cfg_value, bool):
+        resolved = stage_config_cls(enabled=stage_cfg_value)
+    # If dict, parse it into the config class
+    elif isinstance(stage_cfg_value, dict):
+        resolved = stage_config_cls(**stage_cfg_value)
+    else:
+        # Fallback: create enabled=True config
+        resolved = stage_config_cls(enabled=True)
+
+    # Merge processor defaults for fields not explicitly set
+    if resolved.batch_size is None and "batch_size" in processor_defaults:
+        resolved.batch_size = processor_defaults["batch_size"]
+    if resolved.runtime_env is None and "runtime_env" in processor_defaults:
+        resolved.runtime_env = processor_defaults["runtime_env"]
+    # For model fields, use processor model_source if not set
+    if hasattr(resolved, "model") and resolved.model is None:
+        if "model_source" in processor_defaults:
+            resolved.model = processor_defaults["model_source"]
+
+    return resolved

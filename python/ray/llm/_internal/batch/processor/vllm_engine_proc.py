@@ -30,6 +30,7 @@ from ray.llm._internal.batch.stages.configs import (
     DetokenizeStageConfig,
     PrepareImageStageConfig,
     TokenizerStageConfig,
+    resolve_stage_config,
 )
 from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
@@ -139,69 +140,103 @@ def build_vllm_engine_processor(
 
     stages = []
 
-    # Resolve stage config gates while preserving legacy booleans.
-    def _enabled(stage_cfg_value: Any, legacy_bool: bool) -> bool:
-        if isinstance(stage_cfg_value, dict):
-            return bool(stage_cfg_value.get("enabled", legacy_bool))
-        if isinstance(
-            stage_cfg_value,
-            (
-                ChatTemplateStageConfig,
-                TokenizerStageConfig,
-                DetokenizeStageConfig,
-                PrepareImageStageConfig,
-            ),
-        ):
-            return bool(getattr(stage_cfg_value, "enabled", legacy_bool))
-        if isinstance(stage_cfg_value, bool):
-            return stage_cfg_value
-        return legacy_bool
+    # Prepare processor defaults for merging into stage configs
+    processor_defaults = {
+        "batch_size": config.batch_size,
+        "runtime_env": config.runtime_env,
+        "model_source": config.model_source,
+    }
 
-    use_image = _enabled(
-        getattr(config, "prepare_image_stage", False), config.has_image
+    # Resolve and build PrepareImageStage if enabled
+    image_stage_cfg = resolve_stage_config(
+        getattr(config, "prepare_image_stage", config.has_image),
+        PrepareImageStageConfig,
+        processor_defaults,
     )
-    if use_image:
+    if image_stage_cfg.enabled:
+        # Use stage-specific concurrency if set, otherwise processor default
+        stage_concurrency = (
+            image_stage_cfg.concurrency
+            if image_stage_cfg.concurrency is not None
+            else config.get_concurrency()
+        )
+        # Normalize concurrency to tuple if needed
+        if isinstance(stage_concurrency, int):
+            stage_concurrency = (stage_concurrency, stage_concurrency)
+
         stages.append(
             PrepareImageStage(
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
-                    batch_size=config.batch_size,
-                ),
-            )
-        )
-    use_chat_template = _enabled(
-        getattr(config, "chat_template_stage", True), config.apply_chat_template
-    )
-    if use_chat_template:
-        stages.append(
-            ChatTemplateStage(
-                fn_constructor_kwargs=dict(
-                    model=config.model_source,
-                    chat_template=config.chat_template,
-                    chat_template_kwargs=chat_template_kwargs,
-                ),
-                map_batches_kwargs=dict(
-                    zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
-                    batch_size=config.batch_size,
-                    runtime_env=config.runtime_env,
+                    concurrency=stage_concurrency,
+                    batch_size=image_stage_cfg.batch_size or config.batch_size,
+                    runtime_env=image_stage_cfg.runtime_env or config.runtime_env,
                 ),
             )
         )
 
-    use_tokenize = _enabled(getattr(config, "tokenize_stage", True), config.tokenize)
-    if use_tokenize:
+    # Resolve and build ChatTemplateStage if enabled
+    chat_template_stage_cfg = resolve_stage_config(
+        getattr(config, "chat_template_stage", config.apply_chat_template),
+        ChatTemplateStageConfig,
+        processor_defaults,
+    )
+    if chat_template_stage_cfg.enabled:
+        # Use stage-specific concurrency if set, otherwise processor default
+        stage_concurrency = (
+            chat_template_stage_cfg.concurrency
+            if chat_template_stage_cfg.concurrency is not None
+            else config.get_concurrency()
+        )
+        # Normalize concurrency to tuple if needed
+        if isinstance(stage_concurrency, int):
+            stage_concurrency = (stage_concurrency, stage_concurrency)
+
         stages.append(
-            TokenizeStage(
+            ChatTemplateStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model_source,
+                    model=chat_template_stage_cfg.model or config.model_source,
+                    chat_template=chat_template_stage_cfg.chat_template
+                    or config.chat_template,
+                    chat_template_kwargs=chat_template_kwargs,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
-                    batch_size=config.batch_size,
-                    runtime_env=config.runtime_env,
+                    concurrency=stage_concurrency,
+                    batch_size=chat_template_stage_cfg.batch_size or config.batch_size,
+                    runtime_env=chat_template_stage_cfg.runtime_env
+                    or config.runtime_env,
+                ),
+            )
+        )
+
+    # Resolve and build TokenizeStage if enabled
+    tokenize_stage_cfg = resolve_stage_config(
+        getattr(config, "tokenize_stage", config.tokenize),
+        TokenizerStageConfig,
+        processor_defaults,
+    )
+    if tokenize_stage_cfg.enabled:
+        # Use stage-specific concurrency if set, otherwise processor default
+        stage_concurrency = (
+            tokenize_stage_cfg.concurrency
+            if tokenize_stage_cfg.concurrency is not None
+            else config.get_concurrency()
+        )
+        # Normalize concurrency to tuple if needed
+        if isinstance(stage_concurrency, int):
+            stage_concurrency = (stage_concurrency, stage_concurrency)
+
+        stages.append(
+            TokenizeStage(
+                fn_constructor_kwargs=dict(
+                    model=tokenize_stage_cfg.model or config.model_source,
+                ),
+                map_batches_kwargs=dict(
+                    zero_copy_batch=True,
+                    concurrency=stage_concurrency,
+                    batch_size=tokenize_stage_cfg.batch_size or config.batch_size,
+                    runtime_env=tokenize_stage_cfg.runtime_env or config.runtime_env,
                 ),
             )
         )
@@ -243,20 +278,33 @@ def build_vllm_engine_processor(
         )
     )
 
-    use_detokenize = _enabled(
-        getattr(config, "detokenize_stage", True), config.detokenize
+    # Resolve and build DetokenizeStage if enabled
+    detokenize_stage_cfg = resolve_stage_config(
+        getattr(config, "detokenize_stage", config.detokenize),
+        DetokenizeStageConfig,
+        processor_defaults,
     )
-    if use_detokenize:
+    if detokenize_stage_cfg.enabled:
+        # Use stage-specific concurrency if set, otherwise processor default
+        stage_concurrency = (
+            detokenize_stage_cfg.concurrency
+            if detokenize_stage_cfg.concurrency is not None
+            else config.get_concurrency()
+        )
+        # Normalize concurrency to tuple if needed
+        if isinstance(stage_concurrency, int):
+            stage_concurrency = (stage_concurrency, stage_concurrency)
+
         stages.append(
             DetokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model_source,
+                    model=detokenize_stage_cfg.model or config.model_source,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
-                    batch_size=config.batch_size,
-                    runtime_env=config.runtime_env,
+                    concurrency=stage_concurrency,
+                    batch_size=detokenize_stage_cfg.batch_size or config.batch_size,
+                    runtime_env=detokenize_stage_cfg.runtime_env or config.runtime_env,
                 ),
             )
         )
