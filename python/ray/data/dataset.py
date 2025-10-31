@@ -32,6 +32,7 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
 )
+from ray.data._internal.cache.dataset_cache import cache_result
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.clickhouse_datasink import (
@@ -3563,6 +3564,7 @@ class Dataset:
         pattern="Examples:",
     )
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("count")
     def count(self) -> int:
         """Count the number of rows in the dataset.
 

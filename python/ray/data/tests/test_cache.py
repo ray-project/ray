@@ -18,16 +18,11 @@ from ray.data.dataset import MaterializedDataset
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
-# =============================================================================
-# BASIC CACHING TESTS
-# =============================================================================
-
 
 def test_count_caching(ray_start_regular_shared):
     """Test that count() results are cached for repeated calls."""
     ds = ray.data.range(1000)
 
-    # First count should execute and cache
     start_time = time.time()
     count1 = ds.count()
     first_duration = time.time() - start_time
@@ -37,10 +32,8 @@ def test_count_caching(ray_start_regular_shared):
     count2 = ds.count()
     second_duration = time.time() - start_time
 
-    # Results should be identical
     assert count1 == count2 == 1000
 
-    # Second call should be significantly faster (cached)
     assert second_duration < first_duration * 0.5
 
 
@@ -51,7 +44,6 @@ def test_schema_caching(ray_start_regular_shared):
     schema1 = ds.schema()
     schema2 = ds.schema()
 
-    # Should return identical schema objects
     assert schema1.names == schema2.names
     assert schema1.types == schema2.types
 
@@ -60,7 +52,6 @@ def test_materialize_caching(ray_start_regular_shared):
     """Test that materialize() caches MaterializedDataset objects."""
     ds = ray.data.range(100).map(lambda x: {"value": x["id"] * 2})
 
-    # First materialize should execute pipeline
     start_time = time.time()
     mat1 = ds.materialize()
     first_duration = time.time() - start_time
@@ -70,16 +61,13 @@ def test_materialize_caching(ray_start_regular_shared):
     mat2 = ds.materialize()
     second_duration = time.time() - start_time
 
-    # Both should be MaterializedDataset objects
     assert isinstance(mat1, MaterializedDataset)
     assert isinstance(mat2, MaterializedDataset)
 
-    # Should have identical structure
     assert mat1.count() == mat2.count() == 100
     assert mat1.num_blocks() == mat2.num_blocks()
     assert mat1.schema().names == mat2.schema().names
 
-    # Second call should be faster (cached MaterializedDataset object)
     assert second_duration < first_duration * 0.5
 
 
@@ -87,12 +75,10 @@ def test_aggregation_caching(ray_start_regular_shared):
     """Test that aggregation operations are cached."""
     ds = ray.data.range(1000)
 
-    # Test sum caching
     sum1 = ds.sum("id")
     sum2 = ds.sum("id")
     assert sum1 == sum2
 
-    # Test min/max caching
     min1 = ds.min("id")
     min2 = ds.min("id")
     assert min1 == min2 == 0
@@ -100,11 +86,6 @@ def test_aggregation_caching(ray_start_regular_shared):
     max1 = ds.max("id")
     max2 = ds.max("id")
     assert max1 == max2 == 999
-
-
-# =============================================================================
-# CACHE INVALIDATION TESTS
-# =============================================================================
 
 
 def test_cache_invalidation_map(ray_start_regular_shared):
@@ -115,14 +96,11 @@ def test_cache_invalidation_map(ray_start_regular_shared):
     original_count = ds.count()
     original_schema = ds.schema()
 
-    # Apply map transformation
     mapped_ds = ds.map(lambda x: {"doubled": x["id"] * 2})
 
-    # Count should be preserved (same number of rows)
     mapped_count = mapped_ds.count()
     assert mapped_count == original_count == 100
 
-    # Schema should be different
     mapped_schema = mapped_ds.schema()
     assert mapped_schema.names != original_schema.names
     assert "doubled" in mapped_schema.names
@@ -137,14 +115,11 @@ def test_cache_invalidation_filter(ray_start_regular_shared):
     original_count = ds.count()
     original_schema = ds.schema()
 
-    # Apply filter transformation
     filtered_ds = ds.filter(lambda x: x["id"] < 50)
 
-    # Schema should be preserved
     filtered_schema = filtered_ds.schema()
     assert filtered_schema.names == original_schema.names
 
-    # Count should be different
     filtered_count = filtered_ds.count()
     assert filtered_count == 50
     assert filtered_count != original_count
@@ -158,10 +133,8 @@ def test_cache_invalidation_limit(ray_start_regular_shared):
     original_count = ds.count()
     original_schema = ds.schema()
 
-    # Apply limit transformation
     limited_ds = ds.limit(25)
 
-    # Schema should be preserved
     limited_schema = limited_ds.schema()
     assert limited_schema.names == original_schema.names
 
@@ -180,10 +153,8 @@ def test_cache_invalidation_sort(ray_start_regular_shared):
     original_sum = ds.sum("id")
     original_schema = ds.schema()
 
-    # Apply sort transformation
     sorted_ds = ds.sort("id", descending=True)
 
-    # Aggregations should be preserved (same values)
     sorted_count = sorted_ds.count()
     sorted_sum = sorted_ds.sum("id")
     sorted_schema = sorted_ds.schema()
@@ -191,11 +162,6 @@ def test_cache_invalidation_sort(ray_start_regular_shared):
     assert sorted_count == original_count
     assert sorted_sum == original_sum
     assert sorted_schema.names == original_schema.names
-
-
-# =============================================================================
-# SCHEMA PRESERVATION TESTS
-# =============================================================================
 
 
 def test_schema_preserved_after_limit(ray_start_regular_shared):
@@ -325,11 +291,6 @@ def test_schema_preserved_after_rename_columns(ray_start_regular_shared):
     assert renamed_ds.count() == ds.count()
 
 
-# =============================================================================
-# COUNT PRESERVATION TESTS
-# =============================================================================
-
-
 def test_count_preserved_after_map(ray_start_regular_shared):
     """Count should be preserved after map() - 1:1 transformation."""
     ds = ray.data.range(100)
@@ -432,11 +393,6 @@ def test_count_not_preserved_after_filter(ray_start_regular_shared):
     assert filtered_count != original_count
 
 
-# =============================================================================
-# SMART COUNT COMPUTATION TESTS
-# =============================================================================
-
-
 def test_smart_count_for_limit(ray_start_regular_shared):
     """Cache should smart-compute count for limit operation."""
     ds = ray.data.range(100)
@@ -467,11 +423,6 @@ def test_smart_count_for_limit_larger_than_dataset(ray_start_regular_shared):
 
     # Should be smart-computed: min(50, 200) = 50
     assert limited_count == 50
-
-
-# =============================================================================
-# AGGREGATION PRESERVATION TESTS
-# =============================================================================
 
 
 def test_aggregations_preserved_after_sort(ray_start_regular_shared):
@@ -544,14 +495,8 @@ def test_aggregations_not_preserved_after_filter(ray_start_regular_shared):
     filtered_sum = filtered_ds.sum("id")
     filtered_max = filtered_ds.max("id")
 
-    # Aggregations should be different
     assert filtered_sum < original_sum
     assert filtered_max < original_max
-
-
-# =============================================================================
-# COLUMNS COMPUTATION TESTS
-# =============================================================================
 
 
 def test_columns_preserved_after_filter(ray_start_regular_shared):
@@ -633,11 +578,6 @@ def test_smart_columns_after_select_columns(ray_start_regular_shared):
     assert set(selected_columns) == {"a", "c"}
 
 
-# =============================================================================
-# MULTI-STEP TRANSFORMATION TESTS
-# =============================================================================
-
-
 def test_chain_filter_then_sort(ray_start_regular_shared):
     """Test cache preservation in filter -> sort chain."""
     ds = ray.data.range(100)
@@ -648,7 +588,6 @@ def test_chain_filter_then_sort(ray_start_regular_shared):
     # Filter then sort
     transformed_ds = ds.filter(lambda x: x["id"] < 50).sort("id", descending=True)
 
-    # Count should change (filter), schema should be preserved (both ops)
     assert transformed_ds.count() == 50
     assert transformed_ds.schema().names == original_schema.names
 
@@ -660,7 +599,6 @@ def test_chain_limit_then_map(ray_start_regular_shared):
     # Limit then map
     transformed_ds = ds.limit(10).map(lambda x: {"id": x["id"] * 2})
 
-    # Count should be preserved through both (limit sets it to 10, map preserves)
     assert transformed_ds.count() == 10
 
 
@@ -690,16 +628,10 @@ def test_chain_sort_then_limit(ray_start_regular_shared):
     # Sort (preserves aggregations) then limit (invalidates them)
     transformed_ds = ds.sort("id", descending=True).limit(10)
 
-    # Aggregations should be different after limit
     limited_sum = transformed_ds.sum("id")
     assert limited_sum != original_sum
     # Top 10 after reverse sort: 99+98+...+90 = 945
     assert limited_sum == sum(range(90, 100))
-
-
-# =============================================================================
-# COMPLEX TRANSFORMATION TESTS
-# =============================================================================
 
 
 def test_map_batches_invalidates_all(ray_start_regular_shared):
@@ -731,14 +663,8 @@ def test_union_invalidates_all(ray_start_regular_shared):
     # Union with ds2
     union_ds = ds1.union(ds2)
 
-    # Count should be sum, schema preserved
     assert union_ds.count() == 100
     assert union_ds.schema().names == ds1_schema.names
-
-
-# =============================================================================
-# EDGE CASE TESTS
-# =============================================================================
 
 
 def test_empty_dataset_operations(ray_start_regular_shared):
@@ -796,11 +722,6 @@ def test_select_single_column(ray_start_regular_shared):
 
     assert selected_columns == ["a"]
     assert len(selected_columns) == 1
-
-
-# =============================================================================
-# CACHE UTILITY TESTS
-# =============================================================================
 
 
 def test_cache_with_parameters(ray_start_regular_shared):
@@ -901,10 +822,8 @@ def test_cache_context_managers(ray_start_regular_shared):
     with rd.disable_dataset_caching():
         count_disabled = ds.count()
 
-    # Test normal caching (enabled by default)
     count_enabled = ds.count()
 
-    # Both should return correct results
     assert count_disabled == count_enabled == 50
 
 
@@ -940,7 +859,6 @@ def test_cache_with_complex_transformations(ray_start_regular_shared):
         .map(lambda x: {"id": x["id"], "processed": x["value"] + 100})
     )
 
-    # Test that operations are cached correctly
     count1 = ds.count()
     count2 = ds.count()
     assert count1 == count2
@@ -978,11 +896,6 @@ def test_cache_different_datasets(ray_start_regular_shared, operation):
         result1 = ds1.sum("id")
         result2 = ds2.sum("id")
         assert result1 != result2  # Different sums
-
-
-# =============================================================================
-# CACHE KEY STABILITY TESTS
-# =============================================================================
 
 
 def test_cache_key_stability(ray_start_regular_shared):
@@ -1088,11 +1001,6 @@ def test_cache_fallback_deterministic(ray_start_regular_shared):
     assert key1a != key3, "Different parameters should produce different keys"
 
 
-# =============================================================================
-# CACHE STATS VALIDATION TESTS
-# =============================================================================
-
-
 def test_cache_hits_for_preserved_values(ray_start_regular_shared):
     """Verify cache hits when values should be preserved."""
     import ray.data as rd
@@ -1136,14 +1044,8 @@ def test_no_false_cache_hits(ray_start_regular_shared):
     filtered_ds = ds.filter(lambda x: x["id"] < 50)
     filtered_count = filtered_ds.count()
 
-    # Count should be different (not a false cache hit)
     assert filtered_count == 50
     assert filtered_count != original_count
-
-
-# =============================================================================
-# WITH_COLUMN AND EXPRESSION TESTS
-# =============================================================================
 
 
 def test_with_column_count_preserved(ray_start_regular_shared):
@@ -1209,11 +1111,6 @@ def test_with_column_expression_evaluation(ray_start_regular_shared):
     assert result[0]["y"] == 1  # 0 * 2 + 1
     assert result[1]["y"] == 3  # 1 * 2 + 1
     assert result[2]["y"] == 5  # 2 * 2 + 1
-
-
-# =============================================================================
-# SIZE_BYTES PRESERVATION TESTS
-# =============================================================================
 
 
 def test_size_bytes_preserved_after_sort(ray_start_regular_shared):
@@ -1286,11 +1183,6 @@ def test_size_bytes_invalidated_after_map(ray_start_regular_shared):
     assert mapped_size > original_size
 
 
-# =============================================================================
-# RANDOM_SAMPLE SMART UPDATE TESTS
-# =============================================================================
-
-
 def test_random_sample_schema_preserved(ray_start_regular_shared):
     """Test that random_sample preserves schema."""
     ds = ray.data.range(1000)
@@ -1302,7 +1194,6 @@ def test_random_sample_schema_preserved(ray_start_regular_shared):
     sampled_ds = ds.random_sample(0.1, seed=42)
     sampled_schema = sampled_ds.schema()
 
-    # Schema should be preserved
     assert sampled_schema.names == original_schema.names
 
 
@@ -1318,7 +1209,6 @@ def test_random_sample_count_estimated(ray_start_regular_shared):
     sampled_ds = ds.random_sample(0.1, seed=42)
     sampled_count = sampled_ds.count()
 
-    # Count should be roughly 10% of original (allow variation)
     # Allow 50% variation due to randomness (50-150 rows)
     assert (
         50 < sampled_count < 150
@@ -1338,14 +1228,8 @@ def test_random_sample_aggregations_invalidated(ray_start_regular_shared):
     sampled_sum = sampled_ds.sum("id")
     sampled_max = sampled_ds.max("id")
 
-    # Aggregations should be different
     assert sampled_sum < original_sum
     assert sampled_max <= original_max
-
-
-# =============================================================================
-# METADATA PRESERVATION TESTS
-# =============================================================================
 
 
 def test_input_files_preserved_after_sort(ray_start_regular_shared):
@@ -1398,11 +1282,6 @@ def test_num_blocks_after_repartition(ray_start_regular_shared):
     assert repartitioned_ds2.num_blocks() == 20
 
 
-# =============================================================================
-# MATERIALIZE PERSISTENCE TESTS
-# =============================================================================
-
-
 def test_materialize_persists_cache(ray_start_regular_shared):
     """Test that cache persists after materialize."""
     ds = ray.data.range(100).map(lambda x: {"value": x["id"] * 2})
@@ -1427,7 +1306,6 @@ def test_materialize_invalidates_parent_cache(ray_start_regular_shared):
     """Test that materialize doesn't use parent dataset's cache incorrectly."""
     ds = ray.data.range(100)
 
-    # Apply transformation
     transformed_ds = ds.map(lambda x: {"doubled": x["id"] * 2})
 
     # Materialize
@@ -1454,15 +1332,9 @@ def test_materialize_multiple_times(ray_start_regular_shared):
     mat2 = ds.materialize()
     count2 = mat2.count()
 
-    # Both should be identical
     assert count1 == count2 == 50
     assert isinstance(mat1, MaterializedDataset)
     assert isinstance(mat2, MaterializedDataset)
-
-
-# =============================================================================
-# COMPLEX CACHE SCENARIO TESTS
-# =============================================================================
 
 
 def test_complex_pipeline_cache_behavior(ray_start_regular_shared):
@@ -1477,7 +1349,6 @@ def test_complex_pipeline_cache_behavior(ray_start_regular_shared):
         .map(lambda x: {"id": x["id"], "processed": x["value"] + 10})
     )
 
-    # Test that various operations are cached correctly
     count1 = ds.count()
     count2 = ds.count()
     assert count1 == count2 == 100
@@ -1536,7 +1407,6 @@ def test_cache_preservation_through_rename(ray_start_regular_shared):
     # Rename column
     renamed_ds = ds.rename_columns({"old_name": "new_name"})
 
-    # Count should be preserved
     renamed_count = renamed_ds.count()
     assert renamed_count == original_count == 100
 
@@ -1556,7 +1426,6 @@ def test_cache_with_multiple_columns_operations(ray_start_regular_shared):
         .select_columns(["a", "c", "d"])
     )
 
-    # Count should be preserved throughout
     assert result_ds.count() == 100
 
     # Columns should be smart-computed correctly
