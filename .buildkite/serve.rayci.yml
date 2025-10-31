@@ -27,8 +27,14 @@ steps:
     depends_on: oss-ci-base_build-multipy
     tags: cibase
 
-  - name: servetracingbuild
+  - name: servetracingbuild-multipy
+    label: "wanda: servetracingbuild-py{{matrix}}"
     wanda: ci/docker/servetracing.build.wanda.yaml
+    matrix:
+      - "3.10"
+    env:
+      PYTHON: "{{matrix}}"
+    tags: cibase
 
   - name: minbuild-serve
     label: "wanda: minbuild-{{matrix.extra}}-py{{matrix.python}}"
@@ -212,8 +218,8 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
-        --only-tags serve_tracing --build-name servetracingbuild
-    depends_on: servetracingbuild
+        --only-tags serve_tracing --build-name servetracingbuild-py3.10
+    depends_on: servetracingbuild-multipy
 
   - label: ":ray-serve: serve: doc gpu tests"
     tags:
