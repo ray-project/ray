@@ -273,8 +273,7 @@ TEST_F(PythonGcsSubscriberAuthTest, MismatchedTokensPoll) {
   // Poll should fail with auth error or return OK if it was cancelled
   // (OK is acceptable because the subscriber may have been closed)
   if (!status.ok()) {
-    EXPECT_TRUE(status.IsInvalid() || status.IsRpcError())
-        << "Status should be Invalid or RpcError: " << status.ToString();
+    EXPECT_TRUE(status.IsInvalid()) << "Status should be Invalid: " << status.ToString();
   }
 
   ASSERT_TRUE(subscriber->Close().ok());
@@ -295,7 +294,6 @@ TEST_F(PythonGcsSubscriberAuthTest, MatchingTokensClose) {
   // Close should succeed with matching tokens
   ASSERT_TRUE(subscriber->Close().ok())
       << "Close should succeed with matching tokens: " << status.ToString();
-  // This assertion will fail until auth is added to `Close()` and the mock is updated.
   EXPECT_EQ(mock_service_ptr_->unsubscribe_count(), 1);
 }
 
