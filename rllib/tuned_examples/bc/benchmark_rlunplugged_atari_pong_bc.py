@@ -10,16 +10,16 @@ schema={
       d_t: float
    }
 """
+import os
+import time
+from typing import Optional
+
 import cv2
 import gymnasium as gym
 import numpy as np
-import os
-import time
 import wandb
 
-from typing import Optional
 from ray import tune
-
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core import ALL_MODULES
@@ -28,14 +28,13 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
-    EPISODE_RETURN_MEAN,
     ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
     LEARNER_RESULTS,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
 )
 from ray.rllib.utils.test_utils import add_rllib_example_script_args, should_stop
-
 from ray.tune.logger.unified import UnifiedLogger
 
 

@@ -17,6 +17,7 @@
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "google/protobuf/util/message_differencer.h"
 #include "ray/common/runtime_env_common.h"
@@ -29,12 +30,14 @@ SchedulingClassDescriptor::SchedulingClassDescriptor(
     LabelSelector ls,
     FunctionDescriptor fd,
     int64_t d,
-    rpc::SchedulingStrategy sched_strategy)
+    rpc::SchedulingStrategy sched_strategy,
+    std::vector<FallbackOption> fallback_strat)
     : resource_set(std::move(rs)),
       label_selector(std::move(ls)),
       function_descriptor(std::move(fd)),
       depth(d),
-      scheduling_strategy(std::move(sched_strategy)) {}
+      scheduling_strategy(std::move(sched_strategy)),
+      fallback_strategy(std::move(fallback_strat)) {}
 
 bool operator==(const ray::rpc::SchedulingStrategy &lhs,
                 const ray::rpc::SchedulingStrategy &rhs) {
@@ -77,7 +80,8 @@ bool SchedulingClassDescriptor::operator==(const SchedulingClassDescriptor &othe
   return depth == other.depth && resource_set == other.resource_set &&
          label_selector == other.label_selector &&
          function_descriptor == other.function_descriptor &&
-         scheduling_strategy == other.scheduling_strategy;
+         scheduling_strategy == other.scheduling_strategy &&
+         fallback_strategy == other.fallback_strategy;
 }
 
 std::string SchedulingClassDescriptor::DebugString() const {
@@ -105,6 +109,39 @@ std::string SchedulingClassDescriptor::DebugString() const {
     buffer << "), ";
   }
   buffer << "}}";
+
+  // Add fallback strategy LabelSelectors.
+  buffer << "fallback_strategy=[";
+  bool is_first_option = true;
+  for (const auto &fallback_option : fallback_strategy) {
+    if (!is_first_option) {
+      buffer << ", ";
+    }
+    buffer << "{";
+    bool is_first_constraint = true;
+    for (const auto &constraint : fallback_option.label_selector.GetConstraints()) {
+      if (!is_first_constraint) {
+        buffer << ", ";
+      }
+      buffer << constraint.GetLabelKey() << " "
+             << (constraint.GetOperator() == ray::LabelSelectorOperator::LABEL_IN ? "in"
+                                                                                  : "!in")
+             << " (";
+      bool is_first_value = true;
+      for (const auto &val : constraint.GetLabelValues()) {
+        if (!is_first_value) {
+          buffer << ", ";
+        }
+        buffer << val;
+        is_first_value = false;
+      }
+      buffer << ")";
+      is_first_constraint = false;
+    }
+    buffer << "}";
+    is_first_option = false;
+  }
+  buffer << "]";
 
   return buffer.str();
 }

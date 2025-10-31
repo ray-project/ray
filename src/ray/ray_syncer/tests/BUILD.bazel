@@ -1,0 +1,31 @@
+load("//bazel:ray.bzl", "ray_cc_binary", "ray_cc_test")
+
+ray_cc_test(
+    name = "ray_syncer_test",
+    srcs = ["ray_syncer_test.cc"],
+    tags = [
+        "no_tsan",
+        "no_ubsan",
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        "//src/mock/ray/ray_syncer:mock_ray_syncer",
+        "//src/ray/ray_syncer",
+        "//src/ray/rpc:grpc_server",
+        "//src/ray/util:network_util",
+        "//src/ray/util:path_utils",
+        "//src/ray/util:raii",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+ray_cc_binary(
+    name = "syncer_service_e2e_test",
+    srcs = ["syncer_service_e2e_test.cc"],
+    deps = [
+        "//src/ray/ray_syncer",
+        "//src/ray/util:network_util",
+    ],
+)

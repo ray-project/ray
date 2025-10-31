@@ -246,7 +246,7 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       // Parse label selector map into LabelSelector proto in ResourceRequest
       if (!bundle.label_selector().empty()) {
         ray::LabelSelector selector(bundle.label_selector());
-        *bundle_resource_req->add_label_selectors() = selector.ToProto();
+        selector.ToProto(bundle_resource_req->add_label_selectors());
       }
 
       // Add the placement constraint.

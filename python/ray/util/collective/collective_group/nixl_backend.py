@@ -87,6 +87,7 @@ class NixlBackend:
                 break
 
         nixl_agent.release_xfer_handle(xfer_handle)
+        nixl_agent.deregister_memory(local_descs)
         nixl_agent.remove_remote_agent(remote_name)
 
     def get_nixl_metadata(

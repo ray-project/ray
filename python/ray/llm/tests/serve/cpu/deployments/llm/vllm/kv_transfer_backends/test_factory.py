@@ -29,10 +29,13 @@ class TestKVConnectorBackendFactory:
         assert backend_class is not None
         assert hasattr(backend_class, "setup")
 
-    def test_get_backend_class_not_registered_raises_error(self):
-        """Test that getting a non-registered backend raises ValueError."""
-        with pytest.raises(ValueError, match="Unsupported connector backend"):
-            KVConnectorBackendFactory.get_backend_class("NonExistentBackend")
+    def test_get_backend_class_not_registered_returns_base(self):
+        """Test that getting a non-registered backend returns BaseConnectorBackend."""
+        backend_class = KVConnectorBackendFactory.get_backend_class(
+            "UnregisteredConnector"
+        )
+        assert backend_class == BaseConnectorBackend
+        assert issubclass(backend_class, BaseConnectorBackend)
 
     def test_create_backend_success(self):
         """Test successful creation of a backend instance."""
@@ -74,6 +77,20 @@ class TestKVConnectorBackendFactory:
             ImportError, match="Failed to load connector backend 'BadBackend'"
         ):
             KVConnectorBackendFactory.get_backend_class("BadBackend")
+
+    def test_unregistered_connector_with_llm_config_setup(self):
+        """Test that unregistered connectors work with LLMConfig.setup_engine_backend()."""
+        llm_config = LLMConfig(
+            model_loading_config=dict(model_id="test-model"),
+            engine_kwargs=dict(
+                kv_transfer_config=dict(
+                    kv_connector="SharedStorageConnector",
+                    kv_role="kv_both",
+                )
+            ),
+        )
+        # Should not raise an error
+        llm_config.setup_engine_backend()
 
 
 if __name__ == "__main__":

@@ -608,7 +608,7 @@ class GPUObjectManager:
         )
         transport_manager = get_tensor_transport_manager(tensor_transport_backend)
         tensor_transport_meta = transport_manager.extract_tensor_transport_metadata(
-            tensors
+            obj_ref.hex(), tensors
         )
 
         src_actor = ray.get_runtime_context().current_actor

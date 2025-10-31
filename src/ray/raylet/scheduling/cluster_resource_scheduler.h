@@ -250,6 +250,8 @@ class ClusterResourceScheduler {
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, ScheduleWithFallbackStrategyTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, FallbackStrategyWithUnavailableNodesTest);
 };
 
 }  // end namespace ray

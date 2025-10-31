@@ -112,22 +112,37 @@ class TestDeploymentStatusInfo:
 def test_running_replica_info():
     """Test hash value of RunningReplicaInfo"""
 
-    class FakeActorHandler:
-        def __init__(self, actor_id):
-            self._actor_id = actor_id
-
-    fake_h1 = FakeActorHandler("1")
-    fake_h2 = FakeActorHandler("1")
     replica_id = ReplicaID("asdf123", deployment_id=DeploymentID(name="my_deployment"))
-    assert fake_h1 != fake_h2
+    actor_name = replica_id.to_full_id_str()
+
+    # Test that replicas with same attributes have same hash
     replica1 = RunningReplicaInfo(
-        replica_id, "node_id", "node_ip", "some-az", fake_h1, 1, False
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
     )
     replica2 = RunningReplicaInfo(
-        replica_id, "node_id", "node_ip", "some-az", fake_h2, 1, False
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
     )
+    # Test that cross-language setting affects hash
     replica3 = RunningReplicaInfo(
-        replica_id, "node_id", "node_ip", "some-az", fake_h2, 1, True
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=True,
     )
     assert replica1._hash == replica2._hash
     assert replica3._hash != replica1._hash

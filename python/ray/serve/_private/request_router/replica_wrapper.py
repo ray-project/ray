@@ -104,10 +104,13 @@ class RunningReplica:
         self._replica_info = replica_info
         self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
 
+        # Fetch and cache the actor handle once per RunningReplica instance.
+        # This avoids the borrower-of-borrower pattern while minimizing GCS lookups.
+        actor_handle = replica_info.get_actor_handle()
         if replica_info.is_cross_language:
-            self._actor_handle = JavaActorHandleProxy(replica_info.actor_handle)
+            self._actor_handle = JavaActorHandleProxy(actor_handle)
         else:
-            self._actor_handle = replica_info.actor_handle
+            self._actor_handle = actor_handle
 
     @property
     def replica_id(self) -> ReplicaID:
