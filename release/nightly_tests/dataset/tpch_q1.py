@@ -7,8 +7,7 @@ import ray
 
 # TODO: We should make these public again.
 from ray.data.aggregate import Count, Mean, Sum
-from ray.data import col
-from ray.data.expressions import udf
+from ray.data.expressions import col, udf
 from ray.data.datatype import DataType
 import pyarrow as pa
 import pyarrow.compute as pc
