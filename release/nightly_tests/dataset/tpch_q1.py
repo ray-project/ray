@@ -34,16 +34,36 @@ def main(args):
         # https://examples.citusdata.com/tpch_queries.html.
         from datetime import datetime
 
-        ds = ray.data.read_parquet(path).filter(
-            expr=col("column10") <= datetime(1998, 9, 2)
+        ds = (
+            ray.data.read_parquet(path)
+            .rename_columns(
+                {
+                    "column00": "l_orderkey",
+                    "column02": "l_suppkey",
+                    "column03": "l_linenumber",
+                    "column04": "l_quantity",
+                    "column05": "l_extendedprice",
+                    "column06": "l_discount",
+                    "column07": "l_tax",
+                    "column08": "l_returnflag",
+                    "column09": "l_linestatus",
+                    "column10": "l_shipdate",
+                    "column11": "l_commitdate",
+                    "column12": "l_receiptdate",
+                    "column13": "l_shipinstruct",
+                    "column14": "l_shipmode",
+                    "column15": "l_comment",
+                }
+            )
+            .filter(expr=col("l_shipdate") <= datetime(1998, 9, 2))
         )
 
         # Build float views + derived columns
         ds = (
-            ds.with_column("l_quantity_f", to_f64(col("column04")))
-            .with_column("l_extendedprice_f", to_f64(col("column05")))
-            .with_column("l_discount_f", to_f64(col("column06")))
-            .with_column("l_tax_f", to_f64(col("column07")))
+            ds.with_column("l_quantity_f", to_f64(col("l_quantity")))
+            .with_column("l_extendedprice_f", to_f64(col("l_extendedprice")))
+            .with_column("l_discount_f", to_f64(col("l_discount")))
+            .with_column("l_tax_f", to_f64(col("l_tax")))
             .with_column(
                 "disc_price",
                 col("l_extendedprice_f") * (1 - col("l_discount_f")),
@@ -54,8 +74,8 @@ def main(args):
         # Drop original DECIMALs
         ds = ds.select_columns(
             [
-                "column08",  # l_returnflag
-                "column09",  # l_linestatus
+                "l_returnflag",
+                "l_linestatus",
                 "l_quantity_f",
                 "l_extendedprice_f",
                 "l_discount_f",
@@ -65,7 +85,7 @@ def main(args):
         )
 
         _ = (
-            ds.groupby(["column08", "column09"])  # l_returnflag, l_linestatus
+            ds.groupby(["l_returnflag", "l_linestatus"])
             .aggregate(
                 Sum(on="l_quantity_f", alias_name="sum_qty"),
                 Sum(on="l_extendedprice_f", alias_name="sum_base_price"),
@@ -76,11 +96,11 @@ def main(args):
                 Mean(on="l_discount_f", alias_name="avg_disc"),
                 Count(alias_name="count_order"),
             )
-            .sort(key=["column08", "column09"])  # l_returnflag, l_linestatus
+            .sort(key=["l_returnflag", "l_linestatus"])
             .select_columns(
                 [
-                    "column08",  # l_returnflag
-                    "column09",  # l_linestatus
+                    "l_returnflag",
+                    "l_linestatus",
                     "sum_qty",
                     "sum_base_price",
                     "sum_disc_price",
