@@ -58,9 +58,14 @@ class MockInternalPubSubGcsService final : public rpc::InternalPubSubGcsService:
                                  rpc::GcsSubscriberPollReply *reply) override {
     if (should_accept_requests_) {
       poll_count_++;
-      // Return empty response with publisher_id
-      reply->set_publisher_id("test-publisher");
-      return grpc::Status::OK;
+      // Simulate long polling: block until deadline expires since we have no messages
+      // Real server would hold the connection open until messages arrive or timeout
+      auto deadline = context->deadline();
+      std::this_thread::sleep_until(deadline);
+
+      // Return deadline exceeded (timeout) with empty messages
+      // This simulates the real server behavior when no messages are published
+      return grpc::Status(grpc::StatusCode::DEADLINE_EXCEEDED, "Long poll timeout");
     } else {
       return grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "Authentication failed");
     }
@@ -268,8 +273,7 @@ TEST_F(PythonGcsSubscriberAuthTest, MismatchedTokensPoll) {
   // Poll should fail with auth error or return OK if it was cancelled
   // (OK is acceptable because the subscriber may have been closed)
   if (!status.ok()) {
-    EXPECT_TRUE(status.IsInvalid() || status.IsRpcError())
-        << "Status should be Invalid or RpcError: " << status.ToString();
+    EXPECT_TRUE(status.IsInvalid()) << "Status should be Invalid: " << status.ToString();
   }
 
   ASSERT_TRUE(subscriber->Close().ok());
@@ -290,7 +294,6 @@ TEST_F(PythonGcsSubscriberAuthTest, MatchingTokensClose) {
   // Close should succeed with matching tokens
   ASSERT_TRUE(subscriber->Close().ok())
       << "Close should succeed with matching tokens: " << status.ToString();
-  // This assertion will fail until auth is added to `Close()` and the mock is updated.
   EXPECT_EQ(mock_service_ptr_->unsubscribe_count(), 1);
 }
 
