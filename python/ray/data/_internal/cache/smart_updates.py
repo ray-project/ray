@@ -56,28 +56,6 @@ class SmartCacheUpdater:
                 self._update_limit_count(
                     source_key_prefix, target_key_prefix, transform_params
                 )
-            elif operation_name == "random_sample":
-                self._update_sample_count(
-                    source_key_prefix, target_key_prefix, transform_params
-                )
-
-        if preservation_rules.can_compute_columns:
-            if operation_name == "add_column":
-                self._update_add_column(
-                    source_key_prefix, target_key_prefix, transform_params
-                )
-            elif operation_name == "drop_columns":
-                self._update_drop_columns(
-                    source_key_prefix, target_key_prefix, transform_params
-                )
-            elif operation_name == "select_columns":
-                self._update_select_columns(
-                    source_key_prefix, target_key_prefix, transform_params
-                )
-            elif operation_name == "with_column":
-                self._update_add_column(
-                    source_key_prefix, target_key_prefix, transform_params
-                )
 
     @staticmethod
     def _extract_param(
@@ -138,7 +116,7 @@ class SmartCacheUpdater:
     def _update_limit_count(
         self, source_prefix: str, target_prefix: str, params: Dict
     ) -> None:
-        """Smart-compute count and size for limit operation."""
+        """Smart-compute count for limit operation."""
         limit_value = self._extract_param(params, index=0, param_name="limit")
 
         if not isinstance(limit_value, int) or limit_value < 0:
@@ -152,84 +130,3 @@ class SmartCacheUpdater:
                 new_count = min(original_count, limit_value)
                 target_count_key = f"count{target_prefix}"
                 self._local_cache[target_count_key] = new_count
-
-                source_size_key = f"size_bytes{source_prefix}"
-                if source_size_key in self._local_cache and original_count > 0:
-                    original_size = self._local_cache[source_size_key]
-
-                    if isinstance(original_size, (int, float)) and original_size > 0:
-                        new_size = int((new_count / original_count) * original_size)
-                        target_size_key = f"size_bytes{target_prefix}"
-                        self._local_cache[target_size_key] = new_size
-
-    def _update_sample_count(
-        self, source_prefix: str, target_prefix: str, params: Dict
-    ) -> None:
-        """Smart-estimate count for random_sample operation."""
-        fraction = self._extract_param(params, index=0, param_name="fraction")
-
-        if not isinstance(fraction, (int, float)) or fraction < 0:
-            return
-
-        source_count_key = f"count{source_prefix}"
-        if source_count_key in self._local_cache:
-            original_count = self._local_cache[source_count_key]
-
-            if isinstance(original_count, int) and original_count >= 0:
-                estimated_count = int(original_count * fraction)
-                target_count_key = f"count{target_prefix}"
-                self._local_cache[target_count_key] = estimated_count
-
-    def _update_add_column(
-        self, source_prefix: str, target_prefix: str, params: Dict
-    ) -> None:
-        """Smart-compute columns list for add_column operation."""
-        col_name = self._extract_param(params, index=0)
-
-        if not isinstance(col_name, str):
-            return
-
-        source_columns_key = f"columns{source_prefix}"
-        if source_columns_key in self._local_cache:
-            original_columns = self._local_cache[source_columns_key]
-
-            if isinstance(original_columns, list) and col_name not in original_columns:
-                new_columns = original_columns + [col_name]
-                target_columns_key = f"columns{target_prefix}"
-                self._local_cache[target_columns_key] = new_columns
-
-    def _update_drop_columns(
-        self, source_prefix: str, target_prefix: str, params: Dict
-    ) -> None:
-        """Smart-compute columns list for drop_columns operation."""
-        cols_to_drop = self._extract_param(params, index=0)
-
-        if isinstance(cols_to_drop, str):
-            cols_to_drop = [cols_to_drop]
-
-        if not isinstance(cols_to_drop, list):
-            return
-
-        source_columns_key = f"columns{source_prefix}"
-        if source_columns_key in self._local_cache:
-            original_columns = self._local_cache[source_columns_key]
-
-            if isinstance(original_columns, list):
-                new_columns = [c for c in original_columns if c not in cols_to_drop]
-
-                if new_columns:
-                    target_columns_key = f"columns{target_prefix}"
-                    self._local_cache[target_columns_key] = new_columns
-
-    def _update_select_columns(
-        self, source_prefix: str, target_prefix: str, params: Dict
-    ) -> None:
-        """Smart-compute columns list for select_columns operation."""
-        cols_to_select = self._extract_param(params, index=0)
-
-        if isinstance(cols_to_select, str):
-            cols_to_select = [cols_to_select]
-
-        if isinstance(cols_to_select, list):
-            target_columns_key = f"columns{target_prefix}"
-            self._local_cache[target_columns_key] = cols_to_select

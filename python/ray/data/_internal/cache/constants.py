@@ -9,29 +9,6 @@ MAX_CACHE_ENTRIES = 1000
 DEFAULT_MAX_CACHE_SIZE_BYTES = 1024 * 1024 * 1024
 
 
-class CacheableOperation(Enum):
-    """Operations that can be cached."""
-
-    COUNT = "count"
-    SCHEMA = "schema"
-    COLUMNS = "columns"
-    SIZE_BYTES = "size_bytes"
-    INPUT_FILES = "input_files"
-    NUM_BLOCKS = "num_blocks"
-    TAKE = "take"
-    TAKE_BATCH = "take_batch"
-    TAKE_ALL = "take_all"
-    UNIQUE = "unique"
-    SUM = "sum"
-    MIN = "min"
-    MAX = "max"
-    MEAN = "mean"
-    STD = "std"
-    AGGREGATE = "aggregate"
-    MATERIALIZE = "materialize"
-    STATS = "stats"
-
-
 class TransformationType(Enum):
     """Transformation types for cache invalidation."""
 

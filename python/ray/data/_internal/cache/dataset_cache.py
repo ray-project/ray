@@ -3,7 +3,6 @@
 import functools
 from typing import Any, Callable, Dict, List, Optional
 
-from .constants import CacheableOperation
 from .core_cache import CacheStats, DatasetCache
 from ray.data.context import DataContext
 
@@ -131,7 +130,6 @@ def disable_dataset_caching():
 __all__ = [
     "DatasetCache",
     "CacheStats",
-    "CacheableOperation",
     "cache_result",
     "invalidate_cache_on_transform",
     "clear_dataset_cache",
