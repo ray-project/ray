@@ -3372,10 +3372,11 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
   kill_actor_request.set_intended_actor_id(request.intended_actor_id());
   kill_actor_request.set_force_kill(request.force_kill());
   kill_actor_request.mutable_death_cause()->CopyFrom(request.death_cause());
+  std::shared_ptr<bool> replied = std::make_shared<bool>(false);
 
   auto timer = execute_after(
       io_service_,
-      [this, send_reply_callback, worker_id]() {
+      [this, send_reply_callback, worker_id, replied]() {
         auto current_worker = worker_pool_.GetRegisteredWorker(worker_id);
         if (current_worker) {
           // If the worker is still alive, force kill it
@@ -3389,6 +3390,7 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
                         /*force=*/true);
         }
 
+        *replied = true;
         send_reply_callback(Status::OK(), nullptr, nullptr);
       },
       std::chrono::milliseconds(
@@ -3396,9 +3398,11 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
 
   worker->rpc_client()->KillActor(
       kill_actor_request,
-      [actor_id = request.intended_actor_id(), timer, send_reply_callback](
-          const ray::Status &status, const rpc::KillActorReply &) {
-        if (!status.ok()) {
+      [actor_id = ActorID::FromBinary(request.intended_actor_id()),
+       timer,
+       send_reply_callback,
+       replied](const ray::Status &status, const rpc::KillActorReply &) {
+        if (!status.ok() && !*replied) {
           std::ostringstream stream;
           stream << "KillActor RPC failed for actor " << actor_id << ": "
                  << status.ToString();
