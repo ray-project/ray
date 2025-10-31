@@ -703,7 +703,7 @@ serve.run(A.bind())"""
         driver_template.format(address=address, namespace="test_namespace1", port=8000)
     )
     run_string_as_driver(
-        driver_template.format(address=address, namespace="test_namespace2", port=8001)
+        driver_template.format(address=address, namespace="test_namespace2", port=8000)
     )
 
 
