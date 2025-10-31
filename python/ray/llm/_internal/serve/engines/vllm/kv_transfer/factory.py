@@ -41,11 +41,11 @@ class KVConnectorBackendFactory:
             backend_class_or_path: Either:
                 - The backend class object directly (preferred), or
                 - A string in the format "module_path:class_name" for lazy loading
-                       
+
         Examples:
             # Register with class directly (recommended):
             KVConnectorBackendFactory.register_backend("MyConnector", MyConnectorClass)
-            
+
             # Register with module path string (for lazy loading):
             KVConnectorBackendFactory.register_backend("MyConnector", "my.module:MyClass")
         """
@@ -107,16 +107,16 @@ class KVConnectorBackendFactory:
         return _kv_backend_registry.list_registered()
 
 
-
 BUILTIN_BACKENDS = {
     "LMCacheConnectorV1": "ray.llm._internal.serve.engines.vllm.kv_transfer.lmcache:LMCacheConnectorV1Backend",
     "NixlConnector": "ray.llm._internal.serve.engines.vllm.kv_transfer.nixl:NixlConnectorBackend",
     "MultiConnector": "ray.llm._internal.serve.engines.vllm.kv_transfer.multi_connector:MultiConnectorBackend",
 }
 
+
 def _initialize_registry() -> None:
     """Initialize the registry with built-in backends.
-    
+
     This function is called when the module is imported to ensure
     built-in backends are registered.
     """

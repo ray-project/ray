@@ -65,7 +65,9 @@ class TestKVConnectorBackendFactory:
 
     def test_get_backend_class_not_registered_returns_base(self):
         """Test that getting a non-registered backend returns BaseConnectorBackend."""
-        backend_class = KVConnectorBackendFactory.get_backend_class("UnregisteredConnector")
+        backend_class = KVConnectorBackendFactory.get_backend_class(
+            "UnregisteredConnector"
+        )
         assert backend_class == BaseConnectorBackend
         assert issubclass(backend_class, BaseConnectorBackend)
 
@@ -111,12 +113,12 @@ class TestKVConnectorBackendFactory:
 
     def test_register_backend_with_class_directly(self):
         """Test registering a backend class directly."""
+
         class CustomBackend(BaseConnectorBackend):
             def setup(self):
                 pass
 
-        KVConnectorBackendFactory.register_backend(
-            "CustomBackend", CustomBackend)
+        KVConnectorBackendFactory.register_backend("CustomBackend", CustomBackend)
         assert KVConnectorBackendFactory.is_registered("CustomBackend")
         retrieved = KVConnectorBackendFactory.get_backend_class("CustomBackend")
         assert retrieved == CustomBackend
@@ -126,7 +128,7 @@ class TestKVConnectorBackendFactory:
         # Register using module:class format
         KVConnectorBackendFactory.register_backend(
             "LMCacheViaPath",
-            "ray.llm._internal.serve.engines.vllm.kv_transfer.lmcache:LMCacheConnectorV1Backend"
+            "ray.llm._internal.serve.engines.vllm.kv_transfer.lmcache:LMCacheConnectorV1Backend",
         )
         assert KVConnectorBackendFactory.is_registered("LMCacheViaPath")
         backend_class = KVConnectorBackendFactory.get_backend_class("LMCacheViaPath")

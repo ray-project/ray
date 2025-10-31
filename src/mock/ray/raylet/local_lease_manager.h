@@ -79,6 +79,17 @@ class MockLocalLeaseManager : public LocalLeaseManagerInterface {
   MOCK_METHOD(size_t, GetNumLeaseSpilled, (), (const, override));
   MOCK_METHOD(size_t, GetNumWaitingLeaseSpilled, (), (const, override));
   MOCK_METHOD(size_t, GetNumUnschedulableLeaseSpilled, (), (const, override));
+  MOCK_METHOD(bool,
+              IsLeaseQueued,
+              (const SchedulingClass &scheduling_class, const LeaseID &lease_id),
+              (const, override));
+  MOCK_METHOD(bool,
+              AddReplyCallback,
+              (const SchedulingClass &scheduling_class,
+               const LeaseID &lease_id,
+               rpc::SendReplyCallback send_reply_callback,
+               rpc::RequestWorkerLeaseReply *reply),
+              (override));
 };
 
 }  // namespace ray::raylet

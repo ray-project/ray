@@ -78,9 +78,9 @@ afterray = ["psutil", "setproctitle"]
 "rllib/tests/*" = ["I"]
 "rllib/callbacks/*" = ["I"]
 "rllib/env/*" = ["I"]
-"rllib/execution/*" = ["I"]
-"rllib/policy/*" = ["I"]
-"rllib/tuned_examples/*" = ["I"]
+# "rllib/execution/*" = ["I"]
+# "rllib/policy/*" = ["I"]
+# "rllib/tuned_examples/*" = ["I"]
 "release/*" = ["I"]
 
 # TODO(matthewdeng): Remove this line

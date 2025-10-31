@@ -14,42 +14,42 @@
 
 #pragma once
 
-#include <gtest/gtest_prod.h>
-
+#include <memory>
 #include <string>
 
-#include "ray/common/ray_syncer/common.h"
-#include "ray/common/ray_syncer/ray_syncer_bidi_reactor.h"
-#include "ray/common/ray_syncer/ray_syncer_bidi_reactor_base.h"
+#include "ray/ray_syncer/ray_syncer_bidi_reactor.h"
+#include "ray/ray_syncer/ray_syncer_bidi_reactor_base.h"
 
 namespace ray::syncer {
 
-using ServerBidiReactor = grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage>;
+using ClientBidiReactor = grpc::ClientBidiReactor<RaySyncMessage, RaySyncMessage>;
 
-/// Reactor for gRPC server side. It defines the server's specific behavior for a
+/// Reactor for gRPC client side. It defines the client's specific behavior for a
 /// streaming call.
-class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> {
+class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> {
  public:
-  RayServerBidiReactor(
-      grpc::CallbackServerContext *server_context,
-      instrumented_io_context &io_context,
+  RayClientBidiReactor(
+      const std::string &remote_node_id,
       const std::string &local_node_id,
+      instrumented_io_context &io_context,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
-      std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb);
+      std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
+      std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
 
-  ~RayServerBidiReactor() override = default;
+  ~RayClientBidiReactor() override = default;
 
  private:
   void DoDisconnect() override;
-  void OnCancel() override;
-  void OnDone() override;
+  /// Callback from gRPC
+  void OnDone(const grpc::Status &status) override;
 
   /// Cleanup callback when the call ends.
   const std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb_;
 
   /// grpc callback context
-  grpc::CallbackServerContext *server_context_;
-  FRIEND_TEST(SyncerReactorTest, TestReactorFailure);
+  grpc::ClientContext client_context_;
+
+  std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
 };
 
 }  // namespace ray::syncer

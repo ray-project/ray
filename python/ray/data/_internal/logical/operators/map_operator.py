@@ -162,7 +162,7 @@ class MapBatches(AbstractUDFMap):
         fn: UserDefinedFunction,
         batch_size: Optional[int] = None,
         batch_format: str = "default",
-        zero_copy_batch: bool = False,
+        zero_copy_batch: bool = True,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
