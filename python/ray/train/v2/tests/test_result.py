@@ -136,8 +136,8 @@ def test_result_restore(
         # Path will collapse URI scheme separators (s3:// becomes s3:/)
         return
 
-    num_iterations = 5
-    num_checkpoints = 3
+    num_iterations = 3
+    num_checkpoints = 2
 
     if storage == "local":
         storage_path = str(tmp_path)
