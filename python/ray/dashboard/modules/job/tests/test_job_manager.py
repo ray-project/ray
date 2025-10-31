@@ -1084,7 +1084,7 @@ class TestTailLogs:
             async for lines in job_manager.tail_job_logs(job_id):
                 assert all(
                     s == "Waiting..."
-                    or "Runtime env"
+                    or "Runtime env" in s
                     or "Running entrypoint for job" in s
                     for s in lines.strip().split("\n")
                 )
@@ -1110,7 +1110,7 @@ class TestTailLogs:
             async for lines in job_manager.tail_job_logs(job_id):
                 assert all(
                     s == "Waiting..."
-                    or "Runtime env"
+                    or "Runtime env" in s
                     or "Running entrypoint for job" in s
                     for s in lines.strip().split("\n")
                 )
