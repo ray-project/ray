@@ -5,7 +5,7 @@ KV connector backends without eagerly importing all implementations.
 This avoids circular import issues and improves startup performance.
 """
 
-from typing import TYPE_CHECKING, Type
+from typing import TYPE_CHECKING, Type, Union
 
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
@@ -30,7 +30,7 @@ class KVConnectorBackendFactory:
     def register_backend(
         cls,
         name: str,
-        backend_class_or_path: Type["BaseConnectorBackend"] | str,
+        backend_class_or_path: Union[Type["BaseConnectorBackend"], str],
     ) -> None:
         """Register a connector backend.
 
