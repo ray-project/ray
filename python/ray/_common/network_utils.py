@@ -108,5 +108,4 @@ def find_free_port(family: socket.AddressFamily = socket.AF_INET) -> int:
     """
     with closing(socket.socket(family, socket.SOCK_STREAM)) as s:
         s.bind(("", 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         return s.getsockname()[1]
