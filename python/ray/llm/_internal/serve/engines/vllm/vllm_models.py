@@ -129,9 +129,10 @@ class VLLMEngineConfig(BaseModelExtended):
             "distributed_executor_backend" in engine_kwargs
             and engine_kwargs["distributed_executor_backend"] != "ray"
         ):
-            raise ValueError(
-                "distributed_executor_backend != 'ray' is not allowed in engine_kwargs when using Ray Serve LLM Configs."
+            logger.warning(
+                "install vllm package for cpu to ensure seamless execution"
             )
+            engine_kwargs["distributed_executor_backend"] = "mp"
         else:
             engine_kwargs["distributed_executor_backend"] = "ray"
 
@@ -272,8 +273,8 @@ class VLLMEngineConfig(BaseModelExtended):
 
         # Default behavior based on accelerator_type
         if not self.accelerator_type:
-            # By default, GPU resources are used
-            return True
+            # Use cpu if gpu not provided or none provided
+            return False
 
         return self.accelerator_type in (
             GPUType.NVIDIA_TESLA_V100.value,
