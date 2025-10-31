@@ -32,6 +32,7 @@
 #include "ray/gcs/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/pubsub/publisher.h"
 
 namespace ray {
@@ -83,7 +84,7 @@ class MockWorkerClient : public rpc::FakeCoreWorkerClient {
       : io_service_(io_service) {}
 
   void WaitForActorRefDeleted(
-      const rpc::WaitForActorRefDeletedRequest &request,
+      rpc::WaitForActorRefDeletedRequest &&request,
       const rpc::ClientCallback<rpc::WaitForActorRefDeletedReply> &callback) override {
     callbacks_.push_back(callback);
   }
@@ -152,7 +153,9 @@ class GcsActorManagerTest : public ::testing::Test {
         [](const ActorID &actor_id) {},
         *worker_client_pool_,
         *fake_ray_event_recorder_,
-        "test_session_name");
+        "test_session_name",
+        fake_actor_by_state_gauge_,
+        fake_gcs_actor_by_state_gauge_);
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -236,6 +239,8 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
+  ray::observability::FakeGauge fake_actor_by_state_gauge_;
+  ray::observability::FakeGauge fake_gcs_actor_by_state_gauge_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {
@@ -273,6 +278,33 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 0);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::DEAD, ""), 1);
+}
+
+TEST_F(GcsActorManagerTest, TestActorStateMetrics) {
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id);
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
+      registered_actor->GetCreationTaskSpecification().GetMessage());
+
+  Status status =
+      gcs_actor_manager_->CreateActor(create_actor_request,
+                                      [](const std::shared_ptr<gcs::GcsActor> &actor,
+                                         const rpc::PushTaskReply &reply,
+                                         const Status &) {});
+  RAY_CHECK_OK(status);
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+  actor->UpdateAddress(RandomAddress());
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+  io_service_.run_one();
+  gcs_actor_manager_->RecordMetrics();
+  auto gcs_actor_tag_to_value = fake_gcs_actor_by_state_gauge_.GetTagToValue();
+  // 5 states: REGISTERED, CREATED, DESTROYED, UNRESOLVED, PENDING
+  ASSERT_EQ(gcs_actor_tag_to_value.size(), 5);
+  // 3 states: DEPENDENCIES_UNREADY, PENDING_CREATION, ALIVE
+  auto tag_to_value = fake_actor_by_state_gauge_.GetTagToValue();
+  ASSERT_EQ(tag_to_value.size(), 3);
 }
 
 TEST_F(GcsActorManagerTest, TestDeadCount) {

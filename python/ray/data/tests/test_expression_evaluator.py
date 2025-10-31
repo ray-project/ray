@@ -3,10 +3,12 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from pkg_resources import parse_version
 
 from ray.data._internal.planner.plan_expression.expression_evaluator import (
     ExpressionEvaluator,
 )
+from ray.data.tests.conftest import get_pyarrow_version
 
 
 @pytest.fixture(scope="module")
@@ -292,6 +294,10 @@ expressions_and_expected_data = [
 ]
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="test_filter requires PyArrow >= 20.0.0",
+)
 @pytest.mark.parametrize("expression, expected_data", expressions_and_expected_data)
 def test_filter(sample_data, expression, expected_data):
     """Test the filter functionality of the ExpressionEvaluator."""
@@ -329,6 +335,10 @@ def test_filter_equal_negative_number():
     assert result_df == expected
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="test_filter requires PyArrow >= 20.0.0",
+)
 def test_filter_bad_expression(sample_data):
     with pytest.raises(ValueError, match="Invalid syntax in the expression"):
         ExpressionEvaluator.get_filters(expression="bad filter")
@@ -338,3 +348,9 @@ def test_filter_bad_expression(sample_data):
     sample_data_path, _ = sample_data
     with pytest.raises(pa.ArrowInvalid):
         pq.read_table(sample_data_path, filters=filters)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

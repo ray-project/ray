@@ -12,6 +12,11 @@ trap clean_up EXIT
 
 CYPRESS_VERSION=14.2.1
 
+(
+  cd ../client
+  npm ci
+)
+
 echo "Installing cypress"
 if [[ -n "$BUILDKITE" ]]; then
   apt-get update -qq

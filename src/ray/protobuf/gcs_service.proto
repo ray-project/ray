@@ -255,6 +255,25 @@ message GetAllNodeInfoReply {
   int64 num_filtered = 4;
 }
 
+// Request for getting node address and liveness info
+message GetAllNodeAddressAndLivenessRequest {
+  // If not specified, get all nodes.
+  repeated bytes node_ids = 1;
+
+  // Maximum number of entries to return.
+  // If not specified, return all entries without truncation.
+  optional int64 limit = 2;
+
+  // If specified, filter the reply by nodes' state.
+  optional GcsNodeInfo.GcsNodeState state_filter = 3;
+}
+
+// Reply for getting node address and liveness info
+message GetAllNodeAddressAndLivenessReply {
+  GcsStatus status = 1;
+  repeated GcsNodeAddressAndLiveness node_info_list = 2;
+}
+
 message CheckAliveRequest {
   repeated bytes node_ids = 1;
 }
@@ -760,6 +779,9 @@ service NodeInfoGcsService {
   rpc DrainNode(DrainNodeRequest) returns (DrainNodeReply);
   // Get information of all nodes from GCS Service.
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
+  // Get node address and liveness information of all nodes from GCS Service.
+  rpc GetAllNodeAddressAndLiveness(GetAllNodeAddressAndLivenessRequest)
+      returns (GetAllNodeAddressAndLivenessReply);
   // Check alive.
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }

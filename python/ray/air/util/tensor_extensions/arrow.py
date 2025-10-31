@@ -732,13 +732,18 @@ class ArrowTensorArray(pa.ExtensionArray):
         else:
             pa_type_ = ArrowTensorType(element_shape, scalar_dtype)
 
+        offset_dtype = pa_type_.OFFSET_DTYPE.to_pandas_dtype()
+
         # Create offsets buffer
-        offsets = np.arange(
-            0,
-            (outer_len + 1) * num_items_per_element,
-            num_items_per_element,
-            dtype=pa_type_.OFFSET_DTYPE.to_pandas_dtype(),
-        )
+        if num_items_per_element == 0:
+            offsets = np.zeros(outer_len + 1, dtype=offset_dtype)
+        else:
+            offsets = np.arange(
+                0,
+                (outer_len + 1) * num_items_per_element,
+                num_items_per_element,
+                dtype=offset_dtype,
+            )
         offset_buffer = pa.py_buffer(offsets)
 
         storage = pa.Array.from_buffers(

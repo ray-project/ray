@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data.block import BlockMetadata
@@ -86,30 +86,38 @@ class Limit(AbstractOneToOne):
 
 
 class Download(AbstractOneToOne):
-    """Logical operator for download operation."""
+    """Logical operator for download operation.
+
+    Supports downloading from multiple URI columns in a single operation.
+    """
 
     def __init__(
         self,
         input_op: LogicalOperator,
-        uri_column_name: str,
-        output_bytes_column_name: str,
+        uri_column_names: List[str],
+        output_bytes_column_names: List[str],
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__("Download", input_op)
-        self._uri_column_name = uri_column_name
-        self._output_bytes_column_name = output_bytes_column_name
+        if len(uri_column_names) != len(output_bytes_column_names):
+            raise ValueError(
+                f"Number of URI columns ({len(uri_column_names)}) must match "
+                f"number of output columns ({len(output_bytes_column_names)})"
+            )
+        self._uri_column_names = uri_column_names
+        self._output_bytes_column_names = output_bytes_column_names
         self._ray_remote_args = ray_remote_args or {}
 
     def can_modify_num_rows(self) -> bool:
         return False
 
     @property
-    def uri_column_name(self) -> str:
-        return self._uri_column_name
+    def uri_column_names(self) -> List[str]:
+        return self._uri_column_names
 
     @property
-    def output_bytes_column_name(self) -> str:
-        return self._output_bytes_column_name
+    def output_bytes_column_names(self) -> List[str]:
+        return self._output_bytes_column_names
 
     @property
     def ray_remote_args(self) -> Dict[str, Any]:

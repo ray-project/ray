@@ -278,15 +278,43 @@ class _StatsActor:
         self.per_node_metrics = self._create_prometheus_metrics_for_per_node_metrics()
 
         iter_tag_keys = ("dataset",)
-        self.iter_total_blocked_s = Gauge(
-            "data_iter_total_blocked_seconds",
-            description="Seconds user thread is blocked by iter_batches()",
-            tag_keys=iter_tag_keys,
-        )
+
         self.time_to_first_batch_s = Gauge(
             "data_iter_time_to_first_batch_seconds",
             description="Total time spent waiting for the first batch after starting iteration. "
             "This includes the dataset pipeline warmup time. This metric is accumulated across different epochs.",
+            tag_keys=iter_tag_keys,
+        )
+
+        self.iter_block_fetching_s = Gauge(
+            "data_iter_block_fetching_seconds",
+            description="Seconds taken to fetch (with ray.get) blocks by iter_batches()",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_batch_shaping_s = Gauge(
+            "data_iter_batch_shaping_seconds",
+            description="Seconds taken to shape batch from incoming blocks by iter_batches()",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_batch_formatting_s = Gauge(
+            "data_iter_batch_formatting_seconds",
+            description="Seconds taken to format batches by iter_batches()",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_batch_collating_s = Gauge(
+            "data_iter_batch_collating_seconds",
+            description="Seconds taken to collate batches by iter_batches()",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_batch_finalizing_s = Gauge(
+            "data_iter_batch_finalizing_seconds",
+            description="Seconds taken to collate batches by iter_batches()",
+            tag_keys=iter_tag_keys,
+        )
+
+        self.iter_total_blocked_s = Gauge(
+            "data_iter_total_blocked_seconds",
+            description="Seconds user thread is blocked by iter_batches()",
             tag_keys=iter_tag_keys,
         )
         self.iter_user_s = Gauge(
@@ -297,6 +325,46 @@ class _StatsActor:
         self.iter_initialize_s = Gauge(
             "data_iter_initialize_seconds",
             description="Seconds spent in iterator initialization code",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_get_s = Gauge(
+            "data_iter_get_seconds",
+            description="Seconds spent in ray.get() while resolving block references",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_next_batch_s = Gauge(
+            "data_iter_next_batch_seconds",
+            description="Seconds spent getting the next batch from the block buffer",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_format_batch_s = Gauge(
+            "data_iter_format_batch_seconds",
+            description="Seconds spent formatting the batch",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_collate_batch_s = Gauge(
+            "data_iter_collate_batch_seconds",
+            description="Seconds spent collating the batch",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_finalize_batch_s = Gauge(
+            "data_iter_finalize_batch_seconds",
+            description="Seconds spent finalizing the batch",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocks_local = Gauge(
+            "data_iter_blocks_local",
+            description="Number of blocks already on the local node",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocks_remote = Gauge(
+            "data_iter_blocks_remote",
+            description="Number of blocks that require fetching from another node",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_unknown_location = Gauge(
+            "data_iter_unknown_location",
+            description="Number of blocks that have unknown locations",
             tag_keys=iter_tag_keys,
         )
 
@@ -401,14 +469,32 @@ class _StatsActor:
         per_node_metrics: Optional[Dict[str, Dict[str, Union[int, float]]]] = None,
     ):
         def _record(
-            prom_metric: Metric, value: Union[int, float], tags: Dict[str, str] = None
+            prom_metric: Metric,
+            value: Union[int, float, List[int]],
+            tags: Dict[str, str] = None,
         ):
             if isinstance(prom_metric, Gauge):
                 prom_metric.set(value, tags)
             elif isinstance(prom_metric, Counter):
                 prom_metric.inc(value, tags)
             elif isinstance(prom_metric, Histogram):
-                prom_metric.observe(value, tags)
+                # Take the list of samples per bucket and add them to the histogram metric.
+                if isinstance(value, list):
+                    for i in range(len(value)):
+                        # Pick a value between the boundaries so the sample falls into the right bucket.
+                        # We need to calculate the mid point because choosing the exact boundary value
+                        # seems to have unreliable behavior on which bucket it ends up in.
+                        boundary_upper_bound = (
+                            prom_metric.boundaries[i]
+                            if i < len(value) - 1
+                            else prom_metric.boundaries[-1] + 100
+                        )
+                        boundary_lower_bound = (
+                            prom_metric.boundaries[i - 1] if i > 0 else 0
+                        )
+                        bucket_value = (boundary_upper_bound + boundary_lower_bound) / 2
+                        for _ in range(value[i]):
+                            prom_metric.observe(bucket_value, tags)
 
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
@@ -477,10 +563,27 @@ class _StatsActor:
         dataset_tag,
     ):
         tags = self._create_tags(dataset_tag)
-        self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
-        self.time_to_first_batch_s.set(stats.iter_time_to_first_batch_s.get(), tags)
-        self.iter_user_s.set(stats.iter_user_s.get(), tags)
+
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
+        self.iter_get_s.set(stats.iter_get_s.get(), tags)
+        self.iter_next_batch_s.set(stats.iter_next_batch_s.get(), tags)
+        self.iter_format_batch_s.set(stats.iter_format_batch_s.get(), tags)
+        self.iter_collate_batch_s.set(stats.iter_collate_batch_s.get(), tags)
+        self.iter_finalize_batch_s.set(stats.iter_finalize_batch_s.get(), tags)
+        self.iter_blocks_local.set(stats.iter_blocks_local, tags)
+        self.iter_blocks_remote.set(stats.iter_blocks_remote, tags)
+        self.iter_unknown_location.set(stats.iter_unknown_location, tags)
+
+        self.iter_block_fetching_s.set(stats.iter_get_s.get(), tags)
+        self.iter_batch_shaping_s.set(stats.iter_next_batch_s.get(), tags)
+        self.iter_batch_formatting_s.set(stats.iter_format_batch_s.get(), tags)
+        self.iter_batch_collating_s.set(stats.iter_collate_batch_s.get(), tags)
+        self.iter_batch_finalizing_s.set(stats.iter_finalize_batch_s.get(), tags)
+
+        self.time_to_first_batch_s.set(stats.iter_time_to_first_batch_s.get(), tags)
+
+        self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
+        self.iter_user_s.set(stats.iter_user_s.get(), tags)
 
     def register_dataset(
         self,
@@ -771,10 +874,35 @@ class _StatsManager:
                                 stats_actor = self._get_or_create_stats_actor()
                                 if stats_actor is None:
                                     continue
+
+                                # We need to convert the metrics to a snapshot that can be passed
+                                # to the stats actor. Primarily, the histogram metrics need to be
+                                # flushed and reset.
+                                formatted_execution_stats = []
+
+                                with self._stats_lock:
+                                    for (
+                                        dataset_tag,
+                                        op_metrics,
+                                        operator_tags,
+                                        state,
+                                        per_node_metrics,
+                                    ) in self._last_execution_stats.values():
+                                        op_metrics_dicts = [
+                                            metric.as_dict(reset_histogram_metrics=True)
+                                            for metric in op_metrics
+                                        ]
+                                        args = (
+                                            dataset_tag,
+                                            op_metrics_dicts,
+                                            operator_tags,
+                                            state,
+                                            per_node_metrics,
+                                        )
+                                        formatted_execution_stats.append(args)
+
                                 stats_actor.update_metrics.remote(
-                                    execution_metrics=list(
-                                        self._last_execution_stats.values()
-                                    ),
+                                    execution_metrics=list(formatted_execution_stats),
                                     iteration_metrics=list(
                                         self._last_iteration_stats.values()
                                     ),
@@ -835,12 +963,21 @@ class _StatsManager:
         state: Dict[str, Any],
         force_update: bool = False,
     ):
-        op_metrics_dicts = [metric.as_dict() for metric in op_metrics]
         per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
-        args = (dataset_tag, op_metrics_dicts, operator_tags, state, per_node_metrics)
         if force_update:
+            op_metrics_dicts = [
+                metric.as_dict(reset_histogram_metrics=True) for metric in op_metrics
+            ]
+            args = (
+                dataset_tag,
+                op_metrics_dicts,
+                operator_tags,
+                state,
+                per_node_metrics,
+            )
             self._get_or_create_stats_actor().update_execution_metrics.remote(*args)
         else:
+            args = (dataset_tag, op_metrics, operator_tags, state, per_node_metrics)
             with self._stats_lock:
                 self._last_execution_stats[dataset_tag] = args
             self._start_thread_if_not_running()
