@@ -82,8 +82,8 @@ class FakeCoreWorkerClient : public CoreWorkerClientInterface {
   void CancelTask(const CancelTaskRequest &request,
                   const ClientCallback<CancelTaskReply> &callback) override {}
 
-  void RemoteCancelTask(const RemoteCancelTaskRequest &request,
-                        const ClientCallback<RemoteCancelTaskReply> &callback) override {}
+  void CancelRemoteTask(CancelRemoteTaskRequest &&request,
+                        const ClientCallback<CancelRemoteTaskReply> &callback) override {}
 
   void RegisterMutableObjectReader(
       const RegisterMutableObjectReaderRequest &request,

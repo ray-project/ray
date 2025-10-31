@@ -289,7 +289,6 @@ CoreWorker::CoreWorker(
     CoreWorkerOptions options,
     std::unique_ptr<WorkerContext> worker_context,
     instrumented_io_context &io_service,
-    std::unique_ptr<rpc::ClientCallManager> client_call_manager,
     std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
     std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
     std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
@@ -325,7 +324,6 @@ CoreWorker::CoreWorker(
                          : nullptr),
       worker_context_(std::move(worker_context)),
       io_service_(io_service),
-      client_call_manager_(std::move(client_call_manager)),
       core_worker_client_pool_(std::move(core_worker_client_pool)),
       raylet_client_pool_(std::move(raylet_client_pool)),
       periodical_runner_(std::move(periodical_runner)),
@@ -1866,7 +1864,8 @@ void CoreWorker::BuildCommonTaskSpec(
     int64_t generator_backpressure_num_objects,
     bool enable_task_events,
     const std::unordered_map<std::string, std::string> &labels,
-    const std::unordered_map<std::string, std::string> &label_selector,
+    const LabelSelector &label_selector,
+    const std::vector<FallbackOption> &fallback_strategy,
     const rpc::TensorTransport &tensor_transport) {
   // Build common task spec.
   auto override_runtime_env_info =
@@ -1917,6 +1916,7 @@ void CoreWorker::BuildCommonTaskSpec(
       enable_task_events,
       labels,
       label_selector,
+      fallback_strategy,
       tensor_transport);
   // Set task arguments.
   for (const auto &arg : args) {
@@ -1997,7 +1997,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       task_options.generator_backpressure_num_objects,
                       /*enable_task_events=*/task_options.enable_task_events,
                       task_options.labels,
-                      task_options.label_selector);
+                      task_options.label_selector,
+                      task_options.fallback_strategy);
   ActorID root_detached_actor_id;
   if (!worker_context_->GetRootDetachedActorID().IsNil()) {
     root_detached_actor_id = worker_context_->GetRootDetachedActorID();
@@ -2093,7 +2094,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       /*generator_backpressure_num_objects=*/-1,
                       /*enable_task_events=*/actor_creation_options.enable_task_events,
                       actor_creation_options.labels,
-                      actor_creation_options.label_selector);
+                      actor_creation_options.label_selector,
+                      actor_creation_options.fallback_strategy);
 
   // If the namespace is not specified, get it from the job.
   const auto ray_namespace = (actor_creation_options.ray_namespace.empty()
@@ -2397,6 +2399,7 @@ Status CoreWorker::SubmitActorTask(
                       /*enable_task_events=*/task_options.enable_task_events,
                       /*labels=*/{},
                       /*label_selector=*/{},
+                      /*fallback_strategy=*/{},
                       /*tensor_transport=*/task_options.tensor_transport);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
@@ -2713,6 +2716,10 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
     // Mark this object as containing other object IDs. The ref counter will
     // keep the inner IDs in scope until the outer one is out of scope.
     if (!contained_object_ids.empty() && !options_.is_local_mode) {
+      // Due to response loss caused by network failures,
+      // this method may be called multiple times for the same return object
+      // but it's fine since AddNestedObjectIds is idempotent.
+      // See https://github.com/ray-project/ray/issues/57997
       reference_counter_->AddNestedObjectIds(
           object_id, contained_object_ids, owner_address);
     }
@@ -3871,8 +3878,8 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
   reference_counter_->SubscribeRefRemoved(object_id, contained_in_id, owner_address);
 }
 
-void CoreWorker::HandleRemoteCancelTask(rpc::RemoteCancelTaskRequest request,
-                                        rpc::RemoteCancelTaskReply *reply,
+void CoreWorker::HandleCancelRemoteTask(rpc::CancelRemoteTaskRequest request,
+                                        rpc::CancelRemoteTaskReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   auto status = CancelTask(ObjectID::FromBinary(request.remote_object_id()),
                            request.force_kill(),

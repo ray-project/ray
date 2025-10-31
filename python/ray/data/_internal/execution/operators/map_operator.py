@@ -153,8 +153,17 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
     def set_additional_split_factor(self, k: int):
         self._additional_split_factor = k
 
-    def internal_queue_size(self) -> int:
-        return self._block_ref_bundler.num_bundles()
+    def internal_input_queue_num_blocks(self) -> int:
+        return self._block_ref_bundler.num_blocks()
+
+    def internal_input_queue_num_bytes(self) -> int:
+        return self._block_ref_bundler.size_bytes()
+
+    def internal_output_queue_num_blocks(self) -> int:
+        return self._output_queue.num_blocks()
+
+    def internal_output_queue_num_bytes(self) -> int:
+        return self._output_queue.size_bytes()
 
     @property
     def name(self) -> str:
@@ -232,7 +241,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 name=name,
                 target_max_block_size_override=target_max_block_size_override,
                 min_rows_per_bundle=min_rows_per_bundle,
-                concurrency=compute_strategy.size,
+                max_concurrency=compute_strategy.size,
                 supports_fusion=supports_fusion,
                 map_task_kwargs=map_task_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
@@ -516,12 +525,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def min_max_resource_requirements(
-        self,
-    ) -> Tuple[ExecutionResources, ExecutionResources]:
-        ...
-
-    @abstractmethod
     def incremental_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
@@ -607,15 +610,17 @@ class _BlockRefBundler:
         self._min_rows_per_bundle = min_rows_per_bundle
         self._bundle_buffer: List[RefBundle] = []
         self._bundle_buffer_size = 0
+        self._bundle_buffer_size_bytes = 0
         self._finalized = False
 
-    def num_bundles(self):
-        return len(self._bundle_buffer)
+    def num_blocks(self):
+        return sum(len(b.block_refs) for b in self._bundle_buffer)
 
     def add_bundle(self, bundle: RefBundle):
         """Add a bundle to the bundler."""
         self._bundle_buffer.append(bundle)
         self._bundle_buffer_size += self._get_bundle_size(bundle)
+        self._bundle_buffer_size_bytes += bundle.size_bytes()
 
     def has_bundle(self) -> bool:
         """Returns whether the bundler has a bundle."""
@@ -624,6 +629,9 @@ class _BlockRefBundler:
             or self._bundle_buffer_size >= self._min_rows_per_bundle
             or (self._finalized and self._bundle_buffer_size >= 0)
         )
+
+    def size_bytes(self) -> int:
+        return self._bundle_buffer_size_bytes
 
     def get_next_bundle(self) -> Tuple[List[RefBundle], RefBundle]:
         """Gets the next bundle.
@@ -640,6 +648,7 @@ class _BlockRefBundler:
             bundle = self._bundle_buffer[0]
             self._bundle_buffer = []
             self._bundle_buffer_size = 0
+            self._bundle_buffer_size_bytes = 0
             return [bundle], bundle
 
         remainder = []
@@ -664,6 +673,9 @@ class _BlockRefBundler:
         self._bundle_buffer = remainder
         self._bundle_buffer_size = sum(
             self._get_bundle_size(bundle) for bundle in remainder
+        )
+        self._bundle_buffer_size_bytes = sum(
+            bundle.size_bytes() for bundle in remainder
         )
 
         return list(output_buffer), _merge_ref_bundles(*output_buffer)
@@ -710,6 +722,14 @@ class _OutputQueue(ABC):
     def get_next(self) -> RefBundle:
         pass
 
+    @abstractmethod
+    def num_blocks(self) -> int:
+        pass
+
+    @abstractmethod
+    def size_bytes(self) -> int:
+        pass
+
 
 class _OrderedOutputQueue(_OutputQueue):
     """An queue that returns finished tasks in submission order."""
@@ -718,9 +738,13 @@ class _OrderedOutputQueue(_OutputQueue):
         self._task_outputs: Dict[int, Deque[RefBundle]] = defaultdict(lambda: deque())
         self._current_output_index: int = 0
         self._completed_tasks: Set[int] = set()
+        self._size_bytes: int = 0
+        self._num_blocks: int = 0
 
     def notify_task_output_ready(self, task_index: int, output: RefBundle):
         self._task_outputs[task_index].append(output)
+        self._size_bytes += output.size_bytes()
+        self._num_blocks += len(output.blocks)
 
     def _move_to_next_task(self):
         """Move the outut index to the next task.
@@ -746,10 +770,18 @@ class _OrderedOutputQueue(_OutputQueue):
 
     def get_next(self) -> RefBundle:
         next_bundle = self._task_outputs[self._current_output_index].popleft()
+        self._size_bytes -= next_bundle.size_bytes()
+        self._num_blocks -= len(next_bundle.blocks)
         if len(self._task_outputs[self._current_output_index]) == 0:
             if self._current_output_index in self._completed_tasks:
                 self._move_to_next_task()
         return next_bundle
+
+    def num_blocks(self) -> int:
+        return self._num_blocks
+
+    def size_bytes(self) -> int:
+        return self._size_bytes
 
 
 class _UnorderedOutputQueue(_OutputQueue):
@@ -757,15 +789,28 @@ class _UnorderedOutputQueue(_OutputQueue):
 
     def __init__(self):
         self._queue: Deque[RefBundle] = deque()
+        self._num_blocks: int = 0
+        self._size_bytes: int = 0
 
     def notify_task_output_ready(self, _: int, output: RefBundle):
         self._queue.append(output)
+        self._num_blocks += len(output.blocks)
+        self._size_bytes += output.size_bytes()
 
     def has_next(self) -> bool:
         return len(self._queue) > 0
 
     def get_next(self) -> RefBundle:
-        return self._queue.popleft()
+        next_bundle = self._queue.popleft()
+        self._num_blocks -= len(next_bundle.blocks)
+        self._size_bytes -= next_bundle.size_bytes()
+        return next_bundle
+
+    def num_blocks(self) -> int:
+        return self._num_blocks
+
+    def size_bytes(self) -> int:
+        return self._size_bytes
 
 
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:

@@ -74,6 +74,7 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/common:id",
         "//src/ray/common/scheduling:placement_group_util",
+        "//src/ray/observability:fake_metric",
         "//src/ray/raylet:placement_group_resource_manager",
         "@com_google_googletest//:gtest_main",
     ],
