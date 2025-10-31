@@ -1,6 +1,23 @@
 import pyarrow as pa
 import pyarrow.compute as pc
 import pytest
+from pyiceberg.expressions import (
+    And,
+    EqualTo,
+    GreaterThan,
+    GreaterThanOrEqual,
+    In,
+    IsNull,
+    LessThan,
+    LessThanOrEqual,
+    Not,
+    NotEqualTo,
+    NotIn,
+    NotNull,
+    Or,
+    Reference,
+    literal,
+)
 
 from ray.data.expressions import (
     BinaryExpr,
@@ -418,6 +435,243 @@ class TestToPyArrow:
 
         with pytest.raises(TypeError, match="UDF expressions cannot be converted"):
             udf_expr.to_pyarrow()
+
+
+class TestToIceberg:
+    """Test conversion of Ray Data expressions to PyIceberg expressions."""
+
+    @pytest.mark.parametrize(
+        "ray_expr, equivalent_iceberg_expr, description",
+        [
+            # Basic expressions
+            (
+                col("age"),
+                lambda: Reference("age"),
+                "column reference",
+            ),
+            (
+                lit(42),
+                lambda: literal(42),
+                "integer literal",
+            ),
+            (
+                lit("active"),
+                lambda: literal("active"),
+                "string literal",
+            ),
+            # Comparison operations
+            (
+                col("age") > 18,
+                lambda: GreaterThan(Reference("age"), literal(18)),
+                "greater than",
+            ),
+            (
+                col("age") >= 21,
+                lambda: GreaterThanOrEqual(Reference("age"), literal(21)),
+                "greater than or equal",
+            ),
+            (
+                col("age") < 65,
+                lambda: LessThan(Reference("age"), literal(65)),
+                "less than",
+            ),
+            (
+                col("age") <= 100,
+                lambda: LessThanOrEqual(Reference("age"), literal(100)),
+                "less than or equal",
+            ),
+            (
+                col("status") == "active",
+                lambda: EqualTo(Reference("status"), literal("active")),
+                "equality",
+            ),
+            (
+                col("status") != "inactive",
+                lambda: NotEqualTo(Reference("status"), literal("inactive")),
+                "not equal",
+            ),
+            # Boolean operations
+            (
+                (col("age") > 18) & (col("age") < 65),
+                lambda: And(
+                    GreaterThan(Reference("age"), literal(18)),
+                    LessThan(Reference("age"), literal(65)),
+                ),
+                "logical AND",
+            ),
+            (
+                (col("is_member") == lit(True))
+                | (col("is_premium") == lit(True)),  # noqa: E712
+                lambda: Or(
+                    EqualTo(Reference("is_member"), literal(True)),
+                    EqualTo(Reference("is_premium"), literal(True)),
+                ),
+                "logical OR",
+            ),
+            (
+                ~(col("deleted") == lit(True)),  # noqa: E712
+                lambda: Not(EqualTo(Reference("deleted"), literal(True))),
+                "logical NOT",
+            ),
+            # Unary operations
+            (
+                col("value").is_null(),
+                lambda: IsNull(Reference("value")),
+                "is_null check",
+            ),
+            (
+                col("name").is_not_null(),
+                lambda: NotNull(Reference("name")),
+                "is_not_null check",
+            ),
+            # In operations
+            (
+                col("status").is_in(["active", "pending"]),
+                lambda: In(Reference("status"), ["active", "pending"]),
+                "is_in with list",
+            ),
+            (
+                col("status").not_in(["inactive", "deleted"]),
+                lambda: NotIn(Reference("status"), ["inactive", "deleted"]),
+                "not_in with list",
+            ),
+            # Complex nested expressions
+            (
+                (col("age") >= 21)
+                & (col("country") == "USA")
+                & col("verified").is_not_null(),
+                lambda: And(
+                    And(
+                        GreaterThanOrEqual(Reference("age"), literal(21)),
+                        EqualTo(Reference("country"), literal("USA")),
+                    ),
+                    NotNull(Reference("verified")),
+                ),
+                "complex nested boolean",
+            ),
+            # Alias expressions (should unwrap to inner expression)
+            (
+                (col("age") > 18).alias("is_adult"),
+                lambda: GreaterThan(Reference("age"), literal(18)),
+                "aliased expression",
+            ),
+        ],
+        ids=[
+            "col",
+            "int_lit",
+            "str_lit",
+            "gt",
+            "ge",
+            "lt",
+            "le",
+            "eq",
+            "ne",
+            "and",
+            "or",
+            "not",
+            "is_null",
+            "is_not_null",
+            "is_in",
+            "not_in",
+            "nested_complex",
+            "alias",
+        ],
+    )
+    def test_to_iceberg_equivalence(
+        self, ray_expr, equivalent_iceberg_expr, description
+    ):
+        """Test that Ray Data expressions convert to equivalent PyIceberg expressions.
+
+        This test documents the expected PyIceberg expression for each Ray Data expression
+        and verifies the conversion produces the correct type.
+        """
+        # Convert Ray expression to Iceberg
+        converted = ray_expr.to_iceberg()
+        expected = equivalent_iceberg_expr()
+
+        # Verify they're the same type
+        assert type(converted) is type(expected), (
+            f"Expression type mismatch for {description}: "
+            f"got {type(converted).__name__}, expected {type(expected).__name__}"
+        )
+
+    def test_to_iceberg_unsupported_arithmetic(self):
+        """Test that arithmetic operations raise appropriate errors."""
+        # Arithmetic operations are not supported in Iceberg filters
+        with pytest.raises(
+            ValueError, match="Unsupported binary operation for Iceberg"
+        ):
+            (col("price") + 10).to_iceberg()
+
+        with pytest.raises(
+            ValueError, match="Unsupported binary operation for Iceberg"
+        ):
+            (col("quantity") * 2).to_iceberg()
+
+        with pytest.raises(
+            ValueError, match="Unsupported binary operation for Iceberg"
+        ):
+            (col("total") - col("discount")).to_iceberg()
+
+        with pytest.raises(
+            ValueError, match="Unsupported binary operation for Iceberg"
+        ):
+            (col("revenue") / col("count")).to_iceberg()
+
+        with pytest.raises(
+            ValueError, match="Unsupported binary operation for Iceberg"
+        ):
+            (col("items") // 5).to_iceberg()
+
+    def test_to_iceberg_unsupported_expressions(self):
+        """Test that unsupported expression types raise appropriate errors."""
+        from ray.data.datatype import DataType
+        from ray.data.expressions import UDFExpr, download, star
+
+        # UDF expressions
+        def dummy_fn(x):
+            return x
+
+        udf_expr = UDFExpr(
+            fn=dummy_fn,
+            args=[col("x")],
+            kwargs={},
+            data_type=DataType(int),
+        )
+
+        with pytest.raises(
+            TypeError, match="UDF expressions cannot be converted to Iceberg"
+        ):
+            udf_expr.to_iceberg()
+
+        # Download expressions
+        with pytest.raises(
+            TypeError, match="Download expressions cannot be converted to Iceberg"
+        ):
+            download("uri").to_iceberg()
+
+        # Star expressions
+        with pytest.raises(
+            TypeError, match="Star expressions cannot be converted to Iceberg"
+        ):
+            star().to_iceberg()
+
+    def test_to_iceberg_in_requires_literal_list(self):
+        """Test that IN/NOT_IN operations require literal lists."""
+        # This should work - literal list
+        expr = col("status").is_in(["active", "pending"])
+        result = expr.to_iceberg()
+        assert isinstance(result, In)
+
+        # This should fail - column reference on right side
+        # Note: This is prevented at the BinaryExpr level, not the visitor
+        # The visitor will raise an error if right operand is not a LiteralExpr
+        with pytest.raises(
+            ValueError, match="IN operation requires right operand to be a literal list"
+        ):
+            # Create a BinaryExpr directly to bypass col.is_in() validation
+            invalid_expr = BinaryExpr(Operation.IN, col("a"), col("b"))
+            invalid_expr.to_iceberg()
 
 
 def _build_complex_expr():
