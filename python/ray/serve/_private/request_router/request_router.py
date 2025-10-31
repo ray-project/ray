@@ -1096,9 +1096,22 @@ class RequestRouter(ABC):
 
     def _update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         """Compatibility shim for RunningReplicaInfo datatype."""
-        return self.update_replicas(
-            [self.create_replica_wrapper(r) for r in running_replicas]
-        )
+        replica_wrappers = []
+        for r in running_replicas:
+            try:
+                replica_wrappers.append(self.create_replica_wrapper(r))
+            except ValueError:
+                # NOTE(abrar): ValueError is raised when the actor handle is not found
+                # by ray.get_actor.
+
+                # Actor has died (e.g., due to node failure) but controller hasn't
+                # detected it yet. Skip this replica; controller will send an update
+                # when it detects the failure.
+                logger.warning(
+                    f"Failed to get handle to replica {r.replica_id} during router "
+                    "update. The replica actor may have died. Skipping this replica."
+                )
+        return self.update_replicas(replica_wrappers)
 
     def select_available_replicas(
         self, candidates: Optional[List[RunningReplica]] = None

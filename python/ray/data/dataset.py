@@ -454,7 +454,7 @@ class Dataset:
         batch_size: Union[int, None, Literal["default"]] = None,
         compute: Optional[ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
-        zero_copy_batch: bool = False,
+        zero_copy_batch: bool = True,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -463,7 +463,7 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
-        udf_modifying_row_count: bool = True,
+        udf_modifying_row_count: bool = False,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -481,9 +481,18 @@ class Dataset:
             To understand the format of the input to ``fn``, call :meth:`~Dataset.take_batch`
             on the dataset to get a batch in the same format as will be passed to ``fn``.
 
-        .. tip::
-            If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
-            performance and decrease memory utilization.
+        .. note::
+            ``fn`` should generally avoid modifying data buffers behind its input
+            since these could be zero-copy views into the underlying object residing
+            inside Ray's Object Store.
+
+            To perform any modifications it's recommended to copy the data you
+            want to modify.
+
+            In rare cases when you can't copy inside your UDF, you can instead
+            specify ``zero_copy_batch=False`` and then Ray Data will copy the
+            *whole* batch for you, providing ``fn`` with a copy rather than
+            a zero-copy view.
 
         .. warning::
             Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
@@ -607,11 +616,11 @@ class Dataset:
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
                 view on data in Ray's object store, which can decrease memory
-                utilization and improve performance. If this is ``False``, the batch
-                is writable, which requires an extra copy to guarantee.
-                If ``fn`` mutates its input, this needs to be ``False`` in order to
-                avoid "assignment destination is read-only" or "buffer source array is
-                read-only" errors. Default is ``False``.
+                utilization and improve performance. Setting this to ``False``,
+                will make a copy of the *whole* batch, therefore allowing UDF to
+                modify underlying data buffers (like tensors, binary arrays, etc)
+                in place. It's recommended to copy only the data you need to
+                modify instead of resorting to copying the whole batch.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -628,7 +637,7 @@ class Dataset:
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: This argument is deprecated. Use ``compute`` argument.
-            udf_modifying_row_count: Set to False only if the UDF always emits the same number of records it receives (no drops or duplicates). When set to False, the logical optimizer, in the presence of a limit(limit=k), will only scan k rows prior to executing the UDF, thereby saving on compute resources.
+            udf_modifying_row_count: Set to True if the UDF may modify the number of rows it receives so the limit pushdown optimization will not be applied.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -849,6 +858,7 @@ class Dataset:
             logical_plan = LogicalPlan(project_op, self.context)
         return Dataset(plan, logical_plan)
 
+    @Deprecated(message="Use `with_column` API instead")
     @PublicAPI(api_group=BT_API_GROUP)
     def add_column(
         self,
@@ -961,7 +971,7 @@ class Dataset:
             batch_format=batch_format,
             compute=compute,
             concurrency=concurrency,
-            zero_copy_batch=False,
+            zero_copy_batch=True,
             **ray_remote_args,
         )
 
