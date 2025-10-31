@@ -45,9 +45,9 @@ def main(args):
             .with_column("l_tax_f", to_f64(col("column07")))
             .with_column(
                 "disc_price",
-                to_f64(col("column05")) * (1 - to_f64(col("column06"))),
+                col("l_extendedprice_f") * (1 - col("l_discount_f")),
             )
-            .with_column("charge", col("disc_price") * (1 + to_f64(col("column07"))))
+            .with_column("charge", col("disc_price") * (1 + col("l_tax_f")))
         )
 
         # Drop original DECIMALs
