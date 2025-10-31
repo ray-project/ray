@@ -134,7 +134,7 @@ SEPARATOR REQUIREMENT:
 def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
     all_args = sys.argv[1:]
 
-    if all_args[0] == "symmetric-run":
+    if all_args and all_args[0] == "symmetric-run":
         all_args = all_args[1:]
 
     try:
