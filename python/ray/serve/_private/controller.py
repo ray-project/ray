@@ -46,6 +46,7 @@ from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
+from ray.serve._private.exceptions import ExternalScalerNotEnabledError
 from ray.serve._private.grpc_util import set_proxy_default_grpc_options
 from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
@@ -68,6 +69,7 @@ from ray.serve._private.utils import (
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
+    ApplicationArgs,
     DeploymentArgs,
     DeploymentRoute,
     EndpointInfo as EndpointInfoProto,
@@ -758,7 +760,9 @@ class ServeController:
                 )
 
     def deploy_applications(
-        self, name_to_deployment_args_list: Dict[str, List[bytes]]
+        self,
+        name_to_deployment_args_list: Dict[str, List[bytes]],
+        name_to_application_args_list: Dict[str, bytes],
     ) -> None:
         """
         Takes in a list of dictionaries that contain deployment arguments.
@@ -770,6 +774,10 @@ class ServeController:
                 where each item in the list is bytes representing the serialized
                 protobuf `DeploymentArgs` object. `DeploymentArgs` contains all the
                 information for the single deployment.
+            name_to_application_args_list: Dictionary mapping application names to serialized
+                application arguments, where each item is bytes representing the serialized
+                protobuf `ApplicationArgs` object. `ApplicationArgs` contains the information
+                for the application.
         """
         name_to_deployment_args = {}
         for name, deployment_args_list in name_to_deployment_args_list.items():
@@ -790,11 +798,24 @@ class ServeController:
                 )
             name_to_deployment_args[name] = deployment_args_deserialized
 
-        self.application_state_manager.deploy_apps(name_to_deployment_args)
+        name_to_application_args = {}
+        for name, application_args_bytes in name_to_application_args_list.items():
+            name_to_application_args[name] = ApplicationArgs.FromString(
+                application_args_bytes
+            )
+
+        self.application_state_manager.deploy_apps(
+            name_to_deployment_args, name_to_application_args
+        )
 
         self.application_state_manager.save_checkpoint()
 
-    def deploy_application(self, name: str, deployment_args_list: List[bytes]) -> None:
+    def deploy_application(
+        self,
+        name: str,
+        deployment_args_list: List[bytes],
+        application_args: bytes = b"",
+    ) -> None:
         """
         Deploy a single application
         (as deploy_applications(), but it only takes a single name and deployment args).
@@ -803,7 +824,10 @@ class ServeController:
         and could be removed if the Java code was refactored
         to use the new bulk deploy_applications API.
         """
-        self.deploy_applications({name: deployment_args_list})
+        self.deploy_applications(
+            {name: deployment_args_list},
+            {name: application_args} if application_args else {},
+        )
 
     def apply_config(
         self,
@@ -937,7 +961,27 @@ class ServeController:
         Args:
             deployment_id: The deployment to update.
             target_num_replicas: The new target number of replicas.
+
+        Raises:
+            ExternalScalerNotEnabledError: If external_scaler_enabled is not set to True
+                                          for the application.
         """
+
+        # Check if external scaler is enabled for this application
+        app_name = deployment_id.app_name
+        if not self.application_state_manager.does_app_exist(app_name):
+            raise ValueError(f"Application '{app_name}' not found")
+
+        if not self.application_state_manager.is_external_scaler_enabled(app_name):
+            raise ExternalScalerNotEnabledError(
+                f"Cannot update replicas for deployment '{deployment_id.name}' in "
+                f"application '{app_name}'. The external scaling API can only be used "
+                f"when 'external_scaler_enabled' is set to true in the application "
+                f"configuration. Current value: external_scaler_enabled=false. "
+                f"To use this API, redeploy your application with "
+                f"'external_scaler_enabled: true' in the config."
+            )
+
         self.deployment_state_manager.set_target_num_replicas(
             deployment_id, target_num_replicas
         )

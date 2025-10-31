@@ -247,6 +247,7 @@ def mocked_application_state() -> Tuple[ApplicationState, MockDeploymentStateMan
         autoscaling_state_manager=AutoscalingStateManager(),
         endpoint_state=MockEndpointState(),
         logging_config=LoggingConfig(),
+        external_scaler_enabled=False,
     )
     yield application_state, deployment_state_manager
 
@@ -1483,6 +1484,7 @@ class TestAutoscale:
             autoscaling_state_manager=AutoscalingStateManager(),
             endpoint_state=MockEndpointState(),
             logging_config=LoggingConfig(),
+            external_scaler_enabled=False,
         )
 
         # Verify autoscale returns False
