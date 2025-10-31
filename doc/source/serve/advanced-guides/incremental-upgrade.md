@@ -5,7 +5,9 @@ This guide details how to configure and use the `NewClusterWithIncrementalUpgrad
 
 In previous versions of KubeRay, zero-downtime upgrades were supported only through the `NewCluster` strategy. This upgrade strategy involved scaling up a pending RayCluster with equal capacity as the active cluster, waiting until the updated Serve applications were healthy, and then switching traffic to the new RayCluster. While this upgrade strategy is reliable, it required users to scale 200% of their original cluster's compute resources which can be prohibitive when dealing with expensive accelerator resources.
 
-The `NewClusterWithIncrementalUpgrade` strategy is designed for large-scale deployments, such as LLM serving, where duplicating resources for a standard blue/green deployment is not feasible due to resource constraints. Rather than creating a new `RayCluster` at 100% capacity, this strategy creates a new cluster and gradually scales its capacity up while simultaneously shifting user traffic from the old cluster to the new one. This gradual traffic migration enables users to safely scale their updated RayService while the old cluster auto-scales down, enabling users to save expensive compute resources and exert fine-grained control over the pace of their upgrade. This process relies on the Kubernetes Gateway API for fine-grained traffic splitting.
+The `NewClusterWithIncrementalUpgrade` strategy is designed for large-scale deployments, such as LLM serving, where duplicating resources for a standard blue/green deployment is not feasible due to resource constraints. This feature minimizes resource usage during RayService CR upgrades while maintaining service availability. Below we explain the design and usage.
+
+Rather than creating a new `RayCluster` at 100% capacity, this strategy creates a new cluster and gradually scales its capacity up while simultaneously shifting user traffic from the old cluster to the new one. This gradual traffic migration enables users to safely scale their updated RayService while the old cluster auto-scales down, enabling users to save expensive compute resources and exert greater control over the pace of their upgrade. This process relies on the Kubernetes Gateway API for fine-grained traffic splitting.
 
 ## Quickstart: Performing an Incremental Upgrade
 
@@ -36,11 +38,76 @@ Before you can use this feature, you **must** have the following set up in your 
 
 4.  **Ray Autoscaler:** Incremental upgrades require the Ray Autoscaler to be enabled in your `RayCluster` spec, as KubeRay manages the upgrade by adjusting the `target_capacity` for Ray Serve which adjusts the number of Serve replicas for each deployment. These Serve replicas are translated into a resource load which the Ray autoscaler considers when determining the number of Pods to provision with KubeRay. For information on enabling and configuring Ray autoscaling on Kubernetes, see [KubeRay Autoscaling](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/configuring-autoscaling.html).
 
+#### Example: Setting up a RayService on kind:
+
+The following instructions detail the minimal steps to configure a cluster with KubeRay and trigger a zero-downtime incremental upgrade for a RayService.
+
+1. Create a kind cluster
+```bash
+kind create cluster --image=kindest/node:v1.29.0
+```
+We use `v1.29.0` which is known to be compatible with recent Istio versions.
+
+2. Install Gateway API CRDs
+```bash
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
+```
+
+3. Install and Configure MetalLB for LoadBalancer on kind [optional]
+```bash
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.7/config/manifests/metallb-native.yaml
+```
+
+Create an `IPAddressPool` with the following spec for MetalLB [optional]
+```yaml
+echo "apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: kind-pool
+  namespace: metallb-system
+spec:
+  addresses:
+  - 192.168.8.200-192.168.8.250 # adjust based on your subnets range
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: default
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+  - kind-pool" | kubectl apply -f -
+```
+
+4. Create a Gateway class with the following spec
+```yaml
+echo "apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: istio
+spec:
+  controllerName: istio.io/gateway-controller" | kubectl apply -f -
+```
+
+5. Install istio
+```
+istioctl install --set profile=demo -y
+```
+
+6. Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html). The minimum version for this guide is v1.5.0.
+
+7. Create a RayService with incremental upgrade enabled.
+```bash
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.incremental-upgrade.yaml
+```
+
+8. Update one of the fields under `rayClusterConfig` and re-apply the RayService to trigger a zero-downtime upgrade.
+
 ### 2. How it Works: The Upgrade Process
 
 Understanding the lifecycle of an incremental upgrade helps in monitoring and configuration.
 
-1.  **Trigger:** You trigger an upgrade by updating the `RayService` spec, such as changing the container `image` or updating the `serveConfigV2`.
+1.  **Trigger:** You trigger an upgrade by updating the `RayService` spec, such as changing the container `image` or updating the `resources` used by a worker group in the `rayClusterSpec`.
 2.  **Pending Cluster Creation:** KubeRay detects the change and creates a new, *pending* `RayCluster`. It sets this cluster's initial `target_capacity` (the percentage of serve replicas it should run) to `0%`.
 3.  **Gateway and Route Creation:** KubeRay creates a `Gateway` resource for your `RayService` and an `HTTPRoute` resource that initially routes 100% of traffic to the old, *active* cluster and 0% to the new, *pending* cluster.
 4.  **The Upgrade Loop Begins:**
@@ -62,10 +129,12 @@ Understanding the lifecycle of an incremental upgrade helps in monitoring and co
         * Active `target_capacity`: 100%
         * Pending `target_capacity`: 0% $\rightarrow$ **20%**
         * **Total Capacity: 120%**
-        * The Ray Autoscaler begins provisioning pods for the pending cluster to handle 20% of the target load.
+        * If the Ray Serve autoscaler is enabled, the Serve application will scale its `num_replicas` from `min_replicas` based on the new `target_capacity`. Without the Ray Serve autoscaler enabled, the new `target_capacity` value will directly adjust `num_replicas` for each Serve deployment. Depending on the updated value of`num_replicas`, the Ray Autoscaler will begin provisioning pods for the pending cluster to handle the updated resource load.
 
     * **Phase 2: Shift Traffic (HTTPRoute)**
-        * KubeRay waits for the pending cluster's new pods to be ready.
+        * KubeRay waits for the pending cluster's new pods to be ready. With the alpha version of this feature and
+        Ray Serve autoscaling, there may be a temporary drop in requests-per-second while worker Pods are being
+        created for the updated Ray serve replicas.
         * Once ready, it begins to *gradually* shift traffic. Every `intervalSeconds`, it updates the `HTTPRoute` weights, moving `stepSizePercent` (5%) of traffic from the active to the pending cluster.
         * This continues until the *actual* traffic (`trafficRoutedPercent`) "catches up" to the *pending* cluster's `target_capacity` (20% in this example).
 
@@ -162,17 +231,6 @@ You can monitor the progress of the upgrade by inspecting the `RayService` statu
     kubectl get httproute example-rayservice-httproute -n <your-namespace> -o yaml
     ```
     Look at the `spec.rules.backendRefs`. You will see the `weight` for the old and new services change in real-time as the traffic shift (Phase 2) progresses.
-
-### 5. Rollback Support
-
-To roll back a failing or poorly performing upgrade, simply **update the `RayService` manifest back to the original configuration** (e.g., change the `image` back to the old tag).
-
-KubeRay's controller will detect that the "goal state" now matches the *active* (old) cluster. It will reverse the process:
-1.  Scale the active cluster's `target_capacity` back to 100%.
-2.  Shift all traffic back to the active cluster.
-3.  Scale down and terminate the *pending* (new) cluster.
-
----
 
 ## API Overview (Reference)
 
