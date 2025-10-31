@@ -1352,7 +1352,9 @@ class Algorithm(Checkpointable, Trainable):
             self._evaluate_offline_on_local_runner()
         # Reduce the evaluation results.
         eval_results = self.metrics.peek(
-            (EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS), default={}
+            (EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS),
+            default={},
+            latest_merged_only=True,
         )
 
         # Trigger `on_evaluate_offline_end` callback.
@@ -1513,7 +1515,11 @@ class Algorithm(Checkpointable, Trainable):
                 eval_results = {}
 
             if self.config.enable_env_runner_and_connector_v2:
-                eval_results = self.metrics.peek(key=EVALUATION_RESULTS, default={})
+                eval_results = self.metrics.peek(
+                    key=EVALUATION_RESULTS,
+                    default={},
+                    latest_merged_only=True,
+                )
                 if log_once("no_eval_results") and not eval_results:
                     logger.warning(
                         "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
@@ -2098,7 +2104,9 @@ class Algorithm(Checkpointable, Trainable):
                 key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS),
             )
             num_episodes = self.metrics.peek(
-                (EVALUATION_RESULTS, ENV_RUNNER_RESULTS, NUM_EPISODES), default=0
+                (EVALUATION_RESULTS, ENV_RUNNER_RESULTS, NUM_EPISODES),
+                default=0,
+                latest_merged_only=True,
             )
             env_runner_results = None
 
@@ -2193,7 +2201,9 @@ class Algorithm(Checkpointable, Trainable):
                 COMPONENT_MODULE_TO_ENV_CONNECTOR
             ] = self.module_to_env_connector.get_state()
             state[NUM_ENV_STEPS_SAMPLED_LIFETIME] = self.metrics.peek(
-                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                default=0,
+                latest_merged_only=True,
             )
             state_ref = ray.put(state)
 
@@ -2336,7 +2346,7 @@ class Algorithm(Checkpointable, Trainable):
                     ),
                 },
             )
-            self.metrics.log_dict(learner_results, key=LEARNER_RESULTS)
+            self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
 
         # Update weights - after learning on the local worker - on all
         # remote workers (only those RLModules that were actually trained).
@@ -3250,7 +3260,8 @@ class Algorithm(Checkpointable, Trainable):
                 config=self.config,
                 from_worker=None,
                 env_steps_sampled=self.metrics.peek(
-                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED),
+                    latest_merged_only=True,
                 ),
                 # connector_states=connector_states,
                 env_to_module=self.env_to_module_connector,
