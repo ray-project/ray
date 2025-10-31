@@ -4105,6 +4105,23 @@
     script: >
       pytest -sv test_batch_multi_node_vllm.py
 
+- name: llm_batch_single_node_baseline_benchmark
+  group: llm-batch
+  working_dir: llm_tests/batch
+  frequency: weekly
+  team: llm
+
+  cluster:
+    byod:
+      runtime_env:
+        - VLLM_DISABLE_COMPILE_CACHE=1
+      type: gpu
+    cluster_compute: llm_single_node_benchmark_l4.yaml
+
+  run:
+    timeout: 3600
+    script: pytest -v test_batch_single_node_vllm.py::test_single_node_baseline_benchmark
+
 
 - name: text_embeddings_benchmark_{{scaling}}
   frequency: nightly
