@@ -1,3 +1,4 @@
+import logging
 import sys
 from typing import Dict, Optional
 
@@ -7,6 +8,8 @@ from aiohttp import web
 from ray._private.authentication import authentication_constants
 from ray._raylet import AuthenticationTokenLoader
 from ray.dashboard import authentication_utils as auth_utils
+
+logger = logging.getLogger(__name__)
 
 
 @web.middleware
