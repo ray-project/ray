@@ -32,6 +32,10 @@
 # Public protobuf files.
 /src/ray/protobuf/public/ @edoakes @jjyao
 
+# Azure autoscaler
+/python/ray/autoscaler/azure/ @ray-project/ray-core @marosset @jackfrancis @alimaazamat
+/python/ray/autoscaler/_private/_azure/ @ray-project/ray-core @marosset @jackfrancis @alimaazamat
+
 # ==== Libraries and frameworks ====
 
 # Dependencies

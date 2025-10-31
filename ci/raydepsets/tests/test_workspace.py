@@ -144,6 +144,15 @@ def test_get_configs_dir():
         assert f"{tmpdir}/test2.depsets.yaml" in configs_dir
 
 
+def test_load_configs_with_wildcard_config_path():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        copy_data_to_tmpdir(tmpdir)
+        workspace = Workspace(dir=tmpdir)
+        config = workspace.load_configs(config_path=f"{tmpdir}/*.depsets.yaml")
+        assert config.depsets is not None
+        assert len(config.depsets) == 10
+
+
 def test_invalid_build_arg_set_in_config():
     with tempfile.TemporaryDirectory() as tmpdir:
         copy_data_to_tmpdir(tmpdir)
