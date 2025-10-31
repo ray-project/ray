@@ -1806,7 +1806,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
                                            rpc::SendReplyCallback send_reply_callback) {
   auto lease_id = LeaseID::FromBinary(request.lease_spec().lease_id());
   // If the lease is already granted, this is a retry and forward the address of the
-  // already leased worker to use.
+  // already leased worker to use
   if (leased_workers_.contains(lease_id)) {
     const auto &worker = leased_workers_[lease_id];
     RAY_LOG(DEBUG) << "Lease " << lease_id
@@ -1844,9 +1844,6 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
     actor_id = lease.GetLeaseSpecification().ActorId();
   }
 
-  const auto &lease_spec = lease.GetLeaseSpecification();
-  worker_pool_.PrestartWorkers(lease_spec, request.backlog_size());
-
   auto send_reply_callback_wrapper =
       [this, is_actor_creation_task, actor_id, reply, send_reply_callback](
           Status status, std::function<void()> success, std::function<void()> failure) {
@@ -1877,11 +1874,34 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
         send_reply_callback(status, std::move(success), std::move(failure));
       };
 
-  cluster_lease_manager_.QueueAndScheduleLease(std::move(lease),
-                                               request.grant_or_reject(),
-                                               request.is_selected_based_on_locality(),
-                                               reply,
-                                               std::move(send_reply_callback_wrapper));
+  if (cluster_lease_manager_.IsLeaseQueued(
+          lease.GetLeaseSpecification().GetSchedulingClass(), lease_id)) {
+    RAY_CHECK(cluster_lease_manager_.AddReplyCallback(
+        lease.GetLeaseSpecification().GetSchedulingClass(),
+        lease_id,
+        std::move(send_reply_callback_wrapper),
+        reply));
+    return;
+  }
+
+  if (local_lease_manager_.IsLeaseQueued(
+          lease.GetLeaseSpecification().GetSchedulingClass(), lease_id)) {
+    RAY_CHECK(local_lease_manager_.AddReplyCallback(
+        lease.GetLeaseSpecification().GetSchedulingClass(),
+        lease_id,
+        std::move(send_reply_callback_wrapper),
+        reply));
+    return;
+  }
+
+  const auto &lease_spec = lease.GetLeaseSpecification();
+  worker_pool_.PrestartWorkers(lease_spec, request.backlog_size());
+
+  cluster_lease_manager_.QueueAndScheduleLease(
+      std::move(lease),
+      request.grant_or_reject(),
+      request.is_selected_based_on_locality(),
+      {internal::ReplyCallback(std::move(send_reply_callback_wrapper), reply)});
 }
 
 void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
@@ -2197,8 +2217,7 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
       cluster_lease_manager_.QueueAndScheduleLease(work->lease_,
                                                    work->grant_or_reject_,
                                                    work->is_selected_based_on_locality_,
-                                                   work->reply_,
-                                                   work->send_reply_callback_);
+                                                   work->reply_callbacks_);
     }
   }
 }
