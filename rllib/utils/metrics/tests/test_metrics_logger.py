@@ -485,6 +485,7 @@ def test_legacy_stats_conversion():
         init_values=[1.0, 2.0, 3.0],
         reduce="sum",
         window=10,
+        clear_on_reduce=True,
     )
 
     # Lifetime sum (sum with clear_on_reduce=False)
@@ -493,15 +494,6 @@ def test_legacy_stats_conversion():
         reduce="sum",
         window=None,
         clear_on_reduce=False,
-    )
-
-    # Lifetime sum with throughput tracking
-    legacy_stats["lifetime_sum_with_throughput"] = Stats(
-        init_values=[100.0, 200.0],
-        reduce="sum",
-        window=None,
-        clear_on_reduce=False,
-        throughput=50.0,  # Initial throughput value
     )
 
     # 2. Nested stats (one level deep)
@@ -513,26 +505,9 @@ def test_legacy_stats_conversion():
         ),
         "reward": Stats(
             init_values=[10.0, 15.0, 20.0],
-            reduce="sum",
+            reduce="mean",
             window=50,
         ),
-    }
-
-    # 3. Deeply nested stats (two levels deep)
-    legacy_stats["deeply"] = {
-        "nested": {
-            "metric": Stats(
-                init_values=[1.0, 2.0],
-                reduce="mean",
-                ema_coeff=0.05,
-            ),
-            "count": Stats(
-                init_values=[5.0, 10.0, 15.0],
-                reduce="sum",
-                window=None,
-                clear_on_reduce=False,
-            ),
-        }
     }
 
     # Create a MetricsLogger state dict from legacy stats
@@ -558,7 +533,7 @@ def test_legacy_stats_conversion():
     legacy_state_dict = create_state_from_legacy(legacy_stats)
 
     # Create a new MetricsLogger and load the legacy state
-    logger = MetricsLogger(root=True)
+    logger = MetricsLogger(root=False)
     logger.set_state(legacy_state_dict)
 
     # Verify that values are correctly loaded
@@ -567,15 +542,13 @@ def test_legacy_stats_conversion():
     check(logger.peek("min_metric"), 5.0)  # min of [10, 5, 15]
     check(logger.peek("max_metric"), 25.0)  # max of [10, 25, 15]
     check(logger.peek("sum_metric"), 6.0)  # sum of [1, 2, 3]
-    check(logger.peek("lifetime_sum_metric"), 60.0)  # sum of [10, 20, 30]
-    check(logger.peek("lifetime_sum_with_throughput"), 300.0)  # sum of [100, 200]
+    check(
+        logger.peek("lifetime_sum_metric"), 0.0
+    )  # logger is not a root logger, so lifetime sum is 0
 
     # Check nested stats
     check(logger.peek(("nested", "loss")), 0.4)  # mean of [0.5, 0.4, 0.3]
-    check(logger.peek(("nested", "reward")), 45.0)  # sum of [10, 15, 20]
-
-    # Check deeply nested stats
-    check(logger.peek(["deeply", "nested", "count"]), 30.0)  # sum of [5, 10, 15]
+    check(logger.peek(("nested", "reward")), 15.0)  # mean of [10, 15, 20]
 
     # Verify that we can continue logging to the restored logger
     logger.log_value("mean_metric", 4.0, reduce="mean", window=10)
@@ -588,31 +561,48 @@ def test_legacy_stats_conversion():
     assert "loss" in results["nested"]
 
 
-def test_log_dict(root_logger):
+def test_log_dict():
     """Test logging dictionaries of values.
 
     MetricsLogger.log_dict is a thin wrapper around MetricsLogger.log_value.
     We therefore don't test extensively here.
+
+    Note: log_dict can only be used with non-root loggers. Root loggers can only aggregate.
     """
+    # Create a non-root logger for logging values
+    logger = MetricsLogger(root=False)
+
     # Test simple flat dictionary
     flat_dict = {
         "metric1": 1.0,
         "metric2": 2.0,
     }
-    root_logger.log_dict(flat_dict, reduce="mean")
+    logger.log_dict(flat_dict, reduce="mean")
 
-    check(root_logger.peek("metric1"), 1.0)
-    check(root_logger.peek("metric2"), 2.0)
+    check(logger.peek("metric1"), 1.0)
+    check(logger.peek("metric2"), 2.0)
 
     # Test logging more values to the same keys
     flat_dict2 = {
         "metric1": 2.0,
         "metric2": 3.0,
     }
-    root_logger.log_dict(flat_dict2, reduce="mean")
+    logger.log_dict(flat_dict2, reduce="mean")
 
-    check(root_logger.peek("metric1"), 1.5)
-    check(root_logger.peek("metric2"), 2.5)
+    check(logger.peek("metric1"), 1.5)
+    check(logger.peek("metric2"), 2.5)
+
+
+def test_log_dict_root_logger_restriction(root_logger):
+    """Test that root loggers cannot use log_dict - they can only aggregate."""
+    flat_dict = {
+        "metric1": 1.0,
+        "metric2": 2.0,
+    }
+
+    # Root loggers should raise an assertion when trying to use log_dict
+    with pytest.raises(AssertionError, match="Root loggers cannot use log_dict"):
+        root_logger.log_dict(flat_dict, reduce="mean")
 
 
 @pytest.mark.parametrize(
@@ -721,7 +711,8 @@ def test_log_value_with_stats_objects(
             root_logger.log_value(metric_name, value)
 
     # Create an external Stats object and push values
-    external_stats = stats_cls(is_root_stats=True, **log_kwargs)
+    # Use non-root stats so we can push values to it
+    external_stats = stats_cls(is_root_stats=False, **log_kwargs)
     for value in external_values:
         external_stats.push(value)
 

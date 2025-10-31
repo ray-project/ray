@@ -1458,8 +1458,8 @@ class Learner(Checkpointable):
                     # Cut out the module ID from the beginning since it's already part
                     # of the key sequence: (ModuleID, "[optim name]_lr").
                     key=(module_id, f"{optimizer_name[len(module_id) + 1:]}_{LR_KEY}"),
+                    reduce="mean",
                     value=self._get_optimizer_lr(optimizer),
-                    window=1,
                 )
 
     def _set_slicing_by_batch_id(

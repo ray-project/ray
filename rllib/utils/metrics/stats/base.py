@@ -30,6 +30,10 @@ class StatsBase(metaclass=ABCMeta):
         # Used to keep track of start times when using the `with` context manager.
         # This helps us measure times with threads in parallel.
         self._start_times = {}
+        # For root stats, track the latest merged values
+        # This is overwritten on each merge operation
+        if self._is_root_stats:
+            self.latest_merged: Union[List[Any], Any] = None
 
         assert (
             self.stats_cls_identifier is not None
@@ -155,10 +159,13 @@ class StatsBase(metaclass=ABCMeta):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of the stats object."""
-        return {
+        state = {
             "stats_cls_identifier": self.stats_cls_identifier,
             "_is_root_stats": self._is_root_stats,
         }
+        if self._is_root_stats:
+            state["latest_merged"] = self.latest_merged
+        return state
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def set_state(self, state: Dict[str, Any]) -> None:
@@ -167,6 +174,9 @@ class StatsBase(metaclass=ABCMeta):
         self._is_root_stats = state["_is_root_stats"]
         # Prevent setting a state with a different stats class identifier
         assert self.stats_cls_identifier == state["stats_cls_identifier"]
+        if self._is_root_stats:
+            # Handle legacy state that doesn't have latest_merged
+            self.latest_merged = state.get("latest_merged", None)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @staticmethod
@@ -213,7 +223,9 @@ class StatsBase(metaclass=ABCMeta):
         ...
 
     @abstractmethod
-    def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
+    def peek(
+        self, compile: bool = True, latest_merged_only: bool = False
+    ) -> Union[Any, List[Any]]:
         """Returns the result of reducing the internal values list.
 
         Note that this method does NOT alter the internal values list in this process.
@@ -222,11 +234,13 @@ class StatsBase(metaclass=ABCMeta):
 
         Args:
             compile: If True, the result is compiled into a single value if possible.
+            latest_merged_only: If True, only considers the latest merged values.
+                This parameter only works on root stats objects.
+                When enabled, peek() will only use the values from the most recent merge operation.
 
         Returns:
             The result of reducing the internal values list on CPU memory.
         """
-        ...
 
     @abstractmethod
     def reduce(self, compile: bool = True) -> Union[Any, "StatsBase"]:

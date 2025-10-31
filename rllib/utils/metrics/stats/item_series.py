@@ -55,6 +55,12 @@ class ItemSeriesStats(StatsBase):
         Args:
             item: The item to push. Can be of any type but data should be in CPU memory.
         """
+        # Root stats objects should not be pushed to
+        if self._is_root_stats:
+            raise ValueError(
+                "Cannot push values to root stats objects. "
+                "Root stats are only updated through merge operations."
+            )
         self.items.append(item)
         if self._window and len(self.items) > self._window:
             self.items.popleft()
@@ -83,18 +89,37 @@ class ItemSeriesStats(StatsBase):
         """Returns the length of the internal items list."""
         return len(self.items)
 
-    def peek(self, compile: bool = True) -> List[Any]:
+    def peek(self, compile: bool = True, latest_merged_only: bool = False) -> List[Any]:
         """Returns the internal items list.
 
         This does not alter the internal items list.
 
         Args:
             compile: Argument is ignored for ItemSeriesStats.
+            latest_merged_only: If True, only considers the latest merged values.
+                This parameter only works on root stats objects (_is_root_stats=True).
+                When enabled, peek() will only use the items from the most recent merge operation.
 
         Returns:
             The internal items list.
         """
-        return self.items
+        # Check latest_merged_only validity
+        if latest_merged_only and not self._is_root_stats:
+            raise ValueError(
+                "latest_merged_only can only be used on root stats objects "
+                "(_is_root_stats=True)"
+            )
+
+        # If latest_merged_only is True, use only the latest merged items
+        if latest_merged_only:
+            if self.latest_merged is None:
+                # No merged items yet, return empty list
+                return []
+            # Use only the latest merged items
+            return self.latest_merged
+        else:
+            # Normal peek behavior
+            return self.items
 
     def merge(self, incoming_stats: List["ItemSeriesStats"]):
         """Merges ItemSeriesStats objects.
@@ -109,10 +134,15 @@ class ItemSeriesStats(StatsBase):
             self._is_root_stats
         ), "ItemSeriesStats should only be merged at root level"
 
-        all_items = [s.items for s in incoming_stats]
-        all_items = list(chain.from_iterable(all_items))
-        all_items = list(self.items) + all_items
+        new_items = [s.items for s in incoming_stats]
+        new_items = list(chain.from_iterable(new_items))
+        all_items = list(self.items) + new_items
         self.items = all_items
+
+        # Track merged values for latest_merged_only peek functionality
+        if self._is_root_stats:
+            # Store the items that were merged in this operation (from incoming_stats only)
+            self.latest_merged = new_items
 
     @staticmethod
     def _get_init_args(stats_object=None, state=None) -> Dict[str, Any]:

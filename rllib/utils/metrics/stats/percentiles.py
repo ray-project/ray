@@ -128,6 +128,12 @@ class PercentilesStats(StatsBase):
                 PyTorch GPU tensors are kept on GPU until reduce() or peek().
                 TensorFlow tensors are moved to CPU immediately.
         """
+        # Root stats objects should not be pushed to
+        if self._is_root_stats:
+            raise ValueError(
+                "Cannot push values to root stats objects. "
+                "Root stats are only updated through merge operations."
+            )
         # Convert TensorFlow tensors to CPU immediately, keep PyTorch tensors as-is
         if tf and tf.is_tensor(value):
             value = value.numpy()
@@ -153,12 +159,19 @@ class PercentilesStats(StatsBase):
         assert (
             self._is_root_stats
         ), "PercentilesStats should only be merged at root level"
-        all_values = [s.values for s in incoming_stats]
-        all_values = list(chain.from_iterable(all_values))
-        all_values = list(self.values) + all_values
+        new_values = [s.values for s in incoming_stats]
+        new_values = list(chain.from_iterable(new_values))
+        all_values = list(self.values) + new_values
         self.values = all_values
 
-    def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
+        # Track merged values for latest_merged_only peek functionality
+        if self._is_root_stats:
+            # Store the values that were merged in this operation (from incoming_stats only)
+            self.latest_merged = new_values
+
+    def peek(
+        self, compile: bool = True, latest_merged_only: bool = False
+    ) -> Union[Any, List[Any]]:
         """Returns the result of reducing the internal values list.
 
         Note that this method does NOT alter the internal values list in this process.
@@ -167,11 +180,34 @@ class PercentilesStats(StatsBase):
 
         Args:
             compile: If True, the result is compiled into the percentiles list.
+            latest_merged_only: If True, only considers the latest merged values.
+                This parameter only works on root stats objects (_is_root_stats=True).
+                When enabled, peek() will only use the values from the most recent merge operation.
 
         Returns:
             The result of reducing the internal values list on CPU.
         """
-        values = batch_values_to_cpu(self.values)
+        # Check latest_merged_only validity
+        if latest_merged_only and not self._is_root_stats:
+            raise ValueError(
+                "latest_merged_only can only be used on root stats objects "
+                "(_is_root_stats=True)"
+            )
+
+        # If latest_merged_only is True, use only the latest merged values
+        if latest_merged_only:
+            if self.latest_merged is None:
+                # No merged values yet, return dict with None values
+                if compile:
+                    return {p: None for p in self._percentiles}
+                else:
+                    return []
+            # Use only the latest merged values
+            latest_merged = self.latest_merged
+            values = batch_values_to_cpu(latest_merged)
+        else:
+            # Normal peek behavior
+            values = batch_values_to_cpu(self.values)
 
         values.sort()
 

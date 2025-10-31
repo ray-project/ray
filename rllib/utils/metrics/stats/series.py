@@ -117,6 +117,12 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
                 PyTorch GPU tensors are kept on GPU until reduce() or peek().
                 TensorFlow tensors are moved to CPU immediately.
         """
+        # Root stats objects should not be pushed to
+        if self._is_root_stats:
+            raise ValueError(
+                "Cannot push values to root stats objects. "
+                "Root stats are only updated through merge operations."
+            )
         # Convert TensorFlow tensors to CPU immediately, keep PyTorch tensors as-is
         if tf and tf.is_tensor(value):
             value = value.numpy()
@@ -154,22 +160,56 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         all_items = list(self.values) + list(all_items)
         self.values = all_items
 
-    def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
+        # Track merged values for latest_merged_only peek functionality
+        if self._is_root_stats:
+            # Store the values that were merged in this operation (from incoming_stats only)
+            merged_values = list(
+                chain.from_iterable([s.values for s in incoming_stats])
+            )
+            self.latest_merged = merged_values
+
+    def peek(
+        self, compile: bool = True, latest_merged_only: bool = False
+    ) -> Union[Any, List[Any]]:
         """Returns the result of reducing the internal values list.
 
         Note that this method does NOT alter the internal values list.
 
         Args:
             compile: If True, the result is compiled into a single value if possible.
+            latest_merged_only: If True, only considers the latest merged values.
+                This parameter only works on root stats objects (_is_root_stats=True).
+                When enabled, peek() will only use the values from the most recent merge operation.
 
         Returns:
             The result of reducing the internal values list.
         """
-        if len(self.values) == 1:
-            # Note that we can not check for window=None here because merged SeriesStats may have multiple values.
-            reduced_values = self.values
+        # If latest_merged_only is True, use look at the latest merged values
+        if latest_merged_only:
+            if not self._is_root_stats:
+                raise ValueError(
+                    "latest_merged_only can only be used on root stats objects "
+                    "(_is_root_stats=True)"
+                )
+            if self.latest_merged is None:
+                # No merged values yet, return NaN or empty list
+                if compile:
+                    return np.nan
+                else:
+                    return []
+            # Use only the latest merged values
+            latest_merged = self.latest_merged
+            if len(latest_merged) == 0:
+                reduced_values = [np.nan]
+            else:
+                reduced_values = self.window_reduce(latest_merged)
         else:
-            reduced_values = self.window_reduce()
+            # Normal peek behavior
+            if len(self.values) == 1:
+                # Note that we can not check for window=None here because merged SeriesStats may have multiple values.
+                reduced_values = self.values
+            else:
+                reduced_values = self.window_reduce()
 
         if compile:
             if len(reduced_values) == 0:

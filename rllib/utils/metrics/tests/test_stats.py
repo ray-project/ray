@@ -329,7 +329,9 @@ def test_merge_item_stats():
 )
 def test_clone(stats_class, init_kwargs):
     original = stats_class(**init_kwargs)
-    original.push(123)
+    # Skip pushing for root stats (they can't be pushed to)
+    if not original._is_root_stats:
+        original.push(123)
 
     # Create similar stats
     similar = stats_class.clone(original)
@@ -573,95 +575,79 @@ def test_stats_empty_reduce(stats_class, init_kwargs, expected_result):
 
 
 @pytest.mark.parametrize(
-    "stats_class,init_kwargs,root_values,child1_values,child2_values,expected_result",
+    "stats_class,init_kwargs,child1_values,child2_values,expected_result",
     [
         (
             EmaStats,
             {},
-            [1, 2],
+            [1, 2],  # 1.01
             [3, 4],  # 3.01
-            [5, 6],  # 5.01
-            4.01,  # mean of [3.01, 5.01] (EMA doesn't include root values)
+            2.01,  # mean of [1.01, 3.01]
         ),
         (
             MeanStats,
             {"window": None},
             [1, 2],
             [3, 4],
-            [5, 6],
-            3.5,  # mean of [1, 2, 3, 4, 5, 6]
+            2.5,  # mean of [1, 2, 3, 4]
         ),
         (
             SumStats,
             {"window": 5},
             [1, 2, 3],
             [4, 5, 6],
-            [7, 8, 9],
-            45,  # sum of [1, 2, 3, 4, 5, 6, 7, 8, 9]
+            21,  # sum of [1, 2, 3, 4, 5, 6]
         ),
         (
             MinStats,
             {"window": 5},
             [1, 2],
             [3, 4],
-            [5, 6],
-            1,  # min of [1, 2, 3, 4, 5, 6]
+            1,  # min of [1, 2, 3, 4]
         ),
         (
             MaxStats,
             {"window": 5},
             [1, 2],
             [3, 4],
-            [5, 6],
-            6,  # max of [1, 2, 3, 4, 5, 6]
+            4,  # max of [1, 2, 3, 4]
         ),
         (
             LifetimeSumStats,
             {},
             [10, 20],
             [30, 40],
-            [50, 60],
-            210,  # LifetimeSumStats adds incoming sums (70+110) to root (30) = 210
+            100,  # 10 + 20 + 30 + 40
         ),
         (
             ItemSeriesStats,
             {"window": 10},
             ["a", "b"],
             ["c", "d"],
-            ["e", "f"],
-            ["a", "b", "c", "d", "e", "f"],  # root values + incoming values
+            ["a", "b", "c", "d"],  # ["a", "b", "c", "d", "e", "f"]
         ),
         (
             PercentilesStats,
             {"window": 3, "percentiles": [50]},
             [1, 2],
             [3, 4],
-            [5, 6],
-            {50: 3.5},  # 50th percentile (median) of [1, 2, 3, 4, 5, 6]
+            {50: 2.5},  # 50th percentile (median) of [1, 2, 3, 4]
         ),
     ],
 )
 def test_stats_merge(
     stats_class,
     init_kwargs,
-    root_values,
     child1_values,
     child2_values,
     expected_result,
 ):
     """Test Stats.merge() for various stats types.
 
-    The root stats should include both its own previous values and the incoming
-    child stats values (except for EmaStats which doesn't include root values
-    in the merge).
+    Root stats cannot be pushed to, so they only include values from merged child stats.
     """
     # Create root stats
     root_stats = stats_class(**init_kwargs, is_root_stats=True)
-    for value in root_values:
-        if stats_class == EmaStats:
-            # EmaStats does not allow pushing values and merging at the same time.
-            break
-        root_stats.push(value)
 
     # Create first child stats
     child1 = stats_class(**init_kwargs)
@@ -680,18 +666,184 @@ def test_stats_merge(
     check(root_stats.peek(), expected_result)
 
 
-def test_ema_stats_error_message():
-    """Test that EmaStats raises an error when pushing values and merging at the same time."""
-    incoming_stats = EmaStats(ema_coeff=0.01)
+@pytest.mark.parametrize(
+    "stats_class,kwargs,expected_first,expected_first_compile_false,expected_second_normal,expected_second_latest,expected_second_compile_false",
+    [
+        (
+            MeanStats,
+            {},
+            2.5,
+            [2.5],
+            10.0,
+            20.0,
+            [20.0],
+        ),
+        (
+            EmaStats,
+            {"ema_coeff": 0.1},
+            2.1,  # mean of EMA values [1.1, 3.1] from first merge
+            [2.1],
+            11.3,  # mean of all EMA values [1.1, 3.1, 11.0, 30.0] (approximate)
+            20.5,  # mean of [11.0, 30.0] (second merge)
+            [20.5],
+        ),
+        (
+            ItemSeriesStats,
+            {"window": 10},
+            [1.0, 2.0, 3.0, 4.0],
+            [
+                1.0,
+                2.0,
+                3.0,
+                4.0,
+            ],  # compile=False same as compile=True for ItemSeriesStats
+            [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0],
+            [10.0, 20.0, 30.0],
+            [
+                10.0,
+                20.0,
+                30.0,
+            ],  # compile=False same as compile=True for ItemSeriesStats
+        ),
+        (
+            PercentilesStats,
+            {"window": 10},
+            {
+                0: 1.0,
+                50: 2.5,
+                75: 3.25,
+                90: 3.7,
+                95: 3.85,
+                99: 3.97,
+                100: 4.0,
+            },  # percentiles of [1, 2, 3, 4]
+            [1.0, 2.0, 3.0, 4.0],  # compile=False returns sorted list of values
+            {
+                0: 1.0,
+                50: 4.0,
+                75: 15.0,
+                90: 24.0,
+                95: 27.0,
+                99: 29.4,
+                100: 30.0,
+            },  # percentiles of [1, 2, 3, 4, 10, 20, 30]
+            {
+                0: 10.0,
+                50: 20.0,
+                75: 25.0,
+                90: 28.0,
+                95: 29.0,
+                99: 29.8,
+                100: 30.0,
+            },  # percentiles of [10, 20, 30]
+            [10.0, 20.0, 30.0],  # compile=False returns sorted list of values
+        ),
+        (
+            LifetimeSumStats,
+            {},
+            10.0,
+            [10.0],
+            70.0,
+            60.0,
+            [60.0],
+        ),
+    ],
+)
+def test_latest_merged_only_stats_types(
+    stats_class,
+    kwargs,
+    expected_first,
+    expected_first_compile_false,
+    expected_second_normal,
+    expected_second_latest,
+    expected_second_compile_false,
+):
+    """Test latest_merged_only parameter for various Stats types."""
+    # Each batch has values for two child stats
+    first_batch_values = [[1.0, 2.0], [3.0, 4.0]]
+    second_batch_values = [[10.0, 20.0], [30.0]]
 
-    stats = EmaStats(ema_coeff=0.01)
-    stats.merge([incoming_stats])
-    stats.push(10)
-    with pytest.raises(ValueError, match="We can only merge OR push"):
-        stats.reduce()
+    root_stats = stats_class(**kwargs, is_root_stats=True)
 
-    with pytest.raises(ValueError, match="We can only merge OR push"):
-        stats.peek()
+    first_batch_stats = []
+    for values in first_batch_values:
+        child_stats = stats_class(**kwargs)
+        for value in values:
+            child_stats.push(value)
+        first_batch_stats.append(child_stats)
+
+    root_stats.merge(first_batch_stats)
+
+    # Normal peek should include all merged values
+    first_normal_result = root_stats.peek(compile=True, latest_merged_only=False)
+    check(first_normal_result, expected_first)
+    # Latest merged only should only consider the latest merge (same as normal after first merge)
+    first_latest_result = root_stats.peek(compile=True, latest_merged_only=True)
+    check(first_latest_result, expected_first)
+
+    # Test compile=False behavior after first merge
+    first_latest_result_compile_false = root_stats.peek(
+        compile=False, latest_merged_only=True
+    )
+    check(first_latest_result_compile_false, expected_first_compile_false)
+
+    # Create and merge second batch
+    second_batch_stats = []
+    for values in second_batch_values:
+        child_stats = stats_class(**kwargs)
+        for value in values:
+            child_stats.push(value)
+        second_batch_stats.append(child_stats)
+
+    root_stats.merge(second_batch_stats)
+
+    # Normal peek should include all values
+    second_normal_result = root_stats.peek(compile=True, latest_merged_only=False)
+    check(second_normal_result, expected_second_normal)
+
+    # Latest merged only should only consider the latest merge
+    second_latest_result = root_stats.peek(compile=True, latest_merged_only=True)
+    check(second_latest_result, expected_second_latest)
+
+    # Test compile=False behavior after second merge
+    second_latest_result_compile_false = root_stats.peek(
+        compile=False, latest_merged_only=True
+    )
+    check(second_latest_result_compile_false, expected_second_compile_false)
+
+
+def test_latest_merged_only_no_merge_yet():
+    """Test latest_merged_only when no merge has occurred yet."""
+    root_stats = MeanStats(window=10, is_root_stats=True)
+
+    # Before any merge, latest_merged_only should return NaN
+    result = root_stats.peek(compile=True, latest_merged_only=True)
+    check(np.isnan(result), True)
+
+    # Normal peek should also return NaN for empty stats
+    result = root_stats.peek(compile=True, latest_merged_only=False)
+    check(np.isnan(result), True)
+
+
+def test_latest_merged_only_non_root_stats():
+    """Test that latest_merged_only raises error on non-root stats."""
+    stats = MeanStats(window=10)
+    stats.push(1.0)
+
+    # Should raise error when using latest_merged_only on non-root stats
+    with pytest.raises(
+        ValueError, match="latest_merged_only can only be used on root stats"
+    ):
+        stats.peek(compile=True, latest_merged_only=True)
+
+
+def test_push_on_root_stats():
+    """Test that push raises error on root stats."""
+    root_stats = MeanStats(window=10, is_root_stats=True)
+
+    # Should raise error when trying to push to root stats
+    with pytest.raises(ValueError, match="Cannot push values to root stats objects"):
+        root_stats.push(1.0)
 
 
 if __name__ == "__main__":

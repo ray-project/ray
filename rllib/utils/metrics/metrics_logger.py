@@ -184,6 +184,7 @@ class MetricsLogger:
         default=None,
         compile: bool = True,
         throughput: bool = False,
+        latest_merged_only: bool = False,
     ) -> Any:
         """Returns the reduced values found in this MetricsLogger.
 
@@ -201,11 +202,18 @@ class MetricsLogger:
             compile: If True, the result is compiled into a single value if possible.
             throughput: If True, the throughput is returned instead of the
                 actual (reduced) value.
+            latest_merged_only: If True, only considers the latest merged values.
+                This parameter only works on root loggers.
 
         Returns:
             The (reduced) values of the (possibly nested) sub-structure found under
             the given key or key sequence.
         """
+        if latest_merged_only:
+            assert (
+                self._is_root_logger
+            ), "latest_merged_only can only be used on root loggers"
+
         if throughput:
             assert (
                 self._is_root_logger
@@ -216,7 +224,9 @@ class MetricsLogger:
         def _nested_peek(stats: Dict[str, Any]):
             def _peek_with_path(path: str, stats: StatsBase):
                 try:
-                    return stats.peek(compile=compile)
+                    return stats.peek(
+                        compile=compile, latest_merged_only=latest_merged_only
+                    )
                 except Exception as e:
                     raise ValueError(
                         f"Error peeking stats {stats} with compile={compile} at path {path}."
@@ -235,7 +245,9 @@ class MetricsLogger:
 
                 if isinstance(stats, StatsBase):
                     # If the Stats object has a reduce method, we need to convert the list to a single value
-                    return stats.peek(compile=compile)
+                    return stats.peek(
+                        compile=compile, latest_merged_only=latest_merged_only
+                    )
 
                 elif isinstance(stats, dict) and stats:
                     return _nested_peek(stats)
@@ -335,8 +347,9 @@ class MetricsLogger:
                     kwargs["with_throughput"] = with_throughput
 
                 stats_object = stats_cls(**kwargs)
-                if self._is_root_logger:
-                    stats_object._is_root_stats = True
+                # Don't mark stats as root stats when created via log_value - they should only
+                # be root stats when used for aggregating from other loggers (via aggregate())
+                # Root loggers can directly push to non-root stats objects
 
                 self._set_key(key, stats_object)
 
@@ -428,6 +441,10 @@ class MetricsLogger:
         )
         stats = self._get_key(key)
         if isinstance(value, StatsBase):
+            # When merging Stats objects, mark the receiving stats as root stats
+            # so they can accept merge operations
+            if self._is_root_logger:
+                stats._is_root_stats = True
             stats.merge(incoming_stats=[value])
         else:
             stats.push(value)
@@ -459,7 +476,14 @@ class MetricsLogger:
         have been reduced by other, parallel components.
 
         See MetricsLogger.log_value for more details on the arguments.
+
+        Note: Root loggers cannot use log_dict. They can only aggregate metrics using aggregate().
+        Use non-root loggers for direct logging via log_dict.
         """
+        assert (
+            not self._is_root_logger
+        ), "Root loggers cannot use log_dict. Use aggregate() to merge metrics from non-root loggers instead."
+
         assert isinstance(
             value_dict, dict
         ), f"`stats_dict` ({value_dict}) must be dict!"
@@ -568,6 +592,13 @@ class MetricsLogger:
             if own_stats is None:
                 # This should happen the first time we reduce this stat to the root logger.
                 own_stats = incoming_stats[0].clone(incoming_stats[0])
+                own_stats._is_root_stats = True
+                if own_stats.has_throughputs:
+                    own_stats.initialize_throughput_reference_time(
+                        self._time_when_initialized
+                    )
+            else:
+                # Mark existing stats as root stats so they can accept merge operations
                 own_stats._is_root_stats = True
                 if own_stats.has_throughputs:
                     own_stats.initialize_throughput_reference_time(

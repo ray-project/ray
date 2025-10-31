@@ -1,11 +1,15 @@
 from typing import Any, Dict, List, Union
 
+import logging
 import numpy as np
 
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics.stats.base import StatsBase
 from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
+from ray.util import log_once
+
+logger = logging.getLogger(__name__)
 
 torch, _ = try_import_torch()
 _, tf, _ = try_import_tf()
@@ -63,6 +67,11 @@ class EmaStats(StatsBase):
 
         self._values_to_merge.extend(all_values)
 
+        # Track merged values for latest_merged_only peek functionality
+        if self._is_root_stats:
+            # Store the values that were merged in this operation
+            self.latest_merged = all_values
+
     def push(self, value: Any) -> None:
         """Pushes a value into this Stats object.
 
@@ -71,6 +80,12 @@ class EmaStats(StatsBase):
                 PyTorch GPU tensors are kept on GPU until reduce() or peek().
                 TensorFlow tensors are moved to CPU immediately.
         """
+        # Root stats objects should not be pushed to
+        if self._is_root_stats:
+            raise ValueError(
+                "Cannot push values to root stats objects. "
+                "Root stats are only updated through merge operations."
+            )
         # Convert TensorFlow tensors to CPU immediately
         if tf and tf.is_tensor(value):
             value = value.numpy()
@@ -96,9 +111,9 @@ class EmaStats(StatsBase):
 
     def _reduce_values_to_merge(self) -> float:
         """Reduces the internal values to merge."""
-        if not np.isnan(self._value):
-            raise ValueError(
-                "We can only merge OR push at any given EmaStats instance. The most likely reason you are seeing this is because you are using EmaStats to log values in parallel components and also pushing values at the root where they are merged."
+        if not np.isnan(self._value) and log_once("ema_stats_merge_push"):
+            logger.warning(
+                f"Merging values in {self} but self._value is not NaN. This leads to an inaccurate metric. Not erroring out to avoid breaking older checkpoints."
             )
 
         if torch and isinstance(self._values_to_merge[0], torch.Tensor):
@@ -106,15 +121,52 @@ class EmaStats(StatsBase):
             return torch.nanmean(stacked)
         return np.nanmean(self._values_to_merge)
 
-    def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
+    def peek(
+        self, compile: bool = True, latest_merged_only: bool = False
+    ) -> Union[Any, List[Any]]:
         """Returns the current EMA value.
 
         If value is a GPU tensor, it's converted to CPU.
+
+        Args:
+            compile: If True, the result is compiled into a single value if possible.
+            latest_merged_only: If True, only considers the latest merged values.
+                This parameter only works on root stats objects (_is_root_stats=True).
+                When enabled, peek() will only use the values from the most recent merge operation.
         """
-        if self._values_to_merge:
-            value = self._reduce_values_to_merge()
+        # Check latest_merged_only validity
+        if latest_merged_only and not self._is_root_stats:
+            raise ValueError(
+                "latest_merged_only can only be used on root stats objects "
+                "(_is_root_stats=True)"
+            )
+
+        # If latest_merged_only is True, use only the latest merged values
+        if latest_merged_only:
+            if self.latest_merged is None:
+                # No merged values yet, return NaN
+                if compile:
+                    return np.nan
+                else:
+                    return [np.nan]
+            # Use only the latest merged values
+            latest_merged = self.latest_merged
+            if len(latest_merged) == 0:
+                value = np.nan
+            else:
+                # Reduce latest merged values
+                if torch and isinstance(latest_merged[0], torch.Tensor):
+                    stacked = torch.stack(list(latest_merged))
+                    value = torch.nanmean(stacked)
+                else:
+                    value = np.nanmean(latest_merged)
         else:
-            value = self._value
+            # Normal peek behavior
+            if self._values_to_merge:
+                value = self._reduce_values_to_merge()
+            else:
+                value = self._value
+
         # Convert GPU tensor to CPU
         if torch and isinstance(value, torch.Tensor):
             value = single_value_to_cpu(value)
@@ -146,18 +198,24 @@ class EmaStats(StatsBase):
         return return_stats
 
     def __repr__(self) -> str:
-        return f"EmaStats({self.peek()}; len=(1); " f"ema_coeff={self._ema_coeff})"
+        return (
+            f"EmaStats({self.peek()}; number_of_values_to_merge=({len(self._values_to_merge)}); "
+            f"ema_coeff={self._ema_coeff}), value={self._value}"
+        )
 
     def get_state(self) -> Dict[str, Any]:
         state = super().get_state()
         state["ema_coeff"] = self._ema_coeff
         state["value"] = self._value
+        state["values_to_merge"] = self._values_to_merge
         return state
 
     def set_state(self, state: Dict[str, Any]) -> None:
         super().set_state(state)
         self._ema_coeff = state["ema_coeff"]
         self._value = state["value"]
+        # Handle legacy state that doesn't have values_to_merge
+        self._values_to_merge = state.get("values_to_merge", [])
 
     @staticmethod
     def _get_init_args(stats_object=None, state=None) -> Dict[str, Any]:

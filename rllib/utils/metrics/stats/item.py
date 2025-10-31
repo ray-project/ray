@@ -66,7 +66,9 @@ class ItemStats(StatsBase):
 
         self._item = incoming_stats[0]._item
 
-    def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
+    def peek(
+        self, compile: bool = True, latest_merged_only: bool = False
+    ) -> Union[Any, List[Any]]:
         """Returns the internal item.
 
         This does not alter the internal item.
@@ -74,10 +76,16 @@ class ItemStats(StatsBase):
         Args:
             compile: If True, return the internal item directly.
                 If False, return the internal item as a single-element list.
+            latest_merged_only: This parameter is not supported for ItemStats.
+                ItemStats tracks a single item, not a series of merged values.
 
         Returns:
             The internal item.
         """
+        if latest_merged_only:
+            # ItemStats doesn't support latest_merged_only since it tracks a single item
+            # Just return the current item regardless
+            pass
         if compile:
             return self._item
         return [self._item]
