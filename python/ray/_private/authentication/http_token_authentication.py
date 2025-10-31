@@ -2,9 +2,6 @@ import logging
 import sys
 from typing import Dict, Optional
 
-import pytest
-from aiohttp import web
-
 from ray._private.authentication import authentication_constants
 from ray.dashboard import authentication_utils as auth_utils
 
@@ -13,16 +10,22 @@ try:
 
     _RAYLET_AVAILABLE = True
 except ImportError:
-    # ray._raylet not available during doc builds
+    # ray._raylet not available during doc builds or minimal installs
     _RAYLET_AVAILABLE = False
     AuthenticationTokenLoader = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
 
-@web.middleware
-async def token_auth_middleware(request: web.Request, handler):
-    """Middleware to validate bearer tokens when token authentication is enabled."""
+async def token_auth_middleware(request, handler):
+    """Middleware to validate bearer tokens when token authentication is enabled.
+
+    This is an aiohttp middleware that requires aiohttp to be installed.
+    Import aiohttp only when this function is called (not at module load time).
+    """
+    # Import aiohttp here to avoid breaking minimal installs
+    from aiohttp import web
+
     if not auth_utils.is_token_auth_enabled():
         return await handler(request)
 
@@ -86,4 +89,6 @@ def format_authentication_http_error(status: int, body: str) -> Optional[str]:
 
 
 if __name__ == "__main__":
+    import pytest
+
     sys.exit(pytest.main(["-vv", __file__]))
