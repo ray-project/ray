@@ -130,7 +130,7 @@ class VLLMEngineConfig(BaseModelExtended):
             and engine_kwargs["distributed_executor_backend"] != "ray"
         ):
             if not self.use_gpu:
-                engine_kwargs["distributed_executor_backend"] == "mp"
+                engine_kwargs["distributed_executor_backend"] = "mp"
                 logger.warning(
                 "install vllm package for cpu to ensure seamless execution"
                 )
