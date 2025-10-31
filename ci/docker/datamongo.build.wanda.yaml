@@ -13,5 +13,6 @@ build_args:
   - ARROW_VERSION=9.*
   - ARROW_MONGO_VERSION=0.5.*
   - RAY_CI_JAVA_BUILD=1
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
 tags:
   - cr.ray.io/rayproject/datamongobuild-py$PYTHON
