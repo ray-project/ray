@@ -13,7 +13,7 @@ from ray.data.block import (
     UserDefinedFunction,
 )
 from ray.data.context import ShuffleStrategy
-from ray.data.dataset import Dataset, EXPRESSION_API_GROUP
+from ray.data.dataset import EXPRESSION_API_GROUP, Dataset
 from ray.data.expressions import Expr, StarExpr
 from ray.util.annotations import PublicAPI
 
