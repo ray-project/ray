@@ -325,14 +325,14 @@ kubectl delete raycluster test-cluster-1
 kubectl delete queue kuberay-test-queue
 ```
 
-### Step 6: Use Volcano for RayJob gang scheduling
+### Use Volcano for RayJob gang scheduling
 
 Starting with KubeRay 1.5.0, KubeRay supports gang scheduling for RayJob custom resources.
 
 First, create a queue with a capacity of 4 CPUs and 6Gi of RAM and RayJob a with a head node (1 CPU + 2Gi of RAM), two workers (1 CPU + 1Gi of RAM each) and a submitter pod (0.5 CPU + 200Mi of RAM), for a total of 3500m CPU and 4296Mi of RAM
 
 ```shell
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-job.volcano-scheduler-queue.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/refs/tags/v1.5.0-rc.0/ray-operator/config/samples/ray-job.volcano-scheduler-queue.yaml
 kubectl apply -f ray-job.volcano-scheduler-queue.yaml
 ```
 
@@ -402,12 +402,12 @@ kubectl get podgroup ray-rayjob-sample-1-pg  -o yaml
 #   phase: Pending
 ```
 
-Delete the first RayJob to make space in the queue
+Delete the first RayJob to make space in the queue.
 ```shell
 kubectl delete rayjob rayjob-sample-0
 ```
 
-The PodGroup for the second cluster changed to the Running state, because enough resources are now available to schedule the entire set of pods
+The PodGroup for the second cluster changed to the Running state, because enough resources are now available to schedule the entire set of pods.
 ```shell
 kubectl get podgroup ray-rayjob-sample-1-pg  -o yaml
 
