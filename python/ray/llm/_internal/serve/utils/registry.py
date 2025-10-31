@@ -90,6 +90,12 @@ class ComponentRegistry:
 
     Similar to RLlib/Tune's registry but with a fixed global prefix for cross-job access.
 
+    **Usage Pattern:**
+        This registry is designed for a "register once, read many" pattern:
+        - Components are typically registered in the driver process before deployment
+        - Ray Serve replicas read from the KV store during initialization
+        - Once a component is resolved and cached in a process, subsequent `get()` calls return the cached value without checking the KV store for updates
+
     Example:
         # Create a registry for a component category
         registry = ComponentRegistry("my_component")
@@ -125,6 +131,9 @@ class ComponentRegistry:
                 - A class, object, or callable (serialized directly)
                 - A string in format "module_path:class_name" (lazy-loaded via import)
 
+        Raises:
+            ValueError: If the component is already registered. Use unregister() first if you need to change the registration.
+
         Examples:
             # Register a class directly
             registry.register("MyClass", MyClass)
@@ -132,16 +141,21 @@ class ComponentRegistry:
             # Register via module path (lazy loading)
             registry.register("MyClass", "my.module:MyClass")
         """
+        # Prevent double registration to avoid cache inconsistencies
+        if self.contains(name):
+            raise ValueError(
+                f"{self.category} '{name}' is already registered. "
+                f"Use unregister() first if you need to change the registration."
+            )
+
         # Create a loader callable (handles both direct values and string paths)
         loader = _create_loader(value)
 
         # Serialize the loader callable
         serialized = pickle.dumps(loader)
 
-        # Store loader and clear any resolved value from a previous registration.
+        # Store loader in cache
         self._loader_cache[name] = loader
-        if name in self._resolved_cache:
-            del self._resolved_cache[name]
 
         # Store in KV store if Ray is initialized, otherwise queue for later
         if _internal_kv_initialized():

@@ -46,6 +46,32 @@ class TestComponentRegistry:
         with pytest.raises(ValueError, match="Invalid format"):
             registry.register("test_comp", "invalid_format_no_colon")
 
+    def test_double_registration_raises(self):
+        """Test that double registration raises ValueError."""
+        registry = ComponentRegistry("test_category")
+        test_class1 = type("TestClass1", (), {})
+        test_class2 = type("TestClass2", (), {})
+
+        registry.register("test_component", test_class1)
+
+        with pytest.raises(ValueError, match="already registered"):
+            registry.register("test_component", test_class2)
+
+        # Verify original registration is still intact
+        assert registry.get("test_component") == test_class1
+
+    def test_reregister_after_unregister(self):
+        """Test that unregistering allows re-registration."""
+        registry = ComponentRegistry("test_category")
+        test_class1 = type("TestClass1", (), {})
+        test_class2 = type("TestClass2", (), {})
+
+        registry.register("test_component", test_class1)
+        registry.unregister("test_component")
+        registry.register("test_component", test_class2)
+
+        assert registry.get("test_component") == test_class2
+
     def test_get_registry_singleton(self):
         """Test that get_registry returns the same instance for the same category."""
         registry1 = get_registry("test_category")
