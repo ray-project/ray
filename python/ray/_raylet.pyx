@@ -87,9 +87,11 @@ from ray.includes.common cimport (
     CRayStatus,
     CActorTableData,
     CErrorTableData,
+    CFallbackOption,
     CGcsClientOptions,
     CGcsNodeInfo,
     CJobTableData,
+    CLabelSelector,
     CLogBatch,
     CTaskArg,
     CTaskArgByReference,
@@ -199,7 +201,9 @@ include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 include "includes/metric.pxi"
 include "includes/setproctitle.pxi"
+include "includes/raylet_client.pxi"
 include "includes/gcs_subscriber.pxi"
+include "includes/rpc_token_authentication.pxi"
 
 import ray
 from ray.exceptions import (
@@ -679,29 +683,63 @@ def compute_task_id(ObjectRef object_ref):
 
 
 cdef increase_recursion_limit():
-    """Double the recusion limit if current depth is close to the limit"""
+    """
+    Ray does some weird things with asio fibers and asyncio to run asyncio actors.
+    This results in the Python interpreter thinking there's a lot of recursion depth,
+    so we need to increase the limit when we start getting close.
+
+    0x30C0000 is Python 3.12
+        On 3.12, when recursion depth increases, c_recursion_remaining will decrease,
+        and that's what's actually compared to raise a RecursionError. So increasing
+        it by 1000 when it drops below 1000 will keep us from raising the RecursionError.
+        https://github.com/python/cpython/blob/bfb9e2f4a4e690099ec2ec53c08b90f4d64fde36/Python/pystate.c#L1353
+    0x30B00A4 is Python 3.11
+        On 3.11, the recursion depth can be calculated with recursion_limit - recursion_remaining.
+        We can get the current limit with Py_GetRecursionLimit and set it with Py_SetRecursionLimit.
+        We'll double the limit when there's less than 500 remaining.
+    On older versions
+        There's simply a recursion_depth variable and we'll increase the max the same
+        way we do for 3.11.
+    """
     cdef:
-        CPyThreadState * s = <CPyThreadState *> PyThreadState_Get()
-        int current_limit = Py_GetRecursionLimit()
-        int new_limit = current_limit * 2
         cdef extern from *:
             """
 #if PY_VERSION_HEX >= 0x30C0000
-    #define CURRENT_DEPTH(x) ((x)->py_recursion_limit - (x)->py_recursion_remaining)
+    bool IncreaseRecursionLimitIfNeeded(PyThreadState *x) {
+        if (x->c_recursion_remaining < 1000) {
+            x->c_recursion_remaining += 1000;
+            return true;
+        }
+        return false;
+    }
 #elif PY_VERSION_HEX >= 0x30B00A4
-    #define CURRENT_DEPTH(x)  ((x)->recursion_limit - (x)->recursion_remaining)
+    bool IncreaseRecursionLimitIfNeeded(PyThreadState *x) {
+        int current_limit = Py_GetRecursionLimit();
+        int current_depth = x->recursion_limit - x->recursion_remaining;
+        if (current_limit - current_depth < 500) {
+            Py_SetRecursionLimit(current_limit * 2);
+            return true;
+        }
+        return false;
+    }
 #else
-    #define CURRENT_DEPTH(x)  ((x)->recursion_depth)
+    bool IncreaseRecursionLimitIfNeeded(PyThreadState *x) {
+        int current_limit = Py_GetRecursionLimit();
+        if (current_limit - x->recursion_depth < 500) {
+            Py_SetRecursionLimit(current_limit * 2);
+            return true;
+        }
+        return false;
+    }
 #endif
             """
-            int CURRENT_DEPTH(CPyThreadState *x)
+            c_bool IncreaseRecursionLimitIfNeeded(CPyThreadState *x)
 
-        int current_depth = CURRENT_DEPTH(s)
-    if current_limit - current_depth < 500:
-        Py_SetRecursionLimit(new_limit)
-        logger.debug("Increasing Python recursion limit to {} "
-                     "current recursion depth is {}.".format(
-                         new_limit, current_depth))
+        CPyThreadState * s = <CPyThreadState *> PyThreadState_Get()
+        c_bool increased_recursion_limit = IncreaseRecursionLimitIfNeeded(s)
+
+    if increased_recursion_limit:
+        logger.debug("Increased Python recursion limit")
 
 
 cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
@@ -799,12 +837,13 @@ cdef int prepare_labels(
 
 cdef int prepare_label_selector(
         dict label_selector_dict,
-        unordered_map[c_string, c_string] *label_selector) except -1:
+        CLabelSelector *c_label_selector) except -1:
+
+    c_label_selector[0] = CLabelSelector()
 
     if label_selector_dict is None:
         return 0
 
-    label_selector[0].reserve(len(label_selector_dict))
     for key, value in label_selector_dict.items():
         if not isinstance(key, str):
             raise ValueError(f"Label selector key type must be string, but got {type(key)}")
@@ -817,10 +856,39 @@ cdef int prepare_label_selector(
             inner = value[value.index("(")+1:-1].strip()
             if not inner:
                 raise ValueError(f"No values provided for Label Selector '{value[:value.index('(')]}' operator on key '{key}'.")
-        label_selector[0][key.encode("utf-8")] = value.encode("utf-8")
+        # Add key-value constraint to the LabelSelector object.
+        c_label_selector[0].AddConstraint(key.encode("utf-8"), value.encode("utf-8"))
 
     return 0
 
+cdef int prepare_fallback_strategy(
+        list fallback_strategy,
+        c_vector[CFallbackOption] *fallback_strategy_vector) except -1:
+
+    cdef dict label_selector_dict
+    cdef CLabelSelector c_label_selector
+
+    if fallback_strategy is None:
+        return 0
+
+    for strategy_dict in fallback_strategy:
+        if not isinstance(strategy_dict, dict):
+            raise ValueError(
+                "Fallback strategy must be a list of dicts, "
+                f"but got list containing {type(strategy_dict)}")
+
+        label_selector_dict = strategy_dict.get("label_selector")
+
+        if label_selector_dict is not None and not isinstance(label_selector_dict, dict):
+            raise ValueError("Invalid fallback strategy element: invalid 'label_selector'.")
+
+        prepare_label_selector(label_selector_dict, &c_label_selector)
+
+        fallback_strategy_vector.push_back(
+             CFallbackOption(c_label_selector)
+        )
+
+    return 0
 
 cdef int prepare_resources(
         dict resource_dict,
@@ -2327,7 +2395,7 @@ cdef execute_task_with_cancellation_handler(
                 " for this method.")
 
 cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
-    # Expected to be idempotent and only called on the primary copy holder.
+    # Expected to be called on the owner process. Will free on the primary copy holder.
     with gil:
         object_id = c_object_id.Hex().decode()
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
@@ -3608,11 +3676,13 @@ cdef class CoreWorker:
                     int64_t generator_backpressure_num_objects,
                     c_bool enable_task_events,
                     labels,
-                    label_selector):
+                    label_selector,
+                    fallback_strategy):
         cdef:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, c_string] c_labels
-            unordered_map[c_string, c_string] c_label_selector
+            CLabelSelector c_label_selector
+            c_vector[CFallbackOption] c_fallback_strategy
             CRayFunction ray_function
             CTaskOptions task_options
             c_vector[unique_ptr[CTaskArg]] args_vector
@@ -3639,6 +3709,7 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             prepare_labels(labels, &c_labels)
             prepare_label_selector(label_selector, &c_label_selector)
+            prepare_fallback_strategy(fallback_strategy, &c_fallback_strategy)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -3655,7 +3726,8 @@ cdef class CoreWorker:
                 c_label_selector,
                 # `tensor_transport` is currently only supported in Ray Actor tasks.
                 # For Ray tasks, we always use `OBJECT_STORE`.
-                TENSOR_TRANSPORT_OBJECT_STORE)
+                TENSOR_TRANSPORT_OBJECT_STORE,
+                c_fallback_strategy)
 
             current_c_task_id = current_task.native()
 
@@ -3706,6 +3778,7 @@ cdef class CoreWorker:
                      label_selector,
                      c_bool allow_out_of_order_execution,
                      c_bool enable_tensor_transport,
+                     fallback_strategy,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3719,7 +3792,8 @@ cdef class CoreWorker:
             c_vector[CObjectID] incremented_put_arg_ids
             optional[c_bool] is_detached_optional = nullopt
             unordered_map[c_string, c_string] c_labels
-            unordered_map[c_string, c_string] c_label_selector
+            CLabelSelector c_label_selector
+            c_vector[CFallbackOption] c_fallback_strategy
             c_string call_site
 
         self.python_scheduling_strategy_to_c(
@@ -3734,6 +3808,7 @@ cdef class CoreWorker:
             prepare_resources(placement_resources, &c_placement_resources)
             prepare_labels(labels, &c_labels)
             prepare_label_selector(label_selector, &c_label_selector)
+            prepare_fallback_strategy(fallback_strategy, &c_fallback_strategy)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -3763,7 +3838,8 @@ cdef class CoreWorker:
                         enable_tensor_transport,
                         enable_task_events,
                         c_labels,
-                        c_label_selector),
+                        c_label_selector,
+                        c_fallback_strategy),
                     extension_data,
                     call_site,
                     &c_actor_id,
@@ -3878,9 +3954,10 @@ cdef class CoreWorker:
             c_string serialized_retry_exception_allowlist
             c_string serialized_runtime_env = b"{}"
             unordered_map[c_string, c_string] c_labels
-            unordered_map[c_string, c_string] c_label_selector
+            CLabelSelector c_label_selector
             c_string call_site
             CTensorTransport c_tensor_transport_val
+            c_vector[CFallbackOption] c_fallback_strategy
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
@@ -3917,7 +3994,8 @@ cdef class CoreWorker:
                         enable_task_events,
                         c_labels,
                         c_label_selector,
-                        c_tensor_transport_val),
+                        c_tensor_transport_val,
+                        c_fallback_strategy),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,

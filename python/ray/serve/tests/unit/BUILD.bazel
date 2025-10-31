@@ -20,7 +20,8 @@ py_test_run_all_subdirectory(
 )
 
 py_test_module_list(
-    size = "medium",
+    size = "small",
+    timeout = "short",
     env = {
         "RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1",
         "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
@@ -71,7 +72,6 @@ py_test_module_list_with_env_variants(
     files = [
         "test_autoscaling_policy.py",
         "test_controller.py",
-        "test_deployment_scheduler.py",
         "test_deployment_state.py",
         "test_router.py",
     ],

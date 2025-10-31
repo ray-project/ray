@@ -2,10 +2,12 @@ import copy
 import logging
 import queue
 from typing import Dict, List, Optional, Set, Tuple, Type, Union
+
 from typing_extensions import Self
 
 import ray
 from ray import ObjectRef
+from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -22,7 +24,6 @@ from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.metrics import (
     AGGREGATOR_ACTOR_RESULTS,
     ALL_MODULES,
@@ -46,6 +47,10 @@ from ray.rllib.utils.metrics import (
     TIMERS,
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
+from ray.rllib.utils.metrics.ray_metrics import (
+    DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+    TimerAndPrometheusLogger,
+)
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 from ray.rllib.utils.schedules.scheduler import Scheduler
@@ -55,7 +60,7 @@ from ray.rllib.utils.typing import (
     ResultDict,
     SampleBatchType,
 )
-
+from ray.util.metrics import Counter, Histogram
 
 logger = logging.getLogger(__name__)
 
@@ -598,237 +603,283 @@ class IMPALA(Algorithm):
 
     @override(Algorithm)
     def training_step(self):
-        # Old API stack.
-        if not self.config.enable_rl_module_and_learner:
-            return self._training_step_old_api_stack()
+        with TimerAndPrometheusLogger(self._metrics_impala_training_step_time):
+            # Old API stack.
+            if not self.config.enable_rl_module_and_learner:
+                return self._training_step_old_api_stack()
 
-        do_async_updates = self.config.num_learners > 0
+            do_async_updates = self.config.num_learners > 0
 
-        # Asynchronously request all EnvRunners to sample and return their current
-        # (e.g. ConnectorV2) states and sampling metrics/stats.
-        # Note that each item in `episode_refs` is a reference to a list of Episodes.
-        with self.metrics.log_time((TIMERS, SAMPLE_TIMER)):
-            (
-                episode_refs,
-                connector_states,
-                env_runner_metrics,
-                env_runner_indices_to_update,
-            ) = self._sample_and_get_connector_states()
-            # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.aggregate(
-                env_runner_metrics,
-                key=ENV_RUNNER_RESULTS,
-            )
-
-            # Log the average number of sample results (list of episodes) received.
-            self.metrics.log_value(
-                (ENV_RUNNER_RESULTS, MEAN_NUM_EPISODE_LISTS_RECEIVED),
-                len(episode_refs),
-            )
-
-        # Only run EnvRunners, nothing else.
-        if self.config._env_runners_only:
-            return
-
-        # "Batch" collected episode refs into groups, such that exactly
-        # `total_train_batch_size` timesteps are sent to
-        # `LearnerGroup.update()`.
-        if self.config.num_aggregator_actors_per_learner > 0:
-            data_packages_for_aggregators = self._pre_queue_episode_refs(
-                episode_refs, package_size=self.config.train_batch_size_per_learner
-            )
-            self.metrics.log_value(
-                (AGGREGATOR_ACTOR_RESULTS, "mean_num_input_packages"),
-                len(episode_refs),
-            )
-
-            ma_batches_refs_remote_results = (
-                self._aggregator_actor_manager.fetch_ready_async_reqs(
-                    return_obj_refs=True,
-                    tags="get_batches",
-                )
-            )
-            ma_batches_refs = []
-            for call_result in ma_batches_refs_remote_results:
-                ma_batches_refs.append((call_result.actor_id, call_result.get()))
-            self.metrics.log_value(
-                (AGGREGATOR_ACTOR_RESULTS, "mean_num_output_batches"),
-                len(ma_batches_refs),
-            )
-
-            while data_packages_for_aggregators:
-                num_agg = self.config.num_aggregator_actors_per_learner * (
-                    self.config.num_learners or 1
-                )
-                packs, data_packages_for_aggregators = (
-                    data_packages_for_aggregators[:num_agg],
-                    data_packages_for_aggregators[num_agg:],
-                )
-                sent = self._aggregator_actor_manager.foreach_actor_async(
-                    func="get_batch",
-                    kwargs=[dict(episode_refs=p) for p in packs],
-                    tag="get_batches",
-                )
-                self.metrics.log_value(
-                    (AGGREGATOR_ACTOR_RESULTS, "num_env_steps_dropped_lifetime"),
-                    self.config.train_batch_size_per_learner * (len(packs) - sent),
-                    reduce="sum",
-                )
-
-            # Get n lists of m ObjRef[MABatch] (m=num_learners) to perform n calls to
-            # all learner workers with the already GPU-located batches.
-            data_packages_for_learner_group = self._pre_queue_batch_refs(
-                ma_batches_refs
-            )
-            self.metrics.log_value(
-                (AGGREGATOR_ACTOR_RESULTS, "num_env_steps_aggregated_lifetime"),
-                self.config.train_batch_size_per_learner
-                * (self.config.num_learners or 1)
-                * len(data_packages_for_learner_group),
-                reduce="sum",
-                with_throughput=True,
-            )
-
-        else:
-            data_packages_for_learner_group = self._pre_queue_episode_refs(
-                episode_refs, package_size=self.config.total_train_batch_size
-            )
-
-        # Skip Learner update calls.
-        if self.config._skip_learners:
-            return
-
-        # Call the LearnerGroup's `update()` method.
-        with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-            self.metrics.log_value(
-                key=MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED,
-                value=len(data_packages_for_learner_group),
-            )
-            rl_module_state = None
-            num_learner_group_results_received = 0
-
-            return_state = (
-                self.metrics.peek(
-                    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
-                    default=0,
-                )
-                >= self.config.broadcast_interval
-            )
-
-            for batch_ref_or_episode_list_ref in data_packages_for_learner_group:
-                timesteps = {
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
-                    ),
-                    NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                        (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
-                        default=0,
-                    ),
-                }
-                # Update from batch refs coming from AggregatorActors.
-                if self.config.num_aggregator_actors_per_learner > 0:
-                    assert len(batch_ref_or_episode_list_ref) == (
-                        self.config.num_learners or 1
-                    )
-                    training_data = TrainingData(
-                        batch_refs=batch_ref_or_episode_list_ref
-                    )
-                # Update from episodes refs coming from EnvRunner actors.
-                else:
-                    training_data = TrainingData(
-                        episodes_refs=batch_ref_or_episode_list_ref
-                    )
-                learner_results = self.learner_group.update(
-                    training_data=training_data,
-                    async_update=do_async_updates,
-                    return_state=return_state,
-                    timesteps=timesteps,
-                    num_epochs=self.config.num_epochs,
-                    minibatch_size=self.config.minibatch_size,
-                    shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
-                )
-                # Only request weights from 1st Learner - at most - once per
-                # `training_step` call.
-                return_state = False
-
-                num_learner_group_results_received += len(learner_results)
-                # Extract the last (most recent) weights matrix, if available.
-                for result_from_1_learner in learner_results:
-                    rl_module_state = result_from_1_learner.pop(
-                        "_rl_module_state_after_update", rl_module_state
-                    )
+            # Asynchronously request all EnvRunners to sample and return their current
+            # (e.g. ConnectorV2) states and sampling metrics/stats.
+            # Note that each item in `episode_refs` is a reference to a list of Episodes.
+            with self.metrics.log_time((TIMERS, SAMPLE_TIMER)):
+                (
+                    episode_refs,
+                    connector_states,
+                    env_runner_metrics,
+                    env_runner_indices_to_update,
+                ) = self._sample_and_get_connector_states()
+                # Reduce EnvRunner metrics over the n EnvRunners.
                 self.metrics.aggregate(
-                    stats_dicts=learner_results,
-                    key=LEARNER_RESULTS,
+                    env_runner_metrics,
+                    key=ENV_RUNNER_RESULTS,
                 )
+
+                # Log the average number of sample results (list of episodes) received.
+                self.metrics.log_value(
+                    (ENV_RUNNER_RESULTS, MEAN_NUM_EPISODE_LISTS_RECEIVED),
+                    len(episode_refs),
+                )
+
+            # Only run EnvRunners, nothing else.
+            if self.config._env_runners_only:
+                return
+
+            # "Batch" collected episode refs into groups, such that exactly
+            # `total_train_batch_size` timesteps are sent to
+            # `LearnerGroup.update()`.
+            if self.config.num_aggregator_actors_per_learner > 0:
+                with TimerAndPrometheusLogger(
+                    self._metrics_impala_training_step_aggregator_preprocessing_time
+                ):
+                    data_packages_for_aggregators = self._pre_queue_episode_refs(
+                        episode_refs,
+                        package_size=self.config.train_batch_size_per_learner,
+                    )
+                    self.metrics.log_value(
+                        (AGGREGATOR_ACTOR_RESULTS, "mean_num_input_packages"),
+                        len(episode_refs),
+                    )
+
+                    ma_batches_refs_remote_results = (
+                        self._aggregator_actor_manager.fetch_ready_async_reqs(
+                            return_obj_refs=True,
+                            tags="get_batches",
+                        )
+                    )
+                    ma_batches_refs = []
+                    for call_result in ma_batches_refs_remote_results:
+                        ma_batches_refs.append(
+                            (call_result.actor_id, call_result.get())
+                        )
+                    self.metrics.log_value(
+                        (AGGREGATOR_ACTOR_RESULTS, "mean_num_output_batches"),
+                        len(ma_batches_refs),
+                    )
+
+                    while data_packages_for_aggregators:
+                        num_agg = self.config.num_aggregator_actors_per_learner * (
+                            self.config.num_learners or 1
+                        )
+                        packs, data_packages_for_aggregators = (
+                            data_packages_for_aggregators[:num_agg],
+                            data_packages_for_aggregators[num_agg:],
+                        )
+                        sent = self._aggregator_actor_manager.foreach_actor_async(
+                            func="get_batch",
+                            kwargs=[dict(episode_refs=p) for p in packs],
+                            tag="get_batches",
+                        )
+
+                        _dropped = self.config.train_batch_size_per_learner * (
+                            len(packs) - sent
+                        )
+                        if _dropped > 0:
+                            self._metrics_impala_training_step_env_steps_dropped.inc(
+                                value=_dropped
+                            )
+                        self.metrics.log_value(
+                            (
+                                AGGREGATOR_ACTOR_RESULTS,
+                                "num_env_steps_dropped_lifetime",
+                            ),
+                            _dropped,
+                            reduce="sum",
+                        )
+                    # Get n lists of m ObjRef[MABatch] (m=num_learners) to perform n calls to
+                    # all learner workers with the already GPU-located batches.
+                    data_packages_for_learner_group = self._pre_queue_batch_refs(
+                        ma_batches_refs
+                    )
+                    if len(data_packages_for_learner_group) > 0:
+                        self._metrics_impala_training_step_input_batches.inc(
+                            value=len(data_packages_for_learner_group)
+                        )
+                    else:
+                        self._metrics_impala_training_step_zero_input_batches.inc(
+                            value=1
+                        )
+
+                    self.metrics.log_value(
+                        (AGGREGATOR_ACTOR_RESULTS, "num_env_steps_aggregated_lifetime"),
+                        self.config.train_batch_size_per_learner
+                        * (self.config.num_learners or 1)
+                        * len(data_packages_for_learner_group),
+                        reduce="sum",
+                        with_throughput=True,
+                    )
+
+            else:
+                data_packages_for_learner_group = self._pre_queue_episode_refs(
+                    episode_refs, package_size=self.config.total_train_batch_size
+                )
+
+            # Skip Learner update calls.
+            if self.config._skip_learners:
+                return
+
+            # Call the LearnerGroup's `update()` method.
+            with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
+                self.metrics.log_value(
+                    key=MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED,
+                    value=len(data_packages_for_learner_group),
+                )
+                rl_module_state = None
+                num_learner_group_results_received = 0
+
+                return_state = (
+                    self.metrics.peek(
+                        NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
+                        default=0,
+                    )
+                    >= self.config.broadcast_interval
+                )
+                with TimerAndPrometheusLogger(
+                    self._metrics_impala_training_step_learner_group_loop_time
+                ):
+                    for (
+                        batch_ref_or_episode_list_ref
+                    ) in data_packages_for_learner_group:
+                        timesteps = {
+                            NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                                default=0,
+                            ),
+                            NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
+                                (
+                                    LEARNER_RESULTS,
+                                    ALL_MODULES,
+                                    NUM_ENV_STEPS_TRAINED_LIFETIME,
+                                ),
+                                default=0,
+                            ),
+                        }
+                        # Update from batch refs coming from AggregatorActors.
+                        if self.config.num_aggregator_actors_per_learner > 0:
+                            assert len(batch_ref_or_episode_list_ref) == (
+                                self.config.num_learners or 1
+                            )
+                            training_data = TrainingData(
+                                batch_refs=batch_ref_or_episode_list_ref
+                            )
+                        # Update from episodes refs coming from EnvRunner actors.
+                        else:
+                            training_data = TrainingData(
+                                episodes_refs=batch_ref_or_episode_list_ref
+                            )
+                        learner_results = self.learner_group.update(
+                            training_data=training_data,
+                            async_update=do_async_updates,
+                            return_state=return_state,
+                            timesteps=timesteps,
+                            num_epochs=self.config.num_epochs,
+                            minibatch_size=self.config.minibatch_size,
+                            shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
+                        )
+                        # Only request weights from 1st Learner - at most - once per
+                        # `training_step` call.
+                        return_state = False
+
+                        num_learner_group_results_received += len(learner_results)
+                        # Extract the last (most recent) weights matrix, if available.
+                        for result_from_1_learner in learner_results:
+                            rl_module_state = result_from_1_learner.pop(
+                                "_rl_module_state_after_update", rl_module_state
+                            )
+                        self.metrics.aggregate(
+                            stats_dicts=learner_results,
+                            key=LEARNER_RESULTS,
+                        )
+                self.metrics.log_value(
+                    key=(LEARNER_GROUP, MEAN_NUM_LEARNER_RESULTS_RECEIVED),
+                    value=num_learner_group_results_received,
+                )
+
             self.metrics.log_value(
-                key=(LEARNER_GROUP, MEAN_NUM_LEARNER_RESULTS_RECEIVED),
-                value=num_learner_group_results_received,
+                NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 1, reduce="sum"
             )
 
-        self.metrics.log_value(
-            NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 1, reduce="sum"
-        )
+            # Update LearnerGroup's own stats.
+            self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
 
-        # Update LearnerGroup's own stats.
-        self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
-
-        # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
-        # Note: `learner_results` is a List of n (num async calls) Lists of m
-        # (num Learner workers) ResultDicts each.
-        if rl_module_state is not None:
-            self.metrics.set_value(
-                NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 0
-            )
-            self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
-            with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-                self.env_runner_group.sync_env_runner_states(
-                    config=self.config,
-                    connector_states=connector_states,
-                    rl_module_state=rl_module_state,
-                    env_to_module=self.env_to_module_connector,
-                    module_to_env=self.module_to_env_connector,
+            # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
+            # Note: `learner_results` is a List of n (num async calls) Lists of m
+            # (num Learner workers) ResultDicts each.
+            if rl_module_state is not None:
+                self.metrics.set_value(
+                    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 0
                 )
+                self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
+                with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
+                    with TimerAndPrometheusLogger(
+                        self._metrics_impala_training_step_sync_env_runner_state_time
+                    ):
+                        self.env_runner_group.sync_env_runner_states(
+                            config=self.config,
+                            connector_states=connector_states,
+                            rl_module_state=rl_module_state,
+                            env_to_module=self.env_to_module_connector,
+                            module_to_env=self.module_to_env_connector,
+                        )
 
     def _sample_and_get_connector_states(self):
-        env_runner_indices_to_update = set()
-        episode_refs = []
-        connector_states = []
-        env_runner_metrics = []
-        num_healthy_remote_workers = self.env_runner_group.num_healthy_remote_workers()
-
-        # Perform asynchronous sampling on all (healthy) remote rollout workers.
-        if num_healthy_remote_workers > 0:
-            async_results = self.env_runner_group.foreach_env_runner_async_fetch_ready(
-                func="sample_get_state_and_metrics",
-                timeout_seconds=self.config.timeout_s_sampler_manager,
-                return_obj_refs=False,
-                return_actor_ids=True,
+        with TimerAndPrometheusLogger(
+            self._metrics_impala_sample_and_get_connector_states_time
+        ):
+            env_runner_indices_to_update = set()
+            episode_refs = []
+            connector_states = []
+            env_runner_metrics = []
+            num_healthy_remote_workers = (
+                self.env_runner_group.num_healthy_remote_workers()
             )
-            # Get results from the n different async calls and store those EnvRunner
-            # indices we should update.
-            results = []
-            for r in async_results:
-                env_runner_indices_to_update.add(r[0])
-                results.append(r[1])
 
-            for (episodes, states, metrics) in results:
-                episode_refs.append(episodes)
-                connector_states.append(states)
-                env_runner_metrics.append(metrics)
-        # Sample from the local EnvRunner.
-        else:
-            episodes = self.env_runner.sample()
-            env_runner_metrics = [self.env_runner.get_metrics()]
-            episode_refs = [ray.put(episodes)]
-            connector_states = [
-                self.env_runner.get_state(
-                    components=[
-                        COMPONENT_ENV_TO_MODULE_CONNECTOR,
-                        COMPONENT_MODULE_TO_ENV_CONNECTOR,
-                    ]
+            # Perform asynchronous sampling on all (healthy) remote rollout workers.
+            if num_healthy_remote_workers > 0:
+                async_results = (
+                    self.env_runner_group.foreach_env_runner_async_fetch_ready(
+                        func="sample_get_state_and_metrics",
+                        tag="sample_get_state_and_metrics",
+                        timeout_seconds=self.config.timeout_s_sampler_manager,
+                        return_obj_refs=False,
+                        return_actor_ids=True,
+                    )
                 )
-            ]
+                # Get results from the n different async calls and store those EnvRunner
+                # indices we should update.
+                results = []
+                for r in async_results:
+                    env_runner_indices_to_update.add(r[0])
+                    results.append(r[1])
+
+                for (episodes, states, metrics) in results:
+                    episode_refs.append(episodes)
+                    connector_states.append(states)
+                    env_runner_metrics.append(metrics)
+            # Sample from the local EnvRunner.
+            else:
+                episodes = self.env_runner.sample()
+                env_runner_metrics = [self.env_runner.get_metrics()]
+                episode_refs = [ray.put(episodes)]
+                connector_states = [
+                    self.env_runner.get_state(
+                        components=[
+                            COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                            COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                        ]
+                    )
+                ]
 
         return (
             episode_refs,
@@ -886,6 +937,86 @@ class IMPALA(Algorithm):
 
         return batch_refs_for_learner_group
 
+    @override(Algorithm)
+    def _set_up_metrics(self):
+        super()._set_up_metrics()
+
+        self._metrics_impala_training_step_time = Histogram(
+            name="rllib_algorithms_impala_training_step_time",
+            description="Time spent in IMPALA.training_step()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_impala_training_step_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_impala_training_step_aggregator_preprocessing_time = Histogram(
+            name="rllib_algorithms_impala_training_step_aggregator_preprocessing_time",
+            description="Time spent preprocessing episodes with aggregator actor in the IMPALA.training_step()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_impala_training_step_aggregator_preprocessing_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_impala_training_step_learner_group_loop_time = Histogram(
+            name="rllib_algorithms_impala_training_step_learner_group_loop_time",
+            description="Time spent in the learner group update calls loop, in the IMPALA.training_step()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_impala_training_step_learner_group_loop_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_impala_training_step_sync_env_runner_state_time = Histogram(
+            name="rllib_algorithms_impala_training_step_sync_env_runner_state_time",
+            description="Time spent on syncing EnvRunner states in the IMPALA.training_step()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_impala_training_step_sync_env_runner_state_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_impala_sample_and_get_connector_states_time = Histogram(
+            name="rllib_algorithms_impala_sample_and_get_connector_states_time",
+            description="Time spent in IMPALA._sample_and_get_connector_states()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_impala_sample_and_get_connector_states_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_impala_training_step_input_batches = Counter(
+            name="rllib_algorithms_impala_training_step_input_batches_counter",
+            description="Number of input batches processed and passed to the learner in the IMPALA.training_step()",
+            tag_keys=("rllib",),
+        )
+        self._metrics_impala_training_step_input_batches.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_impala_training_step_zero_input_batches = Counter(
+            name="rllib_algorithms_impala_training_step_zero_input_batches_counter",
+            description="Number of times zero input batches were ready in the IMPALA.training_step()",
+            tag_keys=("rllib",),
+        )
+        self._metrics_impala_training_step_zero_input_batches.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+        self._metrics_impala_training_step_env_steps_dropped = Counter(
+            name="rllib_algorithms_impala_training_step_env_steps_dropped_counter",
+            description="Number of env steps dropped when sending data to the aggregator actors in the IMPALA.training_step()",
+            tag_keys=("rllib",),
+        )
+        self._metrics_impala_training_step_env_steps_dropped.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
     @OldAPIStack
     def _training_step_old_api_stack(self):
         # First, check, whether our learner thread is still healthy.
@@ -911,6 +1042,7 @@ class IMPALA(Algorithm):
         for batch in batches:
             self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+
         # Concatenate single batches into batches of size `total_train_batch_size`.
         self._concatenate_batches_and_pre_queue(batches)
         # Move train batches (of size `total_train_batch_size`) onto learner queue.
@@ -1115,6 +1247,7 @@ class IMPALA(Algorithm):
                 agent_steps,
                 learner_results,
             ) = self._learner_thread.outqueue.get(timeout=0.001)
+
             num_env_steps_trained += env_steps
             num_agent_steps_trained += agent_steps
             if learner_results:

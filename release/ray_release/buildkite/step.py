@@ -12,12 +12,12 @@ from ray_release.config import (
     get_test_project_id,
 )
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
+from ray_release.template import get_test_env_var
+from ray_release.util import DeferredEnvVar
 from ray_release.custom_byod_build_init_helper import (
     generate_custom_build_step_key,
     get_prerequisite_step,
 )
-from ray_release.template import get_test_env_var
-from ray_release.util import DeferredEnvVar
 
 DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 
@@ -141,6 +141,10 @@ def get_step(
     if smoke_test:
         cmd += ["--smoke-test"]
 
+    num_retries = test.get("run", {}).get("num_retries")
+    if num_retries:
+        step["retry"]["automatic"][0]["limit"] = num_retries
+
     step["plugins"][0][DOCKER_PLUGIN_KEY]["command"] = cmd
 
     env_to_use = test.get("env", DEFAULT_ENVIRONMENT)
@@ -198,10 +202,11 @@ def get_step(
     step["label"] = full_label
 
     image = test.get_anyscale_byod_image()
+    base_image = test.get_anyscale_base_byod_image()
     if test.require_custom_byod_image():
         step["depends_on"] = generate_custom_build_step_key(image)
     else:
-        step["depends_on"] = get_prerequisite_step(image)
+        step["depends_on"] = get_prerequisite_step(image, base_image)
 
     if block_step_key:
         if not step["depends_on"]:

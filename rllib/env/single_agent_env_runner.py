@@ -460,6 +460,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # Continue collecting into the cut Episode chunks.
             self._episodes = ongoing_episodes_continuations
 
+        # Ray metrics
+        self._log_env_steps(metric=self._metrics_num_env_steps_sampled, num_steps=ts)
+
         self._increase_sampled_metrics(ts, len(done_episodes_to_return))
 
         # Return collected episode data.

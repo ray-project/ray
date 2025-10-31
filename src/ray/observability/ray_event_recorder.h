@@ -18,6 +18,7 @@
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/periodical_runner.h"
+#include "ray/common/ray_config.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/observability/ray_event_interface.h"
 #include "ray/observability/ray_event_recorder_interface.h"
@@ -52,6 +53,8 @@ class RayEventRecorder : public RayEventRecorderInterface {
   void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list);
 
  private:
+  using RayEventKey = std::pair<std::string, rpc::events::RayEvent::EventType>;
+
   rpc::EventAggregatorClient &event_aggregator_client_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   // Lock for thread safety when modifying the buffer.

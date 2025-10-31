@@ -413,6 +413,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         truncateds=truncateds[env_index],
                         extra_model_outputs=extra_model_outputs,
                     )
+
+                    # Ray metrics
+                    self._log_env_steps(
+                        metric=self._metrics_num_env_steps_sampled, num_steps=1
+                    )
+
                     # Only increase ts when we actually stepped (not reset'd as a reset
                     # does not count as a timestep).
                     env_ts += self._increase_sampled_metrics(
