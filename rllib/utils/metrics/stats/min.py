@@ -16,7 +16,7 @@ class MinStats(SeriesStats):
     def _np_reduce_fn(self, values: np.ndarray) -> float:
         return np.nanmin(values)
 
-    def _torch_reduce_fn(self, values: torch.Tensor) -> torch.Tensor:
+    def _torch_reduce_fn(self, values: "torch.Tensor"):
         """Reduce function for torch tensors (stays on GPU)."""
         # torch.nanmin not available, use workaround
         clean_values = values[~torch.isnan(values)]

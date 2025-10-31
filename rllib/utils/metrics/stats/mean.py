@@ -29,7 +29,7 @@ class MeanStats(SeriesStats):
     def _np_reduce_fn(self, values: np.ndarray) -> float:
         return np.nanmean(values)
 
-    def _torch_reduce_fn(self, values: torch.Tensor) -> torch.Tensor:
+    def _torch_reduce_fn(self, values: "torch.Tensor"):
         """Reduce function for torch tensors (stays on GPU)."""
         return torch.nanmean(values.float())
 
