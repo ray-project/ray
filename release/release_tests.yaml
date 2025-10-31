@@ -3455,6 +3455,7 @@
 # Observability tests
 #####################
 - name: agent_stress_test
+  python: "3.10"
   group: core-observability-test
   working_dir: dashboard
 
@@ -3500,6 +3501,7 @@
     script: python run_gcs_ft_on_k8s.py
 
 - name: azure_cluster_launcher
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
   frequency: nightly
@@ -3521,6 +3523,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python -I launch_and_verify_cluster.py azure/tests/azure-cluster.yaml --num-expected-nodes 3 --retries 10
 
 - name: aws_cluster_launcher
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3544,6 +3547,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
 
 - name: aws_cluster_launcher_nightly_image
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3566,6 +3570,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override nightly
 
 - name: aws_cluster_launcher_latest_image
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3588,6 +3593,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override latest
 
 - name: aws_cluster_launcher_release_image
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3611,6 +3617,7 @@
 
 
 - name: aws_cluster_launcher_minimal
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3633,6 +3640,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/example-minimal.yaml
 
 - name: aws_cluster_launcher_full
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3655,6 +3663,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
 
 - name: gcp_cluster_launcher_minimal
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3680,6 +3689,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
 
 - name: gcp_cluster_launcher_full
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3730,6 +3740,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
 
 - name: gcp_cluster_launcher_nightly_image
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3755,6 +3766,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
 
 - name: gcp_cluster_launcher_release_image
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3780,6 +3792,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
 
 - name: gcp_cluster_launcher_gpu_docker
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
