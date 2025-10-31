@@ -468,18 +468,17 @@ bool ActorInfoAccessor::IsActorUnsubscribed(const ActorID &actor_id) {
 
 NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl) : client_impl_(client_impl) {}
 
-void NodeInfoAccessor::RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
+void NodeInfoAccessor::RegisterSelf(rpc::GcsNodeInfo &&local_node_info,
                                     const StatusCallback &callback) {
   auto node_id = NodeID::FromBinary(local_node_info.node_id());
   RAY_LOG(DEBUG).WithField(node_id)
       << "Registering node info, address is = " << local_node_info.node_manager_address();
   RAY_CHECK(local_node_info.state() == rpc::GcsNodeInfo::ALIVE);
   rpc::RegisterNodeRequest request;
-  request.mutable_node_info()->CopyFrom(local_node_info);
+  *request.mutable_node_info() = std::move(local_node_info);
   client_impl_->GetGcsRpcClient().RegisterNode(
       std::move(request),
-      [node_id, local_node_info, callback](const Status &status,
-                                           rpc::RegisterNodeReply &&) {
+      [node_id, callback](const Status &status, rpc::RegisterNodeReply &&) {
         if (callback) {
           callback(status);
         }
@@ -875,9 +874,7 @@ void NodeInfoAccessor::AsyncResubscribe() {
         /*done=*/
         [this](const Status &) {
           fetch_node_data_operation_([](const Status &) {
-            RAY_LOG(INFO)
-                << "Finished fetching all node information from gcs server after gcs "
-                   "server or pub-sub server is restarted.";
+            RAY_LOG(INFO) << "Finished fetching all node information for resubscription.";
           });
         });
   }
@@ -888,10 +885,8 @@ void NodeInfoAccessor::AsyncResubscribe() {
         /*done=*/
         [this](const Status &) {
           fetch_node_address_and_liveness_data_operation_([](const Status &) {
-            RAY_LOG(INFO)
-                << "Finished fetching all node address and liveness information from gcs "
-                   "server after gcs "
-                   "server or pub-sub server is restarted.";
+            RAY_LOG(INFO) << "Finished fetching all node address and liveness "
+                             "information for resubscription.";
           });
         });
   }
@@ -1532,7 +1527,7 @@ Status AutoscalerStateAccessor::RequestClusterResourceConstraint(
       auto *ls = new_resource_requests_by_count->mutable_request()->add_label_selectors();
       // Parse label_selector map to proto format.
       ray::LabelSelector label_selector(label_selectors[i]);
-      *ls = label_selector.ToProto();
+      label_selector.ToProto(ls);
     }
   }
 

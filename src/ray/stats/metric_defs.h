@@ -51,36 +51,6 @@ DECLARE_stats(operation_run_time_ms);
 DECLARE_stats(operation_queue_time_ms);
 DECLARE_stats(operation_active_count);
 
-/// GRPC server
-DECLARE_stats(grpc_server_req_process_time_ms);
-DECLARE_stats(grpc_server_req_new);
-DECLARE_stats(grpc_server_req_handling);
-DECLARE_stats(grpc_server_req_finished);
-DECLARE_stats(grpc_server_req_succeeded);
-DECLARE_stats(grpc_server_req_failed);
-
-/// GRPC Client Failures
-DECLARE_stats(grpc_client_req_failed);
-
-/// Object Manager.
-DECLARE_stats(object_manager_bytes);
-DECLARE_stats(object_manager_received_chunks);
-
-/// Pull Manager
-DECLARE_stats(pull_manager_usage_bytes);
-// TODO(sang): Remove pull_manager_active_bundles and
-// support active/inactive get/wait/task_args
-DECLARE_stats(pull_manager_requested_bundles);
-DECLARE_stats(pull_manager_requests);
-DECLARE_stats(pull_manager_active_bundles);
-DECLARE_stats(pull_manager_retries_total);
-DECLARE_stats(pull_manager_num_object_pins);
-DECLARE_stats(pull_manager_object_request_time_ms);
-
-/// Push Manager
-DECLARE_stats(push_manager_num_pushes_remaining);
-DECLARE_stats(push_manager_chunks);
-
 /// Scheduler
 DECLARE_stats(scheduler_failed_worker_startup_total);
 DECLARE_stats(scheduler_tasks);
@@ -99,7 +69,6 @@ DECLARE_stats(spill_manager_throughput_mb);
 
 /// Object Store
 DECLARE_stats(object_store_memory);
-DECLARE_stats(object_store_dist);
 
 /// Memory Manager
 DECLARE_stats(memory_manager_worker_eviction_total);

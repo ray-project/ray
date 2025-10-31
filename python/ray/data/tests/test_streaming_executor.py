@@ -2,7 +2,7 @@ import os
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
+from typing import List, Literal, Optional, Union
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -295,9 +295,6 @@ def test_get_eligible_operators_to_run(ray_start_regular_shared):
     memory_usage = {o1: 0, o2: 0, o3: 0}
     resource_manager.get_op_usage = MagicMock(
         side_effect=lambda op: ExecutionResources(0, 0, memory_usage[op])
-    )
-    resource_manager.op_resource_allocator.can_submit_new_task = MagicMock(
-        return_value=True
     )
 
     def _get_eligible_ops_to_run(ensure_liveness: bool):
@@ -973,12 +970,34 @@ def test_create_topology_metadata_with_sub_stages():
     assert sub_stage2.id.endswith("_sub_1")
 
 
-class TestDataOpTask:
-    def test_on_data_ready_single_output(self, ray_start_regular_shared):
-        @ray.remote
-        def map_task():
+def create_stub_streaming_gen(
+    block_nbytes: List[int], raise_exception: Optional[Exception] = None
+) -> ray.ObjectRefGenerator:
+    """Creating a streaming generator for testing.
+
+    The streaming generator passed to the ``DataOpTask`` constructor must yield blocks
+    then block metadata, and buffer the number of blocks specified by
+    ``_max_num_blocks_in_streaming_gen_buffer``. This function is a utility to create
+    streaming generators that satisfy these requirements.
+
+    Args:
+        block_nbytes: A list of the sizes of blocks yielded by the returned streaming
+            generator.
+        raise_exception: An exception that the streaming generator immediately raises.
+
+    Returns:
+        A streaming generator that you can pass to ``DataOpTask``.
+    """
+
+    @ray.remote
+    def stub_map_task():
+        if raise_exception is not None:
+            raise raise_exception
+
+        for nbytes in block_nbytes:
+            # Create a block with a single row of the specified size.
             builder = DelegatingBlockBuilder()
-            builder.add_batch({"data": np.zeros((1, 128 * MiB), dtype=np.uint8)})
+            builder.add_batch({"data": np.zeros((1, nbytes), dtype=np.uint8)})
             block = builder.build()
             yield block
 
@@ -988,56 +1007,74 @@ class TestDataOpTask:
                 block_metadata, schema=block_accessor.schema()
             )
 
+    generator_backpressure_num_objects = (
+        ray.data.DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer
+        * 2  # Multiply by two because we yield a metadata object for each block.
+    )
+    streaming_gen = stub_map_task.options(
+        _generator_backpressure_num_objects=generator_backpressure_num_objects
+    ).remote()
+
+    return streaming_gen
+
+
+@pytest.fixture
+def ensure_block_metadata_stored_in_plasma(monkeypatch):
+    # Ray inlines small objects (including metadata) by storing them directly with
+    # the object reference itself rather than in the remote node's object store.
+    # Consequently, when the streaming executor calls `ray.get` on metadata from a
+    # node that has died, the call succeeds because the inlined metadata is not
+    # stored in the failed node's object store. To explicitly test the case where
+    # metadata resides in the object store (and becomes unavailable when the node
+    # dies), we disable inlining by setting the maximum inline size to 0. This
+    # simulates scenarios where metadata is too large to inline, which can occur in
+    # practice when schemas contain many fields.
+    #
+    # For context, see https://github.com/ray-project/ray/pull/56451.
+    monkeypatch.setenv("RAY_max_direct_call_object_size", 0)
+
+
+class TestDataOpTask:
+    def test_on_data_ready_single_output(self, ray_start_regular_shared):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
+
         def verify_output(bundle):
-            assert bundle.num_rows() == 1, bundle.num_rows()
             assert bundle.size_bytes() == pytest.approx(128 * MiB), bundle.size_bytes()
 
-        has_completed = False
-
-        def verify_exception(exc: Optional[Exception]):
-            nonlocal has_completed
-
-            assert exc is None
-            has_completed = True
-
-        generator_backpressure_num_objects = (
-            ray.data.DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer
-            * 2  # Multiply by two because we yield a metadata object for each block.
-        )
-        streaming_gen = map_task.options(
-            _generator_backpressure_num_objects=generator_backpressure_num_objects
-        ).remote()
-
-        data_op_task = DataOpTask(
-            0,
-            streaming_gen,
-            output_ready_callback=verify_output,
-            task_done_callback=verify_exception,
-        )
+        data_op_task = DataOpTask(0, streaming_gen, output_ready_callback=verify_output)
 
         bytes_read = 0
-        while not has_completed:
+        while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            bytes_read += data_op_task.on_data_ready(None)
+            nbytes_read = data_op_task.on_data_ready(None)
+            bytes_read += nbytes_read
 
         assert bytes_read == pytest.approx(128 * MiB)
 
+    def test_on_data_ready_multiple_outputs(self, ray_start_regular_shared):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB, 128 * MiB])
+
+        def verify_output(bundle):
+            assert bundle.size_bytes() == pytest.approx(128 * MiB), bundle.size_bytes()
+
+        data_op_task = DataOpTask(0, streaming_gen, output_ready_callback=verify_output)
+
+        bytes_read = 0
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            nbytes_read = data_op_task.on_data_ready(None)
+            bytes_read += nbytes_read
+
+        assert bytes_read == pytest.approx(256 * MiB)
+
     def test_on_data_ready_exception(self, ray_start_regular_shared):
-        @ray.remote
-        def map_task():
-            assert False, "Block generation failed"
-            yield
+        streaming_gen = create_stub_streaming_gen(
+            block_nbytes=[128 * MiB],
+            raise_exception=AssertionError("Block generation failed"),
+        )
 
         def verify_exception(exc: Optional[Exception]):
             assert isinstance(exc, AssertionError)
-
-        generator_backpressure_num_objects = (
-            ray.data.DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer
-            * 2  # Multiply by two because we yield a metadata object for each block.
-        )
-        streaming_gen = map_task.options(
-            _generator_backpressure_num_objects=generator_backpressure_num_objects
-        ).remote()
 
         data_op_task = DataOpTask(
             0,
@@ -1046,9 +1083,94 @@ class TestDataOpTask:
         )
 
         with pytest.raises(AssertionError, match="Block generation failed"):
-            while True:
+            while not data_op_task.has_finished:
                 ray.wait([streaming_gen], fetch_local=False)
                 data_op_task.on_data_ready(None)
+
+    @pytest.mark.parametrize(
+        "preempt_on", ["block_ready_callback", "metadata_ready_callback"]
+    )
+    def test_on_data_ready_with_preemption_during_call(
+        self,
+        preempt_on: Union[
+            Literal["block_ready_callback"], Literal["metadata_ready_callback"]
+        ],
+        ray_start_cluster_enabled,
+        ensure_block_metadata_stored_in_plasma,
+    ):
+        """Test that ``on_data_ready`` works when a node dies during its execution."""
+        # Shutdown Ray incase it's already initialized.
+        ray.shutdown()
+
+        # Create a single-worker-node cluster with 1 logical CPU.
+        cluster = ray_start_cluster_enabled
+        head_node = cluster.add_node(num_cpus=0)  # noqa: F841
+        cluster.wait_for_nodes()
+        ray.init()
+
+        worker_node = cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+
+        # Create a streaming generator that produces a single 128 MiB output block, and
+        # configure it so that it preempts the worker node in the specified callback.
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
+
+        def remove_and_add_back_worker_node(_):
+            cluster.remove_node(worker_node)
+
+            new_worker_node = cluster.add_node(num_cpus=1)  # noqa: F841
+            cluster.wait_for_nodes()
+
+        data_op_task = DataOpTask(
+            0, streaming_gen, **{preempt_on: remove_and_add_back_worker_node}
+        )
+
+        # Run the task to completion.
+        bytes_read = 0
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            bytes_read += data_op_task.on_data_ready(None)
+
+        # Ensure that we read the expected amount of data. Since the streaming generator
+        # yields a single 128 MiB block, we should read 128 MiB.
+        assert bytes_read == pytest.approx(128 * MiB)
+
+    def test_on_data_ready_with_preemption_after_wait(
+        self, ray_start_cluster_enabled, ensure_block_metadata_stored_in_plasma
+    ):
+        # Shutdown Ray incase it's already initialized.
+        ray.shutdown()
+
+        # Create a single-worker-node cluster with 1 logical CPU.
+        cluster = ray_start_cluster_enabled
+        head_node = cluster.add_node(num_cpus=0)  # noqa: F841
+        cluster.wait_for_nodes()
+        ray.init()
+
+        worker_node = cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+
+        # Create a streaming generator that produces a single 128 MiB output block.
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
+        data_op_task = DataOpTask(0, streaming_gen)
+
+        # Wait for the block to be ready, then remove the worker node.
+        ray.wait([streaming_gen], fetch_local=False)
+        cluster.remove_node(worker_node)
+
+        # The block shouldn't be available anymore, so we shouldn't read any data.
+        bytes_read = data_op_task.on_data_ready(None)
+        assert bytes_read == 0
+
+        # Re-add the worker node, and run the task to completion.
+        new_worker_node = cluster.add_node(num_cpus=1)  # noqa: F841
+        cluster.wait_for_nodes()
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            bytes_read += data_op_task.on_data_ready(None)
+
+        # We should now be able to read the 128 MiB block.
+        assert bytes_read == pytest.approx(128 * MiB)
 
 
 if __name__ == "__main__":

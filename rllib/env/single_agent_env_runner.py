@@ -1,14 +1,15 @@
-from collections import defaultdict
-from functools import partial
 import logging
 import math
 import time
+from collections import defaultdict
+from functools import partial
 from typing import Collection, DefaultDict, List, Optional, Union
 
 import gymnasium as gym
-import ray
 from gymnasium.wrappers.vector import DictInfoToList
 
+import ray
+from ray._common.deprecation import Deprecated
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.callbacks.utils import make_callback
@@ -29,7 +30,6 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray._common.deprecation import Deprecated
 from ray.rllib.utils.framework import get_device
 from ray.rllib.utils.metrics import (
     ENV_TO_MODULE_CONNECTOR,
@@ -459,6 +459,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
             # Continue collecting into the cut Episode chunks.
             self._episodes = ongoing_episodes_continuations
+
+        # Ray metrics
+        self._log_env_steps(metric=self._metrics_num_env_steps_sampled, num_steps=ts)
 
         self._increase_sampled_metrics(ts, len(done_episodes_to_return))
 

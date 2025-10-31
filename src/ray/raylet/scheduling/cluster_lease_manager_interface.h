@@ -97,11 +97,11 @@ class ClusterLeaseManagerInterface {
   ///                         but no spillback.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  virtual void QueueAndScheduleLease(RayLease lease,
-                                     bool grant_or_reject,
-                                     bool is_selected_based_on_locality,
-                                     rpc::RequestWorkerLeaseReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) = 0;
+  virtual void QueueAndScheduleLease(
+      RayLease lease,
+      bool grant_or_reject,
+      bool is_selected_based_on_locality,
+      std::vector<internal::ReplyCallback> reply_callbacks) = 0;
 
   /// Return with an exemplar if any leases are pending resource acquisition.
   ///
@@ -117,6 +117,29 @@ class ClusterLeaseManagerInterface {
 
   /// Record the internal metrics.
   virtual void RecordMetrics() const = 0;
+
+  /// Check if a lease is queued.
+  ///
+  /// \param scheduling_class: The scheduling class of the lease.
+  /// \param lease_id: The lease id of the lease.
+  ///
+  /// \return True if the lease is queued in leases_to_schedule_ or infeasible_leases_.
+  virtual bool IsLeaseQueued(const SchedulingClass &scheduling_class,
+                             const LeaseID &lease_id) const = 0;
+
+  /// Add a reply callback to the lease. We don't overwrite the existing reply callback
+  /// since due to message reordering we may receive the retry before the initial request.
+  ///
+  /// \param scheduling_class: The scheduling class of the lease.
+  /// \param lease_id: The lease id of the lease.
+  /// \param send_reply_callback: The callback used for the reply.
+  /// \param reply: The reply of the lease request.
+  ///
+  /// \return True if the reply callback is added successfully.
+  virtual bool AddReplyCallback(const SchedulingClass &scheduling_class,
+                                const LeaseID &lease_id,
+                                rpc::SendReplyCallback send_reply_callback,
+                                rpc::RequestWorkerLeaseReply *reply) = 0;
 };
 }  // namespace raylet
 }  // namespace ray

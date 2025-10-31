@@ -98,5 +98,9 @@ class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
     def get_current_projection(self) -> Optional[List[str]]:
         return None
 
-    def apply_projection(self, columns: Optional[List[str]]) -> LogicalOperator:
+    def apply_projection(
+        self,
+        columns: Optional[List[str]],
+        column_rename_map: Optional[Dict[str, str]],
+    ) -> LogicalOperator:
         return self

@@ -68,15 +68,6 @@ steps:
     key: block-validate-macos-wheels
     depends_on: []
 
-  - label: "MacOS x86_64"
-    key: validate-macos-x86_64-wheels
-    depends_on:
-      - block-validate-macos-wheels
-    job_env: MACOS
-    instance_type: macos
-    commands:
-      - ./.buildkite/release-automation/verify-macos-wheels.sh x86_64
-
   - label: "MacOS arm64"
     key: validate-macos-arm64-wheels
     depends_on:
@@ -84,7 +75,7 @@ steps:
     job_env: MACOS
     instance_type: macos-arm64
     commands:
-      - ./.buildkite/release-automation/verify-macos-wheels.sh arm64
+      - bash .buildkite/release-automation/verify-macos-wheels.sh
 
   - block: "Upload wheels to PyPI"
     key: block-upload-wheels-pypi
