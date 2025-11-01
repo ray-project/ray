@@ -17,7 +17,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.state as global_state
 import ray.dashboard.consts as dashboard_consts
-from ray._common.network_utils import parse_address
+from ray._common.network_utils import find_free_port, parse_address
 from ray._common.test_utils import (
     SignalActor,
     async_wait_for_condition,
@@ -28,10 +28,7 @@ from ray._private.state_api_test_utils import (
     get_state_api_manager,
     verify_schema,
 )
-from ray._private.test_utils import (
-    find_free_port,
-    run_string_as_driver,
-)
+from ray._private.test_utils import run_string_as_driver
 from ray._raylet import ActorID, GcsClient, JobID, NodeID, TaskID
 from ray.cluster_utils import cluster_not_supported
 from ray.core.generated.common_pb2 import (
