@@ -312,7 +312,9 @@ class MockReplicaActorWrapper:
     def get_routing_stats(self) -> Dict[str, Any]:
         return {}
 
-    def poll_outbound_deployments(self, poll_period_s: float) -> Optional[List[str]]:
+    def poll_outbound_deployments(
+        self, poll_period_s: float
+    ) -> Optional[List[DeploymentID]]:
         """Mock method for polling outbound deployments."""
         return getattr(self, "_outbound_deployments", None)
 
