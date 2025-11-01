@@ -1,12 +1,22 @@
 import abc
 import base64
 import collections
+import logging
 import pickle
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, final
 
 from ray.air.util.data_batch_conversion import BatchFormat
+from ray.data.preprocessors.serialization_handlers import (
+    HandlerFormatName,
+    PickleSerializationHandler,
+    SerializationHandlerFactory,
+)
+from ray.data.preprocessors.version_support import (
+    UnknownPreprocessorError,
+    _lookup_class,
+)
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -15,6 +25,9 @@ if TYPE_CHECKING:
 
     from ray.air.data_batch_type import DataBatchType
     from ray.data.dataset import Dataset
+
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="beta")
@@ -128,6 +141,9 @@ class Preprocessor(abc.ABC):
     def _fit_execute(self, dataset: "Dataset"):
         self.stats_ |= self.stat_computation_plan.compute(dataset)
         return self
+
+    def has_stats(self) -> bool:
+        return hasattr(self, "stats_") and len(self.stats_) > 0
 
     def fit_transform(
         self,
@@ -384,13 +400,19 @@ class Preprocessor(abc.ABC):
         """
         return BatchFormat.PANDAS
 
-    def __getstate__(self):
+    def get_input_columns(self) -> List[str]:
+        return getattr(self, "columns", [])
+
+    def get_output_columns(self) -> List[str]:
+        return getattr(self, "output_columns", [])
+
+    def __getstate__(self) -> Dict[str, Any]:
         state = self.__dict__.copy()
         # Exclude unpicklable attributes
         state.pop("stat_computation_plan", None)
         return state
 
-    def __setstate__(self, state):
+    def __setstate__(self, state: Dict[str, Any]):
         from ray.data.preprocessors.utils import StatComputationPlan
 
         self.__dict__.update(state)
@@ -399,7 +421,6 @@ class Preprocessor(abc.ABC):
     @DeveloperAPI
     def serialize(self) -> str:
         """Return this preprocessor serialized as a string.
-
         Note: This is not a stable serialization format as it uses `pickle`.
         """
         # Convert it to a plain string so that it can be included as JSON metadata
@@ -411,3 +432,296 @@ class Preprocessor(abc.ABC):
     def deserialize(serialized: str) -> "Preprocessor":
         """Load the original preprocessor serialized via `self.serialize()`."""
         return pickle.loads(base64.b64decode(serialized))
+
+
+class SerializablePreprocessorBase(Preprocessor, abc.ABC):
+    """Abstract base class for serializable preprocessors.
+
+    This class defines the serialization interface that all preprocessors must implement
+    to support saving and loading their state. The serialization system uses CloudPickle
+    as the primary format.
+
+    **Architecture Overview:**
+
+    The serialization system is built around two types of methods:
+
+    1. **Final Methods (DO NOT OVERRIDE):**
+       - ``serialize()``: Orchestrates the serialization process
+       - ``deserialize()``: Orchestrates the deserialization process
+
+       These methods are marked as ``@final`` and should never be overridden by
+       subclasses. They handle format detection, factory coordination, and error handling.
+
+    2. **Abstract Methods (MUST IMPLEMENT):**
+       - ``_get_serializable_fields()``: Extract instance fields for serialization
+       - ``_set_serializable_fields()``: Restore instance fields from deserialization
+       - ``_get_stats()``: Extract computed statistics for serialization
+       - ``_set_stats()``: Restore computed statistics from deserialization
+
+       These methods must be implemented by each preprocessor subclass to define
+       their specific serialization behavior.
+
+    **Format Support:**
+
+    - **CloudPickle** (default):
+    - **Pickle** (legacy): Backward compatibility for existing serialized data
+
+    **Important Notes:**
+
+    - Never override ``serialize()`` or ``deserialize()`` in subclasses
+    - Always call ``super().__init__()`` in subclass constructors
+    - Use ``_fitted`` attribute to track fitting state
+    - Store computed statistics in ``stats_`` dictionary
+    - Handle version migration and backwards compatibility in ``_set_serializable_fields()`` if needed
+    """
+
+    class SerializationFormat(Enum):
+        CLOUDPICKLE = "cloudpickle"
+        PICKLE = "pickle"  # legacy
+
+    MAGIC_CLOUDPICKLE = b"CPKL:"
+    SERIALIZER_FORMAT_VERSION = 1
+
+    @abc.abstractmethod
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        """Extract instance fields that should be serialized.
+
+        This method should return a dictionary containing all instance attributes
+        that are necessary to restore the preprocessor's configuration state.
+        This typically includes constructor parameters and internal state flags.
+
+        Returns:
+            Dictionary mapping field names to their values
+        """
+        pass
+
+    @abc.abstractmethod
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        """Restore instance fields from deserialized data.
+
+        This method should restore the preprocessor's configuration state from
+        the provided fields' dictionary. It's called during deserialization to
+        recreate the instance state.
+
+        **Version Migration:**
+
+        If the serialized version differs from the current ``VERSION``,
+        implement migration logic to handle schema changes:
+
+        .. testcode::
+
+            def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+                # Handle version migration
+                if version == 1 and self.VERSION == 2:
+                    # Migrate from version 1 to 2
+                    if "old_field" in fields:
+                        fields["new_field"] = migrate_old_field(fields.pop("old_field"))
+
+                # Set all fields
+                for key, value in fields.items():
+                    setattr(self, key, value)
+
+                # Reinitialize derived state
+                self.stat_computation_plan = StatComputationPlan()
+
+        Args:
+            fields: Dictionary of field names to values
+            version: Version of the serialized data
+        """
+        pass
+
+    def _get_stats(self) -> Dict[str, Any]:
+        """Extract computed statistics that should be serialized.
+
+        This method should return the computed statistics that were generated
+        during the ``fit()`` process. These statistics are typically stored in
+        the ``stats_`` attribute and contain the learned parameters needed for
+        transformation.
+
+        Returns:
+            Dictionary containing computed statistics
+        """
+        return getattr(self, "stats_", {})
+
+    def _set_stats(self, stats: Dict[str, Any]):
+        """Restore computed statistics from deserialized data.
+
+        This method should restore the preprocessor's computed statistics from
+        the provided stats dictionary. These statistics are typically stored in
+        the ``stats_`` attribute and contain learned parameters from fitting.
+
+        Args:
+            stats: Dictionary containing computed statistics
+        """
+        self.stats_ = stats
+
+    @classmethod
+    def get_preprocessor_class_id(cls) -> str:
+        """Get the preprocessor class identifier for this preprocessor class.
+
+        Returns:
+            The preprocessor class identifier string used to identify this preprocessor
+            type in serialized data.
+        """
+        return cls.__PREPROCESSOR_CLASS_ID
+
+    @classmethod
+    def set_preprocessor_class_id(cls, identifier: str) -> None:
+        """Set the preprocessor class identifier for this preprocessor class.
+
+        Args:
+            identifier: The preprocessor class identifier string to use.
+        """
+        cls.__PREPROCESSOR_CLASS_ID = identifier
+
+    @classmethod
+    def get_version(cls) -> int:
+        """Get the version number for this preprocessor class.
+
+        Returns:
+            The version number for this preprocessor's serialization format.
+        """
+        return cls.__VERSION
+
+    @classmethod
+    def set_version(cls, version: int) -> None:
+        """Set the version number for this preprocessor class.
+
+        Args:
+            version: The version number for this preprocessor's serialization format.
+        """
+        cls.__VERSION = version
+
+    @final
+    @DeveloperAPI
+    def serialize(self) -> Union[str, bytes]:
+        """Serialize this preprocessor to a string or bytes.
+
+        **⚠️ DO NOT OVERRIDE THIS METHOD IN SUBCLASSES ⚠️**
+
+        This method is marked as ``@final`` in the concrete implementation and handles
+        the complete serialization orchestration. Subclasses should implement the
+        abstract methods instead: ``_get_serializable_fields()`` and ``_get_stats()``.
+
+        **Serialization Process:**
+
+        1. Extracts fields via ``_get_serializable_fields()``
+        2. Extracts statistics via ``_get_stats()``
+        3. Packages data with metadata (type, version, format)
+        4. Delegates to ``SerializationHandlerFactory`` for format-specific handling
+        5. Returns serialized data with magic bytes for format identification
+
+        **Supported Formats:**
+
+        - **CloudPickle** (default):
+        - **Pickle** (legacy): Backward compatibility for existing serialized data
+
+        Args:
+            output_format: The serialization format to use
+
+        Returns:
+            Serialized preprocessor data (bytes for CloudPickle, str for legacy Pickle)
+
+        Raises:
+            ValueError: If the serialization format is invalid or unsupported
+        """
+        # Prepare data for CloudPickle format
+        data = {
+            "type": self.get_preprocessor_class_id(),
+            "version": self.get_version(),
+            "fields": self._get_serializable_fields(),
+            "stats": self._get_stats(),
+            # The `serializer_format_version` field is for versioning the structure of this
+            # dictionary. It is separate from the preprocessor's own version and is not used currently.
+            "serializer_format_version": self.SERIALIZER_FORMAT_VERSION,
+        }
+
+        return SerializationHandlerFactory.get_handler(
+            format_identifier=HandlerFormatName.CLOUDPICKLE
+        ).serialize(data)
+
+    @final
+    @staticmethod
+    @DeveloperAPI
+    def deserialize(serialized: Union[str, bytes]) -> "Preprocessor":
+        """Deserialize a preprocessor from serialized data.
+
+        **⚠️ DO NOT OVERRIDE THIS METHOD IN SUBCLASSES ⚠️**
+
+        This method is marked as ``@final`` in the concrete implementation and handles
+        the complete deserialization orchestration. Subclasses should implement the
+        abstract methods instead: ``_set_serializable_fields()`` and ``_set_stats()``.
+
+        **Deserialization Process:**
+
+        1. Detects format from magic bytes in serialized data
+        2. Delegates to ``SerializationHandlerFactory`` for format-specific parsing
+        3. Extracts metadata (type, version, fields, stats)
+        4. Looks up preprocessor class from registry
+        5. Creates new instance and restores state via abstract methods
+        6. Returns fully reconstructed preprocessor instance
+
+        **Format Detection:**
+
+        The method automatically detects the serialization format:
+        - ``CPKL:`` → CloudPickle format
+        - Base64 string → Legacy Pickle format
+
+        **Error Handling:**
+
+        Provides comprehensive error handling for:
+        - Unknown serialization formats
+        - Corrupted or invalid data
+        - Missing preprocessor types
+        - Version compatibility issues
+
+        Args:
+            serialized: Serialized preprocessor data (bytes or str)
+
+        Returns:
+            Reconstructed preprocessor instance
+
+        Raises:
+            ValueError: If the serialized data is corrupted or format is unrecognized
+            UnknownPreprocessorError: If the preprocessor type is not registered
+        """
+        try:
+            # Use factory to deserialize all formats (auto-detects format)
+            handler = SerializationHandlerFactory.get_handler(data=serialized)
+            meta = handler.deserialize(serialized)
+
+            # Handle pickle specially - it returns the object directly
+            if isinstance(handler, PickleSerializationHandler):
+                return meta  # For pickle, meta is actually the deserialized object
+
+            # Reconstruct the preprocessor object for structured formats
+            cls = _lookup_class(meta["type"])
+
+            # Validate metadata
+            if meta["serializer_format_version"] != cls.SERIALIZER_FORMAT_VERSION:
+                raise ValueError(
+                    f"Unsupported serializer format version: {meta['serializer_format_version']}"
+                )
+
+            obj = cls.__new__(cls)
+
+            # handle base class fields here
+            from ray.data.preprocessors.utils import StatComputationPlan
+
+            obj.stat_computation_plan = StatComputationPlan()
+
+            obj._set_serializable_fields(fields=meta["fields"], version=meta["version"])
+
+            obj._set_stats(stats=meta["stats"])
+            return obj
+        except UnknownPreprocessorError:
+            # Let UnknownPreprocessorError pass through unchanged for specific error handling
+            raise
+        except Exception as e:
+            # Provide more helpful error message for other exception types
+            raise ValueError(
+                f"Failed to deserialize preprocessor. Data preview: {serialized[:50]}..."
+            ) from e
+
+
+SerializationFormat = SerializablePreprocessorBase.SerializationFormat
