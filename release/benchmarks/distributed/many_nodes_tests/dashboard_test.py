@@ -11,8 +11,6 @@ import os
 
 from collections import defaultdict
 from ray.util.state import list_nodes
-from ray._common.prometheus_utils import fetch_prometheus_metrics
-from ray._common.network_utils import build_address
 from ray._private.test_utils import get_system_metric_for_component
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from pydantic import BaseModel

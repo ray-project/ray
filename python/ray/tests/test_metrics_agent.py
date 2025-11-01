@@ -29,7 +29,6 @@ from ray._private.metrics_agent import (
 )
 from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.test_utils import (
-    find_free_port,
     get_log_batch,
     raw_metric_timeseries,
 )
