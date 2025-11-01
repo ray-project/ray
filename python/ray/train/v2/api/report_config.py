@@ -19,3 +19,20 @@ class CheckpointUploadMode(Enum):
 
     def _default_delete_local_checkpoint_after_upload(self) -> bool:
         return self == CheckpointUploadMode.ASYNC
+
+
+@PublicAPI(stability="alpha")
+class CheckpointView(Enum):
+    """Read semantics for checkpoint retrieval.
+
+    Args:
+        LIVE: View the currently uploaded checkpoints without blocking.
+        UPLOADED: Block until the checkpoint from the latest ray.train.report
+            has been uploaded.
+        VALIDATED: Block until the checkpoint from the latest ray.train.report
+            has been uploaded and validated.
+    """
+
+    LIVE = "LIVE"
+    UPLOADED = "UPLOADED"
+    VALIDATED = "VALIDATED"
