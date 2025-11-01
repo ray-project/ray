@@ -29,9 +29,10 @@ class StatsBase(metaclass=ABCMeta):
     ):
         """Initializes a StatsBase object.
 
-        We log to stats in two different ways:
-        - On a parallel component (leaf), in which case we aggregate at the root level
-        - On a root level, in which case the root is also a leaf
+        We log to stats in three different ways:
+        - On a parallel component (leaf), in which case we aggregate at higher levels
+        - On an intermediate aggregation stage (not root, not leaf), which aggregates from lower stages
+        - On a root level, in which case the root may also be a leaf (direct logging) or only aggregate
 
         Args:
             is_root: If True, the Stats object is a root stats object.
@@ -42,9 +43,9 @@ class StatsBase(metaclass=ABCMeta):
         # Used to keep track of start times when using the `with` context manager.
         # This helps us measure times with threads in parallel.
         self._start_times = {}
-        # For root stats, track the latest merged values
+        # For non-leaf stats (root or intermediate), track the latest merged values
         # This is overwritten on each merge operation
-        if self.is_root:
+        if not self.is_leaf:
             self.latest_merged: Union[List[Any], Any] = None
 
         assert (
@@ -147,26 +148,23 @@ class StatsBase(metaclass=ABCMeta):
         stats.set_state(state)
         return stats
 
-    @classmethod
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def clone(
-        cls,
-        other: "StatsBase",
+        self,
+        clone_internal_values: bool = False,
     ) -> "StatsBase":
-        """Returns a new stats object that's similar to `other`.
-
-        "Similar" here means it has the exact same settings (reduce, window, ema_coeff,
-        etc..). The initial values of the returned stats are empty by default, but
-        can be set as well.
+        """Returns a new stats object with the same settings as `self`.
 
         Args:
-            other: The other stats object to return a similar new stats equivalent for.
-            init_value: The initial value to already push into the returned stats.
+            clone_internal_values: If True, the internal values of the returned stats will be cloned from the internal values of the original stats including last merged values.
 
         Returns:
-            A new stats object similar to `other`, with the exact same settings and
-            maybe a custom initial value (if provided; otherwise empty).
+            A new stats object similar to `self`.
         """
-        return cls(**cls._get_init_args(stats_object=other))
+        new_stats = self.__class__(**self.__class__._get_init_args(stats_object=self))
+        if not self.is_leaf and clone_internal_values:
+            new_stats.latest_merged = self.latest_merged
+        return new_stats
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def get_state(self) -> Dict[str, Any]:
@@ -176,7 +174,7 @@ class StatsBase(metaclass=ABCMeta):
             "is_root": self.is_root,
             "is_leaf": self.is_leaf,
         }
-        if self.is_root:
+        if not self.is_leaf:
             state["latest_merged"] = self.latest_merged
         return state
 
@@ -189,9 +187,9 @@ class StatsBase(metaclass=ABCMeta):
         self.is_leaf = state["is_leaf"]
         # Prevent setting a state with a different stats class identifier
         assert self.stats_cls_identifier == state["stats_cls_identifier"]
-        if self.is_root:
+        if not self.is_leaf:
             # Handle legacy state that doesn't have latest_merged
-            self.latest_merged = state.get("latest_merged", None)
+            self.latest_merged = state["latest_merged"]
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @staticmethod

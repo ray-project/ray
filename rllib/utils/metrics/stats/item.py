@@ -1,6 +1,8 @@
 from typing import Any, List, Union, Dict
 
-
+from ray.rllib.utils.annotations import (
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.stats.base import StatsBase
 from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
@@ -62,7 +64,7 @@ class ItemStats(StatsBase):
         """
         assert (
             len(incoming_stats) == 1
-        ), "ItemStats should only be merged with one other ItemStats object"
+        ), "ItemStats should only be merged with one other ItemStats object which replaces the current item"
 
         self._item = incoming_stats[0]._item
 
@@ -92,3 +94,18 @@ class ItemStats(StatsBase):
 
     def __repr__(self) -> str:
         return f"ItemStats({self.peek()}"
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def clone(self, clone_internal_values: bool = False) -> "ItemStats":
+        """Returns a new ItemStats object with the same settings as `self`.
+
+        Args:
+            clone_internal_values: If True, the internal values of the returned ItemStats will be cloned from the internal values of the original ItemStats including last merged values.
+
+        Returns:
+            A new ItemStats object with the same settings as `self`.
+        """
+        new_stats = super().clone(clone_internal_values=clone_internal_values)
+        if clone_internal_values:
+            new_stats._item = self._item
+        return new_stats

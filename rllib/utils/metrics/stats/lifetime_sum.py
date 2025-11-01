@@ -6,6 +6,9 @@ from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics.stats.base import StatsBase
 import numpy as np
 from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
+from ray.rllib.utils.annotations import (
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 
 torch, _ = try_import_torch()
 _, tf, _ = try_import_tf()
@@ -72,14 +75,20 @@ class LifetimeSumStats(StatsBase):
 
     @property
     def throughputs(self) -> Dict[str, float]:
-        """Returns the throughput since the last reduce."""
+        """Returns the throughput since the last reduce.
+
+        For root stats, also returns throughput since last restore.
+        """
         assert (
             self.has_throughputs
         ), "Throughput tracking is not enabled on this Stats object"
-        return {
+        result = {
             "throughput_since_last_reduce": self.throughput_since_last_reduce,
-            "throughput_since_last_restore": self.throughput_since_last_restore,
         }
+        # Only root stats track throughput since last restore
+        if self.is_root:
+            result["throughput_since_last_restore"] = self.throughput_since_last_restore
+        return result
 
     def __len__(self) -> int:
         return 1
@@ -94,13 +103,13 @@ class LifetimeSumStats(StatsBase):
         Args:
             compile: If True, the result is compiled into a single value if possible.
             latest_merged_only: If True, only considers the latest merged values.
-                This parameter only works on root stats objects.
+                This parameter only works on aggregation stats (root or intermediate nodes).
                 When enabled, peek() will only return the sum that was added in the most recent merge operation.
         """
         # Check latest_merged_only validity
-        if latest_merged_only and not self.is_root:
+        if latest_merged_only and self.is_leaf:
             raise ValueError(
-                "latest_merged_only can only be used on root stats objects."
+                "latest_merged_only can only be used on aggregation stats objects (is_leaf=False)."
             )
 
         # If latest_merged_only is True, use only the latest merged sum
@@ -183,7 +192,14 @@ class LifetimeSumStats(StatsBase):
 
     @property
     def throughput_since_last_restore(self) -> float:
-        """Returns the total throughput since the last restore."""
+        """Returns the total throughput since the last restore.
+
+        Only available for root stats, as restoring from checkpoints only happens at the root.
+        """
+        if not self.is_root:
+            raise ValueError(
+                "throughput_since_last_restore is only available for root stats"
+            )
         if self.track_throughputs:
             lifetime_sum = self._lifetime_sum
             # Convert GPU tensor to CPU
@@ -208,6 +224,9 @@ class LifetimeSumStats(StatsBase):
         if torch and isinstance(value, torch.Tensor):
             value = value.detach().cpu().item()
 
+        # Reset for all non-root stats (both leaf and intermediate aggregators)
+        # Only root stats should never reset because they aggregate everything
+        # Non-root stats reset so they only send deltas up the aggregation tree
         if not self.is_root:
             # Reset to 0 with same type (tensor or scalar)
             if torch and isinstance(self._lifetime_sum, torch.Tensor):
@@ -218,18 +237,25 @@ class LifetimeSumStats(StatsBase):
         else:
             self._value_at_last_reduce = value
 
+        # Update the last reduce time for throughput tracking
+        if self.track_throughputs:
+            self._last_reduce_time = time.perf_counter()
+
         if compile:
             return value
 
         return_stats = self.clone(self)
         return_stats._lifetime_sum = value
+        return_stats.latest_merged = self.latest_merged
         return return_stats
 
     def merge(self, incoming_stats: List["LifetimeSumStats"]):
-        assert self.is_root, "LifetimeSumStats should only be merged at root level"
+        assert (
+            not self.is_leaf
+        ), "LifetimeSumStats should only be merged at aggregation stages (root or intermediate)"
         incoming_sum = sum([stat._lifetime_sum for stat in incoming_stats])
 
-        # Directly update _lifetime_sum instead of calling push (which is disabled for root stats)
+        # Directly update _lifetime_sum instead of calling push (which is disabled for non-leaf stats)
         if torch and isinstance(incoming_sum, torch.Tensor):
             incoming_sum = incoming_sum.detach()
         if tf and tf.is_tensor(incoming_sum):
@@ -238,9 +264,24 @@ class LifetimeSumStats(StatsBase):
         self._lifetime_sum += incoming_sum
 
         # Track merged values for latest_merged_only peek functionality
-        if self.is_root:
+        if not self.is_leaf:
             # Store the sum that was added in this merge operation
             self.latest_merged = incoming_sum
 
     def __repr__(self) -> str:
         return f"LifetimeSumStats({self.peek()}; track_throughputs={self.track_throughputs})"
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def clone(self, clone_internal_values: bool = False) -> "LifetimeSumStats":
+        """Returns a new LifetimeSumStats object with the same settings as `self`.
+
+        Args:
+            clone_internal_values: If True, the internal values of the returned LifetimeSumStats will be cloned from the internal values of the original LifetimeSumStats including last merged values.
+
+        Returns:
+            A new LifetimeSumStats object with the same settings as `self`.
+        """
+        new_stats = super().clone(clone_internal_values=clone_internal_values)
+        if clone_internal_values:
+            new_stats._lifetime_sum = self._lifetime_sum
+        return new_stats

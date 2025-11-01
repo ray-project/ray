@@ -8,6 +8,9 @@ from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics.stats.base import StatsBase
 from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
 from ray.util import log_once
+from ray.rllib.utils.annotations import (
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +48,8 @@ class EmaStats(StatsBase):
         """
         super().__init__(*args, **kwargs)
         self._value = np.nan
-        self._values_to_merge = []
+        if not self.is_leaf:
+            self._values_to_merge = []
         self._ema_coeff = ema_coeff
 
     def __len__(self) -> int:
@@ -61,6 +65,10 @@ class EmaStats(StatsBase):
         Returns:
             The merged StatsBase object.
         """
+        assert (
+            not self.is_leaf
+        ), "EmaStats should only be merged at aggregation stages (root or intermediate)"
+
         all_values = [stat._value for stat in incoming_stats]
         if len(all_values) == 0:
             return
@@ -68,7 +76,7 @@ class EmaStats(StatsBase):
         self._values_to_merge.extend(all_values)
 
         # Track merged values for latest_merged_only peek functionality
-        if self.is_root:
+        if not self.is_leaf:
             # Store the values that were merged in this operation
             self.latest_merged = all_values
 
@@ -118,6 +126,9 @@ class EmaStats(StatsBase):
                 f"Merging values in {self} but self._value is not NaN. This leads to an inaccurate metric. Not erroring out to avoid breaking older checkpoints."
             )
 
+        if len(self._values_to_merge) == 0:
+            return np.nan
+
         if torch and isinstance(self._values_to_merge[0], torch.Tensor):
             stacked = torch.stack(list(self._values_to_merge))
             return torch.nanmean(stacked)
@@ -133,13 +144,13 @@ class EmaStats(StatsBase):
         Args:
             compile: If True, the result is compiled into a single value if possible.
             latest_merged_only: If True, only considers the latest merged values.
-                This parameter only works on root stats objects.
+                This parameter only works on aggregation stats (root or intermediate nodes).
                 When enabled, peek() will only use the values from the most recent merge operation.
         """
         # Check latest_merged_only validity
-        if latest_merged_only and not self.is_root:
+        if latest_merged_only and self.is_leaf:
             raise ValueError(
-                "latest_merged_only can only be used on root stats objects."
+                "latest_merged_only can only be used on aggregation stats objects (is_leaf=False)."
             )
 
         # If latest_merged_only is True, use only the latest merged values
@@ -163,7 +174,7 @@ class EmaStats(StatsBase):
                     value = np.nanmean(latest_merged)
         else:
             # Normal peek behavior
-            if self._values_to_merge:
+            if hasattr(self, "_values_to_merge"):
                 value = self._reduce_values_to_merge()
             else:
                 value = self._value
@@ -179,7 +190,7 @@ class EmaStats(StatsBase):
 
         If value is a GPU tensor, it's converted to CPU.
         """
-        if self._values_to_merge:
+        if hasattr(self, "_values_to_merge"):
             value = self._reduce_values_to_merge()
             self._values_to_merge = []
         else:
@@ -196,6 +207,7 @@ class EmaStats(StatsBase):
 
         return_stats = self.clone(self)
         return_stats._value = value
+        return_stats.latest_merged = self.latest_merged
         return return_stats
 
     def __repr__(self) -> str:
@@ -208,7 +220,8 @@ class EmaStats(StatsBase):
         state = super().get_state()
         state["ema_coeff"] = self._ema_coeff
         state["value"] = self._value
-        state["values_to_merge"] = self._values_to_merge
+        if not self.is_leaf:
+            state["values_to_merge"] = self._values_to_merge
         return state
 
     def set_state(self, state: Dict[str, Any]) -> None:
@@ -216,7 +229,8 @@ class EmaStats(StatsBase):
         self._ema_coeff = state["ema_coeff"]
         self._value = state["value"]
         # Handle legacy state that doesn't have values_to_merge
-        self._values_to_merge = state.get("values_to_merge", [])
+        if not self.is_leaf:
+            self._values_to_merge = state.get("values_to_merge", [])
 
     @staticmethod
     def _get_init_args(stats_object=None, state=None) -> Dict[str, Any]:
@@ -234,3 +248,19 @@ class EmaStats(StatsBase):
             }
         else:
             raise ValueError("Either stats_object or state must be provided")
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def clone(self, clone_internal_values: bool = False) -> "EmaStats":
+        """Returns a new EmaStats object that's similar to `other`.
+
+        Args:
+            other: The other EmaStats object to return a similar new EmaStats equivalent for.
+            clone_internal_values: If True, the internal values of the returned EmaStats will be cloned from the internal values of the original EmaStats including last merged values.
+        """
+        new_stats = super().clone(clone_internal_values=clone_internal_values)
+        if clone_internal_values:
+            new_stats._value = self._value
+            if not self.is_leaf:
+                new_stats._values_to_merge = self._values_to_merge
+
+        return new_stats

@@ -63,11 +63,16 @@ class SumStats(SeriesStats):
     def reduce(self, compile: bool = True) -> Union[Any, "SumStats"]:
         reduce_value = super().reduce(compile=True)
 
+        # Update the last throughput measure time for correct throughput calculations
+        if self.track_throughput:
+            self._last_throughput_measure_time = time.perf_counter()
+
         if compile:
             return reduce_value
 
         return_stats = self.clone(self)
         return_stats.values = [reduce_value]
+        return_stats.latest_merged = self.latest_merged
         return return_stats
 
     @staticmethod

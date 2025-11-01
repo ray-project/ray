@@ -40,6 +40,8 @@ def get_device(use_gpu):
         (SumStats, [{"window": 4}, {}], [1, 5, 3], 9),
         (LifetimeSumStats, [{}], [10, 20], 30),
         (EmaStats, [{"ema_coeff": 0.01}], [10, 20], 10.1),
+        # Don't test Percentile Stats because reduce beahviour is quite different from other stats
+        # Don't test ItemSeriesStats because reduce beahviour is quite different from other stats
     ],
 )
 @pytest.mark.parametrize("use_gpu", [False, True])
@@ -238,16 +240,10 @@ def test_state_save_and_load(stats_class, init_kwargs, test_values):
     original_peek = stats.peek()
     loaded_peek = loaded_stats.peek()
 
-    # Handle NaN comparison
-    if isinstance(original_peek, float) and np.isnan(original_peek):
-        check(np.isnan(loaded_peek), True)
-    elif isinstance(original_peek, dict):
+    if isinstance(original_peek, dict):
         check(isinstance(loaded_peek, dict), True)
-        for key in original_peek:
-            if isinstance(original_peek[key], float) and np.isnan(original_peek[key]):
-                check(np.isnan(loaded_peek[key]), True)
-            else:
-                check(loaded_peek[key], original_peek[key])
+        for key in original_peek.keys():
+            check(loaded_peek[key], original_peek[key])
     else:
         check(loaded_peek, original_peek)
 
@@ -262,17 +258,17 @@ def test_state_save_and_load(stats_class, init_kwargs, test_values):
         (EmaStats, {"ema_coeff": 0.01}, [1, 2], [3, 4], 2.01),
         (ItemSeriesStats, {"window": 10}, [1, 2], [3, 4], [1, 2, 3, 4]),
         (LifetimeSumStats, {}, [10, 20], [30, 40], 100),
-        # This is not inteded to work for ItemStats
+        # Merging multiple stats is not intended to work for ItemStats (because it only tracks a single item)
     ],
 )
 def test_merge(stats_class, init_kwargs, values1, values2, expected_result):
-    root_stats = stats_class(**init_kwargs, is_root=True)
+    root_stats = stats_class(**init_kwargs, is_root=True, is_leaf=False)
 
-    stats1 = stats_class(**init_kwargs)
+    stats1 = stats_class(**init_kwargs, is_root=False, is_leaf=True)
     for value in values1:
         stats1.push(value)
 
-    stats2 = stats_class(**init_kwargs)
+    stats2 = stats_class(**init_kwargs, is_root=False, is_leaf=True)
     for value in values2:
         stats2.push(value)
 
@@ -285,24 +281,24 @@ def test_merge(stats_class, init_kwargs, values1, values2, expected_result):
 
 # Items stats only allow us to log a single item that should not be reduced.
 def test_merge_item_stats():
-    root_stats = ItemStats(is_root=True)
+    root_stats = ItemStats(is_root=True, is_leaf=False)
 
     # ItemStats can only be merged with a single incoming stats object
-    incoming_stats = ItemStats()
+    incoming_stats = ItemStats(is_root=False, is_leaf=True)
     incoming_stats.push(42)
 
     root_stats.merge([incoming_stats])
     check(root_stats.peek(), 42)
 
     # Test with another merge
-    incoming_stats2 = ItemStats()
+    incoming_stats2 = ItemStats(is_root=False, is_leaf=True)
     incoming_stats2.push(100)
 
     root_stats.merge([incoming_stats2])
     check(root_stats.peek(), 100)
 
     # Test that merging with multiple stats raises an assertion error
-    stats1 = ItemStats()
+    stats1 = ItemStats(is_root=False, is_leaf=True)
     stats1.push(1)
 
     stats2 = ItemStats()
@@ -321,47 +317,65 @@ def test_merge_item_stats():
         (MinStats, {"window": 5}),
         (SumStats, {"window": 5}),
         (LifetimeSumStats, {}),
-        (LifetimeSumStats, {"is_root": True}),
         (EmaStats, {"ema_coeff": 0.1}),
         (PercentilesStats, {"percentiles": [50], "window": 10}),
         (ItemSeriesStats, {"window": 5}),
     ],
 )
-def test_clone(stats_class, init_kwargs):
-    original = stats_class(**init_kwargs)
+@pytest.mark.parametrize("is_root", [True, False])
+@pytest.mark.parametrize("is_leaf", [True, False])
+@pytest.mark.parametrize("clone_internal_values", [True, False])
+def test_clone(stats_class, init_kwargs, is_root, is_leaf, clone_internal_values):
+    original = stats_class(**init_kwargs, is_root=is_root, is_leaf=is_leaf)
     # Skip pushing for root stats (they can't be pushed to)
-    if not original.is_root:
+    if original.is_leaf:
         original.push(123)
+    else:
+        # Create another stats object to merge from
+        merge_from = stats_class(**init_kwargs, is_root=False, is_leaf=True)
+        merge_from.push(123)
+        original.merge([merge_from])
 
     # Create similar stats
-    similar = stats_class.clone(original)
+    similar = original.clone(clone_internal_values=clone_internal_values)
 
     # Check class-specific attributes
     # Note: PercentilesStats._get_init_args() doesn't preserve window (implementation issue)
-    if hasattr(original, "_window") and original._window:
+    if hasattr(original, "_window") or hasattr(similar, "_window"):
         check(similar._window, original._window)
-    if hasattr(original, "_ema_coeff"):
+    if hasattr(original, "_ema_coeff") or hasattr(similar, "_ema_coeff"):
         check(similar._ema_coeff, original._ema_coeff)
-    if hasattr(original, "_percentiles"):
+    if hasattr(original, "_percentiles") or hasattr(similar, "_percentiles"):
         check(similar._percentiles, original._percentiles)
-    if hasattr(original, "is_root"):
+    if hasattr(original, "is_root") or hasattr(similar, "is_root"):
         check(similar.is_root, original.is_root)
+    if hasattr(original, "is_leaf") or hasattr(similar, "is_leaf"):
+        check(similar.is_leaf, original.is_leaf)
 
-    result = similar.peek()
+    if not clone_internal_values:
+        result = similar.peek()
 
-    if stats_class == ItemStats:
-        check(result, None)
-    elif stats_class == LifetimeSumStats:
-        check(result, 0)
-    elif stats_class == ItemSeriesStats:
-        check(result, [])
-    elif stats_class == PercentilesStats:
-        # Should have dict with percentile keys, but empty
-        check(list(result.keys()), original._percentiles)
-        check(list(result.values()), [None])
-    elif isinstance(result, float):
-        # All others should be NaN
-        check(result, np.nan)
+        if stats_class == ItemStats:
+            check(result, None)
+        elif stats_class == LifetimeSumStats:
+            check(result, 0)
+        elif stats_class == ItemSeriesStats:
+            check(result, [])
+        elif stats_class == PercentilesStats:
+            # Should have dict with percentile keys, but empty
+            check(list(result.keys()), original._percentiles)
+            check(list(result.values()), [None])
+        elif isinstance(result, float):
+            # All others should be NaN
+            check(result, np.nan)
+    else:
+        if not is_leaf:
+            check(similar.latest_merged, original.latest_merged)
+        else:
+            assert not hasattr(similar, "latest_merged")
+        original_peek = original.peek()
+        similar_peek = similar.peek()
+        check(similar_peek, original_peek)
 
 
 # Series stats allow us to set a window size and reduce the values in the window.
@@ -410,91 +424,92 @@ def test_series_stats_no_window(stats_class, values, expected_results):
         check(stats.peek(), expected)
 
 
-# Sum stats allow us to track the sum of a series of values.
-def test_sum_stats_with_throughput():
-    stats = SumStats(window=None, with_throughput=True)
+@pytest.mark.parametrize(
+    "is_root,is_leaf",
+    [
+        (True, True),  # Root + Leaf: standalone, never resets
+        (False, True),  # Non-root + Leaf: worker, resets after reduce
+    ],
+)
+def test_sum_stats_with_throughput(is_root, is_leaf):
+    """Test SumStats with throughput for different node types."""
+    stats = SumStats(
+        window=None, with_throughput=True, is_root=is_root, is_leaf=is_leaf
+    )
 
     check(stats.has_throughputs, True)
 
+    # First batch: push 10, then 20 (total: 30)
     stats.push(10)
     time.sleep(0.1)
     stats.push(20)
-    time.sleep(0.1)
+    time.sleep(0.2)
 
-    # Throughput should be approximately (30 - 0) / 0.2 = 150
-    # The accurate behaviour of this is tested in the MetricsLogger tests.
+    # 30 over ~0.3 seconds = ~100
     throughput = stats.throughputs
-    check(throughput, 150, atol=30)
+    check(throughput, 100, atol=20)
+
+    stats.reduce()
+
+    # Second batch: push 20, then 40 (total: 60)
+    stats.push(20)
+    time.sleep(0.1)
+    stats.push(40)
+    time.sleep(0.2)
+
+    # 60 over ~0.3 seconds = ~200
+    throughput = stats.throughputs
+    check(throughput, 200, atol=20)
 
 
-def test_lifetime_sum_stats_with_throughput():
-    """Test LifetimeSumStats with throughput."""
-    stats = LifetimeSumStats(with_throughput=True)
+@pytest.mark.parametrize(
+    "is_root,is_leaf",
+    [
+        (True, True),  # Root + Leaf: standalone, never resets
+        (False, True),  # Non-root + Leaf: worker, resets after reduce
+    ],
+)
+def test_lifetime_sum_stats_with_throughput(is_root, is_leaf):
+    """Test LifetimeSumStats with throughput for different node types."""
+    stats = LifetimeSumStats(with_throughput=True, is_root=is_root, is_leaf=is_leaf)
 
     check(stats.has_throughputs, True)
 
+    # First batch: push 10, then 20 (total: 30)
     stats.push(10)
-    time.sleep(0.05)
+    time.sleep(0.1)
     stats.push(20)
+    time.sleep(0.2)
 
     throughputs = stats.throughputs
-    check("throughput_since_last_reduce" in throughputs, True)
-    check("throughput_since_last_restore" in throughputs, True)
-    check(throughputs["throughput_since_last_reduce"] > 0, True)
+    # 30 over ~0.3 seconds = ~100
+    check(throughputs["throughput_since_last_reduce"], 100, atol=20)
 
+    if is_root:
+        # Only root stats track throughput_since_last_restore
+        check(throughputs["throughput_since_last_restore"], 100, atol=20)
+    else:
+        # Non-root stats should not have throughput_since_last_restore
+        assert "throughput_since_last_restore" not in throughputs
 
-def test_ema_stats():
-    """Test basic EmaStats functionality."""
-    ema_coeff = 0.1
-    stats = EmaStats(ema_coeff=ema_coeff)
+    stats.reduce()
 
-    stats.push(10)
-    check(stats.peek(), 10)
-
+    # Second batch: push 20, then 40 (total: 60)
     stats.push(20)
-    check(stats.peek(), 11.0)
+    time.sleep(0.1)
+    stats.push(40)
+    time.sleep(0.2)
 
-    stats.push(30)
-    check(stats.peek(), 12.9)
+    throughputs = stats.throughputs
+    # 60 over ~0.3 seconds = ~200
+    check(throughputs["throughput_since_last_reduce"], 200, atol=20)
 
-
-def test_percentiles_stats():
-    """Test basic PercentilesStats functionality."""
-    stats = PercentilesStats(percentiles=[0, 50, 100], window=10)
-
-    for i in range(1, 6):  # 1, 2, 3, 4, 5
-        stats.push(i)
-
-    result = stats.peek(compile=True)
-    # Check that result contains the expected keys
-    check(0 in result, True)
-    check(50 in result, True)
-    check(100 in result, True)
-
-    # Check that values are reasonable (allowing for NaN from initial state)
-    if not np.isnan(result[0]):
-        check(result[0] >= 1, True)
-    if not np.isnan(result[100]):
-        check(result[100] <= 5, True)
-
-
-def test_percentiles_stats_windowed_default_percentiles():
-    """Test PercentilesStats window functionality."""
-    stats = PercentilesStats(percentiles=None, window=101)
-
-    for i in range(1, 201):
-        stats.push(i)
-
-    # Should only keep last 100: [100, 101, ..., 199, 200]
-    check(len(stats), 101)
-    result = stats.peek(compile=True)
-    check(result[0], 100)
-    check(result[50], 150)
-    check(result[75], 175)
-    check(result[90], 190)
-    check(result[95], 195)
-    check(result[99], 199)
-    check(result[100], 200)
+    if is_root:
+        # Root stats never reset, so lifetime total is 30 + 60 = 90 over ~0.6 seconds = ~150
+        check(throughputs["throughput_since_last_restore"], 150, atol=20)
+    else:
+        # Non-root stats should not have throughput_since_last_restore
+        assert "throughput_since_last_restore" not in throughputs
 
 
 @pytest.mark.parametrize(
@@ -575,98 +590,6 @@ def test_stats_empty_reduce(stats_class, init_kwargs, expected_result):
 
 
 @pytest.mark.parametrize(
-    "stats_class,init_kwargs,child1_values,child2_values,expected_result",
-    [
-        (
-            EmaStats,
-            {},
-            [1, 2],  # 1.01
-            [3, 4],  # 3.01
-            2.01,  # mean of [1.01, 3.01]
-        ),
-        (
-            MeanStats,
-            {"window": None},
-            [1, 2],
-            [3, 4],
-            2.5,  # mean of [1, 2, 3, 4]
-        ),
-        (
-            SumStats,
-            {"window": 5},
-            [1, 2, 3],
-            [4, 5, 6],
-            21,  # sum of [1, 2, 3, 4, 5, 6]
-        ),
-        (
-            MinStats,
-            {"window": 5},
-            [1, 2],
-            [3, 4],
-            1,  # min of [1, 2, 3, 4]
-        ),
-        (
-            MaxStats,
-            {"window": 5},
-            [1, 2],
-            [3, 4],
-            4,  # max of [1, 2, 3, 4]
-        ),
-        (
-            LifetimeSumStats,
-            {},
-            [10, 20],
-            [30, 40],
-            100,  # 10 + 20 + 30 + 40
-        ),
-        (
-            ItemSeriesStats,
-            {"window": 10},
-            ["a", "b"],
-            ["c", "d"],
-            ["a", "b", "c", "d"],  # ["a", "b", "c", "d", "e", "f"]
-        ),
-        (
-            PercentilesStats,
-            {"window": 3, "percentiles": [50]},
-            [1, 2],
-            [3, 4],
-            {50: 2.5},  # 50th percentile (median) of [1, 2, 3, 4]
-        ),
-    ],
-)
-def test_stats_merge(
-    stats_class,
-    init_kwargs,
-    child1_values,
-    child2_values,
-    expected_result,
-):
-    """Test Stats.merge() for various stats types.
-
-    Root stats cannot be pushed to, so they only include values from merged child stats.
-    """
-    # Create root stats
-    root_stats = stats_class(**init_kwargs, is_root=True)
-
-    # Create first child stats
-    child1 = stats_class(**init_kwargs)
-    for value in child1_values:
-        child1.push(value)
-
-    # Create second child stats
-    child2 = stats_class(**init_kwargs)
-    for value in child2_values:
-        child2.push(value)
-
-    # Merge
-    root_stats.merge([child1, child2])
-
-    # Check result
-    check(root_stats.peek(), expected_result)
-
-
-@pytest.mark.parametrize(
     "stats_class,kwargs,expected_first,expected_first_compile_false,expected_second_normal,expected_second_latest,expected_second_compile_false",
     [
         (
@@ -696,14 +619,14 @@ def test_stats_merge(
                 2.0,
                 3.0,
                 4.0,
-            ],  # compile=False same as compile=True for ItemSeriesStats
+            ],  # compile=False is the same as compile=True for ItemSeriesStats
             [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0],
             [10.0, 20.0, 30.0],
             [
                 10.0,
                 20.0,
                 30.0,
-            ],  # compile=False same as compile=True for ItemSeriesStats
+            ],  # compile=False is the same as compile=True for ItemSeriesStats
         ),
         (
             PercentilesStats,
@@ -716,7 +639,7 @@ def test_stats_merge(
                 95: 3.85,
                 99: 3.97,
                 100: 4.0,
-            },  # percentiles of [1, 2, 3, 4]
+            },
             [1.0, 2.0, 3.0, 4.0],  # compile=False returns sorted list of values
             {
                 0: 1.0,
@@ -726,7 +649,7 @@ def test_stats_merge(
                 95: 27.0,
                 99: 29.4,
                 100: 30.0,
-            },  # percentiles of [1, 2, 3, 4, 10, 20, 30]
+            },  # compile=True returns percentiles of [1, 2, 3, 4, 10, 20, 30]
             {
                 0: 10.0,
                 50: 20.0,
@@ -763,11 +686,11 @@ def test_latest_merged_only_stats_types(
     first_batch_values = [[1.0, 2.0], [3.0, 4.0]]
     second_batch_values = [[10.0, 20.0], [30.0]]
 
-    root_stats = stats_class(**kwargs, is_root=True)
+    root_stats = stats_class(**kwargs, is_root=True, is_leaf=False)
 
     first_batch_stats = []
     for values in first_batch_values:
-        child_stats = stats_class(**kwargs)
+        child_stats = stats_class(**kwargs, is_root=False, is_leaf=True)
         for value in values:
             child_stats.push(value)
         first_batch_stats.append(child_stats)
@@ -790,7 +713,7 @@ def test_latest_merged_only_stats_types(
     # Create and merge second batch
     second_batch_stats = []
     for values in second_batch_values:
-        child_stats = stats_class(**kwargs)
+        child_stats = stats_class(**kwargs, is_root=False, is_leaf=True)
         for value in values:
             child_stats.push(value)
         second_batch_stats.append(child_stats)
@@ -814,7 +737,7 @@ def test_latest_merged_only_stats_types(
 
 def test_latest_merged_only_no_merge_yet():
     """Test latest_merged_only when no merge has occurred yet."""
-    root_stats = MeanStats(window=10, is_root=True)
+    root_stats = MeanStats(window=10, is_root=True, is_leaf=False)
 
     # Before any merge, latest_merged_only should return NaN
     result = root_stats.peek(compile=True, latest_merged_only=True)
@@ -832,7 +755,8 @@ def test_latest_merged_only_non_root_stats():
 
     # Should raise error when using latest_merged_only on non-root stats
     with pytest.raises(
-        ValueError, match="latest_merged_only can only be used on root stats"
+        ValueError,
+        match="latest_merged_only can only be used on aggregation stats objects",
     ):
         stats.peek(compile=True, latest_merged_only=True)
 

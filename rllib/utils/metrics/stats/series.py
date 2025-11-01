@@ -93,6 +93,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
 
         return_stats = self.clone(self)
         return_stats.values = reduced_values
+        return_stats.latest_merged = self.latest_merged
         return return_stats
 
     def __len__(self) -> int:
@@ -150,7 +151,9 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         Returns:
             The merged SeriesStats object.
         """
-        assert self.is_root, "SeriesStats should only be merged at root level"
+        assert (
+            not self.is_leaf
+        ), "SeriesStats should only be merged at aggregation stages (root or intermediate)"
 
         if len(incoming_stats) == 0:
             return
@@ -163,7 +166,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         self.values = all_items
 
         # Track merged values for latest_merged_only peek functionality
-        if self.is_root:
+        if not self.is_leaf:
             # Store the values that were merged in this operation (from incoming_stats only)
             merged_values = list(
                 chain.from_iterable([s.values for s in incoming_stats])
@@ -180,7 +183,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         Args:
             compile: If True, the result is compiled into a single value if possible.
             latest_merged_only: If True, only considers the latest merged values.
-                This parameter only works on root stats objects (is_root=True).
+                This parameter only works on aggregation stats (root or intermediate nodes, is_leaf=False).
                 When enabled, peek() will only use the values from the most recent merge operation.
 
         Returns:
@@ -188,10 +191,10 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         """
         # If latest_merged_only is True, use look at the latest merged values
         if latest_merged_only:
-            if not self.is_root:
+            if self.is_leaf:
                 raise ValueError(
-                    "latest_merged_only can only be used on root stats objects "
-                    "(is_root=True)"
+                    "latest_merged_only can only be used on aggregation stats objects "
+                    "(is_leaf=False)"
                 )
             if self.latest_merged is None:
                 # No merged values yet, return NaN or empty list
@@ -280,3 +283,18 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             return [np.nan]
         else:
             return [self._np_reduce_fn(values)]
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def clone(self, clone_internal_values: bool = False) -> "SeriesStats":
+        """Returns a new SeriesStats object with the same settings as `self`.
+
+        Args:
+            clone_internal_values: If True, the internal values of the returned SeriesStats will be cloned from the internal values of the original SeriesStats including last merged values.
+
+        Returns:
+            A new SeriesStats object with the same settings as `self`.
+        """
+        new_stats = super().clone(clone_internal_values=clone_internal_values)
+        if clone_internal_values:
+            new_stats.values = self.values
+        return new_stats

@@ -68,6 +68,7 @@ class MeanStats(SeriesStats):
 
         return_stats = self.clone(self)
         return_stats.values = reduced_values
+        return_stats.latest_merged = self.latest_merged
         return return_stats
 
     def __repr__(self) -> str:

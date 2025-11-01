@@ -3,6 +3,9 @@ from itertools import chain
 from collections import deque
 
 from ray.util.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import (
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.metrics.stats.series import StatsBase
 
 
@@ -85,6 +88,7 @@ class ItemSeriesStats(StatsBase):
 
         return_stats = self.clone(self)
         return_stats._set_items(items)
+        return_stats.latest_merged = self.latest_merged
         return return_stats
 
     def __len__(self) -> int:
@@ -99,17 +103,17 @@ class ItemSeriesStats(StatsBase):
         Args:
             compile: Argument is ignored for ItemSeriesStats.
             latest_merged_only: If True, only considers the latest merged values.
-                This parameter only works on root stats objects.
+                This parameter only works on aggregation stats (root or intermediate nodes).
                 When enabled, peek() will only use the items from the most recent merge operation.
 
         Returns:
             The internal items list.
         """
         # Check latest_merged_only validity
-        if latest_merged_only and not self.is_root:
+        if latest_merged_only and self.is_leaf:
             raise ValueError(
-                "latest_merged_only can only be used on root stats objects "
-                "(is_root=True)"
+                "latest_merged_only can only be used on aggregation stats objects "
+                "(is_leaf=False)"
             )
 
         # If latest_merged_only is True, use only the latest merged items
@@ -132,7 +136,9 @@ class ItemSeriesStats(StatsBase):
         Returns:
             The merged ItemSeriesStats object.
         """
-        assert self.is_root, "ItemSeriesStats should only be merged at root level"
+        assert (
+            not self.is_leaf
+        ), "ItemSeriesStats should only be merged at aggregation stages (root or intermediate)"
 
         new_items = [s.items for s in incoming_stats]
         new_items = list(chain.from_iterable(new_items))
@@ -140,7 +146,7 @@ class ItemSeriesStats(StatsBase):
         self.items = all_items
 
         # Track merged values for latest_merged_only peek functionality
-        if self.is_root:
+        if not self.is_leaf:
             # Store the items that were merged in this operation (from incoming_stats only)
             self.latest_merged = new_items
 
@@ -162,3 +168,18 @@ class ItemSeriesStats(StatsBase):
 
     def __repr__(self) -> str:
         return f"ItemSeriesStats(window={self._window}; len={len(self)})"
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def clone(self, clone_internal_values: bool = False) -> "ItemSeriesStats":
+        """Returns a new ItemSeriesStats object with the same settings as `self`.
+
+        Args:
+            clone_internal_values: If True, the internal values of the returned ItemSeriesStats will be cloned from the internal values of the original ItemSeriesStats including last merged values.
+
+        Returns:
+            A new ItemSeriesStats object with the same settings as `self`.
+        """
+        new_stats = super().clone(clone_internal_values=clone_internal_values)
+        if clone_internal_values:
+            new_stats.items = self.items
+        return new_stats

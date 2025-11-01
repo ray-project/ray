@@ -8,6 +8,9 @@ from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics.stats.series import StatsBase
 from ray.rllib.utils.metrics.stats.utils import batch_values_to_cpu
+from ray.rllib.utils.annotations import (
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 
 torch, _ = try_import_torch()
 _, tf, _ = try_import_tf()
@@ -158,14 +161,16 @@ class PercentilesStats(StatsBase):
         Args:
             incoming_stats: The list of PercentilesStats objects to merge.
         """
-        assert self.is_root, "PercentilesStats should only be merged at root level"
+        assert (
+            not self.is_leaf
+        ), "PercentilesStats should only be merged at aggregation stages (root or intermediate)"
         new_values = [s.values for s in incoming_stats]
         new_values = list(chain.from_iterable(new_values))
         all_values = list(self.values) + new_values
         self.values = all_values
 
         # Track merged values for latest_merged_only peek functionality
-        if self.is_root:
+        if not self.is_leaf:
             # Store the values that were merged in this operation (from incoming_stats only)
             self.latest_merged = new_values
 
@@ -181,16 +186,16 @@ class PercentilesStats(StatsBase):
         Args:
             compile: If True, the result is compiled into the percentiles list.
             latest_merged_only: If True, only considers the latest merged values.
-                This parameter only works on root stats objects.
+                This parameter only works on aggregation stats (root or intermediate nodes).
                 When enabled, peek() will only use the values from the most recent merge operation.
 
         Returns:
             The result of reducing the internal values list on CPU.
         """
         # Check latest_merged_only validity
-        if latest_merged_only and not self.is_root:
+        if latest_merged_only and self.is_leaf:
             raise ValueError(
-                "latest_merged_only can only be used on root stats objects."
+                "latest_merged_only can only be used on aggregation stats objects (is_leaf=False)."
             )
 
         # If latest_merged_only is True, use only the latest merged values
@@ -234,6 +239,7 @@ class PercentilesStats(StatsBase):
 
         return_stats = self.clone(self)
         return_stats.values = values
+        return_stats.latest_merged = self.latest_merged
         return return_stats
 
     def __repr__(self) -> str:
@@ -257,6 +263,22 @@ class PercentilesStats(StatsBase):
             }
         else:
             raise ValueError("Either stats_object or state must be provided")
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def clone(self, clone_internal_values: bool = False) -> "PercentilesStats":
+        """Returns a new PercentilesStats object with the same settings as `self`.
+
+        Args:
+            clone_internal_values: If True, the internal values of the returned PercentilesStats will be cloned from the internal values of the original PercentilesStats including last merged values.
+
+        Returns:
+            A new PercentilesStats object with the same settings as `self`.
+        """
+        new_stats = super().clone(clone_internal_values=clone_internal_values)
+
+        if clone_internal_values:
+            new_stats.values = self.values
+        return new_stats
 
 
 @DeveloperAPI
