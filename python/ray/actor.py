@@ -1685,6 +1685,16 @@ class ActorClass(Generic[T]):
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args, kwargs)
 
+        use_placement_group = scheduling_strategy is not None and isinstance(
+            scheduling_strategy, PlacementGroupSchedulingStrategy
+        )
+        if use_placement_group and detached:
+            logger.warning(
+                "Scheduling a detached actor with a placement group is not recommended, "
+                "Ray will kill the actor when the placement group is removed. "
+                "If the actor is restartable, it will be stuck in the RESTARTING state forever until explicitly killed."
+            )
+
         if scheduling_strategy is None or isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
         ):
