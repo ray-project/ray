@@ -179,13 +179,10 @@ def plan_streaming_repartition_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
+        ref_bundler=StreamingRepartitionRefBundler(op.target_num_rows_per_block),
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
         supports_fusion=False,
-    )
-
-    operator.set_block_ref_bundler(
-        StreamingRepartitionRefBundler(op.target_num_rows_per_block)
     )
 
     return operator

@@ -113,6 +113,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         name: str,
         target_max_block_size_override: Optional[int],
         min_rows_per_bundle: Optional[int],
+        ref_bundler: Optional[BaseRefBundler],
         supports_fusion: bool,
         map_task_kwargs: Optional[Dict[str, Any]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
@@ -133,7 +134,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
 
         # Bundles block references up to the min_rows_per_bundle target.
-        self._block_ref_bundler = BlockRefBundler(min_rows_per_bundle)
+        self._block_ref_bundler = ref_bundler or BlockRefBundler(min_rows_per_bundle)
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
         self._output_queue: _OutputQueue = None
@@ -172,9 +173,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         for fn in self._map_task_kwargs_fns:
             kwargs.update(fn())
         return kwargs
-
-    def set_block_ref_bundler(self, ref_bundler: BaseRefBundler):
-        self._block_ref_bundler = ref_bundler
 
     def get_additional_split_factor(self) -> int:
         if self._additional_split_factor is None:
@@ -215,6 +213,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         # config and not contain implementation code.
         compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_bundle: Optional[int] = None,
+        ref_bundler: Optional[BaseRefBundler] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
@@ -239,6 +238,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            ref_bundler: The ref bundler to use for this operator.
             supports_fusion: Whether this operator supports fusion with other operators.
             map_task_kwargs: A dictionary of kwargs to pass to the map task. You can
                 access these kwargs through the `TaskContext.kwargs` dictionary.
@@ -272,6 +272,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 name=name,
                 target_max_block_size_override=target_max_block_size_override,
                 min_rows_per_bundle=min_rows_per_bundle,
+                ref_bundler=ref_bundler,
                 max_concurrency=compute_strategy.size,
                 supports_fusion=supports_fusion,
                 map_task_kwargs=map_task_kwargs,
@@ -291,6 +292,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 compute_strategy=compute_strategy,
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
+                ref_bundler=ref_bundler,
                 supports_fusion=supports_fusion,
                 map_task_kwargs=map_task_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
