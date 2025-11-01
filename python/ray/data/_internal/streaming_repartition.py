@@ -5,7 +5,7 @@ from typing import Any, Deque, Dict, Iterable, List, Optional, Tuple
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
-from ray.data._internal.execution.operators.map_operator import BlockRefBundler
+from ray.data._internal.execution.operators.map_operator import BaseRefBundler
 from ray.data.block import Block, BlockAccessor, BlockMetadata, Schema
 from ray.types import ObjectRef
 
@@ -86,7 +86,7 @@ class _PendingBlock:
         return self.metadata.num_rows - self.start_offset
 
 
-class StreamingRepartitionTaskBuilder(BlockRefBundler):
+class StreamingRepartitionTaskBuilder(BaseRefBundler):
     """Incrementally builds task inputs to produce target-sized outputs.
 
     Usage:
@@ -109,7 +109,8 @@ class StreamingRepartitionTaskBuilder(BlockRefBundler):
     def add_bundle(self, ref_bundle: RefBundle):
         schema = ref_bundle.schema
         for block_ref, metadata in ref_bundle.blocks:
-            assert metadata.num_rows
+            if metadata.num_rows <= 0:  # skip empty blocks
+                continue
             self._pending_blocks.append(
                 _PendingBlock(
                     block_ref=block_ref,
@@ -121,10 +122,12 @@ class StreamingRepartitionTaskBuilder(BlockRefBundler):
             self._total_pending_rows += metadata.num_rows
 
     def has_bundle(self) -> bool:
+        self._drain_ready_tasks()
         return len(self._ready_bundles) > 0
 
-    def get_next_bundle(self) -> Tuple[RefBundle, Dict[str, Any]]:
-        self._drain_ready_tasks()
+    def get_next_bundle(
+        self,
+    ) -> Tuple[List[RefBundle], RefBundle, Optional[Dict[str, Any]]]:
         return self._ready_bundles.popleft()
 
     def done_adding_bundles(self):
