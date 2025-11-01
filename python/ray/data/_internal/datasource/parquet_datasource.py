@@ -1,4 +1,3 @@
-import copy
 import logging
 import math
 import os
@@ -444,30 +443,6 @@ class ParquetDatasource(Datasource):
     def get_column_renames(self) -> Optional[Dict[str, str]]:
         return self._data_columns_rename_map if self._data_columns_rename_map else None
 
-    def apply_projection(
-        self,
-        columns: Optional[List[str]],
-        column_rename_map: Optional[Dict[str, str]],
-    ) -> "ParquetDatasource":
-        clone = copy.copy(self)
-
-        # Process projection with existing renames
-        result = self._process_projection_with_renames(
-            columns, self._data_columns_rename_map
-        )
-
-        # Combine projections (now in original column space)
-        clone._data_columns = _combine_projection(
-            self._data_columns, result.rebound_columns
-        )
-
-        # Combine rename maps using shared helper
-        clone._data_columns_rename_map = self._combine_rename_map(
-            result.filtered_rename_map, column_rename_map
-        )
-
-        return clone
-
     def _estimate_in_mem_size(self, fragments: List[_ParquetFragment]) -> int:
         in_mem_size = sum([f.file_size for f in fragments]) * self._encoding_ratio
 
@@ -868,29 +843,6 @@ def _add_partitions_to_table(
             )
 
     return table
-
-
-def _combine_projection(
-    prev_projected_cols: Optional[List[str]], new_projected_cols: Optional[List[str]]
-) -> Optional[List[str]]:
-    # NOTE: Null projection carries special meaning of all columns being selected
-    if prev_projected_cols is None:
-        return new_projected_cols
-    elif new_projected_cols is None:
-        # Retain original projection
-        return prev_projected_cols
-    else:
-        illegal_refs = [
-            col for col in new_projected_cols if col not in prev_projected_cols
-        ]
-
-        if illegal_refs:
-            raise ValueError(
-                f"New projection {new_projected_cols} references non-existent columns "
-                f"(existing projection {prev_projected_cols})"
-            )
-
-        return new_projected_cols
 
 
 def _get_partition_columns_schema(

@@ -149,8 +149,13 @@ class IcebergDatasource(Datasource):
         self.table_identifier = table_identifier
 
         self._row_filter = row_filter if row_filter is not None else AlwaysTrue()
-        self._selected_fields = selected_fields
-        self._column_rename_map = None
+        # Convert selected_fields to List (None = all columns, matching parquet convention)
+        self._data_columns = (
+            None
+            if selected_fields is None or selected_fields == ("*",)
+            else list(selected_fields)
+        )
+        self._data_columns_rename_map = None
 
         if snapshot_id:
             self._scan_kwargs["snapshot_id"] = snapshot_id
@@ -212,9 +217,14 @@ class IcebergDatasource(Datasource):
         # Get the combined filter
         combined_filter = self._get_combined_filter()
 
+        # Convert back to tuple for PyIceberg API (None -> ("*",))
+        selected_fields = (
+            ("*",) if self._data_columns is None else tuple(self._data_columns)
+        )
+
         data_scan = self.table.scan(
             row_filter=combined_filter,
-            selected_fields=self._selected_fields,
+            selected_fields=selected_fields,
             **self._scan_kwargs,
         )
 
@@ -240,12 +250,7 @@ class IcebergDatasource(Datasource):
         Returns:
             List of column names to project, or None if all columns are selected.
         """
-        # If selected_fields is ("*",) or None, return None to indicate all columns
-        if self._selected_fields is None or self._selected_fields == ("*",):
-            return None
-
-        # Convert tuple to list for compatibility with projection pushdown interface
-        return list(self._selected_fields)
+        return self._data_columns
 
     def get_column_renames(self) -> Optional[Dict[str, str]]:
         """Return the column renames applied to this datasource.
@@ -254,7 +259,7 @@ class IcebergDatasource(Datasource):
             A dictionary mapping old column names to new column names,
             or None if no renaming has been applied.
         """
-        return self._column_rename_map if self._column_rename_map else None
+        return self._data_columns_rename_map if self._data_columns_rename_map else None
 
     def apply_predicate(self, predicate_expr: "Expr") -> "IcebergDatasource":
         """Apply a predicate to this datasource.
@@ -279,45 +284,10 @@ class IcebergDatasource(Datasource):
 
         return clone
 
-    def apply_projection(
-        self,
-        columns: Optional[List[str]],
-        column_rename_map: Optional[Dict[str, str]],
-    ) -> "IcebergDatasource":
-        """Apply a projection to this datasource.
-
-        Args:
-            columns: List of columns to select (in renamed space if existing renames),
-                     or None to select all columns.
-            column_rename_map: Dictionary mapping old column names to new names,
-                or None if no renaming is needed.
-
-        Returns:
-            A new IcebergDatasource with the projection applied.
-        """
-        import copy
-
-        clone = copy.copy(self)
-
-        # Process projection with existing renames
-        result = self._process_projection_with_renames(columns, self._column_rename_map)
-
-        # Combine projections (now in original column space)
-        clone._selected_fields = self._combine_projection(
-            self._selected_fields, result.rebound_columns
-        )
-
-        # Combine rename maps
-        clone._column_rename_map = self._combine_rename_map(
-            result.filtered_rename_map, column_rename_map
-        )
-
-        # Invalidate cached plan_files and table so they get recalculated
-        # with the new projection
+    def _post_apply_projection(self, clone: "IcebergDatasource") -> None:
+        """Invalidate cached plan_files and table after projection changes."""
         clone._plan_files = None
         clone._table = None
-
-        return clone
 
     @staticmethod
     def _distribute_tasks_into_equal_chunks(
@@ -348,45 +318,6 @@ class IcebergDatasource(Datasource):
             )
 
         return chunks
-
-    @staticmethod
-    def _combine_projection(
-        prev_projected_cols: Optional[Tuple[str, ...]],
-        new_projected_cols: Optional[List[str]],
-    ) -> Optional[Tuple[str, ...]]:
-        """Combine two projections, validating that new projection is valid.
-
-        Args:
-            prev_projected_cols: Previous projection as tuple, or None/("*",) for all columns
-            new_projected_cols: New projection as list, or None for all columns
-
-        Returns:
-            Combined projection as tuple, or ("*",) for all columns
-        """
-        # Handle "all columns" cases
-        is_prev_all = prev_projected_cols is None or prev_projected_cols == ("*",)
-        is_new_all = new_projected_cols is None
-
-        if is_prev_all:
-            # If previous was all columns, new projection becomes the projection
-            return tuple(new_projected_cols) if new_projected_cols else ("*",)
-        elif is_new_all:
-            # If new projection is all columns, retain original projection
-            return prev_projected_cols
-        else:
-            # Both projections are specific - validate and combine
-            prev_cols_set = set(prev_projected_cols)
-            illegal_refs = [
-                col for col in new_projected_cols if col not in prev_cols_set
-            ]
-
-            if illegal_refs:
-                raise ValueError(
-                    f"New projection {new_projected_cols} references non-existent columns "
-                    f"(existing projection {list(prev_projected_cols)})"
-                )
-
-            return tuple(new_projected_cols)
 
     def get_read_tasks(
         self, parallelism: int, per_task_row_limit: Optional[int] = None
@@ -434,7 +365,7 @@ class IcebergDatasource(Datasource):
             case_sensitive=case_sensitive,
             limit=limit,
             schema=projected_schema,
-            column_rename_map=self._column_rename_map,
+            column_rename_map=self._data_columns_rename_map,
         )
 
         read_tasks = []

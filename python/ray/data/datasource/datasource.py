@@ -44,13 +44,6 @@ class _DatasourceProjectionPushdownMixin:
         """
         return None
 
-    def apply_projection(
-        self,
-        columns: Optional[List[str]],
-        column_rename_map: Optional[Dict[str, str]],
-    ) -> "Datasource":
-        return self
-
     @staticmethod
     def _apply_column_mapping(
         columns: List[str],
@@ -87,7 +80,7 @@ class _DatasourceProjectionPushdownMixin:
             - rebound_columns: Column names in original/storage space
             - filtered_rename_map: Rename map containing only selected columns
         """
-        if not existing_rename_map or not columns:
+        if not existing_rename_map or columns is None:
             # No renames to process
             return ProjectionProcessingResult(
                 rebound_columns=columns,
@@ -140,6 +133,88 @@ class _DatasourceProjectionPushdownMixin:
             combined = prev_column_rename_map | new_column_rename_map
 
         return collapse_transitive_map(combined) if combined else None
+
+    def apply_projection(
+        self,
+        columns: Optional[List[str]],
+        column_rename_map: Optional[Dict[str, str]],
+    ) -> "Datasource":
+        """Apply a projection to this datasource.
+
+        Args:
+            columns: List of columns to select, or None to select all columns.
+            column_rename_map: Dictionary mapping old column names to new names.
+
+        Returns:
+            A new datasource instance with the projection applied.
+        """
+        import copy
+
+        clone = copy.copy(self)
+
+        # Process projection with existing renames
+        result = self._process_projection_with_renames(
+            columns, self._data_columns_rename_map
+        )
+
+        # Combine projections (now in original column space)
+        clone._data_columns = self._combine_projection(
+            self._data_columns, result.rebound_columns
+        )
+
+        # Combine rename maps
+        clone._data_columns_rename_map = self._combine_rename_map(
+            result.filtered_rename_map, column_rename_map
+        )
+
+        # Hook for datasource-specific cleanup
+        self._post_apply_projection(clone)
+
+        return clone
+
+    @staticmethod
+    def _combine_projection(
+        prev_projected_cols: Optional[List[str]],
+        new_projected_cols: Optional[List[str]],
+    ) -> Optional[List[str]]:
+        """Combine two projections, validating that new projection is valid.
+
+        Args:
+            prev_projected_cols: Previous projection, or None for all columns
+            new_projected_cols: New projection, or None for all columns
+
+        Returns:
+            Combined projection, or None for all columns
+        """
+        # NOTE: None projection carries special meaning of all columns being selected
+        if prev_projected_cols is None:
+            return new_projected_cols
+        elif new_projected_cols is None:
+            # Retain original projection
+            return prev_projected_cols
+        else:
+            illegal_refs = [
+                col for col in new_projected_cols if col not in prev_projected_cols
+            ]
+
+            if illegal_refs:
+                raise ValueError(
+                    f"New projection {new_projected_cols} references non-existent columns "
+                    f"(existing projection {prev_projected_cols})"
+                )
+
+            return new_projected_cols
+
+    def _post_apply_projection(self, clone: "Datasource") -> None:
+        """Hook for datasource-specific cleanup after applying projection.
+
+        Override in subclasses for cleanup like invalidating caches.
+        Default implementation does nothing.
+
+        Args:
+            clone: The cloned datasource instance with projection already applied
+        """
+        pass
 
     @staticmethod
     def _apply_rename(
