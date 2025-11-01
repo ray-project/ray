@@ -22,6 +22,7 @@ from ray.serve._private.application_state import ApplicationStateManager, Status
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentID,
+    DeploymentSnapshot,
     HandleMetricReport,
     NodeId,
     ReplicaMetricReport,
@@ -53,6 +54,7 @@ from ray.serve._private.http_util import (
 from ray.serve._private.logging_utils import (
     configure_component_logger,
     configure_component_memory_profiler,
+    configure_snapshot_logger,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
@@ -235,6 +237,13 @@ class ServeController:
         self._proxy_nodes = set()
         self._update_proxy_nodes()
 
+        # Caches for autoscaling observability
+        self._last_autoscaling_snapshots: Dict[DeploymentID, DeploymentSnapshot] = {}
+        self._autoscaling_enabled_deployments_cache: List[
+            Tuple[str, str, DeploymentDetails, Any]
+        ] = []
+        self._refresh_autoscaling_deployments_cache()
+
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
             self.global_logging_config
@@ -251,6 +260,11 @@ class ServeController:
         )
         configure_component_logger(
             component_name="controller",
+            component_id=str(os.getpid()),
+            logging_config=global_logging_config,
+        )
+
+        self._autoscaling_logger = configure_snapshot_logger(
             component_id=str(os.getpid()),
             logging_config=global_logging_config,
         )
@@ -392,6 +406,47 @@ class ServeController:
         new_proxy_nodes.add(self._controller_node_id)
         self._proxy_nodes = new_proxy_nodes
 
+    def _refresh_autoscaling_deployments_cache(self) -> None:
+        result = []
+        for app_name in self.application_state_manager.list_app_names():
+            deployment_details = self.application_state_manager.list_deployment_details(
+                app_name
+            )
+            for dep_name, details in deployment_details.items():
+                autoscaling_config = details.deployment_config.autoscaling_config
+                if autoscaling_config:
+                    result.append((app_name, dep_name, details, autoscaling_config))
+        self._autoscaling_enabled_deployments_cache = result
+
+    def _list_deployments_for_autoscaling(self):
+        return iter(self._autoscaling_enabled_deployments_cache)
+
+    def _emit_deployment_autoscaling_snapshots(self) -> None:
+        """Emit a structured snapshot log per autoscaling-enabled deployment."""
+        for (
+            app_name,
+            dep_name,
+            details,
+            autoscaling_config,
+        ) in self._list_deployments_for_autoscaling():
+            dep_id = DeploymentID(name=dep_name, app_name=app_name)
+            deployment_snapshot = (
+                self.autoscaling_state_manager.get_deployment_snapshot(dep_id)
+            )
+            if deployment_snapshot is None:
+                continue
+
+            key = dep_id
+            last = self._last_autoscaling_snapshots.get(key)
+            if last is not None and last.is_scaling_equivalent(deployment_snapshot):
+                continue
+
+            payload = deployment_snapshot.model_dump(exclude_none=True)
+            self._autoscaling_logger.info(
+                "", extra={"type": "deployment", "snapshot": payload}
+            )
+            self._last_autoscaling_snapshots[key] = deployment_snapshot
+
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
@@ -474,12 +529,18 @@ class ServeController:
 
         try:
             asm_update_start_time = time.time()
-            self.application_state_manager.update()
-
+            any_target_state_changed = self.application_state_manager.update()
+            if any_recovering or any_target_state_changed:
+                self._refresh_autoscaling_deployments_cache()
             self.asm_update_duration_gauge_s.set(time.time() - asm_update_start_time)
         except Exception:
             logger.exception("Exception updating application state.")
 
+        try:
+            # Emit one autoscaling snapshot per deployment per loop using existing state.
+            self._emit_deployment_autoscaling_snapshots()
+        except Exception:
+            logger.exception("Exception emitting deployment autoscaling snapshots.")
         # Update the proxy nodes set before updating the proxy states,
         # so they are more consistent.
         node_update_start_time = time.time()
