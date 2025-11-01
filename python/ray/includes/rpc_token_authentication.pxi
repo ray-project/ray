@@ -12,6 +12,7 @@ class AuthenticationMode:
     DISABLED = CAuthenticationMode.DISABLED
     TOKEN = CAuthenticationMode.TOKEN
 
+
 def get_authentication_mode():
     """Get the current authentication mode.
 

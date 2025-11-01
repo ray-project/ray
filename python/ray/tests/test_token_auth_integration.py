@@ -25,7 +25,7 @@ def _run_ray_start_and_verify_status(
     """Helper to run ray start command with proper error handling."""
     result = subprocess.run(
         ["ray", "start"] + args,
-        env=env,
+        env={"RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1", **env},
         capture_output=True,
         text=True,
         timeout=timeout,
