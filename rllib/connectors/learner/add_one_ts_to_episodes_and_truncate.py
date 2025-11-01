@@ -146,12 +146,9 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
                 len_ + 1,
                 sa_episode,
             )
-
-            terminateds = (
-                [False for _ in range(len_ - 1)]
-                + [bool(sa_episode.is_terminated)]
-                + [True]  # extra timestep
-            )
+            # Set the original terminating step to false, or value bootstrapping will
+            # ignore terminal rewards. See ppo/tests/test_value_bootstrapping.py.
+            terminateds = [False for _ in range(len_)] + [True]  # extra timestep
             self.add_n_batch_items(
                 batch,
                 Columns.TERMINATEDS,
