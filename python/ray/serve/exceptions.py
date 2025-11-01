@@ -12,6 +12,8 @@ class RayServeException(Exception):
 
 @PublicAPI(stability="alpha")
 class RayServeConfigException(Exception):
+    """Raised when a Serve config failed to be applied."""
+
     pass
 
 
