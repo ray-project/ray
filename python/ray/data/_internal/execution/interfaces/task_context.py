@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from ray.data._internal.progress_bar import ProgressBar
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
     from ray.data._internal.execution.operators.map_transformer import MapTransformer
 
 
@@ -49,6 +50,9 @@ class TaskContext:
 
     # Additional keyword arguments passed to the task.
     kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    # Optional input bundle referenced by this task.
+    input_bundle: Optional["RefBundle"] = None
 
     @classmethod
     def get_current(cls) -> Optional["TaskContext"]:

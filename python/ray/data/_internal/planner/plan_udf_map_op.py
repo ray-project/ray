@@ -48,6 +48,10 @@ from ray.data._internal.logical.operators.map_operator import (
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.streaming_repartition import (
+    StreamingRepartitionRefBundler,
+    streaming_repartition_block_fn,
+)
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
@@ -151,29 +155,37 @@ def plan_streaming_repartition_op(
     input_physical_dag = physical_children[0]
     compute = get_compute(op._compute)
 
-    # Create a no-op transform that is just coalescing/slicing the incoming
-    # blocks
-    transform_fn = BlockMapTransformFn(
-        lambda blocks, ctx: blocks,
-        output_block_size_option=OutputBlockSizeOption.of(
-            target_num_rows_per_block=op.target_num_rows_per_block
-        ),
-    )
-
-    map_transformer = MapTransformer([transform_fn])
+    if op.enforce_target_num_rows_per_block:
+        transform_fn = BlockMapTransformFn(
+            streaming_repartition_block_fn,
+            disable_block_shaping=True,
+        )
+        map_transformer = MapTransformer([transform_fn])
+    else:
+        # Create a no-op transform that is just coalescing/slicing the incoming
+        # blocks
+        transform_fn = BlockMapTransformFn(
+            lambda blocks, ctx: blocks,
+            output_block_size_option=OutputBlockSizeOption.of(
+                target_num_rows_per_block=op.target_num_rows_per_block
+            ),
+        )
+        map_transformer = MapTransformer([transform_fn])
 
     # Disable fusion for streaming repartition with the downstream op.
-    return MapOperator.create(
+    operator = MapOperator.create(
         map_transformer,
         input_physical_dag,
         data_context,
         name=op.name,
         compute_strategy=compute,
-        min_rows_per_bundle=op.target_num_rows_per_block,
+        ref_bundler=StreamingRepartitionRefBundler(op.target_num_rows_per_block),
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
         supports_fusion=False,
     )
+
+    return operator
 
 
 def plan_filter_op(

@@ -31,8 +31,8 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import (
+    BlockRefBundler,
     MapOperator,
-    _BlockRefBundler,
     _per_block_limit_fn,
 )
 from ray.data._internal.execution.operators.map_transformer import (
@@ -1145,7 +1145,7 @@ def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
 )
 def test_block_ref_bundler_basic(target, in_bundles, expected_bundles):
     # Test that the bundler creates the expected output bundles.
-    bundler = _BlockRefBundler(target)
+    bundler = BlockRefBundler(target)
     bundles = _make_ref_bundles(in_bundles)
     out_bundles = []
     for bundle in bundles:
@@ -1182,7 +1182,7 @@ def test_block_ref_bundler_uniform(
 ):
     # Test that the bundler creates the expected number of bundles with the expected
     # size.
-    bundler = _BlockRefBundler(target)
+    bundler = BlockRefBundler(target)
     data = np.arange(n)
     pre_bundles = [arr.tolist() for arr in np.array_split(data, num_bundles)]
     bundles = make_ref_bundles(pre_bundles)
@@ -1190,11 +1190,11 @@ def test_block_ref_bundler_uniform(
     for bundle in bundles:
         bundler.add_bundle(bundle)
         while bundler.has_bundle():
-            _, out_bundle = bundler.get_next_bundle()
+            _, out_bundle, _ = bundler.get_next_bundle()
             out_bundles.append(out_bundle)
     bundler.done_adding_bundles()
     if bundler.has_bundle():
-        _, out_bundle = bundler.get_next_bundle()
+        _, out_bundle, _ = bundler.get_next_bundle()
         out_bundles.append(out_bundle)
     assert len(out_bundles) == num_out_bundles
     for out_bundle in out_bundles:

@@ -7,7 +7,11 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
+from ray.data._internal.execution.operators.map_operator import (
+    BaseRefBundler,
+    MapOperator,
+    _map_task,
+)
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.context import DataContext
@@ -24,6 +28,7 @@ class TaskPoolMapOperator(MapOperator):
         name: str = "TaskPoolMap",
         target_max_block_size_override: Optional[int] = None,
         min_rows_per_bundle: Optional[int] = None,
+        ref_bundler: Optional[BaseRefBundler] = None,
         max_concurrency: Optional[int] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
@@ -41,6 +46,7 @@ class TaskPoolMapOperator(MapOperator):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            ref_bundler: The ref bundler to use for this operator.
             max_concurrency: The maximum number of Ray tasks to use concurrently,
                 or None to use as many tasks as possible.
             supports_fusion: Whether this operator supports fusion with other operators.
@@ -61,6 +67,7 @@ class TaskPoolMapOperator(MapOperator):
             name,
             target_max_block_size_override,
             min_rows_per_bundle,
+            ref_bundler,
             supports_fusion,
             map_task_kwargs,
             ray_remote_args_fn,
@@ -83,12 +90,15 @@ class TaskPoolMapOperator(MapOperator):
 
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
 
-    def _add_bundled_input(self, bundle: RefBundle):
+    def _add_bundled_input(
+        self, bundle: RefBundle, task_kwargs: Optional[Dict[str, Any]] = None
+    ):
         # Submit the task as a normal Ray task.
         ctx = TaskContext(
             task_idx=self._next_data_task_idx,
             op_name=self.name,
             target_max_block_size_override=self.target_max_block_size_override,
+            input_bundle=bundle,
         )
 
         dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
@@ -106,13 +116,16 @@ class TaskPoolMapOperator(MapOperator):
             )
 
         data_context = self.data_context
+        per_task_kwargs = self.get_map_task_kwargs().copy()
+        if task_kwargs:
+            per_task_kwargs.update(task_kwargs)
 
         gen = self._map_task.options(**dynamic_ray_remote_args).remote(
             self._map_transformer_ref,
             data_context,
             ctx,
             *bundle.block_refs,
-            **self.get_map_task_kwargs(),
+            **per_task_kwargs,
         )
         self._submit_data_task(gen, bundle)
 

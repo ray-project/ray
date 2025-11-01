@@ -637,9 +637,12 @@ class ExecutionPlan:
     def require_preserve_order(self) -> bool:
         """Whether this plan requires to preserve order."""
         from ray.data._internal.logical.operators.all_to_all_operator import Sort
+        from ray.data._internal.logical.operators.map_operator import (
+            StreamingRepartition,
+        )
         from ray.data._internal.logical.operators.n_ary_operator import Zip
 
         for op in self._logical_plan.dag.post_order_iter():
-            if isinstance(op, (Zip, Sort)):
+            if isinstance(op, (Zip, Sort, StreamingRepartition)):
                 return True
         return False

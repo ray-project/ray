@@ -32,7 +32,11 @@ from ray.data._internal.execution.node_trackers.actor_location import (
     ActorLocationTracker,
     get_or_create_actor_location_tracker,
 )
-from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
+from ray.data._internal.execution.operators.map_operator import (
+    BaseRefBundler,
+    MapOperator,
+    _map_task,
+)
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
@@ -71,6 +75,7 @@ class ActorPoolMapOperator(MapOperator):
         compute_strategy: ActorPoolStrategy,
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
+        ref_bundler: Optional[BaseRefBundler] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
@@ -91,6 +96,7 @@ class ActorPoolMapOperator(MapOperator):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            ref_bundler: The ref bundler to use for this operator.
             supports_fusion: Whether this operator supports fusion with other operators.
             map_task_kwargs: A dictionary of kwargs to pass to the map task. You can
                 access these kwargs through the `TaskContext.kwargs` dictionary.
@@ -113,6 +119,7 @@ class ActorPoolMapOperator(MapOperator):
             name,
             target_max_block_size_override,
             min_rows_per_bundle,
+            ref_bundler,
             supports_fusion,
             map_task_kwargs,
             ray_remote_args_fn,
@@ -158,6 +165,7 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
+        self._bundle_task_kwargs: Dict[RefBundle, Dict[str, Any]] = {}
         # HACK: Without this, all actors show up as `_MapWorker` in Grafana, so we can’t
         # tell which operator they belong to. To fix that, we dynamically create a new
         # class per operator with a unique name.
@@ -296,8 +304,12 @@ class ActorPoolMapOperator(MapOperator):
         )
         return actor, res_ref
 
-    def _add_bundled_input(self, bundle: RefBundle):
+    def _add_bundled_input(
+        self, bundle: RefBundle, task_kwargs: Optional[Dict[str, Any]] = None
+    ):
         self._bundle_queue.add(bundle)
+        if task_kwargs:
+            self._bundle_task_kwargs[bundle] = task_kwargs
         self._metrics.on_input_queued(bundle)
         # Try to dispatch all bundles in the queue, including this new bundle.
         self._dispatch_tasks()
@@ -315,6 +327,7 @@ class ActorPoolMapOperator(MapOperator):
         ):
             # Submit the map task.
             self._metrics.on_input_dequeued(bundle)
+            bundle_task_kwargs = self._bundle_task_kwargs.pop(bundle, None)
             input_blocks = [block for block, _ in bundle.blocks]
             self._actor_pool.on_task_submitted(actor)
 
@@ -323,6 +336,10 @@ class ActorPoolMapOperator(MapOperator):
                 op_name=self.name,
                 target_max_block_size_override=self.target_max_block_size_override,
             )
+            ctx.input_bundle = bundle
+            per_task_kwargs = self.get_map_task_kwargs().copy()
+            if bundle_task_kwargs:
+                per_task_kwargs.update(bundle_task_kwargs)
             gen = actor.submit.options(
                 num_returns="streaming",
                 **self._ray_actor_task_remote_args,
@@ -330,7 +347,7 @@ class ActorPoolMapOperator(MapOperator):
                 self.data_context,
                 ctx,
                 *input_blocks,
-                **self.get_map_task_kwargs(),
+                **per_task_kwargs,
             )
 
             def _task_done_callback(actor_to_return):

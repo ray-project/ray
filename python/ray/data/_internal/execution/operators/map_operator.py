@@ -65,6 +65,34 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(__name__)
 
 
+class BaseRefBundler(ABC):
+    @abstractmethod
+    def num_blocks(self) -> int:
+        pass
+
+    @abstractmethod
+    def add_bundle(self, bundle: RefBundle):
+        pass
+
+    @abstractmethod
+    def has_bundle(self) -> bool:
+        pass
+
+    @abstractmethod
+    def size_bytes(self) -> int:
+        pass
+
+    @abstractmethod
+    def get_next_bundle(
+        self,
+    ) -> Tuple[List[RefBundle], RefBundle, Optional[Dict[str, Any]]]:
+        pass
+
+    @abstractmethod
+    def done_adding_bundles(self):
+        pass
+
+
 class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
 
@@ -85,6 +113,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         name: str,
         target_max_block_size_override: Optional[int],
         min_rows_per_bundle: Optional[int],
+        ref_bundler: Optional[BaseRefBundler],
         supports_fusion: bool,
         map_task_kwargs: Optional[Dict[str, Any]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
@@ -105,7 +134,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
 
         # Bundles block references up to the min_rows_per_bundle target.
-        self._block_ref_bundler = _BlockRefBundler(min_rows_per_bundle)
+        self._block_ref_bundler = ref_bundler or BlockRefBundler(min_rows_per_bundle)
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
         self._output_queue: _OutputQueue = None
@@ -184,6 +213,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         # config and not contain implementation code.
         compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_bundle: Optional[int] = None,
+        ref_bundler: Optional[BaseRefBundler] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
@@ -208,6 +238,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            ref_bundler: The ref bundler to use for this operator.
             supports_fusion: Whether this operator supports fusion with other operators.
             map_task_kwargs: A dictionary of kwargs to pass to the map task. You can
                 access these kwargs through the `TaskContext.kwargs` dictionary.
@@ -241,6 +272,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 name=name,
                 target_max_block_size_override=target_max_block_size_override,
                 min_rows_per_bundle=min_rows_per_bundle,
+                ref_bundler=ref_bundler,
                 max_concurrency=compute_strategy.size,
                 supports_fusion=supports_fusion,
                 map_task_kwargs=map_task_kwargs,
@@ -260,6 +292,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
                 compute_strategy=compute_strategy,
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
+                ref_bundler=ref_bundler,
                 supports_fusion=supports_fusion,
                 map_task_kwargs=map_task_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
@@ -345,13 +378,17 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
             # The ref bundler combines one or more RefBundles into a new larger
             # RefBundle. Rather than dequeuing the new RefBundle, which was never
             # enqueued in the first place, we dequeue the original RefBundles.
-            input_refs, bundled_input = self._block_ref_bundler.get_next_bundle()
+            (
+                input_refs,
+                bundled_input,
+                task_kwargs,
+            ) = self._block_ref_bundler.get_next_bundle()
             for bundle in input_refs:
                 self._metrics.on_input_dequeued(bundle)
 
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue
-            self._add_bundled_input(bundled_input)
+            self._add_bundled_input(bundled_input, task_kwargs),
 
     def _get_dynamic_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
@@ -390,7 +427,9 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         return ray_remote_args
 
     @abstractmethod
-    def _add_bundled_input(self, refs: RefBundle):
+    def _add_bundled_input(
+        self, refs: RefBundle, task_kwargs: Optional[Dict[str, Any]] = None
+    ):
         """Add a pre-bundled upstream output to this operator.
 
         Unlike the add_input() arg, this RefBundle has already been further bundled by
@@ -401,6 +440,8 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
         Args:
             refs: The fully-bundled ref bundle that should be added as input.
+            task_kwargs: A dictionary of kwargs to pass to the map task. You can
+                access these kwargs through the `TaskContext.kwargs` dictionary.
         """
         raise NotImplementedError
 
@@ -481,8 +522,8 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         self._block_ref_bundler.done_adding_bundles()
         if self._block_ref_bundler.has_bundle():
             # Handle any leftover bundles in the bundler.
-            _, bundled_input = self._block_ref_bundler.get_next_bundle()
-            self._add_bundled_input(bundled_input)
+            _, bundled_input, task_kwargs = self._block_ref_bundler.get_next_bundle()
+            self._add_bundled_input(bundled_input, task_kwargs)
         super().all_inputs_done()
 
     def has_next(self) -> bool:
@@ -592,7 +633,7 @@ def _map_task(
     TaskContext.reset_current()
 
 
-class _BlockRefBundler:
+class BlockRefBundler(BaseRefBundler):
     """Rebundles RefBundles to get them close to a particular number of rows."""
 
     def __init__(self, min_rows_per_bundle: Optional[int]):
@@ -633,7 +674,9 @@ class _BlockRefBundler:
     def size_bytes(self) -> int:
         return self._bundle_buffer_size_bytes
 
-    def get_next_bundle(self) -> Tuple[List[RefBundle], RefBundle]:
+    def get_next_bundle(
+        self,
+    ) -> Tuple[List[RefBundle], RefBundle, Optional[Dict[str, Any]]]:
         """Gets the next bundle.
 
         Returns:
@@ -649,7 +692,7 @@ class _BlockRefBundler:
             self._bundle_buffer = []
             self._bundle_buffer_size = 0
             self._bundle_buffer_size_bytes = 0
-            return [bundle], bundle
+            return [bundle], bundle, None
 
         remainder = []
         output_buffer = []
@@ -678,7 +721,7 @@ class _BlockRefBundler:
             bundle.size_bytes() for bundle in remainder
         )
 
-        return list(output_buffer), _merge_ref_bundles(*output_buffer)
+        return list(output_buffer), _merge_ref_bundles(*output_buffer), None
 
     def done_adding_bundles(self):
         """Indicate that no more RefBundles will be added to this bundler."""
