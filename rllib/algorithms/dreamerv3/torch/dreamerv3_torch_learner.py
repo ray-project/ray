@@ -252,7 +252,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             self.metrics.log_value(
                 (module_id, "WORLD_MODEL_fwd_out_obs_distribution_means_b0xT"),
                 fwd_out["obs_distribution_means_BxT"][: self.config.batch_length_T],
-                reduce=None,  # No reduction, we want the obs tensor to stay in-tact.
+                reduce="item_series",  # No reduction, we want the obs tensor to stay in-tact.
                 window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 
@@ -306,7 +306,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
                     if key.endswith("H_BxT")
                 },
                 key=(module_id, "dream_data"),
-                reduce=None,
+                reduce="item_series",
                 window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 

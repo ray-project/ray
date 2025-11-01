@@ -72,7 +72,28 @@ class TestCheckpointable(unittest.TestCase):
                         "p3": PPOConfig.overrides(lr=0.003),
                     }
                 )
+                # The checkpoint has metrics that have not been cleared (since were created with the old metrics APIs)
+                # We therefore test two things:
+                # 1. That the metrics are correct according to the new metrics APIs (meaning that we average over the logged default_optimizer_learning_rate values.)
+                # 2. That the metrics are correct if we simply reduce first (clearing the values that have been left in the checkpoint by the old metrics APIs)
+
+                # 1.
                 algo = PPO.from_checkpoint(path=temp_dir, config=expanded_config)
+                learner_res = algo.train()[LEARNER_RESULTS]
+                # Assert that the correct per-policy learning rates were used.
+                assert (
+                    learner_res["p0"]["default_optimizer_learning_rate"] == 0.00005
+                    and learner_res["p1"]["default_optimizer_learning_rate"] == 0.0001
+                    and learner_res["p2"]["default_optimizer_learning_rate"]
+                    == 0.0011  # (0.002 + 0.0002) / 2
+                    and learner_res["p3"]["default_optimizer_learning_rate"]
+                    == 0.00165  # (0.003 + 0.0003) / 2
+                )
+                algo.stop()
+
+                # 2.
+                algo = PPO.from_checkpoint(path=temp_dir, config=expanded_config)
+                algo.metrics.reduce()
                 learner_res = algo.train()[LEARNER_RESULTS]
                 # Assert that the correct per-policy learning rates were used.
                 assert (

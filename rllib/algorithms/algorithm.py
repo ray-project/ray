@@ -489,7 +489,9 @@ class Algorithm(Checkpointable, Trainable):
         # The Algorithm's `MetricsLogger` object to collect stats from all its
         # components (including timers, counters and other stats in its own
         # `training_step()` and other methods) as well as custom callbacks.
-        self.metrics = MetricsLogger(root=True)
+        self.metrics: MetricsLogger = MetricsLogger(
+            root=True, stats_cls_lookup=config.stats_cls_lookup
+        )
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -1350,7 +1352,9 @@ class Algorithm(Checkpointable, Trainable):
             self._evaluate_offline_on_local_runner()
         # Reduce the evaluation results.
         eval_results = self.metrics.peek(
-            (EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS), default={}
+            (EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS),
+            default={},
+            latest_merged_only=True,
         )
 
         # Trigger `on_evaluate_offline_end` callback.
@@ -1511,7 +1515,11 @@ class Algorithm(Checkpointable, Trainable):
                 eval_results = {}
 
             if self.config.enable_env_runner_and_connector_v2:
-                eval_results = self.metrics.peek(key=EVALUATION_RESULTS, default={})
+                eval_results = self.metrics.peek(
+                    key=EVALUATION_RESULTS,
+                    default={},
+                    latest_merged_only=True,
+                )
                 if log_once("no_eval_results") and not eval_results:
                     logger.warning(
                         "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
@@ -1722,6 +1730,15 @@ class Algorithm(Checkpointable, Trainable):
             if self.config.enable_env_runner_and_connector_v2:
                 # Compute rough number of timesteps it takes for a single EnvRunner
                 # to occupy the estimated (parallelly running) train step.
+                throughput_estimate = self.metrics.peek(
+                    (
+                        EVALUATION_RESULTS,
+                        ENV_RUNNER_RESULTS,
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                    ),
+                    throughput=True,
+                    default={"throughput_since_last_restore": 0.0},
+                )["throughput_since_last_restore"]
                 _num = min(
                     # Clamp number of steps to take between a max and a min.
                     self.config.evaluation_auto_duration_max_env_steps_per_sample,
@@ -1732,15 +1749,7 @@ class Algorithm(Checkpointable, Trainable):
                             (train_mean_time - (time.time() - t0))
                             # Multiply by our own (eval) throughput to get the timesteps
                             # to do (per worker).
-                            * self.metrics.peek(
-                                (
-                                    EVALUATION_RESULTS,
-                                    ENV_RUNNER_RESULTS,
-                                    NUM_ENV_STEPS_SAMPLED_LIFETIME,
-                                ),
-                                throughput=True,
-                                default=0.0,
-                            )
+                            * throughput_estimate
                             / num_healthy_workers
                         ),
                     ),
@@ -2095,7 +2104,9 @@ class Algorithm(Checkpointable, Trainable):
                 key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS),
             )
             num_episodes = self.metrics.peek(
-                (EVALUATION_RESULTS, ENV_RUNNER_RESULTS, NUM_EPISODES), default=0
+                (EVALUATION_RESULTS, ENV_RUNNER_RESULTS, NUM_EPISODES),
+                default=0,
+                latest_merged_only=True,
             )
             env_runner_results = None
 
@@ -2190,7 +2201,9 @@ class Algorithm(Checkpointable, Trainable):
                 COMPONENT_MODULE_TO_ENV_CONNECTOR
             ] = self.module_to_env_connector.get_state()
             state[NUM_ENV_STEPS_SAMPLED_LIFETIME] = self.metrics.peek(
-                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                default=0,
+                latest_merged_only=True,
             )
             state_ref = ray.put(state)
 
@@ -2333,7 +2346,7 @@ class Algorithm(Checkpointable, Trainable):
                     ),
                 },
             )
-            self.metrics.log_dict(learner_results, key=LEARNER_RESULTS)
+            self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
 
         # Update weights - after learning on the local worker - on all
         # remote workers (only those RLModules that were actually trained).
@@ -3247,7 +3260,8 @@ class Algorithm(Checkpointable, Trainable):
                 config=self.config,
                 from_worker=None,
                 env_steps_sampled=self.metrics.peek(
-                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED),
+                    latest_merged_only=True,
                 ),
                 # connector_states=connector_states,
                 env_to_module=self.env_to_module_connector,
@@ -3651,7 +3665,6 @@ class Algorithm(Checkpointable, Trainable):
                             NUM_TRAINING_STEP_CALLS_PER_ITERATION,
                             1,
                             reduce="sum",
-                            clear_on_reduce=True,
                         )
 
             if self.config.num_aggregator_actors_per_learner:
@@ -3689,7 +3702,7 @@ class Algorithm(Checkpointable, Trainable):
                     self.offline_eval_runner_group
                 )
                 if restored:
-                    # Fire the callback for re-created workers.
+
                     make_callback(
                         "on_offline_eval_runners_recreated",
                         callbacks_objects=self.callbacks,

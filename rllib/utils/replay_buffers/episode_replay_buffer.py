@@ -391,7 +391,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             NUM_EPISODES_ADDED,
             num_episodes_added,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             NUM_EPISODES_ADDED_LIFETIME,
@@ -402,7 +401,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             NUM_EPISODES_EVICTED,
             num_episodes_evicted,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             NUM_EPISODES_EVICTED_LIFETIME,
@@ -420,7 +418,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             NUM_ENV_STEPS_ADDED,
             num_env_steps_added,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             NUM_ENV_STEPS_ADDED_LIFETIME,
@@ -431,7 +428,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             NUM_ENV_STEPS_EVICTED,
             num_env_steps_evicted,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             NUM_ENV_STEPS_EVICTED_LIFETIME,
@@ -447,7 +443,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 (NUM_AGENT_EPISODES_ADDED, aid),
                 agent_to_num_episodes_added[aid],
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (NUM_AGENT_EPISODES_ADDED_LIFETIME, aid),
@@ -460,7 +455,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 (NUM_AGENT_STEPS_ADDED, aid),
                 agent_to_num_steps_added[aid],
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (NUM_AGENT_STEPS_ADDED_LIFETIME, aid),
@@ -473,7 +467,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 (NUM_AGENT_EPISODES_EVICTED, aid),
                 agent_to_num_episodes_evicted[aid],
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (NUM_AGENT_EPISODES_EVICTED_LIFETIME, aid),
@@ -485,7 +478,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 (NUM_AGENT_STEPS_EVICTED, aid),
                 agent_to_num_steps_evicted[aid],
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (NUM_AGENT_STEPS_EVICTED_LIFETIME, aid),
@@ -501,7 +493,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                     (NUM_AGENT_EPISODES_EVICTED, aid),
                     0,
                     reduce="sum",
-                    clear_on_reduce=True,
                 )
                 self.metrics.log_value(
                     (NUM_AGENT_EPISODES_EVICTED_LIFETIME, aid),
@@ -512,7 +503,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                     (NUM_AGENT_STEPS_EVICTED, aid),
                     0,
                     reduce="sum",
-                    clear_on_reduce=True,
                 )
                 self.metrics.log_value(
                     (NUM_AGENT_STEPS_EVICTED_LIFETIME, aid),
@@ -549,7 +539,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 (NUM_MODULE_EPISODES_ADDED, mid),
                 module_to_num_episodes_added[mid],
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (NUM_MODULE_EPISODES_ADDED_LIFETIME, mid),
@@ -562,7 +551,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 (NUM_MODULE_STEPS_ADDED, mid),
                 module_to_num_steps_added[mid],
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (NUM_MODULE_STEPS_ADDED_LIFETIME, mid),
@@ -575,7 +563,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 (NUM_MODULE_EPISODES_EVICTED, mid),
                 module_to_num_episodes_evicted[mid],
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (NUM_MODULE_EPISODES_EVICTED_LIFETIME, mid),
@@ -587,7 +574,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 (NUM_MODULE_STEPS_EVICTED, mid),
                 module_to_num_steps_evicted[mid],
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (NUM_MODULE_STEPS_EVICTED_LIFETIME, mid),
@@ -603,7 +589,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                     (NUM_MODULE_EPISODES_EVICTED, mid),
                     0,
                     reduce="sum",
-                    clear_on_reduce=True,
                 )
                 self.metrics.log_value(
                     (NUM_MODULE_EPISODES_EVICTED_LIFETIME, mid),
@@ -614,7 +599,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                     (NUM_MODULE_STEPS_EVICTED, mid),
                     0,
                     reduce="sum",
-                    clear_on_reduce=True,
                 )
                 self.metrics.log_value(
                     (NUM_MODULE_STEPS_EVICTED_LIFETIME, mid),
@@ -1239,13 +1223,11 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             NUM_EPISODES_PER_SAMPLE,
             num_episodes_per_sample,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             NUM_ENV_STEPS_PER_SAMPLE,
             num_env_steps_per_sample,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             NUM_ENV_STEPS_PER_SAMPLE_LIFETIME,
@@ -1256,7 +1238,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             NUM_ENV_STEPS_SAMPLED,
             num_env_steps_sampled,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
@@ -1296,7 +1277,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             NUM_RESAMPLES,
             num_resamples,
             reduce="sum",
-            clear_on_reduce=True,
         )
 
         # Add per-agent metrics.
@@ -1305,7 +1285,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 (NUM_AGENT_STEPS_SAMPLED, aid),
                 agent_to_num_steps_sampled[aid],
                 reduce="sum",
-                clear_on_reduce=True,
             )
             # TODO (simon): Check, if we can then deprecate
             # self.sampled_timesteps.
@@ -1318,13 +1297,11 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 (NUM_AGENT_EPISODES_PER_SAMPLE, aid),
                 agent_to_num_episodes_per_sample[aid],
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (NUM_AGENT_STEPS_PER_SAMPLE, aid),
                 agent_to_num_steps_per_sample[aid],
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (NUM_AGENT_STEPS_PER_SAMPLE_LIFETIME, aid),
@@ -1342,7 +1319,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 (NUM_AGENT_RESAMPLES, aid),
                 agent_to_num_resamples[aid],
                 reduce="sum",
-                clear_on_reduce=True,
             )
         # Add per-module metrics.
         for mid in module_to_num_steps_sampled:
@@ -1350,7 +1326,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 (NUM_MODULE_STEPS_SAMPLED, mid),
                 module_to_num_steps_sampled[mid],
                 reduce="sum",
-                clear_on_reduce=True,
             )
             # TODO (simon): Check, if we can then deprecate
             # self.sampled_timesteps.
@@ -1363,13 +1338,11 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 (NUM_MODULE_EPISODES_PER_SAMPLE, mid),
                 module_to_num_episodes_per_sample[mid],
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (NUM_MODULE_STEPS_PER_SAMPLE, mid),
                 module_to_num_steps_per_sample[mid],
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (NUM_MODULE_STEPS_PER_SAMPLE_LIFETIME, mid),
@@ -1387,7 +1360,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 (NUM_MODULE_RESAMPLES, mid),
                 module_to_num_resamples[mid],
                 reduce="sum",
-                clear_on_reduce=True,
             )
 
     # TODO (simon): Check, if we can instead peek into the metrics
