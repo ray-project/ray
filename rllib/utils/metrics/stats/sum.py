@@ -70,9 +70,8 @@ class SumStats(SeriesStats):
         if compile:
             return reduce_value
 
-        return_stats = self.clone(self)
+        return_stats = self.clone(clone_internal_values=False)
         return_stats.values = [reduce_value]
-        return_stats.latest_merged = self.latest_merged
         return return_stats
 
     @staticmethod

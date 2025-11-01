@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 import logging
 import numpy as np
@@ -205,14 +205,16 @@ class EmaStats(StatsBase):
         if compile:
             return value
 
-        return_stats = self.clone(self)
+        return_stats = self.clone(clone_internal_values=False)
         return_stats._value = value
-        return_stats.latest_merged = self.latest_merged
         return return_stats
 
     def __repr__(self) -> str:
+        values_to_merge_len = (
+            len(self._values_to_merge) if hasattr(self, "_values_to_merge") else 0
+        )
         return (
-            f"EmaStats({self.peek()}; number_of_values_to_merge=({len(self._values_to_merge)}); "
+            f"EmaStats({self.peek()}; number_of_values_to_merge=({values_to_merge_len}); "
             f"ema_coeff={self._ema_coeff}), value={self._value}"
         )
 
@@ -250,14 +252,21 @@ class EmaStats(StatsBase):
             raise ValueError("Either stats_object or state must be provided")
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def clone(self, clone_internal_values: bool = False) -> "EmaStats":
+    def clone(
+        self,
+        clone_internal_values: bool = False,
+        init_overrides: Optional[Dict[str, Any]] = None,
+    ) -> "EmaStats":
         """Returns a new EmaStats object that's similar to `other`.
 
         Args:
             other: The other EmaStats object to return a similar new EmaStats equivalent for.
             clone_internal_values: If True, the internal values of the returned EmaStats will be cloned from the internal values of the original EmaStats including last merged values.
+            init_overrides: Optional dict of initialization arguments to override.
         """
-        new_stats = super().clone(clone_internal_values=clone_internal_values)
+        new_stats = super().clone(
+            clone_internal_values=clone_internal_values, init_overrides=init_overrides
+        )
         if clone_internal_values:
             new_stats._value = self._value
             if not self.is_leaf:

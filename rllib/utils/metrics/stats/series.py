@@ -91,9 +91,8 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             else:
                 return reduced_values[0]
 
-        return_stats = self.clone(self)
+        return_stats = self.clone(clone_internal_values=False)
         return_stats.values = reduced_values
-        return_stats.latest_merged = self.latest_merged
         return return_stats
 
     def __len__(self) -> int:
@@ -285,16 +284,23 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             return [self._np_reduce_fn(values)]
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def clone(self, clone_internal_values: bool = False) -> "SeriesStats":
+    def clone(
+        self,
+        clone_internal_values: bool = False,
+        init_overrides: Optional[Dict[str, Any]] = None,
+    ) -> "SeriesStats":
         """Returns a new SeriesStats object with the same settings as `self`.
 
         Args:
             clone_internal_values: If True, the internal values of the returned SeriesStats will be cloned from the internal values of the original SeriesStats including last merged values.
+            init_overrides: Optional dict of initialization arguments to override.
 
         Returns:
             A new SeriesStats object with the same settings as `self`.
         """
-        new_stats = super().clone(clone_internal_values=clone_internal_values)
+        new_stats = super().clone(
+            clone_internal_values=clone_internal_values, init_overrides=init_overrides
+        )
         if clone_internal_values:
             new_stats.values = self.values
         return new_stats

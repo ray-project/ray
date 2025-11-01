@@ -1,7 +1,7 @@
 from collections import deque
 import threading
 import time
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 from abc import ABCMeta, abstractmethod
 from ray.util.annotations import DeveloperAPI
 
@@ -152,16 +152,21 @@ class StatsBase(metaclass=ABCMeta):
     def clone(
         self,
         clone_internal_values: bool = False,
+        init_overrides: Optional[Dict[str, Any]] = None,
     ) -> "StatsBase":
         """Returns a new stats object with the same settings as `self`.
 
         Args:
             clone_internal_values: If True, the internal values of the returned stats will be cloned from the internal values of the original stats including last merged values.
+            init_overrides: Optional dict of initialization arguments to override. Can be used to change is_root, is_leaf, etc.
 
         Returns:
             A new stats object similar to `self`.
         """
-        new_stats = self.__class__(**self.__class__._get_init_args(stats_object=self))
+        init_args = self.__class__._get_init_args(stats_object=self)
+        if init_overrides:
+            init_args.update(init_overrides)
+        new_stats = self.__class__(**init_args)
         if not self.is_leaf and clone_internal_values:
             new_stats.latest_merged = self.latest_merged
         return new_stats

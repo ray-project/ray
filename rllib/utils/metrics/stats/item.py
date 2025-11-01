@@ -1,4 +1,4 @@
-from typing import Any, List, Union, Dict
+from typing import Any, Dict, List, Optional, Union
 
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -45,7 +45,7 @@ class ItemStats(StatsBase):
         if compile:
             return item
 
-        return_stats = self.clone(self)
+        return_stats = self.clone(clone_internal_values=False)
         return_stats._item = item
         return return_stats
 
@@ -96,16 +96,23 @@ class ItemStats(StatsBase):
         return f"ItemStats({self.peek()}"
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def clone(self, clone_internal_values: bool = False) -> "ItemStats":
+    def clone(
+        self,
+        clone_internal_values: bool = False,
+        init_overrides: Optional[Dict[str, Any]] = None,
+    ) -> "ItemStats":
         """Returns a new ItemStats object with the same settings as `self`.
 
         Args:
             clone_internal_values: If True, the internal values of the returned ItemStats will be cloned from the internal values of the original ItemStats including last merged values.
+            init_overrides: Optional dict of initialization arguments to override.
 
         Returns:
             A new ItemStats object with the same settings as `self`.
         """
-        new_stats = super().clone(clone_internal_values=clone_internal_values)
+        new_stats = super().clone(
+            clone_internal_values=clone_internal_values, init_overrides=init_overrides
+        )
         if clone_internal_values:
             new_stats._item = self._item
         return new_stats

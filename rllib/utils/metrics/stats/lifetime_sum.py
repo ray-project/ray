@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 import time
 
 from ray.util.annotations import DeveloperAPI
@@ -244,9 +244,8 @@ class LifetimeSumStats(StatsBase):
         if compile:
             return value
 
-        return_stats = self.clone(self)
+        return_stats = self.clone(clone_internal_values=False)
         return_stats._lifetime_sum = value
-        return_stats.latest_merged = self.latest_merged
         return return_stats
 
     def merge(self, incoming_stats: List["LifetimeSumStats"]):
@@ -272,16 +271,23 @@ class LifetimeSumStats(StatsBase):
         return f"LifetimeSumStats({self.peek()}; track_throughputs={self.track_throughputs})"
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def clone(self, clone_internal_values: bool = False) -> "LifetimeSumStats":
+    def clone(
+        self,
+        clone_internal_values: bool = False,
+        init_overrides: Optional[Dict[str, Any]] = None,
+    ) -> "LifetimeSumStats":
         """Returns a new LifetimeSumStats object with the same settings as `self`.
 
         Args:
             clone_internal_values: If True, the internal values of the returned LifetimeSumStats will be cloned from the internal values of the original LifetimeSumStats including last merged values.
+            init_overrides: Optional dict of initialization arguments to override.
 
         Returns:
             A new LifetimeSumStats object with the same settings as `self`.
         """
-        new_stats = super().clone(clone_internal_values=clone_internal_values)
+        new_stats = super().clone(
+            clone_internal_values=clone_internal_values, init_overrides=init_overrides
+        )
         if clone_internal_values:
             new_stats._lifetime_sum = self._lifetime_sum
         return new_stats

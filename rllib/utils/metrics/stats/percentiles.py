@@ -237,9 +237,8 @@ class PercentilesStats(StatsBase):
         if compile:
             return compute_percentiles(values, self._percentiles)
 
-        return_stats = self.clone(self)
+        return_stats = self.clone(clone_internal_values=False)
         return_stats.values = values
-        return_stats.latest_merged = self.latest_merged
         return return_stats
 
     def __repr__(self) -> str:
@@ -265,16 +264,23 @@ class PercentilesStats(StatsBase):
             raise ValueError("Either stats_object or state must be provided")
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def clone(self, clone_internal_values: bool = False) -> "PercentilesStats":
+    def clone(
+        self,
+        clone_internal_values: bool = False,
+        init_overrides: Optional[Dict[str, Any]] = None,
+    ) -> "PercentilesStats":
         """Returns a new PercentilesStats object with the same settings as `self`.
 
         Args:
             clone_internal_values: If True, the internal values of the returned PercentilesStats will be cloned from the internal values of the original PercentilesStats including last merged values.
+            init_overrides: Optional dict of initialization arguments to override.
 
         Returns:
             A new PercentilesStats object with the same settings as `self`.
         """
-        new_stats = super().clone(clone_internal_values=clone_internal_values)
+        new_stats = super().clone(
+            clone_internal_values=clone_internal_values, init_overrides=init_overrides
+        )
 
         if clone_internal_values:
             new_stats.values = self.values

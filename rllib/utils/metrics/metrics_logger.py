@@ -514,8 +514,8 @@ class MetricsLogger:
                 found in the n `stats_dicts`.
         """
         assert (
-            not self._is_leaf_logger
-        ), "Stats should only be aggregated at aggregation stages (root or intermediate)"
+            self._is_root_logger or not self._is_leaf_logger
+        ), "Stats should only be aggregated at root or intermediate aggregation stages"
 
         all_keys = set()
 
@@ -573,17 +573,11 @@ class MetricsLogger:
 
             if own_stats is None:
                 # This should happen the first time we reduce this stat to the root logger.
-                own_stats = incoming_stats[0].clone(incoming_stats[0])
-                own_stats.is_root = True
-                own_stats.is_leaf = False  # Aggregated stats are not leaf stats
-                if own_stats.has_throughputs:
-                    own_stats.initialize_throughput_reference_time(
-                        self._time_when_initialized
-                    )
-            else:
-                # Mark existing stats as root stats so they can accept merge operations
-                # but keep is_leaf as is (if it was a leaf, it stays a leaf)
-                own_stats.is_root = True
+                # Clone without internal values to create a fresh aggregator
+                own_stats = incoming_stats[0].clone(
+                    clone_internal_values=False,
+                    init_overrides={"is_root": self._is_root_logger, "is_leaf": False},
+                )
                 if own_stats.has_throughputs:
                     own_stats.initialize_throughput_reference_time(
                         self._time_when_initialized

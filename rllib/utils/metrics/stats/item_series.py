@@ -86,9 +86,8 @@ class ItemSeriesStats(StatsBase):
         if compile:
             return items
 
-        return_stats = self.clone(self)
+        return_stats = self.clone(clone_internal_values=False)
         return_stats._set_items(items)
-        return_stats.latest_merged = self.latest_merged
         return return_stats
 
     def __len__(self) -> int:
@@ -170,16 +169,23 @@ class ItemSeriesStats(StatsBase):
         return f"ItemSeriesStats(window={self._window}; len={len(self)})"
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def clone(self, clone_internal_values: bool = False) -> "ItemSeriesStats":
+    def clone(
+        self,
+        clone_internal_values: bool = False,
+        init_overrides: Optional[Dict[str, Any]] = None,
+    ) -> "ItemSeriesStats":
         """Returns a new ItemSeriesStats object with the same settings as `self`.
 
         Args:
             clone_internal_values: If True, the internal values of the returned ItemSeriesStats will be cloned from the internal values of the original ItemSeriesStats including last merged values.
+            init_overrides: Optional dict of initialization arguments to override.
 
         Returns:
             A new ItemSeriesStats object with the same settings as `self`.
         """
-        new_stats = super().clone(clone_internal_values=clone_internal_values)
+        new_stats = super().clone(
+            clone_internal_values=clone_internal_values, init_overrides=init_overrides
+        )
         if clone_internal_values:
             new_stats.items = self.items
         return new_stats
