@@ -342,7 +342,6 @@ def test_repartition_guarantee_row_num_to_be_exact(
         ds = ray.data.range(num_rows, override_num_blocks=override_num_blocks)
         ds = ds.repartition(
             target_num_rows_per_block=target_num_rows_per_block,
-            enforce_target_num_rows_per_block=True,
         )
         ds = ds.materialize()
 
