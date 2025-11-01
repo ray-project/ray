@@ -29,6 +29,8 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_OUTBOUND_DEPLOYMENTS_INITIAL_POLL_DELAY_S,
+    RAY_SERVE_OUTBOUND_DEPLOYMENTS_MAX_POLL_DELAY_S,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_scheduler import ReplicaSchedulingRequest
@@ -309,6 +311,10 @@ class MockReplicaActorWrapper:
 
     def get_routing_stats(self) -> Dict[str, Any]:
         return {}
+
+    def poll_outbound_deployments(self, poll_period_s: float) -> Optional[List[str]]:
+        """Mock method for polling outbound deployments."""
+        return getattr(self, "_outbound_deployments", None)
 
     @property
     def route_patterns(self) -> Optional[List[str]]:
@@ -5598,6 +5604,343 @@ class TestDeploymentRankManagerIntegrationE2E:
             1,
             2,
         }, f"Expected ranks [0, 1, 2], got {ranks_mapping.values()}"
+
+
+class TestOutboundDeploymentsPoll:
+    """Tests for polling outbound deployments from replicas."""
+
+    def test_basic_outbound_deployments_polling(self, mock_deployment_state_manager):
+        """Test that outbound deployments are polled and cached."""
+        (
+            create_dsm,
+            timer,
+            cluster_node_info_cache,
+            autoscaling_state_manager,
+        ) = mock_deployment_state_manager
+        dsm = create_dsm()
+
+        deployment_id = DeploymentID(name="test_deployment", app_name="test_app")
+        b_info_1, b_version_1 = deployment_info(num_replicas=1)
+        dsm.deploy(deployment_id, b_info_1)
+
+        # Create a RUNNING replica
+        ds = dsm._deployment_states[deployment_id]
+        dsm.update()  # Transitions to STARTING
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()  # Transitions to RUNNING
+
+        # Set outbound deployments on the mock replica
+        running_replicas = ds._replicas.get([ReplicaState.RUNNING])
+        assert len(running_replicas) == 1
+        running_replicas[0]._actor._outbound_deployments = ["dep1", "dep2"]
+
+        # Poll and verify caching
+        dsm.update()
+        cached = ds.get_outbound_deployments()
+        assert cached == ["dep1", "dep2"]
+
+        # Verify it's accessible through DeploymentStateManager
+        assert dsm.get_deployment_outbound_deployments(deployment_id) == [
+            "dep1",
+            "dep2",
+        ]
+
+    def test_exponential_backoff(self, mock_deployment_state_manager):
+        """Test that poll delay increases exponentially."""
+        (
+            create_dsm,
+            timer,
+            cluster_node_info_cache,
+            autoscaling_state_manager,
+        ) = mock_deployment_state_manager
+        dsm = create_dsm()
+
+        deployment_id = DeploymentID(name="test_deployment", app_name="test_app")
+        b_info_1, b_version_1 = deployment_info(num_replicas=1)
+        dsm.deploy(deployment_id, b_info_1)
+
+        ds = dsm._deployment_states[deployment_id]
+
+        # Create a RUNNING replica
+        dsm.update()  # Transitions to STARTING
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()  # Transitions to RUNNING
+
+        # Set outbound deployments
+        running_replicas = ds._replicas.get([ReplicaState.RUNNING])
+        running_replicas[0]._actor._outbound_deployments = ["dep1"]
+
+        # Initial delay should be the default
+        assert (
+            ds._outbound_poll_delay
+            == RAY_SERVE_OUTBOUND_DEPLOYMENTS_INITIAL_POLL_DELAY_S
+        )
+
+        # First poll - should update cache and increase delay
+        dsm.update()
+        assert dsm.get_deployment_outbound_deployments(deployment_id) == ["dep1"]
+        assert (
+            ds._outbound_poll_delay
+            == RAY_SERVE_OUTBOUND_DEPLOYMENTS_INITIAL_POLL_DELAY_S * 2
+        )
+
+        # Change the outbound deployments to trigger another update
+        running_replicas[0]._actor._outbound_deployments = ["dep1", "dep2"]
+        dsm.update()
+        assert dsm.get_deployment_outbound_deployments(deployment_id) == [
+            "dep1",
+            "dep2",
+        ]
+        assert (
+            ds._outbound_poll_delay
+            == RAY_SERVE_OUTBOUND_DEPLOYMENTS_INITIAL_POLL_DELAY_S * 4
+        )
+
+        # Verify delay caps at max
+        for _ in range(20):  # Enough iterations to hit the cap
+            running_replicas[0]._actor._outbound_deployments = ["dep" + str(_)]
+            dsm.update()
+
+        assert (
+            ds._outbound_poll_delay == RAY_SERVE_OUTBOUND_DEPLOYMENTS_MAX_POLL_DELAY_S
+        )
+
+    def test_version_change_resets_poll_delay(self, mock_deployment_state_manager):
+        """Test that poll delay resets when deployment version changes."""
+        (
+            create_dsm,
+            timer,
+            cluster_node_info_cache,
+            autoscaling_state_manager,
+        ) = mock_deployment_state_manager
+        dsm = create_dsm()
+
+        deployment_id = DeploymentID(name="test_deployment", app_name="test_app")
+        b_info_1, b_version_1 = deployment_info(version="1", num_replicas=1)
+        dsm.deploy(deployment_id, b_info_1)
+
+        ds = dsm._deployment_states[deployment_id]
+
+        # Create a RUNNING replica
+        dsm.update()  # Transitions to STARTING
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()  # Transitions to RUNNING
+
+        # Set outbound deployments and poll multiple times to increase delay
+        running_replicas = ds._replicas.get([ReplicaState.RUNNING])
+        for i in range(5):
+            running_replicas[0]._actor._outbound_deployments = [f"dep{i}"]
+            dsm.update()
+
+        # Delay should be increased
+        assert (
+            ds._outbound_poll_delay
+            > RAY_SERVE_OUTBOUND_DEPLOYMENTS_INITIAL_POLL_DELAY_S
+        )
+
+        # Deploy new version
+        b_info_2, b_version_2 = deployment_info(version="2", num_replicas=1)
+        dsm.deploy(deployment_id, b_info_2)
+
+        # Delay should reset to initial value
+        assert (
+            ds._outbound_poll_delay
+            == RAY_SERVE_OUTBOUND_DEPLOYMENTS_INITIAL_POLL_DELAY_S
+        )
+
+    def test_no_poll_without_running_replicas(self, mock_deployment_state_manager):
+        """Test that polling doesn't happen when no replicas are running."""
+        (
+            create_dsm,
+            timer,
+            cluster_node_info_cache,
+            autoscaling_state_manager,
+        ) = mock_deployment_state_manager
+        dsm = create_dsm()
+
+        deployment_id = DeploymentID(name="test_deployment", app_name="test_app")
+        b_info_1, b_version_1 = deployment_info(num_replicas=1)
+        dsm.deploy(deployment_id, b_info_1)
+
+        ds = dsm._deployment_states[deployment_id]
+
+        # No RUNNING replicas yet
+        assert len(ds._replicas.get([ReplicaState.RUNNING])) == 0
+
+        # Poll should not crash and should not cache anything
+        dsm.update()
+        assert dsm.get_deployment_outbound_deployments(deployment_id) is None
+
+    def test_cache_unchanged_when_replica_returns_none(
+        self, mock_deployment_state_manager
+    ):
+        """Test that cache doesn't change when replica returns None."""
+        (
+            create_dsm,
+            timer,
+            cluster_node_info_cache,
+            autoscaling_state_manager,
+        ) = mock_deployment_state_manager
+        dsm = create_dsm()
+
+        deployment_id = DeploymentID(name="test_deployment", app_name="test_app")
+        b_info_1, b_version_1 = deployment_info(num_replicas=1)
+        dsm.deploy(deployment_id, b_info_1)
+
+        ds = dsm._deployment_states[deployment_id]
+
+        # Create a RUNNING replica
+        dsm.update()  # Transitions to STARTING
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()  # Transitions to RUNNING
+
+        # Set initial outbound deployments
+        running_replicas = ds._replicas.get([ReplicaState.RUNNING])
+        running_replicas[0]._actor._outbound_deployments = ["dep1"]
+        dsm.update()
+        assert dsm.get_deployment_outbound_deployments(deployment_id) == ["dep1"]
+
+        # Now set replica to return None (simulating not ready yet)
+        running_replicas[0]._actor._outbound_deployments = None
+        dsm.update()
+
+        # Cache should remain unchanged
+        assert dsm.get_deployment_outbound_deployments(deployment_id) == ["dep1"]
+
+    def test_outbound_deployments_with_multiple_replicas(
+        self, mock_deployment_state_manager
+    ):
+        """Test that polling works with multiple replicas (randomly picks one)."""
+        (
+            create_dsm,
+            timer,
+            cluster_node_info_cache,
+            autoscaling_state_manager,
+        ) = mock_deployment_state_manager
+        dsm = create_dsm()
+
+        deployment_id = DeploymentID(name="test_deployment", app_name="test_app")
+        b_info_1, b_version_1 = deployment_info(num_replicas=3)
+        dsm.deploy(deployment_id, b_info_1)
+
+        ds = dsm._deployment_states[deployment_id]
+
+        # Create RUNNING replicas
+        dsm.update()  # Transitions to STARTING
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()  # Transitions to RUNNING
+
+        running_replicas = ds._replicas.get([ReplicaState.RUNNING])
+        assert len(running_replicas) == 3
+
+        # Set different outbound deployments on each replica
+        running_replicas[0]._actor._outbound_deployments = ["dep1"]
+        running_replicas[1]._actor._outbound_deployments = ["dep2"]
+        running_replicas[2]._actor._outbound_deployments = ["dep3"]
+
+        # Poll should pick one of them (we can't predict which due to random.choice)
+        dsm.update()
+        cached = dsm.get_deployment_outbound_deployments(deployment_id)
+
+        # Should have cached one of the three options
+        assert cached in [["dep1"], ["dep2"], ["dep3"]]
+
+    def test_outbound_deployments_integrated_with_update_cycle(
+        self, mock_deployment_state_manager
+    ):
+        """Test that polling is called during the regular update cycle."""
+        (
+            create_dsm,
+            timer,
+            cluster_node_info_cache,
+            autoscaling_state_manager,
+        ) = mock_deployment_state_manager
+        dsm = create_dsm()
+
+        deployment_id = DeploymentID(name="test_deployment", app_name="test_app")
+        b_info_1, b_version_1 = deployment_info(num_replicas=1)
+        dsm.deploy(deployment_id, b_info_1)
+
+        ds = dsm._deployment_states[deployment_id]
+
+        # Create a RUNNING replica
+        dsm.update()  # Transitions to STARTING
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()  # Transitions to RUNNING
+
+        # Set outbound deployments
+        running_replicas = ds._replicas.get([ReplicaState.RUNNING])
+        running_replicas[0]._actor._outbound_deployments = ["dep1", "dep2", "dep3"]
+
+        # Update should trigger polling via check_and_update_replicas
+        dsm.update()
+
+        # Verify it was cached
+        assert dsm.get_deployment_outbound_deployments(deployment_id) == [
+            "dep1",
+            "dep2",
+            "dep3",
+        ]
+
+    def test_deployment_state_manager_returns_none_for_nonexistent_deployment(
+        self, mock_deployment_state_manager
+    ):
+        """Test that DeploymentStateManager returns None for nonexistent deployments."""
+        (
+            create_dsm,
+            timer,
+            cluster_node_info_cache,
+            autoscaling_state_manager,
+        ) = mock_deployment_state_manager
+        dsm = create_dsm()
+
+        deployment_id = DeploymentID(name="nonexistent", app_name="test_app")
+        assert dsm.get_deployment_outbound_deployments(deployment_id) is None
+
+    def test_cache_not_updated_when_result_unchanged(
+        self, mock_deployment_state_manager
+    ):
+        """Test that exponential backoff only increases when results change."""
+        (
+            create_dsm,
+            timer,
+            cluster_node_info_cache,
+            autoscaling_state_manager,
+        ) = mock_deployment_state_manager
+        dsm = create_dsm()
+
+        deployment_id = DeploymentID(name="test_deployment", app_name="test_app")
+        b_info_1, b_version_1 = deployment_info(num_replicas=1)
+        dsm.deploy(deployment_id, b_info_1)
+
+        ds = dsm._deployment_states[deployment_id]
+
+        # Create a RUNNING replica
+        dsm.update()  # Transitions to STARTING
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()  # Transitions to RUNNING
+
+        # Set outbound deployments
+        running_replicas = ds._replicas.get([ReplicaState.RUNNING])
+        running_replicas[0]._actor._outbound_deployments = ["dep1"]
+
+        # First poll
+        dsm.update()
+        assert dsm.get_deployment_outbound_deployments(deployment_id) == ["dep1"]
+        first_delay = ds._outbound_poll_delay
+
+        # Poll again with same result - delay should still increase
+        # because we check if the result changed
+        dsm.update()
+        # Since result is the same, delay shouldn't increase
+        assert ds._outbound_poll_delay == first_delay
 
 
 if __name__ == "__main__":
