@@ -433,15 +433,13 @@ class ParquetDatasource(Datasource):
         return True
 
     def get_current_projection(self) -> Optional[List[str]]:
+        """Override to include partition columns in addition to data columns."""
         # NOTE: In case there's no projection both file and partition columns
         #       will be none
         if self._data_columns is None and self._partition_columns is None:
             return None
 
         return (self._data_columns or []) + (self._partition_columns or [])
-
-    def get_column_renames(self) -> Optional[Dict[str, str]]:
-        return self._data_columns_rename_map if self._data_columns_rename_map else None
 
     def _estimate_in_mem_size(self, fragments: List[_ParquetFragment]) -> int:
         in_mem_size = sum([f.file_size for f in fragments]) * self._encoding_ratio

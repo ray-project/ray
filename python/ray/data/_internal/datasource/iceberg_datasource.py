@@ -25,8 +25,6 @@ if TYPE_CHECKING:
     from pyiceberg.table import DataScan, FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
 
-    from ray.data.expressions import Expr
-
 logger = logging.getLogger(__name__)
 
 
@@ -244,45 +242,10 @@ class IcebergDatasource(Datasource):
         """Returns True to indicate this datasource supports projection pushdown."""
         return True
 
-    def get_current_projection(self) -> Optional[List[str]]:
-        """Return the current projection (selected columns).
-
-        Returns:
-            List of column names to project, or None if all columns are selected.
-        """
-        return self._data_columns
-
-    def get_column_renames(self) -> Optional[Dict[str, str]]:
-        """Return the column renames applied to this datasource.
-
-        Returns:
-            A dictionary mapping old column names to new column names,
-            or None if no renaming has been applied.
-        """
-        return self._data_columns_rename_map if self._data_columns_rename_map else None
-
-    def apply_predicate(self, predicate_expr: "Expr") -> "IcebergDatasource":
-        """Apply a predicate to this datasource.
-
-        Overrides the base implementation to also invalidate cached plan_files.
-        """
-        import copy
-
-        clone = copy.copy(self)
-
-        # Combine with existing predicate using AND
-        clone._predicate_expr = (
-            predicate_expr
-            if clone._predicate_expr is None
-            else clone._predicate_expr & predicate_expr
-        )
-
-        # Invalidate cached plan_files and table so they get recalculated
-        # with the new predicate
+    def _post_apply_predicate(self, clone: "IcebergDatasource") -> None:
+        """Invalidate cached plan_files and table after predicate changes."""
         clone._plan_files = None
         clone._table = None
-
-        return clone
 
     def _post_apply_projection(self, clone: "IcebergDatasource") -> None:
         """Invalidate cached plan_files and table after projection changes."""

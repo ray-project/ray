@@ -32,8 +32,12 @@ class _DatasourceProjectionPushdownMixin:
         return False
 
     def get_current_projection(self) -> Optional[List[str]]:
-        """Retrurns current projection"""
-        return None
+        """Return the current projection (selected columns).
+
+        Returns:
+            List of column names to project, or None if all columns are selected.
+        """
+        return self._data_columns
 
     def get_column_renames(self) -> Optional[Dict[str, str]]:
         """Return the column renames applied to this datasource.
@@ -42,7 +46,7 @@ class _DatasourceProjectionPushdownMixin:
             A dictionary mapping old column names to new column names,
             or None if no renaming has been applied.
         """
-        return None
+        return self._data_columns_rename_map if self._data_columns_rename_map else None
 
     @staticmethod
     def _apply_column_mapping(
@@ -276,7 +280,21 @@ class _DatasourcePredicatePushdownMixin:
             else clone._predicate_expr & predicate_expr
         )
 
+        # Hook for datasource-specific cleanup
+        self._post_apply_predicate(clone)
+
         return clone
+
+    def _post_apply_predicate(self, clone: "Datasource") -> None:
+        """Hook for datasource-specific cleanup after applying predicate.
+
+        Override in subclasses for cleanup like invalidating caches.
+        Default implementation does nothing.
+
+        Args:
+            clone: The cloned datasource instance with predicate already applied
+        """
+        pass
 
 
 @PublicAPI
