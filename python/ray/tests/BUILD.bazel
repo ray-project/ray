@@ -359,6 +359,7 @@ py_test_module_list(
         "test_scheduling.py",
         "test_serialization.py",
         "test_shuffle.py",
+        "test_signal_handler.py",
         "test_state_api_log.py",
         "test_streaming_generator.py",
         "test_streaming_generator_2.py",

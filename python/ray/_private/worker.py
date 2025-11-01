@@ -87,7 +87,6 @@ from ray._private.utils import get_ray_doc_version
 from ray._raylet import (
     ObjectRefGenerator,
     TaskID,
-    raise_sys_exit_with_custom_error_message,
 )
 from ray.actor import ActorClass
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
@@ -1037,13 +1036,12 @@ class Worker:
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
 
-        def sigterm_handler(signum, frame):
-            raise_sys_exit_with_custom_error_message(
-                "The process receives a SIGTERM.", exit_code=1
+        def force_shutdown(detail: str):
+            self.core_worker.force_exit_worker(
+                ray_constants.WORKER_EXIT_TYPE_SYSTEM, detail.encode("utf-8")
             )
-            # Note: shutdown() function is called from atexit handler.
 
-        ray._private.utils.set_sigterm_handler(sigterm_handler)
+        ray._private.utils.install_worker_signal_handler(force_shutdown)
         self.core_worker.run_task_loop()
         sys.exit(0)
 
@@ -1676,17 +1674,7 @@ def init(
         system_reserved_memory=system_reserved_memory,
     )
 
-    # terminate any signal before connecting driver
-    def sigterm_handler(signum, frame):
-        sys.exit(signum)
-
-    if threading.current_thread() is threading.main_thread():
-        ray._private.utils.set_sigterm_handler(sigterm_handler)
-    else:
-        logger.warning(
-            "SIGTERM handler is not set because current thread "
-            "is not the main thread."
-        )
+    ray._private.utils.install_driver_signal_handler()
 
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
@@ -2101,6 +2089,7 @@ def shutdown(_exiting_interpreter: bool = False):
     from ray.dag.compiled_dag_node import _shutdown_all_compiled_dags
 
     _shutdown_all_compiled_dags()
+    ray._private.utils.reset_signal_handler_state()
     global_worker.shutdown_gpu_object_manager()
 
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
