@@ -287,6 +287,8 @@ class ProxyManager:
                 formatted_error = format_authentication_http_error(e.code, body or "")
                 if formatted_error:
                     raise RuntimeError(formatted_error) from e
+                # Re-raise non-auth HTTP errors immediately
+                raise
 
             except urllib.error.URLError as e:
                 last_exception = e
