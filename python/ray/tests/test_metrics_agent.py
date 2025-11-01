@@ -16,7 +16,7 @@ import requests
 from google.protobuf.timestamp_pb2 import Timestamp
 
 import ray
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, find_free_port
 from ray._common.prometheus_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,

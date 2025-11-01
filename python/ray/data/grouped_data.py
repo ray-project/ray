@@ -98,7 +98,7 @@ class GroupedData:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        zero_copy_batch: bool = False,
+        zero_copy_batch: bool = True,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         fn_args: Optional[Iterable[Any]] = None,
