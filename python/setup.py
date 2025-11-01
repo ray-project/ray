@@ -279,6 +279,7 @@ if setup_spec.type == SetupType.RAY:
         ],
         "tune": [
             "pandas",
+            pydantic_dep,
             "tensorboardX>=1.9",
             "requests",
             *pyarrow_deps,
