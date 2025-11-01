@@ -299,6 +299,7 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/stable_diffusion.py",
         "source/serve/doc_code/object_detection.py",
         "source/serve/doc_code/vllm_example.py",
+        "source/serve/doc_code/cross_node_parallelism_example.py",
         "source/serve/doc_code/llm/llm_yaml_config_example.py",
         "source/serve/doc_code/llm/qwen_example.py",
     ],
