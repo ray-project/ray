@@ -334,9 +334,6 @@ class SubmissionClient:
         if formatted_error:
             raise RuntimeError(formatted_error)
 
-        # Raise for any other HTTP error status codes
-        response.raise_for_status()
-
         return response
 
     def _package_exists(
