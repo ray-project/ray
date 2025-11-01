@@ -1,6 +1,6 @@
-from pathlib import Path
 import os
 import unittest
+from pathlib import Path
 
 import ray
 from ray.rllib.algorithms import cql
@@ -121,7 +121,8 @@ class TestCQL(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

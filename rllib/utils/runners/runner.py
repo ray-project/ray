@@ -1,6 +1,5 @@
 import abc
 import logging
-
 from typing import TYPE_CHECKING, Any, Union
 
 from ray.rllib.utils.actor_manager import FaultAwareApply

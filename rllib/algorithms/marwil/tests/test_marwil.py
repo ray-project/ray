@@ -1,11 +1,12 @@
+import unittest
+from pathlib import Path
+
 import gymnasium as gym
 import numpy as np
-from pathlib import Path
-import unittest
 
 import ray
 import ray.rllib.algorithms.marwil as marwil
-from ray.rllib.core import DEFAULT_MODULE_ID, COMPONENT_RL_MODULE
+from ray.rllib.core import COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY
 from ray.rllib.env import INPUT_ENV_SPACES
@@ -232,7 +233,8 @@ class TestMARWIL(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
