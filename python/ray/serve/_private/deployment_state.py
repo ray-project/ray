@@ -283,7 +283,7 @@ class ActorReplicaWrapper:
         self._ingress: bool = False
 
         # Outbound deployments polling state
-        self._outbound_deployments: Optional[List[str]] = None
+        self._outbound_deployments: Optional[List[DeploymentID]] = None
         self._outbound_deployments_ref: Optional[ObjectRef] = None
         self._last_outbound_deployments_poll_time: float = 0.0
 
@@ -968,7 +968,9 @@ class ActorReplicaWrapper:
         time_since_last = time.time() - self._last_outbound_deployments_poll_time
         return time_since_last >= poll_period_s
 
-    def poll_outbound_deployments(self, poll_period_s: float) -> Optional[List[str]]:
+    def poll_outbound_deployments(
+        self, poll_period_s: float
+    ) -> Optional[List[DeploymentID]]:
         """Poll the replica for its outbound deployments.
 
         Args:
@@ -1356,7 +1358,9 @@ class DeploymentReplica:
         """
         return self._actor.get_routing_stats()
 
-    def poll_outbound_deployments(self, poll_period_s: float) -> Optional[List[str]]:
+    def poll_outbound_deployments(
+        self, poll_period_s: float
+    ) -> Optional[List[DeploymentID]]:
         """Poll the replica for its outbound deployments.
 
         Args:
@@ -1864,7 +1868,7 @@ class DeploymentState:
         self._route_patterns: Optional[List[str]] = None
 
         # Outbound deployments polling state
-        self._outbound_deployments_cache: Optional[List[str]] = None
+        self._outbound_deployments_cache: Optional[List[DeploymentID]] = None
         self._outbound_poll_delay: float = (
             RAY_SERVE_OUTBOUND_DEPLOYMENTS_INITIAL_POLL_DELAY_S
         )
@@ -3098,11 +3102,11 @@ class DeploymentState:
                     f"{outbound_deployments}. Next poll in {self._outbound_poll_delay}s"
                 )
 
-    def get_outbound_deployments(self) -> Optional[List[str]]:
+    def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
         """Get the cached outbound deployments.
 
         Returns:
-            List of deployment names that this deployment calls, or None if
+            List of deployment IDs that this deployment calls, or None if
             not yet polled.
         """
         return self._outbound_deployments_cache
@@ -3718,14 +3722,14 @@ class DeploymentStateManager:
 
     def get_deployment_outbound_deployments(
         self, deployment_id: DeploymentID
-    ) -> Optional[List[str]]:
+    ) -> Optional[List[DeploymentID]]:
         """Get the cached outbound deployments for a specific deployment.
 
         Args:
             deployment_id: The deployment ID to get outbound deployments for.
 
         Returns:
-            List of deployment names that this deployment calls, or None if
+            List of deployment IDs that this deployment calls, or None if
             the deployment doesn't exist or hasn't been polled yet.
         """
         deployment_state = self._deployment_states.get(deployment_id)
