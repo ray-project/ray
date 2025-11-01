@@ -199,7 +199,7 @@ class ServerCallImpl : public ServerCall {
   ServerCallState GetState() const override { return state_; }
 
   void HandleRequest() override {
-    stats_handle_ = io_service_.stats().RecordStart(call_name_);
+    stats_handle_ = io_service_.stats()->RecordStart(call_name_);
     bool auth_success = true;
     bool token_auth_failed = false;
     bool cluster_id_auth_failed = false;
@@ -366,7 +366,7 @@ class ServerCallImpl : public ServerCall {
 
   /// Log the duration this query used
   void LogProcessTime() {
-    EventTracker::RecordEnd(std::move(stats_handle_));
+    io_service_.stats()->RecordEnd(std::move(stats_handle_));
     auto end_time = absl::GetCurrentTimeNanos();
     if (record_metrics_) {
       grpc_server_req_process_time_ms_histogram_.Record(
