@@ -115,3 +115,23 @@ depsets:
     build_arg_sets:
       - py39
       - py310
+
+  - name: ray_base_deps_${PYTHON_SHORT}
+    operation: expand
+    packages:
+      - ray[all]==100.0.0.dev0
+    requirements:
+      - docker/base-deps/requirements.in
+    constraints:
+      - python/requirements_compiled.txt
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    output: python/deplocks/base_deps/ray_base_deps_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+      - py311
+      - py312
