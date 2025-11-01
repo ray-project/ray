@@ -5,6 +5,7 @@ import numpy as np
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.datasource.util import _iter_sliced_blocks
+from ray.data.expressions import Expr
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
@@ -20,6 +21,15 @@ class _DatasourceProjectionPushdownMixin:
         """Retrurns current projection"""
         return None
 
+    def get_column_renames(self) -> Optional[Dict[str, str]]:
+        """Return the column renames applied to this datasource.
+
+        Returns:
+            A dictionary mapping old column names to new column names,
+            or None if no renaming has been applied.
+        """
+        return None
+
     def apply_projection(
         self,
         columns: Optional[List[str]],
@@ -28,12 +38,56 @@ class _DatasourceProjectionPushdownMixin:
         return self
 
 
+class _DatasourcePredicatePushdownMixin:
+    """Mixin for reading operators supporting predicate pushdown"""
+
+    def __init__(self):
+        self._predicate_expr: Optional[Expr] = None
+
+    def supports_predicate_pushdown(self) -> bool:
+        return False
+
+    def get_current_predicate(self) -> Optional[Expr]:
+        return self._predicate_expr
+
+    def apply_predicate(
+        self,
+        predicate_expr: Expr,
+    ) -> "Datasource":
+        """Apply a predicate to this datasource.
+
+        Default implementation that combines predicates using AND.
+        Subclasses that support predicate pushdown should have a _predicate_expr
+        attribute to store the predicate.
+
+        Note: Column rebinding is handled by the PredicatePushdown rule
+        before this method is called, so the predicate_expr should already
+        reference the correct column names.
+        """
+        import copy
+
+        clone = copy.copy(self)
+
+        # Combine with existing predicate using AND
+        clone._predicate_expr = (
+            predicate_expr
+            if clone._predicate_expr is None
+            else clone._predicate_expr & predicate_expr
+        )
+
+        return clone
+
+
 @PublicAPI
-class Datasource(_DatasourceProjectionPushdownMixin):
+class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdownMixin):
     """Interface for defining a custom :class:`~ray.data.Dataset` datasource.
 
     To read a datasource into a dataset, use :meth:`~ray.data.read_datasource`.
     """  # noqa: E501
+
+    def __init__(self):
+        """Initialize the datasource and its mixins."""
+        _DatasourcePredicatePushdownMixin.__init__(self)
 
     @Deprecated
     def create_reader(self, **read_args) -> "Reader":
