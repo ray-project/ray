@@ -561,7 +561,9 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
     // will choose the right raylet for any queued dependent tasks.
     reference_counter_.UpdateObjectPinnedAtRaylet(object_id, worker_node_id);
     // Mark it as in plasma with a dummy object.
-    in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
+    in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                         object_id,
+                         reference_counter_.HasReference(object_id));
   } else {
     // NOTE(swang): If a direct object was promoted to plasma, then we do not
     // record the node ID that it was pinned at, which means that we will not
@@ -595,7 +597,7 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
         return s;
       }
     } else {
-      in_memory_store_.Put(object, object_id);
+      in_memory_store_.Put(object, object_id, reference_counter_.HasReference(object_id));
       direct_return = true;
     }
   }
@@ -764,7 +766,8 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
     // Put a dummy object at the end of the stream. We don't need to check if
     // the object should be stored in plasma because the end of the stream is a
     // fake ObjectRef that should never be read by the application.
-    in_memory_store_.Put(error, last_object_id);
+    in_memory_store_.Put(
+        error, last_object_id, reference_counter_.HasReference(last_object_id));
   }
 }
 
@@ -1552,10 +1555,11 @@ void TaskManager::MarkTaskReturnObjectsFailed(
       if (!s.ok()) {
         RAY_LOG(WARNING).WithField(object_id)
             << "Failed to put error object in plasma: " << s;
-        in_memory_store_.Put(error, object_id);
+        in_memory_store_.Put(
+            error, object_id, reference_counter_.HasReference(object_id));
       }
     } else {
-      in_memory_store_.Put(error, object_id);
+      in_memory_store_.Put(error, object_id, reference_counter_.HasReference(object_id));
     }
   }
   if (spec.ReturnsDynamic()) {
@@ -1565,10 +1569,13 @@ void TaskManager::MarkTaskReturnObjectsFailed(
         if (!s.ok()) {
           RAY_LOG(WARNING).WithField(dynamic_return_id)
               << "Failed to put error object in plasma: " << s;
-          in_memory_store_.Put(error, dynamic_return_id);
+          in_memory_store_.Put(error,
+                               dynamic_return_id,
+                               reference_counter_.HasReference(dynamic_return_id));
         }
       } else {
-        in_memory_store_.Put(error, dynamic_return_id);
+        in_memory_store_.Put(
+            error, dynamic_return_id, reference_counter_.HasReference(dynamic_return_id));
       }
     }
   }
@@ -1595,10 +1602,14 @@ void TaskManager::MarkTaskReturnObjectsFailed(
         if (!s.ok()) {
           RAY_LOG(WARNING).WithField(generator_return_id)
               << "Failed to put error object in plasma: " << s;
-          in_memory_store_.Put(error, generator_return_id);
+          in_memory_store_.Put(error,
+                               generator_return_id,
+                               reference_counter_.HasReference(generator_return_id));
         }
       } else {
-        in_memory_store_.Put(error, generator_return_id);
+        in_memory_store_.Put(error,
+                             generator_return_id,
+                             reference_counter_.HasReference(generator_return_id));
       }
     }
   }
