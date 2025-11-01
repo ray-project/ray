@@ -11,7 +11,7 @@ from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
 @dataclass
-class ProjectionProcessingResult:
+class _ProjectionProcessingResult:
     """Result of processing a projection with existing column renames.
 
     Attributes:
@@ -68,7 +68,7 @@ class _DatasourceProjectionPushdownMixin:
     def _process_projection_with_renames(
         columns: Optional[List[str]],
         existing_rename_map: Optional[Dict[str, str]],
-    ) -> ProjectionProcessingResult:
+    ) -> _ProjectionProcessingResult:
         """Process column projection accounting for existing renames.
 
         When columns have been renamed, this handles:
@@ -80,13 +80,13 @@ class _DatasourceProjectionPushdownMixin:
             existing_rename_map: Current rename mapping (original -> renamed)
 
         Returns:
-            ProjectionProcessingResult containing:
+            _ProjectionProcessingResult containing:
             - rebound_columns: Column names in original/storage space
             - filtered_rename_map: Rename map containing only selected columns
         """
         if not existing_rename_map or columns is None:
             # No renames to process
-            return ProjectionProcessingResult(
+            return _ProjectionProcessingResult(
                 rebound_columns=columns,
                 filtered_rename_map=existing_rename_map,
             )
@@ -108,7 +108,7 @@ class _DatasourceProjectionPushdownMixin:
             if renamed in columns
         }
 
-        return ProjectionProcessingResult(
+        return _ProjectionProcessingResult(
             rebound_columns=rebound_columns,
             filtered_rename_map=filtered_rename_map or None,
         )
