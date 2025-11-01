@@ -853,7 +853,7 @@ class _StatsManager:
         try:
             ref = get_or_create_stats_actor().update_execution_metrics.remote(*args)
             if force_update:
-                ray.get(ref)
+                ray.wait([ref], timeout=1)
         except Exception as e:
             logger.warning(
                 f"Error occurred during update_execution_metrics.remote call to _StatsActor: {e}",
@@ -869,7 +869,7 @@ class _StatsManager:
         try:
             ref = get_or_create_stats_actor().update_iteration_metrics.remote(*args)
             if force_update:
-                ray.get(ref)
+                ray.wait([ref], timeout=1)
         except Exception as e:
             logger.warning(
                 f"Error occurred during update_iteration_metrics.remote call to _StatsActor: {e}",
