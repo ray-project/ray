@@ -574,11 +574,17 @@ class Test(dict):
         """
         if not self.require_custom_byod_image():
             return self.get_byod_base_image_tag(build_id)
-        custom_info = {
-            "post_build_script": self.get_byod_post_build_script(),
-            "python_depset": self.get_byod_python_depset(),
-        }
-        tag = f"{self.get_byod_base_image_tag(build_id)}-{dict_hash(custom_info)}"
+        post_build_script = self.get_byod_post_build_script()
+        python_depset_file = self.get_byod_python_depset()
+        custom_content = ""
+        if post_build_script:
+            with open(post_build_script, "r") as f:
+                custom_content += f.read()
+        if python_depset_file:
+            with open(python_depset_file, "r") as f:
+                custom_content += f.read()
+        print(f"custom_content: {custom_content}")
+        tag = f"{self.get_byod_base_image_tag(build_id)}-{dict_hash(custom_content)}"
         ray_version = self.get_ray_version()
         if ray_version:
             tag = f"{tag}-{ray_version}"
