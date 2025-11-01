@@ -9,6 +9,7 @@ ray_cc_library(
         "open_telemetry_metric_recorder.h",
     ],
     deps = [
+        "//src/ray/common:ray_config",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@io_opentelemetry_cpp//api",
