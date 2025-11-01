@@ -137,6 +137,7 @@ class Preprocessor(abc.ABC):
         transform_memory: Optional[float] = None,
         transform_batch_size: Optional[int] = None,
         transform_concurrency: Optional[int] = None,
+        transform_resources: Optional[Dict[str, float]] = None,
     ) -> "Dataset":
         """Fit this Preprocessor to the Dataset and then transform the Dataset.
 
@@ -150,6 +151,8 @@ class Preprocessor(abc.ABC):
             transform_memory: [experimental] The heap memory in bytes to reserve for each parallel map worker.
             transform_batch_size: [experimental] The maximum number of rows to return.
             transform_concurrency: [experimental] The maximum number of Ray workers to use concurrently.
+            transform_resources: [experimental] Custom resources to reserve for each
+                transform worker (for example, ``{"cpu_pool": 1}``).
 
         Returns:
             ray.data.Dataset: The transformed Dataset.
@@ -161,6 +164,7 @@ class Preprocessor(abc.ABC):
             memory=transform_memory,
             batch_size=transform_batch_size,
             concurrency=transform_concurrency,
+            resources=transform_resources,
         )
 
     def transform(
@@ -171,6 +175,7 @@ class Preprocessor(abc.ABC):
         num_cpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[int] = None,
+        resources: Optional[Dict[str, float]] = None,
     ) -> "Dataset":
         """Transform the given dataset.
 
@@ -180,6 +185,8 @@ class Preprocessor(abc.ABC):
             num_cpus: [experimental] The number of CPUs to reserve for each parallel map worker.
             memory: [experimental] The heap memory in bytes to reserve for each parallel map worker.
             concurrency: [experimental] The maximum number of Ray workers to use concurrently.
+            resources: [experimental] Custom resources to reserve for each transform
+                worker (for example, ``{"cpu_pool": 1}``).
 
         Returns:
             ray.data.Dataset: The transformed Dataset.
@@ -202,6 +209,7 @@ class Preprocessor(abc.ABC):
             num_cpus=num_cpus,
             memory=memory,
             concurrency=concurrency,
+            resources=resources,
         )
         return transformed_ds
 
@@ -271,6 +279,7 @@ class Preprocessor(abc.ABC):
         num_cpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[int] = None,
+        resources: Optional[Dict[str, float]] = None,
     ) -> "Dataset":
         transform_type = self._determine_transform_to_use()
 
@@ -285,6 +294,8 @@ class Preprocessor(abc.ABC):
             kwargs["batch_size"] = batch_size
         if concurrency is not None:
             kwargs["concurrency"] = concurrency
+        if resources is not None:
+            kwargs["resources"] = resources
 
         if transform_type == BatchFormat.PANDAS:
             return ds.map_batches(
