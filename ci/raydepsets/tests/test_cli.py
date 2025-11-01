@@ -18,6 +18,7 @@ from ci.raydepsets.cli import (
     _flatten_flags,
     _get_depset,
     _override_uv_flags,
+    _remove_flags,
     _uv_binary,
     build,
 )
@@ -362,6 +363,60 @@ class TestCli(unittest.TestCase):
             "--extra-index-url",
             "https://download.pytorch.org/whl/cu128",
         ]
+
+    def test_remove_flags(self):
+        assert _remove_flags(
+            _flatten_flags(["--emit-index-url"]),
+            ["--no-annotate", "--no-header", "--emit-index-url"],
+        ) == ["--no-annotate", "--no-header"]
+
+    def test_remove_flags_key_value(self):
+        assert _remove_flags(
+            _flatten_flags(["--emit-index-url https://pypi.org/simple"]),
+            [
+                "--no-annotate",
+                "--no-header",
+                "--emit-index-url",
+                "https://pypi.org/simple",
+            ],
+        ) == ["--no-annotate", "--no-header"]
+
+    def test_remove_flags_integration(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            depset = Depset(
+                name="remove_flag_test_depset",
+                operation="compile",
+                requirements=["requirements_test.txt"],
+                output="requirements_compiled_remove_flag_test_depset.txt",
+                remove_flags=["--emit-index-url"],
+                config_name="test.depsets.yaml",
+            )
+            write_to_config_file(
+                tmpdir,
+                depset,
+                "test.depsets.yaml",
+            )
+            manager.compile(
+                constraints=[],
+                requirements=["requirements_test.txt"],
+                remove_flags=["--emit-index-url"],
+                name="remove_flag_test_depset",
+                output="requirements_compiled_remove_flag_test_depset.txt",
+            )
+            output_file = (
+                Path(tmpdir) / "requirements_compiled_remove_flag_test_depset.txt"
+            )
+            output_text = output_file.read_text()
+            assert "--emit-index-url" not in output_text
+
+    def test_remove_flags_doesnt_exist(self):
+        with self.assertRaises(ValueError) as e:
+            _remove_flags(
+                ["--emit"], ["--no-annotate", "--no-header", "--emit-index-url"]
+            )
+        assert "Remove flag --emit not found in args" in str(e.exception)
 
     def test_build_graph(self):
         with tempfile.TemporaryDirectory() as tmpdir:
