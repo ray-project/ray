@@ -68,6 +68,7 @@
   cluster:
     cluster_compute: audio_transcription/compute.yaml
     byod:
+      type: cu123
       post_build_script: byod_install_daft_audio_transcription.sh
       python_depset: audio_transcription_py3.10.lock
 
