@@ -9,6 +9,8 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
+from pydantic import BaseModel
+
 import ray
 from ray import cloudpickle
 from ray._common.utils import import_attr, import_module_and_attr
@@ -69,6 +71,90 @@ from ray.types import ObjectRef
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 CHECKPOINT_KEY = "serve-application-state-checkpoint"
+
+
+class DeploymentNode(BaseModel):
+    """Represents a node in the deployment DAG.
+
+    Each node represents a deployment and tracks which other deployments it calls.
+    """
+
+    name: str
+    # List of deployment names that this deployment calls (outbound dependencies)
+    outbound_deployments: List[str] = []
+    # Whether this is the ingress deployment
+    is_ingress: bool = False
+
+    class Config:
+        # Allow arbitrary types for compatibility
+        arbitrary_types_allowed = True
+
+
+class DeploymentDAG(BaseModel):
+    """Represents the dependency graph of deployments in an application.
+
+    The DAG shows which deployments call which other deployments,
+    with the ingress deployment as the entry point.
+    """
+
+    # Map of deployment name to its node
+    nodes: Dict[str, DeploymentNode] = {}
+    # Name of the ingress deployment (entry point)
+    ingress_deployment: Optional[str] = None
+    # Application name this DAG belongs to
+    app_name: str
+
+    class Config:
+        # Allow arbitrary types for compatibility
+        arbitrary_types_allowed = True
+
+    def get_all_deployments(self) -> List[str]:
+        """Get all deployment names in the DAG."""
+        return list(self.nodes.keys())
+
+    def get_downstream_deployments(self, deployment_name: str) -> List[str]:
+        """Get deployments that are called by the given deployment.
+
+        Args:
+            deployment_name: Name of the deployment to get downstream deps for.
+
+        Returns:
+            List of deployment names called by the given deployment.
+        """
+        node = self.nodes.get(deployment_name)
+        if node:
+            return node.outbound_deployments
+        return []
+
+    def get_upstream_deployments(self, deployment_name: str) -> List[str]:
+        """Get deployments that call the given deployment.
+
+        Args:
+            deployment_name: Name of the deployment to get upstream deps for.
+
+        Returns:
+            List of deployment names that call the given deployment.
+        """
+        upstream = []
+        for node_name, node in self.nodes.items():
+            if deployment_name in node.outbound_deployments:
+                upstream.append(node_name)
+        return upstream
+
+    def to_dict(self) -> Dict:
+        """Convert DAG to a dictionary representation."""
+        return {
+            "app_name": self.app_name,
+            "ingress_deployment": self.ingress_deployment,
+            "nodes": {
+                name: {
+                    "name": node.name,
+                    "outbound_deployments": node.outbound_deployments,
+                    "is_ingress": node.is_ingress,
+                }
+                for name, node in self.nodes.items()
+            },
+        }
 
 
 class BuildAppStatus(Enum):
@@ -270,6 +356,9 @@ class ApplicationState:
             serialized_application_autoscaling_policy_def=None,
         )
         self._logging_config = logging_config
+
+        # Deployment dependency DAG
+        self._deployment_dag: Optional[DeploymentDAG] = None
 
     @property
     def route_prefix(self) -> Optional[str]:
@@ -935,6 +1024,53 @@ class ApplicationState:
 
         return target_state_changed
 
+    def _build_deployment_dag(self) -> None:
+        """Build the deployment dependency DAG for this application.
+
+        Queries outbound deployment information from each deployment
+        and constructs a DAG showing dependencies between deployments.
+        """
+        if not self.target_deployments:
+            self._deployment_dag = None
+            return
+
+        # Create DAG with nodes for each deployment
+        dag = DeploymentDAG(
+            app_name=self._name, ingress_deployment=self._ingress_deployment_name
+        )
+
+        # Build nodes for each deployment
+        for deployment_name in self.target_deployments:
+            deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
+
+            # Get outbound deployments from deployment state
+            outbound_deployments = (
+                self._deployment_state_manager.get_deployment_outbound_deployments(
+                    deployment_id
+                )
+            )
+
+            # Create node for this deployment
+            node = DeploymentNode(
+                name=deployment_name,
+                outbound_deployments=outbound_deployments or [],
+                is_ingress=(deployment_name == self._ingress_deployment_name),
+            )
+            dag.nodes[deployment_name] = node
+
+        self._deployment_dag = dag
+        logger.debug(
+            f"Built deployment DAG for application '{self._name}': " f"{dag.to_dict()}"
+        )
+
+    def get_deployment_dag(self) -> Optional[DeploymentDAG]:
+        """Get the deployment dependency DAG for this application.
+
+        Returns:
+            The deployment DAG, or None if not yet built.
+        """
+        return self._deployment_dag
+
     def update(self) -> Tuple[bool, bool]:
         """Attempts to reconcile this application to match its target state.
 
@@ -995,6 +1131,9 @@ class ApplicationState:
             )
             status, status_msg = self._determine_app_status()
             self._update_status(status, status_msg)
+
+            # Build deployment DAG based on polled outbound deployments
+            self._build_deployment_dag()
 
         # Check if app is ready to be deleted
         if self._target_state.deleting:
@@ -1279,6 +1418,20 @@ class ApplicationStateManager:
         if name not in self._application_states:
             return {}
         return self._application_states[name].list_deployment_details()
+
+    def get_deployment_dag(self, app_name: str) -> Optional[DeploymentDAG]:
+        """Get the deployment dependency DAG for an application.
+
+        Args:
+            app_name: Name of the application.
+
+        Returns:
+            The deployment DAG for the application, or None if the application
+            doesn't exist or the DAG hasn't been built yet.
+        """
+        if app_name not in self._application_states:
+            return None
+        return self._application_states[app_name].get_deployment_dag()
 
     def update(self):
         """Update each application state."""
