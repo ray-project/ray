@@ -410,13 +410,6 @@ def read_datasource(
     if "scheduling_strategy" not in ray_remote_args:
         ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
-    ray_remote_args = merge_resources_to_ray_remote_args(
-        num_cpus,
-        num_gpus,
-        memory,
-        ray_remote_args,
-    )
-
     datasource_or_legacy_reader = _get_datasource_or_legacy_reader(
         datasource,
         ctx,
@@ -424,7 +417,7 @@ def read_datasource(
     )
 
     cur_pg = ray.util.get_current_placement_group()
-    requested_parallelism, _, _ = _autodetect_parallelism(
+    requested_parallelism, _, estimated_total_size = _autodetect_parallelism(
         parallelism,
         ctx.target_max_block_size,
         DataContext.get_current(),
@@ -435,6 +428,19 @@ def read_datasource(
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
+
+    # If memory is not set, estimate it based on the estimated total size and the number of read tasks.
+    if memory is None and estimated_total_size is not None:
+        num_tasks = len(read_tasks)
+        if num_tasks > 0:
+            memory = max(1, int(np.ceil(estimated_total_size / num_tasks)))
+
+    ray_remote_args = merge_resources_to_ray_remote_args(
+        num_cpus,
+        num_gpus,
+        memory,
+        ray_remote_args,
+    )
 
     stats = DatasetStats(
         metadata={"Read": [read_task.metadata for read_task in read_tasks]},
