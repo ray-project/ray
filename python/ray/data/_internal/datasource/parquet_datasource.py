@@ -22,6 +22,11 @@ from packaging.version import parse as parse_version
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
+from ray.air.util.tensor_extensions.arrow import (
+    ArrowTensorType,
+    ArrowTensorTypeV2,
+    FixedShapeTensorArray,
+)
 from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
@@ -189,6 +194,9 @@ class ParquetDatasource(Datasource):
         shuffle: Union[Literal["files"], None] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
+        tensor_column_schema: Optional[
+            Dict[str, Tuple[np.dtype, Tuple[int, ...]]]
+        ] = None,
     ):
         super().__init__()
         _check_pyarrow_version()
@@ -282,6 +290,7 @@ class ParquetDatasource(Datasource):
         self._partition_schema = _get_partition_columns_schema(
             partitioning, self._pq_paths
         )
+        self._tensor_column_schema = tensor_column_schema
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
@@ -348,6 +357,7 @@ class ParquetDatasource(Datasource):
             file_schema=self._file_schema,
             partition_schema=self._partition_schema,
             projected_columns=self.get_current_projection(),
+            tensor_column_schema=self._tensor_column_schema,
             _block_udf=self._block_udf,
         )
 
@@ -941,6 +951,7 @@ def _derive_schema(
     file_schema: "pyarrow.Schema",
     partition_schema: Optional["pyarrow.Schema"],
     projected_columns: Optional[List[str]],
+    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]],
     _block_udf,
 ) -> "pyarrow.Schema":
     """Derives target schema for read operation"""
@@ -978,10 +989,32 @@ def _derive_schema(
             target_schema.metadata,
         )
 
+    ctx = DataContext.get_current()
+    if tensor_column_schema is not None:
+        for name, (np_dtype, shape) in tensor_column_schema.items():
+            index_of_name: int = target_schema.get_field_index(name)
+            pa_dtype: pa.DataType = pa.from_numpy_dtype(np_dtype)
+            # 1) Determine the tensor type
+            if (
+                ctx.use_arrow_native_fixed_shape_tensor_type
+                and FixedShapeTensorArray is not None
+            ):
+                field = pa.field(name, pa.fixed_shape_tensor(pa_dtype, shape))
+            elif ctx.use_arrow_tensor_v2:
+                field = pa.field(name, ArrowTensorTypeV2(shape, pa_dtype))
+            else:
+                field = pa.field(name, ArrowTensorType(shape, pa_dtype))
+
+            # 2) Determine where to add the schema
+            if index_of_name != -1:
+                target_schema = target_schema.set(index_of_name, field)
+            else:
+                target_schema = target_schema.append(field)
+
     if _block_udf is not None:
         # Try to infer dataset schema by passing dummy table through UDF.
-        dummy_table = target_schema.empty_table()
         try:
+            dummy_table = target_schema.empty_table()
             target_schema = _block_udf(dummy_table).schema.with_metadata(
                 target_schema.metadata
             )
