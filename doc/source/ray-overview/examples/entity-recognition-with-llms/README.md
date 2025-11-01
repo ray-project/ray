@@ -661,6 +661,39 @@ elif [[ "$STORAGE_PATH" == gs://* ]]; then
     gsutil -m -q cp -r "$LOCAL_OUTPUTS_PATH" "$STORAGE_PATH/outputs"
     gsutil -m -q cp -r "$LOCAL_SAVES_PATH" "$STORAGE_PATH/saves"
 
+elif [[ "$ANYSCALE_ARTIFACT_STORAGE" == abfss://* ]]; then
+    echo "Using Azure Blob File System (ABFSS)..."
+    # Install Azure CLI 
+    # Only need to run it one time
+    # curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+    # Authenticate with Azure
+    az login --identity
+
+    # Parse ABFSS URL components
+    ACCOUNT_NAME=$(echo "$ANYSCALE_ARTIFACT_STORAGE" | sed 's|abfss://||' | cut -d'@' -f2 | cut -d'.' -f1)
+    CONTAINER_NAME=$(echo "$ANYSCALE_ARTIFACT_STORAGE" | sed 's|abfss://||' | cut -d'@' -f1)
+    BASE_PATH=$(echo "$ANYSCALE_ARTIFACT_STORAGE" | sed 's|abfss://||' | cut -d'/' -f2-)
+
+    echo "Account: $ACCOUNT_NAME, Container: $CONTAINER_NAME"
+
+    # Upload training outputs to Azure Blob Storage
+    az storage blob upload-batch \
+      --account-name "$ACCOUNT_NAME" \
+      --destination "$CONTAINER_NAME" \
+      --destination-path "$BASE_PATH/viggo/outputs" \
+      --source "/mnt/cluster_storage/viggo/outputs" \
+      --auth-mode login \
+      --overwrite
+
+    # Upload training checkpoints to Azure Blob Storage
+    az storage blob upload-batch \
+      --account-name "$ACCOUNT_NAME" \
+      --destination "$CONTAINER_NAME" \
+      --destination-path "$BASE_PATH/viggo/saves" \
+      --source "/mnt/cluster_storage/viggo/saves" \
+      --auth-mode login \
+      --overwrite
+
 else
     echo "Unsupported storage protocol: $STORAGE_PATH"
     exit 1
@@ -766,6 +799,10 @@ from ray.data.llm import vLLMEngineProcessorConfig
 config = vLLMEngineProcessorConfig(
     model_source=model_source,
     runtime_env={
+        "pip": [
+            "transformers>=4.57.0",
+            "vllm==0.10.2",  # Compatible version with LoRA and transformers 4.57+
+        ],
         "env_vars": {
             "VLLM_USE_V1": "0",  # v1 doesn't support lora adapters yet
             # "HF_TOKEN": os.environ.get("HF_TOKEN"),
@@ -974,7 +1011,13 @@ llm_config = LLMConfig(
         "dynamic_lora_loading_path": dynamic_lora_path,
         "max_num_adapters_per_replica": 16,  # You only have 1.
     },
-    runtime_env={"env_vars": {"AWS_REGION": "us-west-2"}},
+    runtime_env={
+        "pip": [
+            "transformers>=4.57.0",
+            "vllm==0.10.2",  # Compatible version with LoRA and transformers 4.57+
+        ],
+        "env_vars": {"AWS_REGION": "us-west-2"}
+    },
     # runtime_env={"env_vars": {"HF_TOKEN": os.environ.get("HF_TOKEN")}},
     deployment_config={
         "autoscaling_config": {
