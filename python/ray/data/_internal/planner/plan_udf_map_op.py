@@ -49,7 +49,7 @@ from ray.data._internal.logical.operators.map_operator import (
 from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.streaming_repartition import (
-    StreamingRepartitionTaskBuilder,
+    StreamingRepartitionRefBundler,
     streaming_repartition_block_fn,
 )
 from ray.data._internal.util import _truncated_repr
@@ -185,7 +185,7 @@ def plan_streaming_repartition_op(
     )
 
     operator.set_block_ref_bundler(
-        StreamingRepartitionTaskBuilder(op.target_num_rows_per_block)
+        StreamingRepartitionRefBundler(op.target_num_rows_per_block)
     )
 
     return operator

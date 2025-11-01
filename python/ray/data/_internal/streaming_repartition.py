@@ -86,7 +86,7 @@ class _PendingBlock:
         return self.metadata.num_rows - self.start_offset
 
 
-class StreamingRepartitionTaskBuilder(BaseRefBundler):
+class StreamingRepartitionRefBundler(BaseRefBundler):
     """Incrementally builds task inputs to produce target-sized outputs.
 
     Usage:
