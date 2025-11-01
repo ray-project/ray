@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.processor import (
     HttpRequestProcessorConfig as _HttpRequestProcessorConfig,
+    MultimodalProcessorConfig as _MultimodalProcessorConfig,
     Processor,
     ProcessorConfig as _ProcessorConfig,
     ServeDeploymentProcessorConfig as _ServeDeploymentProcessorConfig,
@@ -77,6 +78,57 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
                 ),
                 postprocess=lambda row: dict(
                     resp=row["http_response"]["choices"][0]["message"]["content"],
+                ),
+            )
+
+            ds = ray.data.range(10)
+            ds = processor(ds)
+            for row in ds.take_all():
+                print(row)
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class MultimodalProcessorConfig(_MultimodalProcessorConfig):
+    """The configuration for the multimodal processor.
+
+    Args:
+        model: Name or path of the Hugging Face model to use for the multimodal processor.
+        batch_size: The batch size to send to the multimodal processor.
+        concurrency: The number of workers for data parallelism. Default to 1.
+            If ``concurrency`` is a ``tuple`` ``(m, n)``, Ray creates an autoscaling
+            actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
+            If ``concurrency`` is an ``int`` ``n``, Ray uses either a fixed pool of ``n``
+            workers or an autoscaling pool from ``1`` to ``n`` workers, depending on
+            the processor and stage.
+
+    Examples:
+        .. testcode::
+            :skipif: True
+
+            import ray
+            from ray.data.llm import MultimodalProcessorConfig, build_llm_processor
+
+            config = MultimodalProcessorConfig(
+                model="Qwen/Qwen2.5-VL-3B-Instruct",
+                concurrency=1,
+            )
+            processor = build_llm_processor(
+                config,
+                preprocess=lambda row: dict(
+                    messages=[
+                        {"role": "system", "content": "You are a helpful video summarizer."},
+                        {"role": "user", "content": [
+                                {"type": "text", "text": f"Describe this video in {row['id']} sentences."},
+                                {
+                                    "type": "video_url",
+                                    "video_url": {"url": "https://content.pexels.com/videos/free-videos.mp4"},
+                                }
+                            ]
+                        },
+                    ],
                 ),
             )
 
@@ -531,6 +583,7 @@ __all__ = [
     "ProcessorConfig",
     "Processor",
     "HttpRequestProcessorConfig",
+    "MultimodalProcessorConfig",
     "vLLMEngineProcessorConfig",
     "SGLangEngineProcessorConfig",
     "ServeDeploymentProcessorConfig",
