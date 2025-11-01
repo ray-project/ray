@@ -235,8 +235,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   bool SubscribeToAllJobs(
       const gcs::SubscribeCallback<JobID, rpc::JobTableData> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Jobs().AsyncSubscribeAll(
-        subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Jobs().AsyncSubscribeAll(
+        subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -271,15 +271,14 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       const ActorID &actor_id,
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-        actor_id, subscribe, [&promise](Status status) {
-          promise.set_value(status.ok());
-        }));
+    gcs_client_->Actors().AsyncSubscribe(actor_id, subscribe, [&promise](Status status) {
+      promise.set_value(status.ok());
+    });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   void UnsubscribeActor(const ActorID &actor_id) {
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(actor_id));
+    gcs_client_->Actors().AsyncUnsubscribe(actor_id);
   }
 
   void WaitForActorUnsubscribed(const ActorID &actor_id) {
@@ -426,8 +425,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   bool SubscribeToWorkerFailures(
       const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
-        subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
+        subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 

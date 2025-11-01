@@ -118,7 +118,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
     job_accessor_->AsyncResubscribe();
     actor_accessor_->AsyncResubscribe();
     node_accessor_->AsyncResubscribe();
-    node_resource_accessor_->AsyncResubscribe();
     worker_accessor_->AsyncResubscribe();
   };
 
