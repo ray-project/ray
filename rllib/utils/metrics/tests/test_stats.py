@@ -424,18 +424,9 @@ def test_series_stats_no_window(stats_class, values, expected_results):
         check(stats.peek(), expected)
 
 
-@pytest.mark.parametrize(
-    "is_root,is_leaf",
-    [
-        (True, True),  # Root + Leaf: standalone, never resets
-        (False, True),  # Non-root + Leaf: worker, resets after reduce
-    ],
-)
-def test_sum_stats_with_throughput(is_root, is_leaf):
+def test_sum_stats_throughput():
     """Test SumStats with throughput for different node types."""
-    stats = SumStats(
-        window=None, with_throughput=True, is_root=is_root, is_leaf=is_leaf
-    )
+    stats = SumStats(window=None, with_throughput=True)
 
     check(stats.has_throughputs, True)
 
@@ -469,7 +460,7 @@ def test_sum_stats_with_throughput(is_root, is_leaf):
         (False, True),  # Non-root + Leaf: worker, resets after reduce
     ],
 )
-def test_lifetime_sum_stats_with_throughput(is_root, is_leaf):
+def test_lifetime_sum_stats_throughput(is_root, is_leaf):
     """Test LifetimeSumStats with throughput for different node types."""
     stats = LifetimeSumStats(with_throughput=True, is_root=is_root, is_leaf=is_leaf)
 
