@@ -2,7 +2,7 @@ import logging
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, root_validator
 
 import ray
 from ray.data import Dataset
@@ -155,28 +155,63 @@ class OfflineProcessorConfig(ProcessorConfig):
         "enough for batch size >= 32.",
     )
 
-    # Processor stage configurations.
+    # Processor stage configurations (legacy booleans, will be deprecated).
     apply_chat_template: bool = Field(
-        default=True, description="Whether to apply chat template."
+        default=True,
+        description="[DEPRECATED] Prefer `chat_template_stage`. Whether to apply chat template.",
     )
     chat_template: Optional[str] = Field(
         default=None,
-        description="The chat template to use. This is usually not needed if the "
-        "model checkpoint already contains the chat template.",
+        description="[DEPRECATED] Prefer `chat_template_stage.chat_template`. The chat template to use.",
     )
     tokenize: bool = Field(
         default=True,
-        description="Whether to tokenize the input before passing it to the "
-        "backend engine. If not, the backend engine will tokenize the prompt.",
+        description="[DEPRECATED] Prefer `tokenize_stage`. Whether to tokenize input before engine.",
     )
     detokenize: bool = Field(
         default=True,
-        description="Whether to detokenize the output.",
+        description="[DEPRECATED] Prefer `detokenize_stage`. Whether to detokenize the output.",
     )
     has_image: bool = Field(
         default=False,
-        description="Whether the input messages have images.",
+        description="[DEPRECATED] Prefer `prepare_image_stage`. Whether the input messages have images.",
     )
+
+    # New nested stage configuration (bool | dict | typed config).
+    # Import deferred to avoid circulars at runtime; types used for pydantic schema only.
+    chat_template_stage: Any = Field(
+        default=True,
+        description="Chat templating stage config (bool | dict | ChatTemplateStageConfig).",
+    )
+    tokenize_stage: Any = Field(
+        default=True,
+        description="Tokenizer stage config (bool | dict | TokenizerStageConfig).",
+    )
+    detokenize_stage: Any = Field(
+        default=True,
+        description="Detokenizer stage config (bool | dict | DetokenizeStageConfig).",
+    )
+    prepare_image_stage: Any = Field(
+        default=False,
+        description="Prepare image stage config (bool | dict | PrepareImageStageConfig).",
+    )
+
+    @root_validator(pre=True)
+    def _coerce_legacy_to_stage_config(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        # Only set stage fields if not explicitly provided.
+        if "chat_template_stage" not in values:
+            enabled = values.get("apply_chat_template", True)
+            stage: Dict[str, Any] = {"enabled": enabled}
+            if values.get("chat_template") is not None:
+                stage["chat_template"] = values["chat_template"]
+            values["chat_template_stage"] = stage
+        if "tokenize_stage" not in values:
+            values["tokenize_stage"] = {"enabled": values.get("tokenize", True)}
+        if "detokenize_stage" not in values:
+            values["detokenize_stage"] = {"enabled": values.get("detokenize", True)}
+        if "prepare_image_stage" not in values:
+            values["prepare_image_stage"] = {"enabled": values.get("has_image", False)}
+        return values
 
 
 @PublicAPI(stability="alpha")

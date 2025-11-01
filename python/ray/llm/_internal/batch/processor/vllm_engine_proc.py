@@ -25,6 +25,12 @@ from ray.llm._internal.batch.stages import (
     TokenizeStage,
     vLLMEngineStage,
 )
+from ray.llm._internal.batch.stages.configs import (
+    ChatTemplateStageConfig,
+    DetokenizeStageConfig,
+    PrepareImageStageConfig,
+    TokenizerStageConfig,
+)
 from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
@@ -133,7 +139,28 @@ def build_vllm_engine_processor(
 
     stages = []
 
-    if config.has_image:
+    # Resolve stage config gates while preserving legacy booleans.
+    def _enabled(stage_cfg_value: Any, legacy_bool: bool) -> bool:
+        if isinstance(stage_cfg_value, dict):
+            return bool(stage_cfg_value.get("enabled", legacy_bool))
+        if isinstance(
+            stage_cfg_value,
+            (
+                ChatTemplateStageConfig,
+                TokenizerStageConfig,
+                DetokenizeStageConfig,
+                PrepareImageStageConfig,
+            ),
+        ):
+            return bool(getattr(stage_cfg_value, "enabled", legacy_bool))
+        if isinstance(stage_cfg_value, bool):
+            return stage_cfg_value
+        return legacy_bool
+
+    use_image = _enabled(
+        getattr(config, "prepare_image_stage", False), config.has_image
+    )
+    if use_image:
         stages.append(
             PrepareImageStage(
                 map_batches_kwargs=dict(
@@ -143,7 +170,10 @@ def build_vllm_engine_processor(
                 ),
             )
         )
-    if config.apply_chat_template:
+    use_chat_template = _enabled(
+        getattr(config, "chat_template_stage", True), config.apply_chat_template
+    )
+    if use_chat_template:
         stages.append(
             ChatTemplateStage(
                 fn_constructor_kwargs=dict(
@@ -160,7 +190,8 @@ def build_vllm_engine_processor(
             )
         )
 
-    if config.tokenize:
+    use_tokenize = _enabled(getattr(config, "tokenize_stage", True), config.tokenize)
+    if use_tokenize:
         stages.append(
             TokenizeStage(
                 fn_constructor_kwargs=dict(
@@ -212,7 +243,10 @@ def build_vllm_engine_processor(
         )
     )
 
-    if config.detokenize:
+    use_detokenize = _enabled(
+        getattr(config, "detokenize_stage", True), config.detokenize
+    )
+    if use_detokenize:
         stages.append(
             DetokenizeStage(
                 fn_constructor_kwargs=dict(
