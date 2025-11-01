@@ -2201,7 +2201,7 @@ def test_stats_actor_datasets_eviction(ray_start_cluster):
         wait_for_condition(check_eviction)
 
 
-# Setting internal=10000 (super high number) timeout so they are only called
+# Setting internal=10000 (super high number) value so they are only called
 # once (on cold start), and on shutdown.
 @patch.object(StreamingExecutor, "UPDATE_METRICS_INTERVAL_S", new=10000)
 @patch.object(BatchIterator, "UPDATE_METRICS_INTERVAL_S", new=10000)
@@ -2241,7 +2241,7 @@ def test_stats_manager(mock_get_or_create, shutdown_only):
     # Each thread handles 1 dataset.
     assert register_dataset_calls == num_threads
 
-    # Since interval is set to high timeout, the number of execution
+    # Since interval is set to high value, the number of execution
     # calls will update on the first update (cold start), and on shutdown,
     # which is 2 for each thread.
     assert execution_calls == 2 * num_threads

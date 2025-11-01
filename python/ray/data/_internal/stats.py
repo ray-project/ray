@@ -805,7 +805,7 @@ class _StatsManager:
         - Format and update iteration metrics
         - Format and update execution metrics
         - Aggregate per node metrics
-        - Dataset registration (for grafana dashboard)
+        - Dataset registration
     """
 
     @staticmethod
