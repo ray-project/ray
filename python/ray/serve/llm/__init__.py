@@ -369,6 +369,54 @@ def build_pd_openai_app(pd_serving_args: dict) -> "Application":
     return build_pd_openai_app(pd_serving_args=pd_serving_args)
 
 
+@PublicAPI(stability="alpha")
+def build_dp_deployment(
+    llm_config: "LLMConfig",
+    *,
+    name_prefix: Optional[str] = None,
+    override_serve_options: Optional[dict] = None,
+) -> "Application":
+    """Build a data parallel attention LLM deployment.
+
+    Args:
+        llm_config: The LLM configuration.
+        name_prefix: The prefix to add to the deployment name.
+        override_serve_options: The optional serve options to override the
+            default options.
+
+    Returns:
+        The Ray Serve Application for the data parallel attention LLM deployment.
+    """
+    from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
+        build_dp_deployment,
+    )
+
+    return build_dp_deployment(
+        llm_config=llm_config,
+        name_prefix=name_prefix,
+        override_serve_options=override_serve_options,
+    )
+
+
+@PublicAPI(stability="alpha")
+def build_dp_openai_app(dp_serving_args: dict) -> "Application":
+    """Build an OpenAI compatible app with the DP attention deployment
+    setup from the given builder configuration.
+
+    Args:
+        dp_serving_args: The configuration for the builder. It has to conform
+            to the DPOpenAiServingArgs pydantic model.
+
+    Returns:
+        The configured Ray Serve Application.
+    """
+    from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
+        build_dp_openai_app,
+    )
+
+    return build_dp_openai_app(builder_config=dp_serving_args)
+
+
 __all__ = [
     "LLMConfig",
     "LLMServingArgs",
@@ -377,6 +425,9 @@ __all__ = [
     "LoraConfig",
     "build_llm_deployment",
     "build_openai_app",
+    "build_pd_openai_app",
+    "build_dp_deployment",
+    "build_dp_openai_app",
     "LLMServer",
     "LLMRouter",
 ]

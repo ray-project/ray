@@ -342,16 +342,30 @@ filegroup(
     visibility = ["//doc:__subpackages__"],
 )
 
-# GPU Tests
+# GPU Tests (standard GPU tests)
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/llm/doc_code/serve/**/*.py"],
-    exclude = [],
+    exclude = ["source/llm/doc_code/serve/multi_gpu/**/*.py"],
     extra_srcs = [],
     data = ["source/llm/doc_code/serve/qwen/llm_config_example.yaml"],
     tags = [
         "exclusive",
         "gpu",
+        "team:llm",
+    ],
+)
+
+# Multi-GPU Tests (4+ GPUs)
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/llm/doc_code/serve/multi_gpu/**/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = [
+        "exclusive",
+        "gpu",
+        "multi_gpu_4",
         "team:llm",
     ],
 )

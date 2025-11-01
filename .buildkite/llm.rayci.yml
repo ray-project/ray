@@ -46,4 +46,18 @@ steps:
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
         --python-version 3.11 --build-name llmgpubuild --only-tags gpu
+        --except-tags multi_gpu_4
+    depends_on: llmgpubuild
+
+  - label: "llm gpu tests (4 GPUs)"
+    key: "llm-gpu-tests-4gpu"
+    tags:
+      - llm
+      - gpu
+    instance_type: gpu-large
+    commands:
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //doc/... llm
+        --python-version 3.11 --build-name llmgpubuild
+        --only-tags multi_gpu_4
+        --gpus 4
     depends_on: llmgpubuild
