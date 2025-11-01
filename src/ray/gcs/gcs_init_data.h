@@ -40,6 +40,11 @@ class GcsInitData {
   /// \param on_done The callback when all metadatas are loaded successfully.
   void AsyncLoad(Postable<void()> on_done);
 
+  /// Get worker metadata.
+  const absl::flat_hash_map<WorkerID, rpc::WorkerTableData> &Workers() const {
+    return worker_table_data_;
+  }
+
   /// Get job metadata.
   const absl::flat_hash_map<JobID, rpc::JobTableData> &Jobs() const {
     return job_table_data_;
@@ -66,6 +71,10 @@ class GcsInitData {
   }
 
  private:
+   /// Load worker metadata from the store into memory asynchronously.
+  ///
+  /// \param on_done The callback when worker metadata is loaded successfully.
+  void AsyncLoadWorkerTableData(const EmptyCallback &on_done);
   /// Load job metadata from the store into memory asynchronously.
   ///
   /// \param on_done The callback when job metadata is loaded successfully.
@@ -91,6 +100,9 @@ class GcsInitData {
  protected:
   /// The gcs table storage.
   gcs::GcsTableStorage &gcs_table_storage_;
+
+  /// Worker metadata.
+  absl::flat_hash_map<WorkerID, rpc::WorkerTableData> worker_table_data_;
 
   /// Job metadata.
   absl::flat_hash_map<JobID, rpc::JobTableData> job_table_data_;
