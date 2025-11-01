@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import ray
+from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
 from ray.llm._internal.batch.processor import ProcessorBuilder
-from ray.llm._internal.batch.processor.vllm_engine_proc import vLLMEngineProcessorConfig
 
 
 def test_vllm_engine_processor(gpu_type, model_opt_125m):
@@ -137,7 +137,7 @@ def test_generation_model(gpu_type, model_opt_125m, backend):
         detokenize=True,
     )
 
-    processor = ProcessorBuilder.build(
+    processor = build_llm_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[
@@ -184,7 +184,7 @@ def test_embedding_model(gpu_type, model_smolvlm_256m):
         detokenize=False,
     )
 
-    processor = ProcessorBuilder.build(
+    processor = build_llm_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[
@@ -219,11 +219,11 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
             dtype="half",
         ),
         # CI uses T4 GPU which is not supported by vLLM v1 FlashAttn.
-        runtime_env=dict(
-            env_vars=dict(
-                VLLM_USE_V1="0",
-            ),
-        ),
+        # runtime_env=dict(
+        #     env_vars=dict(
+        #         VLLM_USE_V1="0",
+        #     ),
+        # ),
         apply_chat_template=True,
         has_image=True,
         tokenize=False,
@@ -233,7 +233,7 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
         concurrency=1,
     )
 
-    processor = ProcessorBuilder.build(
+    processor = build_llm_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[

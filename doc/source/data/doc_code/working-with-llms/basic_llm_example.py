@@ -197,4 +197,135 @@ def create_embedding_processor():
 
 # __embedding_config_example_end__
 
+# __shared_vllm_engine_config_example_start__
+import ray
+from ray import serve
+from ray.data.llm import ServeDeploymentProcessorConfig, build_llm_processor
+from ray.serve.llm import (
+    LLMConfig,
+    ModelLoadingConfig,
+    build_llm_deployment,
+)
+from ray.serve.llm.openai_api_models import CompletionRequest
+
+llm_config = LLMConfig(
+    model_loading_config=ModelLoadingConfig(
+        model_id="facebook/opt-1.3b",
+        model_source="facebook/opt-1.3b",
+    ),
+    deployment_config=dict(
+        name="demo_deployment_config",
+        autoscaling_config=dict(
+            min_replicas=1,
+            max_replicas=1,
+        ),
+    ),
+    engine_kwargs=dict(
+        enable_prefix_caching=True,
+        enable_chunked_prefill=True,
+        max_num_batched_tokens=4096,
+    ),
+)
+
+APP_NAME = "demo_app"
+DEPLOYMENT_NAME = "demo_deployment"
+override_serve_options = dict(name=DEPLOYMENT_NAME)
+
+llm_app = build_llm_deployment(
+    llm_config, override_serve_options=override_serve_options
+)
+app = serve.run(llm_app, name=APP_NAME)
+config = ServeDeploymentProcessorConfig(
+    deployment_name=DEPLOYMENT_NAME,
+    app_name=APP_NAME,
+    dtype_mapping={
+        "CompletionRequest": CompletionRequest,
+    },
+    concurrency=1,
+    batch_size=64,
+)
+
+processor1 = build_llm_processor(
+    config,
+    preprocess=lambda row: dict(
+        method="completions",
+        dtype="CompletionRequest",
+        request_kwargs=dict(
+            model="facebook/opt-1.3b",
+            prompt=f"This is a prompt for {row['id']}",
+            stream=False,
+        ),
+    ),
+    postprocess=lambda row: dict(
+        prompt=row["choices"][0]["text"],
+    ),
+)
+
+processor2 = build_llm_processor(
+    config,
+    preprocess=lambda row: dict(
+        method="completions",
+        dtype="CompletionRequest",
+        request_kwargs=dict(
+            model="facebook/opt-1.3b",
+            prompt=row["prompt"],
+            stream=False,
+        ),
+    ),
+    postprocess=lambda row: row,
+)
+
+ds = ray.data.range(10)
+ds = processor2(processor1(ds))
+print(ds.take_all())
+# __shared_vllm_engine_config_example_end__
+
+# __cross_node_parallelism_config_example_start__
+config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs={
+        "enable_chunked_prefill": True,
+        "max_num_batched_tokens": 4096,
+        "max_model_len": 16384,
+        "pipeline_parallel_size": 4,
+        "tensor_parallel_size": 4,
+        "distributed_executor_backend": "ray",
+    },
+    batch_size=32,
+    concurrency=1,
+)
+# __cross_node_parallelism_config_example_end__
+
+# __custom_placement_group_strategy_config_example_start__
+config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs={
+        "enable_chunked_prefill": True,
+        "max_num_batched_tokens": 4096,
+        "max_model_len": 16384,
+        "pipeline_parallel_size": 2,
+        "tensor_parallel_size": 2,
+        "distributed_executor_backend": "ray",
+    },
+    batch_size=32,
+    concurrency=1,
+    placement_group_config={
+        "bundles": [{"GPU": 1}] * 4,
+        "strategy": "STRICT_PACK",
+    },
+)
+# __custom_placement_group_strategy_config_example_end__
+
+# __concurrent_config_example_start__
+config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs={
+        "enable_chunked_prefill": True,
+        "max_num_batched_tokens": 4096,
+        "max_model_len": 16384,
+    },
+    concurrency=10,
+    batch_size=64,
+)
+# __concurrent_config_example_end__
 # __basic_llm_example_end__

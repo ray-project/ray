@@ -4,7 +4,7 @@ from datasets import Dataset
 from transformers import AutoConfig, AutoModelForCausalLM, Trainer, TrainingArguments
 
 import ray.data
-from ray.train import Checkpoint, ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.huggingface.transformers import RayTrainReportCallback, prepare_trainer
 from ray.train.tests._huggingface_data import train_data, validation_data
 from ray.train.torch import TorchTrainer
@@ -49,7 +49,7 @@ CONFIGURATIONS = {
         "save_strategy": "steps",
         "logging_strategy": "steps",
         "eval_steps": STEPS_PER_EPOCH,
-        "save_steps": STEPS_PER_EPOCH * 2,
+        "save_steps": STEPS_PER_EPOCH // 2,
         "logging_steps": 1,
         "no_cuda": False,
     },
@@ -58,7 +58,7 @@ CONFIGURATIONS = {
         "save_strategy": "steps",
         "logging_strategy": "steps",
         "eval_steps": STEPS_PER_EPOCH,
-        "save_steps": STEPS_PER_EPOCH,
+        "save_steps": STEPS_PER_EPOCH // 2,
         "logging_steps": 1,
         "no_cuda": True,
     },
@@ -122,9 +122,7 @@ def train_func(config):
     trainer.train()
 
 
-# TODO: Re-enable GPU tests. Right now, ray turbo has no GPU CI.
-# @pytest.mark.parametrize("config_id", ["epoch_gpu", "steps_gpu", "steps_cpu"])
-@pytest.mark.parametrize("config_id", ["steps_cpu"])
+@pytest.mark.parametrize("config_id", ["epoch_gpu", "steps_gpu", "steps_cpu"])
 def test_e2e_hf_data(ray_start_6_cpus_2_gpus, config_id):
     def train_func(config):
         # Datasets
@@ -206,14 +204,11 @@ def test_e2e_hf_data(ray_start_6_cpus_2_gpus, config_id):
     assert result.metrics["epoch"] == MAX_EPOCHS
     assert result.metrics["step"] == MAX_STEPS
     assert result.checkpoint
-    assert isinstance(result.checkpoint, Checkpoint)
     assert len(result.best_checkpoints) == num_iterations
     assert "eval_loss" in result.metrics
 
 
-# TODO: Re-enable GPU tests. Right now, ray turbo has no GPU CI.
-# @pytest.mark.parametrize("config_id", ["steps_gpu", "steps_cpu"])
-@pytest.mark.parametrize("config_id", ["steps_cpu"])
+@pytest.mark.parametrize("config_id", ["steps_gpu", "steps_cpu"])
 def test_e2e_ray_data(ray_start_6_cpus_2_gpus, config_id):
     def train_func(config):
         # Datasets
@@ -298,7 +293,6 @@ def test_e2e_ray_data(ray_start_6_cpus_2_gpus, config_id):
 
     assert result.metrics["step"] == MAX_STEPS
     assert result.checkpoint
-    assert isinstance(result.checkpoint, Checkpoint)
     assert len(result.best_checkpoints) == num_iterations
     assert "eval_loss" in result.metrics
 
@@ -399,7 +393,6 @@ def test_e2e_dict_eval_ray_data(ray_start_6_cpus_2_gpus, config_id):
 
     assert result.metrics["step"] == MAX_STEPS
     assert result.checkpoint
-    assert isinstance(result.checkpoint, Checkpoint)
     assert len(result.best_checkpoints) == num_iterations
     assert "eval_eval_1_loss" in result.metrics
     assert "eval_eval_2_loss" in result.metrics

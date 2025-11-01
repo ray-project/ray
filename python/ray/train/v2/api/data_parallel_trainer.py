@@ -1,5 +1,4 @@
 import logging
-import os
 import signal
 import sys
 import threading
@@ -42,7 +41,9 @@ from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import (
     DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE,
     METRICS_ENABLED_ENV_VAR,
+    V2_ENABLED_ENV_VAR,
     get_env_vars_to_propagate,
+    is_v2_enabled,
 )
 from ray.train.v2._internal.data_integration.interfaces import GenDataset
 from ray.train.v2._internal.execution.callback import RayTrainCallback
@@ -107,15 +108,38 @@ class DataParallelTrainer:
         if metadata is not None:
             raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
 
-        self._set_default_env_vars()
+        self._validate_configs()
+
         usage_lib.record_library_usage("train")
         tag_train_v2_trainer(self)
 
-    def _set_default_env_vars(self):
-        if RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR not in os.environ:
-            os.environ[
-                RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
-            ] = DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE
+    def _validate_configs(self):
+        if not is_v2_enabled():
+            raise ValueError(
+                f"Ray Train V2 must be enabled with `{V2_ENABLED_ENV_VAR}=1` "
+                "when using this V2 Trainer API."
+            )
+
+        from ray.train.v2.api.config import (
+            RunConfig as RunConfigV2,
+            ScalingConfig as ScalingConfigV2,
+        )
+
+        if not isinstance(self.run_config, RunConfigV2):
+            raise ValueError(
+                f"Invalid `RunConfig` type: {self.run_config.__class__}. "
+                "Use `ray.train.RunConfig` instead. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
+
+        if not isinstance(self.scaling_config, ScalingConfigV2):
+            raise ValueError(
+                f"Invalid `ScalingConfig` type: {self.scaling_config.__class__}. "
+                "Use `ray.train.ScalingConfig` instead. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
 
     def _get_train_func(self) -> Callable[[], None]:
         return construct_train_func(
@@ -132,8 +156,11 @@ class DataParallelTrainer:
             A Result object containing the training result.
 
         Raises:
-            ray.train.v2.api.exceptions.ControllerError: If a non-retryable error occurs in the Ray Train controller itself, or if the number of retries configured in `FailureConfig` is exhausted.
-            ray.train.v2.api.exceptions.WorkerGroupError: If one or more workers fail during training and the number of retries configured in `FailureConfig` is exhausted.
+            ray.train.TrainingFailedError: This is a union of the ControllerError and WorkerGroupError.
+                This returns a :class:`ray.train.ControllerError` if internal Ray Train controller logic
+                encounters a non-retryable error or reaches the controller failure limit configured in `FailureConfig`.
+                This returns a :class:`ray.train.WorkerGroupError` if one or more workers fail during
+                training and reaches the worker group failure limit configured in `FailureConfig(max_failures)`.
         """
         train_fn = self._get_train_func()
         if self.running_in_local_mode:
@@ -223,6 +250,12 @@ class DataParallelTrainer:
         return self._get_local_controller().run(train_func)
 
     def _initialize_and_run_controller(self, **controller_init_kwargs) -> Result:
+        env_vars = get_env_vars_to_propagate()
+        env_vars.setdefault(
+            RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
+            DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE,
+        )
+
         # Attach the controller to the node running the driver script.
         controller_actor_cls = ray.remote(
             num_cpus=0,
@@ -231,7 +264,7 @@ class DataParallelTrainer:
             ),
             # TODO: Extract env variables that affect controller behavior
             # and pass them as explicit args
-            runtime_env={"env_vars": get_env_vars_to_propagate()},
+            runtime_env={"env_vars": env_vars},
         )(TrainController)
 
         controller = controller_actor_cls.remote(**controller_init_kwargs)
