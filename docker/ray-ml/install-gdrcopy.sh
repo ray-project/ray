@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Adapted from https://github.com/vllm-project/vllm/blob/main/tools/install_gdrcopy.sh
 
-# Usage: install_gdrcopy.sh <GDRCOPY_OS_VERSION> <GDRCOPY_CUDA_VERSION> <uuarch>
+# Usage: install-gdrcopy.sh <GDRCOPY_OS_VERSION> <GDRCOPY_CUDA_VERSION> <uuarch>
 # uuarch must be "x64" or "aarch64"
 # Optional: set GDRCOPY_VERSION to override the libgdrapi package version (default: 2.5.1-1)
 # Requires: curl, apt-get, root privileges
