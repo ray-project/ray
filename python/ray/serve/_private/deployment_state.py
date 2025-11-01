@@ -997,7 +997,7 @@ class ActorReplicaWrapper:
             self._last_outbound_deployments_poll_time = time.time()
             try:
                 self._outbound_deployments_ref = (
-                    self._actor_handle.get_outbound_deployments.remote()
+                    self._actor_handle.list_outbound_deployments.remote()
                 )
             except Exception:
                 logger.exception(

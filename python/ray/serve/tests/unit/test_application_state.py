@@ -183,6 +183,13 @@ class MockDeploymentStateManager:
     def get_deployment_route_patterns(self, id: DeploymentID) -> Optional[List[str]]:
         return None
 
+    def get_deployment_outbound_deployments(
+        self, id: DeploymentID
+    ) -> Optional[List[DeploymentID]]:
+        """Mock method to return outbound deployments for a deployment."""
+        # Return None by default, tests can override this
+        return getattr(self, f"_outbound_deps_{id.name}_{id.app_name}", None)
+
 
 @pytest.fixture
 def mocked_application_state_manager() -> (
@@ -220,7 +227,7 @@ def deployment_params(
         ).to_proto_bytes(),
         "deployer_job_id": "random",
         "route_prefix": route_prefix,
-        "ingress": False,
+        "ingress": route_prefix is not None,
         "serialized_autoscaling_policy_def": None,
         "serialized_request_router_cls": None,
     }
@@ -3031,6 +3038,426 @@ class TestApplicationLevelAutoscaling:
         assert (
             deployment_state_manager._scaling_decisions[d2_id] == 3
         )  # Our policy scales to 3
+
+
+class TestDeploymentDAG:
+    """Test deployment DAG building and retrieval functionality."""
+
+    def test_build_dag_single_deployment(self, mocked_application_state):
+        """Test building DAG with a single deployment."""
+        app_state, deployment_state_manager = mocked_application_state
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+
+        # Deploy single deployment
+        app_state.deploy_app({"d1": deployment_info("d1", "/hi")})
+        app_state.update()
+
+        deployment_state_manager.set_deployment_healthy(d1_id)
+        app_state.update()
+
+        # Get topology
+        topology = app_state.get_deployment_topology()
+        assert topology is not None
+        assert topology.app_name == "test_app"
+        assert topology.ingress_deployment == "d1"
+        assert "d1" in topology.nodes
+        assert topology.nodes["d1"].name == "d1"
+        assert topology.nodes["d1"].is_ingress is True
+        assert topology.nodes["d1"].outbound_deployments == []
+
+    def test_build_dag_multiple_deployments_no_deps(self, mocked_application_state):
+        """Test building DAG with multiple deployments without dependencies."""
+        app_state, deployment_state_manager = mocked_application_state
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+        d3_id = DeploymentID(name="d3", app_name="test_app")
+
+        # Deploy multiple deployments
+        app_state.deploy_app(
+            {
+                "d1": deployment_info("d1", "/hi"),
+                "d2": deployment_info("d2"),
+                "d3": deployment_info("d3"),
+            }
+        )
+        app_state.update()
+
+        deployment_state_manager.set_deployment_healthy(d1_id)
+        deployment_state_manager.set_deployment_healthy(d2_id)
+        deployment_state_manager.set_deployment_healthy(d3_id)
+        app_state.update()
+
+        # Get topology
+        topology = app_state.get_deployment_topology()
+        assert topology is not None
+        assert topology.app_name == "test_app"
+        assert topology.ingress_deployment == "d1"
+        assert len(topology.nodes) == 3
+        assert "d1" in topology.nodes
+        assert "d2" in topology.nodes
+        assert "d3" in topology.nodes
+        assert topology.nodes["d1"].is_ingress is True
+        assert topology.nodes["d2"].is_ingress is False
+        assert topology.nodes["d3"].is_ingress is False
+
+    def test_build_dag_with_outbound_dependencies(self, mocked_application_state):
+        """Test building DAG with outbound dependencies."""
+        app_state, deployment_state_manager = mocked_application_state
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+        d3_id = DeploymentID(name="d3", app_name="test_app")
+
+        # Set up outbound dependencies: d1 -> d2, d3; d2 -> d3
+        deployment_state_manager._outbound_deps_d1_test_app = [d2_id, d3_id]
+        deployment_state_manager._outbound_deps_d2_test_app = [d3_id]
+        deployment_state_manager._outbound_deps_d3_test_app = []
+
+        # Deploy deployments
+        app_state.deploy_app(
+            {
+                "d1": deployment_info("d1", "/hi"),
+                "d2": deployment_info("d2"),
+                "d3": deployment_info("d3"),
+            }
+        )
+        app_state.update()
+
+        deployment_state_manager.set_deployment_healthy(d1_id)
+        deployment_state_manager.set_deployment_healthy(d2_id)
+        deployment_state_manager.set_deployment_healthy(d3_id)
+        app_state.update()
+
+        # Get topology
+        topology = app_state.get_deployment_topology()
+        assert topology is not None
+        assert topology.app_name == "test_app"
+        assert len(topology.nodes) == 3
+
+        # Verify d1 has outbound to d2 and d3
+        assert len(topology.nodes["d1"].outbound_deployments) == 2
+        d1_outbound = topology.nodes["d1"].outbound_deployments
+        assert {"name": "d2", "app_name": "test_app"} in d1_outbound
+        assert {"name": "d3", "app_name": "test_app"} in d1_outbound
+
+        # Verify d2 has outbound to d3
+        assert len(topology.nodes["d2"].outbound_deployments) == 1
+        d2_outbound = topology.nodes["d2"].outbound_deployments
+        assert (
+            d3_id in d2_outbound
+            or {"name": "d3", "app_name": "test_app"} in d2_outbound
+        )
+
+        # Verify d3 has no outbound dependencies
+        assert len(topology.nodes["d3"].outbound_deployments) == 0
+
+    def test_build_dag_with_cross_app_dependencies(self, mocked_application_state):
+        """Test building DAG with dependencies to deployments in other apps."""
+        app_state, deployment_state_manager = mocked_application_state
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+
+        # Create dependencies to deployments in another app
+        external_d1_id = DeploymentID(name="ext_d1", app_name="other_app")
+        external_d2_id = DeploymentID(name="ext_d2", app_name="other_app")
+
+        # Set up outbound dependencies: d1 -> d2, ext_d1; d2 -> ext_d2
+        deployment_state_manager._outbound_deps_d1_test_app = [d2_id, external_d1_id]
+        deployment_state_manager._outbound_deps_d2_test_app = [external_d2_id]
+
+        # Deploy deployments
+        app_state.deploy_app(
+            {
+                "d1": deployment_info("d1", "/hi"),
+                "d2": deployment_info("d2"),
+            }
+        )
+        app_state.update()
+
+        deployment_state_manager.set_deployment_healthy(d1_id)
+        deployment_state_manager.set_deployment_healthy(d2_id)
+        app_state.update()
+
+        # Get topology
+        topology = app_state.get_deployment_topology()
+        assert topology is not None
+        assert topology.app_name == "test_app"
+        assert len(topology.nodes) == 2
+
+        # Verify d1 has outbound to both internal d2 and external ext_d1
+        assert len(topology.nodes["d1"].outbound_deployments) == 2
+        d1_outbound = topology.nodes["d1"].outbound_deployments
+        assert {"name": "d2", "app_name": "test_app"} in d1_outbound
+        assert {"name": "ext_d1", "app_name": "other_app"} in d1_outbound
+
+        # Verify d2 has outbound to external ext_d2
+        assert len(topology.nodes["d2"].outbound_deployments) == 1
+        d2_outbound = topology.nodes["d2"].outbound_deployments
+        assert {"name": "ext_d2", "app_name": "other_app"} in d2_outbound
+
+    def test_get_dag_before_deployment(self, mocked_application_state):
+        """Test getting topology before any deployments are created."""
+        app_state, _ = mocked_application_state
+
+        # Topology should be None before any deployments
+        topology = app_state.get_deployment_topology()
+        assert topology is None
+
+    def test_dag_updates_on_redeploy(self, mocked_application_state):
+        """Test that topology updates when deployments are redeployed."""
+        app_state, deployment_state_manager = mocked_application_state
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+        d3_id = DeploymentID(name="d3", app_name="test_app")
+
+        # Initial deployment: d1, d2
+        app_state.deploy_app(
+            {
+                "d1": deployment_info("d1", "/hi"),
+                "d2": deployment_info("d2"),
+            }
+        )
+        app_state.update()
+
+        deployment_state_manager.set_deployment_healthy(d1_id)
+        deployment_state_manager.set_deployment_healthy(d2_id)
+        app_state.update()
+
+        # Verify initial topology
+        topology = app_state.get_deployment_topology()
+        assert topology is not None
+        assert len(topology.nodes) == 2
+        assert "d1" in topology.nodes
+        assert "d2" in topology.nodes
+
+        # Redeploy with d2, d3 (removing d1, adding d3)
+        app_state.deploy_app(
+            {
+                "d2": deployment_info("d2", "/hi"),
+                "d3": deployment_info("d3"),
+            }
+        )
+        app_state.update()
+
+        deployment_state_manager.set_deployment_deleted(d1_id)
+        deployment_state_manager.set_deployment_healthy(d3_id)
+        app_state.update()
+
+        # Verify updated topology
+        topology = app_state.get_deployment_topology()
+        assert topology is not None
+        assert len(topology.nodes) == 2
+        assert "d2" in topology.nodes
+        assert "d3" in topology.nodes
+        assert "d1" not in topology.nodes
+        assert topology.ingress_deployment == "d2"
+
+    def test_dag_with_changing_dependencies(self, mocked_application_state):
+        """Test that topology updates when outbound dependencies change."""
+        app_state, deployment_state_manager = mocked_application_state
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+
+        # Initial: d1 -> d2
+        deployment_state_manager._outbound_deps_d1_test_app = [d2_id]
+
+        app_state.deploy_app(
+            {
+                "d1": deployment_info("d1", "/hi"),
+                "d2": deployment_info("d2"),
+            }
+        )
+        app_state.update()
+
+        deployment_state_manager.set_deployment_healthy(d1_id)
+        deployment_state_manager.set_deployment_healthy(d2_id)
+        app_state.update()
+
+        # Verify initial dependencies
+        topology = app_state.get_deployment_topology()
+        assert len(topology.nodes["d1"].outbound_deployments) == 1
+        d1_outbound = topology.nodes["d1"].outbound_deployments
+        assert {"name": "d2", "app_name": "test_app"} in d1_outbound
+
+        # Change dependencies: d1 -> [] (no dependencies)
+        deployment_state_manager._outbound_deps_d1_test_app = []
+
+        # Trigger update to rebuild topology
+        app_state.update()
+
+        # Verify updated dependencies
+        topology = app_state.get_deployment_topology()
+        assert len(topology.nodes["d1"].outbound_deployments) == 0
+
+    def test_application_state_manager_get_deployment_topology(
+        self, mocked_application_state_manager
+    ):
+        """Test getting topology via ApplicationStateManager."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+
+        # Deploy app
+        app_state_manager.deploy_app("test_app", [deployment_params("d1", "/hi")])
+        app_state_manager.update()
+
+        deployment_state_manager.set_deployment_healthy(d1_id)
+        app_state_manager.update()
+
+        # Get topology via ApplicationStateManager
+        topology = app_state_manager.get_deployment_topology("test_app")
+        assert topology is not None
+        assert topology.app_name == "test_app"
+        assert "d1" in topology.nodes
+
+    def test_application_state_manager_get_topology_nonexistent_app(
+        self, mocked_application_state_manager
+    ):
+        """Test getting topology for non-existent app returns None."""
+        app_state_manager, _, _ = mocked_application_state_manager
+
+        # Get topology for non-existent app
+        topology = app_state_manager.get_deployment_topology("nonexistent_app")
+        assert topology is None
+
+    def test_dag_with_multiple_apps(self, mocked_application_state_manager):
+        """Test that each app has its own independent topology."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Deploy app1
+        app1_d1_id = DeploymentID(name="d1", app_name="app1")
+        app1_d2_id = DeploymentID(name="d2", app_name="app1")
+        app_state_manager.deploy_app(
+            "app1",
+            [
+                deployment_params("d1", "/app1"),
+                deployment_params("d2"),
+            ],
+        )
+        app_state_manager.update()
+        deployment_state_manager.set_deployment_healthy(app1_d1_id)
+        deployment_state_manager.set_deployment_healthy(app1_d2_id)
+        app_state_manager.update()
+
+        # Deploy app2
+        app2_d1_id = DeploymentID(name="d1", app_name="app2")
+        app2_d2_id = DeploymentID(name="d2", app_name="app2")
+        app_state_manager.deploy_app(
+            "app2",
+            [
+                deployment_params("d1", "/app2"),
+                deployment_params("d2"),
+            ],
+        )
+        app_state_manager.update()
+        deployment_state_manager.set_deployment_healthy(app2_d1_id)
+        deployment_state_manager.set_deployment_healthy(app2_d2_id)
+        app_state_manager.update()
+
+        # Get topologies for both apps
+        topology1 = app_state_manager.get_deployment_topology("app1")
+        topology2 = app_state_manager.get_deployment_topology("app2")
+
+        assert topology1 is not None
+        assert topology2 is not None
+        assert topology1.app_name == "app1"
+        assert topology2.app_name == "app2"
+        assert len(topology1.nodes) == 2
+        assert len(topology2.nodes) == 2
+        assert topology1.ingress_deployment == "d1"
+        assert topology2.ingress_deployment == "d1"
+
+    def test_dag_with_complex_dependency_graph(self, mocked_application_state):
+        """Test building topology with a complex dependency graph."""
+        app_state, deployment_state_manager = mocked_application_state
+
+        # Create a complex topology:
+        # ingress -> orchestrator -> [worker1, worker2]
+        # worker1 -> database
+        # worker2 -> [database, cache]
+        ingress_id = DeploymentID(name="ingress", app_name="test_app")
+        orchestrator_id = DeploymentID(name="orchestrator", app_name="test_app")
+        worker1_id = DeploymentID(name="worker1", app_name="test_app")
+        worker2_id = DeploymentID(name="worker2", app_name="test_app")
+        database_id = DeploymentID(name="database", app_name="test_app")
+        cache_id = DeploymentID(name="cache", app_name="test_app")
+
+        # Set up dependencies
+        deployment_state_manager._outbound_deps_ingress_test_app = [orchestrator_id]
+        deployment_state_manager._outbound_deps_orchestrator_test_app = [
+            worker1_id,
+            worker2_id,
+        ]
+        deployment_state_manager._outbound_deps_worker1_test_app = [database_id]
+        deployment_state_manager._outbound_deps_worker2_test_app = [
+            database_id,
+            cache_id,
+        ]
+        deployment_state_manager._outbound_deps_database_test_app = []
+        deployment_state_manager._outbound_deps_cache_test_app = []
+
+        # Deploy all deployments
+        app_state.deploy_app(
+            {
+                "ingress": deployment_info("ingress", "/api"),
+                "orchestrator": deployment_info("orchestrator"),
+                "worker1": deployment_info("worker1"),
+                "worker2": deployment_info("worker2"),
+                "database": deployment_info("database"),
+                "cache": deployment_info("cache"),
+            }
+        )
+        app_state.update()
+
+        # Mark all as healthy
+        for dep_id in [
+            ingress_id,
+            orchestrator_id,
+            worker1_id,
+            worker2_id,
+            database_id,
+            cache_id,
+        ]:
+            deployment_state_manager.set_deployment_healthy(dep_id)
+        app_state.update()
+
+        # Get and verify topology
+        topology = app_state.get_deployment_topology()
+        assert topology is not None
+        assert len(topology.nodes) == 6
+        assert topology.ingress_deployment == "ingress"
+
+        # Verify ingress node
+        assert topology.nodes["ingress"].is_ingress is True
+        assert len(topology.nodes["ingress"].outbound_deployments) == 1
+        ingress_outbound = topology.nodes["ingress"].outbound_deployments
+        assert {"name": "orchestrator", "app_name": "test_app"} in ingress_outbound
+
+        # Verify orchestrator node
+        assert len(topology.nodes["orchestrator"].outbound_deployments) == 2
+        orchestrator_outbound = topology.nodes["orchestrator"].outbound_deployments
+        assert {"name": "worker1", "app_name": "test_app"} in orchestrator_outbound
+        assert {"name": "worker2", "app_name": "test_app"} in orchestrator_outbound
+
+        # Verify worker nodes
+        assert len(topology.nodes["worker1"].outbound_deployments) == 1
+        worker1_outbound = topology.nodes["worker1"].outbound_deployments
+        assert {"name": "database", "app_name": "test_app"} in worker1_outbound
+
+        assert len(topology.nodes["worker2"].outbound_deployments) == 2
+        worker2_outbound = topology.nodes["worker2"].outbound_deployments
+        assert {"name": "database", "app_name": "test_app"} in worker2_outbound
+        assert {"name": "cache", "app_name": "test_app"} in worker2_outbound
+
+        # Verify leaf nodes have no dependencies
+        assert len(topology.nodes["database"].outbound_deployments) == 0
+        assert len(topology.nodes["cache"].outbound_deployments) == 0
 
 
 if __name__ == "__main__":
