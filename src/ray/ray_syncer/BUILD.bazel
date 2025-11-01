@@ -20,8 +20,8 @@ ray_cc_library(
     deps = [
         ":asio",
         ":id",
-        "//src/ray/protobuf:ray_syncer_cc_grpc",
         "//src/ray/common:constants",
+        "//src/ray/protobuf:ray_syncer_cc_grpc",
         "//src/ray/rpc/authentication:authentication_token",
         "//src/ray/rpc/authentication:authentication_token_loader",
         "@com_github_grpc_grpc//:grpc++",
