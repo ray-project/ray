@@ -91,7 +91,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name datalbuild-py3.10
+        --build-name databuild-py3.10
         --python-version 3.10
         --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials
     depends_on: datalbuild-multipy
@@ -107,7 +107,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --build-name datalbuild-py3.10
+        --build-name databuild-py3.10
         --python-version 3.10
         --only-tags data_non_parallel
     depends_on: datalbuild-multipy
@@ -204,14 +204,14 @@ steps:
     commands:
       # doc tests
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... data
-        --build-name datalbuild-py3.10
+        --build-name databuild-py3.10
         --python-version 3.10
         --except-tags gpu
         --only-tags doctest
         --parallelism-per-worker 2
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
-        --build-name datalbuild-py3.10
+        --build-name databuild-py3.10
         --python-version 3.10
         --except-tags gpu,post_wheel_build,doctest,dask
         --parallelism-per-worker 2
@@ -275,7 +275,7 @@ steps:
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... data
-        --build-name datalbuild-py3.10
+        --build-name databuild-py3.10
         --python-version 3.10
         --parallelism-per-worker 3
     depends_on: datalbuild-multipy
@@ -292,7 +292,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... data --run-flaky-tests
         --parallelism-per-worker 3
-        --build-name datalbuild-py3.10
+        --build-name databuild-py3.10
         --python-version 3.10
         --except-tags gpu_only,gpu
     depends_on: datalbuild-multipy
@@ -322,7 +322,7 @@ steps:
     commands:
       - $(python ci/env/setup_credentials.py)
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name datalbuild-py3.10
+        --build-name databuild-py3.10
         --python-version 3.10
         --only-tags needs_credentials
         --test-env=SNOWFLAKE_USER --test-env=SNOWFLAKE_ACCOUNT --test-env=SNOWFLAKE_DATABASE --test-env=SNOWFLAKE_SCHEMA --test-env=SNOWFLAKE_WAREHOUSE --test-env=SNOWFLAKE_PRIVATE_KEY

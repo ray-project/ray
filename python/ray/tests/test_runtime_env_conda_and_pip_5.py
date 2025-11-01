@@ -86,7 +86,7 @@ def test_runtime_env_cache_with_pip_check(start_cluster):
         ray.get(f.options(runtime_env=runtime_env).remote())
 
     assert "The conflict is caused by:" in str(error.value)
-    assert "The user requested urllib==2.2.3" in str(error.value)
+    assert "The user requested urllib3==2.2.3" in str(error.value)
     assert "botocore 1.31.83 depends on urllib3>=2.1 and >=1.25.4" in str(error.value)
 
     runtime_env["pip"]["pip_check"] = True
