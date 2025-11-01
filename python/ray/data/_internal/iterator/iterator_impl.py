@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Tuple, Union
 
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.stats import DatasetStats
@@ -17,6 +17,8 @@ class DataIteratorImpl(DataIterator):
         base_dataset: "Dataset",
     ):
         self._base_dataset = base_dataset
+        # Store iterator parameters to pass to Dataset execution
+        self._iterator_params: Dict[str, Any] = {}
 
     def __repr__(self) -> str:
         return f"DataIterator({self._base_dataset})"
@@ -24,8 +26,15 @@ class DataIteratorImpl(DataIterator):
     def _to_ref_bundle_iterator(
         self,
     ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
-        ref_bundles_iterator, stats = self._base_dataset._execute_to_iterator()
+        # Pass iterator parameters to Dataset execution
+        ref_bundles_iterator, stats = self._base_dataset._execute_to_iterator(
+            iterator_params=self._iterator_params
+        )
         return ref_bundles_iterator, stats, False
+
+    def _set_iterator_params(self, **params):
+        """Set iterator parameters to be passed to Dataset execution."""
+        self._iterator_params.update(params)
 
     def stats(self) -> str:
         return self._base_dataset.stats()

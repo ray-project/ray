@@ -1,7 +1,7 @@
 import copy
 import itertools
 import logging
-from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple, Type, Union
 
 import pyarrow
 
@@ -447,6 +447,7 @@ class ExecutionPlan:
     @omit_traceback_stdout
     def execute_to_iterator(
         self,
+        iterator_params: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["StreamingExecutor"]]:
         """Execute this plan, returning an iterator.
 
@@ -471,6 +472,9 @@ class ExecutionPlan:
         )
 
         executor = self.create_executor()
+        # Pass iterator parameters to the last physical operator
+        if iterator_params:
+            self._set_iterator_params_on_last_operator(iterator_params)
         bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
@@ -481,6 +485,21 @@ class ExecutionPlan:
             pass
         self._snapshot_stats = executor.get_stats()
         return bundle_iter, self._snapshot_stats, executor
+
+    def _set_iterator_params_on_last_operator(self, iterator_params: Dict[str, Any]):
+        """Set iterator parameters on the last physical operator in the DAG.
+        
+        Args:
+            iterator_params: Dictionary of iterator parameters like prefetch_batches, batch_size, etc.
+        """
+        from ray.data._internal.logical.optimizers import get_execution_plan
+        
+        # Get the physical DAG from the logical plan
+        physical_plan = get_execution_plan(self._logical_plan)
+        last_physical_op = physical_plan.dag
+        
+        # Set iterator parameters on the last physical operator
+        last_physical_op.set_iterator_params(**iterator_params)
 
     @omit_traceback_stdout
     def execute(

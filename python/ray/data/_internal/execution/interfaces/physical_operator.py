@@ -351,6 +351,9 @@ class PhysicalOperator(Operator):
         self._id = str(uuid.uuid4())
         # Initialize metrics after data_context is set
         self._metrics = OpRuntimeMetrics(self)
+        
+        # Store iterator parameters for resource budgeting
+        self._iterator_params: Dict[str, Any] = {}
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
@@ -750,6 +753,14 @@ class PhysicalOperator(Operator):
         if self._in_task_output_backpressure != in_backpressure:
             self._metrics.on_toggle_task_output_backpressure(in_backpressure)
             self._in_task_output_backpressure = in_backpressure
+
+    def set_iterator_params(self, **params):
+        """Set iterator parameters for resource budgeting.
+        
+        Args:
+            **params: Iterator parameters like prefetch_batches, batch_size, etc.
+        """
+        self._iterator_params.update(params)
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""

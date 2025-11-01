@@ -164,6 +164,14 @@ class ResourceManager:
                 + next_op.metrics.obj_store_mem_pending_task_inputs
             )
 
+        # Account for prefetch_batches in object store memory
+        prefetch_batches = getattr(op, '_iterator_params', {}).get('prefetch_batches', 1)
+
+        if prefetch_batches > 1:
+            # XXX TODO Estimate additional memory needed for prefetched batches
+            additional_memory = 0
+            mem_op_outputs += additional_memory
+
         self._mem_op_internal[op] = mem_op_internal
         self._mem_op_outputs[op] = mem_op_outputs
 

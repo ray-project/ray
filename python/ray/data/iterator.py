@@ -102,6 +102,18 @@ class DataIterator(abc.ABC):
         """
         ...
 
+    @abc.abstractmethod
+    def _set_iterator_params(self, **params):
+        """Set iterator parameters to be passed to Dataset execution.
+
+        This method should be implemented by subclasses to handle parameter passing
+        to the underlying Dataset execution pipeline.
+
+        Args:
+            **params: Iterator parameters like prefetch_batches, batch_size, etc.
+        """
+        ...
+
     @PublicAPI
     def iter_batches(
         self,
@@ -179,6 +191,17 @@ class DataIterator(abc.ABC):
 
         def _create_iterator() -> Iterator[DataBatch]:
             time_start = time.perf_counter()
+
+            # Set iterator parameters for Dataset execution optimization
+            self._set_iterator_params(
+                prefetch_batches=prefetch_batches,
+                batch_size=batch_size,
+                batch_format=batch_format,
+                drop_last=drop_last,
+                local_shuffle_buffer_size=local_shuffle_buffer_size,
+                local_shuffle_seed=local_shuffle_seed,
+            )
+
             # Iterate through the dataset from the start each time
             # _iterator_gen is called.
             # This allows multiple iterations of the dataset without

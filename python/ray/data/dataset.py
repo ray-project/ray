@@ -6510,8 +6510,9 @@ class Dataset:
             self._current_executor.shutdown(force=True)
             self._current_executor = None
 
-    def _execute_to_iterator(self) -> Tuple[Iterator[RefBundle], DatasetStats]:
-        bundle_iter, stats, executor = self._plan.execute_to_iterator()
+    def _execute_to_iterator(self, iterator_params: Optional[Dict[str, Any]] = None) -> Tuple[Iterator[RefBundle], DatasetStats]:
+        # Pass iterator parameters to execution plan
+        bundle_iter, stats, executor = self._plan.execute_to_iterator(iterator_params=iterator_params)
         # Capture current executor to be able to clean it up properly, once
         # dataset is garbage-collected
         self._current_executor = executor
