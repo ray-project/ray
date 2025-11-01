@@ -492,11 +492,15 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         finalize_progress_bar_name: Optional[str] = None,
     ):
         input_logical_ops = [
-            input_physical_op._logical_operators[0] for input_physical_op in input_ops
+            input_physical_op._logical_operators[0]
+            if input_physical_op._logical_operators
+            else None
+            for input_physical_op in input_ops
         ]
 
         estimated_input_blocks = [
-            input_op.estimated_num_outputs() for input_op in input_logical_ops
+            input_op.estimated_num_outputs() if input_op is not None else None
+            for input_op in input_logical_ops
         ]
 
         # Derive target num partitions as either of
