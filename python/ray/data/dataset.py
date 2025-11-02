@@ -88,7 +88,7 @@ from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
-from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
+from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, _StatsManager
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
@@ -259,7 +259,7 @@ class Dataset:
         self._current_executor: Optional["Executor"] = None
         self._write_ds = None
 
-        self._set_uuid(StatsManager.get_dataset_id_from_stats_actor())
+        self._set_uuid(_StatsManager.gen_dataset_id_from_stats_actor())
 
     @staticmethod
     def copy(

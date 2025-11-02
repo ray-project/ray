@@ -1,4 +1,5 @@
 import collections
+import time
 from contextlib import contextmanager, nullcontext
 from typing import Any, Callable, Dict, Iterator, Optional
 
@@ -15,7 +16,7 @@ from ray.data._internal.block_batching.util import (
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data._internal.stats import DatasetStats, StatsManager
+from ray.data._internal.stats import DatasetStats, _StatsManager
 from ray.data._internal.util import make_async_gen
 from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
@@ -92,6 +93,8 @@ class BatchIterator:
             formatting to be overlapped with the UDF. Defaults to 1.
     """
 
+    UPDATE_METRICS_INTERVAL_S: float = 5.0
+
     def __init__(
         self,
         ref_bundles: Iterator[RefBundle],
@@ -136,6 +139,7 @@ class BatchIterator:
             else WaitBlockPrefetcher()
         )
         self._yielded_first_batch = False
+        self._metrics_last_updated: float = 0.0
 
     def _prefetch_blocks(
         self, ref_bundles: Iterator[RefBundle]
@@ -239,7 +243,9 @@ class BatchIterator:
         self._yielded_first_batch = False
 
     def after_epoch_end(self):
-        StatsManager.clear_iteration_metrics(self._dataset_tag)
+        _StatsManager.update_iteration_metrics(
+            self._stats, self._dataset_tag, force_update=True
+        )
 
     @contextmanager
     def get_next_batch_context(self):
@@ -264,7 +270,10 @@ class BatchIterator:
     def yield_batch_context(self, batch: Batch):
         with self._stats.iter_user_s.timer() if self._stats else nullcontext():
             yield
-        StatsManager.update_iteration_metrics(self._stats, self._dataset_tag)
+        now = time.time()
+        if (now - self._metrics_last_updated) > self.UPDATE_METRICS_INTERVAL_S:
+            _StatsManager.update_iteration_metrics(self._stats, self._dataset_tag)
+            self._metrics_last_updated = now
 
 
 def _format_in_threadpool(
