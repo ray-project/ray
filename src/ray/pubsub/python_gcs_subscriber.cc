@@ -75,7 +75,7 @@ Status PythonGcsSubscriber::Subscribe() {
 Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message) {
   absl::MutexLock lock(&mu_);
 
-  while (queue_.empty()) {
+  if (queue_.empty()) {
     if (closed_) {
       return Status::OK();
     }
@@ -133,6 +133,11 @@ Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message)
       }
       queue_.emplace_back(std::move(cur_pub_msg));
     }
+  }
+
+  if (queue_.empty()) {
+    // No messages available after polling
+    return Status::OK();
   }
 
   *message = std::move(queue_.front());

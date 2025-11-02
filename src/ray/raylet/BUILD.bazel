@@ -260,6 +260,7 @@ ray_cc_library(
         "//src/ray/raylet/scheduling:scheduler",
         "//src/ray/rpc:node_manager_server",
         "//src/ray/rpc:rpc_callback_types",
+        "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:container_util",
