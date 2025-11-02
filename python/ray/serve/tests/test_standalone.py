@@ -31,6 +31,7 @@ from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
 from ray.serve.context import _get_global_client
+from ray.serve.exceptions import RayServeConfigException
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 from ray.util.state import list_actors
 
@@ -702,11 +703,11 @@ serve.run(A.bind())"""
         driver_template.format(address=address, namespace="test_namespace1", port=8000)
     )
     run_string_as_driver(
-        driver_template.format(address=address, namespace="test_namespace2", port=8001)
+        driver_template.format(address=address, namespace="test_namespace2", port=8000)
     )
 
 
-def test_serve_start_different_http_checkpoint_options_warning(
+def test_serve_start_different_http_checkpoint_options_error(
     ray_shutdown, propagate_logs, caplog
 ):
     logger = logging.getLogger("ray.serve")
@@ -726,13 +727,10 @@ def test_serve_start_different_http_checkpoint_options_warning(
     # create a different config
     test_http = dict(host="127.1.1.8", port=_get_random_port())
 
-    serve.start(http_options=test_http)
-
-    for test_config, msg in zip([["host", "port"]], warning_msg):
-        for test_msg in test_config:
-            if "Autoscaling metrics pusher thread" in msg:
-                continue
-            assert test_msg in msg
+    with pytest.raises(
+        RayServeConfigException, match="Attempt to update `http_options`"
+    ):
+        serve.start(http_options=test_http)
 
 
 def test_recovering_controller_no_redeploy():
@@ -900,7 +898,7 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
         {
             "proxy_location": None,
             "http_options": HTTPOptions(),
-            "expected": HTTPOptions(location=DeploymentMode.HeadOnly),
+            "expected": HTTPOptions(location=DeploymentMode.EveryNode),
         },  # using default location from HTTPOptions
         {
             "proxy_location": None,

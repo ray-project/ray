@@ -584,7 +584,7 @@ class HTTPOptions(BaseModel):
     host: Optional[str] = DEFAULT_HTTP_HOST
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
-    location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
+    location: Optional[DeploymentMode] = DeploymentMode.EveryNode
     num_cpus: int = 0
     root_url: str = ""
     root_path: str = ""

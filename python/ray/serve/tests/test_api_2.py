@@ -5,6 +5,7 @@ from ray import serve
 from ray._common.network_utils import build_address
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.test_utils import get_application_urls
+from ray.serve.exceptions import RayServeConfigException
 
 
 def test_get_application_urls(serve_instance):
@@ -59,6 +60,15 @@ def test_get_application_urls_with_route_prefix(serve_instance):
     assert get_application_urls("gRPC", app_name="app1", use_localhost=False) == [
         f"{node_ip}:9000"
     ]
+
+
+def test_serve_start(serve_instance):
+    serve.start()  # success with default params
+    with pytest.raises(
+        RayServeConfigException,
+        match=r"{'host': {'previous': '0.0.0.0', 'new': '127.0.0.1'}}",
+    ):
+        serve.start(http_options={"host": "127.0.0.1"})
 
 
 if __name__ == "__main__":
