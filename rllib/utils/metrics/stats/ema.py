@@ -29,9 +29,11 @@ class EmaStats(StatsBase):
     ):
         """Initializes a EmaStats instance.
 
-        Note the follwing limitation: Since we calculate the EMA in parallel components and potentially merge them multiple
-        times in one reduce cycle, we need to store the incoming EMA from each merge and calculate the mean of EMAs after the reduce.
-        Note that the resulting mean of EMAs may differ significantly from the true mean, especially if some incoming EMAs are the result of few outliers.
+        We calculate the EMA in parallel components.
+        Also, we potentially aggregate them multiple times per reduction cycle.
+        We therefore aggregate by taking the mean of all collected EMAs.
+        We do this for simplicity and accept this limitation because EMAs
+        inherintly only approximate.
 
         Example to illustrate this limitation:
         Using an ema coefficient of 0.01:
