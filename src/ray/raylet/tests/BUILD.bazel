@@ -159,6 +159,7 @@ ray_cc_test(
         "//src/ray/common:task_common",
         "//src/ray/common/cgroup2:cgroup_manager_interface",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
+        "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/object_manager/plasma:fake_plasma_client",
         "//src/ray/object_manager/plasma:plasma_client",
         "//src/ray/observability:fake_metric",

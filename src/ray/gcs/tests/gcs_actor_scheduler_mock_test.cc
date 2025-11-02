@@ -135,7 +135,7 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak1) {
               RequestWorkerLease(An<const rpc::LeaseSpec &>(), _, _, _, _))
       .WillOnce(testing::SaveArg<2>(&cb));
   // Ensure actor is killed
-  EXPECT_CALL(*core_worker_client, KillActor(_, _));
+  EXPECT_CALL(*raylet_client, KillLocalActor(_, _));
   actor_scheduler->ScheduleByRaylet(actor);
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::DEAD);
   actor_scheduler->CancelOnNode(node_id);
@@ -161,7 +161,7 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
       actor_data, rpc::TaskSpec(), counter, fake_ray_event_recorder_, "");
   rpc::ClientCallback<rpc::RequestWorkerLeaseReply> request_worker_lease_cb;
   // Ensure actor is killed
-  EXPECT_CALL(*core_worker_client, KillActor(_, _));
+  EXPECT_CALL(*raylet_client, KillLocalActor(_, _));
   EXPECT_CALL(*raylet_client,
               RequestWorkerLease(An<const rpc::LeaseSpec &>(), _, _, _, _))
       .WillOnce(testing::SaveArg<2>(&request_worker_lease_cb));

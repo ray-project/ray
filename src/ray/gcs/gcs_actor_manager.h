@@ -105,6 +105,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
       RuntimeEnvManager &runtime_env_manager,
       GCSFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
+      rpc::RayletClientPool &raylet_client_pool,
       rpc::CoreWorkerClientPool &worker_client_pool,
       observability::RayEventRecorderInterface &ray_event_recorder,
       const std::string &session_name,
@@ -353,14 +354,14 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// \param force_kill Whether to force kill an actor by killing the worker.
   void KillActor(const ActorID &actor_id, bool force_kill);
 
-  /// Notify CoreWorker to kill the specified actor.
+  /// Notify Raylet to kill the specified actor.
   ///
   /// \param actor The actor to be killed.
   /// \param death_cause Context about why this actor is dead.
   /// \param force_kill Whether to force kill an actor by killing the worker.
-  void NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
-                                   const rpc::ActorDeathCause &death_cause,
-                                   bool force_kill = true);
+  void NotifyRayletToKillActor(const std::shared_ptr<GcsActor> &actor,
+                               const rpc::ActorDeathCause &death_cause,
+                               bool force_kill = true);
 
   /// Add the destroyed actor to the cache. If the cache is full, one actor is randomly
   /// evicted.
@@ -479,6 +480,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   instrumented_io_context &io_context_;
   /// A publisher for publishing gcs messages.
   pubsub::GcsPublisher *gcs_publisher_;
+  /// This is used to communicate with raylets where actors are located.
+  rpc::RayletClientPool &raylet_client_pool_;
   /// This is used to communicate with actors and their owners.
   rpc::CoreWorkerClientPool &worker_client_pool_;
   /// Event recorder for emitting actor events
