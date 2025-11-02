@@ -18,9 +18,9 @@ ray_cc_library(
         "ray_syncer/ray_syncer_server.h",
     ],
     deps = [
-        ":asio",
-        ":id",
+        "//src/ray/common:asio",
         "//src/ray/common:constants",
+        "//src/ray/common:id",
         "//src/ray/protobuf:ray_syncer_cc_grpc",
         "//src/ray/rpc/authentication:authentication_token",
         "//src/ray/rpc/authentication:authentication_token_loader",
