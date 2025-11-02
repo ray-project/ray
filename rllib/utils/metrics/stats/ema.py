@@ -167,7 +167,12 @@ class EmaStats(StatsBase):
         else:
             # Normal peek behavior
             if hasattr(self, "_values_to_merge"):
-                value = self._reduce_values_to_merge()
+                # If _values_to_merge is empty, use _value instead
+                # This can happen after reduce(compile=False) returns a new stats object
+                if len(self._values_to_merge) == 0:
+                    value = self._value
+                else:
+                    value = self._reduce_values_to_merge()
             else:
                 value = self._value
 
@@ -183,7 +188,12 @@ class EmaStats(StatsBase):
         If value is a GPU tensor, it's converted to CPU.
         """
         if hasattr(self, "_values_to_merge"):
-            value = self._reduce_values_to_merge()
+            # If _values_to_merge is empty, use _value instead
+            # This can happen when a non-leaf stats object logs values directly
+            if len(self._values_to_merge) == 0:
+                value = self._value
+            else:
+                value = self._reduce_values_to_merge()
             self._values_to_merge = []
         else:
             value = self._value
