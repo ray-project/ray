@@ -39,6 +39,45 @@ def _is_arrow_array(value: ArrayLike) -> bool:
     return isinstance(value, (pa.Array, pa.ChunkedArray))
 
 
+def _get_leaf_element(value: Any, max_depth: int = 10) -> Any:
+    """Recursively traverse nested sequences to find a leaf element.
+
+    Args:
+        value: The value to traverse
+        max_depth: Maximum recursion depth to prevent infinite loops
+
+    Returns:
+        The first leaf element found, or the value itself if max depth reached
+    """
+    if max_depth <= 0:
+        return value
+
+    # Check if it's a sequence but not a string, ndarray, or arrow array
+    if isinstance(value, (list, tuple)) and len(value) > 0:
+        return _get_leaf_element(value[0], max_depth - 1)
+
+    return value
+
+
+def _contains_nested_ndarrays(column_values: Sequence[Any]) -> bool:
+    """Return True if any sampled element contains nested sequences with ndarray(-like) leaves."""
+    if not isinstance(column_values, (list, tuple)) or len(column_values) == 0:
+        return False
+
+    # Just bounding this to a small sample size.
+    max_samples: int = 10
+    samples_checked = 0
+    for value in column_values:
+        if samples_checked >= max_samples:
+            break
+        samples_checked += 1
+        leaf = _get_leaf_element(value)
+        if isinstance(leaf, np.ndarray) or _is_ndarray_like_not_pyarrow_array(leaf):
+            return True
+
+    return False
+
+
 def _should_convert_to_tensor(
     column_values: Union[List[Any], np.ndarray, ArrayLike], column_name: str
 ) -> bool:
@@ -62,6 +101,9 @@ def _should_convert_to_tensor(
         #   leading to list of ndarrays being converted a tensor):
         or isinstance(column_values[0], np.ndarray)
         or _is_ndarray_like_not_pyarrow_array(column_values[0])
+        # - Handle nested lists/sequences containing ndarrays at any depth
+        #   (e.g., list of lists of images: [[img1, img2], [img3, img4]])
+        or _contains_nested_ndarrays(column_values)
     )
 
 

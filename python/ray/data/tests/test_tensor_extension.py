@@ -18,6 +18,7 @@ from ray.air.util.tensor_extensions.arrow import (
     _concat_ndarrays,
     _extension_array_concat_supported,
     concat_tensor_arrays,
+    convert_to_pyarrow_array,
     unify_tensor_arrays,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
@@ -53,6 +54,197 @@ def test_tensor_array_validation():
 
     with pytest.raises(TypeError):
         TensorArray([object(), object()])
+
+
+@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize(
+    "batch_sizes",
+    [
+        [2, 2],  # Uniform batches: 2 images in each batch
+        [1, 1],  # Single image per batch
+        [3, 2],  # Varying: 3 images in first batch, 2 in second
+        [1, 3],  # Varying: 1 image in first batch, 3 in second
+        [4, 1],  # Varying: 4 images in first batch, 1 in second
+    ],
+    ids=["uniform-2x2", "single-1x1", "varying-3x2", "varying-1x3", "varying-4x1"],
+)
+def test_convert_to_pyarrow_array_nested_image_batches(
+    restore_data_context, tensor_format, batch_sizes
+):
+    """Test that convert_to_pyarrow_array handles nested lists of image tensors
+    with varying numbers of images per batch."""
+    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+
+    # Helper function to create a simple test image with unique values
+    def create_image(img_id):
+        """Create a 2x3 RGB image with values based on img_id."""
+        base_value = img_id * 10
+        return np.array(
+            [
+                [
+                    [base_value + 0, base_value + 1, base_value + 2],
+                    [base_value + 3, base_value + 4, base_value + 5],
+                    [base_value + 6, base_value + 7, base_value + 8],
+                ],
+                [
+                    [base_value + 10, base_value + 11, base_value + 12],
+                    [base_value + 13, base_value + 14, base_value + 15],
+                    [base_value + 16, base_value + 17, base_value + 18],
+                ],
+            ],
+            dtype=np.uint8,
+        )
+
+    # Create nested list of image tensors with specified batch sizes
+    image_batch_collection = []
+    img_id = 0
+    for batch_size in batch_sizes:
+        batch = []
+        for _ in range(batch_size):
+            batch.append(create_image(img_id))
+            img_id += 1
+        image_batch_collection.append(batch)
+
+    # Convert to PyArrow array - should recognize nested tensors
+    pa_arr = convert_to_pyarrow_array(image_batch_collection, "images")
+
+    # Verify it created an ArrowTensorArray or ArrowVariableShapedTensorArray
+    # (Variable-shaped when batches have different numbers of images)
+    assert isinstance(pa_arr, (ArrowTensorArray, ArrowVariableShapedTensorArray))
+    assert len(pa_arr) == len(batch_sizes)
+
+    # Convert back to numpy and verify structure
+    result = pa_arr.to_numpy()
+    assert len(result) == len(batch_sizes)
+
+    # Verify each batch
+    img_id = 0
+    for batch_idx, batch_size in enumerate(batch_sizes):
+        assert len(result[batch_idx]) == batch_size
+        for img_idx in range(batch_size):
+            expected_img = create_image(img_id)
+            np.testing.assert_array_equal(
+                result[batch_idx][img_idx],
+                expected_img,
+                err_msg=f"Mismatch at batch {batch_idx}, image {img_idx}",
+            )
+            img_id += 1
+
+
+@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+def test_convert_to_pyarrow_array_mixed_nesting_levels(
+    restore_data_context, tensor_format
+):
+    """Test that convert_to_pyarrow_array handles mixed nesting levels like [img1, [img2]].
+
+    Note: This creates tensors with incompatible dimensions (3D vs 4D), so it falls back
+    to ArrowPythonObjectArray (pickling). This is expected behavior for this edge case.
+    """
+    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+
+    # Create a list with mixed nesting levels
+    # First element is an image directly, second element is a list containing an image
+    img1 = np.array(
+        [[[130, 118, 255], [132, 117, 255]], [[133, 114, 255], [132, 113, 255]]],
+        dtype=np.uint8,
+    )
+
+    img2 = np.array(
+        [[[50, 60, 70], [80, 90, 100]], [[140, 150, 160], [170, 180, 190]]],
+        dtype=np.uint8,
+    )
+
+    mixed_nesting = [img1, [img2]]
+
+    # Convert to PyArrow array - this will fall back to pickling due to
+    # incompatible tensor dimensions (img1 is 3D, [img2] becomes 4D)
+    pa_arr = convert_to_pyarrow_array(mixed_nesting, "images")
+
+    # Verify it falls back to ArrowPythonObjectArray due to dimension mismatch
+    from ray.air.util.object_extensions.arrow import ArrowPythonObjectArray
+
+    assert isinstance(pa_arr, ArrowPythonObjectArray)
+    assert len(pa_arr) == 2
+
+
+@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+@pytest.mark.parametrize(
+    "nesting_structure,expected_type",
+    [
+        ([[1], [1]], "tensor"),  # Uniform: [[img1], [img2]] - works!
+        ([[1], [[1]]], "object"),  # Different depths: [[img1], [[img2]]] - falls back
+        ([[[1]], [[1]]], "tensor"),  # Uniform deeper: [[[img1]], [[img2]]] - works!
+        ([[1, 1], [[1]]], "object"),  # Mixed: [[img1, img2], [[img3]]] - falls back
+        (
+            [[[1]], [1, 1]],
+            "object",
+        ),  # Mixed reverse: [[[img1]], [img2, img3]] - falls back
+    ],
+    ids=[
+        "uniform-single",
+        "depth-2vs3",
+        "uniform-triple",
+        "mixed-double-triple",
+        "mixed-triple-double",
+    ],
+)
+def test_convert_to_pyarrow_array_inconsistent_nesting_depths(
+    restore_data_context, tensor_format, nesting_structure, expected_type
+):
+    """Test convert_to_pyarrow_array with various nesting depth patterns.
+
+    Tests cases where elements have different nesting levels. Uniform nesting
+    (like [[img1], [img2]]) works fine after recursive flattening, but truly
+    inconsistent depths (like [[img1], [[img2]]]) fall back to pickling.
+    """
+    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+
+    def create_image(img_id):
+        """Create a simple 2x2 RGB test image."""
+        base = img_id * 10
+        return np.array(
+            [[[base, base + 1, base + 2], [base + 3, base + 4, base + 5]]],
+            dtype=np.uint8,
+        )
+
+    def build_nested_structure(structure, img_id_start=0):
+        """Build a nested structure based on the nesting_structure template.
+
+        structure: List of lists where 1 represents an image position
+        Returns: The nested structure with actual images, and the next img_id
+        """
+        result = []
+        img_id = img_id_start
+
+        for element in structure:
+            if element == 1:
+                # This position should have an image
+                result.append(create_image(img_id))
+                img_id += 1
+            elif isinstance(element, list):
+                # Recursively build nested structure
+                nested, img_id = build_nested_structure(element, img_id)
+                result.append(nested)
+
+        return result, img_id
+
+    # Build the nested structure with actual images
+    nested_collection, _ = build_nested_structure(nesting_structure)
+
+    # Convert to PyArrow array
+    pa_arr = convert_to_pyarrow_array(nested_collection, "images")
+
+    # Verify the result type based on whether nesting is uniform
+    from ray.air.util.object_extensions.arrow import ArrowPythonObjectArray
+
+    if expected_type == "tensor":
+        # Uniform nesting - should successfully create tensor arrays
+        assert isinstance(pa_arr, (ArrowTensorArray, ArrowVariableShapedTensorArray))
+    else:
+        # Inconsistent nesting - falls back to pickling
+        assert isinstance(pa_arr, ArrowPythonObjectArray)
+
+    assert len(pa_arr) == len(nesting_structure)
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
