@@ -14,18 +14,6 @@ from ray.tests.authentication_test_utils import (
 )
 from ray.util.state import StateApiClient
 
-try:
-    from ray._raylet import AuthenticationTokenLoader
-
-    _RAYLET_AVAILABLE = True
-except ImportError:
-    _RAYLET_AVAILABLE = False
-
-pytestmark = pytest.mark.skipif(
-    not _RAYLET_AVAILABLE,
-    reason="Authentication tests require ray._raylet (not available in minimal installs)",
-)
-
 
 def test_submission_client_adds_token_automatically(setup_cluster_with_token_auth):
     """Test that SubmissionClient automatically adds token to headers."""

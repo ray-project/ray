@@ -19,18 +19,6 @@ from ray.tests.authentication_test_utils import (
     set_env_auth_token,
 )
 
-try:
-    from ray._raylet import AuthenticationTokenLoader
-
-    _RAYLET_AVAILABLE = True
-except ImportError:
-    _RAYLET_AVAILABLE = False
-
-pytestmark = pytest.mark.skipif(
-    not _RAYLET_AVAILABLE,
-    reason="Authentication tests require ray._raylet (not available in minimal installs)",
-)
-
 
 def _agent_url(agent_address: str, path: str) -> str:
     return urllib.parse.urljoin(agent_address, path)
