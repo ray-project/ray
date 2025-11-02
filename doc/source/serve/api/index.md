@@ -416,7 +416,7 @@ Content-Type: application/json
    schema.TargetGroup
    schema.Target
    schema.DeploymentNode
-   schema.DeploymentDAG
+   schema.DeploymentTopology
 
 ```
 
