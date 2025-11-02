@@ -55,14 +55,14 @@ class EmaStats(StatsBase):
         """Returns the length of the internal values list."""
         return 1
 
-    def merge(self, incoming_stats: List["EmaStats"]):
-        """Merges StatsBase objects.
+    def merge(self, incoming_stats: List["EmaStats"]) -> None:
+        """Merges EmaStats objects.
 
         Args:
-            incoming_stats: The list of StatsBase objects to merge.
+            incoming_stats: The list of EmaStats objects to merge.
 
         Returns:
-            The merged StatsBase object.
+            None. The merge operation modifies self in place.
         """
         assert (
             not self.is_leaf
@@ -185,6 +185,13 @@ class EmaStats(StatsBase):
         """Reduces the internal value.
 
         If value is a GPU tensor, it's converted to CPU.
+
+        Args:
+            compile: If True, the result is compiled into a single value if possible.
+
+        Returns:
+            The reduced value.
+
         """
         if hasattr(self, "_values_to_merge"):
             # If _values_to_merge is empty, use _value instead

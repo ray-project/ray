@@ -176,7 +176,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self.rng = np.random.default_rng(seed=None)
 
         # Initialize the metrics.
-        self.metrics = MetricsLogger(root=False, leaf=True)
+        self.metrics = MetricsLogger(root=False)
         self._metrics_num_episodes_for_smoothing = metrics_num_episodes_for_smoothing
 
     @override(ReplayBufferInterface)

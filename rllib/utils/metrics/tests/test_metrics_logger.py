@@ -15,22 +15,22 @@ from ray.rllib.utils.metrics.stats import (
 
 @pytest.fixture
 def root_logger():
-    return MetricsLogger(root=True, leaf=False)
+    return MetricsLogger(root=True)
 
 
 @pytest.fixture
 def leaf1():
-    return MetricsLogger(root=False, leaf=True)
+    return MetricsLogger(root=False)
 
 
 @pytest.fixture
 def leaf2():
-    return MetricsLogger(root=False, leaf=True)
+    return MetricsLogger(root=False)
 
 
 @pytest.fixture
 def intermediate():
-    return MetricsLogger(root=False, leaf=False)
+    return MetricsLogger(root=False)
 
 
 @pytest.mark.parametrize(

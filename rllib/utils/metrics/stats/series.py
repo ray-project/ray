@@ -143,7 +143,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             incoming_stats: The list of SeriesStats objects to merge.
 
         Returns:
-            The merged SeriesStats object.
+            None. The merge operation modifies self in place.
         """
         assert (
             not self.is_leaf

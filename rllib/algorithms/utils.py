@@ -57,7 +57,6 @@ class AggregatorActor(FaultAwareApply):
         self.metrics: MetricsLogger = MetricsLogger(
             stats_cls_lookup=config.stats_cls_lookup,
             root=True,
-            leaf=False,  # This logger may be used to aggregate metrics
         )
 
         # Create the RLModule.

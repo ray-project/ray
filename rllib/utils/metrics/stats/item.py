@@ -47,17 +47,26 @@ class ItemStats(StatsBase):
         return return_stats
 
     def push(self, item: Any) -> None:
+        """Pushes a value into this Stats object.
+
+        Args:
+            item: The value to push. Can be of any type.
+                GPU tensors are moved to CPU memory.
+
+        Returns:
+            None
+        """
         # Put directly onto CPU memory. peek(), reduce() and merge() don't handle GPU tensors.
         self._item = single_value_to_cpu(item)
 
-    def merge(self, incoming_stats: List["ItemStats"]):
+    def merge(self, incoming_stats: List["ItemStats"]) -> None:
         """Merges ItemStats objects.
 
         Args:
             incoming_stats: The list of ItemStats objects to merge.
 
         Returns:
-            The merged ItemStats object.
+            None. The merge operation modifies self in place.
         """
         assert (
             len(incoming_stats) == 1
@@ -75,8 +84,9 @@ class ItemStats(StatsBase):
         Args:
             compile: If True, return the internal item directly.
                 If False, return the internal item as a single-element list.
-            latest_merged_only: This parameter is not supported for ItemStats.
+            latest_merged_only: This parameter is ignored for ItemStats.
                 ItemStats tracks a single item, not a series of merged values.
+                The current item is always returned regardless of this parameter.
 
         Returns:
             The internal item.

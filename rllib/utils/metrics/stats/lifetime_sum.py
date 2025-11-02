@@ -237,7 +237,15 @@ class LifetimeSumStats(StatsBase):
         return_stats._lifetime_sum = value
         return return_stats
 
-    def merge(self, incoming_stats: List["LifetimeSumStats"]):
+    def merge(self, incoming_stats: List["LifetimeSumStats"]) -> None:
+        """Merges LifetimeSumStats objects.
+
+        Args:
+            incoming_stats: The list of LifetimeSumStats objects to merge.
+
+        Returns:
+            None. The merge operation modifies self in place.
+        """
         assert (
             not self.is_leaf
         ), "LifetimeSumStats should only be merged at aggregation stages (root or intermediate)"

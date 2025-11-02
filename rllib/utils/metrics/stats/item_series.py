@@ -115,14 +115,14 @@ class ItemSeriesStats(StatsBase):
             # Normal peek behavior
             return self.items
 
-    def merge(self, incoming_stats: List["ItemSeriesStats"]):
+    def merge(self, incoming_stats: List["ItemSeriesStats"]) -> None:
         """Merges ItemSeriesStats objects.
 
         Args:
             incoming_stats: The list of ItemSeriesStats objects to merge.
 
         Returns:
-            The merged ItemSeriesStats object.
+            None. The merge operation modifies self in place.
         """
         assert (
             not self.is_leaf

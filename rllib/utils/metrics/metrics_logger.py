@@ -133,7 +133,6 @@ class MetricsLogger:
     def __init__(
         self,
         root=False,
-        leaf=True,
         stats_cls_lookup: Optional[
             Dict[str, Type[StatsBase]]
         ] = DEFAULT_STATS_CLS_LOOKUP,
@@ -142,7 +141,6 @@ class MetricsLogger:
 
         Args:
             root: Whether this logger is a root logger. If True, lifetime sums (reduce="lifetime_sum") will not be cleared on reduce().
-            leaf: Whether this logger is a leaf logger. If False, it can aggregate from other loggers (intermediate or root stage).
             stats_cls_lookup: A dictionary mapping reduction method names to Stats classes.
                 If not provided, the default lookup (ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP) will be used.
                 You can provide your own reduce methods by extending ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP and passing it to AlgorithmConfig.logging().
@@ -157,7 +155,6 @@ class MetricsLogger:
         #  using the RLock.
         self._threading_lock = _DummyRLock()
         self._is_root_logger = root
-        self._is_leaf_logger = leaf
         self._time_when_initialized = time.perf_counter()
         self.stats_cls_lookup = stats_cls_lookup
 
@@ -204,11 +201,6 @@ class MetricsLogger:
             The (reduced) values of the (possibly nested) sub-structure found under
             the given key or key sequence.
         """
-        if latest_merged_only:
-            assert (
-                not self._is_leaf_logger
-            ), "latest_merged_only can only be used on aggregation loggers (root or intermediate)"
-
         if throughput:
             assert (
                 self._is_root_logger
@@ -514,10 +506,6 @@ class MetricsLogger:
             key: Optional top-level key under which to log all keys/key sequences
                 found in the n `stats_dicts`.
         """
-        assert (
-            not self._is_leaf_logger
-        ), "Stats should only be aggregated at aggregation stages (root or intermediate)"
-
         all_keys = set()
 
         def traverse_and_add_paths(d, path=()):
@@ -582,7 +570,7 @@ class MetricsLogger:
                 # We cannot aggregate into a leaf stats (created by direct logging)
                 assert (
                     not own_stats.is_leaf
-                ), f"Cannot aggregate into key '{key}' because it was created by direct logging (is_leaf=True). Aggregation keys must be separate from direct logging keys."
+                ), f"Cannot aggregate into key '{key}' because it was created by direct logging. Aggregation keys must be separate from direct logging keys."
 
             own_stats.merge(incoming_stats=incoming_stats)
 

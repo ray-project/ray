@@ -72,7 +72,6 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         self.metrics: MetricsLogger = MetricsLogger(
             stats_cls_lookup=config.stats_cls_lookup,
             root=False,
-            leaf=True,  # We don't expect metrics to be aggregated on EnvRunners. This may change.
         )
 
         super().__init__()

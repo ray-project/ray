@@ -116,7 +116,6 @@ class DifferentiableLearner(Checkpointable):
         self.metrics: MetricsLogger = MetricsLogger(
             stats_cls_lookup=config.stats_cls_lookup,
             root=False,
-            leaf=False,  # This logger may be used to aggregate metrics
         )
 
         # In case of offline learning and multiple learners, each learner receives a
@@ -715,7 +714,6 @@ class DifferentiableLearner(Checkpointable):
         self.metrics = MetricsLogger(
             stats_cls_lookup=self.config.stats_cls_lookup,
             root=False,
-            leaf=False,  # We don't expect metrics to be aggregated here
         )
         self._is_built = False
 

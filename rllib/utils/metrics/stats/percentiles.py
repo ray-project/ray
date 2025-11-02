@@ -141,7 +141,7 @@ class PercentilesStats(StatsBase):
 
         self.values.append(value)
 
-    def merge(self, incoming_stats: List["PercentilesStats"]):
+    def merge(self, incoming_stats: List["PercentilesStats"]) -> None:
         """Merges PercentilesStats objects.
 
         This method assumes that the incoming stats have the same percentiles and window size.
@@ -149,6 +149,9 @@ class PercentilesStats(StatsBase):
 
         Args:
             incoming_stats: The list of PercentilesStats objects to merge.
+
+        Returns:
+            None. The merge operation modifies self in place.
         """
         assert (
             not self.is_leaf

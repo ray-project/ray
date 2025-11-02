@@ -15,7 +15,16 @@ from ray.rllib.utils.annotations import (
 class StatsBase(metaclass=ABCMeta):
     """A base class for Stats.
 
-    Stats are meant to be used in conjunction with the MetricsLogger class.
+    Stats are meant to be used to log values to and then aggregate them in a tree.
+
+    Therefore, we log to stats in two different ways:
+    - On a leaf component, we log values directly by pushing.
+    - On a non-leaf component, we only aggregate incoming values.
+
+    Additionally, we pay special respect to Stats that live at the root of the tree.
+    These may have a different behaviour (example: a lifetime sum).
+
+    Note the tight coupling between StatsBase and MetricsLogger.
     """
 
     # In order to restore from a checkpoint, we need to know the class of the Stats object.
@@ -28,15 +37,6 @@ class StatsBase(metaclass=ABCMeta):
         is_leaf: bool = True,
     ):
         """Initializes a StatsBase object.
-
-        Stats are meant to be used to log values to and then aggregate them in a tree.
-
-        Therefore, we log to stats in two different ways:
-        - On a leaf component, we log values directly by pushing
-        - On a non-leaf component, we log values by aggregating them
-
-        Additionally, we pay special respect to Stats that live at the root of the tree.
-        These may have a different behaviour (example: a lifetime sum).
 
         Args:
             is_root: If True, the Stats object is a root stats object.
@@ -70,8 +70,8 @@ class StatsBase(metaclass=ABCMeta):
         This is important because the component that tracks the time
         between reduce cycles is not Stats, but MetricsLogger.
 
-        This method is called by the MetricsLogger to establish the
-        reference time from which we calculate throughputs.
+        Args:
+            time: The time to establish as the reference time for this Stats object.
         """
         if self.has_throughputs:
             raise ValueError(
@@ -135,7 +135,7 @@ class StatsBase(metaclass=ABCMeta):
     def __exit__(self, exc_type, exc_value, tb) -> None:
         """Called when exiting a context (with which users can measure a time delta).
 
-        This pushes the time delta to this Stats object.
+        This pushes the time delta since __enter__ to this Stats object.
         """
         thread_id = threading.get_ident()
         assert self._start_times[thread_id] is not None
@@ -150,6 +150,9 @@ class StatsBase(metaclass=ABCMeta):
 
         Any implementation of this should call this base classe's
         `stats_object.set_state()` to set the state of the stats object.
+
+        Args:
+            state: The state to set after instantiation.
         """
         init_args = cls._get_init_args(state=state)
         stats = cls(**init_args)
@@ -167,7 +170,7 @@ class StatsBase(metaclass=ABCMeta):
             init_overrides: Optional dict of initialization arguments to override. Can be used to change is_root, is_leaf, etc.
 
         Returns:
-            A new stats object similar to `self`.
+            A new stats object similar to `self` but missing internal values.
         """
         init_args = self.__class__._get_init_args(stats_object=self)
         if init_overrides:
@@ -189,7 +192,11 @@ class StatsBase(metaclass=ABCMeta):
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def set_state(self, state: Dict[str, Any]) -> None:
-        """Sets the state of the stats object."""
+        """Sets the state of the stats object.
+
+        Args:
+            state: The state to set on this StatsBase object.
+        """
 
         # Handle legacy state that uses old attribute names
         self.is_root = state["is_root"]
@@ -225,14 +232,11 @@ class StatsBase(metaclass=ABCMeta):
         ...
 
     @abstractmethod
-    def merge(self, incoming_stats: List["StatsBase"]):
+    def merge(self, incoming_stats: List["StatsBase"]) -> None:
         """Merges StatsBase objects.
 
         Args:
             incoming_stats: The list of StatsBase objects to merge.
-
-        Returns:
-            The merged StatsBase object.
         """
         ...
 
@@ -243,9 +247,6 @@ class StatsBase(metaclass=ABCMeta):
         Args:
             value: The value to push. Can be of any type.
                 GPU tensors are moved to CPU memory.
-
-        Returns:
-            None
         """
         assert (
             self.is_leaf
@@ -265,7 +266,7 @@ class StatsBase(metaclass=ABCMeta):
         Args:
             compile: If True, the result is compiled into a single value if possible.
             latest_merged_only: If True, only considers the latest merged values.
-                This parameter only works on root stats objects.
+                This parameter only works on aggregation stats objects (is_leaf=False).
                 When enabled, peek() will only use the values from the most recent merge operation.
 
         Returns:
