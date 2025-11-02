@@ -60,7 +60,7 @@ google-crc32c==1.5.0
 google-oauth==1.0.1
 google-resumable-media==2.6.0
 googleapis-common-protos==1.61.0
-grpcio==1.75.1
+grpcio==1.76.0
 gymnasium==1.1.1
 h11==0.16.0
 h2 @ file:///home/conda/feedstock_root/build_artifacts/h2_1733298745555/work
@@ -123,10 +123,10 @@ pyOpenSSL==25.0.0
 pyparsing==3.1.1
 PySocks @ file:///home/conda/feedstock_root/build_artifacts/pysocks_1733217236728/work
 python-dateutil==2.8.2
-python-dotenv==1.1.1
+python-dotenv==1.2.1
 pytz==2022.7.1
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=3a771f5b05b1e505ee20e390c4b9c1f8ec9fbf470d3349452aeab3da769b0d25
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=eb6888cbfab286d0e1d1fe592cbae82f72a0a3c040c087b35037daa5d1e7ad5b
 referencing==0.36.2
 requests @ file:///home/conda/feedstock_root/build_artifacts/requests_1733217035951/work
 rich==13.3.2
