@@ -77,6 +77,7 @@ class _PendingBlock:
     block_ref: ObjectRef
     metadata: BlockMetadata
     schema: Optional["Schema"]
+    parent_bundle: RefBundle
     start_offset: int = 0
 
     @property
@@ -100,6 +101,7 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
         ), "target_num_rows_per_block must be positive for streaming repartition."
         self._target_num_rows = target_num_rows_per_block
         self._pending_blocks: Deque[_PendingBlock] = deque()
+        self._bundle_remaining_blocks: Dict[RefBundle, int] = {}
         self._ready_bundles: Deque[
             Tuple[List[RefBundle], RefBundle, Dict[str, Any]]
         ] = deque()
@@ -108,6 +110,7 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
 
     def add_bundle(self, ref_bundle: RefBundle):
         schema = ref_bundle.schema
+        block_count = 0
         for block_ref, metadata in ref_bundle.blocks:
             if metadata.num_rows <= 0:  # skip empty blocks
                 continue
@@ -116,10 +119,15 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
                     block_ref=block_ref,
                     metadata=metadata,
                     schema=schema,
+                    parent_bundle=ref_bundle,
                     start_offset=0,
                 )
             )
             self._total_pending_rows += metadata.num_rows
+            block_count += 1
+
+        if block_count > 0:
+            self._bundle_remaining_blocks[ref_bundle] = block_count
 
     def has_bundle(self) -> bool:
         self._drain_ready_tasks()
@@ -178,6 +186,7 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
         rows_by_block: List[int] = []
         bundle_schema = None
         outputs: List[StreamingRepartitionOutputSpec] = []
+        fully_consumed_refs: List[RefBundle] = []
 
         for num_rows in output_rows:
             contributors: List[StreamingRepartitionContributorSpec] = []
@@ -218,6 +227,16 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
 
                 if block.start_offset == block.metadata.num_rows:
                     self._pending_blocks.popleft()
+                    parent_bundle = block.parent_bundle
+                    remaining_blocks = self._bundle_remaining_blocks.get(parent_bundle)
+                    if remaining_blocks is not None:
+                        if remaining_blocks == 1:
+                            self._bundle_remaining_blocks.pop(parent_bundle, None)
+                            fully_consumed_refs.append(parent_bundle)
+                        else:
+                            self._bundle_remaining_blocks[parent_bundle] = (
+                                remaining_blocks - 1
+                            )
 
             outputs.append(
                 StreamingRepartitionOutputSpec(
@@ -240,7 +259,7 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
         )
 
         spec = StreamingRepartitionTaskSpec(outputs=outputs)
-        return [], ref_bundle, {STREAMING_REPARTITION_SPEC_KEY: spec}
+        return fully_consumed_refs, ref_bundle, {STREAMING_REPARTITION_SPEC_KEY: spec}
 
 
 def streaming_repartition_block_fn(
