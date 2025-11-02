@@ -3,9 +3,6 @@ from itertools import chain
 from collections import deque
 
 from ray.util.annotations import DeveloperAPI
-from ray.rllib.utils.annotations import (
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
-)
 from ray.rllib.utils.metrics.stats.base import StatsBase
 
 
@@ -78,7 +75,7 @@ class ItemSeriesStats(StatsBase):
         if compile:
             return items
 
-        return_stats = self.clone(clone_internal_values=False)
+        return_stats = self.clone()
         return_stats._set_items(items)
         return return_stats
 
@@ -159,25 +156,3 @@ class ItemSeriesStats(StatsBase):
 
     def __repr__(self) -> str:
         return f"ItemSeriesStats(window={self._window}; len={len(self)})"
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def clone(
-        self,
-        clone_internal_values: bool = False,
-        init_overrides: Optional[Dict[str, Any]] = None,
-    ) -> "ItemSeriesStats":
-        """Returns a new ItemSeriesStats object with the same settings as `self`.
-
-        Args:
-            clone_internal_values: If True, the internal values of the returned ItemSeriesStats will be cloned from the internal values of the original ItemSeriesStats including last merged values.
-            init_overrides: Optional dict of initialization arguments to override.
-
-        Returns:
-            A new ItemSeriesStats object with the same settings as `self`.
-        """
-        new_stats = super().clone(
-            clone_internal_values=clone_internal_values, init_overrides=init_overrides
-        )
-        if clone_internal_values:
-            new_stats.items = self.items
-        return new_stats

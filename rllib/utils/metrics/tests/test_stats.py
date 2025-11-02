@@ -331,8 +331,7 @@ def test_merge_item_stats():
 )
 @pytest.mark.parametrize("is_root", [True, False])
 @pytest.mark.parametrize("is_leaf", [True, False])
-@pytest.mark.parametrize("clone_internal_values", [True, False])
-def test_clone(stats_class, init_kwargs, is_root, is_leaf, clone_internal_values):
+def test_clone(stats_class, init_kwargs, is_root, is_leaf):
     original = stats_class(**init_kwargs, is_root=is_root, is_leaf=is_leaf)
     # Skip pushing for root stats (they can't be pushed to)
     if original.is_leaf:
@@ -344,7 +343,7 @@ def test_clone(stats_class, init_kwargs, is_root, is_leaf, clone_internal_values
         original.merge([merge_from])
 
     # Create similar stats
-    similar = original.clone(clone_internal_values=clone_internal_values)
+    similar = original.clone()
 
     # Check class-specific attributes
     # Note: PercentilesStats._get_init_args() doesn't preserve window (implementation issue)
@@ -359,30 +358,21 @@ def test_clone(stats_class, init_kwargs, is_root, is_leaf, clone_internal_values
     if hasattr(original, "is_leaf") or hasattr(similar, "is_leaf"):
         check(similar.is_leaf, original.is_leaf)
 
-    if not clone_internal_values:
-        result = similar.peek()
+    result = similar.peek()
 
-        if stats_class == ItemStats:
-            check(result, None)
-        elif stats_class == LifetimeSumStats:
-            check(result, 0)
-        elif stats_class == ItemSeriesStats:
-            check(result, [])
-        elif stats_class == PercentilesStats:
-            # Should have dict with percentile keys, but empty
-            check(list(result.keys()), original._percentiles)
-            check(list(result.values()), [None])
-        elif isinstance(result, float):
-            # All others should be NaN
-            check(result, np.nan)
-    else:
-        if not is_leaf:
-            check(similar.latest_merged, original.latest_merged)
-        else:
-            assert not hasattr(similar, "latest_merged")
-        original_peek = original.peek()
-        similar_peek = similar.peek()
-        check(similar_peek, original_peek)
+    if stats_class == ItemStats:
+        check(result, None)
+    elif stats_class == LifetimeSumStats:
+        check(result, 0)
+    elif stats_class == ItemSeriesStats:
+        check(result, [])
+    elif stats_class == PercentilesStats:
+        # Should have dict with percentile keys, but empty
+        check(list(result.keys()), original._percentiles)
+        check(list(result.values()), [None])
+    elif isinstance(result, float):
+        # All others should be NaN
+        check(result, np.nan)
 
 
 # Series stats allow us to set a window size and reduce the values in the window.

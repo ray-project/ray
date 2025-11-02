@@ -341,10 +341,11 @@ class MetricsLogger:
                 if with_throughput is not None:
                     kwargs["with_throughput"] = with_throughput
 
-                # Set is_leaf based on logger type when creating stats via direct logging
-                # This allows leaf loggers and aggregation loggers that also log directly to push to these stats
+                # Only stats at the root logger can be root stats
                 kwargs["is_root"] = self._is_root_logger
-                kwargs["is_leaf"] = self._is_leaf_logger
+                # Any Stats that are created in a logger are leaf stats by definition.
+                # If they are aggregated from another logger, they are not leaf stats.
+                kwargs["is_leaf"] = True
 
                 stats_object = stats_cls(**kwargs)
                 self._set_key(key, stats_object)
@@ -514,8 +515,8 @@ class MetricsLogger:
                 found in the n `stats_dicts`.
         """
         assert (
-            self._is_root_logger or not self._is_leaf_logger
-        ), "Stats should only be aggregated at root or intermediate aggregation stages"
+            not self._is_leaf_logger
+        ), "Stats should only be aggregated at aggregation stages (root or intermediate)"
 
         all_keys = set()
 
@@ -552,11 +553,6 @@ class MetricsLogger:
             stats_dict = traverse_and_add_paths(stats_dict)
             incoming_stats_dicts_with_key.append(stats_dict)
 
-        tree.map_structure_with_path(
-            lambda path, _: all_keys.add(force_tuple(path)),
-            self.stats,
-        )
-
         for key in all_keys:
             # Get all incoming Stats objects for this key
             incoming_stats = [
@@ -575,13 +571,18 @@ class MetricsLogger:
                 # This should happen the first time we reduce this stat to the root logger.
                 # Clone without internal values to create a fresh aggregator
                 own_stats = incoming_stats[0].clone(
-                    clone_internal_values=False,
                     init_overrides={"is_root": self._is_root_logger, "is_leaf": False},
                 )
                 if own_stats.has_throughputs:
                     own_stats.initialize_throughput_reference_time(
                         self._time_when_initialized
                     )
+            else:
+                # If own_stats exists, it must be a non-leaf stats (created by previous aggregation)
+                # We cannot aggregate into a leaf stats (created by direct logging)
+                assert (
+                    not own_stats.is_leaf
+                ), f"Cannot aggregate into key '{key}' because it was created by direct logging (is_leaf=True). Aggregation keys must be separate from direct logging keys."
 
             own_stats.merge(incoming_stats=incoming_stats)
 

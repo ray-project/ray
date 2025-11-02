@@ -29,10 +29,14 @@ class StatsBase(metaclass=ABCMeta):
     ):
         """Initializes a StatsBase object.
 
-        We log to stats in three different ways:
-        - On a parallel component (leaf), in which case we aggregate at higher levels
-        - On an intermediate aggregation stage (not root, not leaf), which aggregates from lower stages
-        - On a root level, in which case the root may also be a leaf (direct logging) or only aggregate
+        Stats are meant to be used to log values to and then aggregate them in a tree.
+
+        Therefore, we log to stats in two different ways:
+        - On a leaf component, we log values directly by pushing
+        - On a non-leaf component, we log values by aggregating them
+
+        Additionally, we pay special respect to Stats that live at the root of the tree.
+        These may have a different behaviour (example: a lifetime sum).
 
         Args:
             is_root: If True, the Stats object is a root stats object.
@@ -61,7 +65,14 @@ class StatsBase(metaclass=ABCMeta):
         return False
 
     def initialize_throughput_reference_time(self, time: float) -> None:
-        """If the Stats object has throughput tracking enabled, this method is called by the MetricsLogger to set the initial time for throughput calculation."""
+        """Sets the reference time for this Stats object.
+
+        This is important because the component that tracks the time
+        between reduce cycles is not Stats, but MetricsLogger.
+
+        This method is called by the MetricsLogger to establish the
+        reference time from which we calculate throughputs.
+        """
         if self.has_throughputs:
             raise ValueError(
                 "initialize_throughput_reference_time must be overridden for stats objects that have throughputs."
@@ -75,13 +86,13 @@ class StatsBase(metaclass=ABCMeta):
     def __float__(self):
         value = self.peek(compile=True)
         if isinstance(value, (list, tuple, deque)):
-            raise ValueError(f"Value {value} is a list, tuple, or deque, not a scalar")
+            raise ValueError(f"Can not convert {self} to float.")
         return float(value)
 
     def __int__(self):
         value = self.peek(compile=True)
         if isinstance(value, (list, tuple, deque)):
-            raise ValueError(f"Value {value} is a list, tuple, or deque, not a scalar")
+            raise ValueError(f"Can not convert {self} to int.")
         return int(value)
 
     def __eq__(self, other):
@@ -115,21 +126,17 @@ class StatsBase(metaclass=ABCMeta):
         """Called when entering a context (with which users can measure a time delta).
 
         Returns:
-            This stats instance (self), unless another thread has already entered (and
-            not exited yet), in which case a copy of `self` is returned. This way, the
-            second thread(s) cannot mess with the original stats's (self) time-measuring.
-            This also means that only the first thread to __enter__ actually logs into
-            `self` and the following threads' measurements are discarded (logged into
-            a non-referenced shim-Stats object, which will simply be garbage collected).
+            This stats instance.
         """
-        # In case another thread already is measuring this Stats (timing), simply ignore
-        # the "enter request" and return a clone of `self`.
         thread_id = threading.get_ident()
         self._start_times[thread_id] = time.perf_counter()
         return self
 
     def __exit__(self, exc_type, exc_value, tb) -> None:
-        """Called when exiting a context (with which users can measure a time delta)."""
+        """Called when exiting a context (with which users can measure a time delta).
+
+        This pushes the time delta to this Stats object.
+        """
         thread_id = threading.get_ident()
         assert self._start_times[thread_id] is not None
         time_delta_s = time.perf_counter() - self._start_times[thread_id]
@@ -141,7 +148,8 @@ class StatsBase(metaclass=ABCMeta):
     def from_state(cls, state: Dict[str, Any]) -> "StatsBase":
         """Creates a stats object from a state dictionary.
 
-        Any implementation of this should call this base classe's `stats_object.set_state()` to set the state of the stats object.
+        Any implementation of this should call this base classe's
+        `stats_object.set_state()` to set the state of the stats object.
         """
         init_args = cls._get_init_args(state=state)
         stats = cls(**init_args)
@@ -151,13 +159,11 @@ class StatsBase(metaclass=ABCMeta):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def clone(
         self,
-        clone_internal_values: bool = False,
         init_overrides: Optional[Dict[str, Any]] = None,
     ) -> "StatsBase":
         """Returns a new stats object with the same settings as `self`.
 
         Args:
-            clone_internal_values: If True, the internal values of the returned stats will be cloned from the internal values of the original stats including last merged values.
             init_overrides: Optional dict of initialization arguments to override. Can be used to change is_root, is_leaf, etc.
 
         Returns:
@@ -167,8 +173,6 @@ class StatsBase(metaclass=ABCMeta):
         if init_overrides:
             init_args.update(init_overrides)
         new_stats = self.__class__(**init_args)
-        if not self.is_leaf and clone_internal_values:
-            new_stats.latest_merged = self.latest_merged
         return new_stats
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -243,6 +247,9 @@ class StatsBase(metaclass=ABCMeta):
         Returns:
             None
         """
+        assert (
+            self.is_leaf
+        ), "Cannot push values to non-leaf Stats. Non-leaf Stats can only receive values via merge()."
         ...
 
     @abstractmethod

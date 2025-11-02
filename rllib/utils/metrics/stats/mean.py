@@ -58,7 +58,7 @@ class MeanStats(SeriesStats):
         if compile:
             return reduced_values[0]
 
-        return_stats = self.clone(clone_internal_values=False)
+        return_stats = self.clone()
         return_stats.values = reduced_values
         return return_stats
 

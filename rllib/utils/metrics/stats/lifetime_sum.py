@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 import time
 
 from ray.util.annotations import DeveloperAPI
@@ -6,9 +6,6 @@ from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics.stats.base import StatsBase
 import numpy as np
 from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
-from ray.rllib.utils.annotations import (
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
-)
 
 torch, _ = try_import_torch()
 _, tf, _ = try_import_tf()
@@ -236,7 +233,7 @@ class LifetimeSumStats(StatsBase):
         if compile:
             return value
 
-        return_stats = self.clone(clone_internal_values=False)
+        return_stats = self.clone()
         return_stats._lifetime_sum = value
         return return_stats
 
@@ -261,25 +258,3 @@ class LifetimeSumStats(StatsBase):
 
     def __repr__(self) -> str:
         return f"LifetimeSumStats({self.peek()}; track_throughputs={self.track_throughputs})"
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def clone(
-        self,
-        clone_internal_values: bool = False,
-        init_overrides: Optional[Dict[str, Any]] = None,
-    ) -> "LifetimeSumStats":
-        """Returns a new LifetimeSumStats object with the same settings as `self`.
-
-        Args:
-            clone_internal_values: If True, the internal values of the returned LifetimeSumStats will be cloned from the internal values of the original LifetimeSumStats including last merged values.
-            init_overrides: Optional dict of initialization arguments to override.
-
-        Returns:
-            A new LifetimeSumStats object with the same settings as `self`.
-        """
-        new_stats = super().clone(
-            clone_internal_values=clone_internal_values, init_overrides=init_overrides
-        )
-        if clone_internal_values:
-            new_stats._lifetime_sum = self._lifetime_sum
-        return new_stats

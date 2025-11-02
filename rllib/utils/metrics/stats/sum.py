@@ -70,7 +70,7 @@ class SumStats(SeriesStats):
         if compile:
             return reduce_value
 
-        return_stats = self.clone(clone_internal_values=False)
+        return_stats = self.clone()
         return_stats.values = [reduce_value]
         return return_stats
 

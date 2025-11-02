@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 
 import logging
 import numpy as np
@@ -8,9 +8,6 @@ from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics.stats.base import StatsBase
 from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
 from ray.util import log_once
-from ray.rllib.utils.annotations import (
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +204,7 @@ class EmaStats(StatsBase):
         if compile:
             return value
 
-        return_stats = self.clone(clone_internal_values=False)
+        return_stats = self.clone()
         return_stats._value = value
         return return_stats
 
@@ -252,26 +249,3 @@ class EmaStats(StatsBase):
             }
         else:
             raise ValueError("Either stats_object or state must be provided")
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def clone(
-        self,
-        clone_internal_values: bool = False,
-        init_overrides: Optional[Dict[str, Any]] = None,
-    ) -> "EmaStats":
-        """Returns a new EmaStats object that's similar to `other`.
-
-        Args:
-            other: The other EmaStats object to return a similar new EmaStats equivalent for.
-            clone_internal_values: If True, the internal values of the returned EmaStats will be cloned from the internal values of the original EmaStats including last merged values.
-            init_overrides: Optional dict of initialization arguments to override.
-        """
-        new_stats = super().clone(
-            clone_internal_values=clone_internal_values, init_overrides=init_overrides
-        )
-        if clone_internal_values:
-            new_stats._value = self._value
-            if not self.is_leaf:
-                new_stats._values_to_merge = self._values_to_merge
-
-        return new_stats

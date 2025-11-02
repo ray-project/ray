@@ -1,8 +1,5 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 
-from ray.rllib.utils.annotations import (
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
-)
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.stats.base import StatsBase
 from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
@@ -45,7 +42,7 @@ class ItemStats(StatsBase):
         if compile:
             return item
 
-        return_stats = self.clone(clone_internal_values=False)
+        return_stats = self.clone()
         return_stats._item = item
         return return_stats
 
@@ -94,25 +91,3 @@ class ItemStats(StatsBase):
 
     def __repr__(self) -> str:
         return f"ItemStats({self.peek()}"
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def clone(
-        self,
-        clone_internal_values: bool = False,
-        init_overrides: Optional[Dict[str, Any]] = None,
-    ) -> "ItemStats":
-        """Returns a new ItemStats object with the same settings as `self`.
-
-        Args:
-            clone_internal_values: If True, the internal values of the returned ItemStats will be cloned from the internal values of the original ItemStats including last merged values.
-            init_overrides: Optional dict of initialization arguments to override.
-
-        Returns:
-            A new ItemStats object with the same settings as `self`.
-        """
-        new_stats = super().clone(
-            clone_internal_values=clone_internal_values, init_overrides=init_overrides
-        )
-        if clone_internal_values:
-            new_stats._item = self._item
-        return new_stats

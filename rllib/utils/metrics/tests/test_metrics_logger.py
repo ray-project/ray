@@ -15,7 +15,7 @@ from ray.rllib.utils.metrics.stats import (
 
 @pytest.fixture
 def root_logger():
-    return MetricsLogger(root=True)
+    return MetricsLogger(root=True, leaf=False)
 
 
 @pytest.fixture
@@ -31,20 +31,6 @@ def leaf2():
 @pytest.fixture
 def intermediate():
     return MetricsLogger(root=False, leaf=False)
-
-
-def test_basic_log_value(root_logger):
-    """Test basic value logging and reduction."""
-    # Test simple value logging
-    root_logger.log_value("loss", 0.1)
-    root_logger.log_value("loss", 0.2)
-
-    # Test peek
-    check(root_logger.peek("loss"), 0.101)
-
-    # Test reduce
-    results = root_logger.reduce()
-    check(results["loss"], 0.101)
 
 
 @pytest.mark.parametrize(
@@ -85,12 +71,12 @@ def test_basic_peek_and_reduce(root_logger, reduce_method, values, expected):
             [1.0, 2.0],  # values logged to leaf1 logger
             [3.0, 4.0],  # values logged to leaf2 logger
             [5.0, 6.0],  # values logged at intermediate logger
-            1.5,  # expected result from leaf1 after logging (mean of [1, 2])
-            3.5,  # expected result from leaf2 after logging (mean of [3, 4])
-            2.5,  # expected result at intermediate after aggregating from leafs (mean of [1.5, 3.5])
-            5.5,  # expected result at intermediate after logging values (mean of [5.0, 6.0])
-            2.5,  # expected result at root from aggregated leafs (mean of [1.5, 3.5])
-            5.5,  # expected result at root from intermediate logged values (mean of [5.0, 6.0])
+            1.5,  # result from leaf1 after logging (mean of [1, 2])
+            3.5,  # result from leaf2 after logging (mean of [3, 4])
+            2.5,  # result at intermediate after aggregating from leafs (mean of [1.5, 3.5])
+            5.5,  # result at intermediate after logging values (mean of [5.0, 6.0])
+            2.5,  # result at root from aggregated leafs (mean of [1.5, 3.5])
+            5.5,  # result at root from intermediate logged values (mean of [5.0, 6.0])
         ),
         # EmaStats with default coefficient (0.01)
         (
@@ -98,12 +84,12 @@ def test_basic_peek_and_reduce(root_logger, reduce_method, values, expected):
             [1.0, 2.0],  # values logged to leaf1 logger
             [3.0, 4.0],  # values logged to leaf2 logger
             [5.0, 6.0],  # values logged at intermediate logger
-            1.01,  # expected result from leaf1 after logging (EMA of [1, 2] with coeff 0.01)
-            3.01,  # expected result from leaf2 after logging (EMA of [3, 4] with coeff 0.01)
-            2.01,  # expected result at intermediate after aggregating from leafs (mean of [1.01, 3.01])
-            5.01,  # expected result at intermediate after logging values (EMA of [5.0, 6.0] with coeff 0.01)
-            2.01,  # expected result at root from aggregated leafs (mean of [1.01, 3.01])
-            5.01,  # expected result at root from intermediate logged values (EMA of [5.0, 6.0] with coeff 0.01)
+            1.01,  # result from leaf1 after logging (EMA of [1, 2] with coeff 0.01)
+            3.01,  # result from leaf2 after logging (EMA of [3, 4] with coeff 0.01)
+            2.01,  # result at intermediate after aggregating from leafs (mean of [1.01, 3.01])
+            5.01,  # result at intermediate after logging values (EMA of [5.0, 6.0] with coeff 0.01)
+            2.01,  # result at root from aggregated leafs (mean of [1.01, 3.01])
+            5.01,  # result at root from intermediate logged values (EMA of [5.0, 6.0] with coeff 0.01)
         ),
         # SumStats
         (
@@ -111,12 +97,12 @@ def test_basic_peek_and_reduce(root_logger, reduce_method, values, expected):
             [10, 20],  # values logged to leaf1 logger
             [30, 40],  # values logged to leaf2 logger
             [50, 60],  # values logged at intermediate logger
-            30,  # expected result from leaf1 after logging (sum of [10, 20])
-            70,  # expected result from leaf2 after logging (sum of [30, 40])
-            100,  # expected result at intermediate after aggregating from leafs (sum of [30, 70])
-            110,  # expected result at intermediate after logging values (sum of [50, 60])
-            100,  # expected result at root from aggregated leafs (sum of [30, 70])
-            110,  # expected result at root from intermediate logged values (sum of [50, 60])
+            30,  # result from leaf1 after logging (sum of [10, 20])
+            70,  # result from leaf2 after logging (sum of [30, 40])
+            100,  # result at intermediate after aggregating from leafs (sum of [30, 70])
+            110,  # result at intermediate after logging values (sum of [50, 60])
+            100,  # result at root from aggregated leafs (sum of [30, 70])
+            110,  # result at root from intermediate logged values (sum of [50, 60])
         ),
         # LifetimeSumStats
         (
@@ -126,18 +112,18 @@ def test_basic_peek_and_reduce(root_logger, reduce_method, values, expected):
             [50, 60],  # values logged at intermediate logger
             [
                 30
-            ],  # expected result from leaf1 after logging (lifetime sum of [10, 20], returns list)
+            ],  # result from leaf1 after logging (lifetime sum of [10, 20], returns list)
             [
                 70
-            ],  # expected result from leaf2 after logging (lifetime sum of [30, 40], returns list)
+            ],  # result from leaf2 after logging (lifetime sum of [30, 40], returns list)
             [
                 100
-            ],  # expected result at intermediate after aggregating from leafs (sum of [30, 70], returns list)
+            ],  # result at intermediate after aggregating from leafs (sum of [30, 70], returns list)
             [
                 110
-            ],  # expected result at intermediate after logging values (sum of [50, 60], returns list)
-            100,  # expected result at root from aggregated leafs (root logger converts list to scalar)
-            110,  # expected result at root from intermediate logged values (root logger converts list to scalar)
+            ],  # result at intermediate after logging values (sum of [50, 60], returns list)
+            100,  # result at root from aggregated leafs (root logger converts list to scalar)
+            110,  # result at root from intermediate logged values (root logger converts list to scalar)
         ),
         # MinStats
         (
@@ -145,12 +131,12 @@ def test_basic_peek_and_reduce(root_logger, reduce_method, values, expected):
             [5.0, 3.0],  # values logged to leaf1 logger
             [4.0, 2.0],  # values logged to leaf2 logger
             [1.0, 0.5],  # values logged at intermediate logger
-            3.0,  # expected result from leaf1 after logging (min of [5.0, 3.0])
-            2.0,  # expected result from leaf2 after logging (min of [4.0, 2.0])
-            2.0,  # expected result at intermediate after aggregating from leafs (min of [3.0, 2.0])
-            0.5,  # expected result at intermediate after logging values (min of [1.0, 0.5])
-            2.0,  # expected result at root from aggregated leafs (min of [3.0, 2.0])
-            0.5,  # expected result at root from intermediate logged values (min of [1.0, 0.5])
+            3.0,  # result from leaf1 after logging (min of [5.0, 3.0])
+            2.0,  # result from leaf2 after logging (min of [4.0, 2.0])
+            2.0,  # result at intermediate after aggregating from leafs (min of [3.0, 2.0])
+            0.5,  # result at intermediate after logging values (min of [1.0, 0.5])
+            2.0,  # result at root from aggregated leafs (min of [3.0, 2.0])
+            0.5,  # result at root from intermediate logged values (min of [1.0, 0.5])
         ),
         # MaxStats
         (
@@ -158,12 +144,12 @@ def test_basic_peek_and_reduce(root_logger, reduce_method, values, expected):
             [5.0, 7.0],  # values logged to leaf1 logger
             [4.0, 6.0],  # values logged to leaf2 logger
             [8.0, 9.0],  # values logged at intermediate logger
-            7.0,  # expected result from leaf1 after logging (max of [5.0, 7.0])
-            6.0,  # expected result from leaf2 after logging (max of [4.0, 6.0])
-            7.0,  # expected result at intermediate after aggregating from leafs (max of [7.0, 6.0])
-            9.0,  # expected result at intermediate after logging values (max of [8.0, 9.0])
-            7.0,  # expected result at root from aggregated leafs (max of [7.0, 6.0])
-            9.0,  # expected result at root from intermediate logged values (max of [8.0, 9.0])
+            7.0,  # result from leaf1 after logging (max of [5.0, 7.0])
+            6.0,  # result from leaf2 after logging (max of [4.0, 6.0])
+            7.0,  # result at intermediate after aggregating from leafs (max of [7.0, 6.0])
+            9.0,  # result at intermediate after logging values (max of [8.0, 9.0])
+            7.0,  # result at root from aggregated leafs (max of [7.0, 6.0])
+            9.0,  # result at root from intermediate logged values (max of [8.0, 9.0])
         ),
         # PercentilesStats
         (
@@ -173,22 +159,22 @@ def test_basic_peek_and_reduce(root_logger, reduce_method, values, expected):
             [50.0, 60.0],  # values logged at intermediate logger
             {
                 0.5: 10.05
-            },  # expected result from leaf1 after logging (percentile 0.5 of [10.0, 20.0])
+            },  # result from leaf1 after logging (percentile 0.5 of [10.0, 20.0])
             {
                 0.5: 30.05
-            },  # expected result from leaf2 after logging (percentile 0.5 of [30.0, 40.0])
+            },  # result from leaf2 after logging (percentile 0.5 of [30.0, 40.0])
             {
                 0.5: 10.15
-            },  # expected result at intermediate after aggregating from leafs (percentile 0.5 of merged [10.0, 20.0, 30.0, 40.0])
+            },  # result at intermediate after aggregating from leafs (percentile 0.5 of merged [10.0, 20.0, 30.0, 40.0])
             {
                 0.5: 50.05
-            },  # expected result at intermediate after logging values (percentile 0.5 of [50.0, 60.0])
+            },  # result at intermediate after logging values (percentile 0.5 of [50.0, 60.0])
             {
                 0.5: 10.15
-            },  # expected result at root from aggregated leafs (same as intermediate after aggregate)
+            },  # result at root from aggregated leafs (same as intermediate after aggregate)
             {
                 0.5: 50.05
-            },  # expected result at root from intermediate logged values (percentile 0.5 of [50.0, 60.0])
+            },  # result at root from intermediate logged values (percentile 0.5 of [50.0, 60.0])
         ),
         # ItemSeriesStats
         (
@@ -199,31 +185,31 @@ def test_basic_peek_and_reduce(root_logger, reduce_method, values, expected):
             [
                 1.0,
                 2.0,
-            ],  # expected result from leaf1 after logging (series of [1.0, 2.0])
+            ],  # result from leaf1 after logging (series of [1.0, 2.0])
             [
                 3.0,
                 4.0,
-            ],  # expected result from leaf2 after logging (series of [3.0, 4.0])
+            ],  # result from leaf2 after logging (series of [3.0, 4.0])
             [
                 1.0,
                 2.0,
                 3.0,
                 4.0,
-            ],  # expected result at intermediate after aggregating from leafs (concatenated series from leafs)
+            ],  # result at intermediate after aggregating from leafs (concatenated series from leafs)
             [
                 5.0,
                 6.0,
-            ],  # expected result at intermediate after logging values (series of [5.0, 6.0])
+            ],  # result at intermediate after logging values (series of [5.0, 6.0])
             [
                 1.0,
                 2.0,
                 3.0,
                 4.0,
-            ],  # expected result at root from aggregated leafs (concatenated series from leafs)
+            ],  # result at root from aggregated leafs (concatenated series from leafs)
             [
                 5.0,
                 6.0,
-            ],  # expected result at root from intermediate logged values (series of [5.0, 6.0])
+            ],  # result at root from intermediate logged values (series of [5.0, 6.0])
         ),
     ],
 )
@@ -246,6 +232,7 @@ def test_multi_stage_aggregation(
     """Test multi-stage aggregation for different Stats classes.
 
     This is a comprehensive test of how we envision MetricsLogger to be used in RLlib.
+    It also creates a bunch of test coverage for Stats classes, which are tighly cloupled with MetricsLogger.
 
     Tests the aggregation flow:
     1. Two leaf loggers log values

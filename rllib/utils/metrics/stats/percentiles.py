@@ -8,9 +8,6 @@ from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.metrics.stats.base import StatsBase
 from ray.rllib.utils.metrics.stats.utils import batch_values_to_cpu
-from ray.rllib.utils.annotations import (
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
-)
 
 torch, _ = try_import_torch()
 _, tf, _ = try_import_tf()
@@ -229,7 +226,7 @@ class PercentilesStats(StatsBase):
         if compile:
             return compute_percentiles(values, self._percentiles)
 
-        return_stats = self.clone(clone_internal_values=False)
+        return_stats = self.clone()
         return_stats.values = values
         return return_stats
 
@@ -254,29 +251,6 @@ class PercentilesStats(StatsBase):
             }
         else:
             raise ValueError("Either stats_object or state must be provided")
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def clone(
-        self,
-        clone_internal_values: bool = False,
-        init_overrides: Optional[Dict[str, Any]] = None,
-    ) -> "PercentilesStats":
-        """Returns a new PercentilesStats object with the same settings as `self`.
-
-        Args:
-            clone_internal_values: If True, the internal values of the returned PercentilesStats will be cloned from the internal values of the original PercentilesStats including last merged values.
-            init_overrides: Optional dict of initialization arguments to override.
-
-        Returns:
-            A new PercentilesStats object with the same settings as `self`.
-        """
-        new_stats = super().clone(
-            clone_internal_values=clone_internal_values, init_overrides=init_overrides
-        )
-
-        if clone_internal_values:
-            new_stats.values = self.values
-        return new_stats
 
 
 @DeveloperAPI
