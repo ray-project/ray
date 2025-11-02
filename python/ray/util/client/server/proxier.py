@@ -287,8 +287,14 @@ class ProxyManager:
                 formatted_error = format_authentication_http_error(e.code, body or "")
                 if formatted_error:
                     raise RuntimeError(formatted_error) from e
-                # Re-raise non-auth HTTP errors immediately
-                raise
+
+                # Treat non-auth HTTP errors like URLError (retry with backoff)
+                last_exception = e
+                logger.warning(
+                    f"GetOrCreateRuntimeEnv request failed with HTTP {e.code}: {body or e}. "
+                    f"Retrying after {wait_time_s}s. "
+                    f"{max_retries-retries} retries remaining."
+                )
 
             except urllib.error.URLError as e:
                 last_exception = e
