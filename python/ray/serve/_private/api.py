@@ -26,6 +26,12 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 def _check_http_options(
     curr_http_options: HTTPOptions, new_http_options: Union[dict, HTTPOptions]
 ) -> None:
+    # todo:
+    #   - review logix of this function
+    #   - consider to have the same defaults for http_options in HTTPOptions and HTTPOptionsSchema
+    #   - test different scenarios of starting/deploying to cluster:
+    #       - CLI start - CLI run/deploy
+    #       - CLI start - python run, etc
     def maybe_restore_proxy_location(prev_value, new_value) -> (str, str):
         if isinstance(prev_value, DeploymentMode) and isinstance(
             new_value, DeploymentMode
