@@ -22,7 +22,7 @@ async def token_auth_middleware(request, handler):
 
     This is an aiohttp middleware that requires aiohttp to be installed.
     Import aiohttp only when this function is called (not at module load time).
-    
+
     In minimal Ray installations (without ray._raylet), this middleware is a no-op
     and passes all requests through without authentication.
     """
