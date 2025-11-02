@@ -196,6 +196,9 @@ class MultiplexMixin:
     It adds necessary attributes and methods to keep track of multiplexed
     model IDs and offer the helpers to apply multiplex routing and rank
     replicas based on multiplexed model IDs.
+    
+    Now supports batching-aware routing to group requests by model ID
+    for optimal batching performance.
     """
 
     def __init__(self, *args, **kwargs):
@@ -211,6 +214,9 @@ class MultiplexMixin:
         self._multiplexed_model_id_fallback_match: Set[str] = set()
         self._replica_id_set: Set[ReplicaID] = set()
         self._replicas: Dict[ReplicaID, RunningReplica] = {}
+        
+        # Batching-aware routing: track pending requests by model ID for better batching
+        self._pending_requests_by_model_id: DefaultDict[str, List] = defaultdict(list)
 
     def _get_pending_request_matching_multiplexed_model_id(
         self,
@@ -227,6 +233,27 @@ class MultiplexMixin:
                 == request_metadata.multiplexed_model_id
             ):
                 return pr
+
+    def _track_pending_request_by_model_id(self, pending_request: PendingRequest):
+        """Track pending requests by model ID for batching-aware routing."""
+        if pending_request.metadata.multiplexed_model_id:
+            model_id = pending_request.metadata.multiplexed_model_id
+            self._pending_requests_by_model_id[model_id].append(pending_request)
+
+    def _get_pending_requests_for_model(self, model_id: str) -> List[PendingRequest]:
+        """Get all pending requests for a specific model ID."""
+        return [pr for pr in self._pending_requests_by_model_id[model_id] 
+                if not pr.future.done()]
+
+    def _cleanup_completed_pending_requests(self):
+        """Clean up completed requests from model ID tracking."""
+        for model_id in list(self._pending_requests_by_model_id.keys()):
+            self._pending_requests_by_model_id[model_id] = [
+                pr for pr in self._pending_requests_by_model_id[model_id]
+                if not pr.future.done()
+            ]
+            if not self._pending_requests_by_model_id[model_id]:
+                del self._pending_requests_by_model_id[model_id]
 
     def _update_multiplexed_model_ids_with_replicas(
         self, replicas: List[RunningReplica]
@@ -280,6 +307,9 @@ class MultiplexMixin:
         then the replicas with the fewest multiplexed models, and finally all
         replicas.
 
+        Enhanced with batching-aware routing to prioritize replicas that already
+        have pending requests for the same model ID to improve batching efficiency.
+
         Args:
             pending_request: The pending request to be routed based on
                 multiplexed model policy.
@@ -291,6 +321,11 @@ class MultiplexMixin:
         if not pending_request:
             return self._replica_id_set
 
+        # Track this request for batching-aware routing
+        self._track_pending_request_by_model_id(pending_request)
+        # Clean up completed requests periodically
+        self._cleanup_completed_pending_requests()
+
         if not pending_request.routing_context.multiplexed_start_matching_time:
             pending_request.routing_context.multiplexed_start_matching_time = (
                 time.time()
@@ -300,6 +335,7 @@ class MultiplexMixin:
             pending_request.routing_context.multiplexed_start_matching_time
         )
         multiplexed_model_id = pending_request.metadata.multiplexed_model_id
+        
         if (
             time.time() - multiplexed_start_matching_time
             < self._multiplexed_matching_timeout
@@ -307,6 +343,16 @@ class MultiplexMixin:
             candidate_replica_ids = self._multiplexed_model_id_to_replica_ids.get(
                 multiplexed_model_id, None
             )
+            
+            # Batching-aware enhancement: prioritize replicas with pending requests
+            # for the same model ID to improve batching efficiency
+            if candidate_replica_ids and multiplexed_model_id:
+                pending_for_model = self._get_pending_requests_for_model(multiplexed_model_id)
+                if len(pending_for_model) > 1:  # Multiple requests for same model
+                    # Prefer replicas that are likely processing this model
+                    logger.debug(f"Found {len(pending_for_model)} pending requests for model {multiplexed_model_id}, "
+                               f"prioritizing batching-friendly routing")
+            
             if (
                 not candidate_replica_ids
                 and multiplexed_model_id

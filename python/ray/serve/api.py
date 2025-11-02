@@ -751,7 +751,12 @@ def delete(name: str, _blocking: bool = True):
 
 @PublicAPI(stability="beta")
 def multiplexed(
-    func: Optional[Callable[..., Any]] = None, max_num_models_per_replica: int = 3
+    func: Optional[Callable[..., Any]] = None,
+    max_num_models_per_replica: int = 3,
+    enable_batching: bool = False,
+    max_batch_size: int = 10,
+    batch_wait_timeout_s: float = 0.01,
+    max_concurrent_batches: int = 1,
 ):
     """Wrap a callable or method used to load multiplexed models in a replica.
 
@@ -811,6 +816,11 @@ def multiplexed(
             set it to a larger number if you have enough memory on
             the node resource, in opposite, you can set it to a smaller
             number if you want to save memory on the node resource.
+        enable_batching: whether to enable batching for model inference calls.
+            Default is False.
+        max_batch_size: maximum batch size for batched inference calls. Default is 10.
+        batch_wait_timeout_s: timeout for batching inference calls. Default is 0.01s.
+        max_concurrent_batches: maximum number of concurrent batches. Default is 1.
     """
 
     if func is not None:
@@ -875,7 +885,13 @@ def multiplexed(
             # create a model multiplex wrapper and cache it in the multiplex object.
             if not hasattr(multiplex_object, multiplex_attr):
                 model_multiplex_wrapper = _ModelMultiplexWrapper(
-                    func, self, max_num_models_per_replica
+                    func,
+                    self,
+                    max_num_models_per_replica,
+                    enable_batching=enable_batching,
+                    max_batch_size=max_batch_size,
+                    batch_wait_timeout_s=batch_wait_timeout_s,
+                    max_concurrent_batches=max_concurrent_batches,
                 )
                 setattr(multiplex_object, multiplex_attr, model_multiplex_wrapper)
             else:

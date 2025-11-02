@@ -3,7 +3,7 @@ import inspect
 import logging
 import time
 from collections import OrderedDict
-from typing import Any, Callable, List, Set
+from typing import Any, Callable, List, Set, Optional
 
 from ray.serve import metrics
 from ray.serve._private.common import ReplicaID, RequestRoutingInfo
@@ -15,6 +15,8 @@ from ray.serve._private.constants import (
 from ray.serve._private.metrics_utils import MetricsPusher
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve.context import _get_global_client, _get_internal_replica_context
+from ray.serve.batching import _LazyBatchQueueWrapper, _SingleRequest
+from ray._common.signature import DUMMY_TYPE
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -39,16 +41,26 @@ class _ModelMultiplexWrapper:
     def __init__(
         self,
         model_load_func: Callable[[str], Any],
-        self_arg: Any,
-        max_num_models_per_replica: int,
+        self_arg: Any = None,
+        max_num_models_per_replica: int = 3,
+        enable_batching: bool = False,
+        max_batch_size: int = 10,
+        batch_wait_timeout_s: float = 0.01,
+        max_concurrent_batches: int = 1,
     ):
         """Initialize the model multiplexer.
         Args:
             model_load_func: the model load async function.
-            self_arg: self argument when model_load_func is class method.
+            self_arg: self argument when model_load_func is class method. Default is None
+                for standalone functions.
             max_num_models_per_replica: the maximum number of models to be loaded on the
                 current replica. If it is -1, there is no limit for the number of models
-                per replica.
+                per replica. Default is 3.
+            enable_batching: whether to enable batching for model inference calls.
+                Default is False.
+            max_batch_size: maximum batch size for batched inference calls. Default is 10.
+            batch_wait_timeout_s: timeout for batching inference calls. Default is 0.01s.
+            max_concurrent_batches: maximum number of concurrent batches. Default is 1.
         """
 
         ServeUsageTag.MULTIPLEXED_API_USED.record("1")
@@ -57,6 +69,15 @@ class _ModelMultiplexWrapper:
         self._func: Callable = model_load_func
         self.self_arg: Any = self_arg
         self.max_num_models_per_replica: int = max_num_models_per_replica
+        
+        # Batching configuration
+        self.enable_batching = enable_batching
+        self.max_batch_size = max_batch_size
+        self.batch_wait_timeout_s = batch_wait_timeout_s
+        self.max_concurrent_batches = max_concurrent_batches
+        
+        # Model-specific batch queues for inference batching
+        self._model_batch_queues: dict[str, _LazyBatchQueueWrapper] = {}
 
         # log MODEL_LOAD_LATENCY_BUCKET_MS
         logger.debug(f"MODEL_LOAD_LATENCY_BUCKET_MS: {MODEL_LOAD_LATENCY_BUCKETS_MS}")
@@ -122,6 +143,114 @@ class _ModelMultiplexWrapper:
             PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
         )
         self.metrics_pusher.start()
+
+    def _get_or_create_batch_queue(self, model_id: str) -> Optional[_LazyBatchQueueWrapper]:
+        """Get or create a batch queue for a specific model."""
+        if not self.enable_batching:
+            return None
+            
+        if model_id not in self._model_batch_queues:
+            # Create a batch handler for this specific model
+            async def model_batch_handler(batch_requests: List[Any]) -> List[Any]:
+                """Handle batched inference for a specific model.
+                
+                Args:
+                    batch_requests: List of input data items to process as a batch.
+                    
+                Returns:
+                    List of results corresponding to each input.
+                """
+                model = self.models.get(model_id)
+                if model is None:
+                    raise RuntimeError(f"Model {model_id} not loaded")
+                
+                # Try to use batch_predict method if available
+                if hasattr(model, 'batch_predict'):
+                    results = await model.batch_predict(batch_requests)
+                else:
+                    # Fallback to individual prediction calls
+                    results = []
+                    for request_data in batch_requests:
+                        if hasattr(model, 'predict'):
+                            result = await model.predict(request_data)
+                        elif callable(model):
+                            result = await model(request_data)
+                        else:
+                            raise RuntimeError(
+                                f"Model {model_id} is not callable and has no predict method"
+                            )
+                        results.append(result)
+                    
+                return results
+            
+            self._model_batch_queues[model_id] = _LazyBatchQueueWrapper(
+                max_batch_size=self.max_batch_size,
+                batch_wait_timeout_s=self.batch_wait_timeout_s,
+                max_concurrent_batches=self.max_concurrent_batches,
+                handle_batch_func=model_batch_handler,
+            )
+        
+        return self._model_batch_queues[model_id]
+
+    async def batched_inference(self, model_id: str, request: Any) -> Any:
+        """Perform batched inference on a specific model."""
+        if not self.enable_batching:
+            raise RuntimeError("Batching is not enabled for this multiplexer")
+        
+        # Ensure model is loaded first
+        await self.load_model(model_id)
+        
+        # Get the batch queue for this model
+        batch_queue = self._get_or_create_batch_queue(model_id)
+        if batch_queue is None:
+            raise RuntimeError("Failed to create batch queue")
+        
+        # Submit request to the batch queue using _SingleRequest format
+        import ray.serve.context as context
+        future = asyncio.get_event_loop().create_future()
+        request_context = context._get_serve_request_context()
+        
+        # Create _SingleRequest with flattened args using DUMMY_TYPE for positional args
+        # Format: [DUMMY_TYPE, arg1, DUMMY_TYPE, arg2, ...] for positional args
+        single_request = _SingleRequest(
+            self_arg=None,
+            flattened_args=[DUMMY_TYPE, request],
+            future=future,
+            request_context=request_context
+        )
+        
+        batch_queue.queue.put(single_request)
+        
+        return await future
+
+    async def predict(self, input_data: Any, model_id: str) -> Any:
+        """Convenience method for model prediction with optional batching.
+        
+        Args:
+            input_data: The input data to predict on.
+            model_id: The model ID to use for prediction.
+            
+        Returns:
+            The prediction result.
+        """
+        if self.enable_batching:
+            # Use batched inference
+            return await self.batched_inference(model_id, input_data)
+        else:
+            # Load model and call directly
+            model = await self.load_model(model_id)
+            
+            # Try different prediction methods
+            if hasattr(model, 'predict'):
+                result = await model.predict(input_data)
+            elif callable(model):
+                result = await model(input_data)
+            else:
+                raise RuntimeError(
+                    f"Model {model_id} is not callable and has no predict method"
+                )
+            
+            return result
 
     def _get_loading_and_loaded_model_ids(self) -> List[str]:
         """Get the model IDs of the loaded models & loading models in the replica.
@@ -243,6 +372,10 @@ class _ModelMultiplexWrapper:
         unload_start_time = time.time()
         model_id, model = self.models.popitem(last=False)
         logger.info(f"Unloading model '{model_id}'.")
+
+        # Clean up the batch queue for this model if it exists
+        if model_id in self._model_batch_queues:
+            del self._model_batch_queues[model_id]
 
         # If the model has __del__ attribute, call it.
         # This is to clean up the model resources eagerly.
