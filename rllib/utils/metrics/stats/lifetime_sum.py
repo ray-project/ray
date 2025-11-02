@@ -152,14 +152,6 @@ class LifetimeSumStats(StatsBase):
                 PyTorch GPU tensors are kept on GPU until reduce() or peek().
                 TensorFlow tensors are moved to CPU immediately.
         """
-        # Root stats objects that are not leaf stats (i.e., aggregated from other components)
-        # should not be pushed to
-        if self.is_root and not self.is_leaf:
-            raise ValueError(
-                "Cannot push values to root stats objects that are aggregated from other components. "
-                "These stats are only updated through merge operations. "
-                "Use leaf stats (created via direct logging) for push operations."
-            )
         # Convert TensorFlow tensors to CPU immediately
         if tf and tf.is_tensor(value):
             value = value.numpy()

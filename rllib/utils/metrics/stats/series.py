@@ -79,7 +79,10 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
     def reduce(self, compile: bool = True) -> Union[Any, "SeriesStats"]:
         """Reduces the internal values list according to the constructor settings."""
         if self._window is None:
-            reduced_values = batch_values_to_cpu(self.values)
+            if len(self.values) <= 1 or not compile:
+                reduced_values = batch_values_to_cpu(self.values)
+            else:
+                reduced_values = self.window_reduce()
         else:
             reduced_values = self.window_reduce()
 
@@ -117,14 +120,6 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
                 PyTorch GPU tensors are kept on GPU until reduce() or peek().
                 TensorFlow tensors are moved to CPU immediately.
         """
-        # Root stats objects that are not leaf stats (i.e., aggregated from other components)
-        # should not be pushed to
-        if not self.is_leaf:
-            raise ValueError(
-                "Cannot push values to non-leaf stats objects. "
-                "These stats are only updated through merge operations. "
-                "Use leaf stats (created via direct logging) for push operations."
-            )
         # Convert TensorFlow tensors to CPU immediately, keep PyTorch tensors as-is
         if tf and tf.is_tensor(value):
             value = value.numpy()

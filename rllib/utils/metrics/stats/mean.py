@@ -41,14 +41,6 @@ class MeanStats(SeriesStats):
                 PyTorch GPU tensors are kept on GPU until reduce() or peek().
                 TensorFlow tensors are moved to CPU immediately.
         """
-        # Root stats objects that are not leaf stats (i.e., aggregated from other components)
-        # should not be pushed to
-        if not self.is_leaf:
-            raise ValueError(
-                "Cannot push values to root stats objects that are aggregated from other components. "
-                "These stats are only updated through merge operations. "
-                "Use leaf stats (created via direct logging) for push operations."
-            )
         from ray.rllib.utils.framework import try_import_tf
 
         _, tf, _ = try_import_tf()

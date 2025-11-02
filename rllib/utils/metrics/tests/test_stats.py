@@ -1,3 +1,10 @@
+"""Tests for RLlib's Stats classes.
+
+This file mostly test Stats atomically.
+Howver, Stats are supposed to be used to aggregate data in a tree-like structure.
+Therefore, we achieve a more comprehensive test coverage by testing tree-like aggregation of Stats in the MetricsLogger tests.
+"""
+
 import pytest
 import time
 import numpy as np
@@ -750,28 +757,6 @@ def test_latest_merged_only_non_root_stats():
         match="latest_merged_only can only be used on aggregation stats objects",
     ):
         stats.peek(compile=True, latest_merged_only=True)
-
-
-def test_push_on_root_stats():
-    """Test that push raises error on root stats."""
-    for cls in [
-        MeanStats,
-        EmaStats,
-        ItemSeriesStats,
-        PercentilesStats,
-        LifetimeSumStats,
-        ItemStats,
-        SumStats,
-        MaxStats,
-        MinStats,
-    ]:
-        root_stats = cls(is_leaf=False)
-
-    # Should raise error when trying to push to root stats
-    with pytest.raises(
-        ValueError, match="Cannot push values to non-leaf stats objects"
-    ):
-        root_stats.push(1.0)
 
 
 if __name__ == "__main__":

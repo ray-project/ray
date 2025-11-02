@@ -114,7 +114,9 @@ class DifferentiableLearner(Checkpointable):
         # `update_from_...()` method call, the Learner will do a `self.metrics.reduce()`
         # and return the resulting (reduced) dict.
         self.metrics: MetricsLogger = MetricsLogger(
-            stats_cls_lookup=config.stats_cls_lookup
+            stats_cls_lookup=config.stats_cls_lookup,
+            root=False,
+            leaf=False,  # This logger may be used to aggregate metrics
         )
 
         # In case of offline learning and multiple learners, each learner receives a
@@ -710,7 +712,11 @@ class DifferentiableLearner(Checkpointable):
 
     # TODO (simon): Duplicate in Learner. Move to base class "Learnable".
     def _reset(self):
-        self.metrics = MetricsLogger(stats_cls_lookup=self.config.stats_cls_lookup)
+        self.metrics = MetricsLogger(
+            stats_cls_lookup=self.config.stats_cls_lookup,
+            root=False,
+            leaf=False,  # We don't expect metrics to be aggregated here
+        )
         self._is_built = False
 
     # TODO (simon): Duplicate in Learner. Move to base class "Learnable".

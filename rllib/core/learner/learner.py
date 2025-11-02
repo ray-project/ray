@@ -277,6 +277,8 @@ class Learner(Checkpointable):
         # and return the resulting (reduced) dict.
         self.metrics: MetricsLogger = MetricsLogger(
             stats_cls_lookup=config.stats_cls_lookup,
+            root=False,
+            leaf=False,  # This logger may be used to aggregate metrics
         )
 
         # In case of offline learning and multiple learners, each learner receives a
@@ -1597,7 +1599,11 @@ class Learner(Checkpointable):
         self._named_optimizers = {}
         self._module_optimizers = defaultdict(list)
         self._optimizer_lr_schedules = {}
-        self.metrics = MetricsLogger(stats_cls_lookup=self.config.stats_cls_lookup)
+        self.metrics = MetricsLogger(
+            stats_cls_lookup=self.config.stats_cls_lookup,
+            root=False,
+            leaf=False,  # We don't expect metrics to be aggregated here
+        )
         self._is_built = False
 
     def apply(self, func, *_args, **_kwargs):

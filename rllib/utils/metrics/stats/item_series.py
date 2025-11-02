@@ -6,7 +6,7 @@ from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
-from ray.rllib.utils.metrics.stats.series import StatsBase
+from ray.rllib.utils.metrics.stats.base import StatsBase
 
 
 @DeveloperAPI
@@ -58,14 +58,6 @@ class ItemSeriesStats(StatsBase):
         Args:
             item: The item to push. Can be of any type but data should be in CPU memory.
         """
-        # Root stats objects that are not leaf stats (i.e., aggregated from other components)
-        # should not be pushed to
-        if not self.is_leaf:
-            raise ValueError(
-                "Cannot push values to non-leaf stats objects that are aggregated from other components. "
-                "These stats are only updated through merge operations. "
-                "Use leaf stats (created via direct logging) for push operations."
-            )
         self.items.append(item)
         if self._window and len(self.items) > self._window:
             self.items.popleft()

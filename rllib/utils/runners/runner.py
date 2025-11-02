@@ -30,7 +30,11 @@ class Runner(FaultAwareApply, metaclass=abc.ABCMeta):
         self._weights_seq_no = 0
 
         # Create a MetricsLogger object for logging custom stats.
-        self.metrics: MetricsLogger = MetricsLogger()
+        self.metrics: MetricsLogger = MetricsLogger(
+            stats_cls_lookup=config.stats_cls_lookup,
+            root=False,
+            leaf=False,  # This logger may be used to aggregate metrics
+        )
 
         # Initialize the `FaultAwareApply`.
         super().__init__()
