@@ -36,9 +36,12 @@ def _get_read_task(
     case_sensitive: bool,
     limit: Optional[int],
     schema: "Schema",
+    column_rename_map: Optional[Dict[str, str]],
 ) -> Iterable[Block]:
     # Determine the PyIceberg version to handle backward compatibility
     import pyiceberg
+
+    from ray.data.datasource.datasource import _DatasourceProjectionPushdownMixin
 
     if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
         # Modern implementation using ArrowScan (PyIceberg 0.9.0+)
@@ -59,7 +62,14 @@ def _get_read_task(
 
         # Stream results as RecordBatches for memory efficiency
         for batch in result_table.to_batches():
-            yield pa.Table.from_batches([batch])
+            table = pa.Table.from_batches([batch])
+
+            # Apply column renames using shared helper
+            table = _DatasourceProjectionPushdownMixin._apply_rename(
+                table, column_rename_map
+            )
+
+            yield table
 
     else:
         # Legacy implementation using project_table (PyIceberg <0.9.0)
@@ -69,7 +79,7 @@ def _get_read_task(
         # FileScanTask) - note that this is not as simple as reading a single
         # parquet file, as there might be delete files, etc. associated, so we
         # must use the PyIceberg API for the projection.
-        yield pyi_pa_io.project_table(
+        table = pyi_pa_io.project_table(
             tasks=tasks,
             table_metadata=table_metadata,
             io=table_io,
@@ -78,6 +88,13 @@ def _get_read_task(
             case_sensitive=case_sensitive,
             limit=limit,
         )
+
+        # Apply column renames using shared helper
+        table = _DatasourceProjectionPushdownMixin._apply_rename(
+            table, column_rename_map
+        )
+
+        yield table
 
 
 @DeveloperAPI
@@ -113,6 +130,9 @@ class IcebergDatasource(Datasource):
             catalog_kwargs: Optional arguments to use when setting up the Iceberg
                 catalog
         """
+        # Initialize parent class to set up predicate pushdown mixin
+        super().__init__()
+
         _check_import(self, module="pyiceberg", package="pyiceberg")
         from pyiceberg.expressions import AlwaysTrue
 
@@ -127,7 +147,13 @@ class IcebergDatasource(Datasource):
         self.table_identifier = table_identifier
 
         self._row_filter = row_filter if row_filter is not None else AlwaysTrue()
-        self._selected_fields = selected_fields
+        # Convert selected_fields to List (None = all columns, matching parquet convention)
+        self._data_columns = (
+            None
+            if selected_fields is None or selected_fields == ("*",)
+            else list(selected_fields)
+        )
+        self._data_columns_rename_map = None
 
         if snapshot_id:
             self._scan_kwargs["snapshot_id"] = snapshot_id
@@ -162,11 +188,41 @@ class IcebergDatasource(Datasource):
 
         return self._plan_files
 
+    def _get_combined_filter(self) -> "BooleanExpression":
+        """Get the combined filter including both row_filter and pushed-down predicates."""
+        combined_filter = self._row_filter
+
+        if self._predicate_expr is not None:
+            # Convert Ray Data expression to PyIceberg expression using internal visitor
+            from ray.data._internal.planner.plan_expression.expression_visitors import (
+                _IcebergExpressionVisitor,
+            )
+
+            visitor = _IcebergExpressionVisitor()
+            iceberg_filter = visitor.visit(self._predicate_expr)
+
+            # Combine with existing row_filter using AND
+            from pyiceberg.expressions import AlwaysTrue, And
+
+            if not isinstance(combined_filter, AlwaysTrue):
+                combined_filter = And(combined_filter, iceberg_filter)
+            else:
+                combined_filter = iceberg_filter
+
+        return combined_filter
+
     def _get_data_scan(self) -> "DataScan":
+        # Get the combined filter
+        combined_filter = self._get_combined_filter()
+
+        # Convert back to tuple for PyIceberg API (None -> ("*",))
+        selected_fields = (
+            ("*",) if self._data_columns is None else tuple(self._data_columns)
+        )
 
         data_scan = self.table.scan(
-            row_filter=self._row_filter,
-            selected_fields=self._selected_fields,
+            row_filter=combined_filter,
+            selected_fields=selected_fields,
             **self._scan_kwargs,
         )
 
@@ -177,6 +233,24 @@ class IcebergDatasource(Datasource):
         # incorporate the deletes, but that's a reasonable approximation
         # task
         return sum(task.file.file_size_in_bytes for task in self.plan_files)
+
+    def supports_predicate_pushdown(self) -> bool:
+        """Returns True to indicate this datasource supports predicate pushdown."""
+        return True
+
+    def supports_projection_pushdown(self) -> bool:
+        """Returns True to indicate this datasource supports projection pushdown."""
+        return True
+
+    def _post_apply_predicate(self, clone: "IcebergDatasource") -> None:
+        """Invalidate cached plan_files and table after predicate changes."""
+        clone._plan_files = None
+        clone._table = None
+
+    def _post_apply_projection(self, clone: "IcebergDatasource") -> None:
+        """Invalidate cached plan_files and table after projection changes."""
+        clone._plan_files = None
+        clone._table = None
 
     @staticmethod
     def _distribute_tasks_into_equal_chunks(
@@ -242,7 +316,7 @@ class IcebergDatasource(Datasource):
         # See https://github.com/ray-project/ray/issues/49107 for more context
         table_io = self.table.io
         table_metadata = self.table.metadata
-        row_filter = self._row_filter
+        row_filter = self._get_combined_filter()
         case_sensitive = self._scan_kwargs.get("case_sensitive", True)
         limit = self._scan_kwargs.get("limit")
 
@@ -254,6 +328,7 @@ class IcebergDatasource(Datasource):
             case_sensitive=case_sensitive,
             limit=limit,
             schema=projected_schema,
+            column_rename_map=self._data_columns_rename_map,
         )
 
         read_tasks = []
