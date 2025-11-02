@@ -5,6 +5,18 @@ import sys
 import pytest
 import requests
 
+try:
+    from ray._raylet import AuthenticationTokenLoader
+
+    _RAYLET_AVAILABLE = True
+except ImportError:
+    _RAYLET_AVAILABLE = False
+
+pytestmark = pytest.mark.skipif(
+    not _RAYLET_AVAILABLE,
+    reason="Authentication tests require ray._raylet (not available in minimal installs)",
+)
+
 
 def test_dashboard_request_requires_auth_with_valid_token(
     setup_cluster_with_token_auth,
