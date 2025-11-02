@@ -26,7 +26,6 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/spilled_object_reader.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/util/exponential_backoff.h"
 
 namespace ray {
@@ -646,7 +645,7 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
         rpc_clients;
     // TODO(#56414): optimize this so we don't have to send a free objects request for
     // every object to every node
-    const auto &node_info_map = gcs_client_.Nodes().GetAll();
+    const auto &node_info_map = gcs_client_.Nodes().GetAllNodeAddressAndLiveness();
     for (const auto &[node_id, _] : node_info_map) {
       if (node_id == self_node_id_) {
         continue;
@@ -721,7 +720,8 @@ std::shared_ptr<rpc::ObjectManagerClientInterface> ObjectManager::GetRpcClient(
   if (it != remote_object_manager_clients_.end()) {
     return it->second;
   }
-  auto *node_info = gcs_client_.Nodes().Get(node_id, /*filter_dead_nodes=*/true);
+  auto *node_info =
+      gcs_client_.Nodes().GetNodeAddressAndLiveness(node_id, /*filter_dead_nodes=*/true);
   if (node_info == nullptr) {
     return nullptr;
   }
@@ -769,32 +769,31 @@ void ObjectManager::RecordMetrics() {
   push_manager_->RecordMetrics();
   // used_memory_ includes the fallback allocation, so we should add it again here
   // to calculate the exact available memory.
-  ray_metric_object_store_available_memory_.Record(
+  object_store_available_memory_gauge_.Record(
       config_.object_store_memory - used_memory_ +
       plasma::plasma_store_runner->GetFallbackAllocated());
   // Subtract fallback allocated memory. It is tracked separately by
   // `ObjectStoreFallbackMemory`.
-  ray_metric_object_store_used_memory_.Record(
+  object_store_used_memory_gauge_.Record(
       used_memory_ - plasma::plasma_store_runner->GetFallbackAllocated());
-  ray_metric_object_store_fallback_memory_.Record(
+  object_store_fallback_memory_gauge_.Record(
       plasma::plasma_store_runner->GetFallbackAllocated());
-  ray_metric_object_store_local_objects_.Record(local_objects_.size());
-  ray_metric_object_manager_pull_requests_.Record(pull_manager_->NumObjectPullRequests());
+  object_store_local_objects_gauge_.Record(local_objects_.size());
+  object_manager_pull_requests_gauge_.Record(pull_manager_->NumObjectPullRequests());
 
-  ray::stats::STATS_object_manager_bytes.Record(num_bytes_pushed_from_plasma_,
-                                                "PushedFromLocalPlasma");
-  ray::stats::STATS_object_manager_bytes.Record(num_bytes_pushed_from_disk_,
-                                                "PushedFromLocalDisk");
-  ray::stats::STATS_object_manager_bytes.Record(num_bytes_received_total_, "Received");
-
-  ray::stats::STATS_object_manager_received_chunks.Record(num_chunks_received_total_,
-                                                          "Total");
-  ray::stats::STATS_object_manager_received_chunks.Record(
-      num_chunks_received_total_failed_, "FailedTotal");
-  ray::stats::STATS_object_manager_received_chunks.Record(num_chunks_received_cancelled_,
-                                                          "FailedCancelled");
-  ray::stats::STATS_object_manager_received_chunks.Record(
-      num_chunks_received_failed_due_to_plasma_, "FailedPlasmaFull");
+  object_manager_bytes_gauge_.Record(num_bytes_pushed_from_plasma_,
+                                     {{"Type", "PushedFromLocalPlasma"}});
+  object_manager_bytes_gauge_.Record(num_bytes_pushed_from_disk_,
+                                     {{"Type", "PushedFromLocalDisk"}});
+  object_manager_bytes_gauge_.Record(num_bytes_received_total_, {{"Type", "Received"}});
+  object_manager_received_chunks_gauge_.Record(num_chunks_received_total_,
+                                               {{"Type", "Total"}});
+  object_manager_received_chunks_gauge_.Record(num_chunks_received_total_failed_,
+                                               {{"Type", "FailedTotal"}});
+  object_manager_received_chunks_gauge_.Record(num_chunks_received_cancelled_,
+                                               {{"Type", "FailedCancelled"}});
+  object_manager_received_chunks_gauge_.Record(num_chunks_received_failed_due_to_plasma_,
+                                               {{"Type", "FailedPlasmaFull"}});
 }
 
 void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {

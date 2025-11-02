@@ -2,8 +2,8 @@ from typing import Any, Dict
 
 import pytest
 
-from ray.llm._internal.serve.deployments.data_parallel.dp_server import DPServer
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import DPServer
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 
 

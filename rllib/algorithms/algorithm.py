@@ -1,21 +1,17 @@
-from collections import defaultdict
 import concurrent
 import copy
-from datetime import datetime
 import functools
-import gymnasium as gym
 import importlib
 import importlib.metadata
 import json
 import logging
-import numpy as np
 import os
-from packaging import version
 import pathlib
-import pyarrow.fs
 import re
 import tempfile
 import time
+from collections import defaultdict
+from datetime import datetime
 from typing import (
     Any,
     Callable,
@@ -31,14 +27,21 @@ from typing import (
     Union,
 )
 
+import gymnasium as gym
+import numpy as np
+import pyarrow.fs
 import tree  # pip install dm_tree
+from packaging import version
 
 import ray
-from ray.tune.result import TRAINING_ITERATION
+import ray.cloudpickle as pickle
+from ray._common.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    deprecation_warning,
+)
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
-from ray.tune import Checkpoint
-import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.algorithms.utils import (
@@ -63,11 +66,11 @@ from ray.rllib.core import (
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
     MultiRLModuleSpec,
 )
-from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
@@ -109,11 +112,6 @@ from ray.rllib.utils.checkpoints import (
     try_import_msgpack,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray._common.deprecation import (
-    DEPRECATED_VALUE,
-    Deprecated,
-    deprecation_warning,
-)
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
@@ -159,6 +157,11 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.metrics.ray_metrics import (
+    DEFAULT_HISTOGRAM_BOUNDARIES_LONG_EVENTS,
+    DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+    TimerAndPrometheusLogger,
+)
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
 from ray.rllib.utils.runners.runner_group import RunnerGroup
 from ray.rllib.utils.serialization import deserialize_type, NOT_SERIALIZABLE
@@ -184,15 +187,18 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 from ray.train.constants import DEFAULT_STORAGE_PATH
+from ray.tune import Checkpoint
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment.trial import ExportFormat
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.tune.registry import get_trainable_cls
 from ray.tune.resources import Resources
+from ray.tune.result import TRAINING_ITERATION
 from ray.tune.trainable import Trainable
 from ray.util import log_once
+from ray.util.metrics import Counter, Histogram
 from ray.util.timer import _Timer
-from ray.tune.registry import get_trainable_cls
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner.learner_group import LearnerGroup
@@ -533,10 +539,184 @@ class Algorithm(Checkpointable, Trainable):
         # Evaluation EnvRunnerGroup and metrics last returned by `self.evaluate()`.
         self.eval_env_runner_group: Optional[EnvRunnerGroup] = None
 
+        # Ray metrics - Algorithm
+        self._metrics_step_time: Optional[Histogram] = None
+        self._metrics_run_one_training_iteration_time: Optional[Histogram] = None
+        self._metrics_run_one_evaluation_time: Optional[Histogram] = None
+        self._metrics_compile_iteration_results_time: Optional[Histogram] = None
+        self._metrics_training_step_time: Optional[Histogram] = None
+        self._metrics_evaluate_time: Optional[Histogram] = None
+        self._metrics_evaluate_sync_env_runner_weights_time: Optional[Histogram] = None
+        self._metrics_evaluate_sync_connector_states_time: Optional[Histogram] = None
+        self._metrics_step_sync_env_runner_states_time: Optional[Histogram] = None
+        self._metrics_load_checkpoint_time: Optional[Histogram] = None
+        self._metrics_save_checkpoint_time: Optional[Histogram] = None
+
+        # Ray metrics - Algorithm callbacks
+        self._metrics_callback_on_train_result_time: Optional[Histogram] = None
+        self._metrics_callback_on_evaluate_start_time: Optional[Histogram] = None
+        self._metrics_callback_on_evaluate_end_time: Optional[Histogram] = None
+
+        # Ray metrics - IMPALA
+        self._metrics_impala_training_step_time: Optional[Histogram] = None
+        self._metrics_impala_training_step_aggregator_preprocessing_time: Optional[
+            Histogram
+        ] = None
+        self._metrics_impala_training_step_learner_group_loop_time: Optional[
+            Histogram
+        ] = None
+        self._metrics_impala_training_step_sync_env_runner_state_time: Optional[
+            Histogram
+        ] = None
+        self._metrics_impala_sample_and_get_connector_states_time: Optional[
+            Histogram
+        ] = None
+        self._metrics_impala_training_step_input_batches: Optional[Counter] = None
+        self._metrics_impala_training_step_zero_input_batches: Optional[Counter] = None
+        self._metrics_impala_training_step_env_steps_dropped: Optional[Counter] = None
+
         super().__init__(
             config=config,
             logger_creator=logger_creator,
             **kwargs,
+        )
+
+    def _set_up_metrics(self):
+        self._metrics_step_time = Histogram(
+            name="rllib_algorithm_step_time",
+            description="Time spent in Algorithm.step()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_LONG_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_step_time.set_default_tags({"rllib": self.__class__.__name__})
+
+        self._metrics_run_one_training_iteration_time = Histogram(
+            name="rllib_algorithm_run_one_training_iteration_time",
+            description="Time spent in Algorithm._run_one_training_iteration()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_LONG_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_run_one_training_iteration_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_run_one_evaluation_time = Histogram(
+            name="rllib_algorithm_run_one_evaluation_time",
+            description="Time spent in Algorithm._run_one_evaluation()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_LONG_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_run_one_evaluation_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_compile_iteration_results_time = Histogram(
+            name="rllib_algorithm_compile_iteration_results_time",
+            description="Time spent in Algorithm._compile_iteration_results()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_compile_iteration_results_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_training_step_time = Histogram(
+            name="rllib_algorithm_training_step_time",
+            description="Time spent in Algorithm.training_step()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_LONG_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_training_step_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_evaluate_time = Histogram(
+            name="rllib_algorithm_evaluate_time",
+            description="Time spent in Algorithm.evaluate()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_LONG_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_evaluate_time.set_default_tags({"rllib": self.__class__.__name__})
+
+        self._metrics_evaluate_sync_env_runner_weights_time = Histogram(
+            name="rllib_algorithm_evaluate_sync_env_runner_weights_time",
+            description="Time spent on syncing weights to the eval EnvRunners in the Algorithm.evaluate()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_evaluate_sync_env_runner_weights_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_evaluate_sync_connector_states_time = Histogram(
+            name="rllib_algorithm_evaluate_sync_connector_states_time",
+            description="Time spent on syncing connector states in the Algorithm.evaluate()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_evaluate_sync_connector_states_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_step_sync_env_runner_states_time = Histogram(
+            name="rllib_algorithm_step_sync_env_runner_states_time",
+            description="Time spent in sync_env_runner_states code block of the Algorithm.step()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_step_sync_env_runner_states_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_load_checkpoint_time = Histogram(
+            name="rllib_algorithm_load_checkpoint_time",
+            description="Time spent in Algorithm.load_checkpoint()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_load_checkpoint_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_save_checkpoint_time = Histogram(
+            name="rllib_algorithm_save_checkpoint_time",
+            description="Time spent in Algorithm.save_checkpoint()",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_save_checkpoint_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        # Ray metrics - Algorithm callbacks
+        self._metrics_callback_on_train_result_time = Histogram(
+            name="rllib_algorithm_callback_on_train_result_time",
+            description="Time spent in callback 'on_train_result()'",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_callback_on_train_result_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_callback_on_evaluate_start_time = Histogram(
+            name="rllib_algorithm_callback_on_evaluate_start_time",
+            description="Time spent in callback 'on_evaluate_start()'",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_callback_on_evaluate_start_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_callback_on_evaluate_end_time = Histogram(
+            name="rllib_algorithm_callback_on_evaluate_end_time",
+            description="Time spent in callback 'on_evaluate_end()'",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_callback_on_evaluate_end_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
         )
 
     @OverrideToImplementCustomLogic
@@ -976,6 +1156,9 @@ class Algorithm(Checkpointable, Trainable):
                     f"{self._aggregator_actor_to_learner}"
                 )
 
+        # Ray metrics
+        self._set_up_metrics()
+
         # Run `on_algorithm_init` callback after initialization is done.
         make_callback(
             "on_algorithm_init",
@@ -1020,106 +1203,113 @@ class Algorithm(Checkpointable, Trainable):
             The results dict with stats/infos on sampling, training,
             and - if required - evaluation.
         """
-        # Do we have to run `self.evaluate()` this iteration?
-        # `self.iteration` gets incremented after this function returns,
-        # meaning that e.g. the first time this function is called,
-        # self.iteration will be 0.
-        evaluate_this_iter = (
-            self.config.evaluation_interval
-            and (self.iteration + 1) % self.config.evaluation_interval == 0
-        )
+        # Ray metrics
+        with TimerAndPrometheusLogger(self._metrics_step_time):
+            # Do we have to run `self.evaluate()` this iteration?
+            # `self.iteration` gets incremented after this function returns,
+            # meaning that e.g. the first time this function is called,
+            # self.iteration will be 0.
+            evaluate_this_iter = (
+                self.config.evaluation_interval
+                and (self.iteration + 1) % self.config.evaluation_interval == 0
+            )
 
-        evaluate_offline_this_iter = (
-            self.config.offline_evaluation_interval
-            and (self.iteration + 1) % self.config.offline_evaluation_interval == 0
-        )
+            evaluate_offline_this_iter = (
+                self.config.offline_evaluation_interval
+                and (self.iteration + 1) % self.config.offline_evaluation_interval == 0
+            )
 
-        # Results dict for training (and if appolicable: evaluation).
-        eval_results: ResultDict = {}
+            # Results dict for training (and if appolicable: evaluation).
+            eval_results: ResultDict = {}
 
-        # Parallel eval + training: Kick off evaluation-loop and parallel train() call.
-        if evaluate_this_iter and (
-            self.config.evaluation_parallel_to_training
-            or self.config.offline_evaluation_parallel_to_training
-        ):
-            (
-                train_results,
-                eval_results,
-                train_iter_ctx,
-            ) = self._run_one_training_iteration_and_evaluation_in_parallel()
-
-        # - No evaluation necessary, just run the next training iteration.
-        # - We have to evaluate in this training iteration, but no parallelism ->
-        #   evaluate after the training iteration is entirely done.
-        else:
-            if self.config.enable_env_runner_and_connector_v2:
-                train_results, train_iter_ctx = self._run_one_training_iteration()
-            else:
+            # Parallel eval + training: Kick off evaluation-loop and parallel train() call.
+            if evaluate_this_iter and (
+                self.config.evaluation_parallel_to_training
+                or self.config.offline_evaluation_parallel_to_training
+            ):
                 (
                     train_results,
+                    eval_results,
                     train_iter_ctx,
-                ) = self._run_one_training_iteration_old_api_stack()
+                ) = self._run_one_training_iteration_and_evaluation_in_parallel()
 
-        # Sequential: Train (already done above), then evaluate.
-        if evaluate_this_iter and not self.config.evaluation_parallel_to_training:
-            eval_results = self._run_one_evaluation(parallel_train_future=None)
-
-        if evaluate_offline_this_iter:
-            offline_eval_results = self._run_one_offline_evaluation()
-            # If we already have online evaluation results merge the offline
-            # evaluation results.
-            if eval_results:
-                eval_results[EVALUATION_RESULTS].update(
-                    offline_eval_results[EVALUATION_RESULTS]
-                )
-            # Otherwise, just assign.
+            # - No evaluation necessary, just run the next training iteration.
+            # - We have to evaluate in this training iteration, but no parallelism ->
+            #   evaluate after the training iteration is entirely done.
             else:
-                eval_results = offline_eval_results
+                if self.config.enable_env_runner_and_connector_v2:
+                    train_results, train_iter_ctx = self._run_one_training_iteration()
+                else:
+                    (
+                        train_results,
+                        train_iter_ctx,
+                    ) = self._run_one_training_iteration_old_api_stack()
 
-        # Sync EnvRunner workers.
-        # TODO (sven): For the new API stack, the common execution pattern for any algo
-        #  should be: [sample + get_metrics + get_state] -> send all these in one remote
-        #  call down to `training_step` (where episodes are sent as ray object
-        #  references). Then distribute the episode refs to the learners, store metrics
-        #  in special key in result dict and perform the connector merge/broadcast
-        #  inside the `training_step` as well. See the new IMPALA for an example.
-        if self.config.enable_env_runner_and_connector_v2:
-            if (
-                not self.config._dont_auto_sync_env_runner_states
-                and self.env_runner_group
-            ):
-                # Synchronize EnvToModule and ModuleToEnv connector states and broadcast
-                # new states back to all EnvRunners.
-                with self.metrics.log_time((TIMERS, SYNCH_ENV_CONNECTOR_STATES_TIMER)):
-                    self.env_runner_group.sync_env_runner_states(
-                        config=self.config,
-                        env_to_module=self.env_to_module_connector,
-                        module_to_env=self.module_to_env_connector,
+            # Sequential: Train (already done above), then evaluate.
+            if evaluate_this_iter and not self.config.evaluation_parallel_to_training:
+                eval_results = self._run_one_evaluation(parallel_train_future=None)
+
+            if evaluate_offline_this_iter:
+                offline_eval_results = self._run_one_offline_evaluation()
+                # If we already have online evaluation results merge the offline
+                # evaluation results.
+                if eval_results:
+                    eval_results[EVALUATION_RESULTS].update(
+                        offline_eval_results[EVALUATION_RESULTS]
                     )
-            # Compile final ResultDict from `train_results` and `eval_results`. Note
-            # that, as opposed to the old API stack, EnvRunner stats should already be
-            # in `train_results` and `eval_results`.
-            results = self._compile_iteration_results(
-                train_results=train_results,
-                eval_results=eval_results,
-            )
-        else:
-            self._sync_filters_if_needed(
-                central_worker=self.env_runner_group.local_env_runner,
-                workers=self.env_runner_group,
-                config=self.config,
-            )
-            # Get EnvRunner metrics and compile them into results.
-            episodes_this_iter = collect_episodes(
-                self.env_runner_group,
-                self._remote_worker_ids_for_metrics(),
-                timeout_seconds=self.config.metrics_episode_collection_timeout_s,
-            )
-            results = self._compile_iteration_results_old_api_stack(
-                episodes_this_iter=episodes_this_iter,
-                step_ctx=train_iter_ctx,
-                iteration_results={**train_results, **eval_results},
-            )
+                # Otherwise, just assign.
+                else:
+                    eval_results = offline_eval_results
+
+            # Sync EnvRunner workers.
+            # TODO (sven): For the new API stack, the common execution pattern for any algo
+            #  should be: [sample + get_metrics + get_state] -> send all these in one remote
+            #  call down to `training_step` (where episodes are sent as ray object
+            #  references). Then distribute the episode refs to the learners, store metrics
+            #  in special key in result dict and perform the connector merge/broadcast
+            #  inside the `training_step` as well. See the new IMPALA for an example.
+            if self.config.enable_env_runner_and_connector_v2:
+                if (
+                    not self.config._dont_auto_sync_env_runner_states
+                    and self.env_runner_group
+                ):
+                    # Synchronize EnvToModule and ModuleToEnv connector states and broadcast
+                    # new states back to all EnvRunners.
+                    with self.metrics.log_time(
+                        (TIMERS, SYNCH_ENV_CONNECTOR_STATES_TIMER)
+                    ):
+                        with TimerAndPrometheusLogger(
+                            self._metrics_step_sync_env_runner_states_time
+                        ):
+                            self.env_runner_group.sync_env_runner_states(
+                                config=self.config,
+                                env_to_module=self.env_to_module_connector,
+                                module_to_env=self.module_to_env_connector,
+                            )
+                # Compile final ResultDict from `train_results` and `eval_results`. Note
+                # that, as opposed to the old API stack, EnvRunner stats should already be
+                # in `train_results` and `eval_results`.
+                results = self._compile_iteration_results(
+                    train_results=train_results,
+                    eval_results=eval_results,
+                )
+            else:
+                self._sync_filters_if_needed(
+                    central_worker=self.env_runner_group.local_env_runner,
+                    workers=self.env_runner_group,
+                    config=self.config,
+                )
+                # Get EnvRunner metrics and compile them into results.
+                episodes_this_iter = collect_episodes(
+                    self.env_runner_group,
+                    self._remote_worker_ids_for_metrics(),
+                    timeout_seconds=self.config.metrics_episode_collection_timeout_s,
+                )
+                results = self._compile_iteration_results_old_api_stack(
+                    episodes_this_iter=episodes_this_iter,
+                    step_ctx=train_iter_ctx,
+                    iteration_results={**train_results, **eval_results},
+                )
 
         return results
 
@@ -1146,7 +1336,6 @@ class Algorithm(Checkpointable, Trainable):
         #         self.offline_eval_runner_group.sync_runner_states(
         #             from_runner=
         #         )
-
         make_callback(
             "on_evaluate_offline_start",
             callbacks_objects=self.callbacks,
@@ -1197,165 +1386,178 @@ class Algorithm(Checkpointable, Trainable):
             A ResultDict only containing the evaluation results from the current
             iteration.
         """
-        # Call the `_before_evaluate` hook.
-        self._before_evaluate()
+        with TimerAndPrometheusLogger(self._metrics_evaluate_time):
+            # Call the `_before_evaluate` hook.
+            self._before_evaluate()
 
-        if self.evaluation_dataset is not None:
-            return self._run_offline_evaluation_old_api_stack()
+            if self.evaluation_dataset is not None:
+                return self._run_offline_evaluation_old_api_stack()
 
-        if self.config.enable_env_runner_and_connector_v2:
-            if (
-                self.env_runner_group is not None
-                and self.env_runner_group.healthy_env_runner_ids()
+            if self.config.enable_env_runner_and_connector_v2:
+                if (
+                    self.env_runner_group is not None
+                    and self.env_runner_group.healthy_env_runner_ids()
+                ):
+                    # TODO (sven): Replace this with a new ActorManager API:
+                    #  try_remote_request_till_success("get_state") -> tuple(int,
+                    #  remoteresult)
+                    weights_src = self.env_runner_group._worker_manager._actors[
+                        self.env_runner_group.healthy_env_runner_ids()[0]
+                    ]
+                else:
+                    weights_src = self.learner_group
+            else:
+                weights_src = self.env_runner
+
+            # Sync weights to the evaluation EnvRunners.
+            if self.eval_env_runner_group is not None:
+                with TimerAndPrometheusLogger(
+                    self._metrics_evaluate_sync_env_runner_weights_time
+                ):
+                    self.eval_env_runner_group.sync_weights(
+                        from_worker_or_learner_group=weights_src,
+                        inference_only=True,
+                    )
+
+                # Merge (eval) EnvRunner states and broadcast the merged state back
+                # to the remote (eval) EnvRunner actors.
+                if self.config.enable_env_runner_and_connector_v2:
+                    if self.evaluation_config.broadcast_env_runner_states:
+                        with self.metrics.log_time(
+                            (TIMERS, SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER)
+                        ):
+                            with TimerAndPrometheusLogger(
+                                self._metrics_evaluate_sync_connector_states_time
+                            ):
+                                self.eval_env_runner_group.sync_env_runner_states(
+                                    config=self.evaluation_config,
+                                    from_worker=self.env_runner,
+                                    env_to_module=self.env_to_module_connector,
+                                    module_to_env=self.module_to_env_connector,
+                                )
+                else:
+                    self._sync_filters_if_needed(
+                        central_worker=self.env_runner_group.local_env_runner,
+                        workers=self.eval_env_runner_group,
+                        config=self.evaluation_config,
+                    )
+            # Sync weights to the local EnvRunner (if no eval EnvRunnerGroup).
+            elif self.config.enable_env_runner_and_connector_v2:
+                self.env_runner_group.sync_weights(
+                    from_worker_or_learner_group=weights_src,
+                    inference_only=True,
+                )
+
+            with TimerAndPrometheusLogger(
+                self._metrics_callback_on_evaluate_start_time
             ):
-                # TODO (sven): Replace this with a new ActorManager API:
-                #  try_remote_request_till_success("get_state") -> tuple(int,
-                #  remoteresult)
-                weights_src = self.env_runner_group._worker_manager._actors[
-                    self.env_runner_group.healthy_env_runner_ids()[0]
-                ]
+                make_callback(
+                    "on_evaluate_start",
+                    callbacks_objects=self.callbacks,
+                    callbacks_functions=self.config.callbacks_on_evaluate_start,
+                    kwargs=dict(algorithm=self, metrics_logger=self.metrics),
+                )
+
+            env_steps = agent_steps = 0
+            batches = []
+
+            # We will use a user provided evaluation function.
+            if self.config.custom_evaluation_function:
+                if self.config.enable_env_runner_and_connector_v2:
+                    (
+                        eval_results,
+                        env_steps,
+                        agent_steps,
+                    ) = self._evaluate_with_custom_eval_function()
+                else:
+                    eval_results = self.config.custom_evaluation_function()
+            # There is no eval EnvRunnerGroup -> Run on local EnvRunner.
+            elif self.eval_env_runner_group is None and self.env_runner:
+                (
+                    eval_results,
+                    env_steps,
+                    agent_steps,
+                    batches,
+                ) = self._evaluate_on_local_env_runner(self.env_runner)
+            # There is only a local eval EnvRunner -> Run on that.
+            elif self.eval_env_runner_group.num_healthy_remote_workers() == 0:
+                (
+                    eval_results,
+                    env_steps,
+                    agent_steps,
+                    batches,
+                ) = self._evaluate_on_local_env_runner(self.eval_env_runner)
+            # There are healthy remote evaluation workers -> Run on these.
+            elif self.eval_env_runner_group.num_healthy_remote_workers() > 0:
+                # Running in automatic duration mode (parallel with training step).
+                if self.config.evaluation_duration == "auto":
+                    assert parallel_train_future is not None
+                    (
+                        eval_results,
+                        env_steps,
+                        agent_steps,
+                        batches,
+                    ) = self._evaluate_with_auto_duration(parallel_train_future)
+                # Running with a fixed amount of data to sample.
+                else:
+                    (
+                        eval_results,
+                        env_steps,
+                        agent_steps,
+                        batches,
+                    ) = self._evaluate_with_fixed_duration()
+            # Can't find a good way to run this evaluation -> Wait for next iteration.
             else:
-                weights_src = self.learner_group
-        else:
-            weights_src = self.env_runner
+                eval_results = {}
 
-        # Sync weights to the evaluation EnvRunners.
-        if self.eval_env_runner_group is not None:
-            self.eval_env_runner_group.sync_weights(
-                from_worker_or_learner_group=weights_src,
-                inference_only=True,
-            )
-
-            # Merge (eval) EnvRunner states and broadcast the merged state back
-            # to the remote (eval) EnvRunner actors.
             if self.config.enable_env_runner_and_connector_v2:
-                if self.evaluation_config.broadcast_env_runner_states:
-                    with self.metrics.log_time(
-                        (TIMERS, SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER)
-                    ):
-                        self.eval_env_runner_group.sync_env_runner_states(
-                            config=self.evaluation_config,
-                            from_worker=self.env_runner,
-                            env_to_module=self.env_to_module_connector,
-                            module_to_env=self.module_to_env_connector,
+                eval_results = self.metrics.peek(key=EVALUATION_RESULTS, default={})
+                if log_once("no_eval_results") and not eval_results:
+                    logger.warning(
+                        "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
+                    )
+            else:
+                eval_results = {ENV_RUNNER_RESULTS: eval_results}
+                eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
+                eval_results[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps
+                eval_results["timesteps_this_iter"] = env_steps
+                self._counters[
+                    NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER
+                ] = env_steps
+
+            # Compute off-policy estimates
+            if not self.config.custom_evaluation_function:
+                estimates = defaultdict(list)
+                # for each batch run the estimator's fwd pass
+                for name, estimator in self.reward_estimators.items():
+                    for batch in batches:
+                        estimate_result = estimator.estimate(
+                            batch,
+                            split_batch_by_episode=self.config.ope_split_batch_by_episode,
                         )
-            else:
-                self._sync_filters_if_needed(
-                    central_worker=self.env_runner_group.local_env_runner,
-                    workers=self.eval_env_runner_group,
-                    config=self.evaluation_config,
+                        estimates[name].append(estimate_result)
+
+                # collate estimates from all batches
+                if estimates:
+                    eval_results["off_policy_estimator"] = {}
+                    for name, estimate_list in estimates.items():
+                        avg_estimate = tree.map_structure(
+                            lambda *x: np.mean(x, axis=0), *estimate_list
+                        )
+                        eval_results["off_policy_estimator"][name] = avg_estimate
+
+            # Trigger `on_evaluate_end` callback.
+            with TimerAndPrometheusLogger(self._metrics_callback_on_evaluate_end_time):
+                make_callback(
+                    "on_evaluate_end",
+                    callbacks_objects=self.callbacks,
+                    callbacks_functions=self.config.callbacks_on_evaluate_end,
+                    kwargs=dict(
+                        algorithm=self,
+                        metrics_logger=self.metrics,
+                        evaluation_metrics=eval_results,
+                    ),
                 )
-        # Sync weights to the local EnvRunner (if no eval EnvRunnerGroup).
-        elif self.config.enable_env_runner_and_connector_v2:
-            self.env_runner_group.sync_weights(
-                from_worker_or_learner_group=weights_src,
-                inference_only=True,
-            )
-
-        make_callback(
-            "on_evaluate_start",
-            callbacks_objects=self.callbacks,
-            callbacks_functions=self.config.callbacks_on_evaluate_start,
-            kwargs=dict(algorithm=self, metrics_logger=self.metrics),
-        )
-
-        env_steps = agent_steps = 0
-        batches = []
-
-        # We will use a user provided evaluation function.
-        if self.config.custom_evaluation_function:
-            if self.config.enable_env_runner_and_connector_v2:
-                (
-                    eval_results,
-                    env_steps,
-                    agent_steps,
-                ) = self._evaluate_with_custom_eval_function()
-            else:
-                eval_results = self.config.custom_evaluation_function()
-        # There is no eval EnvRunnerGroup -> Run on local EnvRunner.
-        elif self.eval_env_runner_group is None and self.env_runner:
-            (
-                eval_results,
-                env_steps,
-                agent_steps,
-                batches,
-            ) = self._evaluate_on_local_env_runner(self.env_runner)
-        # There is only a local eval EnvRunner -> Run on that.
-        elif self.eval_env_runner_group.num_healthy_remote_workers() == 0:
-            (
-                eval_results,
-                env_steps,
-                agent_steps,
-                batches,
-            ) = self._evaluate_on_local_env_runner(self.eval_env_runner)
-        # There are healthy remote evaluation workers -> Run on these.
-        elif self.eval_env_runner_group.num_healthy_remote_workers() > 0:
-            # Running in automatic duration mode (parallel with training step).
-            if self.config.evaluation_duration == "auto":
-                assert parallel_train_future is not None
-                (
-                    eval_results,
-                    env_steps,
-                    agent_steps,
-                    batches,
-                ) = self._evaluate_with_auto_duration(parallel_train_future)
-            # Running with a fixed amount of data to sample.
-            else:
-                (
-                    eval_results,
-                    env_steps,
-                    agent_steps,
-                    batches,
-                ) = self._evaluate_with_fixed_duration()
-        # Can't find a good way to run this evaluation -> Wait for next iteration.
-        else:
-            eval_results = {}
-
-        if self.config.enable_env_runner_and_connector_v2:
-            eval_results = self.metrics.peek(key=EVALUATION_RESULTS, default={})
-            if log_once("no_eval_results") and not eval_results:
-                logger.warning(
-                    "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
-                )
-        else:
-            eval_results = {ENV_RUNNER_RESULTS: eval_results}
-            eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
-            eval_results[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps
-            eval_results["timesteps_this_iter"] = env_steps
-            self._counters[NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER] = env_steps
-
-        # Compute off-policy estimates
-        if not self.config.custom_evaluation_function:
-            estimates = defaultdict(list)
-            # for each batch run the estimator's fwd pass
-            for name, estimator in self.reward_estimators.items():
-                for batch in batches:
-                    estimate_result = estimator.estimate(
-                        batch,
-                        split_batch_by_episode=self.config.ope_split_batch_by_episode,
-                    )
-                    estimates[name].append(estimate_result)
-
-            # collate estimates from all batches
-            if estimates:
-                eval_results["off_policy_estimator"] = {}
-                for name, estimate_list in estimates.items():
-                    avg_estimate = tree.map_structure(
-                        lambda *x: np.mean(x, axis=0), *estimate_list
-                    )
-                    eval_results["off_policy_estimator"][name] = avg_estimate
-
-        # Trigger `on_evaluate_end` callback.
-        make_callback(
-            "on_evaluate_end",
-            callbacks_objects=self.callbacks,
-            callbacks_functions=self.config.callbacks_on_evaluate_end,
-            kwargs=dict(
-                algorithm=self,
-                metrics_logger=self.metrics,
-                evaluation_metrics=eval_results,
-            ),
-        )
 
         # Also return the results here for convenience.
         return eval_results
@@ -2752,92 +2954,94 @@ class Algorithm(Checkpointable, Trainable):
         Args:
             checkpoint_dir: The directory where the checkpoint files will be stored.
         """
-        # New API stack: Delegate to the `Checkpointable` implementation of
-        # `save_to_path()` and return.
-        if self.config.enable_rl_module_and_learner:
-            self.save_to_path(
-                checkpoint_dir,
-                use_msgpack=self.config._use_msgpack_checkpoints,
-            )
-            return
+        with TimerAndPrometheusLogger(self._metrics_save_checkpoint_time):
+            # New API stack: Delegate to the `Checkpointable` implementation of
+            # `save_to_path()` and return.
+            if self.config.enable_rl_module_and_learner:
+                self.save_to_path(
+                    checkpoint_dir,
+                    use_msgpack=self.config._use_msgpack_checkpoints,
+                )
+                return
 
-        checkpoint_dir = pathlib.Path(checkpoint_dir)
+            checkpoint_dir = pathlib.Path(checkpoint_dir)
 
-        state = self.__getstate__()
+            state = self.__getstate__()
 
-        # Extract policy states from worker state (Policies get their own
-        # checkpoint sub-dirs).
-        policy_states = {}
-        if "worker" in state and "policy_states" in state["worker"]:
-            policy_states = state["worker"].pop("policy_states", {})
+            # Extract policy states from worker state (Policies get their own
+            # checkpoint sub-dirs).
+            policy_states = {}
+            if "worker" in state and "policy_states" in state["worker"]:
+                policy_states = state["worker"].pop("policy_states", {})
 
-        # Add RLlib checkpoint version.
-        if self.config.enable_rl_module_and_learner:
-            state["checkpoint_version"] = CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER
-        else:
-            state["checkpoint_version"] = CHECKPOINT_VERSION
+            # Add RLlib checkpoint version.
+            if self.config.enable_rl_module_and_learner:
+                state["checkpoint_version"] = CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER
+            else:
+                state["checkpoint_version"] = CHECKPOINT_VERSION
 
-        # Write state (w/o policies) to disk.
-        state_file = checkpoint_dir / "algorithm_state.pkl"
-        with open(state_file, "wb") as f:
-            pickle.dump(state, f)
+            # Write state (w/o policies) to disk.
+            state_file = checkpoint_dir / "algorithm_state.pkl"
+            with open(state_file, "wb") as f:
+                pickle.dump(state, f)
 
-        # Write rllib_checkpoint.json.
-        with open(checkpoint_dir / "rllib_checkpoint.json", "w") as f:
-            json.dump(
-                {
-                    "type": "Algorithm",
-                    "checkpoint_version": str(state["checkpoint_version"]),
-                    "format": "cloudpickle",
-                    "state_file": str(state_file),
-                    "policy_ids": list(policy_states.keys()),
-                    "ray_version": ray.__version__,
-                    "ray_commit": ray.__commit__,
-                },
-                f,
-            )
+            # Write rllib_checkpoint.json.
+            with open(checkpoint_dir / "rllib_checkpoint.json", "w") as f:
+                json.dump(
+                    {
+                        "type": "Algorithm",
+                        "checkpoint_version": str(state["checkpoint_version"]),
+                        "format": "cloudpickle",
+                        "state_file": str(state_file),
+                        "policy_ids": list(policy_states.keys()),
+                        "ray_version": ray.__version__,
+                        "ray_commit": ray.__commit__,
+                    },
+                    f,
+                )
 
-        # Old API stack: Write individual policies to disk, each in their own
-        # sub-directory.
-        for pid, policy_state in policy_states.items():
-            # From here on, disallow policyIDs that would not work as directory names.
-            validate_module_id(pid, error=True)
-            policy_dir = checkpoint_dir / "policies" / pid
-            os.makedirs(policy_dir, exist_ok=True)
-            policy = self.get_policy(pid)
-            policy.export_checkpoint(policy_dir, policy_state=policy_state)
+            # Old API stack: Write individual policies to disk, each in their own
+            # sub-directory.
+            for pid, policy_state in policy_states.items():
+                # From here on, disallow policyIDs that would not work as directory names.
+                validate_module_id(pid, error=True)
+                policy_dir = checkpoint_dir / "policies" / pid
+                os.makedirs(policy_dir, exist_ok=True)
+                policy = self.get_policy(pid)
+                policy.export_checkpoint(policy_dir, policy_state=policy_state)
 
-        # If we are using the learner API (hybrid API stack) -> Save the learner group's
-        # state inside a "learner" subdir. Note that this is not in line with the
-        # new Checkpointable API, but makes this case backward compatible.
-        # The new Checkpointable API is only strictly applied anyways to the
-        # new API stack.
-        if self.config.enable_rl_module_and_learner:
-            learner_state_dir = os.path.join(checkpoint_dir, "learner")
-            self.learner_group.save_to_path(learner_state_dir)
+            # If we are using the learner API (hybrid API stack) -> Save the learner group's
+            # state inside a "learner" subdir. Note that this is not in line with the
+            # new Checkpointable API, but makes this case backward compatible.
+            # The new Checkpointable API is only strictly applied anyways to the
+            # new API stack.
+            if self.config.enable_rl_module_and_learner:
+                learner_state_dir = os.path.join(checkpoint_dir, "learner")
+                self.learner_group.save_to_path(learner_state_dir)
 
     @override(Trainable)
     def load_checkpoint(self, checkpoint_dir: str) -> None:
-        # New API stack: Delegate to the `Checkpointable` implementation of
-        # `restore_from_path()`.
-        if self.config.enable_rl_module_and_learner:
-            self.restore_from_path(checkpoint_dir)
-        else:
-            # Checkpoint is provided as a local directory.
-            # Restore from the checkpoint file or dir.
-            checkpoint_info = get_checkpoint_info(checkpoint_dir)
-            checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(
-                checkpoint_info
-            )
-            self.__setstate__(checkpoint_data)
+        with TimerAndPrometheusLogger(self._metrics_load_checkpoint_time):
+            # New API stack: Delegate to the `Checkpointable` implementation of
+            # `restore_from_path()`.
+            if self.config.enable_rl_module_and_learner:
+                self.restore_from_path(checkpoint_dir)
+            else:
+                # Checkpoint is provided as a local directory.
+                # Restore from the checkpoint file or dir.
+                checkpoint_info = get_checkpoint_info(checkpoint_dir)
+                checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(
+                    checkpoint_info
+                )
+                self.__setstate__(checkpoint_data)
 
-        # Call the `on_checkpoint_loaded` callback.
-        make_callback(
-            "on_checkpoint_loaded",
-            callbacks_objects=self.callbacks,
-            callbacks_functions=self.config.callbacks_on_checkpoint_loaded,
-            kwargs=dict(algorithm=self),
-        )
+            # Call the `on_checkpoint_loaded` callback.
+            make_callback(
+                "on_checkpoint_loaded",
+                callbacks_objects=self.callbacks,
+                callbacks_functions=self.config.callbacks_on_checkpoint_loaded,
+                kwargs=dict(algorithm=self),
+            )
 
     @override(Checkpointable)
     def get_state(
@@ -3064,16 +3268,17 @@ class Algorithm(Checkpointable, Trainable):
         #  point in time. In here, the result dict has already been "compiled" (reduced)
         #  by the MetricsLogger and there is probably no point in adding more Stats
         #  here.
-        make_callback(
-            "on_train_result",
-            callbacks_objects=self.callbacks,
-            callbacks_functions=self.config.callbacks_on_train_result,
-            kwargs=dict(
-                algorithm=self,
-                metrics_logger=self.metrics,
-                result=result,
-            ),
-        )
+        with TimerAndPrometheusLogger(self._metrics_callback_on_train_result_time):
+            make_callback(
+                "on_train_result",
+                callbacks_objects=self.callbacks,
+                callbacks_functions=self.config.callbacks_on_train_result,
+                kwargs=dict(
+                    algorithm=self,
+                    metrics_logger=self.metrics,
+                    result=result,
+                ),
+            )
         # Then log according to Trainable's logging logic.
         Trainable.log_result(self, result)
 
@@ -3392,77 +3597,83 @@ class Algorithm(Checkpointable, Trainable):
             over the history and reduce behavior of individual metrics at the time these
             metrics are logged with `self.metrics.log_...()`.
         """
-        with self.metrics.log_time((TIMERS, TRAINING_ITERATION_TIMER)):
-            # In case we are training (in a thread) parallel to evaluation,
-            # we may have to re-enable eager mode here (gets disabled in the
-            # thread).
-            if self.config.get("framework") == "tf2" and not tf.executing_eagerly():
-                tf1.enable_eager_execution()
+        with TimerAndPrometheusLogger(self._metrics_run_one_training_iteration_time):
+            with self.metrics.log_time((TIMERS, TRAINING_ITERATION_TIMER)):
+                # In case we are training (in a thread) parallel to evaluation,
+                # we may have to re-enable eager mode here (gets disabled in the
+                # thread).
+                if self.config.get("framework") == "tf2" and not tf.executing_eagerly():
+                    tf1.enable_eager_execution()
 
-            has_run_once = False
-            # Create a step context ...
-            with TrainIterCtx(algo=self) as train_iter_ctx:
-                # .. so we can query it whether we should stop the iteration loop (e.g.
-                # when we have reached `min_time_s_per_iteration`).
-                while not train_iter_ctx.should_stop(has_run_once):
-                    # Before training step, try to bring failed workers back.
-                    with self.metrics.log_time((TIMERS, RESTORE_ENV_RUNNERS_TIMER)):
-                        restored = self.restore_env_runners(self.env_runner_group)
-                        # Fire the callback for re-created EnvRunners.
-                        if restored:
-                            self._make_on_env_runners_recreated_callbacks(
-                                config=self.config,
-                                env_runner_group=self.env_runner_group,
-                                restored_env_runner_indices=restored,
+                has_run_once = False
+                # Create a step context ...
+                with TrainIterCtx(algo=self) as train_iter_ctx:
+                    # .. so we can query it whether we should stop the iteration loop (e.g.
+                    # when we have reached `min_time_s_per_iteration`).
+                    while not train_iter_ctx.should_stop(has_run_once):
+                        # Before training step, try to bring failed workers back.
+                        with self.metrics.log_time((TIMERS, RESTORE_ENV_RUNNERS_TIMER)):
+                            restored = self.restore_env_runners(self.env_runner_group)
+                            # Fire the callback for re-created EnvRunners.
+                            if restored:
+                                self._make_on_env_runners_recreated_callbacks(
+                                    config=self.config,
+                                    env_runner_group=self.env_runner_group,
+                                    restored_env_runner_indices=restored,
+                                )
+
+                        # Try to train one step.
+                        with self.metrics.log_time((TIMERS, TRAINING_STEP_TIMER)):
+                            with TimerAndPrometheusLogger(
+                                self._metrics_training_step_time
+                            ):
+                                training_step_return_value = self.training_step()
+                            has_run_once = True
+
+                        # On the new API stack, results should NOT be returned anymore as
+                        # a dict, but purely logged through the `MetricsLogger` API. This
+                        # way, we make sure to never miss a single stats/counter/timer
+                        # when calling `self.training_step()` more than once within the same
+                        # iteration.
+                        if training_step_return_value is not None:
+                            raise ValueError(
+                                "`Algorithm.training_step()` should NOT return a result "
+                                "dict anymore on the new API stack! Instead, log all "
+                                "results, timers, counters through the `self.metrics` "
+                                "(MetricsLogger) instance of the Algorithm and return "
+                                "None. The logged results are compiled automatically into "
+                                "one single result dict per training iteration."
                             )
 
-                    # Try to train one step.
-                    with self.metrics.log_time((TIMERS, TRAINING_STEP_TIMER)):
-                        training_step_return_value = self.training_step()
-                        has_run_once = True
-
-                    # On the new API stack, results should NOT be returned anymore as
-                    # a dict, but purely logged through the `MetricsLogger` API. This
-                    # way, we make sure to never miss a single stats/counter/timer
-                    # when calling `self.training_step()` more than once within the same
-                    # iteration.
-                    if training_step_return_value is not None:
-                        raise ValueError(
-                            "`Algorithm.training_step()` should NOT return a result "
-                            "dict anymore on the new API stack! Instead, log all "
-                            "results, timers, counters through the `self.metrics` "
-                            "(MetricsLogger) instance of the Algorithm and return "
-                            "None. The logged results are compiled automatically into "
-                            "one single result dict per training iteration."
+                        # TODO (sven): Resolve this metric through log_time's future
+                        #  ability to compute throughput.
+                        self.metrics.log_value(
+                            NUM_TRAINING_STEP_CALLS_PER_ITERATION,
+                            1,
+                            reduce="sum",
+                            clear_on_reduce=True,
                         )
 
-                    # TODO (sven): Resolve this metric through log_time's future
-                    #  ability to compute throughput.
-                    self.metrics.log_value(
-                        NUM_TRAINING_STEP_CALLS_PER_ITERATION,
-                        1,
-                        reduce="sum",
-                        clear_on_reduce=True,
-                    )
+            if self.config.num_aggregator_actors_per_learner:
+                remote_aggregator_metrics = self._aggregator_actor_manager.foreach_actor_async_fetch_ready(
+                    func=lambda actor: actor.get_metrics(),
+                    tag="metrics",
+                    timeout_seconds=0.0,
+                    return_obj_refs=False,
+                    # (Artur) TODO: In the future, we want to make aggregator actors fault tolerant and should make this configurable
+                    ignore_ray_errors=False,
+                )
 
-        if self.config.num_aggregator_actors_per_learner:
-            remote_aggregator_metrics = self._aggregator_actor_manager.foreach_actor_async_fetch_ready(
-                func=lambda actor: actor.get_metrics(),
-                tag="metrics",
-                timeout_seconds=0.0,
-                return_obj_refs=False,
-                # (Artur) TODO: In the future, we want to make aggregator actors fault tolerant and should make this configurable
-                ignore_ray_errors=False,
-            )
+                self.metrics.aggregate(
+                    remote_aggregator_metrics,
+                    key=AGGREGATOR_ACTOR_RESULTS,
+                )
 
-            self.metrics.aggregate(
-                remote_aggregator_metrics,
-                key=AGGREGATOR_ACTOR_RESULTS,
-            )
+            # Only here (at the end of the iteration), compile the results into a single result dict.
+            # Calling compile here reduces the metrics into single values and adds throughputs to the results where applicable.
+            compiled_metrics = self.metrics.compile()
 
-        # Only here (at the end of the iteration), compile the results into a single result dict.
-        # Calling compile here reduces the metrics into single values and adds throughputs to the results where applicable.
-        return self.metrics.compile(), train_iter_ctx
+        return compiled_metrics, train_iter_ctx
 
     def _run_one_offline_evaluation(self):
         """Runs offline evaluation step via `self.offline_evaluate()` and handling runner
@@ -3528,49 +3739,52 @@ class Algorithm(Checkpointable, Trainable):
         Returns:
             The results dict from the evaluation call.
         """
-        if self.eval_env_runner_group is not None:
+        with TimerAndPrometheusLogger(self._metrics_run_one_evaluation_time):
+            if self.eval_env_runner_group is not None:
+                if self.config.enable_env_runner_and_connector_v2:
+                    with self.metrics.log_time(
+                        (TIMERS, RESTORE_EVAL_ENV_RUNNERS_TIMER)
+                    ):
+                        restored = self.restore_env_runners(self.eval_env_runner_group)
+                else:
+                    with self._timers["restore_eval_workers"]:
+                        restored = self.restore_env_runners(self.eval_env_runner_group)
+                # Fire the callback for re-created EnvRunners.
+                if restored:
+                    self._make_on_env_runners_recreated_callbacks(
+                        config=self.evaluation_config,
+                        env_runner_group=self.eval_env_runner_group,
+                        restored_env_runner_indices=restored,
+                    )
+
+            # Run `self.evaluate()` only once per training iteration.
             if self.config.enable_env_runner_and_connector_v2:
-                with self.metrics.log_time((TIMERS, RESTORE_EVAL_ENV_RUNNERS_TIMER)):
-                    restored = self.restore_env_runners(self.eval_env_runner_group)
+                with self.metrics.log_time((TIMERS, EVALUATION_ITERATION_TIMER)):
+                    eval_results = self.evaluate(
+                        parallel_train_future=parallel_train_future
+                    )
             else:
-                with self._timers["restore_eval_workers"]:
-                    restored = self.restore_env_runners(self.eval_env_runner_group)
-            # Fire the callback for re-created EnvRunners.
-            if restored:
-                self._make_on_env_runners_recreated_callbacks(
-                    config=self.evaluation_config,
-                    env_runner_group=self.eval_env_runner_group,
-                    restored_env_runner_indices=restored,
+                with self._timers[EVALUATION_ITERATION_TIMER]:
+                    eval_results = self.evaluate(
+                        parallel_train_future=parallel_train_future
+                    )
+                self._timers[EVALUATION_ITERATION_TIMER].push_units_processed(
+                    self._counters[NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER]
                 )
 
-        # Run `self.evaluate()` only once per training iteration.
-        if self.config.enable_env_runner_and_connector_v2:
-            with self.metrics.log_time((TIMERS, EVALUATION_ITERATION_TIMER)):
-                eval_results = self.evaluate(
-                    parallel_train_future=parallel_train_future
-                )
-        else:
-            with self._timers[EVALUATION_ITERATION_TIMER]:
-                eval_results = self.evaluate(
-                    parallel_train_future=parallel_train_future
-                )
-            self._timers[EVALUATION_ITERATION_TIMER].push_units_processed(
-                self._counters[NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER]
-            )
-
-        # After evaluation, do a round of health check on remote eval workers to see if
-        # any of the failed workers are back.
-        if self.eval_env_runner_group is not None:
-            # Add number of healthy evaluation workers after this iteration.
-            eval_results[
-                "num_healthy_workers"
-            ] = self.eval_env_runner_group.num_healthy_remote_workers()
-            eval_results[
-                "actor_manager_num_outstanding_async_reqs"
-            ] = self.eval_env_runner_group.num_in_flight_async_reqs()
-            eval_results[
-                "num_remote_worker_restarts"
-            ] = self.eval_env_runner_group.num_remote_worker_restarts()
+            # After evaluation, do a round of health check on remote eval workers to see if
+            # any of the failed workers are back.
+            if self.eval_env_runner_group is not None:
+                # Add number of healthy evaluation workers after this iteration.
+                eval_results[
+                    "num_healthy_workers"
+                ] = self.eval_env_runner_group.num_healthy_remote_workers()
+                eval_results[
+                    "actor_manager_num_outstanding_async_reqs"
+                ] = self.eval_env_runner_group.num_in_flight_async_reqs()
+                eval_results[
+                    "num_remote_worker_restarts"
+                ] = self.eval_env_runner_group.num_remote_worker_restarts()
 
         return {EVALUATION_RESULTS: eval_results}
 
@@ -3664,48 +3878,49 @@ class Algorithm(Checkpointable, Trainable):
         )
 
     def _compile_iteration_results(self, *, train_results, eval_results):
-        # Error if users still use `self._timers`.
-        if self._timers:
-            raise ValueError(
-                "`Algorithm._timers` is no longer supported on the new API stack! "
-                "Instead, use `Algorithm.metrics.log_time("
-                "[some key (str) or nested key sequence (tuple)])`, e.g. inside your "
-                "custom `training_step()` method, do: "
-                "`with self.metrics.log_time(('timers', 'my_block_to_be_timed')): ...`"
-            )
+        with TimerAndPrometheusLogger(self._metrics_compile_iteration_results_time):
+            # Error if users still use `self._timers`.
+            if self._timers:
+                raise ValueError(
+                    "`Algorithm._timers` is no longer supported on the new API stack! "
+                    "Instead, use `Algorithm.metrics.log_time("
+                    "[some key (str) or nested key sequence (tuple)])`, e.g. inside your "
+                    "custom `training_step()` method, do: "
+                    "`with self.metrics.log_time(('timers', 'my_block_to_be_timed')): ...`"
+                )
 
-        # Return dict (shallow copy of `train_results`).
-        results: ResultDict = train_results.copy()
-        # Backward compatibility `NUM_ENV_STEPS_SAMPLED_LIFETIME` is now:
-        # `ENV_RUNNER_RESULTS/NUM_ENV_STEPS_SAMPLED_LIFETIME`.
-        results[NUM_ENV_STEPS_SAMPLED_LIFETIME] = results.get(
-            ENV_RUNNER_RESULTS, {}
-        ).get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
+            # Return dict (shallow copy of `train_results`).
+            results: ResultDict = train_results.copy()
+            # Backward compatibility `NUM_ENV_STEPS_SAMPLED_LIFETIME` is now:
+            # `ENV_RUNNER_RESULTS/NUM_ENV_STEPS_SAMPLED_LIFETIME`.
+            results[NUM_ENV_STEPS_SAMPLED_LIFETIME] = results.get(
+                ENV_RUNNER_RESULTS, {}
+            ).get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
 
-        # Evaluation results.
-        if eval_results:
-            assert (
-                isinstance(eval_results, dict)
-                and len(eval_results) == 1
-                and EVALUATION_RESULTS in eval_results
-            )
-            results.update(eval_results)
+            # Evaluation results.
+            if eval_results:
+                assert (
+                    isinstance(eval_results, dict)
+                    and len(eval_results) == 1
+                    and EVALUATION_RESULTS in eval_results
+                )
+                results.update(eval_results)
 
-        # EnvRunner actors fault tolerance stats.
-        if self.env_runner_group:
-            results[FAULT_TOLERANCE_STATS] = {
-                "num_healthy_workers": (
-                    self.env_runner_group.num_healthy_remote_workers()
-                ),
-                "num_remote_worker_restarts": (
-                    self.env_runner_group.num_remote_worker_restarts()
-                ),
-            }
-            results["env_runner_group"] = {
-                "actor_manager_num_outstanding_async_reqs": (
-                    self.env_runner_group.num_in_flight_async_reqs()
-                ),
-            }
+            # EnvRunner actors fault tolerance stats.
+            if self.env_runner_group:
+                results[FAULT_TOLERANCE_STATS] = {
+                    "num_healthy_workers": (
+                        self.env_runner_group.num_healthy_remote_workers()
+                    ),
+                    "num_remote_worker_restarts": (
+                        self.env_runner_group.num_remote_worker_restarts()
+                    ),
+                }
+                results["env_runner_group"] = {
+                    "actor_manager_num_outstanding_async_reqs": (
+                        self.env_runner_group.num_in_flight_async_reqs()
+                    ),
+                }
 
         return results
 

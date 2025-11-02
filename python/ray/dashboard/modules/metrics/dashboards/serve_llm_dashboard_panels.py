@@ -525,6 +525,9 @@ SERVE_LLM_GRAFANA_PANELS = [
 ids = []
 for panel in SERVE_LLM_GRAFANA_PANELS:
     ids.append(panel.id)
+
+ids.sort()
+
 assert len(ids) == len(
     set(ids)
 ), f"Duplicated id found. Use unique id for each panel. {ids}"

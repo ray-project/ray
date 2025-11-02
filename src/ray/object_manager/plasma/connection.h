@@ -41,7 +41,7 @@ using PlasmaStoreConnectionErrorHandler =
 
 class ClientInterface {
  public:
-  virtual ~ClientInterface() {}
+  virtual ~ClientInterface() = default;
 
   virtual ray::Status SendFd(MEMFD_TYPE fd) = 0;
   virtual const std::unordered_set<ray::ObjectID> &GetObjectIDs() = 0;

@@ -2,6 +2,7 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.data._internal.util import rows_same
 from ray.data.preprocessors import CustomKBinsDiscretizer, UniformKBinsDiscretizer
 
 
@@ -55,28 +56,27 @@ def test_uniform_kbins_discretizer(
             labels_B = dtypes.get("B").categories
             ordered_B = dtypes.get("B").ordered
 
-    assert out_df["A"].equals(
-        pd.cut(
-            in_df["A"],
-            bins_A,
-            labels=labels_A,
-            ordered=ordered_A,
-            right=right,
-            include_lowest=include_lowest,
-        )
+    # Create expected dataframe with transformed columns
+    expected_df = in_df.copy()
+    expected_df["A"] = pd.cut(
+        in_df["A"],
+        bins_A,
+        labels=labels_A,
+        ordered=ordered_A,
+        right=right,
+        include_lowest=include_lowest,
     )
-    assert out_df["B"].equals(
-        pd.cut(
-            in_df["B"],
-            bins_B,
-            labels=labels_B,
-            ordered=ordered_B,
-            right=right,
-            include_lowest=include_lowest,
-        )
+    expected_df["B"] = pd.cut(
+        in_df["B"],
+        bins_B,
+        labels=labels_B,
+        ordered=ordered_B,
+        right=right,
+        include_lowest=include_lowest,
     )
-    # Check that the remaining column was not modified
-    assert out_df["C"].equals(in_df["C"])
+
+    # Use rows_same to compare regardless of row ordering
+    assert rows_same(out_df, expected_df)
 
     # append mode
     expected_message = "The length of columns and output_columns must match."
@@ -95,28 +95,27 @@ def test_uniform_kbins_discretizer(
     transformed = discretizer.fit_transform(ds)
     out_df = transformed.to_pandas()
 
-    assert out_df["A_discretized"].equals(
-        pd.cut(
-            in_df["A"],
-            bins_A,
-            labels=labels_A,
-            ordered=ordered_A,
-            right=right,
-            include_lowest=include_lowest,
-        )
+    # Create expected dataframe with appended columns
+    expected_df = in_df.copy()
+    expected_df["A_discretized"] = pd.cut(
+        in_df["A"],
+        bins_A,
+        labels=labels_A,
+        ordered=ordered_A,
+        right=right,
+        include_lowest=include_lowest,
     )
-    assert out_df["B_discretized"].equals(
-        pd.cut(
-            in_df["B"],
-            bins_B,
-            labels=labels_B,
-            ordered=ordered_B,
-            right=right,
-            include_lowest=include_lowest,
-        )
+    expected_df["B_discretized"] = pd.cut(
+        in_df["B"],
+        bins_B,
+        labels=labels_B,
+        ordered=ordered_B,
+        right=right,
+        include_lowest=include_lowest,
     )
-    # Check that the remaining column was not modified
-    assert out_df["C"].equals(in_df["C"])
+
+    # Use rows_same to compare regardless of row ordering
+    assert rows_same(out_df, expected_df)
 
 
 @pytest.mark.parametrize(
@@ -171,28 +170,27 @@ def test_custom_kbins_discretizer(
             labels_B = dtypes.get("B").categories
             ordered_B = dtypes.get("B").ordered
 
-    assert out_df["A"].equals(
-        pd.cut(
-            in_df["A"],
-            bins_A,
-            labels=labels_A,
-            ordered=ordered_A,
-            right=right,
-            include_lowest=include_lowest,
-        )
+    # Create expected dataframe with transformed columns
+    expected_df = in_df.copy()
+    expected_df["A"] = pd.cut(
+        in_df["A"],
+        bins_A,
+        labels=labels_A,
+        ordered=ordered_A,
+        right=right,
+        include_lowest=include_lowest,
     )
-    assert out_df["B"].equals(
-        pd.cut(
-            in_df["B"],
-            bins_B,
-            labels=labels_B,
-            ordered=ordered_B,
-            right=right,
-            include_lowest=include_lowest,
-        )
+    expected_df["B"] = pd.cut(
+        in_df["B"],
+        bins_B,
+        labels=labels_B,
+        ordered=ordered_B,
+        right=right,
+        include_lowest=include_lowest,
     )
-    # Check that the remaining column was not modified
-    assert out_df["C"].equals(in_df["C"])
+
+    # Use rows_same to compare regardless of row ordering
+    assert rows_same(out_df, expected_df)
 
     # append mode
     expected_message = "The length of columns and output_columns must match."
@@ -211,28 +209,27 @@ def test_custom_kbins_discretizer(
     transformed = discretizer.fit_transform(ds)
     out_df = transformed.to_pandas()
 
-    assert out_df["A_discretized"].equals(
-        pd.cut(
-            in_df["A"],
-            bins_A,
-            labels=labels_A,
-            ordered=ordered_A,
-            right=right,
-            include_lowest=include_lowest,
-        )
+    # Create expected dataframe with appended columns
+    expected_df = in_df.copy()
+    expected_df["A_discretized"] = pd.cut(
+        in_df["A"],
+        bins_A,
+        labels=labels_A,
+        ordered=ordered_A,
+        right=right,
+        include_lowest=include_lowest,
     )
-    assert out_df["B_discretized"].equals(
-        pd.cut(
-            in_df["B"],
-            bins_B,
-            labels=labels_B,
-            ordered=ordered_B,
-            right=right,
-            include_lowest=include_lowest,
-        )
+    expected_df["B_discretized"] = pd.cut(
+        in_df["B"],
+        bins_B,
+        labels=labels_B,
+        ordered=ordered_B,
+        right=right,
+        include_lowest=include_lowest,
     )
-    # Check that the remaining column was not modified
-    assert out_df["C"].equals(in_df["C"])
+
+    # Use rows_same to compare regardless of row ordering
+    assert rows_same(out_df, expected_df)
 
 
 if __name__ == "__main__":

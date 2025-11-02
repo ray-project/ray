@@ -574,7 +574,7 @@ TEST_F(SysFsCgroupDriverIntegrationTest, AddResourceConstraintFailsIfCgroupDoesn
   std::string non_existent_path =
       test_cgroup_path_ + std::filesystem::path::preferred_separator + "nope";
   SysFsCgroupDriver driver;
-  Status s = driver.AddConstraint(non_existent_path, "memory", "memory.min", "1");
+  Status s = driver.AddConstraint(non_existent_path, "memory.min", "1");
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
@@ -584,7 +584,7 @@ TEST_F(SysFsCgroupDriverIntegrationTest,
   ASSERT_TRUE(cgroup_or_status.ok()) << cgroup_or_status.ToString();
   auto cgroup = std::move(cgroup_or_status.value());
   SysFsCgroupDriver driver;
-  Status s = driver.AddConstraint(cgroup->GetPath(), "memory", "memory.min", "1");
+  Status s = driver.AddConstraint(cgroup->GetPath(), "memory.min", "1");
   ASSERT_TRUE(s.IsPermissionDenied()) << s.ToString();
 }
 
@@ -595,19 +595,8 @@ TEST_F(SysFsCgroupDriverIntegrationTest,
   ASSERT_TRUE(cgroup_or_status.ok()) << cgroup_or_status.ToString();
   auto cgroup = std::move(cgroup_or_status.value());
   SysFsCgroupDriver driver;
-  Status s = driver.AddConstraint(cgroup->GetPath(), "memory", "memory.min", "1");
+  Status s = driver.AddConstraint(cgroup->GetPath(), "memory.min", "1");
   ASSERT_TRUE(s.IsPermissionDenied()) << s.ToString();
-}
-
-TEST_F(SysFsCgroupDriverIntegrationTest,
-       AddResourceConstraintFailsIfControllerNotEnabled) {
-  auto cgroup_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
-  ASSERT_TRUE(cgroup_or_status.ok()) << cgroup_or_status.ToString();
-  auto cgroup = std::move(cgroup_or_status.value());
-  SysFsCgroupDriver driver;
-  // Memory controller is not enabled.
-  Status s = driver.AddConstraint(cgroup->GetPath(), "memory", "memory.min", "1");
-  ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
 }
 
 TEST_F(SysFsCgroupDriverIntegrationTest, AddResourceConstraintSucceeds) {
@@ -619,7 +608,7 @@ TEST_F(SysFsCgroupDriverIntegrationTest, AddResourceConstraintSucceeds) {
   Status enable_controller_s = driver.EnableController(cgroup->GetPath(), "cpu");
   ASSERT_TRUE(enable_controller_s.ok()) << enable_controller_s.ToString();
   // cpu.weight must be between [1,10000]
-  Status s = driver.AddConstraint(cgroup->GetPath(), "cpu", "cpu.weight", "500");
+  Status s = driver.AddConstraint(cgroup->GetPath(), "cpu.weight", "500");
   ASSERT_TRUE(s.ok()) << s.ToString();
 }
 
@@ -669,6 +658,46 @@ TEST_F(SysFsCgroupDriverIntegrationTest,
   Status s =
       driver.AddProcessToCgroup(child_cgroup->GetPath(), std::to_string(child_pid));
   ASSERT_TRUE(s.ok()) << s.ToString();
+  // Assert that the child's pid is actually in the new file.
+  std::string child_cgroup_procs_file_path = child_cgroup->GetPath() +
+                                             std::filesystem::path::preferred_separator +
+                                             "cgroup.procs";
+  std::ifstream child_cgroup_procs_file(child_cgroup_procs_file_path);
+  ASSERT_TRUE(child_cgroup_procs_file.is_open())
+      << "Could not open file " << child_cgroup_procs_file_path << ".";
+  std::unordered_set<int> child_cgroup_pids;
+  int pid = -1;
+  while (child_cgroup_procs_file >> pid) {
+    ASSERT_FALSE(child_cgroup_procs_file.fail())
+        << "Unable to read pid from file " << child_cgroup_procs_file_path;
+    child_cgroup_pids.emplace(pid);
+  }
+  EXPECT_EQ(child_cgroup_pids.size(), 1);
+  EXPECT_TRUE(child_cgroup_pids.find(child_pid) != child_cgroup_pids.end());
+  Status terminate_s =
+      TerminateChildProcessAndWaitForTimeout(child_pid, child_pidfd, 5000);
+  ASSERT_TRUE(terminate_s.ok()) << terminate_s.ToString();
+}
+
+TEST_F(SysFsCgroupDriverIntegrationTest,
+       AddProcessToCgroupSucceedsIfProcessAlreadyInCgroup) {
+  auto cgroup_or_status = TempCgroupDirectory::Create(test_cgroup_path_, S_IRWXU);
+  ASSERT_TRUE(cgroup_or_status.ok()) << cgroup_or_status.ToString();
+  auto cgroup = std::move(cgroup_or_status.value());
+  auto child_cgroup_or_status = TempCgroupDirectory::Create(cgroup->GetPath(), S_IRWXU);
+  ASSERT_TRUE(child_cgroup_or_status.ok()) << child_cgroup_or_status.ToString();
+  auto child_cgroup = std::move(child_cgroup_or_status.value());
+  StatusOr<std::pair<pid_t, int>> child_process_s =
+      StartChildProcessInCgroup(cgroup->GetPath());
+  ASSERT_TRUE(child_process_s.ok()) << child_process_s.ToString();
+  auto [child_pid, child_pidfd] = child_process_s.value();
+  SysFsCgroupDriver driver;
+  Status s =
+      driver.AddProcessToCgroup(child_cgroup->GetPath(), std::to_string(child_pid));
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  Status s2 =
+      driver.AddProcessToCgroup(child_cgroup->GetPath(), std::to_string(child_pid));
+  ASSERT_TRUE(s2.ok()) << s2.ToString();
   // Assert that the child's pid is actually in the new file.
   std::string child_cgroup_procs_file_path = child_cgroup->GetPath() +
                                              std::filesystem::path::preferred_separator +

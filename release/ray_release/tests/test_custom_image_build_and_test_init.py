@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import patch
 
 from click.testing import CliRunner
+
 from ray_release.scripts.custom_image_build_and_test_init import main
 
 _bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
