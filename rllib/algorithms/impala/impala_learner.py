@@ -45,7 +45,7 @@ QUEUE_SIZE_LEARNER_THREAD_QUEUE = "queue_size_learner_thread_queue"
 QUEUE_SIZE_RESULTS_QUEUE = "queue_size_results_queue"
 
 # Aggregation cycle size.
-BATCHES_PER_AGGREGATION = 20
+BATCHES_PER_AGGREGATION = 10
 
 # Stop sentinel for the `_LearnerThread`
 _STOP_SENTINEL = object()
@@ -96,6 +96,11 @@ class IMPALALearner(Learner):
         self._metrics_learner_impala_get_learner_state_time.set_default_tags(
             {"rllib": self.__class__.__name__}
         )
+
+        # Set the aggregation threshold to the broadcast interval. We return
+        # a state at the same time the metrics are aggregated.
+        global BATCHES_PER_AGGREGATION
+        BATCHES_PER_AGGREGATION = self.config.broadcast_interval
 
     @override(Learner)
     def build(self) -> None:
@@ -584,6 +589,7 @@ class _LearnerThread(threading.Thread):
                     self._out_queue.qsize(),
                     window=1,
                 )
+
                 # Reduce metrics and pass them into the queue for the main process.
                 self._out_queue.put(self.learner.metrics.reduce())
                 # Notify all listeners that aggregation is done and results can be

@@ -214,8 +214,8 @@ class IMPALATorchLearner(IMPALALearner, TorchLearner):
             *all* parameters, making the manual synchronization robust.
         """
         # For single-learner setups, call the super's update.
-        if self.config.num_learners < 2:
-            return super()._uncompiled_update(batch, **kwargs)
+        if self.config.num_learners < 2 or not self.config.is_multi_agent:
+            return super()._uncompiled_update(batch=batch, **kwargs)
 
         # Compute the off-policyness of the batch.
         self._compute_off_policyness(batch)

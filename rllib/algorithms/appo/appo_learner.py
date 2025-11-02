@@ -1,8 +1,8 @@
 import abc
+from queue import Queue
 from typing import Any, Dict, Optional
 
 from ray.rllib.algorithms.appo.appo import APPOConfig
-from ray.rllib.algorithms.appo.utils import FastRingBuffer
 from ray.rllib.algorithms.impala.impala_learner import IMPALALearner
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.utils import update_target_network
@@ -29,8 +29,8 @@ class APPOLearner(IMPALALearner):
 
     @override(IMPALALearner)
     def build(self):
-        # TODO (simon): Make capacity user-defined parameter.
-        self._learner_thread_in_queue = FastRingBuffer(capacity=32)
+        # For APPO use a large queue.
+        self._learner_thread_in_queue = Queue(maxsize=32)
 
         # Now build the super class. Otherwise the learner-queue would overriden.
         super().build()
