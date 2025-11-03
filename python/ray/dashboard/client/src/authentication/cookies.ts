@@ -33,11 +33,7 @@ export const getCookie = (name: string): string | null => {
  * @param value - The value to store in the cookie
  * @param days - Number of days until the cookie expires (default: 30)
  */
-export const setCookie = (
-  name: string,
-  value: string,
-  days = 30,
-): void => {
+export const setCookie = (name: string, value: string, days = 30): void => {
   let expires = "";
   if (days) {
     const date = new Date();

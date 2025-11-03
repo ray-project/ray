@@ -8,6 +8,7 @@ import {
   getAuthenticationMode,
   testTokenValidity,
 } from "./authentication/authentication";
+import { AUTHENTICATION_ERROR_EVENT } from "./authentication/constants";
 import {
   getAuthenticationToken,
   setAuthenticationToken,
@@ -162,9 +163,8 @@ const App = () => {
     useState(false);
   const [hasAttemptedAuthentication, setHasAttemptedAuthentication] =
     useState(false);
-  const [authenticationError, setAuthenticationError] = useState<
-    string | undefined
-  >();
+  const [authenticationError, setAuthenticationError] =
+    useState<string | undefined>();
   useEffect(() => {
     getNodeList().then((res) => {
       if (res?.data?.data?.summary) {
@@ -272,13 +272,13 @@ const App = () => {
     };
 
     window.addEventListener(
-      "ray-authentication-error",
+      AUTHENTICATION_ERROR_EVENT,
       handleAuthenticationError,
     );
 
     return () => {
       window.removeEventListener(
-        "ray-authentication-error",
+        AUTHENTICATION_ERROR_EVENT,
         handleAuthenticationError,
       );
     };

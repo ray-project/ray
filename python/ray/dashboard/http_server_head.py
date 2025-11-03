@@ -189,34 +189,19 @@ class HttpServerDashboardHead:
         if not auth_utils.is_token_auth_enabled():
             return await handler(request)
 
-        # Public endpoints that don't require authentication
-        # These endpoints are needed to check authentication status or serve static content
-        public_endpoints = [
-            "/api/authentication_mode",
-        ]
-
-        # Public paths (using startswith for path prefixes)
-        public_path_prefixes = [
-            "/static/",  # Static assets (JS, CSS, images)
-        ]
-
-        # Public exact paths
-        public_exact_paths = [
+        # Public endpoints that don't require authentication.
+        # These are needed for the dashboard to load and request an auth token.
+        public_exact_paths = {
             "/",  # Root index.html
-            "/favicon.ico",  # Favicon
-        ]
-
-        # Skip authentication for public endpoints
-        if request.path in public_endpoints:
-            return await handler(request)
-
-        # Skip authentication for public path prefixes
-        for prefix in public_path_prefixes:
-            if request.path.startswith(prefix):
-                return await handler(request)
-
-        # Skip authentication for public exact paths
-        if request.path in public_exact_paths:
+            "/favicon.ico",
+            "/api/authentication_mode",
+        }
+        public_path_prefixes = (
+            "/static/",  # Static assets (JS, CSS, images)
+        )
+        if request.path in public_exact_paths or request.path.startswith(
+            public_path_prefixes
+        ):
             return await handler(request)
 
         # Extract and validate token

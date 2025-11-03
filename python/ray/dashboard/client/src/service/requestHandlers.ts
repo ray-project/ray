@@ -9,6 +9,7 @@
  */
 
 import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
+import { AUTHENTICATION_ERROR_EVENT } from "../authentication/constants";
 import { getAuthenticationToken } from "../authentication/cookies";
 
 /**
@@ -61,7 +62,7 @@ axiosInstance.interceptors.response.use(
 
       // Dispatch custom event for authentication error
       window.dispatchEvent(
-        new CustomEvent("ray-authentication-error", {
+        new CustomEvent(AUTHENTICATION_ERROR_EVENT, {
           detail: { hadToken },
         }),
       );
