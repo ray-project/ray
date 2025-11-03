@@ -305,7 +305,8 @@ void RayletClient::ReleaseUnusedBundles(
   for (auto &bundle : bundles_in_use) {
     request.add_bundles_in_use()->CopyFrom(bundle);
   }
-  INVOKE_RPC_CALL(
+  INVOKE_RETRYABLE_RPC_CALL(
+      retryable_grpc_client_,
       NodeManagerService,
       ReleaseUnusedBundles,
       request,
@@ -355,12 +356,13 @@ void RayletClient::ShutdownRaylet(
     const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) {
   rpc::ShutdownRayletRequest request;
   request.set_graceful(graceful);
-  INVOKE_RPC_CALL(NodeManagerService,
-                  ShutdownRaylet,
-                  request,
-                  callback,
-                  grpc_client_,
-                  /*method_timeout_ms*/ -1);
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            ShutdownRaylet,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
 }
 
 void RayletClient::DrainRaylet(
@@ -372,12 +374,13 @@ void RayletClient::DrainRaylet(
   request.set_reason(reason);
   request.set_reason_message(reason_message);
   request.set_deadline_timestamp_ms(deadline_timestamp_ms);
-  INVOKE_RPC_CALL(NodeManagerService,
-                  DrainRaylet,
-                  request,
-                  callback,
-                  grpc_client_,
-                  /*method_timeout_ms*/ -1);
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            DrainRaylet,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
 }
 
 void RayletClient::IsLocalWorkerDead(
@@ -465,6 +468,27 @@ void RayletClient::GetNodeStats(
                   callback,
                   grpc_client_,
                   /*method_timeout_ms*/ -1);
+}
+
+void RayletClient::GetWorkerPIDs(
+    const gcs::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
+  rpc::GetWorkerPIDsRequest request;
+  auto client_callback = [callback](const Status &status,
+                                    rpc::GetWorkerPIDsReply &&reply) {
+    if (status.ok()) {
+      std::vector<int32_t> workers(reply.pids().begin(), reply.pids().end());
+      callback(status, workers);
+    } else {
+      callback(status, std::nullopt);
+    }
+  };
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            GetWorkerPIDs,
+                            request,
+                            client_callback,
+                            grpc_client_,
+                            timeout_ms);
 }
 
 }  // namespace rpc

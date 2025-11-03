@@ -70,21 +70,6 @@ DEFINE_stats(
     (),
     ray::stats::GAUGE);
 
-DEFINE_stats(object_store_dist,
-             "The distribution of object size in bytes",
-             ("Source"),
-             ({32_MiB,
-               64_MiB,
-               128_MiB,
-               256_MiB,
-               512_MiB,
-               1024_MiB,
-               2048_MiB,
-               4096_MiB,
-               8192_MiB,
-               16384_MiB}),
-             ray::stats::HISTOGRAM);
-
 /// ===============================================================================
 /// ===================== INTERNAL SYSTEM METRICS =================================
 /// ===============================================================================
@@ -109,112 +94,6 @@ DEFINE_stats(operation_queue_time_ms,
              ray::stats::HISTOGRAM);
 DEFINE_stats(
     operation_active_count, "active operation number", ("Name"), (), ray::stats::GAUGE);
-
-/// GRPC server
-DEFINE_stats(grpc_server_req_process_time_ms,
-             "Request latency in grpc server",
-             ("Method"),
-             ({0.1, 1, 10, 100, 1000, 10000}, ),
-             ray::stats::HISTOGRAM);
-DEFINE_stats(grpc_server_req_new,
-             "New request number in grpc server",
-             ("Method"),
-             (),
-             ray::stats::COUNT);
-DEFINE_stats(grpc_server_req_handling,
-             "Request number are handling in grpc server",
-             ("Method"),
-             (),
-             ray::stats::COUNT);
-DEFINE_stats(grpc_server_req_finished,
-             "Finished request number in grpc server",
-             ("Method"),
-             (),
-             ray::stats::COUNT);
-DEFINE_stats(grpc_server_req_succeeded,
-             "Succeeded request count in grpc server",
-             ("Method"),
-             (),
-             ray::stats::COUNT);
-DEFINE_stats(grpc_server_req_failed,
-             "Failed request count in grpc server",
-             ("Method"),
-             (),
-             ray::stats::COUNT);
-
-/// Number of failures observed from gRPC client(s).
-/// A failure is an RPC whose response status was not `OK`.
-DEFINE_stats(grpc_client_req_failed,
-             "Number of gRPC client failures (non-OK response statuses).",
-             ("Method"),
-             (),
-             ray::stats::COUNT);
-
-/// Object Manager.
-DEFINE_stats(object_manager_bytes,
-             "Number of bytes pushed or received by type {PushedFromLocalPlasma, "
-             "PushedFromLocalDisk, Received}.",
-             ("Type"),
-             (),
-             ray::stats::GAUGE);
-
-DEFINE_stats(object_manager_received_chunks,
-             "Number object chunks received broken per type {Total, FailedTotal, "
-             "FailedCancelled, FailedPlasmaFull}.",
-             ("Type"),
-             (),
-             ray::stats::GAUGE);
-
-/// Pull Manager
-DEFINE_stats(
-    pull_manager_usage_bytes,
-    "The total number of bytes usage broken per type {Available, BeingPulled, Pinned}",
-    ("Type"),
-    (),
-    ray::stats::GAUGE);
-DEFINE_stats(pull_manager_requested_bundles,
-             "Number of requested bundles broken per type {Get, Wait, TaskArgs}.",
-             ("Type"),
-             (),
-             ray::stats::GAUGE);
-DEFINE_stats(pull_manager_requests,
-             "Number of pull requests broken per type {Queued, Active, Pinned}.",
-             ("Type"),
-             (),
-             ray::stats::GAUGE);
-DEFINE_stats(pull_manager_active_bundles,
-             "Number of active bundle requests",
-             (),
-             (),
-             ray::stats::GAUGE);
-DEFINE_stats(pull_manager_retries_total,
-             "Number of cumulative pull retries.",
-             (),
-             (),
-             ray::stats::GAUGE);
-DEFINE_stats(
-    pull_manager_num_object_pins,
-    "Number of object pin attempts by the pull manager, can be {Success, Failure}.",
-    ("Type"),
-    (),
-    ray::stats::GAUGE);
-DEFINE_stats(pull_manager_object_request_time_ms,
-             "Time between initial object pull request and local pinning of the object. ",
-             ("Type"),
-             ({1, 10, 100, 1000, 10000}),
-             ray::stats::HISTOGRAM);
-
-/// Push Manager
-DEFINE_stats(push_manager_num_pushes_remaining,
-             "Number of pushes not completed.",
-             (),
-             (),
-             ray::stats::GAUGE);
-DEFINE_stats(push_manager_chunks,
-             "Number of object chunks transfer broken per type {InFlight, Remaining}.",
-             ("Type"),
-             (),
-             ray::stats::GAUGE);
 
 /// Scheduler
 DEFINE_stats(

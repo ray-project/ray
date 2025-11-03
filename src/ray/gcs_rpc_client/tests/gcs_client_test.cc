@@ -105,6 +105,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         /*storage_operation_latency_in_ms_histogram=*/
         storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/storage_operation_count_counter_,
+        scheduler_placement_time_s_histogram_,
     };
 
     gcs_server_ = std::make_unique<gcs::GcsServer>(
@@ -192,6 +193,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         /*storage_operation_latency_in_ms_histogram=*/
         storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/storage_operation_count_counter_,
+        scheduler_placement_time_s_histogram_,
     };
 
     gcs_server_.reset(
@@ -220,7 +222,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       auto status = stub->CheckAlive(&context, request, &reply);
       // If it is in memory, we don't have the new token until we connect again.
       if (!((!no_redis_ && status.ok()) ||
-            (no_redis_ && GrpcStatusToRayStatus(status).IsAuthError()))) {
+            (no_redis_ && GrpcStatusToRayStatus(status).IsUnauthenticated()))) {
         RAY_LOG(WARNING) << "Unable to reach GCS: " << status.error_code() << " "
                          << status.error_message();
         continue;
@@ -375,8 +377,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  void RegisterSelf(const rpc::GcsNodeInfo &local_node_info) {
-    gcs_client_->Nodes().RegisterSelf(local_node_info, nullptr);
+  void RegisterSelf(rpc::GcsNodeInfo local_node_info) {
+    gcs_client_->Nodes().RegisterSelf(std::move(local_node_info), nullptr);
   }
 
   bool RegisterNode(const rpc::GcsNodeInfo &node_info) {
@@ -483,6 +485,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   observability::FakeHistogram storage_operation_latency_in_ms_histogram_;
   observability::FakeCounter storage_operation_count_counter_;
   observability::FakeCounter fake_dropped_events_counter_;
+  observability::FakeHistogram scheduler_placement_time_s_histogram_;
 };
 
 INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientTest, testing::Bool());
@@ -991,7 +994,7 @@ TEST_P(GcsClientTest, TestGcsEmptyAuth) {
   auto status = stub->GetClusterId(&context, request, &reply);
 
   // We expect the wrong cluster ID
-  EXPECT_TRUE(GrpcStatusToRayStatus(status).IsAuthError());
+  EXPECT_TRUE(GrpcStatusToRayStatus(status).IsUnauthenticated());
 }
 
 TEST_P(GcsClientTest, TestGcsAuth) {
