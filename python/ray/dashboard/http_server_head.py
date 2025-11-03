@@ -196,9 +196,7 @@ class HttpServerDashboardHead:
             "/favicon.ico",
             "/api/authentication_mode",
         }
-        public_path_prefixes = (
-            "/static/",  # Static assets (JS, CSS, images)
-        )
+        public_path_prefixes = ("/static/",)  # Static assets (JS, CSS, images)
         if request.path in public_exact_paths or request.path.startswith(
             public_path_prefixes
         ):
