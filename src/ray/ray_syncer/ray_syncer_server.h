@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <atomic>
 #include <optional>
 #include <string>
 
@@ -42,10 +43,17 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
 
   ~RayServerBidiReactor() override = default;
 
+  bool IsFinished() const { return finished_.load(); }
+
  private:
   void DoDisconnect() override;
   void OnCancel() override;
   void OnDone() override;
+
+  void Finish(grpc::Status status) {
+    finished_.store(true);
+    ServerBidiReactor::Finish(status);
+  }
 
   /// Cleanup callback when the call ends.
   const std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb_;
@@ -56,6 +64,9 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
   /// Authentication token for validation, will be empty if token authentication is
   /// disabled
   std::optional<ray::rpc::AuthenticationToken> auth_token_;
+
+  /// Track if Finish() has been called to avoid using a reactor that is terminating
+  std::atomic<bool> finished_{false};
 
   FRIEND_TEST(SyncerReactorTest, TestReactorFailure);
 };
