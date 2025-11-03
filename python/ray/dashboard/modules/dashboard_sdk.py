@@ -227,7 +227,7 @@ class SubmissionClient:
         # Headers used for all requests sent to job server, optional and only
         # needed for cases like authentication to remote cluster.
         self._headers = cluster_info.headers or {}
-        self._headers.update(**self._get_auth_headers())
+        self._headers.update(**get_auth_headers_if_auth_enabled(self._headers))
 
         # Set SSL verify parameter for the requests library and create an ssl_context
         # object when needed for the aiohttp library.
@@ -247,15 +247,6 @@ class SubmissionClient:
                 self._ssl_context = False
             else:
                 self._ssl_context = None
-
-    def _get_auth_headers(self) -> Dict[str, str]:
-        """Get authentication headers if token auth is enabled.
-
-        Returns:
-            dict: Authentication headers to merge with request headers.
-                  Empty dict if no auth needed or token unavailable.
-        """
-        return get_auth_headers_if_auth_enabled(self._headers)
 
     def _check_connection_and_version(
         self, min_version: str = "1.9", version_error_message: str = None

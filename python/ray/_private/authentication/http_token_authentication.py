@@ -1,22 +1,18 @@
 import logging
-import sys
 from typing import Dict, Optional
 
 from ray._private.authentication import authentication_constants
 from ray.dashboard import authentication_utils as auth_utils
 
-try:
-    from ray._raylet import AuthenticationTokenLoader
-
-    _RAYLET_AVAILABLE = True
-except ImportError:
-    # ray._raylet not available during doc builds or minimal installs
-    _RAYLET_AVAILABLE = False
-    AuthenticationTokenLoader = None  # type: ignore
+# All third-party dependencies that are not included in the minimal Ray
+# installation must be included in this file. This allows us to determine if
+# the agent has the necessary dependencies to be started.
+from ray.dashboard.optional_deps import aiohttp
 
 logger = logging.getLogger(__name__)
 
 
+@aiohttp.web.middleware
 async def token_auth_middleware(request, handler):
     """Middleware to validate bearer tokens when token authentication is enabled.
 
@@ -26,13 +22,7 @@ async def token_auth_middleware(request, handler):
     In minimal Ray installations (without ray._raylet), this middleware is a no-op
     and passes all requests through without authentication.
     """
-    # Skip auth entirely in minimal installs where ray._raylet is not available
-    if not _RAYLET_AVAILABLE:
-        return await handler(request)
-
-    # Import aiohttp here to avoid breaking minimal installs
-    from aiohttp import web
-
+    # No-op if  token auth is not enabled or raylet is not available
     if not auth_utils.is_token_auth_enabled():
         return await handler(request)
 
@@ -40,20 +30,24 @@ async def token_auth_middleware(request, handler):
         authentication_constants.AUTHORIZATION_HEADER_NAME, ""
     )
     if not auth_header:
-        return web.Response(
+        return aiohttp.web.Response(
             status=401, text="Unauthorized: Missing authentication token"
         )
 
     if not auth_utils.validate_request_token(auth_header):
-        return web.Response(status=403, text="Forbidden: Invalid authentication token")
+        return aiohttp.web.Response(
+            status=403, text="Forbidden: Invalid authentication token"
+        )
 
     return await handler(request)
 
 
 def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, str]:
 
-    if not _RAYLET_AVAILABLE or not auth_utils.is_token_auth_enabled():
+    if not auth_utils.is_token_auth_enabled():
         return {}
+
+    from ray._raylet import AuthenticationTokenLoader
 
     # Check if user provided their own Authorization header (case-insensitive)
     has_user_auth = any(
@@ -93,9 +87,3 @@ def format_authentication_http_error(status: int, body: str) -> Optional[str]:
         )
 
     return None
-
-
-if __name__ == "__main__":
-    import pytest
-
-    sys.exit(pytest.main(["-vv", __file__]))
