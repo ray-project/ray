@@ -552,5 +552,36 @@ def test_arrow_block_max_chunk_size(table_data, max_chunk_size_bytes, expected):
     assert _get_max_chunk_size(table, max_chunk_size_bytes) == expected
 
 
+def test_arrow_block_concat():
+    def gen_block(table):
+        if table["item"][0].as_py() == 0:
+            return pa.table(
+                {
+                    "a": [1, 2, 3],
+                    "s": [
+                        {
+                            "x": 7,
+                        },
+                        {
+                            "x": 8,
+                        },
+                        {
+                            "x": 9,
+                        },
+                    ],
+                }
+            )
+        return pa.table(
+            {
+                "b": [4, 5, 6],
+            }
+        )
+
+    dataset = ray.data.from_items([0, 1], override_num_blocks=2)
+    mapped = dataset.map_batches(gen_block, batch_size=1, batch_format="pyarrow")
+    mapped = mapped.map_batches(lambda x: x, batch_size=2, batch_format="pyarrow")
+    mapped.materialize()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
