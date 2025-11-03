@@ -377,9 +377,9 @@ class RobustScaler(Preprocessor):
             columns will be the same as the input columns. If not None, the length of
             ``output_columns`` must match the length of ``columns``, othwerwise an error
             will be raised.
-        use_approximate: Use approximate quantile calculations to potential speed up
-            for larger datasets. Must have the tdigest library installed.
-        compression: Accuracy vs memory trade-off for when using approximate quantile.
+        use_approximate: Use approximate quantile calculations to potentially speed up
+            for larger datasets. Must have the ddsketch library installed.
+        rel_accuracy: DDSketch relative accuracy parameter.
     """
 
     def __init__(
@@ -388,13 +388,13 @@ class RobustScaler(Preprocessor):
         quantile_range: Tuple[float, float] = (0.25, 0.75),
         output_columns: Optional[List[str]] = None,
         use_approximate: bool = False,
-        compression: int = 100,
+        rel_accuracy: float = 0.01,
     ):
         super().__init__()
         self.columns = columns
         self.quantile_range = quantile_range
         self.use_approximate = use_approximate
-        self.compression = compression
+        self.rel_accuracy = rel_accuracy
 
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
@@ -404,6 +404,7 @@ class RobustScaler(Preprocessor):
         low = self.quantile_range[0]
         med = 0.50
         high = self.quantile_range[1]
+        self.stats_ = {}
 
         if self.use_approximate:
             try:
@@ -411,7 +412,7 @@ class RobustScaler(Preprocessor):
                 return self
             except ImportError:
                 print(
-                    "[dataset]: Run `pip install tdigest` to enable approximate "
+                    "[dataset]: Run `pip install ddsketch` to enable approximate "
                     "quantile scaling. Falling back to exact quantile scaling."
                 )
         self._fit_absolute(dataset, low, med, high)
@@ -421,8 +422,6 @@ class RobustScaler(Preprocessor):
         num_records = dataset.count()
         max_index = num_records - 1
         split_indices = [int(percentile * max_index) for percentile in (low, med, high)]
-
-        self.stats_ = {}
 
         # TODO(matt): Handle case where quantile lands between 2 numbers.
         # The current implementation will simply choose the closest index.
@@ -446,36 +445,36 @@ class RobustScaler(Preprocessor):
             self.stats_[f"high_quantile({col})"] = high_val
 
     def _fit_approximate(self, dataset: "Dataset", low: float, med: float, high: float):
-        from tdigest import TDigest
+        from ddsketch import DDSketch
 
-        def build_digest_batch(batch: pd.DataFrame) -> pd.DataFrame:
-            digests = {}
+        def build_sketch_batch(batch: pd.DataFrame) -> pd.DataFrame:
+            sketches = {}
             for col in self.columns:
-                digest = TDigest(delta=self.compression)
+                sketch = DDSketch(relative_accuracy=self.rel_accuracy)
                 # Update without NaN values
                 for val in batch[col].dropna().values:
-                    digest.update(val)
-                digests[col] = digest
-            return pd.DataFrame([digests])
+                    sketch.add(val)
+                sketches[col] = sketch
+            return pd.DataFrame([sketches])
 
-        digest_batches = dataset.map_batches(build_digest_batch, batch_format="pandas")
+        sketch_batches = dataset.map_batches(build_sketch_batch, batch_format="pandas")
 
-        merged_digests = {}
-        for batch in digest_batches.iter_batches(batch_format="pandas"):
+        merged_sketches = {}
+        for batch in sketch_batches.iter_batches(batch_format="pandas"):
             for col in self.columns:
-                if col not in merged_digests:
-                    merged_digests[col] = TDigest(delta=self.compression)
+                if col not in merged_sketches:
+                    merged_sketches[col] = DDSketch(relative_accuracy=self.rel_accuracy)
 
-                digest_from_batch = batch[col].iloc[0]
-                if digest_from_batch is not None:
-                    merged_digests[col] += digest_from_batch
+                sketch_from_batch = batch[col].iloc[0]
+                if sketch_from_batch is not None:
+                    merged_sketches[col].merge(sketch_from_batch)
 
         for col in self.columns:
-            digest = merged_digests[col]
+            sketch: DDSketch = merged_sketches[col]
 
-            self.stats_[f"low_quantile({col})"] = digest.percentile(low * 100)
-            self.stats_[f"median({col})"] = digest.percentile(med * 100)
-            self.stats_[f"high_quantile({col})"] = digest.percentile(high * 100)
+            self.stats_[f"low_quantile({col})"] = sketch.get_quantile_value(low)
+            self.stats_[f"median({col})"] = sketch.get_quantile_value(med)
+            self.stats_[f"high_quantile({col})"] = sketch.get_quantile_value(high)
 
     def _transform_pandas(self, df: pd.DataFrame):
         def column_robust_scaler(s: pd.Series):
