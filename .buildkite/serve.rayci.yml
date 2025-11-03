@@ -161,7 +161,7 @@ steps:
         --python-version 3.10
         --test-env=RAY_DEFAULT=1
         --only-tags minimal
-    depends_on: minbuild-serve-multipy
+    depends_on: minbuild-serve
 
   - label: ":ray-serve: serve: serve minimal"
     tags:
