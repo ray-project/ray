@@ -110,7 +110,6 @@ class _JaxBackend(Backend):
                     use_tpu=backend_config.use_tpu,
                     use_gpu=backend_config.use_gpu,
                     resources_per_worker=worker_group.get_resources_per_worker(),
-                )
             )
         ray.get(setup_futures)
 
