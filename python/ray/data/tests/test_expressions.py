@@ -66,7 +66,9 @@ def test_alias_functionality(expr, alias_name, expected_alias):
     """Test alias functionality with various expression types."""
     import pandas as pd
 
-    from ray.data._expression_evaluator import eval_expr
+    from ray.data._internal.planner.plan_expression.expression_evaluator import (
+        eval_expr,
+    )
 
     # Test alias creation
     aliased_expr = expr.alias(alias_name)
@@ -416,6 +418,115 @@ class TestToPyArrow:
 
         with pytest.raises(TypeError, match="UDF expressions cannot be converted"):
             udf_expr.to_pyarrow()
+
+
+def _build_complex_expr():
+    """Build a convoluted expression that exercises all visitor code paths.
+
+    This expression includes:
+    - Binary operations: ADD, SUB, MUL, DIV, FLOORDIV, GT, LT, GE, LE, EQ, NE, AND, OR, IN, NOT_IN
+    - Unary operations: NOT, IS_NULL, IS_NOT_NULL
+    - Literals: int, float, string, bool, list
+    - Columns
+    - Aliases
+    - Star expression
+    - Download expression
+    - UDF expression
+    - Deep nesting on both left and right sides
+    """
+    from ray.data.datatype import DataType
+    from ray.data.expressions import UDFExpr, download, star
+
+    def custom_udf(x, y):
+        return x + y
+
+    # Create UDF expression
+    udf_expr = UDFExpr(
+        fn=custom_udf,
+        args=[col("value"), lit(10)],
+        kwargs={"z": col("multiplier")},
+        data_type=DataType(int),
+    )
+
+    # Build the mega-complex expression
+    inner_expr = (
+        ((col("age") + lit(10)) * col("rate") / lit(2.5) >= lit(100))
+        & (
+            col("name").is_not_null()
+            | (col("status").is_in(["active", "pending"]) & col("verified"))
+        )
+        & ((col("count") - lit(5)) // lit(2) <= col("limit"))
+        & ~(col("deleted").is_null() | (col("score") != lit(0)))
+        & (download("uri") < star())
+        & (udf_expr.alias("udf_result") > lit(50))
+    ).alias("complex_filter")
+
+    expr = ~inner_expr
+
+    return expr
+
+
+@pytest.mark.parametrize(
+    "expr_fn,expected",
+    [
+        (
+            _build_complex_expr,
+            """NOT
+    └── operand: ALIAS('complex_filter')
+        └── AND
+            ├── left: AND
+            │   ├── left: AND
+            │   │   ├── left: AND
+            │   │   │   ├── left: AND
+            │   │   │   │   ├── left: GE
+            │   │   │   │   │   ├── left: DIV
+            │   │   │   │   │   │   ├── left: MUL
+            │   │   │   │   │   │   │   ├── left: ADD
+            │   │   │   │   │   │   │   │   ├── left: COL('age')
+            │   │   │   │   │   │   │   │   └── right: LIT(10)
+            │   │   │   │   │   │   │   └── right: COL('rate')
+            │   │   │   │   │   │   └── right: LIT(2.5)
+            │   │   │   │   │   └── right: LIT(100)
+            │   │   │   │   └── right: OR
+            │   │   │   │       ├── left: IS_NOT_NULL
+            │   │   │   │       │   └── operand: COL('name')
+            │   │   │   │       └── right: AND
+            │   │   │   │           ├── left: IN
+            │   │   │   │           │   ├── left: COL('status')
+            │   │   │   │           │   └── right: LIT(['active', 'pending'])
+            │   │   │   │           └── right: COL('verified')
+            │   │   │   └── right: LE
+            │   │   │       ├── left: FLOORDIV
+            │   │   │       │   ├── left: SUB
+            │   │   │       │   │   ├── left: COL('count')
+            │   │   │       │   │   └── right: LIT(5)
+            │   │   │       │   └── right: LIT(2)
+            │   │   │       └── right: COL('limit')
+            │   │   └── right: NOT
+            │   │       └── operand: OR
+            │   │           ├── left: IS_NULL
+            │   │           │   └── operand: COL('deleted')
+            │   │           └── right: NE
+            │   │               ├── left: COL('score')
+            │   │               └── right: LIT(0)
+            │   └── right: LT
+            │       ├── left: DOWNLOAD('uri')
+            │       └── right: COL(*)
+            └── right: GT
+                ├── left: ALIAS('udf_result')
+                │   └── UDF(custom_udf)
+                │       ├── arg[0]: COL('value')
+                │       ├── arg[1]: LIT(10)
+                │       └── kwarg['z']: COL('multiplier')
+                └── right: LIT(50)""",
+        ),
+    ],
+    ids=["complex_expression"],
+)
+def test_expression_repr(expr_fn, expected):
+    """Test tree representation of expressions with a comprehensive example."""
+    expr = expr_fn()
+    assert repr(expr) == expected
 
 
 if __name__ == "__main__":

@@ -53,19 +53,6 @@ py_test_module_list(
     ],
 )
 
-py_test_module_list(
-    size = "small",
-    files = glob(["tests/anyscale/test_*.py"]),
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
 py_test(
     name = "test_formats",
     size = "medium",
@@ -916,6 +903,20 @@ py_test(
     name = "test_projection_fusion",
     size = "small",
     srcs = ["tests/test_projection_fusion.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_predicate_pushdown",
+    size = "small",
+    srcs = ["tests/test_predicate_pushdown.py"],
     tags = [
         "exclusive",
         "team:data",

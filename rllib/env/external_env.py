@@ -1,11 +1,13 @@
-import gymnasium as gym
 import queue
 import threading
 import uuid
-from typing import Callable, Tuple, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
+import gymnasium as gym
+
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.env.base_env import BaseEnv
-from ray.rllib.utils.annotations import override, OldAPIStack
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.typing import (
     EnvActionType,
     EnvInfoDict,
@@ -13,7 +15,6 @@ from ray.rllib.utils.typing import (
     EnvType,
     MultiEnvDict,
 )
-from ray._common.deprecation import deprecation_warning
 
 if TYPE_CHECKING:
     from ray.rllib.models.preprocessors import Preprocessor

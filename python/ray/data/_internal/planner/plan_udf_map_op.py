@@ -24,7 +24,6 @@ import pyarrow as pa
 import ray
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
-from ray.data._expression_evaluator import eval_expr
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -113,54 +112,25 @@ def plan_project_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
-    columns = op.cols
-    columns_rename = op.cols_rename
-    exprs = op.exprs
-
     def _project_block(block: Block) -> Block:
         try:
-            block_accessor = BlockAccessor.for_block(block)
-            if not block_accessor.num_rows():
-                return block
+            from ray.data._internal.planner.plan_expression.expression_evaluator import (
+                eval_projection,
+            )
 
-            # 1. evaluate / add expressions
-            if exprs:
-                block_accessor = BlockAccessor.for_block(block)
-                # Add/update with expression results
-                result_block = block
-                for name, expr in exprs.items():
-                    # Use expr.name if available, otherwise fall back to the dict key name
-                    actual_name = expr.name if expr.name is not None else name
-                    result = eval_expr(expr, result_block)
-                    result_block_accessor = BlockAccessor.for_block(result_block)
-                    # fill_column handles both scalars and arrays
-                    result_block = result_block_accessor.fill_column(
-                        actual_name, result
-                    )
-                block = result_block
-
-            # 2. (optional) column projection
-            if columns:
-                block = BlockAccessor.for_block(block).select(columns)
-
-            # 3. (optional) rename
-            if columns_rename:
-                block = block.rename_columns(
-                    [columns_rename.get(col, col) for col in block.schema.names]
-                )
-
-            return block
+            return eval_projection(op.exprs, block)
         except Exception as e:
             _try_wrap_udf_exception(e)
 
     compute = get_compute(op._compute)
-
     map_transformer = MapTransformer(
         [
-            BlockMapTransformFn(_generate_transform_fn_for_map_block(_project_block)),
+            BlockMapTransformFn(
+                _generate_transform_fn_for_map_block(_project_block),
+                disable_block_shaping=(len(op.exprs) == 0),
+            )
         ]
     )
-
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
@@ -199,6 +169,7 @@ def plan_streaming_repartition_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
+        min_rows_per_bundle=op.target_num_rows_per_block,
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
         supports_fusion=False,

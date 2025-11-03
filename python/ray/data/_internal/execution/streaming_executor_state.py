@@ -9,6 +9,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from uuid import UUID
 
 import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
@@ -36,6 +37,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.util import (
     unify_schemas_with_validation,
@@ -175,6 +177,47 @@ class OpSchedulingStatus:
     under_resource_limits: bool = False
 
 
+@dataclass
+class OpDisplayMetrics:
+    """Metrics of an operator. Used for display purposes."""
+
+    cpu: float = 0.0
+    gpu: float = 0.0
+    object_store_memory: float = 0.0
+    tasks: int = 0
+    actors: int = 0
+    queued: int = 0
+    task_backpressured: bool = False
+    output_backpressured: bool = False
+    extra_info: str = ""
+
+    def display_str(self) -> str:
+        """Format metrics object to a displayable string."""
+        metrics = []
+        # resource metrics
+        gpu_str = f" {self.gpu:.1f} GPU," if self.gpu else ""
+        mem_str = memory_string(self.object_store_memory)
+        metrics.append(f"{self.cpu:.1f} CPU,{gpu_str} {mem_str} object store")
+        # task
+        task_str = f"Tasks: {self.tasks}"
+        if self.task_backpressured or self.output_backpressured:
+            backpressured = []
+            if self.task_backpressured:
+                backpressured.append("tasks")
+            if self.output_backpressured:
+                backpressured.append("outputs")
+            task_str += f" [backpressured: {','.join(backpressured)}]"
+        if self.extra_info:
+            task_str += f": {self.extra_info}"
+        metrics.append(task_str)
+        # actors
+        if self.actors:
+            metrics.append(f"Actors: {self.actors}")
+        # queue
+        metrics.append(f"Queued blocks: {self.queued}")
+        return "; ".join(metrics) + ";"
+
+
 class OpState:
     """The execution state tracked for each PhysicalOperator.
 
@@ -207,6 +250,10 @@ class OpState:
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
+        # Progress Manager
+        self.op_display_metrics = OpDisplayMetrics()
+        self.progress_manager_uuid: Optional[UUID] = None
+        self.output_row_count: int = 0
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -253,26 +300,53 @@ class OpState:
                 # Close all sub progress bars.
                 self.op.close_sub_progress_bars()
 
-    def total_enqueued_input_bundles(self) -> int:
-        """Total number of input bundles currently enqueued among:
+    def total_enqueued_input_blocks(self) -> int:
+        """Total number of blocks currently enqueued among:
         1. Input queue(s) pending dispatching (``OpState.input_queues``)
         2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
         """
+        external_queue_size = sum(q.num_blocks for q in self.input_queues)
         internal_queue_size = (
-            self.op.internal_queue_size()
+            self.op.internal_input_queue_num_blocks()
             if isinstance(self.op, InternalQueueOperatorMixin)
             else 0
         )
-
-        return self._pending_dispatch_input_bundles_count() + internal_queue_size
-
-    def _pending_dispatch_input_bundles_count(self) -> int:
-        """Return the number of input bundles that are pending dispatching to the
-        operator across (external) input queues"""
-        return sum(len(q) for q in self.input_queues)
+        return external_queue_size + internal_queue_size
 
     def has_pending_bundles(self) -> bool:
-        return self._pending_dispatch_input_bundles_count() > 0
+        return any(len(q) > 0 for q in self.input_queues)
+
+    def total_enqueued_input_blocks_bytes(self) -> int:
+        """Total number of bytes occupied by input bundles currently enqueued among:
+        1. Input queue(s) pending dispatching (``OpState.input_queues``)
+        2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
+        """
+        internal_queue_size_bytes = (
+            self.op.internal_input_queue_num_bytes()
+            if isinstance(self.op, InternalQueueOperatorMixin)
+            else 0
+        )
+        return self.input_queue_bytes() + internal_queue_size_bytes
+
+    def update_display_metrics(self, resource_manager: ResourceManager):
+        """Update display metrics with current metrics."""
+        usage = resource_manager.get_op_usage(self.op)
+        self.op_display_metrics.cpu = usage.cpu
+        self.op_display_metrics.gpu = usage.gpu
+        self.op_display_metrics.object_store_memory = usage.object_store_memory
+
+        self.op_display_metrics.tasks = self.op.num_active_tasks()
+        self.op_display_metrics.queued = self.total_enqueued_input_blocks()
+        self.op_display_metrics.actors = self.op.get_actor_info().running
+
+        self.op_display_metrics.task_backpressured = (
+            self.op._in_task_submission_backpressure
+        )
+        self.op_display_metrics.output_backpressured = (
+            self.op._in_task_output_backpressure
+        )
+
+        self.op_display_metrics.extra_info = self.op.progress_str()
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
@@ -290,13 +364,13 @@ class OpState:
         self.output_queue.append(ref)
         self.num_completed_tasks += 1
 
-        if self.progress_bar:
-            assert (
-                ref.num_rows() is not None
-            ), "RefBundle must have a valid number of rows"
-            self.progress_bar.update(ref.num_rows(), self.op.num_output_rows_total())
-
         actor_info = self.op.get_actor_info()
+        if ref.num_rows() is not None:
+            self.output_row_count += ref.num_rows()
+            if self.progress_bar:
+                self.progress_bar.update(
+                    ref.num_rows(), self.op.num_output_rows_total()
+                )
 
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
@@ -313,7 +387,9 @@ class OpState:
             self.progress_bar.set_description(self.summary_str(resource_manager))
             self.progress_bar.refresh()
 
-    def summary_str(self, resource_manager: ResourceManager) -> str:
+    def summary_str(
+        self, resource_manager: ResourceManager, verbose: bool = False
+    ) -> str:
         # Active tasks
         active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: Tasks: {active}"
@@ -334,8 +410,8 @@ class OpState:
         desc += f"; {_actor_info_summary_str(self.op.get_actor_info())}"
 
         # Queued blocks
-        desc += f"; Queued blocks: {self.total_enqueued_input_bundles()}"
-        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op)}"
+        desc += f"; Queued blocks: {self.total_enqueued_input_blocks()} ({memory_string(self.total_enqueued_input_blocks_bytes())})"
+        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op, verbose=verbose)}"
 
         # Any additional operator specific information.
         suffix = self.op.progress_str()
@@ -386,7 +462,7 @@ class OpState:
                 return ref
             time.sleep(0.01)
 
-    def inqueue_memory_usage(self) -> int:
+    def input_queue_bytes(self) -> int:
         """Return the object store memory of this operator's inqueue."""
         total = 0
         for op, inq in zip(self.op.input_dependencies, self.input_queues):
@@ -395,13 +471,9 @@ class OpState:
                 total += inq.memory_usage
         return total
 
-    def outqueue_memory_usage(self) -> int:
+    def output_queue_bytes(self) -> int:
         """Return the object store memory of this operator's outqueue."""
         return self.output_queue.memory_usage
-
-    def outqueue_num_blocks(self) -> int:
-        """Return the number of blocks in this operator's outqueue."""
-        return self.output_queue.num_blocks
 
     def mark_finished(self, exception: Optional[Exception] = None):
         """Marks this operator as finished. Used for exiting get_output_blocking."""
@@ -413,7 +485,7 @@ class OpState:
 
 def build_streaming_topology(
     dag: PhysicalOperator, options: ExecutionOptions
-) -> Tuple[Topology, int]:
+) -> Topology:
     """Instantiate the streaming operator state topology for the given DAG.
 
     This involves creating the operator state for each operator in the DAG,
@@ -426,7 +498,6 @@ def build_streaming_topology(
 
     Returns:
         The topology dict holding the streaming execution state.
-        The number of progress bars initialized so far.
     """
 
     topology: Topology = {}
@@ -438,7 +509,7 @@ def build_streaming_topology(
 
         # Wire up the input outqueues to this op's inqueues.
         inqueues = []
-        for i, parent in enumerate(op.input_dependencies):
+        for parent in op.input_dependencies:
             parent_state = setup_state(parent)
             inqueues.append(parent_state.output_queue)
 
@@ -449,16 +520,7 @@ def build_streaming_topology(
         return op_state
 
     setup_state(dag)
-
-    # Create the progress bars starting from the first operator to run.
-    # Note that the topology dict is in topological sort order. Index zero is reserved
-    # for global progress information.
-    i = 1
-    for op_state in list(topology.values()):
-        if not isinstance(op_state.op, InputDataBuffer):
-            i += op_state.initialize_progress_bars(i, options.verbose_progress)
-
-    return (topology, i)
+    return topology
 
 
 def process_completed_tasks(
@@ -578,14 +640,6 @@ def update_operator_states(topology: Topology) -> None:
     Should be called after `process_completed_tasks()`."""
 
     for op, op_state in topology.items():
-        # Drain upstream output queue if current operator is execution finished.
-        # This is needed when the limit is reached, and `mark_execution_finished`
-        # is called manually.
-        if op.execution_finished():
-            for idx, dep in enumerate(op.input_dependencies):
-                upstream_state = topology[dep]
-                # Drain upstream output queue
-                upstream_state.output_queue.clear()
 
         # Call inputs_done() on ops where no more inputs are coming.
         if op_state.inputs_done_called:
@@ -607,13 +661,20 @@ def update_operator_states(topology: Topology) -> None:
     # For each op, if all of its downstream operators have completed.
     # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
-        if op.completed():
-            continue
+
         dependents_completed = len(op.output_dependencies) > 0 and all(
             dep.completed() for dep in op.output_dependencies
         )
         if dependents_completed:
             op.mark_execution_finished()
+
+        # Drain external input queue if current operator is execution finished.
+        # This is needed when the limit is reached, and `mark_execution_finished`
+        # is called manually.
+        if op.execution_finished():
+            for input_queue in op_state.input_queues:
+                # Drain input queue
+                input_queue.clear()
 
 
 def get_eligible_operators(

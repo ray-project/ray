@@ -9,6 +9,9 @@ import pyarrow as pa
 import ray
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
@@ -41,8 +44,9 @@ def plan_download_op(
     ):
         upstream_op_is_download = True
 
-    uri_column_name = op.uri_column_name
-    output_bytes_column_name = op.output_bytes_column_name
+    uri_column_names = op.uri_column_names
+    uri_column_names_str = ", ".join(uri_column_names)
+    output_bytes_column_names = op.output_bytes_column_names
     ray_remote_args = op.ray_remote_args
 
     # Import _get_udf from the main planner file
@@ -63,7 +67,7 @@ def plan_download_op(
         )  # Use single actor for partitioning
 
         fn, init_fn = _get_udf(
-            PartitionActor, (), {}, (uri_column_name, data_context), {}
+            PartitionActor, (), {}, (uri_column_names, data_context), {}
         )
         block_fn = _generate_transform_fn_for_map_batches(fn)
 
@@ -79,18 +83,27 @@ def plan_download_op(
             init_fn=init_fn,
         )
 
-        partition_map_operator = MapOperator.create(
+        partition_map_operator = ActorPoolMapOperator(
             partition_map_transformer,
             input_physical_dag,
             data_context,
-            name="URIPartitioner",
+            name=f"Partition({uri_column_names_str})",
+            # NOTE: Partition actor doesn't use the user-provided `ray_remote_args`
+            #       since those only apply to the actual download tasks. Partitioning is
+            #       a lightweight internal operation that doesn't need custom resource
+            #       requirements.
+            ray_remote_args=None,
             compute_strategy=partition_compute,  # Use actor-based compute for callable class
-            ray_remote_args=ray_remote_args,
+            # NOTE: We set `_generator_backpressure_num_objects` to -1 to unblock
+            #       backpressure since partitioning is extremely fast. Without this, the
+            #       partition actor gets bottlenecked by the Ray Data scheduler, which
+            #       can prevent Ray Data from launching enough download tasks.
+            ray_actor_task_remote_args={"_generator_backpressure_num_objects": -1},
         )
 
     fn, init_fn = _get_udf(
         download_bytes_threaded,
-        (uri_column_name, output_bytes_column_name, data_context),
+        (uri_column_names, output_bytes_column_names, data_context),
         {},
         None,
         None,
@@ -116,7 +129,7 @@ def plan_download_op(
         download_map_transformer,
         partition_map_operator if partition_map_operator else input_physical_dag,
         data_context,
-        name="URIDownloader",
+        name=f"Download({uri_column_names_str})",
         compute_strategy=download_compute,
         ray_remote_args=ray_remote_args,
     )
@@ -145,45 +158,58 @@ def _arrow_batcher(table: pa.Table, output_batch_size: int):
 
 def download_bytes_threaded(
     block: pa.Table,
-    uri_column_name: str,
-    output_bytes_column_name,
+    uri_column_names: List[str],
+    output_bytes_column_names: List[str],
     data_context: DataContext,
 ) -> Iterator[pa.Table]:
-    """Optimized version that uses make_async_gen for concurrent downloads."""
+    """Optimized version that uses make_async_gen for concurrent downloads.
+
+    Supports downloading from multiple URI columns in a single operation.
+    """
     if not isinstance(block, pa.Table):
         block = BlockAccessor.for_block(block).to_arrow()
 
-    # Extract URIs from PyArrow table
-    uris = block.column(uri_column_name).to_pylist()
+    output_block = block
 
-    if len(uris) == 0:
-        yield block
-        return
+    # Download each URI column and add it to the output block
+    for uri_column_name, output_bytes_column_name in zip(
+        uri_column_names, output_bytes_column_names
+    ):
+        # Extract URIs from PyArrow table
+        uris = output_block.column(uri_column_name).to_pylist()
 
-    paths, fs = _resolve_paths_and_filesystem(uris)
-    fs = RetryingPyFileSystem.wrap(fs, retryable_errors=data_context.retried_io_errors)
+        if len(uris) == 0:
+            continue
 
-    def load_uri_bytes(uri_path_iterator):
-        """Function that takes an iterator of URI paths and yields downloaded bytes for each."""
-        for uri_path in uri_path_iterator:
-            with fs.open_input_file(uri_path) as f:
-                yield f.read()
-
-    # Use make_async_gen to download URI bytes concurrently
-    # This preserves the order of results to match the input URIs
-    uri_bytes = list(
-        make_async_gen(
-            base_iterator=iter(paths),
-            fn=load_uri_bytes,
-            preserve_ordering=True,
-            num_workers=URI_DOWNLOAD_MAX_WORKERS,
+        paths, fs = _resolve_paths_and_filesystem(uris)
+        fs = RetryingPyFileSystem.wrap(
+            fs, retryable_errors=data_context.retried_io_errors
         )
-    )
 
-    # Add the new column to the PyArrow table
-    output_block = block.add_column(
-        len(block.column_names), output_bytes_column_name, pa.array(uri_bytes)
-    )
+        def load_uri_bytes(uri_path_iterator):
+            """Function that takes an iterator of URI paths and yields downloaded bytes for each."""
+            for uri_path in uri_path_iterator:
+                with fs.open_input_file(uri_path) as f:
+                    yield f.read()
+
+        # Use make_async_gen to download URI bytes concurrently
+        # This preserves the order of results to match the input URIs
+        uri_bytes = list(
+            make_async_gen(
+                base_iterator=iter(paths),
+                fn=load_uri_bytes,
+                preserve_ordering=True,
+                num_workers=URI_DOWNLOAD_MAX_WORKERS,
+            )
+        )
+
+        # Add the new column to the PyArrow table
+        output_block = output_block.add_column(
+            len(output_block.column_names),
+            output_bytes_column_name,
+            pa.array(uri_bytes),
+        )
+
     output_block_size = output_block.nbytes
     ctx = ray.data.context.DatasetContext.get_current()
     max_bytes = ctx.target_max_block_size
@@ -196,14 +222,74 @@ def download_bytes_threaded(
 
 
 class PartitionActor:
-    """Actor that partitions download operations based on estimated file sizes."""
+    """Actor that partitions download operations based on estimated file sizes.
+
+    For multiple URI columns, estimates the combined size across all columns.
+    """
 
     INIT_SAMPLE_BATCH_SIZE = 25
 
-    def __init__(self, uri_column_name: str, data_context: DataContext):
-        self._uri_column_name = uri_column_name
+    def __init__(self, uri_column_names: List[str], data_context: DataContext):
+        self._uri_column_names = uri_column_names
         self._data_context = data_context
         self._batch_size_estimate = None
+
+    def __call__(self, block: pa.Table) -> Iterator[pa.Table]:
+        if not isinstance(block, pa.Table):
+            block = BlockAccessor.for_block(block).to_arrow()
+
+        # Validate all URI columns exist
+        for uri_column_name in self._uri_column_names:
+            if uri_column_name not in block.column_names:
+                raise ValueError(
+                    "Ray Data tried to download URIs from a column named "
+                    f"{uri_column_name!r}, but a column with that name doesn't "
+                    "exist. Is the specified download column correct?"
+                )
+
+        if self._batch_size_estimate is None:
+            self._batch_size_estimate = self._estimate_nrows_per_partition(block)
+
+        yield from _arrow_batcher(block, self._batch_size_estimate)
+
+    def _estimate_nrows_per_partition(self, block: pa.Table) -> int:
+        sampled_file_sizes_by_column = {}
+        for uri_column_name in self._uri_column_names:
+            # Extract URIs from PyArrow table for sampling
+            uris = block.column(uri_column_name).to_pylist()
+            sample_uris = uris[: self.INIT_SAMPLE_BATCH_SIZE]
+            sampled_file_sizes = self._sample_sizes(sample_uris)
+            sampled_file_sizes_by_column[uri_column_name] = sampled_file_sizes
+
+        # If we sample HTTP URIs, or if an error occurs during sampling, then the file
+        # sizes might be `None`. In these cases, we replace the `file_size` with 0.
+        sampled_file_sizes_by_column = {
+            uri_column_name: [
+                file_size if file_size is not None else 0
+                for file_size in sampled_file_sizes
+            ]
+            for uri_column_name, sampled_file_sizes in sampled_file_sizes_by_column.items()
+        }
+
+        # This is some fancy Python code to compute the file size of each row.
+        row_sizes = [
+            sum(file_sizes_in_row)
+            for file_sizes_in_row in zip(*sampled_file_sizes_by_column.values())
+        ]
+
+        target_nbytes_per_partition = self._data_context.target_max_block_size
+        avg_nbytes_per_row = sum(row_sizes) / len(row_sizes)
+        if avg_nbytes_per_row == 0:
+            logger.warning(
+                "Estimated average row size is 0. Falling back to using the number of "
+                "rows in the block as the partition size."
+            )
+            return len(block)
+
+        nrows_per_partition = math.floor(
+            target_nbytes_per_partition / avg_nbytes_per_row
+        )
+        return nrows_per_partition
 
     def _sample_sizes(self, uris: List[str]) -> List[int]:
         """Fetch file sizes in parallel using ThreadPoolExecutor."""
@@ -242,35 +328,3 @@ class PartitionActor:
                     logger.warning(f"Error fetching file size for download: {e}")
 
         return file_sizes
-
-    def __call__(self, block: pa.Table) -> Iterator[pa.Table]:
-        if not isinstance(block, pa.Table):
-            block = BlockAccessor.for_block(block).to_arrow()
-
-        # Perform the arrow conversion before calling column_names
-        if self._uri_column_name not in block.column_names:
-            raise ValueError(
-                "Ray Data tried to download URIs from a column named "
-                f"{self._uri_column_name!r}, but a column with that name doesn't "
-                "exist. Is the specified download column correct?"
-            )
-
-        if self._batch_size_estimate is None:
-            # Extract URIs from PyArrow table for sampling
-            uris = block.column(self._uri_column_name).to_pylist()
-            sample_uris = uris[: self.INIT_SAMPLE_BATCH_SIZE]
-            file_sizes = self._sample_sizes(sample_uris)
-            if not file_sizes or sum(file_sizes) == 0:
-                # Fallback to incoming block size if no file sizes could be determined
-                # or if the total size sampled is 0
-                logger.warning(
-                    "No file sizes could be determined, using incoming block size"
-                )
-                self._batch_size_estimate = block.num_rows
-            else:
-                file_size_estimate = sum(file_sizes) / len(file_sizes)
-                ctx = ray.data.context.DatasetContext.get_current()
-                max_bytes = ctx.target_max_block_size
-                self._batch_size_estimate = math.floor(max_bytes / file_size_estimate)
-
-        yield from _arrow_batcher(block, self._batch_size_estimate)

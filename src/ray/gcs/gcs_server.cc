@@ -191,7 +191,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
           rpc::ChannelType::RAY_LOG_CHANNEL,
           rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
-      },
+          rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL},
       /*periodical_runner=*/*pubsub_periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
@@ -295,8 +295,15 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init metrics and event exporter.
   metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
-    stats::InitOpenTelemetryExporter(config_.metrics_agent_port, server_status);
-    ray_event_recorder_->StartExportingEvents();
+    if (server_status.ok()) {
+      stats::InitOpenTelemetryExporter(config_.metrics_agent_port);
+      ray_event_recorder_->StartExportingEvents();
+    } else {
+      RAY_LOG(ERROR)
+          << "Failed to establish connection to the event+metrics exporter agent. "
+             "Events and metrics will not be exported. "
+          << "Exporter agent status: " << server_status.ToString();
+    }
   });
 
   // Start RPC server when all tables have finished loading initial
@@ -451,8 +458,7 @@ void GcsServer::InitClusterLeaseManager() {
       *cluster_resource_scheduler_,
       /*get_node_info=*/
       [this](const NodeID &node_id) {
-        auto node = gcs_node_manager_->GetAliveNode(node_id);
-        return node.has_value() ? node.value().get() : nullptr;
+        return gcs_node_manager_->GetAliveNodeAddress(node_id);
       },
       /*announce_infeasible_task=*/nullptr,
       /*local_lease_manager=*/local_lease_manager_);
@@ -517,6 +523,7 @@ void GcsServer::InitGcsActorManager(
       schedule_success_handler,
       raylet_client_pool_,
       worker_client_pool_,
+      metrics_.scheduler_placement_time_s_histogram,
       /*normal_task_resources_changed_callback=*/
       [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
         gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);

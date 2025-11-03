@@ -6,11 +6,9 @@ import subprocess
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from google.cloud import storage
 import requests
 
 from ray_release.logger import logger
-from ray_release.cloud_util import archive_directory
 from ray_release.configs.global_config import get_global_config
 
 if TYPE_CHECKING:
@@ -34,6 +32,7 @@ AZURE_STORAGE_CONTAINER = "working-dirs"
 AZURE_STORAGE_ACCOUNT = "rayreleasetests"
 GS_BUCKET = "anyscale-oss-dev-bucket"
 AZURE_REGISTRY_NAME = "rayreleasetest"
+ANYSCALE_RAY_IMAGE_PREFIX = "anyscale/ray"
 ERROR_LOG_PATTERNS = [
     "ERROR",
     "Traceback (most recent call last)",
@@ -189,37 +188,3 @@ def get_pip_packages() -> List[str]:
 def python_version_str(python_version: Tuple[int, int]) -> str:
     """From (X, Y) to XY"""
     return "".join([str(x) for x in python_version])
-
-
-def join_cloud_storage_paths(*paths: str):
-    paths = list(paths)
-    if len(paths) > 1:
-        for i in range(1, len(paths)):
-            while paths[i][0] == "/":
-                paths[i] = paths[i][1:]
-    joined_path = os.path.join(*paths)
-    while joined_path[-1] == "/":
-        joined_path = joined_path[:-1]
-    return joined_path
-
-
-def upload_working_dir_to_gcs(working_dir: str) -> str:
-    """Upload working directory to GCS bucket.
-
-    Args:
-        working_dir: Path to directory to upload.
-    Returns:
-        GCS path where directory was uploaded.
-    """
-    # Create archive of working dir
-    logger.info(f"Archiving working directory: {working_dir}")
-    archived_file_path = archive_directory(working_dir)
-    archived_filename = os.path.basename(archived_file_path)
-
-    # Upload to GCS
-    gcs_client = storage.Client()
-    bucket = gcs_client.bucket("ray-release-working-dir")
-    blob = bucket.blob(archived_filename)
-    blob.upload_from_filename(archived_filename)
-
-    return f"gs://ray-release-working-dir/{blob.name}"

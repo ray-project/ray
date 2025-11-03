@@ -183,6 +183,7 @@ class TaskManagerTest : public ::testing::Test {
             },
             mock_gcs_client_,
             fake_task_by_state_counter_,
+            fake_total_lineage_bytes_gauge_,
             /*free_actor_object_callback=*/[](const ObjectID &object_id) {}) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
@@ -230,6 +231,7 @@ class TaskManagerTest : public ::testing::Test {
   uint32_t last_delay_ms_ = 0;
   std::unordered_set<ObjectID> stored_in_plasma;
   ray::observability::FakeGauge fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
 };
 
 class TaskManagerLineageTest : public TaskManagerTest {
@@ -1404,6 +1406,7 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       },
       mock_gcs_client_,
       fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   rpc::Address caller_address;
@@ -1467,6 +1470,7 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       },
       mock_gcs_client_,
       fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   rpc::Address caller_address;
@@ -1528,6 +1532,7 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       },
       mock_gcs_client_,
       fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
@@ -2874,11 +2879,12 @@ TEST_F(TaskManagerTest, TestTaskRetriedOnNodePreemption) {
   manager_.MarkTaskWaitingForExecution(spec.TaskId(), node_id, worker_id);
 
   // Mock the GCS client to return the preempted node info
-  rpc::GcsNodeInfo node_info;
+  rpc::GcsNodeAddressAndLiveness node_info;
   node_info.set_node_id(node_id.Binary());
   node_info.mutable_death_info()->set_reason(
       rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, Get(node_id, false))
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              GetNodeAddressAndLiveness(node_id, false))
       .WillOnce(::testing::Return(&node_info));
 
   // Task should be retried because the node was preempted, even with 0 retries left
@@ -3015,6 +3021,7 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
       mock_gcs_client_,
       fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   // Create a task with retries enabled
@@ -3095,6 +3102,7 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
       mock_gcs_client_,
       fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   // Create a task that will be retried

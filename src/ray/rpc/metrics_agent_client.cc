@@ -41,30 +41,31 @@ void MetricsAgentClientImpl::WaitForServerReadyWithRetry(
     // Only log the first time we start the retry loop.
     RAY_LOG(INFO) << "Initializing exporter ...";
   }
-  HealthCheck(rpc::HealthCheckRequest(),
-              [this, init_exporter_fn](auto &status, auto &&reply) {
-                if (status.ok() && !exporter_initialized_) {
-                  init_exporter_fn(status);
-                  exporter_initialized_ = true;
-                  RAY_LOG(INFO) << "Exporter initialized.";
-                }
-              });
-  if (retry_count >= max_retry) {
-    init_exporter_fn(Status::RpcError("The metrics agent server is not ready.", 14));
-    return;
-  }
-  retry_count++;
-  retry_timer_->expires_after(std::chrono::milliseconds(retry_interval_ms));
-  retry_timer_->async_wait(
-      [this, init_exporter_fn, retry_count, max_retry, retry_interval_ms](
-          const boost::system::error_code &error) {
-        if (!error) {
-          WaitForServerReadyWithRetry(
-              init_exporter_fn, retry_count, max_retry, retry_interval_ms);
-        } else {
-          RAY_LOG(ERROR) << "Failed to initialize exporter. Data will not be exported to "
-                            "the metrics agent.";
+  HealthCheck(
+      rpc::HealthCheckRequest(),
+      [this, init_exporter_fn, retry_count, max_retry, retry_interval_ms](auto &status,
+                                                                          auto &&reply) {
+        if (status.ok()) {
+          if (exporter_initialized_) {
+            return;
+          }
+          init_exporter_fn(status);
+          exporter_initialized_ = true;
+          RAY_LOG(INFO) << "Exporter initialized.";
+          return;
         }
+        if (retry_count >= max_retry) {
+          init_exporter_fn(Status::RpcError(
+              "Running out of retries to initialize the metrics agent.", 14));
+          return;
+        }
+        io_service_.post(
+            [this, init_exporter_fn, retry_count, max_retry, retry_interval_ms]() {
+              WaitForServerReadyWithRetry(
+                  init_exporter_fn, retry_count + 1, max_retry, retry_interval_ms);
+            },
+            "MetricsAgentClient.WaitForServerReadyWithRetry",
+            retry_interval_ms * 1000);
       });
 }
 

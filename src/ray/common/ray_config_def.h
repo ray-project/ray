@@ -35,6 +35,12 @@ RAY_CONFIG(bool, emit_main_service_metrics, true)
 /// Whether to enable cluster authentication.
 RAY_CONFIG(bool, enable_cluster_auth, true)
 
+/// Whether to enable token-based authentication for RPC calls.
+/// will be converted to AuthenticationMode enum defined in
+/// rpc/authentication/authentication_mode.h
+/// use GetAuthenticationMode() to get the authentication mode enum value.
+RAY_CONFIG(std::string, auth_mode, "disabled")
+
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available
 /// in the associated process's log file.
@@ -695,8 +701,12 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 /// report the loads to raylet.
 RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000)
 
-/// Timeout for core worker grpc server reconnection in seconds.
-RAY_CONFIG(uint32_t, core_worker_rpc_server_reconnect_timeout_s, 60)
+/// Starting timeout for core worker grpc server reconnection (will
+/// exponentially increase until the maximum timeout).
+RAY_CONFIG(uint32_t, core_worker_rpc_server_reconnect_timeout_base_s, 1)
+
+/// Maximum timeout for core worker grpc server reconnection.
+RAY_CONFIG(uint32_t, core_worker_rpc_server_reconnect_timeout_max_s, 60)
 
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
@@ -845,6 +855,17 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 /// failures.
 ///     export RAY_testing_rpc_failure="*=-1:25:50"
 /// NOTE: Setting the wildcard will override any configuration for other methods.
+///
+/// You can also provide an optional fourth and/or fifth parameter to specify that there
+/// should be at least a certain amount of failures on the request and response. The
+/// fourth parameter is for the request and the fifth parameter is for the response. By
+/// default these are set to 0, but by setting them to positive values it guarantees
+/// that the first X request RPCs will fail, followed by Y response RPCs that will fail.
+/// Afterwards, it will revert to the probabilistic failures. You can combine this with
+/// the wildcard so that each RPC method will have the same lower bounds applied.
+/// Ex. unlimited failures for all rpc's with 25% request failures and 50% response
+/// failures with at least 2 request failures and 3 response failures.
+///     export RAY_testing_rpc_failure="*=-1:25:50:2:3"
 RAY_CONFIG(std::string, testing_rpc_failure, "")
 /// If this is set, when injecting RPC failures, we'll check if the server and client have
 /// the same address. If they do, we won't inject the failure.
@@ -961,8 +982,12 @@ RAY_CONFIG(int64_t, raylet_check_for_unexpected_worker_disconnect_interval_ms, 1
 // be cancelled.
 RAY_CONFIG(int64_t, actor_scheduling_queue_max_reorder_wait_seconds, 30)
 
-/// Timeout for raylet grpc server reconnection in seconds.
-RAY_CONFIG(uint32_t, raylet_rpc_server_reconnect_timeout_s, 60)
+/// Starting timeout for raylet grpc server reconnection (will exponentially
+/// increase until the maximum timeout).
+RAY_CONFIG(uint32_t, raylet_rpc_server_reconnect_timeout_base_s, 1)
+
+/// Maximum timeout for raylet grpc server reconnection.
+RAY_CONFIG(uint32_t, raylet_rpc_server_reconnect_timeout_max_s, 60)
 
 // The number of grpc threads spun up on the worker process. This config is consumed
 // by the raylet and then broadcast to the worker process at time of the worker
