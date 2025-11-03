@@ -40,6 +40,8 @@ def get_token_auth_middleware():
 
         return await handler(request)
 
+    return token_auth_middleware
+
 
 def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, str]:
 
