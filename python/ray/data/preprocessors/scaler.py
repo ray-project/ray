@@ -379,7 +379,7 @@ class RobustScaler(Preprocessor):
             will be raised.
         use_approximate: Use approximate quantile calculations to potentially speed up
             for larger datasets. Must have the ddsketch library installed.
-        rel_accuracy: DDSketch relative accuracy parameter.
+        relative_accuracy: DDSketch relative accuracy parameter.
     """
 
     def __init__(
@@ -388,13 +388,13 @@ class RobustScaler(Preprocessor):
         quantile_range: Tuple[float, float] = (0.25, 0.75),
         output_columns: Optional[List[str]] = None,
         use_approximate: bool = False,
-        rel_accuracy: float = 0.01,
+        relative_accuracy: float = 0.01,
     ):
         super().__init__()
         self.columns = columns
         self.quantile_range = quantile_range
         self.use_approximate = use_approximate
-        self.rel_accuracy = rel_accuracy
+        self.relative_accuracy = relative_accuracy
 
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
@@ -450,7 +450,7 @@ class RobustScaler(Preprocessor):
         def build_sketch_batch(batch: pd.DataFrame) -> pd.DataFrame:
             sketches = {}
             for col in self.columns:
-                sketch = DDSketch(relative_accuracy=self.rel_accuracy)
+                sketch = DDSketch(relative_accuracy=self.relative_accuracy)
                 # Update without NaN values
                 for val in batch[col].dropna().values:
                     sketch.add(val)
@@ -463,7 +463,9 @@ class RobustScaler(Preprocessor):
         for batch in sketch_batches.iter_batches(batch_format="pandas"):
             for col in self.columns:
                 if col not in merged_sketches:
-                    merged_sketches[col] = DDSketch(relative_accuracy=self.rel_accuracy)
+                    merged_sketches[col] = DDSketch(
+                        relative_accuracy=self.relative_accuracy
+                    )
 
                 sketch_from_batch = batch[col].iloc[0]
                 if sketch_from_batch is not None:
