@@ -623,6 +623,7 @@ py_test(
     srcs = ["ray_release/tests/test_byod_build.py"],
     data = [
         "ray_release/configs/oss_config.yaml",
+        "ray_release/tests/test_post_build_script.sh",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
