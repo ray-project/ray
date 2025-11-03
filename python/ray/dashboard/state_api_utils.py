@@ -23,13 +23,9 @@ from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.util import convert_string_to_type
 
 
-def do_reply(status_code: int, error_message: str, result: ListApiResponse, **kwargs):
-
-    # Validate status_code and fallback to 500 if invalid
-    valid_codes = {code.value for code in HTTPStatusCode}
-    if status_code not in valid_codes:
-        status_code = HTTPStatusCode.INTERNAL_ERROR
-
+def do_reply(
+    status_code: HTTPStatusCode, error_message: str, result: ListApiResponse, **kwargs
+):
     return rest_response(
         status_code=status_code,
         message=error_message,
@@ -46,19 +42,19 @@ async def handle_list_api(
     try:
         result = await list_api_fn(option=options_from_req(req))
         return do_reply(
-            status_code=200,
+            status_code=HTTPStatusCode.OK,
             error_message="",
             result=asdict(result),
         )
     except ValueError as e:
         return do_reply(
-            status_code=400,
+            status_code=HTTPStatusCode.BAD_REQUEST,
             error_message=str(e),
             result=None,
         )
     except DataSourceUnavailable as e:
         return do_reply(
-            status_code=500,
+            status_code=HTTPStatusCode.INTERNAL_ERROR,
             error_message=str(e),
             result=None,
         )
@@ -118,7 +114,7 @@ async def handle_summary_api(
 ):
     result = await summary_fn(option=summary_options_from_req(req))
     return do_reply(
-        status_code=200,
+        status_code=HTTPStatusCode.OK,
         error_message="",
         result=asdict(result),
     )
