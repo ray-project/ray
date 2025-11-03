@@ -378,7 +378,7 @@ class RobustScaler(Preprocessor):
             ``output_columns`` must match the length of ``columns``, othwerwise an error
             will be raised.
         use_approximate: Use approximate quantile calculations to potential speed up
-            for larger datasets. Must have the TDigest library installed.
+            for larger datasets. Must have the tdigest library installed.
         compression: Accuracy vs memory trade-off for when using approximate quantile.
     """
 
