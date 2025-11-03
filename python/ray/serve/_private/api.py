@@ -26,12 +26,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 def _check_http_options(
     curr_http_options: HTTPOptions, new_http_options: Union[dict, HTTPOptions]
 ) -> None:
-    # todo:
-    #   - review logix of this function
-    #   - consider to have the same defaults for http_options in HTTPOptions and HTTPOptionsSchema
-    #   - test different scenarios of starting/deploying to cluster:
-    #       - CLI start - CLI run/deploy
-    #       - CLI start - python run, etc
     def maybe_restore_proxy_location(prev_value, new_value) -> (str, str):
         if isinstance(prev_value, DeploymentMode) and isinstance(
             new_value, DeploymentMode
@@ -40,6 +34,9 @@ def _check_http_options(
             prev_value = ProxyLocation._from_deployment_mode(prev_value).value
             new_value = ProxyLocation._from_deployment_mode(new_value).value
         return prev_value, new_value
+
+    if not new_http_options:
+        return
 
     if isinstance(new_http_options, HTTPOptions):
         new_http_options = new_http_options.dict(exclude_unset=True)
@@ -53,7 +50,7 @@ def _check_http_options(
     if diff_http_options:
         raise RayServeConfigException(
             "Attempt to update `http_options` or `proxy_location` has been detected! "
-            f"Attempted updates: {diff_http_options}. "
+            f"Attempted updates: `{diff_http_options}`. "
             "HTTP config is global to your Ray cluster, and you can't update it during runtime. "
             "Please restart Ray Serve to apply the change."
         )
