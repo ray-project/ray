@@ -20,6 +20,7 @@ from ray import ray_constants
 from ray._common.network_utils import build_address, parse_address
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._common.utils import get_or_create_event_loop
+from ray._raylet import AuthenticationMode, get_authentication_mode
 from ray.dashboard import authentication_utils as auth_utils
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 from ray.dashboard.head import DashboardHeadModule
@@ -160,6 +161,28 @@ class HttpServerDashboardHead:
                 status=500, text="Internal Server Error:" + str(e)
             )
 
+    @routes.get("/api/authentication_mode")
+    async def get_authentication_mode(self, req) -> aiohttp.web.Response:
+        """Get the current authentication mode.
+
+        Returns:
+            JSON response with authentication_mode field.
+            Possible values: "disabled", "token"
+        """
+        try:
+            mode = get_authentication_mode()
+            if mode == AuthenticationMode.TOKEN:
+                mode_str = "token"
+            else:
+                mode_str = "disabled"
+
+            return aiohttp.web.json_response({"authentication_mode": mode_str})
+        except Exception as e:
+            logger.error(f"Error getting authentication mode: {e}")
+            return aiohttp.web.Response(
+                status=500, text="Internal Server Error: " + str(e)
+            )
+
     def get_address(self):
         assert self.http_host and self.http_port
         return self.http_host, self.http_port
@@ -170,6 +193,36 @@ class HttpServerDashboardHead:
 
         # Skip if auth not enabled
         if not auth_utils.is_token_auth_enabled():
+            return await handler(request)
+
+        # Public endpoints that don't require authentication
+        # These endpoints are needed to check authentication status or serve static content
+        public_endpoints = [
+            "/api/authentication_mode",
+        ]
+
+        # Public paths (using startswith for path prefixes)
+        public_path_prefixes = [
+            "/static/",  # Static assets (JS, CSS, images)
+        ]
+
+        # Public exact paths
+        public_exact_paths = [
+            "/",  # Root index.html
+            "/favicon.ico",  # Favicon
+        ]
+
+        # Skip authentication for public endpoints
+        if request.path in public_endpoints:
+            return await handler(request)
+
+        # Skip authentication for public path prefixes
+        for prefix in public_path_prefixes:
+            if request.path.startswith(prefix):
+                return await handler(request)
+
+        # Skip authentication for public exact paths
+        if request.path in public_exact_paths:
             return await handler(request)
 
         # Extract and validate token
