@@ -336,7 +336,6 @@ class ActorPoolMapOperator(MapOperator):
                 op_name=self.name,
                 target_max_block_size_override=self.target_max_block_size_override,
             )
-            ctx.input_bundle = bundle
             per_task_kwargs = self.get_map_task_kwargs().copy()
             if bundle_task_kwargs:
                 per_task_kwargs.update(bundle_task_kwargs)
