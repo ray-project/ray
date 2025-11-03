@@ -171,10 +171,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
 
   void OnReadDone(bool ok) override {
     io_context_.dispatch(
-        [this,
-         ok,
-         disconnected = IsDisconnected(),
-         msg = std::move(receiving_message_)]() mutable {
+        [this, ok, msg = std::move(receiving_message_)]() mutable {
           // NOTE: According to the grpc callback streaming api best practices 3.)
           // https://grpc.io/docs/languages/cpp/best_practices/#callback-streaming-api
           // The client must read all incoming data i.e. until OnReadDone(ok = false)
