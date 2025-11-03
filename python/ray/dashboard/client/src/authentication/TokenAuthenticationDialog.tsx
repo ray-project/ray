@@ -3,7 +3,7 @@
  * Prompts users to enter their authentication token when token auth is enabled.
  */
 
-import React, { useState } from "react";
+import { Visibility, VisibilityOff } from "@mui/icons-material";
 import {
   Alert,
   Button,
@@ -17,7 +17,7 @@ import {
   InputAdornment,
   TextField,
 } from "@mui/material";
-import { Visibility, VisibilityOff } from "@mui/icons-material";
+import React, { useState } from "react";
 
 export type TokenAuthenticationDialogProps = {
   /** Whether the dialog is open */

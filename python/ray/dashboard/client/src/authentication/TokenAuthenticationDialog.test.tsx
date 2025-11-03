@@ -186,7 +186,7 @@ describe("TokenAuthenticationDialog", () => {
   });
 
   it("does not render when open is false", () => {
-    const { container } = render(
+    render(
       <TokenAuthenticationDialog
         open={false}
         hasExistingToken={false}

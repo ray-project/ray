@@ -4,7 +4,6 @@ import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
-import TokenAuthenticationDialog from "./authentication/TokenAuthenticationDialog";
 import {
   getAuthenticationMode,
   testTokenValidity,
@@ -13,6 +12,7 @@ import {
   getAuthenticationToken,
   setAuthenticationToken,
 } from "./authentication/cookies";
+import TokenAuthenticationDialog from "./authentication/TokenAuthenticationDialog";
 import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
 import Loading from "./pages/exception/Loading";

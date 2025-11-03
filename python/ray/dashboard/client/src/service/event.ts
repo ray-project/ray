@@ -1,5 +1,5 @@
-import { axiosInstance } from "./requestHandlers";
 import { EventGlobalRsp, EventRsp } from "../type/event";
+import { axiosInstance } from "./requestHandlers";
 
 export const getEvents = (jobId: string) => {
   if (jobId) {

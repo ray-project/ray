@@ -163,12 +163,6 @@ class HttpServerDashboardHead:
 
     @routes.get("/api/authentication_mode")
     async def get_authentication_mode(self, req) -> aiohttp.web.Response:
-        """Get the current authentication mode.
-
-        Returns:
-            JSON response with authentication_mode field.
-            Possible values: "disabled", "token"
-        """
         try:
             mode = get_authentication_mode()
             if mode == AuthenticationMode.TOKEN:
