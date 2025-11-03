@@ -452,9 +452,8 @@ class RobustScaler(Preprocessor):
             digests = {}
             for col in self.columns:
                 digest = TDigest(delta=self.compression)
-                # Filter out NaN values
-                values = batch[col].dropna().values
-                for val in values:
+                # Update without NaN values
+                for val in batch[col].dropna().values:
                     digest.update(val)
                 digests[col] = digest
             return pd.DataFrame([digests])
