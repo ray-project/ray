@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class JaxConfig(BackendConfig):
     use_tpu: bool = False
+    use_gpu: bool = False
 
     @property
     def backend_cls(self):
@@ -108,6 +109,7 @@ class _JaxBackend(Backend):
                     master_addr_with_port=master_addr_with_port,
                     num_workers=len(worker_group),
                     index=i,
+                    resources_per_worker=worker_group.get_resources_per_worker()
                 )
             )
         ray.get(setup_futures)
