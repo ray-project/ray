@@ -1,5 +1,6 @@
+load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
-load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_runtime", "py_runtime_pair")
 
 exports_files([
     "pytest_wrapper.py",
@@ -59,4 +60,25 @@ config_setting(
         "@platforms//os:windows",
         "@platforms//cpu:x86_64",
     ],
+)
+
+py_runtime(
+    name = "py39_runtime",
+    interpreter = python39,
+    python_version = "PY3",
+    visibility = ["//visibility:private"],
+)
+
+py_runtime_pair(
+    name = "py39_runtime_pair",
+    py2_runtime = None,
+    py3_runtime = ":py39_runtime",
+    visibility = ["//visibility:private"],
+)
+
+toolchain(
+    name = "py39_toolchain",
+    exec_compatible_with = ["//:hermetic_python"],
+    toolchain = ":py39_runtime_pair",
+    toolchain_type = "@bazel_tools//tools/python:toolchain_type",
 )
