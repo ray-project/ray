@@ -625,8 +625,8 @@ def test_drop_columns(ray_start_regular_shared, tmp_path):
         assert ds.drop_columns(["col1", "col2", "col3"]).take_all() == []
         assert ds.drop_columns(["col1", "col2"]).take(1) == [{"col3": 3}]
         # Test dropping non-existent column
-        # with pytest.raises((UserCodeException, KeyError)):
-        #     ds.drop_columns(["dummy_col", "col1", "col2"]).take_all()
+        with pytest.raises((UserCodeException, KeyError)):
+            ds.drop_columns(["dummy_col", "col1", "col2"]).materialize()
 
     with pytest.raises(ValueError, match="drop_columns expects unique column names"):
         ds1.drop_columns(["col1", "col2", "col2"])
