@@ -1,4 +1,5 @@
 import logging
+from types import ModuleType
 from typing import Dict, Optional
 
 from ray._private.authentication import authentication_constants
@@ -7,7 +8,7 @@ from ray.dashboard import authentication_utils as auth_utils
 logger = logging.getLogger(__name__)
 
 
-def get_token_auth_middleware(aiohttp_module):
+def get_token_auth_middleware(aiohttp_module: ModuleType):
     """Internal helper to create token auth middleware with provided modules.
 
     Args:
