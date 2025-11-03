@@ -664,6 +664,10 @@ class PandasBlockAccessor(TableBlockAccessor):
     def iter_rows(
         self, public_row_format: bool
     ) -> Iterator[Union[Mapping, np.ndarray]]:
+        # If table has no columns, treat it as having no rows (consistent with Arrow behavior)
+        if len(self._table.columns) == 0:
+            return
+
         for i in range(self.num_rows()):
             row = self._get_row(i)
             if public_row_format and isinstance(row, TableRow):

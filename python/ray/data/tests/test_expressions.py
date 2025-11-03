@@ -529,6 +529,43 @@ def test_expression_repr(expr_fn, expected):
     assert repr(expr) == expected
 
 
+def test_drop_expr():
+    """Test DropExpr creation and structural equality."""
+    from ray.data.expressions import drop
+
+    # Test basic drop expression
+    drop_expr1 = drop(["a", "b"])
+    drop_expr2 = drop(["a", "b"])
+    drop_expr3 = drop(["b", "a"])  # Different order, same columns
+    drop_expr4 = drop(["a", "c"])  # Different columns
+
+    # Test structural equality
+    assert drop_expr1.structurally_equals(drop_expr2)
+    assert drop_expr1.structurally_equals(drop_expr3)  # Order doesn't matter
+    assert not drop_expr1.structurally_equals(drop_expr4)
+
+    # Test columns_to_drop attribute
+    assert set(drop_expr1.columns_to_drop) == {"a", "b"}
+
+    # Test that drop expression has the right type
+    from ray.data.expressions import DropExpr
+
+    assert isinstance(drop_expr1, DropExpr)
+
+
+def test_drop_expr_tree_repr():
+    """Test tree representation of DropExpr."""
+    from ray.data.expressions import drop
+
+    drop_expr = drop(["col1", "col2"])
+    repr_str = repr(drop_expr)
+
+    # Verify the representation contains the dropped columns
+    assert "DROP" in repr_str
+    assert "col1" in repr_str
+    assert "col2" in repr_str
+
+
 if __name__ == "__main__":
     import sys
 

@@ -15,6 +15,7 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 from ray.data.expressions import (
     AliasExpr,
     ColumnExpr,
+    DropExpr,
     Expr,
     StarExpr,
 )
@@ -29,8 +30,9 @@ def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
 
     Example: For expression "col1 + col2", returns {"col1", "col2"}
     """
-    # If any expression is star(), we need all columns
-    if any(isinstance(expr, StarExpr) for expr in exprs):
+    # If any expression is star() or drop(), we need all columns
+    # (DropExpr needs all columns because we don't know what to drop until runtime)
+    if any(isinstance(expr, (StarExpr, DropExpr)) for expr in exprs):
         # TODO (goutam): Instead of using None to refer to All columns, resolve the AST against the schema.
         # https://github.com/ray-project/ray/issues/57720
         return None
@@ -51,14 +53,19 @@ def _analyze_upstream_project(
     Example: Upstream exprs [col("x").alias("y")] → removed_by_renames = {"x"} if "x" not in output
     """
     output_column_names = {
-        expr.name for expr in upstream_project.exprs if not isinstance(expr, StarExpr)
+        expr.name
+        for expr in upstream_project.exprs
+        if not isinstance(expr, (StarExpr, DropExpr))
     }
 
     # Compose column definitions in the form of a mapping of
     #   - Target column name
     #   - Target expression
+    # Filter out both StarExpr and DropExpr since they don't define output columns
     output_column_defs = {
-        expr.name: expr for expr in _filter_out_star(upstream_project.exprs)
+        expr.name: expr
+        for expr in _filter_out_star(upstream_project.exprs)
+        if not isinstance(expr, DropExpr)
     }
 
     # Identify upstream input columns removed by renaming (ie not propagated into
@@ -100,7 +107,8 @@ def _validate_fusion(
     missing_columns = set()
 
     for expr in downstream_project.exprs:
-        if isinstance(expr, StarExpr):
+        # Skip special marker expressions that don't reference columns
+        if isinstance(expr, (StarExpr, DropExpr)):
             continue
 
         column_refs = _collect_referenced_columns([expr])
@@ -184,9 +192,29 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
     # composition/projection cases)
     v = _ColumnSubstitutionVisitor(upstream_column_defs)
 
-    rebound_downstream_exprs = [
-        v.visit(e) for e in _filter_out_star(downstream_project.exprs)
+    # Visit all downstream expressions, including DropExpr - the visitor will translate column names
+    all_rebound_downstream_exprs = [
+        v.visit(e) for e in downstream_project.exprs if not isinstance(e, StarExpr)
     ]
+
+    # Separate DropExpr from other expressions after translation
+    rebound_downstream_exprs = [
+        e for e in all_rebound_downstream_exprs if not isinstance(e, DropExpr)
+    ]
+    downstream_drop_exprs = [
+        e for e in all_rebound_downstream_exprs if isinstance(e, DropExpr)
+    ]
+
+    # Collect DropExpr from upstream
+    upstream_drop_exprs = [e for e in upstream_project.exprs if isinstance(e, DropExpr)]
+
+    # Merge drop lists - combine all columns to drop from both levels
+    # The visitor has already translated downstream column names to input column names
+    merged_drop_cols = set()
+    for drop_expr in upstream_drop_exprs:
+        merged_drop_cols.update(drop_expr.columns_to_drop)
+    for drop_expr in downstream_drop_exprs:
+        merged_drop_cols.update(drop_expr.columns_to_drop)
 
     if not downstream_project.has_star_expr():
         # Projection case: this is when downstream is a *selection* (ie, not including
@@ -197,6 +225,9 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
         #   Downstream: Project([col("b").alias("c")])
         #
         #   Result: Project([col("a").alias("c")])
+        #
+        # In projection case, downstream explicitly specifies which columns to keep,
+        # so upstream drops are irrelevant - we just use the rebound expressions.
         new_exprs = rebound_downstream_exprs
     else:
         # Composition case: downstream has ``StarExpr`` (entailing that downstream
@@ -220,18 +251,27 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
         downstream_input_column_rename_map = _extract_input_columns_renaming_mapping(
             downstream_project.exprs
         )
-        # Collect upstream output column expression "projected" to become
-        # downstream expressions
-        projected_upstream_output_col_exprs = []
 
-        # When fusing 2 projections
-        for e in upstream_project.exprs:
-            # NOTE: We have to filter out upstream output columns that are
-            #       being *renamed* by downstream expression
-            if e.name not in downstream_input_column_rename_map:
-                projected_upstream_output_col_exprs.append(e)
+        # Get DropExpr from downstream (before translation)
+        downstream_drop_exprs_pre_translation = [
+            d for d in downstream_project.exprs if isinstance(d, DropExpr)
+        ]
+
+        # Filter upstream expressions to keep for composition
+        projected_upstream_output_col_exprs = _filter_upstream_exprs_for_composition(
+            upstream_project.exprs,
+            downstream_input_column_rename_map,
+            downstream_drop_exprs_pre_translation,
+        )
 
         new_exprs = projected_upstream_output_col_exprs + rebound_downstream_exprs
+
+        # Add merged DropExpr ONLY in composition case (when downstream has star)
+        # In projection case, downstream explicitly selects columns, so drops are unnecessary
+        if merged_drop_cols:
+            from ray.data.expressions import drop
+
+            new_exprs.append(drop(list(merged_drop_cols)))
 
     return Project(
         upstream_project.input_dependency,
@@ -241,7 +281,55 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
 
 
 def _filter_out_star(exprs: List[Expr]) -> List[Expr]:
+    """Filter out StarExpr from the expression list."""
     return [e for e in exprs if not isinstance(e, StarExpr)]
+
+
+def _filter_upstream_exprs_for_composition(
+    upstream_exprs: List[Expr],
+    downstream_rename_map: Dict[str, str],
+    downstream_drop_exprs: List[DropExpr],
+) -> List[Expr]:
+    """Filter upstream expressions to keep for composition with downstream.
+
+    When fusing two Projects in composition mode (downstream has star()),
+    we need to determine which upstream expressions to preserve.
+
+    Args:
+        upstream_exprs: List of upstream Project expressions
+        downstream_rename_map: Map of columns being renamed by downstream (old -> new)
+        downstream_drop_exprs: List of DropExpr from downstream Project
+
+    Returns:
+        List of upstream expressions to include in fused Project
+    """
+    # Collect column names being dropped by downstream (at output level, before translation)
+    downstream_drops_output_names = {
+        col for drop in downstream_drop_exprs for col in drop.columns_to_drop
+    }
+
+    filtered_exprs = []
+    for expr in upstream_exprs:
+        # Always preserve StarExpr
+        if isinstance(expr, StarExpr):
+            filtered_exprs.append(expr)
+            continue
+
+        # Skip DropExpr - we'll handle it separately in merged_drop_cols
+        if isinstance(expr, DropExpr):
+            continue
+
+        # For named expressions, filter out if:
+        # 1. Being renamed by downstream expression, OR
+        # 2. Being dropped by downstream (at the output level)
+        if expr.name is not None:
+            if expr.name in downstream_rename_map:
+                continue
+            if expr.name in downstream_drops_output_names:
+                continue
+            filtered_exprs.append(expr)
+
+    return filtered_exprs
 
 
 class ProjectionPushdown(Rule):
@@ -309,8 +397,15 @@ class ProjectionPushdown(Rule):
 
             # Check if it's a simple projection that could be pushed into
             # read as a whole
-            is_projection = all(
-                _is_col_expr(expr) for expr in _filter_out_star(current_project.exprs)
+            # A projection with only star() and drop() should NOT be pushed down
+            # because Read operators don't handle drops
+            filtered_exprs = [
+                e
+                for e in _filter_out_star(current_project.exprs)
+                if not isinstance(e, DropExpr)
+            ]
+            is_projection = len(filtered_exprs) > 0 and all(
+                _is_col_expr(expr) for expr in filtered_exprs
             )
 
             if is_projection:

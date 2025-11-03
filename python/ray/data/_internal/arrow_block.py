@@ -372,8 +372,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
             )
         if len(columns) == 0:
             # Applicable for count which does an empty projection.
-            # Pyarrow returns a table with 0 columns and num_rows rows.
-            return self.fill_column(_BATCH_SIZE_PRESERVING_STUB_COL_NAME, None)
+            # First create empty table, then add stub for row count preservation
+            empty_table = self._table.select([])
+            return BlockAccessor.for_block(empty_table).fill_column(
+                _BATCH_SIZE_PRESERVING_STUB_COL_NAME, None
+            )
         return self._table.select(columns)
 
     def rename_columns(self, columns_rename: Dict[str, str]) -> "pyarrow.Table":
@@ -444,6 +447,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> Iterator[Union[Mapping, np.ndarray]]:
         table = self._table
         if public_row_format:
+            # If table only has the stub column (used for row count preservation),
+            # don't yield rows - treat it as empty
+            if (
+                table.num_columns == 1
+                and table.column_names[0] == _BATCH_SIZE_PRESERVING_STUB_COL_NAME
+            ):
+                return
             if not hasattr(self, "_max_chunk_size"):
                 # Calling _get_max_chunk_size in constructor makes it slow, so we
                 # are calling it here only when needed.
@@ -451,7 +461,15 @@ class ArrowBlockAccessor(TableBlockAccessor):
                     self._table, ARROW_MAX_CHUNK_SIZE_BYTES
                 )
             for batch in table.to_batches(max_chunksize=self._max_chunk_size):
-                yield from batch.to_pylist()
+                # Filter out __bsp_stub from yielded rows
+                rows = batch.to_pylist()
+                for row in rows:
+                    # Remove stub column if present
+                    if _BATCH_SIZE_PRESERVING_STUB_COL_NAME in row:
+                        del row[_BATCH_SIZE_PRESERVING_STUB_COL_NAME]
+                    # Only yield non-empty rows (rows with actual columns)
+                    if row:
+                        yield row
         else:
             for i in range(self.num_rows()):
                 yield self._get_row(i)

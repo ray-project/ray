@@ -1390,5 +1390,260 @@ def test_projection_pushdown_merge_rename_x(ray_start_regular_shared, flavor):
     ]
 
 
+@pytest.mark.parametrize("data_format", ["from_items", "pandas", "arrow"])
+@pytest.mark.parametrize(
+    "operations,expected_output",
+    [
+        # === Basic Drop Operations ===
+        pytest.param(
+            [("drop", ["b"])],
+            [{"a": 1, "c": 7}, {"a": 2, "c": 8}, {"a": 3, "c": 9}],
+            id="drop_single_column",
+        ),
+        pytest.param(
+            [("drop", ["a", "b"])],
+            [{"c": 7}, {"c": 8}, {"c": 9}],
+            id="drop_multiple_columns",
+        ),
+        pytest.param(
+            [("drop", ["b", "c"])],
+            [{"a": 1}, {"a": 2}, {"a": 3}],
+            id="drop_keep_one_column",
+        ),
+        pytest.param(
+            [("drop", ["a", "b", "c"])],
+            [],
+            id="drop_all_columns",
+        ),
+        # === Drop → Select ===
+        pytest.param(
+            [("drop", ["b"]), ("select", ["a"])],
+            [{"a": 1}, {"a": 2}, {"a": 3}],
+            id="drop_then_select",
+        ),
+        pytest.param(
+            [("drop", ["c"]), ("select", ["a", "b"])],
+            [{"a": 1, "b": 4}, {"a": 2, "b": 5}, {"a": 3, "b": 6}],
+            id="drop_then_select_multiple",
+        ),
+        # === Select → Drop ===
+        pytest.param(
+            [("select", ["a", "b", "c"]), ("drop", ["b"])],
+            [{"a": 1, "c": 7}, {"a": 2, "c": 8}, {"a": 3, "c": 9}],
+            id="select_all_then_drop",
+        ),
+        pytest.param(
+            [("select", ["a", "b"]), ("drop", ["b"])],
+            [{"a": 1}, {"a": 2}, {"a": 3}],
+            id="select_then_drop",
+        ),
+        # === Drop → Rename ===
+        pytest.param(
+            [("drop", ["b"]), ("rename", {"a": "A"})],
+            [{"A": 1, "c": 7}, {"A": 2, "c": 8}, {"A": 3, "c": 9}],
+            id="drop_then_rename",
+        ),
+        pytest.param(
+            [("drop", ["b", "c"]), ("rename", {"a": "alpha"})],
+            [{"alpha": 1}, {"alpha": 2}, {"alpha": 3}],
+            id="drop_multiple_then_rename",
+        ),
+        # === Rename → Drop (drop renamed) ===
+        pytest.param(
+            [("rename", {"a": "A"}), ("drop", ["A"])],
+            [{"b": 4, "c": 7}, {"b": 5, "c": 8}, {"b": 6, "c": 9}],
+            id="rename_then_drop_renamed_column",
+        ),
+        pytest.param(
+            [("rename", {"a": "A", "b": "B"}), ("drop", ["A", "B"])],
+            [{"c": 7}, {"c": 8}, {"c": 9}],
+            id="rename_multiple_then_drop_renamed",
+        ),
+        # === Rename → Drop (drop other) ===
+        pytest.param(
+            [("rename", {"a": "A"}), ("drop", ["b"])],
+            [{"A": 1, "c": 7}, {"A": 2, "c": 8}, {"A": 3, "c": 9}],
+            id="rename_then_drop_other_column",
+        ),
+        pytest.param(
+            [("rename", {"a": "A", "c": "C"}), ("drop", ["b"])],
+            [{"A": 1, "C": 7}, {"A": 2, "C": 8}, {"A": 3, "C": 9}],
+            id="rename_multiple_then_drop_unrenamed",
+        ),
+        # === Drop → with_column ===
+        pytest.param(
+            [("drop", ["b"]), ("with_column_expr", "d", "add", "a", "c")],
+            [
+                {"a": 1, "c": 7, "d": 8},
+                {"a": 2, "c": 8, "d": 10},
+                {"a": 3, "c": 9, "d": 12},
+            ],
+            id="drop_then_with_column",
+        ),
+        pytest.param(
+            [("drop", ["b", "c"]), ("with_column_expr", "doubled", "multiply", "a", 2)],
+            [{"a": 1, "doubled": 2}, {"a": 2, "doubled": 4}, {"a": 3, "doubled": 6}],
+            id="drop_multiple_then_with_column",
+        ),
+        # === with_column → Drop ===
+        pytest.param(
+            [("with_column_expr", "sum", "add", "a", "b"), ("drop", ["b"])],
+            [
+                {"a": 1, "c": 7, "sum": 5},
+                {"a": 2, "c": 8, "sum": 7},
+                {"a": 3, "c": 9, "sum": 9},
+            ],
+            id="with_column_then_drop",
+        ),
+        pytest.param(
+            [("with_column_expr", "d", "multiply", "a", 2), ("drop", ["a", "b"])],
+            [{"c": 7, "d": 2}, {"c": 8, "d": 4}, {"c": 9, "d": 6}],
+            id="with_column_then_drop_source_columns",
+        ),
+        # === Multiple Drop Operations ===
+        pytest.param(
+            [("drop", ["a"]), ("drop", ["b"])],
+            [{"c": 7}, {"c": 8}, {"c": 9}],
+            id="drop_then_drop",
+        ),
+        pytest.param(
+            [("drop", ["b"]), ("drop", ["c"])],
+            [{"a": 1}, {"a": 2}, {"a": 3}],
+            id="drop_chain_keep_one",
+        ),
+        # === Complex Chains with Drop ===
+        pytest.param(
+            [
+                ("rename", {"a": "A", "b": "B"}),
+                ("drop", ["B"]),
+                ("with_column_expr", "new", "add", "A", "c"),
+            ],
+            [
+                {"A": 1, "c": 7, "new": 8},
+                {"A": 2, "c": 8, "new": 10},
+                {"A": 3, "c": 9, "new": 12},
+            ],
+            id="rename_drop_with_column",
+        ),
+        pytest.param(
+            [
+                ("drop", ["c"]),
+                ("rename", {"a": "x", "b": "y"}),
+                ("with_column_expr", "sum", "add", "x", "y"),
+            ],
+            [
+                {"x": 1, "y": 4, "sum": 5},
+                {"x": 2, "y": 5, "sum": 7},
+                {"x": 3, "y": 6, "sum": 9},
+            ],
+            id="drop_rename_with_column",
+        ),
+        pytest.param(
+            [
+                ("with_column_expr", "sum", "add", "a", "b"),
+                ("drop", ["b"]),
+                ("rename", {"sum": "total"}),
+                ("select", ["a", "total"]),
+            ],
+            [{"a": 1, "total": 5}, {"a": 2, "total": 7}, {"a": 3, "total": 9}],
+            id="with_column_drop_rename_select",
+        ),
+        pytest.param(
+            [
+                ("select", ["a", "b", "c"]),
+                ("drop", ["b"]),
+                ("rename", {"a": "x"}),
+                ("with_column_expr", "result", "add", "x", "c"),
+                ("drop", ["c"]),
+            ],
+            [
+                {"x": 1, "result": 8},
+                {"x": 2, "result": 10},
+                {"x": 3, "result": 12},
+            ],
+            id="complex_five_step_with_drops",
+        ),
+        # === Drop with Select (overlap) ===
+        pytest.param(
+            [("drop", ["b"]), ("select", ["a", "c"])],
+            [{"a": 1, "c": 7}, {"a": 2, "c": 8}, {"a": 3, "c": 9}],
+            id="drop_then_select_remaining",
+        ),
+        pytest.param(
+            [("select", ["a", "b"]), ("drop", ["a"])],
+            [{"b": 4}, {"b": 5}, {"b": 6}],
+            id="select_then_drop_from_selected",
+        ),
+        # === Rename Swap + Drop ===
+        pytest.param(
+            [("rename", {"a": "b", "b": "a"}), ("drop", ["a"])],
+            [{"b": 1, "c": 7}, {"b": 2, "c": 8}, {"b": 3, "c": 9}],
+            id="rename_swap_then_drop_old_b",
+        ),
+        # === Drop Empty List ===
+        pytest.param(
+            [("drop", [])],
+            [
+                {"a": 1, "b": 4, "c": 7},
+                {"a": 2, "b": 5, "c": 8},
+                {"a": 3, "b": 6, "c": 9},
+            ],
+            id="drop_empty_list",
+        ),
+    ],
+)
+def test_drop_columns_comprehensive(
+    ray_start_regular_shared, data_format, operations, expected_output
+):
+    """Comprehensive test for drop_columns in combination with other projection operations.
+
+    Tests across different data formats (from_items, pandas, arrow) to ensure
+    drop_columns works correctly regardless of the underlying block format.
+    """
+    from ray.data.expressions import col
+
+    # Create dataset from different sources based on data_format parameter
+    data = [
+        {"a": 1, "b": 4, "c": 7},
+        {"a": 2, "b": 5, "c": 8},
+        {"a": 3, "b": 6, "c": 9},
+    ]
+
+    if data_format == "from_items":
+        ds = ray.data.from_items(data)
+    elif data_format == "pandas":
+        import pandas as pd
+
+        df = pd.DataFrame(data)
+        ds = ray.data.from_pandas(df)
+    elif data_format == "arrow":
+        import pyarrow as pa
+
+        table = pa.Table.from_pylist(data)
+        ds = ray.data.from_arrow(table)
+    else:
+        raise ValueError(f"Unknown data_format: {data_format}")
+
+    # Apply operations
+    for op_type, *op_args in operations:
+        if op_type == "select":
+            ds = ds.select_columns(op_args[0])
+        elif op_type == "rename":
+            ds = ds.rename_columns(op_args[0])
+        elif op_type == "drop":
+            ds = ds.drop_columns(op_args[0])
+        elif op_type == "with_column_expr":
+            col_name, operator, col1, *rest = op_args
+            if operator == "add":
+                col2 = rest[0]
+                ds = ds.with_column(col_name, col(col1) + col(col2))
+            elif operator == "multiply":
+                # col1 is column name, rest[0] is scalar
+                ds = ds.with_column(col_name, col(col1) * rest[0])
+
+    result = ds.take_all()
+    assert result == expected_output
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

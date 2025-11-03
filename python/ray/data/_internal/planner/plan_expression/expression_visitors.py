@@ -6,6 +6,7 @@ from ray.data.expressions import (
     BinaryExpr,
     ColumnExpr,
     DownloadExpr,
+    DropExpr,
     Expr,
     LiteralExpr,
     StarExpr,
@@ -54,6 +55,10 @@ class _ExprVisitorBase(_ExprVisitor[None]):
 
     def visit_download(self, expr: "Expr") -> None:
         """Visit a download expression (no columns to collect)."""
+        pass
+
+    def visit_drop(self, expr: "DropExpr") -> None:
+        """Visit a drop expression (no columns to collect)."""
         pass
 
 
@@ -221,6 +226,40 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         """
         return expr
 
+    def visit_drop(self, expr: "DropExpr") -> Expr:
+        """Visit a drop expression and translate dropped column names.
+
+        If a dropped column name references an upstream renamed column,
+        translate it to reference the original column name instead.
+
+        Args:
+            expr: The drop expression.
+
+        Returns:
+            A new DropExpr with translated column names, or original if no translation needed.
+        """
+        translated_cols = []
+
+        for col_name in expr.columns_to_drop:
+            # Check if this column exists in the substitution map
+            substitution = self._col_ref_substitutions.get(col_name)
+
+            if substitution is not None:
+                # If the substitution is a rename, extract the original column name
+                if isinstance(substitution, AliasExpr) and substitution._is_rename:
+                    translated_cols.append(substitution.expr.name)
+                # else: it's a computed column, don't include it in the drop list
+            else:
+                # Column not in substitution map, keep as-is
+                translated_cols.append(col_name)
+
+        # Return new DropExpr if translation occurred, otherwise original
+        if set(translated_cols) != set(expr.columns_to_drop):
+            from ray.data.expressions import drop
+
+            return drop(translated_cols)
+        return expr
+
 
 def _is_col_expr(expr: Expr) -> bool:
     return isinstance(expr, ColumnExpr) or (
@@ -347,3 +386,7 @@ class _TreeReprVisitor(_ExprVisitor[str]):
 
     def visit_star(self, expr: "StarExpr") -> str:
         return self._make_tree_lines("COL(*)", expr=expr)
+
+    def visit_drop(self, expr: "DropExpr") -> str:
+        columns_repr = ", ".join(repr(col) for col in expr.columns_to_drop)
+        return self._make_tree_lines(f"DROP([{columns_repr}])", expr=expr)
