@@ -1,38 +1,56 @@
 group: data tests
 depends_on:
   - forge
-  - oss-ci-base_ml
+  - oss-ci-base_ml-multipy
   - ray-core-build
   - ray-dashboard-build
 steps:
   # builds
-  - name: data9build
+  - name: data9build-multipy
+    label: "wanda: data9build-py{{matrix}}"
     wanda: ci/docker/data9.build.wanda.yaml
+    matrix:
+      - "3.10"
+    env:
+      PYTHON: "{{matrix}}"
     tags: cibase
 
-  - name: datalbuild
+  - name: datalbuild-multipy
+    label: "wanda: datalbuild-py{{matrix}}"
     wanda: ci/docker/datal.build.wanda.yaml
-    tags: cibase
+    matrix:
+      - "3.10"
+    env:
+      PYTHON: "{{matrix}}"
 
   - name: databuild-multipy
     label: "wanda: databuild-py{{matrix}}"
     wanda: ci/docker/data.build.wanda.yaml
-    matrix: ["3.12"]
+    matrix: ["3.10", "3.12"]
     env:
       PYTHON: "{{matrix}}"
-    depends_on: oss-ci-base_ml-multipy
     tags: cibase
 
   - name: datanbuild
     wanda: ci/docker/datan.build.wanda.yaml
     tags: cibase
 
-  - name: datamongobuild
+  - name: datamongobuild-multipy
+    label: "wanda: datamongobuild-py{{matrix}}"
     wanda: ci/docker/datamongo.build.wanda.yaml
+    matrix:
+      - "3.10"
+    env:
+      PYTHON: "{{matrix}}"
     tags: cibase
 
-  - name: datatfxbslbuild
+  - name: datatfxbslbuild-multipy
+    label: "wanda: datatfxbslbuild-py{{matrix}}"
     wanda: ci/docker/datatfxbsl.build.wanda.yaml
+    matrix:
+      - "3.10"
+    env:
+      PYTHON: "{{matrix}}"
     tags: cibase
 
   # tests
@@ -73,9 +91,10 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name datalbuild
+        --build-name databuild-py3.10
+        --python-version 3.10
         --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials
-    depends_on: datalbuild
+    depends_on: datalbuild-multipy
 
   - label: ":database: data: arrow v21 tests (data_non_parallel)"
     tags:
@@ -88,9 +107,10 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --build-name datalbuild
+        --build-name databuild-py3.10
+        --python-version 3.10
         --only-tags data_non_parallel
-    depends_on: datalbuild
+    depends_on: datalbuild-multipy
 
   - label: ":database: data: arrow v21 {{matrix.python}} tests ({{matrix.worker_id}})"
     key: datal_python_tests
@@ -171,9 +191,10 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name datatfxbslbuild
+        --build-name datatfxbslbuild-py3.10
+        --python-version 3.10
         --only-tags tfxbsl
-    depends_on: datatfxbslbuild
+    depends_on: datatfxbslbuild-multipy
 
   - label: ":database: data: doc tests"
     tags:
@@ -183,17 +204,19 @@ steps:
     commands:
       # doc tests
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... data
-        --build-name datalbuild
+        --build-name databuild-py3.10
+        --python-version 3.10
         --except-tags gpu
         --only-tags doctest
         --parallelism-per-worker 2
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
-        --build-name datalbuild
+        --build-name databuild-py3.10
+        --python-version 3.10
         --except-tags gpu,post_wheel_build,doctest,dask
         --parallelism-per-worker 2
         --skip-ray-installation
-    depends_on: datalbuild
+    depends_on: datalbuild-multipy
 
   - label: ":database: data: dask doc tests"
     tags:
@@ -237,11 +260,12 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name datamongobuild
+        --build-name datamongobuild-py3.10
+        --python-version 3.10
         --build-type java
         --only-tags data_integration
         --except-tags doctest
-    depends_on: datamongobuild
+    depends_on: datamongobuild-multipy
 
   - label: ":database: data: dashboard tests"
     tags:
@@ -251,9 +275,10 @@ steps:
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... data
-        --build-name datalbuild
+        --build-name databuild-py3.10
+        --python-version 3.10
         --parallelism-per-worker 3
-    depends_on: datalbuild
+    depends_on: datalbuild-multipy
 
   - label: ":database: data: flaky tests"
     key: data_flaky_tests
@@ -267,9 +292,10 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... data --run-flaky-tests
         --parallelism-per-worker 3
-        --build-name datalbuild
+        --build-name databuild-py3.10
+        --python-version 3.10
         --except-tags gpu_only,gpu
-    depends_on: datalbuild
+    depends_on: datalbuild-multipy
 
   - label: ":database: data: flaky gpu tests"
     key: data_flaky_gpu_tests
@@ -296,7 +322,8 @@ steps:
     commands:
       - $(python ci/env/setup_credentials.py)
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name datalbuild
+        --build-name databuild-py3.10
+        --python-version 3.10
         --only-tags needs_credentials
         --test-env=SNOWFLAKE_USER --test-env=SNOWFLAKE_ACCOUNT --test-env=SNOWFLAKE_DATABASE --test-env=SNOWFLAKE_SCHEMA --test-env=SNOWFLAKE_WAREHOUSE --test-env=SNOWFLAKE_PRIVATE_KEY
-    depends_on: datalbuild
+    depends_on: datalbuild-multipy
