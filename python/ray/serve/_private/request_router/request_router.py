@@ -196,7 +196,7 @@ class MultiplexMixin:
     It adds necessary attributes and methods to keep track of multiplexed
     model IDs and offer the helpers to apply multiplex routing and rank
     replicas based on multiplexed model IDs.
-    
+
     Now supports batching-aware routing to group requests by model ID
     for optimal batching performance.
     """
@@ -214,7 +214,7 @@ class MultiplexMixin:
         self._multiplexed_model_id_fallback_match: Set[str] = set()
         self._replica_id_set: Set[ReplicaID] = set()
         self._replicas: Dict[ReplicaID, RunningReplica] = {}
-        
+
         # Batching-aware routing: track pending requests by model ID for better batching
         self._pending_requests_by_model_id: DefaultDict[str, List] = defaultdict(list)
         # Counters for efficient cleanup
@@ -222,6 +222,7 @@ class MultiplexMixin:
         self._last_cleanup_time = time.time()
         self._cleanup_threshold = 50  # Cleanup after 50 new requests
         self._cleanup_interval = 10.0  # Cleanup every 10 seconds
+        self._cleanup_task = None  # Track async cleanup task
 
     def _get_pending_request_matching_multiplexed_model_id(
         self,
@@ -249,42 +250,104 @@ class MultiplexMixin:
     def _get_pending_requests_for_model(self, model_id: str) -> List[PendingRequest]:
         """Get all pending requests for a specific model ID."""
         # Filter out completed requests on-the-fly for immediate use
-        active_requests = [pr for pr in self._pending_requests_by_model_id[model_id] 
-                          if not pr.future.done()]
+        # and update the list in-place to avoid accumulating completed requests
+        if model_id not in self._pending_requests_by_model_id:
+            return []
+
+        active_requests = []
+        completed_count = 0
+
+        for pr in self._pending_requests_by_model_id[model_id]:
+            if not pr.future.done():
+                active_requests.append(pr)
+            else:
+                completed_count += 1
+
+        # Update the stored list with only active requests to prevent accumulation
+        if completed_count > 0:
+            self._pending_requests_by_model_id[model_id] = active_requests
+            if not active_requests:
+                del self._pending_requests_by_model_id[model_id]
+
+        # Trigger periodic cleanup if we've seen enough completed requests
+        if completed_count > 0 and self._should_cleanup_pending_requests():
+            # Schedule cleanup asynchronously to avoid blocking routing
+            self._schedule_async_cleanup()
+
         return active_requests
 
     def _should_cleanup_pending_requests(self) -> bool:
         """Determine if we should perform cleanup based on counters and time."""
-        return (self._pending_requests_added_since_cleanup >= self._cleanup_threshold or 
-                (time.time() - self._last_cleanup_time) >= self._cleanup_interval)
+        return (
+            self._pending_requests_added_since_cleanup >= self._cleanup_threshold
+            or (time.time() - self._last_cleanup_time) >= self._cleanup_interval
+        )
 
     def _cleanup_completed_pending_requests(self):
         """Clean up completed requests from model ID tracking efficiently."""
         # Only cleanup if we've accumulated enough requests or enough time has passed
         if not self._should_cleanup_pending_requests():
             return
-            
+
         cleanup_start = time.time()
-        total_requests_before = sum(len(requests) for requests in self._pending_requests_by_model_id.values())
-        
+        total_requests_before = sum(
+            len(requests) for requests in self._pending_requests_by_model_id.values()
+        )
+
         for model_id in list(self._pending_requests_by_model_id.keys()):
             self._pending_requests_by_model_id[model_id] = [
-                pr for pr in self._pending_requests_by_model_id[model_id]
+                pr
+                for pr in self._pending_requests_by_model_id[model_id]
                 if not pr.future.done()
             ]
             if not self._pending_requests_by_model_id[model_id]:
                 del self._pending_requests_by_model_id[model_id]
-        
-        total_requests_after = sum(len(requests) for requests in self._pending_requests_by_model_id.values())
+
+        total_requests_after = sum(
+            len(requests) for requests in self._pending_requests_by_model_id.values()
+        )
         cleanup_time = time.time() - cleanup_start
-        
+
         # Reset counters
         self._pending_requests_added_since_cleanup = 0
         self._last_cleanup_time = time.time()
-        
+
         if total_requests_before != total_requests_after:
-            logger.debug(f"Cleaned up {total_requests_before - total_requests_after} completed requests "
-                        f"in {cleanup_time:.3f}s, {total_requests_after} active requests remaining")
+            logger.debug(
+                f"Cleaned up {total_requests_before - total_requests_after} "
+                f"completed requests in {cleanup_time:.3f}s, "
+                f"{total_requests_after} active requests remaining"
+            )
+
+    def _schedule_async_cleanup(self):
+        """Schedule cleanup to run asynchronously without blocking routing."""
+        # Only schedule if cleanup isn't already running
+        if (
+            not hasattr(self, "_cleanup_task")
+            or self._cleanup_task is None
+            or self._cleanup_task.done()
+        ):
+            import asyncio
+
+            try:
+                # Get the current event loop
+                loop = asyncio.get_event_loop()
+                self._cleanup_task = loop.create_task(self._async_cleanup())
+            except RuntimeError:
+                # If no event loop is running, fall back to synchronous cleanup
+                # This should rarely happen in the Ray Serve context
+                self._cleanup_completed_pending_requests()
+
+    async def _async_cleanup(self):
+        """Perform cleanup asynchronously."""
+        try:
+            # Small delay to avoid blocking the current operation
+            await asyncio.sleep(0.001)
+            self._cleanup_completed_pending_requests()
+        except Exception as e:
+            logger.warning(f"Async cleanup failed: {e}")
+        finally:
+            self._cleanup_task = None
 
     def _update_multiplexed_model_ids_with_replicas(
         self, replicas: List[RunningReplica]
@@ -354,8 +417,6 @@ class MultiplexMixin:
 
         # Track this request for batching-aware routing
         self._track_pending_request_by_model_id(pending_request)
-        # Clean up completed requests periodically
-        self._cleanup_completed_pending_requests()
 
         if not pending_request.routing_context.multiplexed_start_matching_time:
             pending_request.routing_context.multiplexed_start_matching_time = (
@@ -366,7 +427,7 @@ class MultiplexMixin:
             pending_request.routing_context.multiplexed_start_matching_time
         )
         multiplexed_model_id = pending_request.metadata.multiplexed_model_id
-        
+
         if (
             time.time() - multiplexed_start_matching_time
             < self._multiplexed_matching_timeout
@@ -374,38 +435,55 @@ class MultiplexMixin:
             candidate_replica_ids = self._multiplexed_model_id_to_replica_ids.get(
                 multiplexed_model_id, None
             )
-            
+
             # Batching-aware enhancement: prioritize replicas with pending requests
             # for the same model ID to improve batching efficiency
             if candidate_replica_ids and multiplexed_model_id:
-                pending_for_model = self._get_pending_requests_for_model(multiplexed_model_id)
+                pending_for_model = self._get_pending_requests_for_model(
+                    multiplexed_model_id
+                )
                 if len(pending_for_model) > 1:  # Multiple requests for same model
                     # Find replicas that already have pending requests for this model
                     batching_friendly_replicas = set()
-                    
+
                     for pending_req in pending_for_model:
                         # Check if this request has been assigned to a replica
-                        if (pending_req.future.done() and 
-                            not pending_req.future.cancelled() and
-                            not pending_req.future.exception()):
+                        if (
+                            pending_req.future.done()
+                            and not pending_req.future.cancelled()
+                            and not pending_req.future.exception()
+                        ):
                             try:
                                 assigned_replica = pending_req.future.result()
-                                if (hasattr(assigned_replica, 'replica_id') and
-                                    assigned_replica.replica_id in candidate_replica_ids):
-                                    batching_friendly_replicas.add(assigned_replica.replica_id)
+                                if (
+                                    hasattr(assigned_replica, "replica_id")
+                                    and assigned_replica.replica_id
+                                    in candidate_replica_ids
+                                ):
+                                    batching_friendly_replicas.add(
+                                        assigned_replica.replica_id
+                                    )
                             except Exception:
                                 # Future might not have replica result, skip
                                 pass
-                    
-                    # If we found replicas with pending requests for this model, prioritize them
+
+                    # If we found replicas with pending requests for this model,
+                    # prioritize them
                     if batching_friendly_replicas:
                         candidate_replica_ids = batching_friendly_replicas
-                        logger.debug(f"Found {len(pending_for_model)} pending requests for model {multiplexed_model_id}, "
-                                   f"prioritizing {len(batching_friendly_replicas)} batching-friendly replicas")
+                        logger.debug(
+                            f"Found {len(pending_for_model)} pending requests for "
+                            f"model {multiplexed_model_id}, prioritizing "
+                            f"{len(batching_friendly_replicas)} batching-friendly "
+                            f"replicas"
+                        )
                     else:
-                        logger.debug(f"Found {len(pending_for_model)} pending requests for model {multiplexed_model_id}, "
-                                   f"but no batching-friendly replicas found in candidates")
-            
+                        logger.debug(
+                            f"Found {len(pending_for_model)} pending requests for "
+                            f"model {multiplexed_model_id}, but no batching-friendly "
+                            f"replicas found in candidates"
+                        )
+
             if (
                 not candidate_replica_ids
                 and multiplexed_model_id
@@ -596,7 +674,8 @@ class RequestRouter(ABC):
 
         # We keep two separate queues of pending requests:
         # - self._pending_requests_to_fulfill is a queue that will be used to fulfill
-        # requests (potentially out of order) by routing tasks once they've acquired a replica.
+        # requests (potentially out of order) by routing tasks once they've
+        # acquired a replica.
         # - self.routing is a queue that is used for tasks to
         # best-effort grab the metadata of requests waiting to be fulfilled. This is
         # currently used for routing tasks to know which multiplexed model IDs they
@@ -637,8 +716,8 @@ class RequestRouter(ABC):
 
     def initialize_state(self, **kwargs):
         """
-        Initialize the state of the request router. Called by the Ray Serve framework with the
-        contents of `RequestRouter.request_router_kwargs`.
+        Initialize the state of the request router. Called by the Ray Serve
+        framework with the contents of `RequestRouter.request_router_kwargs`.
         """
         pass
 
