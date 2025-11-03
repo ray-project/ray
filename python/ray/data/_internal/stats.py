@@ -771,7 +771,11 @@ class _StatsActor:
 
 
 def get_or_create_stats_actor() -> ActorHandle[_StatsActor]:
-
+    """Each cluster will contain exactly 1 _StatsActor. This function
+    returns the current _StatsActor handle, or create a new one if one
+    does not exist in the connected cluster. The _StatsActor is pinned on
+    on the head node or driver.
+    """
     if ray._private.worker._global_node is None:
         raise RuntimeError(
             "Global node is not initialized. Driver might be not connected to Ray."
@@ -903,10 +907,6 @@ class _StatsManager:
     @staticmethod
     def gen_dataset_id_from_stats_actor() -> str:
         try:
-            # NOTE: In some cases (for ex, when registering dataset) actor might be gone
-            #       (for ex, when prior driver disconnects) and therefore to avoid using
-            #       stale handle we force looking up the actor with Ray to determine if
-            #       we should create a new one.
             stats_actor = get_or_create_stats_actor()
 
             return ray.get(stats_actor.gen_dataset_id.remote())
