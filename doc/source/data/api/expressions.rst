@@ -22,6 +22,7 @@ Public API
     lit
     udf
     download
+    drop
 
 Expression Classes
 ------------------
@@ -40,3 +41,4 @@ instantiate them directly, but you may encounter them when working with expressi
     UnaryExpr
     UDFExpr
     StarExpr
+    DropExpr
