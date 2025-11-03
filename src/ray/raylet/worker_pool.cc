@@ -109,6 +109,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       io_service_(&io_service),
       node_id_(node_id),
       node_address_(std::move(node_address)),
+      node_address_family_(IsIPv6(node_address_) ? AF_INET6 : AF_INET),
       get_num_cpus_available_(std::move(get_num_cpus_available)),
       maximum_startup_concurrency_(
           RayConfig::instance().worker_maximum_startup_concurrency() > 0
@@ -706,7 +707,7 @@ Status WorkerPool::GetNextFreePort(int *port) {
   for (int i = 0; i < current_size; i++) {
     *port = free_ports_->front();
     free_ports_->pop();
-    if (CheckPortFree(*port)) {
+    if (CheckPortFree(node_address_family_, *port)) {
       return Status::OK();
     }
     // Return to pool to check later.
@@ -846,6 +847,10 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   return Status::OK();
 }
 
+bool IsInternalNamespace(const std::string &ray_namespace) {
+  return absl::StartsWith(ray_namespace, kRayInternalNamespacePrefix);
+}
+
 void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   const StartupToken worker_startup_token = worker->GetStartupToken();
@@ -907,6 +912,13 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
   const auto job_id = driver->GetAssignedJobId();
+  // A subset of the Ray Dashboard Modules are registered as drivers under an
+  // internal namespace. These are system processes and therefore, do not need to be moved
+  // into the workers cgroup.
+  if (!IsInternalNamespace(job_config.ray_namespace())) {
+    add_to_cgroup_hook_(std::to_string(driver->GetProcess().GetId()));
+  }
+
   HandleJobStarted(job_id, job_config);
 
   if (driver->GetLanguage() == Language::JAVA) {
@@ -1658,7 +1670,7 @@ bool WorkerPool::IsWorkerAvailableForScheduling() const {
 }
 
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers(
-    bool filter_dead_drivers) const {
+    bool filter_dead_drivers, bool filter_system_drivers) const {
   std::vector<std::shared_ptr<WorkerInterface>> drivers;
 
   for (const auto &entry : states_by_lang_) {
@@ -1670,6 +1682,14 @@ std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDriver
       if (filter_dead_drivers && driver->IsDead()) {
         continue;
       }
+
+      if (filter_system_drivers) {
+        auto job_config = GetJobConfig(driver->GetAssignedJobId());
+        if (job_config.has_value() && IsInternalNamespace(job_config->ray_namespace())) {
+          continue;
+        }
+      }
+
       drivers.push_back(driver);
     }
   }

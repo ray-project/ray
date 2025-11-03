@@ -5,6 +5,7 @@ from typing import Dict, Optional
 
 import gymnasium as gym
 import numpy as np
+
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import RLlibCallback
 from ray.rllib.core.rl_module import RLModuleSpec

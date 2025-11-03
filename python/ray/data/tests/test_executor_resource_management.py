@@ -53,11 +53,11 @@ def test_execution_resources(ray_start_10_cpus_shared):
     )
     assert (
         repr(r4)
-        == "ExecutionResources(cpu=1, gpu=1, object_store_memory=100.0MB, memory=0.0B)"
+        == "ExecutionResources(cpu=1, gpu=1, object_store_memory=100.0MiB, memory=0.0B)"
     )
     assert (
         repr(r5)
-        == "ExecutionResources(cpu=1, gpu=1, object_store_memory=1.0GB, memory=64.0MB)"
+        == "ExecutionResources(cpu=1, gpu=1, object_store_memory=1.0GiB, memory=64.0MiB)"
     )
     assert (
         repr(unlimited)
@@ -66,8 +66,8 @@ def test_execution_resources(ray_start_10_cpus_shared):
 
     # Test object_store_memory_str.
     assert r3.object_store_memory_str() == "0.0B"
-    assert r4.object_store_memory_str() == "100.0MB"
-    assert r5.object_store_memory_str() == "1.0GB"
+    assert r4.object_store_memory_str() == "100.0MiB"
+    assert r5.object_store_memory_str() == "1.0GiB"
     assert unlimited.object_store_memory_str() == "inf"
 
     # Test add.
