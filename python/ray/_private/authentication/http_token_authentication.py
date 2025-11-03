@@ -4,42 +4,41 @@ from typing import Dict, Optional
 from ray._private.authentication import authentication_constants
 from ray.dashboard import authentication_utils as auth_utils
 
-# All third-party dependencies that are not included in the minimal Ray
-# installation must be included in this file. This allows us to determine if
-# the agent has the necessary dependencies to be started.
-from ray.dashboard.optional_deps import aiohttp
-
 logger = logging.getLogger(__name__)
 
 
-@aiohttp.web.middleware
-async def token_auth_middleware(request, handler):
-    """Middleware to validate bearer tokens when token authentication is enabled.
+def get_token_auth_middleware():
+    # aiohttp is not included in minimal Ray installations, import it here to avoid breaking minimal installs
+    from ray.dashboard.optional_deps import aiohttp
 
-    This is an aiohttp middleware that requires aiohttp to be installed.
-    Import aiohttp only when this function is called (not at module load time).
+    @aiohttp.web.middleware
+    async def token_auth_middleware(request, handler):
+        """Middleware to validate bearer tokens when token authentication is enabled.
 
-    In minimal Ray installations (without ray._raylet), this middleware is a no-op
-    and passes all requests through without authentication.
-    """
-    # No-op if  token auth is not enabled or raylet is not available
-    if not auth_utils.is_token_auth_enabled():
+        This is an aiohttp middleware that requires aiohttp to be installed.
+        Import aiohttp only when this function is called (not at module load time).
+
+        In minimal Ray installations (without ray._raylet), this middleware is a no-op
+        and passes all requests through without authentication.
+        """
+        # No-op if  token auth is not enabled or raylet is not available
+        if not auth_utils.is_token_auth_enabled():
+            return await handler(request)
+
+        auth_header = request.headers.get(
+            authentication_constants.AUTHORIZATION_HEADER_NAME, ""
+        )
+        if not auth_header:
+            return aiohttp.web.Response(
+                status=401, text="Unauthorized: Missing authentication token"
+            )
+
+        if not auth_utils.validate_request_token(auth_header):
+            return aiohttp.web.Response(
+                status=403, text="Forbidden: Invalid authentication token"
+            )
+
         return await handler(request)
-
-    auth_header = request.headers.get(
-        authentication_constants.AUTHORIZATION_HEADER_NAME, ""
-    )
-    if not auth_header:
-        return aiohttp.web.Response(
-            status=401, text="Unauthorized: Missing authentication token"
-        )
-
-    if not auth_utils.validate_request_token(auth_header):
-        return aiohttp.web.Response(
-            status=403, text="Forbidden: Invalid authentication token"
-        )
-
-    return await handler(request)
 
 
 def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, str]:
