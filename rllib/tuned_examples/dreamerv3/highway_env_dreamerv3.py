@@ -21,8 +21,9 @@ except (ImportError, ModuleNotFoundError):
 
 import gymnasium as gym
 
-from ray import tune
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
+from ray import tune
+
 
 # Number of GPUs to run on.
 num_gpus = 4

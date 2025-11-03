@@ -9,9 +9,3 @@ filegroup(
     srcs = ["defaults.yaml"],
     visibility = ["//visibility:public"],
 )
-
-filegroup(
-    name = "test_configs",
-    data = glob(["tests/*.yaml"]),
-    visibility = ["//release:__pkg__"],
-)

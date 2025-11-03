@@ -49,6 +49,7 @@
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/raylet_ipc_client/client_connection.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/network_util.h"
 
 namespace ph = boost::placeholders;

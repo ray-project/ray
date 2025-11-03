@@ -5,14 +5,15 @@ You can train the checkpointed policy with a different algorithm too.
 """
 
 import argparse
+from functools import partial
 import os
 import tempfile
-from functools import partial
 
 import ray
 from ray import tune
-from ray.rllib.algorithms.sac import SACConfig
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.callbacks.callbacks import RLlibCallback
+from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.env.utils import try_import_pyspiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.examples._old_api_stack.connectors.prepare_checkpoint import (
@@ -25,7 +26,7 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES,
 )
 from ray.tune import CLIReporter, register_env
-from ray.tune.result import TRAINING_ITERATION
+
 
 pyspiel = try_import_pyspiel(error=True)
 register_env(

@@ -1,6 +1,6 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
-
 import ray
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
+
 from ray.data.iterator import DataIterator
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec

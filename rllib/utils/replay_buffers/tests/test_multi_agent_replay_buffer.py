@@ -2,12 +2,9 @@ import unittest
 
 import numpy as np
 
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    MultiAgentBatch,
-    SampleBatch,
-    concat_samples,
-)
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, concat_samples
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
 )
@@ -331,8 +328,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

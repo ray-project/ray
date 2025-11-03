@@ -23,13 +23,11 @@
 #pragma once
 
 #include <memory>
-#include <optional>
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/grpc_service_interfaces.h"
-#include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
@@ -53,8 +51,7 @@ class ActorInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      const ClusterID &cluster_id) override;
 
  private:
   ActorInfoGcsService::AsyncService service_;
@@ -77,8 +74,7 @@ class NodeInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      const ClusterID &cluster_id) override;
 
  private:
   NodeInfoGcsService::AsyncService service_;
@@ -101,8 +97,7 @@ class NodeResourceInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      const ClusterID &cluster_id) override;
 
  private:
   NodeResourceInfoGcsService::AsyncService service_;
@@ -125,8 +120,7 @@ class InternalPubSubGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      const ClusterID &cluster_id) override;
 
  private:
   InternalPubSubGcsService::AsyncService service_;
@@ -149,8 +143,7 @@ class JobInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      const ClusterID &cluster_id) override;
 
  private:
   JobInfoGcsService::AsyncService service_;
@@ -173,8 +166,7 @@ class RuntimeEnvGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      const ClusterID &cluster_id) override;
 
  private:
   RuntimeEnvGcsService::AsyncService service_;
@@ -197,8 +189,7 @@ class WorkerInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      const ClusterID &cluster_id) override;
 
  private:
   WorkerInfoGcsService::AsyncService service_;
@@ -221,8 +212,7 @@ class InternalKVGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      const ClusterID &cluster_id) override;
 
  private:
   InternalKVGcsService::AsyncService service_;
@@ -245,8 +235,7 @@ class TaskInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      const ClusterID &cluster_id) override;
 
  private:
   TaskInfoGcsService::AsyncService service_;
@@ -269,8 +258,7 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      const ClusterID &cluster_id) override;
 
  private:
   PlacementGroupInfoGcsService::AsyncService service_;
@@ -295,8 +283,7 @@ class AutoscalerStateGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      const ClusterID &cluster_id) override;
 
  private:
   AutoscalerStateService::AsyncService service_;
@@ -323,8 +310,7 @@ class RayEventExportGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      const ClusterID &cluster_id) override;
 
  private:
   RayEventExportGcsService::AsyncService service_;

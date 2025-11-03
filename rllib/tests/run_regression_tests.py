@@ -6,18 +6,17 @@ import argparse
 import importlib
 import json
 import os
-import re
-import sys
-import uuid
 from pathlib import Path
-
+import sys
+import re
+import uuid
 import yaml
 
 import ray
 from ray import air
-from ray._common.deprecation import deprecation_warning
 from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib import _register_all
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,

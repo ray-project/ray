@@ -1,12 +1,10 @@
-from typing import Any, List, Optional, Union
-
 import gymnasium as gym
-import numpy as np
-import tree  # pip install dm_tree
+from gymnasium.spaces import Tuple, Dict
 from gymnasium.core import ActType, ObsType
-from gymnasium.spaces import Dict, Tuple
-
+import numpy as np
 from ray.rllib.utils.annotations import DeveloperAPI
+import tree  # pip install dm_tree
+from typing import Any, List, Optional, Union
 
 
 @DeveloperAPI

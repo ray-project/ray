@@ -1,6 +1,7 @@
-import numpy as np
-from gymnasium.envs.classic_control import CartPoleEnv
 from gymnasium.spaces import Box
+import numpy as np
+
+from gymnasium.envs.classic_control import CartPoleEnv
 
 
 class StatelessCartPole(CartPoleEnv):

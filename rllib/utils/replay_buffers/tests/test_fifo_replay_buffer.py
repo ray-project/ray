@@ -1,8 +1,7 @@
 import unittest
-
 import numpy as np
-
 from ray.rllib.policy.sample_batch import SampleBatch
+
 from ray.rllib.utils.replay_buffers.fifo_replay_buffer import FifoReplayBuffer
 
 
@@ -49,8 +48,7 @@ class TestFifoReplayBuffer(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

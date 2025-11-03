@@ -1,15 +1,15 @@
 import unittest
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict
-
 import gymnasium as gym
+
+from pathlib import Path
+from typing import Any, Dict, TYPE_CHECKING
 
 from ray.rllib.algorithms.bc.bc import BCConfig
 from ray.rllib.core import ALL_MODULES, DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.offline.offline_evaluation_runner import (
-    TOTAL_EVAL_LOSS_KEY,
     OfflineEvaluationRunner,
+    TOTAL_EVAL_LOSS_KEY,
 )
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED
 from ray.rllib.utils.typing import ModuleID, ResultDict, TensorType
@@ -198,7 +198,6 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
-
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

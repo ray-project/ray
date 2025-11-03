@@ -20,7 +20,6 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
-#include "ray/object_manager/metrics.h"
 
 namespace ray {
 
@@ -139,10 +138,6 @@ class PushManager {
 
   /// The list of push requests with chunks waiting to be sent.
   std::list<PushState> push_requests_with_chunks_to_send_;
-
-  mutable ray::stats::Gauge push_manager_num_pushes_remaining_gauge_{
-      GetPushManagerNumPushesRemainingGaugeMetric()};
-  mutable ray::stats::Gauge push_manager_chunks_gauge_{GetPushManagerChunksGaugeMetric()};
 };
 
 }  // namespace ray

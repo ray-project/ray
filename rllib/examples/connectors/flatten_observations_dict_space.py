@@ -71,6 +71,7 @@ Results to expect
 |                 100000 |                 100000 |                 421.42 |
 +------------------------+------------------------+------------------------+
 """
+from ray.tune.registry import register_env
 from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.cartpole_with_dict_observation_space import (
@@ -83,7 +84,8 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray.tune.registry import get_trainable_cls, register_env
+from ray.tune.registry import get_trainable_cls
+
 
 # Read in common example script command line arguments.
 parser = add_rllib_example_script_args(default_timesteps=200000, default_reward=400.0)

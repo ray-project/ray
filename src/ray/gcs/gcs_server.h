@@ -20,6 +20,7 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/postable.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_function_manager.h"
@@ -37,7 +38,6 @@
 #include "ray/observability/metric_interface.h"
 #include "ray/observability/ray_event_recorder.h"
 #include "ray/pubsub/gcs_publisher.h"
-#include "ray/ray_syncer/ray_syncer.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
@@ -181,7 +181,7 @@ class GcsServer {
       ray::observability::MetricInterface &placement_group_count_gauge);
 
   /// Initialize gcs worker manager.
-  void InitGcsWorkerManager();
+  void InitGcsWorkerManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs task manager.
   void InitGcsTaskManager(ray::observability::MetricInterface &task_events_reported_gauge,

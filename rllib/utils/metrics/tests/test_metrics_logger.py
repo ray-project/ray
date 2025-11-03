@@ -1,7 +1,6 @@
 import time
-
-import numpy as np
 import pytest
+import numpy as np
 import torch
 
 import ray
@@ -554,8 +553,7 @@ def test_hierarchical_metrics_system():
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -108,7 +108,7 @@ class Metric : public observability::MetricInterface {
          std::string unit,
          const std::vector<std::string> &tag_keys = {});
 
-  ~Metric() = default;
+  ~Metric() override;
 
   Metric &operator()() { return *this; }
 

@@ -69,13 +69,6 @@ def parse_args() -> argparse.Namespace:
             "output of the first run as input."
         ),
     )
-    parser.add_argument(
-        "--concurrency",
-        default=[1, 1024],
-        nargs=2,
-        type=int,
-        help="Concurrency to use with 'map_batches'.",
-    )
     return parser.parse_args()
 
 
@@ -87,8 +80,7 @@ def main(args: argparse.Namespace) -> None:
     path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
     path = [path] * args.repeat_inputs
 
-    def apply_map_batches(ds):
-        use_actors = args.compute == "actors"
+    def apply_map_batches(ds, use_actors=False):
         if not use_actors:
             return ds.map_batches(
                 functools.partial(
@@ -108,7 +100,7 @@ def main(args: argparse.Namespace) -> None:
                 fn_constructor_args=[model_ref, args.map_batches_sleep_ms],
                 batch_format=args.batch_format,
                 batch_size=args.batch_size,
-                concurrency=tuple(args.concurrency),
+                concurrency=(1, 1024),
             )
 
     def benchmark_fn():
@@ -119,9 +111,10 @@ def main(args: argparse.Namespace) -> None:
         if args.api == "map":
             ds = ds.map(increment_row)
         elif args.api == "map_batches":
-            ds = apply_map_batches(ds)
+            use_actors = args.compute == "actors"
+            ds = apply_map_batches(ds, use_actors)
             if args.repeat_map_batches == "repeat":
-                ds = apply_map_batches(ds)
+                ds = apply_map_batches(ds, use_actors)
         elif args.api == "flat_map":
             ds = ds.flat_map(flat_increment_row)
 

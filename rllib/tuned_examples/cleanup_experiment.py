@@ -29,7 +29,6 @@ import json
 import os
 import re
 import shutil
-
 import yaml
 
 parser = argparse.ArgumentParser()

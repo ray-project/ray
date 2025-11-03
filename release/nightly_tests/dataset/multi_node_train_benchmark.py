@@ -481,13 +481,7 @@ def train_loop_per_worker():
             }
         )
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        torch.save(model.state_dict(), os.path.join(tmpdir, "model.pt"))
-        checkpoint = Checkpoint.from_directory(tmpdir)
-        train.report(
-            final_train_report_metrics,
-            checkpoint=checkpoint,
-        )
+    train.report(final_train_report_metrics)
 
 
 # The input files URLs per training worker.

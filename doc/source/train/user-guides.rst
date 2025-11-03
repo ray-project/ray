@@ -8,7 +8,6 @@ Ray Train User Guides
 
     user-guides/data-loading-preprocessing
     user-guides/using-gpus
-    user-guides/local_mode
     user-guides/persistent-storage
     user-guides/monitoring-logging
     user-guides/checkpoints

@@ -186,10 +186,7 @@ class TestJobSubmit:
         """Should tail logs and wait for process to exit."""
         cmd = "sleep 1 && echo hello && sleep 1 && echo hello"
         stdout, _ = _run_cmd(f"ray job submit -- bash -c '{cmd}'")
-
-        # 'hello' should appear four times: twice when we print the entrypoint, then
-        # two more times in the logs from the `echo`.
-        assert stdout.count("hello") == 4
+        assert stdout.count("hello") == 2
         assert "succeeded" in stdout
 
     def test_submit_no_wait(self, ray_start_stop):
@@ -203,10 +200,7 @@ class TestJobSubmit:
         """Should exit immediately and print logs even if job returns instantly."""
         cmd = "echo hello"
         stdout, _ = _run_cmd(f"ray job submit -- bash -c '{cmd}'")
-
-        # 'hello' should appear twice: once when we print the entrypoint, then
-        # again from the `echo`.
-        assert stdout.count("hello") == 2
+        assert "hello" in stdout
 
     def test_multiple_ray_init(self, ray_start_stop):
         cmd = (

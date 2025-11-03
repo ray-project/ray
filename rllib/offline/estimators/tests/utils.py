@@ -1,13 +1,12 @@
-from typing import Dict, Tuple, Type, Union
+from typing import Type, Union, Dict, Tuple
 
 import numpy as np
-
 from ray.rllib.algorithms import AlgorithmConfig
 from ray.rllib.env.env_runner_group import EnvRunnerGroup
+from ray.rllib.examples.envs.classes.cliff_walking_wall_env import CliffWalkingWallEnv
 from ray.rllib.examples._old_api_stack.policy.cliff_walking_wall_policy import (
     CliffWalkingWallPolicy,
 )
-from ray.rllib.examples.envs.classes.cliff_walking_wall_env import CliffWalkingWallEnv
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.offline.estimators import (
     DirectMethod,

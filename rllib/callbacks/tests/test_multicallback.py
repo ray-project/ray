@@ -1,5 +1,4 @@
 import unittest
-
 import ray
 from ray.rllib.algorithms import PPOConfig
 from ray.rllib.callbacks.callbacks import RLlibCallback
@@ -142,8 +141,7 @@ class TestMultiCallback(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

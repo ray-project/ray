@@ -1,7 +1,6 @@
+import gymnasium as gym
 import json
 import unittest
-
-import gymnasium as gym
 
 from ray.rllib.policy.view_requirement import ViewRequirement
 
@@ -33,8 +32,7 @@ class TestViewRequirement(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

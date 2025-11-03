@@ -1,5 +1,5 @@
-import importlib
 import logging
+import importlib
 
 import numpy as np
 

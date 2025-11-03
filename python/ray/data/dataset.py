@@ -136,7 +136,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
 
-from ray.data.expressions import Expr, StarExpr, col
+from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
 
@@ -454,7 +454,7 @@ class Dataset:
         batch_size: Union[int, None, Literal["default"]] = None,
         compute: Optional[ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
-        zero_copy_batch: bool = True,
+        zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -463,7 +463,6 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
-        udf_modifying_row_count: bool = False,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -481,18 +480,9 @@ class Dataset:
             To understand the format of the input to ``fn``, call :meth:`~Dataset.take_batch`
             on the dataset to get a batch in the same format as will be passed to ``fn``.
 
-        .. note::
-            ``fn`` should generally avoid modifying data buffers behind its input
-            since these could be zero-copy views into the underlying object residing
-            inside Ray's Object Store.
-
-            To perform any modifications it's recommended to copy the data you
-            want to modify.
-
-            In rare cases when you can't copy inside your UDF, you can instead
-            specify ``zero_copy_batch=False`` and then Ray Data will copy the
-            *whole* batch for you, providing ``fn`` with a copy rather than
-            a zero-copy view.
+        .. tip::
+            If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
+            performance and decrease memory utilization.
 
         .. warning::
             Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
@@ -611,16 +601,16 @@ class Dataset:
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
                 ``pyarrow.Table``. If ``batch_format`` is set to ``None`` input
-                block format will be used.
+                block format will be used. Note that
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
                 view on data in Ray's object store, which can decrease memory
-                utilization and improve performance. Setting this to ``False``,
-                will make a copy of the *whole* batch, therefore allowing UDF to
-                modify underlying data buffers (like tensors, binary arrays, etc)
-                in place. It's recommended to copy only the data you need to
-                modify instead of resorting to copying the whole batch.
+                utilization and improve performance. If this is ``False``, the batch
+                is writable, which requires an extra copy to guarantee.
+                If ``fn`` mutates its input, this needs to be ``False`` in order to
+                avoid "assignment destination is read-only" or "buffer source array is
+                read-only" errors. Default is ``False``.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -637,7 +627,6 @@ class Dataset:
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: This argument is deprecated. Use ``compute`` argument.
-            udf_modifying_row_count: Set to True if the UDF may modify the number of rows it receives so the limit pushdown optimization will not be applied.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -706,7 +695,6 @@ class Dataset:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
-            udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
@@ -727,7 +715,6 @@ class Dataset:
         num_gpus: Optional[float],
         memory: Optional[float],
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]],
-        udf_modifying_row_count: bool,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         **ray_remote_args,
     ):
@@ -781,7 +768,6 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
-            udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
@@ -852,13 +838,14 @@ class Dataset:
         else:
             project_op = Project(
                 self._logical_plan.dag,
-                exprs=[StarExpr(), expr.alias(column_name)],
+                cols=None,
+                cols_rename=None,
+                exprs={column_name: expr},
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(project_op, self.context)
         return Dataset(plan, logical_plan)
 
-    @Deprecated(message="Use `with_column` API instead")
     @PublicAPI(api_group=BT_API_GROUP)
     def add_column(
         self,
@@ -971,7 +958,7 @@ class Dataset:
             batch_format=batch_format,
             compute=compute,
             concurrency=concurrency,
-            zero_copy_batch=True,
+            zero_copy_batch=False,
             **ray_remote_args,
         )
 
@@ -1080,25 +1067,24 @@ class Dataset:
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
         """  # noqa: E501
-        from ray.data.expressions import col
-
         if isinstance(cols, str):
-            exprs = [col(cols)]
+            cols = [cols]
         elif isinstance(cols, list):
             if not all(isinstance(col, str) for col in cols):
                 raise ValueError(
                     "select_columns requires all elements of 'cols' to be strings."
                 )
-            if len(cols) != len(set(cols)):
-                raise ValueError(
-                    "select_columns expected unique column names, "
-                    f"got duplicate column names: {cols}"
-                )
-            exprs = [col(c) for c in cols]
         else:
             raise TypeError(
                 "select_columns requires 'cols' to be a string or a list of strings."
             )
+
+        if len(cols) != len(set(cols)):
+            raise ValueError(
+                "select_columns expected unique column names, "
+                f"got duplicate column names: {cols}"
+            )
+
         # Don't feel like we really need this
         from ray.data._internal.compute import TaskPoolStrategy
 
@@ -1107,7 +1093,8 @@ class Dataset:
         plan = self._plan.copy()
         select_op = Project(
             self._logical_plan.dag,
-            exprs=exprs,
+            cols=cols,
+            cols_rename=None,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
@@ -1187,8 +1174,7 @@ class Dataset:
                     "to be strings."
                 )
 
-            exprs = [col(prev)._rename(new) for prev, new in names.items()]
-
+            cols_rename = names
         elif isinstance(names, list):
             if not names:
                 raise ValueError(
@@ -1212,7 +1198,7 @@ class Dataset:
                     f"schema names: {current_names}."
                 )
 
-            exprs = [col(prev)._rename(new) for prev, new in zip(current_names, names)]
+            cols_rename = dict(zip(current_names, names))
         else:
             raise TypeError(
                 f"rename_columns expected names to be either List[str] or "
@@ -1233,7 +1219,8 @@ class Dataset:
         plan = self._plan.copy()
         select_op = Project(
             self._logical_plan.dag,
-            exprs=[StarExpr(), *exprs],
+            cols=None,
+            cols_rename=cols_rename,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
@@ -3605,7 +3592,7 @@ class Dataset:
 
         # NOTE: Project the dataset to avoid the need to carry actual
         #       data when we're only interested in the total count
-        count_op = Count(Project(self._logical_plan.dag, exprs=[]))
+        count_op = Count(Project(self._logical_plan.dag, cols=[]))
         logical_plan = LogicalPlan(count_op, self.context)
         count_ds = Dataset(plan, logical_plan)
 
@@ -4385,7 +4372,6 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
-            mode=mode,
         )
         self.write_datasink(
             datasink,
@@ -4483,7 +4469,6 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
-            mode=mode,
         )
         self.write_datasink(
             datasink,
@@ -4584,7 +4569,6 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
-            mode=mode,
         )
         self.write_datasink(
             datasink,
@@ -6102,21 +6086,10 @@ class Dataset:
 
         .. testoutput::
 
-            <BLANKLINE>
             -------- Logical Plan --------
-            MapRows[Map(<lambda>)]
-            +- Read[ReadRange]
-            <BLANKLINE>
-            -------- Logical Plan (Optimized) --------
-            MapRows[Map(<lambda>)]
-            +- Read[ReadRange]
-            <BLANKLINE>
+            Map(<lambda>)
+            +- ReadRange
             -------- Physical Plan --------
-            TaskPoolMapOperator[Map(<lambda>)]
-            +- TaskPoolMapOperator[ReadRange]
-               +- InputDataBuffer[Input]
-            <BLANKLINE>
-            -------- Physical Plan (Optimized) --------
             TaskPoolMapOperator[ReadRange->Map(<lambda>)]
             +- InputDataBuffer[Input]
             <BLANKLINE>

@@ -9,6 +9,7 @@ from grpc._channel import _InactiveRpcError
 
 import ray
 import ray._private.ray_constants as ray_constants
+import ray.experimental.internal_kv as internal_kv
 from ray import NodeID
 from ray._common.network_utils import build_address
 from ray._common.test_utils import SignalActor, wait_for_condition
@@ -544,7 +545,7 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
     cluster = ray_start_cluster
     system_configs = {
         "health_check_initial_delay_ms": 0,
-        "health_check_timeout_ms": 1000,
+        "health_check_timeout_ms": 10,
         "health_check_failure_threshold": 1,
     }
     head = cluster.add_node(
@@ -555,16 +556,15 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
     cluster.wait_for_nodes()
     ray.init(address=cluster.address, include_dashboard=True)
 
-    signal = SignalActor.remote()
-
     @ray.remote(resources={"foo": 1})
     def func():
-        ray.get(signal.send.remote())
+        internal_kv._internal_kv_put("test_func", "func")
         while True:
             time.sleep(1)
 
     func.remote()
-    ray.get(signal.wait.remote())
+    while not internal_kv._internal_kv_exists("test_func"):
+        time.sleep(0.1)
 
     # The lease request should wait inside raylet
     # since there is no available resources.

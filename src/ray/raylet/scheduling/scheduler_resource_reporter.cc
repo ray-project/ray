@@ -114,7 +114,7 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
       }
 
       // Add label selectors
-      label_selectors.ToProto(by_shape_entry->add_label_selectors());
+      *by_shape_entry->add_label_selectors() = label_selectors.ToProto();
 
       if (is_infeasible) {
         by_shape_entry->set_num_infeasible_requests_queued(count);

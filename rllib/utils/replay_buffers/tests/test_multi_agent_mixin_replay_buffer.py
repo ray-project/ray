@@ -1,14 +1,13 @@
+import numpy as np
 import unittest
 
-import numpy as np
-
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    MultiAgentBatch,
-    SampleBatch,
-)
 from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import (
     MultiAgentMixInReplayBuffer,
+)
+from ray.rllib.policy.sample_batch import (
+    SampleBatch,
+    DEFAULT_POLICY_ID,
+    MultiAgentBatch,
 )
 
 
@@ -206,8 +205,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

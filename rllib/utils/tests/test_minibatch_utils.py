@@ -1,8 +1,7 @@
 import unittest
-
 import numpy as np
 
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.minibatch_utils import (
     MiniBatchCyclicIterator,
@@ -181,8 +180,7 @@ class TestMinibatchUtils(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

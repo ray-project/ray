@@ -1,7 +1,7 @@
-import numpy as np
 from gymnasium.spaces import Dict, Discrete, MultiDiscrete, Tuple
+import numpy as np
 
-from ray.rllib.env.multi_agent_env import ENV_STATE, MultiAgentEnv
+from ray.rllib.env.multi_agent_env import MultiAgentEnv, ENV_STATE
 
 
 class TwoStepGame(MultiAgentEnv):

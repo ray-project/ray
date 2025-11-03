@@ -1,7 +1,6 @@
-from typing import Optional, Tuple, Union
-
-import numpy as np
 from gymnasium.spaces import Discrete, MultiDiscrete, Space
+import numpy as np
+from typing import Optional, Tuple, Union
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog

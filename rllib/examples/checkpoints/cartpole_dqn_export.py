@@ -2,11 +2,10 @@
 
 # @OldAPIStack
 
-import os
-
 import numpy as np
-
+import os
 import ray
+
 import ray._common
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.framework import try_import_tf

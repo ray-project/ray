@@ -1,14 +1,13 @@
 import dataclasses
-from typing import Dict, List, Optional, Union
-
 import gymnasium as gym
+from typing import Dict, List, Optional, Union
 import numpy as np
 
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.serialization import (
-    gym_space_from_dict,
     gym_space_to_dict,
+    gym_space_from_dict,
 )
 
 torch, _ = try_import_torch()

@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+#include "ray/stats/metric_defs.h"
+
 namespace ray {
 namespace gcs {
 
@@ -34,8 +36,8 @@ void GcsPlacementGroup::UpdateState(
              .placement_group_final_bundle_placement_timestamp_ms() -
          placement_group_table_data_.placement_group_creation_timestamp_ms()) /
         1000;
-    scheduler_placement_time_s_histogram_.Record(duration_s,
-                                                 {{"WorkloadType", "PlacementGroup"}});
+    stats::STATS_scheduler_placement_time_s.Record(duration_s,
+                                                   {{"WorkloadType", "PlacementGroup"}});
   }
   placement_group_table_data_.set_state(state);
   RefreshMetrics();

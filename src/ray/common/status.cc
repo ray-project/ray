@@ -74,7 +74,7 @@ const absl::flat_hash_map<StatusCode, std::string_view> kCodeToStr = {
     {StatusCode::RpcError, "RpcError"},
     {StatusCode::OutOfResource, "OutOfResource"},
     {StatusCode::ObjectRefEndOfStream, "ObjectRefEndOfStream"},
-    {StatusCode::Unauthenticated, "Unauthenticated"},
+    {StatusCode::AuthError, "AuthError"},
     {StatusCode::InvalidArgument, "InvalidArgument"},
     {StatusCode::ChannelError, "ChannelError"},
     {StatusCode::ChannelTimeoutError, "ChannelTimeoutError"},

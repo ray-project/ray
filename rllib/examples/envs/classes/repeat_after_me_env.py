@@ -1,6 +1,6 @@
 import gymnasium as gym
-import numpy as np
 from gymnasium.spaces import Box, Discrete
+import numpy as np
 
 
 class RepeatAfterMeEnv(gym.Env):

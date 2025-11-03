@@ -261,8 +261,6 @@ class vLLMEngineWrapper:
         else:
             tokenized_prompt = None
 
-        # Extract image data from preprocessing output
-        # Note: Field name is 'image' (singular) not 'images' (plural).
         if "image" in row:
             image = row.pop("image")
         else:
@@ -692,7 +690,7 @@ class vLLMEngineStage(StatefulStage):
         """The optional input keys of the stage and their descriptions."""
         return {
             "tokenized_prompt": "The tokenized prompt. If provided, the prompt will not be tokenized by the vLLM engine.",
-            "image": "The image(s) for multimodal input. Accepts a single image or list of images.",
+            "images": "The images to generate text from. If provided, the prompt will be a multimodal prompt.",
             "model": "The model to use for this request. If the model is different from the "
             "model set in the stage, then this is a LoRA request.",
         }

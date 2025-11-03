@@ -1,6 +1,5 @@
-from typing import Any, Dict, Optional
-
 import numpy as np
+from typing import Any, Dict, Optional
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override

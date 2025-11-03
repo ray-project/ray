@@ -1,23 +1,23 @@
 import logging
 import threading
 import time
-from typing import Optional, Union
+from typing import Union, Optional
 
 import ray.cloudpickle as pickle
-
-# Backward compatibility.
-from ray.rllib.env.external.rllink import RLlink as Commands
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import (
-    EnvActionType,
+    MultiAgentDict,
     EnvInfoDict,
     EnvObsType,
-    MultiAgentDict,
+    EnvActionType,
 )
+
+# Backward compatibility.
+from ray.rllib.env.external.rllink import RLlink as Commands
 
 logger = logging.getLogger(__name__)
 

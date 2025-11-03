@@ -1,8 +1,7 @@
 import logging
-import time
-
-import numpy as np
 from gymnasium.envs.classic_control import CartPoleEnv
+import numpy as np
+import time
 
 from ray.rllib.examples.envs.classes.multi_agent import make_multi_agent
 from ray.rllib.utils.annotations import override

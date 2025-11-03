@@ -15,8 +15,11 @@ class NixlConnectorBackend(BaseConnectorBackend):
                     "NIXL_SIDE_CHANNEL_PORT_BASE", vllm_utils.get_open_port()
                 )
             )
-            # Use a deterministic rank-based offset (DP rank if set; else replica hash)
-            port = base_port + self._compute_port_offset()
+            # If dp_rank is set, we should use the
+            # base port + dp_rank as the side channel port
+            # due to a potential ray condition for getting the free ports.
+            dp_rank = self.llm_config.engine_kwargs.get("data_parallel_rank", 0)
+            port = base_port + dp_rank
             os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
 
     def _set_side_channel_host(self):
@@ -28,7 +31,7 @@ class NixlConnectorBackend(BaseConnectorBackend):
     def setup(self) -> None:
         """Initialize the NIXL connector backend.
 
-        This method sets up the NIXL (NVIDIA Inference Xfer Library) connector by:
+        This method sets up the NIXL (Network Interface for eXtended LLM) connector by:
         1. Verifying that the required vLLM environment variables are supported
         2. Configuring the side channel port and host if not already set
         3. Creating a unique engine ID across replicas

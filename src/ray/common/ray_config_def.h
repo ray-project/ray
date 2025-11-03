@@ -35,12 +35,6 @@ RAY_CONFIG(bool, emit_main_service_metrics, true)
 /// Whether to enable cluster authentication.
 RAY_CONFIG(bool, enable_cluster_auth, true)
 
-/// Whether to enable token-based authentication for RPC calls.
-/// will be converted to AuthenticationMode enum defined in
-/// rpc/authentication/authentication_mode.h
-/// use GetAuthenticationMode() to get the authentication mode enum value.
-RAY_CONFIG(std::string, auth_mode, "disabled")
-
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available
 /// in the associated process's log file.
@@ -377,6 +371,8 @@ RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
 RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 /// Maximum number of destroyed actors in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
+/// Maximum number of dead workers in GCS server memory cache.
+RAY_CONFIG(int64_t, maximum_gcs_dead_worker_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 // The interval at which the gcs server will pull a new resource.

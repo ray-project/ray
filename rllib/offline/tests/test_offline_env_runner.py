@@ -1,9 +1,8 @@
+import msgpack
+import msgpack_numpy as m
 import pathlib
 import shutil
 import unittest
-
-import msgpack
-import msgpack_numpy as m
 
 import ray
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
@@ -206,7 +205,6 @@ class TestOfflineEnvRunner(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
-
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

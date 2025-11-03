@@ -1,9 +1,8 @@
 import atexit
-import os
-import subprocess
-
 import gymnasium as gym
 from gymnasium.spaces import Discrete
+import os
+import subprocess
 
 
 class EnvWithSubprocess(gym.Env):

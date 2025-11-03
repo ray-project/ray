@@ -285,7 +285,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       metrics_.placement_group_count_gauge);
   InitGcsActorManager(
       gcs_init_data, metrics_.actor_by_state_gauge, metrics_.gcs_actor_by_state_gauge);
-  InitGcsWorkerManager();
+  InitGcsWorkerManager(gcs_init_data);
   InitGcsTaskManager(metrics_.task_events_reported_gauge,
                      metrics_.task_events_dropped_gauge,
                      metrics_.task_events_stored_gauge);
@@ -295,15 +295,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init metrics and event exporter.
   metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
-    if (server_status.ok()) {
-      stats::InitOpenTelemetryExporter(config_.metrics_agent_port);
-      ray_event_recorder_->StartExportingEvents();
-    } else {
-      RAY_LOG(ERROR)
-          << "Failed to establish connection to the event+metrics exporter agent. "
-             "Events and metrics will not be exported. "
-          << "Exporter agent status: " << server_status.ToString();
-    }
+    stats::InitOpenTelemetryExporter(config_.metrics_agent_port, server_status);
+    ray_event_recorder_->StartExportingEvents();
   });
 
   // Start RPC server when all tables have finished loading initial
@@ -523,7 +516,6 @@ void GcsServer::InitGcsActorManager(
       schedule_success_handler,
       raylet_client_pool_,
       worker_client_pool_,
-      metrics_.scheduler_placement_time_s_histogram,
       /*normal_task_resources_changed_callback=*/
       [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
         gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
@@ -734,9 +726,12 @@ void GcsServer::InitRuntimeEnvManager() {
       /*max_active_rpcs_per_handler=*/-1));
 }
 
-void GcsServer::InitGcsWorkerManager() {
+void GcsServer::InitGcsWorkerManager(const GcsInitData &gcs_init_data) {
   gcs_worker_manager_ = std::make_unique<GcsWorkerManager>(
-      *gcs_table_storage_, io_context_provider_.GetDefaultIOContext(), *gcs_publisher_);
+      RayConfig::instance().maximum_gcs_dead_worker_cached_count(),*gcs_table_storage_, io_context_provider_.GetDefaultIOContext(), *gcs_publisher_);
+
+  // Initialize by gcs tables data.
+  gcs_worker_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::WorkerInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
       *gcs_worker_manager_,

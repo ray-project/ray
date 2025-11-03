@@ -166,12 +166,9 @@ def train_func(config):
     optimizer = Adam(model.parameters(), lr=config.get('learning_rate', 0.001))
 
     # Load from checkpoint if available (for resuming training)
-    start_epoch = 0
     loaded_checkpoint = ray.train.get_checkpoint()
     if loaded_checkpoint:
-        latest_epoch = load_fsdp_checkpoint(model, optimizer, loaded_checkpoint)
-        start_epoch = latest_epoch + 1 if latest_epoch is not None else 0
-        logger.info(f"Resuming training from epoch {start_epoch}")
+        load_fsdp_checkpoint(model, optimizer, loaded_checkpoint)
 
     # Prepare training data
     transform = Compose([
@@ -209,7 +206,7 @@ def train_func(config):
         num_batches = 0
         epochs = config.get('epochs', 5)
         
-        for epoch in range(start_epoch, epochs):
+        for epoch in range(epochs):
             # Set epoch for distributed sampler to ensure proper shuffling
             if ray.train.get_context().get_world_size() > 1:
                 train_loader.sampler.set_epoch(epoch)
@@ -233,8 +230,8 @@ def train_func(config):
 
             # Report metrics and save checkpoint after each epoch
             avg_loss = running_loss / num_batches
-            metrics = {"loss": avg_loss}
-            report_metrics_and_save_fsdp_checkpoint(model, optimizer, metrics, epoch)
+            metrics = {"loss": avg_loss, "epoch": epoch}
+            report_metrics_and_save_fsdp_checkpoint(model, optimizer, metrics)
 
             # Log metrics from rank 0 only to avoid duplicate outputs
             if world_rank == 0:
@@ -447,18 +444,16 @@ class AppState(Stateful):
     and optimizer.
     """
 
-    def __init__(self, model, optimizer=None, epoch=None):
+    def __init__(self, model, optimizer=None):
         self.model = model
         self.optimizer = optimizer
-        self.epoch = epoch
 
     def state_dict(self):
         # this line automatically manages FSDP2 FQN's (Fully Qualified Name), as well as sets the default state dict type to FSDP.SHARDED_STATE_DICT
         model_state_dict, optimizer_state_dict = get_state_dict(self.model, self.optimizer)
         return {
             "model": model_state_dict,
-            "optim": optimizer_state_dict,
-            "epoch": self.epoch
+            "optim": optimizer_state_dict
         }
 
     def load_state_dict(self, state_dict):
@@ -469,9 +464,6 @@ class AppState(Stateful):
             model_state_dict=state_dict["model"],
             optim_state_dict=state_dict["optim"],
         )
-        # Load epoch information if available
-        if "epoch" in state_dict:
-            self.epoch = state_dict["epoch"]
 ```
 
 ### Load distributed model from checkpoint
@@ -486,7 +478,7 @@ import torch.distributed.checkpoint as dcp
 
 
 ```python
-def load_fsdp_checkpoint(model: FSDPModule, optimizer: torch.optim.Optimizer, ckpt: ray.train.Checkpoint) -> int | None:
+def load_fsdp_checkpoint(model: FSDPModule, optimizer: torch.optim.Optimizer, ckpt: ray.train.Checkpoint):
     """Load an FSDP checkpoint into the model and optimizer.
     
     This function handles distributed checkpoint loading with automatic resharding
@@ -497,17 +489,13 @@ def load_fsdp_checkpoint(model: FSDPModule, optimizer: torch.optim.Optimizer, ck
         model: The FSDP-wrapped model to load state into
         optimizer: The optimizer to load state into
         ckpt: Ray Train checkpoint containing the saved state
-
-    Returns:
-        int: The epoch number saved within the checkpoint.
     """
     logger.info("Loading distributed checkpoint for resuming training...")
     
     try:
         with ckpt.as_directory() as checkpoint_dir:
             # Create state wrapper for DCP loading
-            app_state = AppState(model, optimizer)
-            state_dict = {"app": app_state}
+            state_dict = {"app": AppState(model, optimizer)}
             
             # Load the distributed checkpoint
             dcp.load(
@@ -515,8 +503,7 @@ def load_fsdp_checkpoint(model: FSDPModule, optimizer: torch.optim.Optimizer, ck
                 checkpoint_id=checkpoint_dir
             )
             
-        logger.info(f"Successfully loaded distributed checkpoint from epoch {app_state.epoch}")
-        return app_state.epoch
+        logger.info("Successfully loaded distributed checkpoint")
     except Exception as e:
         logger.error(f"Failed to load checkpoint: {e}")
         raise RuntimeError(f"Checkpoint loading failed: {e}") from e
@@ -529,7 +516,7 @@ The following function handles periodic checkpoint saving during training, combi
 
 ```python
 def report_metrics_and_save_fsdp_checkpoint(
-    model: FSDPModule, optimizer: torch.optim.Optimizer, metrics: dict, epoch: int = 0
+    model: FSDPModule, optimizer: torch.optim.Optimizer, metrics: dict
 ) -> None:
     """Report training metrics and save an FSDP checkpoint.
     
@@ -541,13 +528,12 @@ def report_metrics_and_save_fsdp_checkpoint(
         model: The FSDP-wrapped model to checkpoint
         optimizer: The optimizer to checkpoint
         metrics: Dictionary of metrics to report (e.g., loss, accuracy)
-        epoch: The current epoch to be saved
     """
     logger.info("Saving checkpoint and reporting metrics...")
     
     with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
         # Perform a distributed checkpoint with DCP
-        state_dict = {"app": AppState(model, optimizer, epoch)}
+        state_dict = {"app": AppState(model, optimizer)}
         dcp.save(state_dict=state_dict, checkpoint_id=temp_checkpoint_dir)
 
         # Report each checkpoint shard from all workers

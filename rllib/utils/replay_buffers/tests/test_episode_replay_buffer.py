@@ -1,11 +1,11 @@
 import unittest
 
 import numpy as np
-
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
     EpisodeReplayBuffer,
 )
+
 from ray.rllib.utils.test_utils import check
 
 
@@ -190,8 +190,7 @@ class TestEpisodeReplayBuffer(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

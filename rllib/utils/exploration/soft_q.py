@@ -1,6 +1,5 @@
-from typing import Optional, Union
-
 from gymnasium.spaces import Discrete, MultiDiscrete, Space
+from typing import Union, Optional
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.tf.tf_action_dist import Categorical

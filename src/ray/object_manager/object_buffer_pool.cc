@@ -327,10 +327,7 @@ Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
 
 void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&pool_mutex_);
-  Status s = store_client_->Delete(object_ids);
-  if (!s.ok()) {
-    RAY_LOG(WARNING) << "Failed to delete objects from plasma store: " << s;
-  }
+  RAY_CHECK_OK(store_client_->Delete(object_ids));
 }
 
 std::string ObjectBufferPool::DebugString() const {
