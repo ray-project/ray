@@ -443,13 +443,13 @@ steps:
       - docker
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu --canonical-tag ha_integration --python-version 3.10
+      - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu --canonical-tag ha_integration
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags ha_integration
     depends_on:
       - manylinux
       - forge
       - raycpubase
-      - corebuild-multipy
+      - corebuild
 
   - label: ":ray: core: runtime env container tests"
     tags:
