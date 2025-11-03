@@ -41,15 +41,5 @@ inline ray::stats::Gauge GetTaskByStateGaugeMetric() {
   };
 }
 
-inline ray::stats::Gauge GetTotalLineageBytesGaugeMetric() {
-  return ray::stats::Gauge{
-      /*name=*/"total_lineage_bytes",
-      /*description=*/
-      "Total amount of memory used to store task specs for lineage reconstruction.",
-      /*unit=*/"",
-      /*tag_keys=*/{},
-  };
-}
-
 }  // namespace core
 }  // namespace ray

@@ -1,11 +1,11 @@
 """This is the next version of action distribution base class."""
-import abc
 from typing import Tuple
-
 import gymnasium as gym
+import abc
 
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.typing import TensorType, Union
+from ray.rllib.utils.annotations import override
 
 
 @ExperimentalAPI

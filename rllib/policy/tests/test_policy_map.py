@@ -1,8 +1,7 @@
-import time
-import unittest
-
 import gymnasium as gym
 import numpy as np
+import time
+import unittest
 
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig, PPOTF2Policy
@@ -120,8 +119,7 @@ class TestPolicyMap(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

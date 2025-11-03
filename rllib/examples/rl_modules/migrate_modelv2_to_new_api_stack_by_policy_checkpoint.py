@@ -13,6 +13,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.spaces.space_utils import batch
 
+
 if __name__ == "__main__":
     # Configure and train an old stack default ModelV2.
     config = (

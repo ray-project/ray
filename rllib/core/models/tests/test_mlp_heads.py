@@ -1,7 +1,7 @@
 import itertools
 import unittest
 
-from ray.rllib.core.models.configs import FreeLogStdMLPHeadConfig, MLPHeadConfig
+from ray.rllib.core.models.configs import MLPHeadConfig, FreeLogStdMLPHeadConfig
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import ModelChecker
 
@@ -85,8 +85,7 @@ class TestMLPHeads(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

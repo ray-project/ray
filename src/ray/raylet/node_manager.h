@@ -17,7 +17,6 @@
 #include <gtest/gtest_prod.h>
 
 #include <atomic>
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -30,6 +29,7 @@
 #include "ray/common/lease/lease.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
@@ -39,7 +39,6 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/pubsub/subscriber.h"
-#include "ray/ray_syncer/ray_syncer.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/lease_dependency_manager.h"
 #include "ray/raylet/local_lease_manager.h"
@@ -164,12 +163,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       AddProcessToCgroupHook add_process_to_system_cgroup_hook,
       std::unique_ptr<CgroupManagerInterface> cgroup_manager,
-      std::atomic_bool &shutting_down,
-      PlacementGroupResourceManager &placement_group_resource_manager,
-      boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
-      local_stream_socket socket);
+      std::atomic_bool &shutting_down);
 
-  void Start(rpc::GcsNodeInfo &&self_node_info);
+  /// Handle an unexpected error that occurred on a client connection.
+  /// The client will be disconnected and no more messages will be processed.
+  ///
+  /// \param client The client whose connection the error occurred on.
+  /// \param error The error details.
+  void HandleClientConnectionError(const std::shared_ptr<ClientConnection> &client,
+                                   const boost::system::error_code &error);
 
   /// Process a message from a client. This method is responsible for
   /// explicitly listening for more messages from the client if the client is
@@ -206,6 +208,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
+
+  int GetObjectManagerPort() const { return object_manager_.GetServerPort(); }
+
+  LocalObjectManagerInterface &GetLocalObjectManager() { return local_object_manager_; }
 
   /// Trigger global GC across the cluster to free up references to actors or
   /// object ids.
@@ -296,27 +302,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest request,
-                                  rpc::ReleaseUnusedBundlesReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
-
+  /// Handle a `DrainRaylet` request.
   void HandleDrainRaylet(rpc::DrainRayletRequest request,
                          rpc::DrainRayletReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
 
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
-
-  /// Handle an accepted client connection.
-  void HandleAccept(const boost::system::error_code &error);
-
-  /// Handle an unexpected error that occurred on a client connection.
-  /// The client will be disconnected and no more messages will be processed.
-  ///
-  /// \param client The client whose connection the error occurred on.
-  /// \param error The error details.
-  void HandleClientConnectionError(const std::shared_ptr<ClientConnection> &client,
-                                   const boost::system::error_code &error);
 
   // Removes the worker from node_manager's leased_workers_ map.
   // Warning: this does NOT release the worker's resources, or put the leased worker
@@ -403,29 +395,21 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void ConvertWorkerToActor(const std::shared_ptr<WorkerInterface> &worker,
                             const RayLease &lease);
 
-  /// Start a wait request for the requested objects.
+  /// Start a get or wait request for the requested objects.
   ///
   /// \param client The client that is requesting the objects.
   /// \param object_refs The objects that are requested.
-  void AsyncWait(const std::shared_ptr<ClientConnection> &client,
-                 const std::vector<rpc::ObjectReference> &object_refs);
-
-  /// Start a get request for the requested objects.
-  ///
-  /// \param client The client that is requesting the objects.
-  /// \param object_refs The objects that are requested.
-  ///
-  /// \return the request_id that will be used to cancel the get request.
-  int64_t AsyncGet(const std::shared_ptr<ClientConnection> &client,
-                   std::vector<rpc::ObjectReference> &object_refs);
+  /// \param is_get_request If this is a get request, else it's a wait request.
+  void AsyncGetOrWait(const std::shared_ptr<ClientConnection> &client,
+                      const std::vector<rpc::ObjectReference> &object_refs,
+                      bool is_get_request);
 
   /// Cancel all ongoing get requests from the client.
   ///
   /// This does *not* cancel ongoing wait requests.
   ///
   /// \param client The client whose get requests will be canceled.
-  void CancelGetRequest(const std::shared_ptr<ClientConnection> &client,
-                        const uint8_t *message_data);
+  void CancelGetRequest(const std::shared_ptr<ClientConnection> &client);
 
   /// Handle a task that is blocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -518,7 +502,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void ProcessDisconnectClientMessage(const std::shared_ptr<ClientConnection> &client,
                                       const uint8_t *message_data);
 
-  /// Pull Objects to the local plasma in the background and return immediately.
+  /// Handle client request AsyncGetObjects.
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
@@ -629,6 +613,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                     rpc::FormatGlobalMemoryInfoReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `ReleaseUnusedBundles` request.
+  void HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest request,
+                                  rpc::ReleaseUnusedBundlesReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `GetSystemConfig` request.
   void HandleGetSystemConfig(rpc::GetSystemConfigRequest request,
                              rpc::GetSystemConfigReply *reply,
@@ -656,11 +645,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
                               rpc::NotifyGCSRestartReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle a `GetWorkerPIDs` request.
-  void HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
-                           rpc::GetWorkerPIDsReply *reply,
-                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Checks the local socket connection for all registered workers and drivers.
   /// If any of them have disconnected unexpectedly (i.e., we receive a SIGHUP),
@@ -888,7 +872,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   uint64_t number_workers_killed_ = 0;
 
   /// Managers all bundle-related operations.
-  PlacementGroupResourceManager &placement_group_resource_manager_;
+  std::unique_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
 
   /// Next resource broadcast seq no. Non-incrementing sequence numbers
   /// indicate network issues (dropped/duplicated/ooo packets, etc).
@@ -910,12 +894,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
 
   std::atomic_bool &shutting_down_;
-
-  /// An acceptor for new clients.
-  boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor_;
-
-  /// The socket to listen on for new clients.
-  local_stream_socket socket_;
 };
 
 }  // namespace ray::raylet

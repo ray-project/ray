@@ -6,7 +6,8 @@ import pytest
 
 import ray
 import ray.cloudpickle as ray_pickle
-from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
+from ray.air.config import CheckpointConfig
+from ray.train import Checkpoint, RunConfig, ScalingConfig
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import WorkerGroupError

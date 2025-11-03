@@ -1,6 +1,5 @@
-from typing import Optional
-
 from gymnasium.spaces import Space
+from typing import Optional
 
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.exploration.epsilon_greedy import EpsilonGreedy

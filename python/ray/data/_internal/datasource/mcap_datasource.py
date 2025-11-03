@@ -139,9 +139,9 @@ class MCAPDatasource(FileBasedDatasource):
         Raises:
             ValueError: If the MCAP file cannot be read or has invalid format.
         """
-        from mcap.reader import make_reader
+        import mcap
 
-        reader = make_reader(f)
+        reader = mcap.reader.make_reader(f)
         # Note: MCAP summaries are optional and iter_messages works without them
         # We don't need to validate the summary since it's not required
 

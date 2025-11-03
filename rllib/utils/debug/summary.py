@@ -1,9 +1,8 @@
+import numpy as np
 import pprint
 from typing import Any
 
-import numpy as np
-
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 
 _printer = pprint.PrettyPrinter(indent=2, width=60)

@@ -1,5 +1,6 @@
 from ray.rllib.core.columns import Columns
 
+
 DEFAULT_AGENT_ID = "default_agent"
 DEFAULT_POLICY_ID = "default_policy"
 # TODO (sven): Change this to "default_module"

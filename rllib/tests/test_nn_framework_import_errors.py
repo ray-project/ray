@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import os
-
 import pytest
 
 import ray.rllib.algorithms.ppo as ppo

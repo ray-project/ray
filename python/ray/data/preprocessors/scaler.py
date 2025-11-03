@@ -81,21 +81,15 @@ class StandardScaler(Preprocessor):
     """
 
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
-        super().__init__()
         self.columns = columns
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self.stat_computation_plan.add_aggregator(
-            aggregator_fn=Mean,
-            columns=self.columns,
-        )
-        self.stat_computation_plan.add_aggregator(
-            aggregator_fn=lambda col: Std(col, ddof=0),
-            columns=self.columns,
-        )
+        mean_aggregates = [Mean(col) for col in self.columns]
+        std_aggregates = [Std(col, ddof=0) for col in self.columns]
+        self.stats_ = dataset.aggregate(*mean_aggregates, *std_aggregates)
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -187,7 +181,6 @@ class MinMaxScaler(Preprocessor):
     """
 
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
-        super().__init__()
         self.columns = columns
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
@@ -280,7 +273,6 @@ class MaxAbsScaler(Preprocessor):
     """
 
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
-        super().__init__()
         self.columns = columns
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
@@ -385,7 +377,6 @@ class RobustScaler(Preprocessor):
         quantile_range: Tuple[float, float] = (0.25, 0.75),
         output_columns: Optional[List[str]] = None,
     ):
-        super().__init__()
         self.columns = columns
         self.quantile_range = quantile_range
 

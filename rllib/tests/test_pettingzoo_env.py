@@ -1,5 +1,3 @@
-import unittest
-
 from numpy import float32
 from pettingzoo.butterfly import pistonball_v6
 from pettingzoo.mpe import simple_spread_v3
@@ -11,6 +9,8 @@ from supersuit import (
     resize_v1,
 )
 from supersuit.utils.convert_box import convert_box
+
+import unittest
 
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -110,8 +110,7 @@ class TestPettingZooEnv(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

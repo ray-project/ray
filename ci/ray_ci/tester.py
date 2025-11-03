@@ -257,7 +257,7 @@ def main(
     if build_only:
         sys.exit(0)
 
-    print("--- Listing test targets", file=sys.stderr)
+    print("--- Listing test targets")
 
     if bisect_run_test_target:
         test_targets = [bisect_run_test_target]
@@ -278,10 +278,10 @@ def main(
             lookup_test_database=lookup_test_database,
         )
     if not test_targets:
-        print("--- No tests to run", file=sys.stderr)
+        print("--- No tests to run")
         sys.exit(0)
 
-    print(f"+++ Running {len(test_targets)} tests", file=sys.stderr)
+    print(f"+++ Running {len(test_targets)} tests")
     success = container.run_tests(
         team,
         test_targets,

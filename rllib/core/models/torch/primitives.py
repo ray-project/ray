@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Union, Tuple
 
 from ray.rllib.core.models.torch.utils import Stride2D
 from ray.rllib.models.torch.misc import (

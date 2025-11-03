@@ -2,13 +2,13 @@ import logging
 from typing import Any, Optional
 
 import numpy as np
+import psutil
 from gymnasium import spaces
 from pettingzoo.utils.env import (
-    ActionType,
     AgentID,
+    ActionType,
     ObsType,
 )
-
 from ray.rllib.env import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.examples.envs.classes.multi_agent.footsies.encoder import FootsiesEncoder
@@ -19,8 +19,6 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.game.footsies_binary i
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game.footsies_game import (
     FootsiesGame,
 )
-
-import psutil
 
 logger = logging.getLogger("ray.rllib")
 

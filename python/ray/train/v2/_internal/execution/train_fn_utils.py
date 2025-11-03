@@ -258,18 +258,10 @@ _train_fn_utils_lock = threading.Lock()
 
 
 def get_train_fn_utils() -> TrainFnUtils:
-    """Return the Ray Train function utilities.
-
-    Returns:
-        The TrainFnUtils instance for the current worker.
-
-    Raises:
-        RuntimeError: If the Ray Train function utilities are not initialized.
-    """
     global _train_fn_utils
     with _train_fn_utils_lock:
         if _train_fn_utils is None:
-            raise RuntimeError("Ray Train function utilities not initialized.")
+            raise RuntimeError("TrainFnUtils has not been initialized.")
         return _train_fn_utils
 
 

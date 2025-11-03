@@ -448,18 +448,11 @@ def test_dataset_explain(ray_start_regular_shared, capsys):
 
     ds.explain()
     captured = capsys.readouterr()
-    assert captured.out.strip() == (
+    assert captured.out.rstrip() == (
         "-------- Logical Plan --------\n"
-        "MapRows[Map(<lambda>)]\n"
-        "+- Read[ReadRange]\n"
-        "\n-------- Logical Plan (Optimized) --------\n"
-        "MapRows[Map(<lambda>)]\n"
-        "+- Read[ReadRange]\n"
-        "\n-------- Physical Plan --------\n"
-        "TaskPoolMapOperator[Map(<lambda>)]\n"
-        "+- TaskPoolMapOperator[ReadRange]\n"
-        "   +- InputDataBuffer[Input]\n"
-        "\n-------- Physical Plan (Optimized) --------\n"
+        "Map(<lambda>)\n"
+        "+- ReadRange\n"
+        "-------- Physical Plan --------\n"
         "TaskPoolMapOperator[ReadRange->Map(<lambda>)]\n"
         "+- InputDataBuffer[Input]"
     )
@@ -467,48 +460,26 @@ def test_dataset_explain(ray_start_regular_shared, capsys):
     ds = ds.filter(lambda x: x["id"] > 0)
     ds.explain()
     captured = capsys.readouterr()
-    assert captured.out.strip() == (
+    assert captured.out.rstrip() == (
         "-------- Logical Plan --------\n"
-        "Filter[Filter(<lambda>)]\n"
-        "+- MapRows[Map(<lambda>)]\n"
-        "   +- Read[ReadRange]\n"
-        "\n-------- Logical Plan (Optimized) --------\n"
-        "Filter[Filter(<lambda>)]\n"
-        "+- MapRows[Map(<lambda>)]\n"
-        "   +- Read[ReadRange]\n"
-        "\n-------- Physical Plan --------\n"
-        "TaskPoolMapOperator[Filter(<lambda>)]\n"
-        "+- TaskPoolMapOperator[Map(<lambda>)]\n"
-        "   +- TaskPoolMapOperator[ReadRange]\n"
-        "      +- InputDataBuffer[Input]\n"
-        "\n-------- Physical Plan (Optimized) --------\n"
+        "Filter(<lambda>)\n"
+        "+- Map(<lambda>)\n"
+        "   +- ReadRange\n"
+        "-------- Physical Plan --------\n"
         "TaskPoolMapOperator[ReadRange->Map(<lambda>)->Filter(<lambda>)]\n"
         "+- InputDataBuffer[Input]"
     )
     ds = ds.random_shuffle().map(lambda x: x)
     ds.explain()
     captured = capsys.readouterr()
-    assert captured.out.strip() == (
+    assert captured.out.rstrip() == (
         "-------- Logical Plan --------\n"
-        "MapRows[Map(<lambda>)]\n"
-        "+- RandomShuffle[RandomShuffle]\n"
-        "   +- Filter[Filter(<lambda>)]\n"
-        "      +- MapRows[Map(<lambda>)]\n"
-        "         +- Read[ReadRange]\n"
-        "\n-------- Logical Plan (Optimized) --------\n"
-        "MapRows[Map(<lambda>)]\n"
-        "+- RandomShuffle[RandomShuffle]\n"
-        "   +- Filter[Filter(<lambda>)]\n"
-        "      +- MapRows[Map(<lambda>)]\n"
-        "         +- Read[ReadRange]\n"
-        "\n-------- Physical Plan --------\n"
-        "TaskPoolMapOperator[Map(<lambda>)]\n"
-        "+- AllToAllOperator[RandomShuffle]\n"
-        "   +- TaskPoolMapOperator[Filter(<lambda>)]\n"
-        "      +- TaskPoolMapOperator[Map(<lambda>)]\n"
-        "         +- TaskPoolMapOperator[ReadRange]\n"
-        "            +- InputDataBuffer[Input]\n"
-        "\n-------- Physical Plan (Optimized) --------\n"
+        "Map(<lambda>)\n"
+        "+- RandomShuffle\n"
+        "   +- Filter(<lambda>)\n"
+        "      +- Map(<lambda>)\n"
+        "         +- ReadRange\n"
+        "-------- Physical Plan --------\n"
         "TaskPoolMapOperator[Map(<lambda>)]\n"
         "+- AllToAllOperator[ReadRange->Map(<lambda>)->Filter(<lambda>)->RandomShuffle]\n"
         "   +- InputDataBuffer[Input]"

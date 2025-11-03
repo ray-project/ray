@@ -17,7 +17,6 @@ from ray.serve._private.common import (
     RequestMetadata,
     RunningReplicaInfo,
 )
-from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.serve._private.test_utils import send_signal_on_cancellation
@@ -93,20 +92,13 @@ class FakeReplicaActor:
 
 @pytest.fixture
 def setup_fake_replica(ray_instance) -> RunningReplica:
-    replica_id = ReplicaID(
-        "fake_replica", deployment_id=DeploymentID(name="fake_deployment")
-    )
-    actor_name = replica_id.to_full_id_str()
-    # Create actor with a name so it can be retrieved by get_actor_handle()
-    _ = FakeReplicaActor.options(
-        name=actor_name, namespace=SERVE_NAMESPACE, lifetime="detached"
-    ).remote()
+    actor_handle = FakeReplicaActor.remote()
     return RunningReplicaInfo(
-        replica_id=replica_id,
+        ReplicaID("fake_replica", deployment_id=DeploymentID(name="fake_deployment")),
         node_id=None,
         node_ip=None,
         availability_zone=None,
-        actor_name=actor_name,
+        actor_handle=actor_handle,
         max_ongoing_requests=10,
         is_cross_language=False,
     )
@@ -143,7 +135,7 @@ async def test_send_request_without_rejection(setup_fake_replica, is_streaming: 
 async def test_send_request_with_rejection(
     setup_fake_replica, accepted: bool, is_streaming: bool
 ):
-    actor_handle = setup_fake_replica.get_actor_handle()
+    actor_handle = setup_fake_replica.actor_handle
     replica = RunningReplica(setup_fake_replica)
     ray.get(
         actor_handle.set_replica_queue_length_info.remote(
@@ -227,7 +219,7 @@ async def test_send_request_with_rejection_task_cancelled_error(setup_fake_repli
     Test that TaskCancelledError from the underlying Ray task gets converted to
     asyncio.CancelledError when sending request with rejection.
     """
-    actor_handle = setup_fake_replica.get_actor_handle()
+    actor_handle = setup_fake_replica.actor_handle
     replica = RunningReplica(setup_fake_replica)
 
     # Set up the replica to accept the request

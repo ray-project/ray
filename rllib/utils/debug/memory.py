@@ -1,12 +1,11 @@
 from collections import defaultdict
-from typing import DefaultDict, List, Optional, Set
-
 import numpy as np
 import tree  # pip install dm_tree
+from typing import DefaultDict, List, Optional, Set
 
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.util.debug import Suspect, _test_some_code_for_memory_leaks
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.util.debug import _test_some_code_for_memory_leaks, Suspect
 
 
 @DeveloperAPI

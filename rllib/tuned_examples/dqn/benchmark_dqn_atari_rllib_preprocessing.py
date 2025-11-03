@@ -1,6 +1,5 @@
 import gymnasium as gym
 
-from ray import tune
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.metrics import (
@@ -9,6 +8,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.tune import Stopper
+from ray import tune
 
 # Might need `gymnasium[atari, other]` to be installed.
 

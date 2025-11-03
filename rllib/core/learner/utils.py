@@ -4,6 +4,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import NetworkType
 from ray.util import PublicAPI
 
+
 torch, _ = try_import_torch()
 
 

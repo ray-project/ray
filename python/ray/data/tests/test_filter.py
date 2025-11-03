@@ -115,24 +115,13 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
         parquet_ds.filter(expr="fake_news super fake")
 
     fake_column_ds = parquet_ds.filter(expr="sepal_length_123 > 1")
-    # With predicate pushdown, the error is raised during file reading
-    # and wrapped in RayTaskError
-    with pytest.raises(
-        (ray.exceptions.RayTaskError, RuntimeError), match="sepal_length_123"
-    ):
+    with pytest.raises(KeyError):
         fake_column_ds.to_pandas()
 
 
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("20.0.0"),
     reason="predicate expressions require PyArrow >= 20.0.0",
-)
-@pytest.mark.parametrize(
-    "data_source",
-    [
-        pytest.param("from_items", id="arrow_blocks"),
-        pytest.param("from_pandas", id="pandas_blocks"),
-    ],
 )
 @pytest.mark.parametrize(
     "predicate_expr, test_data, expected_indices, test_description",
@@ -241,38 +230,6 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
             [0, 3],
             "string_exclusion_filter",
         ),
-        # Additional comparison operations
-        pytest.param(
-            col("age") > 25,
-            [
-                {"age": 20, "name": "Alice"},
-                {"age": 25, "name": "Bob"},
-                {"age": 30, "name": "Charlie"},
-                {"age": 35, "name": "David"},
-            ],
-            [2, 3],
-            "greater_than_filter",
-        ),
-        pytest.param(
-            col("age") < 25,
-            [
-                {"age": 20, "name": "Alice"},
-                {"age": 25, "name": "Bob"},
-                {"age": 30, "name": "Charlie"},
-            ],
-            [0],
-            "less_than_filter",
-        ),
-        pytest.param(
-            col("age") <= 25,
-            [
-                {"age": 20, "name": "Alice"},
-                {"age": 25, "name": "Bob"},
-                {"age": 30, "name": "Charlie"},
-            ],
-            [0, 1],
-            "less_than_equal_filter",
-        ),
         # Membership operations
         pytest.param(
             col("category").is_in(["A", "B"]),
@@ -284,18 +241,7 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
                 {"category": "A", "value": 5},
             ],
             [0, 1, 4],
-            "is_in_filter",
-        ),
-        pytest.param(
-            col("category").not_in(["A", "B"]),
-            [
-                {"category": "A", "value": 1},
-                {"category": "B", "value": 2},
-                {"category": "C", "value": 3},
-                {"category": "D", "value": 4},
-            ],
-            [2, 3],  # These are indices not the actual values
-            "not_in_filter",
+            "membership_filter",
         ),
         # Negation operations
         pytest.param(
@@ -325,18 +271,14 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
 )
 def test_filter_with_predicate_expressions(
     ray_start_regular_shared,
-    data_source,
     predicate_expr,
     test_data,
     expected_indices,
     test_description,
 ):
-    """Test filter() with Ray Data predicate expressions on both Arrow and pandas blocks."""
-    # Create dataset based on data_source parameter
-    if data_source == "from_items":
-        ds = ray.data.from_items(test_data)
-    else:  # from_pandas
-        ds = ray.data.from_pandas([pd.DataFrame(test_data)])
+    """Test filter() with Ray Data predicate expressions."""
+    # Create dataset from test data
+    ds = ray.data.from_items(test_data)
 
     # Apply filter with predicate expression
     filtered_ds = ds.filter(expr=predicate_expr)

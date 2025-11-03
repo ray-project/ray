@@ -6,7 +6,7 @@ import sys
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Tuple
+from typing import Any
 
 import pytest
 from filelock import FileLock
@@ -254,62 +254,56 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
         ray.get_actor("abc")
 
 
-def test_raylet_resubscribe_to_worker_death(
-    tmp_path, ray_start_regular_with_external_redis
-):
-    """Verify that the Raylet resubscribes to worker death notifications on GCS restart."""
+def test_worker_raylet_resubscription(tmp_path, ray_start_regular_with_external_redis):
+    # This test is to make sure resubscription in raylet is working.
+    # When subscription failed, raylet will not get worker failure error
+    # and thus, it won't kill the worker which is fate sharing with the failed
+    # one.
 
-    child_task_pid_path = tmp_path / "blocking_child.pid"
+    @ray.remote
+    def blocking_child():
+        (tmp_path / "blocking_child.pid").write_text(str(os.getpid()))
+        time.sleep(10000)
 
-    @ray.remote(num_cpus=0)
-    def child():
-        print("Child worker ID:", ray.get_runtime_context().get_worker_id())
-        child_task_pid_path.write_text(str(os.getpid()))
-        while True:
-            time.sleep(0.1)
-            print("Child still running...")
+    @ray.remote
+    def bar():
+        return (
+            os.getpid(),
+            # Use runtime env to make sure task is running in a different
+            # ray worker
+            blocking_child.options(runtime_env={"env_vars": {"P": ""}}).remote(),
+        )
 
-    @ray.remote(num_cpus=0)
-    def parent() -> Tuple[int, int, ray.ObjectRef]:
-        print("Parent worker ID:", ray.get_runtime_context().get_worker_id())
-        child_obj_ref = child.remote()
+    (parent_pid, obj_ref) = ray.get(bar.remote())
 
-        # Wait for the child to be running and report back its PID.
-        wait_for_condition(lambda: child_task_pid_path.exists(), timeout=10)
-        child_pid = int(child_task_pid_path.read_text())
-        return os.getpid(), child_pid, child_obj_ref
+    blocking_child_pid = None
 
-    parent_pid, child_pid, child_obj_ref = ray.get(parent.remote())
-    print(f"Parent PID: {parent_pid}, child PID: {child_pid}")
-    assert parent_pid != child_pid
+    def condition():
+        nonlocal blocking_child_pid
+        blocking_child_pid = int((tmp_path / "blocking_child.pid").read_text())
+        return True
 
-    # Kill and restart the GCS.
+    wait_for_condition(condition, timeout=5)
+
+    # Kill and restart the GCS to trigger resubscription.
     ray._private.worker._global_node.kill_gcs_server()
     ray._private.worker._global_node.start_gcs_server()
 
-    # Schedule an actor to ensure that the GCS is back alive and the Raylet is
-    # reconnected to it.
+    # Make an internal KV request to ensure the GCS is back alive.
     # TODO(iycheng): this shouldn't be necessary, but the current resubscription
     # implementation can lose the worker failure message because we don't ask for
     # the snapshot of worker statuses.
-    @ray.remote
-    class A:
-        pass
+    gcs_address = ray._private.worker.global_worker.gcs_client.address
+    gcs_client = ray._raylet.GcsClient(address=gcs_address)
+    gcs_client.internal_kv_put(b"a", b"b", True, None)
 
-    ray.get(A.remote().__ray_ready__.remote())
-
-    # Kill the parent task and verify that the child task is killed due to fate sharing
-    # with its parent.
-    print("Killing parent process.")
+    # Kill the parent task, which should cause the blocking child task to exit.
     p = psutil.Process(parent_pid)
     p.kill()
     p.wait()
-    print("Parent process exited.")
 
-    # The child task should exit.
-    wait_for_pid_to_exit(child_pid, 20)
-    with pytest.raises(ray.exceptions.OwnerDiedError):
-        ray.get(child_obj_ref)
+    # The blocking child task should exit.
+    wait_for_pid_to_exit(blocking_child_pid, 5)
 
 
 def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_redis):

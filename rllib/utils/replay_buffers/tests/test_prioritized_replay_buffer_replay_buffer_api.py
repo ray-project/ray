@@ -1,12 +1,11 @@
-import unittest
 from collections import Counter
-
 import numpy as np
+import unittest
 
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch, concat_samples
 from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import (
     PrioritizedReplayBuffer,
 )
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, concat_samples
 from ray.rllib.utils.test_utils import check
 
 
@@ -597,8 +596,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

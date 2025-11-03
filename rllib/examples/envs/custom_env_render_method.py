@@ -62,7 +62,6 @@ import numpy as np
 from gymnasium.spaces import Box, Discrete
 from PIL import Image, ImageDraw
 
-from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.examples.envs.env_rendering_and_recording import EnvRenderCallback
@@ -70,6 +69,7 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray import tune
 
 parser = add_rllib_example_script_args(
     default_iters=10,

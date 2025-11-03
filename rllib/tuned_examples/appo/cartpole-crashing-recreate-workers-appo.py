@@ -7,7 +7,6 @@ the environment).
 The environment we use here is configured to crash with a certain probability on each
 `step()` and/or `reset()` call.
 """
-from ray import tune
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
 from ray.rllib.utils.metrics import (
@@ -16,6 +15,7 @@ from ray.rllib.utils.metrics import (
     EVALUATION_RESULTS,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
+from ray import tune
 
 tune.register_env("env", lambda cfg: CartPoleCrashing(cfg))
 

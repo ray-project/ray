@@ -1,4 +1,3 @@
-from ray import tune
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -6,6 +5,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.tune import Stopper
+from ray import tune
 
 # Needs the following packages to be installed on Ubuntu:
 #   sudo apt-get libosmesa-dev

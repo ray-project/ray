@@ -1,4 +1,4 @@
-from unittest.mock import create_autospec
+from unittest.mock import MagicMock, create_autospec
 
 import pytest
 
@@ -20,7 +20,6 @@ from ray.train.v2._internal.execution.controller.state import (
     RestartingState,
     RunningState,
     SchedulingState,
-    ShuttingDownState,
     TrainControllerState,
 )
 from ray.train.v2._internal.execution.failure_handling import FailureDecision
@@ -28,7 +27,6 @@ from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
 )
-from ray.train.v2._internal.execution.worker_group import WorkerGroupPollStatus
 from ray.train.v2.api.config import ScalingConfig
 from ray.train.v2.tests.util import (
     DummyObjectRefWrapper,
@@ -47,8 +45,6 @@ def patch_worker_group(monkeypatch):
     # Make polling interval 0 to speed up tests
     monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "0")
     yield
-    DummyWorkerGroup.set_poll_failure(None)
-    DummyWorkerGroup.set_start_failure(None)
 
 
 @pytest.fixture(autouse=True)
@@ -171,10 +167,8 @@ async def test_failure_handling():
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RunningState)
 
-    DummyWorkerGroup.set_poll_failure(RuntimeError("Simulated poll failure"))
+    controller.get_worker_group().error_worker(3)
     failure_policy.queue_decision(FailureDecision.RAISE)
-    await controller._run_control_loop_iteration()
-    assert isinstance(controller.get_state(), ShuttingDownState)
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ErroredState)
 
@@ -183,7 +177,7 @@ async def test_failure_handling():
     "error_type", [WorkerGroupStartupFailedError, WorkerGroupStartupTimeoutError(2)]
 )
 @pytest.mark.asyncio
-async def test_worker_group_start_failure(error_type):
+async def test_worker_group_start_failure(monkeypatch, error_type):
     """Check that controller can gracefully handle worker group start failures."""
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
@@ -195,6 +189,7 @@ async def test_worker_group_start_failure(error_type):
         failure_policy=failure_policy,
     )
     DummyWorkerGroup.set_start_failure(error_type)
+    monkeypatch.setattr(TrainController, "worker_group_cls", DummyWorkerGroup)
 
     assert isinstance(controller.get_state(), InitializingState)
 
@@ -213,6 +208,7 @@ async def test_worker_group_start_failure(error_type):
 
     # Let the worker group start successfully the 2nd time.
     DummyWorkerGroup.set_start_failure(None)
+    monkeypatch.setattr(TrainController, "worker_group_cls", DummyWorkerGroup)
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=2, resources_per_worker={})
     )
@@ -243,10 +239,7 @@ async def test_poll_frequency(monkeypatch):
         failure_policy=None,
     )
     # Mock worker group to avoid actual polling
-    controller._worker_group = create_autospec(DummyWorkerGroup, instance=True)
-    controller._worker_group.poll_status.return_value = WorkerGroupPollStatus(
-        worker_statuses={}
-    )
+    controller._worker_group = MagicMock()
 
     num_polls = 5
     for _ in range(num_polls):
@@ -331,11 +324,9 @@ async def test_controller_callback():
     await controller._run_control_loop_iteration()
     assert callback.failure_decision_called
     assert isinstance(callback.latest_state_update[0], RunningState)
-    assert isinstance(callback.latest_state_update[1], ShuttingDownState)
-
-    await controller._run_control_loop_iteration()
-    assert isinstance(callback.latest_state_update[0], ShuttingDownState)
     assert isinstance(callback.latest_state_update[1], ErroredState)
+
+    controller._shutdown()
     assert callback.shutdown_called
 
 

@@ -51,8 +51,7 @@ class ActorHandle {
               bool allow_out_of_order_execution = false,
               bool enable_tensor_transport = false,
               std::optional<bool> enable_task_events = absl::nullopt,
-              const std::unordered_map<std::string, std::string> &labels = {},
-              bool is_detached = false);
+              const std::unordered_map<std::string, std::string> &labels = {});
 
   /// Constructs an ActorHandle from a serialized string.
   explicit ActorHandle(const std::string &serialized);
@@ -113,8 +112,6 @@ class ActorHandle {
   bool AllowOutOfOrderExecution() const { return inner_.allow_out_of_order_execution(); }
 
   bool EnableTensorTransport() const { return inner_.enable_tensor_transport(); }
-
-  bool IsDetached() const { return inner_.is_detached(); }
 
   const ::google::protobuf::Map<std::string, std::string> &GetLabels() const {
     return inner_.labels();

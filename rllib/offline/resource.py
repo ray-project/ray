@@ -1,5 +1,4 @@
-from typing import TYPE_CHECKING, Dict, List
-
+from typing import Dict, List, TYPE_CHECKING
 from ray.rllib.utils.annotations import PublicAPI
 
 if TYPE_CHECKING:

@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 
 from ray.rllib.core.learner.torch.torch_differentiable_learner import (
     TorchDifferentiableLearner,

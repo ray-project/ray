@@ -1,8 +1,8 @@
+from pathlib import Path
 import random
 import shutil
-import unittest
-from pathlib import Path
 from tempfile import TemporaryDirectory
+import unittest
 
 import ray
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
@@ -87,8 +87,7 @@ class TestCheckpointable(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

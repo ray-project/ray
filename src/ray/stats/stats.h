@@ -113,8 +113,15 @@ static inline void Init(
   StatsConfig::instance().SetIsInitialized(true);
 }
 
-static inline void InitOpenTelemetryExporter(const int metrics_agent_port) {
+static inline void InitOpenTelemetryExporter(const int metrics_agent_port,
+                                             const Status &metrics_agent_server_status) {
   if (!RayConfig::instance().enable_open_telemetry()) {
+    return;
+  }
+  if (!metrics_agent_server_status.ok()) {
+    RAY_LOG(ERROR) << "Failed to initialize OpenTelemetry exporter. Data will not be "
+                      "exported to the "
+                   << "metrics agent. Server status: " << metrics_agent_server_status;
     return;
   }
   OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(

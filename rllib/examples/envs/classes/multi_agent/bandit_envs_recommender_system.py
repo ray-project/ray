@@ -2,10 +2,9 @@
 
 This env follows RecSim obs and action APIs.
 """
-from typing import Optional
-
 import gymnasium as gym
 import numpy as np
+from typing import Optional
 
 from ray.rllib.utils.numpy import softmax
 

@@ -1,5 +1,5 @@
-import dataclasses
 from collections import defaultdict
+import dataclasses
 from typing import List, Optional
 
 import tree  # pip install dm_tree

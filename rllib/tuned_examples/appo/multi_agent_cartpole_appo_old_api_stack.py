@@ -1,5 +1,4 @@
 # @OldAPIStack
-from ray import tune
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
@@ -7,6 +6,7 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
+from ray import tune
 
 tune.registry.register_env("env", lambda cfg: MultiAgentCartPole(config=cfg))
 

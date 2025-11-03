@@ -1,9 +1,8 @@
 import copy
-import random
-
 import gymnasium as gym
-import numpy as np
 from gymnasium.spaces import Box, Discrete
+import numpy as np
+import random
 
 
 class SimpleContextualBandit(gym.Env):

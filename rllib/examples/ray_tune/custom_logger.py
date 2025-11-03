@@ -58,7 +58,7 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
     LEARNER_RESULTS,
 )
-from ray.tune.logger import LegacyLoggerCallback, Logger
+from ray.tune.logger import Logger, LegacyLoggerCallback
 
 
 class MyPrintLogger(Logger):

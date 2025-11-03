@@ -1,6 +1,6 @@
 import gymnasium as gym
-import numpy as np
 from gymnasium.envs.classic_control import CartPoleEnv
+import numpy as np
 
 
 class CartPoleWithDictObservationSpace(CartPoleEnv):

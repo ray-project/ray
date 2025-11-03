@@ -102,15 +102,15 @@ class InstanceKillerActor:
         failures = 0
         max_failures = 3
         node = None
-        terminated_successfully = False
-        while not terminated_successfully and failures < max_failures:
+        terminated_succesfully = False
+        while not terminated_succesfully and failures < max_failures:
             try:
                 node = get_random_node()
                 if not node:
                     logger.info("No alive worker nodes")
                     continue
                 terminate_node(node["NodeID"])
-                terminated_successfully = True
+                terminated_succesfully = True
                 logger.info(
                     f"Killed node {node['NodeID']} with IP {node['NodeManagerAddress']}"
                 )
@@ -125,7 +125,7 @@ class InstanceKillerActor:
             {
                 "timestamp": time.time(),
                 "node": node,
-                "terminated_successfully": terminated_successfully,
+                "terminated_succesfully": terminated_succesfully,
             }
         )
         # safe_write_to_results_json(self.history)

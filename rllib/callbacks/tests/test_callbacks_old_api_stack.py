@@ -1,5 +1,5 @@
-import unittest
 from collections import Counter
+import unittest
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks, make_multi_callbacks
@@ -209,8 +209,7 @@ class TestCallbacks(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,13 +1,10 @@
 # Architecture
 
-Technical documentation for Ray Serve LLM architecture, components, and patterns.
+Technical details and design documentation for Ray Serve LLM.
 
 ```{toctree}
 :maxdepth: 1
 
-Architecture overview <overview>
-Core components <core>
-Serving patterns <serving-patterns/index>
 Request routing <routing-policies>
 ```
 

@@ -182,9 +182,8 @@ If applicable, make sure that you properly set up credentials on each training w
 
         .. testcode::
             :skipif: True
-            
-            mlflow.set_tracking_uri(uri="file://some_shared_storage_path/mlruns")
-            mlflow.start_run()
+
+            mlflow.start_run(tracking_uri="file:some_shared_storage_path/mlruns")
 
         **Remote, hosted by Databricks**
 

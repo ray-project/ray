@@ -3,6 +3,7 @@ import inspect
 import json
 import logging
 import os
+from packaging import version
 import pathlib
 import re
 import tempfile
@@ -10,7 +11,6 @@ from types import MappingProxyType
 from typing import Any, Collection, Dict, List, Optional, Tuple, Union
 
 import pyarrow.fs
-from packaging import version
 
 import ray
 import ray.cloudpickle as pickle
@@ -659,9 +659,8 @@ class Checkpointable(abc.ABC):
                     _head_ip=head_node_ip,
                     _comp_arg=comp_arg,
                 ):
-                    import tempfile
-
                     import ray
+                    import tempfile
 
                     worker_node_ip = ray.util.get_node_ip_address()
                     # If the worker is on the same node as the head, load the checkpoint

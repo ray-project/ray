@@ -1,14 +1,13 @@
-import logging
-import threading
 from abc import ABCMeta, abstractmethod
-from typing import Dict, List
-
+import logging
 import numpy as np
+import threading
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.typing import SampleBatchType, TensorType
+from typing import Dict, List
+from ray.rllib.utils.typing import TensorType, SampleBatchType
 
 tf1, tf, tfv = try_import_tf()
 

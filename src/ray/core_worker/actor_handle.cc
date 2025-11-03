@@ -37,8 +37,7 @@ rpc::ActorHandle CreateInnerActorHandle(
     bool allow_out_of_order_execution,
     bool enable_tensor_transport,
     std::optional<bool> enable_task_events,
-    const std::unordered_map<std::string, std::string> &labels,
-    bool is_detached) {
+    const std::unordered_map<std::string, std::string> &labels) {
   rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
   inner.set_owner_id(owner_id.Binary());
@@ -57,7 +56,6 @@ rpc::ActorHandle CreateInnerActorHandle(
   inner.set_enable_tensor_transport(enable_tensor_transport);
   inner.set_enable_task_events(enable_task_events.value_or(kDefaultTaskEventEnabled));
   inner.mutable_labels()->insert(labels.begin(), labels.end());
-  inner.set_is_detached(is_detached);
   return inner;
 }
 
@@ -91,7 +89,6 @@ rpc::ActorHandle CreateInnerActorHandleFromActorData(
       task_spec.actor_creation_task_spec().allow_out_of_order_execution());
   inner.set_max_pending_calls(task_spec.actor_creation_task_spec().max_pending_calls());
   inner.mutable_labels()->insert(task_spec.labels().begin(), task_spec.labels().end());
-  inner.set_is_detached(task_spec.actor_creation_task_spec().is_detached());
   return inner;
 }
 }  // namespace
@@ -112,8 +109,7 @@ ActorHandle::ActorHandle(
     bool allow_out_of_order_execution,
     bool enable_tensor_transport,
     std::optional<bool> enable_task_events,
-    const std::unordered_map<std::string, std::string> &labels,
-    bool is_detached)
+    const std::unordered_map<std::string, std::string> &labels)
     : ActorHandle(CreateInnerActorHandle(actor_id,
                                          owner_id,
                                          owner_address,
@@ -129,8 +125,7 @@ ActorHandle::ActorHandle(
                                          allow_out_of_order_execution,
                                          enable_tensor_transport,
                                          enable_task_events,
-                                         labels,
-                                         is_detached)) {}
+                                         labels)) {}
 
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}

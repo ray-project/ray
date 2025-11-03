@@ -8,8 +8,9 @@ export WANDB_API_KEY=abcd
 export COMET_API_KEY=efgh
 """
 import json
-import subprocess
 import sys
+
+import boto3
 
 AWS_AIR_SECRETS_ARN = (
     "arn:aws:secretsmanager:us-west-2:029272617770:secret:"
@@ -17,21 +18,9 @@ AWS_AIR_SECRETS_ARN = (
 )
 
 
-def get_ray_air_secrets():
-    output = subprocess.check_output(
-        [
-            "aws",
-            "secretsmanager",
-            "get-secret-value",
-            "--region",
-            "us-west-2",
-            "--secret-id",
-            AWS_AIR_SECRETS_ARN,
-        ]
-    )
-
-    parsed_output = json.loads(output)
-    return json.loads(parsed_output["SecretString"])
+def get_ray_air_secrets(client):
+    raw_string = client.get_secret_value(SecretId=AWS_AIR_SECRETS_ARN)["SecretString"]
+    return json.loads(raw_string)
 
 
 SERVICES = {
@@ -47,8 +36,10 @@ SERVICES = {
 
 
 def main():
+
     try:
-        ray_air_secrets = get_ray_air_secrets()
+        client = boto3.client("secretsmanager", region_name="us-west-2")
+        ray_air_secrets = get_ray_air_secrets(client)
     except Exception as e:
         print(f"Could not get Ray AIR secrets: {e}")
         sys.exit(1)

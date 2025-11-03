@@ -1,12 +1,11 @@
-from typing import TYPE_CHECKING, Any, Dict, Type
-
 import numpy as np
 import pandas as pd
+from typing import Any, Dict, Type, TYPE_CHECKING
 
-from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.policy import Policy
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel

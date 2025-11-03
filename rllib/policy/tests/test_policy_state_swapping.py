@@ -1,8 +1,7 @@
-import unittest
-
 import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
+import unittest
 
 import ray
 from ray.rllib.algorithms.appo import APPOConfig, APPOTorchPolicy
@@ -122,8 +121,7 @@ class TestPolicyStateSwapping(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

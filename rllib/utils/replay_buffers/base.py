@@ -1,5 +1,5 @@
-import platform
 from abc import ABCMeta, abstractmethod
+import platform
 from typing import Any, Dict, Optional
 
 from ray.util.annotations import DeveloperAPI

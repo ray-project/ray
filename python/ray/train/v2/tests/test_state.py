@@ -18,7 +18,6 @@ from ray.train.v2._internal.execution.controller.state import (
     RestartingState,
     RunningState,
     SchedulingState,
-    ShuttingDownState,
 )
 from ray.train.v2._internal.execution.scaling_policy import ResizeDecision
 from ray.train.v2._internal.execution.worker_group import (
@@ -538,7 +537,6 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
         ),
         RunningState(),
-        ShuttingDownState(next_state=FinishedState()),
         FinishedState(),
     ]
     expected_statuses = [
@@ -553,7 +551,6 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
         RunStatus.SCHEDULING,  # Rescheduling
         RunStatus.SCHEDULING,
         RunStatus.RUNNING,
-        RunStatus.RUNNING,  # Shutting down
         RunStatus.FINISHED,
     ]
 

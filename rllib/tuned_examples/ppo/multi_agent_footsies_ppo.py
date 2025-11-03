@@ -28,18 +28,18 @@ import functools
 from pathlib import Path
 
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.core.rl_module import MultiRLModuleSpec, RLModuleSpec
+from ray.rllib.core.rl_module import RLModuleSpec, MultiRLModuleSpec
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent.footsies.fixed_rlmodules import (
-    BackFixedRLModule,
     NoopFixedRLModule,
+    BackFixedRLModule,
 )
 from ray.rllib.examples.envs.classes.multi_agent.footsies.footsies_env import (
     env_creator,
 )
 from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
-    Matchmaker,
     Matchup,
+    Matchmaker,
     MetricsLoggerCallback,
     MixManagerCallback,
 )

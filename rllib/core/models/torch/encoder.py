@@ -2,13 +2,12 @@ import tree
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import (
-    ENCODER_OUT,
-    ActorCriticEncoder,
     Encoder,
-    Model,
+    ActorCriticEncoder,
     StatefulActorCriticEncoder,
-    tokenize,
+    ENCODER_OUT,
 )
+from ray.rllib.core.models.base import Model, tokenize
 from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
     CNNEncoderConfig,
@@ -16,7 +15,7 @@ from ray.rllib.core.models.configs import (
     RecurrentEncoderConfig,
 )
 from ray.rllib.core.models.torch.base import TorchModel
-from ray.rllib.core.models.torch.primitives import TorchCNN, TorchMLP
+from ray.rllib.core.models.torch.primitives import TorchMLP, TorchCNN
 from ray.rllib.models.utils import get_initializer_fn
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch

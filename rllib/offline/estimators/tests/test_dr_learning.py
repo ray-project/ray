@@ -3,8 +3,8 @@ import unittest
 import ray
 from ray.rllib.offline.estimators import DoublyRobust
 from ray.rllib.offline.estimators.tests.utils import (
-    check_estimate,
     get_cliff_walking_wall_policy_and_data,
+    check_estimate,
 )
 
 SEED = 0
@@ -197,7 +197,6 @@ class TestDRLearning(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
-
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

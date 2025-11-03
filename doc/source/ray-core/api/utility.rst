@@ -12,11 +12,9 @@ Utility
    ray.util.serialization.register_serializer
    ray.util.serialization.deregister_serializer
 
-   ray.util.tpu.get_current_pod_worker_count
-   ray.util.tpu.get_current_pod_name
-   ray.util.tpu.get_num_tpu_chips_on_node
-   ray.util.tpu.SlicePlacementGroup
-   ray.util.tpu.slice_placement_group
+   ray.util.accelerators.tpu.get_current_pod_worker_count
+   ray.util.accelerators.tpu.get_current_pod_name
+   ray.util.accelerators.tpu.get_num_tpu_chips_on_node
 
    ray.nodes
    ray.cluster_resources

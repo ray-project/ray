@@ -1,6 +1,5 @@
-import unittest
-
 import numpy as np
+import unittest
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
@@ -62,8 +61,7 @@ class TestTimeSteps(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

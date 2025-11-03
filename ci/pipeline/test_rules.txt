@@ -184,7 +184,6 @@ site/
 
 ci/lint/
 .buildkite/lint.rayci.yml
-.buildkite/bisect/
 ci/fossa/
 ci/docker/fossa.Dockerfile
 ci/docker/fossa.wanda.yaml

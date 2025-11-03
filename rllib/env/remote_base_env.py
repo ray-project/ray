@@ -1,13 +1,12 @@
-import logging
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set, Tuple
-
 import gymnasium as gym
+import logging
+from typing import Callable, Dict, List, Optional, Set, Tuple, TYPE_CHECKING
 
 import ray
-from ray.rllib.env.base_env import _DUMMY_AGENT_ID, ASYNC_RESET_RETURN, BaseEnv
-from ray.rllib.utils.annotations import OldAPIStack, override
-from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiEnvDict
 from ray.util import log_once
+from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID, ASYNC_RESET_RETURN
+from ray.rllib.utils.annotations import override, OldAPIStack
+from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiEnvDict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.rollout_worker import RolloutWorker

@@ -3,6 +3,7 @@ from typing import Dict, List
 
 import numpy as np
 
+
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
@@ -19,6 +20,7 @@ from ray.rllib.utils.typing import (
     ModelGradients,
     TensorType,
 )
+
 
 logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()

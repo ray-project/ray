@@ -1,6 +1,5 @@
-import unittest
-
 import numpy as np
+import unittest
 
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.replay_buffers import (
@@ -327,8 +326,7 @@ class TestMultiAgentPrioritizedEpisodeReplayBuffer(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

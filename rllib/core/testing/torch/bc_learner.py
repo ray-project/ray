@@ -1,6 +1,5 @@
-from typing import TYPE_CHECKING, Any, Dict
-
 import torch
+from typing import Any, Dict, TYPE_CHECKING
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner

@@ -51,36 +51,28 @@ enum class UnscheduledWorkCause {
 
 /// Work represents all the information needed to make a scheduling decision.
 /// This includes the lease, the information we need to communicate to
-/// dispatch/spillback and the callbacks to trigger it.
-struct ReplyCallback {
-  ReplyCallback(rpc::SendReplyCallback send_reply_callback,
-                rpc::RequestWorkerLeaseReply *reply)
-      : send_reply_callback_(std::move(send_reply_callback)), reply_(reply) {}
-  rpc::SendReplyCallback send_reply_callback_;
-  rpc::RequestWorkerLeaseReply *reply_;
-};
-
+/// dispatch/spillback and the callback to trigger it.
 class Work {
  public:
   RayLease lease_;
   bool grant_or_reject_;
   bool is_selected_based_on_locality_;
-  // All the callbacks will be triggered when the lease is scheduled.
-  std::vector<ReplyCallback> reply_callbacks_;
+  rpc::RequestWorkerLeaseReply *reply_;
+  rpc::SendReplyCallback send_reply_callback_;
   std::shared_ptr<TaskResourceInstances> allocated_instances_;
-
   Work(RayLease lease,
        bool grant_or_reject,
        bool is_selected_based_on_locality,
-       std::vector<ReplyCallback> reply_callbacks,
+       rpc::RequestWorkerLeaseReply *reply,
+       rpc::SendReplyCallback send_reply_callback,
        WorkStatus status = WorkStatus::WAITING)
       : lease_(std::move(lease)),
         grant_or_reject_(grant_or_reject),
         is_selected_based_on_locality_(is_selected_based_on_locality),
-        reply_callbacks_(std::move(reply_callbacks)),
+        reply_(reply),
+        send_reply_callback_(std::move(send_reply_callback)),
         allocated_instances_(nullptr),
         status_(status){};
-
   Work(const Work &Work) = delete;
   Work &operator=(const Work &work) = delete;
   ~Work() = default;

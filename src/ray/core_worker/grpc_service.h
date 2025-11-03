@@ -29,12 +29,9 @@
 #pragma once
 
 #include <memory>
-#include <optional>
-#include <string>
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
@@ -96,8 +93,8 @@ class CoreWorkerServiceHandler : public DelayedServiceHandler {
                                 CancelTaskReply *reply,
                                 SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleCancelRemoteTask(CancelRemoteTaskRequest request,
-                                      CancelRemoteTaskReply *reply,
+  virtual void HandleRemoteCancelTask(RemoteCancelTaskRequest request,
+                                      RemoteCancelTaskReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRegisterMutableObjectReader(
@@ -161,8 +158,7 @@ class CoreWorkerGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      const ClusterID &cluster_id) override;
 
  private:
   CoreWorkerService::AsyncService service_;
