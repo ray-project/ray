@@ -734,7 +734,7 @@ def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) 
     for i, (op, state) in enumerate(topology.items()):
         state.update_display_metrics(resource_manager)
         logger.debug(
-            f"{i}: {state.summary_str(resource_manager)}, "
+            f"{i}: {state.summary_str(resource_manager, verbose=True)}, "
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}, "
             f"Metrics: {state.op_display_metrics.display_str()}"
         )
