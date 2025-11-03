@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "mock/ray/common/ray_syncer/ray_syncer.h"
+#include "mock/ray/ray_syncer/ray_syncer.h"
 
 #include <gmock/gmock.h>
 #include <google/protobuf/util/json_util.h>
@@ -33,10 +33,10 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/ray_syncer/node_state.h"
-#include "ray/common/ray_syncer/ray_syncer.h"
-#include "ray/common/ray_syncer/ray_syncer_client.h"
-#include "ray/common/ray_syncer/ray_syncer_server.h"
+#include "ray/ray_syncer/node_state.h"
+#include "ray/ray_syncer/ray_syncer.h"
+#include "ray/ray_syncer/ray_syncer_client.h"
+#include "ray/ray_syncer/ray_syncer_server.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"

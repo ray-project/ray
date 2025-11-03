@@ -8,6 +8,7 @@ steps:
     wanda: ci/docker/base.test.wanda.yaml
     matrix:
       - "3.9"
+      - "3.10"
       - "3.11"
       - "3.12"
     env:
@@ -23,6 +24,7 @@ steps:
     wanda: ci/docker/base.build.wanda.yaml
     matrix:
       - "3.9"
+      - "3.10"
       - "3.11"
       - "3.12"
     env:
@@ -62,6 +64,7 @@ steps:
     label: "wanda: oss-ci-base_gpu-py{{matrix}}"
     wanda: ci/docker/base.gpu.wanda.yaml
     matrix:
+      - "3.10"
       - "3.11"
       - "3.12"
     env:
@@ -83,6 +86,7 @@ steps:
       - ray-dashboard-build
     matrix:
       - "3.9"
+      - "3.10"
       - "3.12"
     env:
       PYTHON: "{{matrix}}"
@@ -90,6 +94,9 @@ steps:
     tags: cibase
 
   - name: docgpubuild
+    label: "wanda: docgpubuild-py3.10"
     wanda: ci/docker/docgpu.build.wanda.yaml
-    depends_on: oss-ci-base_gpu
+    depends_on: oss-ci-base_gpu-multipy
+    env:
+      PYTHON: "3.10"
     tags: cibase

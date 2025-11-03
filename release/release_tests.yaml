@@ -80,6 +80,7 @@
 # Baseline test
 #######################
 - name: hello_world
+  python: "3.10"
   team: reef
   group: hello_world
   frequency: nightly
@@ -91,6 +92,7 @@
 
   run:
     timeout: 1800
+    num_retries: 3
     script: python hello_world.py
 
   variations:
@@ -108,6 +110,7 @@
         ray_version: 2.50.0
 
 - name: hello_world_custom_byod
+  python: "3.10"
   team: reef
   group: hello_world
   frequency: nightly
@@ -134,6 +137,7 @@
         ray_version: 2.50.0
 
 - name: hello_world_custom_byod_depset_only
+  python: "3.10"
   team: reef
   group: hello_world
   frequency: nightly
@@ -157,6 +161,7 @@
 # Cluster scaling tests
 #######################
 - name: cluster_tune_scale_up_down
+  python: "3.10"
   group: Cluster tests
   working_dir: cluster_tests
 
@@ -422,6 +427,7 @@
 # Tune tests
 #######################
 - name: tune_with_frequent_pausing
+  python: "3.10"
   group: Tune tests
   working_dir: tune_tests
 
@@ -452,6 +458,7 @@
 
 
 - name: tune_rllib_connect_test
+  python: "3.10"
   group: Tune tests
   working_dir: ml_user_tests
 
@@ -484,6 +491,7 @@
   alert: default
 
 - name: tune_cloud_long_running_cloud_storage
+  python: "3.10"
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
   frequency: weekly
@@ -759,6 +767,7 @@
 # Tune fault tolerance tests
 ############################
 - name: tune_worker_fault_tolerance
+  python: "3.10"
   group: Tune fault tolerance tests
   working_dir: tune_tests/fault_tolerance_tests
 
@@ -1268,6 +1277,7 @@
 ########################
 
 - name: jobs_basic_local_working_dir
+  python: "3.10"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1297,6 +1307,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_basic_remote_working_dir
+  python: "3.10"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1326,6 +1337,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_remote_multi_node
+  python: "3.10"
   group: Jobs tests
   team: serve
   frequency: nightly
@@ -1350,6 +1362,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_check_cuda_available
+  python: "3.10"
   group: Jobs tests
   team: serve
 
@@ -1374,6 +1387,7 @@
         cluster_compute: compute_tpl_gce_gpu_node.yaml
 
 - name: jobs_specify_num_gpus
+  python: "3.10"
   group: Jobs tests
   team: serve
 
@@ -1429,7 +1443,7 @@
         cluster_compute: rte_gce_small.yaml
 
 
-- name: core_runtime_env_wheel_urls
+- name: runtime_env_wheel_urls
   python: "3.10"
   group: Runtime env tests
   working_dir: runtime_env_tests
@@ -3445,6 +3459,7 @@
 # Observability tests
 #####################
 - name: agent_stress_test
+  python: "3.10"
   group: core-observability-test
   working_dir: dashboard
 
@@ -3490,6 +3505,7 @@
     script: python run_gcs_ft_on_k8s.py
 
 - name: azure_cluster_launcher
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
   frequency: nightly
@@ -3511,6 +3527,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python -I launch_and_verify_cluster.py azure/tests/azure-cluster.yaml --num-expected-nodes 3 --retries 10
 
 - name: aws_cluster_launcher
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3534,6 +3551,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
 
 - name: aws_cluster_launcher_nightly_image
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3556,6 +3574,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override nightly
 
 - name: aws_cluster_launcher_latest_image
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3578,6 +3597,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override latest
 
 - name: aws_cluster_launcher_release_image
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3601,6 +3621,7 @@
 
 
 - name: aws_cluster_launcher_minimal
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3623,6 +3644,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/example-minimal.yaml
 
 - name: aws_cluster_launcher_full
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3645,6 +3667,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
 
 - name: gcp_cluster_launcher_minimal
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3670,6 +3693,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
 
 - name: gcp_cluster_launcher_full
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3720,6 +3744,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
 
 - name: gcp_cluster_launcher_nightly_image
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3745,6 +3770,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
 
 - name: gcp_cluster_launcher_release_image
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3770,6 +3796,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
 
 - name: gcp_cluster_launcher_gpu_docker
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3794,7 +3821,7 @@
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
 
-- name: core_autoscaler_aws
+- name: autoscaler_aws
   python: "3.10"
   group: autoscaler-test
   working_dir: autoscaling_tests
@@ -4094,6 +4121,23 @@
     timeout: 3600
     script: >
       pytest -sv test_batch_multi_node_vllm.py
+
+- name: llm_batch_single_node_baseline_benchmark
+  group: llm-batch
+  working_dir: llm_tests/batch
+  frequency: weekly
+  team: llm
+
+  cluster:
+    byod:
+      runtime_env:
+        - VLLM_DISABLE_COMPILE_CACHE=1
+      type: gpu
+    cluster_compute: llm_single_node_benchmark_l4.yaml
+
+  run:
+    timeout: 3600
+    script: pytest -v test_batch_single_node_vllm.py::test_single_node_baseline_benchmark
 
 
 - name: text_embeddings_benchmark_{{scaling}}

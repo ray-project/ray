@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/ray_syncer/ray_syncer.h"
+#include "ray/ray_syncer/ray_syncer.h"
 
 #include <functional>
 #include <memory>
@@ -22,9 +22,9 @@
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/common/ray_syncer/node_state.h"
-#include "ray/common/ray_syncer/ray_syncer_client.h"
-#include "ray/common/ray_syncer/ray_syncer_server.h"
+#include "ray/ray_syncer/node_state.h"
+#include "ray/ray_syncer/ray_syncer_client.h"
+#include "ray/ray_syncer/ray_syncer_server.h"
 
 namespace ray::syncer {
 
@@ -103,7 +103,7 @@ void RaySyncer::Connect(const std::string &node_id,
                     io_context_,
                     [this, remote_node_id, channel]() {
                       RAY_LOG(INFO).WithField(NodeID::FromBinary(remote_node_id))
-                          << "Connection is broken. Reconnect to node.";
+                          << "Connection to the node was broken, reconnecting.";
                       Connect(remote_node_id, channel);
                     },
                     /* delay_microseconds = */ std::chrono::milliseconds(2000));

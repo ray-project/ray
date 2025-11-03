@@ -22,7 +22,7 @@
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/ray_syncer/common.h"
+#include "ray/ray_syncer/common.h"
 #include "src/ray/protobuf/ray_syncer.grpc.pb.h"
 
 namespace ray::syncer {

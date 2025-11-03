@@ -1,11 +1,12 @@
 import sys
 import time
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import pytest
 
 from ray import serve
 from ray._common.test_utils import wait_for_condition
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.request_router.common import (
     PendingRequest,
 )
@@ -17,7 +18,7 @@ from ray.serve._private.request_router.request_router import (
 )
 from ray.serve._private.test_utils import check_apps_running, check_telemetry
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve.config import RequestRouterConfig
+from ray.serve.config import AutoscalingContext, AutoscalingPolicy, RequestRouterConfig
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeDeploySchema
 
@@ -175,6 +176,83 @@ def test_custom_request_router_telemetry(manage_ray_with_telemetry):
 
     wait_for_condition(
         check_telemetry, tag=ServeUsageTag.CUSTOM_REQUEST_ROUTER_USED, expected="1"
+    )
+
+
+def custom_autoscaling_policy_deployment_level(ctx: AutoscalingContext):
+    """Custom autoscaling policy for deployment-level testing."""
+    if ctx.total_num_requests > 50:
+        return 3, {}
+    else:
+        return 2, {}
+
+
+def custom_autoscaling_policy_app_level(ctxs: Dict[DeploymentID, AutoscalingContext]):
+    """Custom autoscaling policy for application-level testing."""
+    decisions: Dict[DeploymentID, int] = {}
+    for deployment_id, ctx in ctxs.items():
+        if ctx.total_num_requests > 50:
+            decisions[deployment_id] = 3
+        else:
+            decisions[deployment_id] = 2
+    return decisions, {}
+
+
+@pytest.mark.parametrize("policy_level", ["deployment", "application"])
+def test_custom_autoscaling_policy_telemetry(manage_ray_with_telemetry, policy_level):
+    """Check that custom autoscaling policy usage is detected by telemetry."""
+
+    check_telemetry(ServeUsageTag.CUSTOM_AUTOSCALING_POLICY_USED, expected=None)
+
+    @serve.deployment
+    class Model:
+        async def __call__(self) -> str:
+            return "ok"
+
+    if policy_level == "deployment":
+        # Test deployment-level custom autoscaling policy
+        serve.run(
+            Model.options(
+                autoscaling_config={
+                    "min_replicas": 1,
+                    "max_replicas": 10,
+                    "policy": AutoscalingPolicy(
+                        policy_function=custom_autoscaling_policy_deployment_level
+                    ),
+                }
+            ).bind()
+        )
+    else:
+        # Test application-level custom autoscaling policy
+        config = {
+            "applications": [
+                {
+                    "name": "default",
+                    "import_path": "ray.serve.tests.test_telemetry_2.app_model",
+                    "autoscaling_policy": {
+                        "policy_function": "ray.serve.tests.test_telemetry_2.custom_autoscaling_policy_app_level"
+                    },
+                    "deployments": [
+                        {
+                            "name": "Model",
+                            "num_replicas": "auto",
+                            "autoscaling_config": {
+                                "min_replicas": 1,
+                                "max_replicas": 10,
+                            },
+                        }
+                    ],
+                },
+            ]
+        }
+        client = _get_global_client()
+        client.deploy_apps(ServeDeploySchema(**config))
+        wait_for_condition(check_apps_running, apps=["default"])
+
+    wait_for_condition(
+        check_telemetry,
+        tag=ServeUsageTag.CUSTOM_AUTOSCALING_POLICY_USED,
+        expected="1",
     )
 
 

@@ -115,7 +115,11 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
         parquet_ds.filter(expr="fake_news super fake")
 
     fake_column_ds = parquet_ds.filter(expr="sepal_length_123 > 1")
-    with pytest.raises(KeyError):
+    # With predicate pushdown, the error is raised during file reading
+    # and wrapped in RayTaskError
+    with pytest.raises(
+        (ray.exceptions.RayTaskError, RuntimeError), match="sepal_length_123"
+    ):
         fake_column_ds.to_pandas()
 
 

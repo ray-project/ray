@@ -22,8 +22,8 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/common/ray_syncer/common.h"
-#include "ray/common/ray_syncer/ray_syncer_bidi_reactor.h"
+#include "ray/ray_syncer/common.h"
+#include "ray/ray_syncer/ray_syncer_bidi_reactor.h"
 #include "src/ray/protobuf/ray_syncer.grpc.pb.h"
 
 namespace ray::syncer {
@@ -237,7 +237,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
           if (ok) {
             SendNext();
           } else {
-            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to send the message to: "
+            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to send a message to node: "
                                          << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
           }
@@ -256,7 +256,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
           }
 
           if (!ok) {
-            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to read the message from: "
+            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to read a message from node: "
                                          << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
             return;
