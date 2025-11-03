@@ -7,21 +7,23 @@ from ray.dashboard import authentication_utils as auth_utils
 logger = logging.getLogger(__name__)
 
 
-def get_token_auth_middleware():
-    # aiohttp is not included in minimal Ray installations, import it here to avoid breaking minimal installs
-    from ray.dashboard.optional_deps import aiohttp
+def get_token_auth_middleware(aiohttp_module):
+    """Internal helper to create token auth middleware with provided modules.
 
-    @aiohttp.web.middleware
+    Args:
+        aiohttp_module: The aiohttp module to use
+    Returns:
+        An aiohttp middleware function
+    """
+
+    @aiohttp_module.web.middleware
     async def token_auth_middleware(request, handler):
         """Middleware to validate bearer tokens when token authentication is enabled.
-
-        This is an aiohttp middleware that requires aiohttp to be installed.
-        Import aiohttp only when this function is called (not at module load time).
 
         In minimal Ray installations (without ray._raylet), this middleware is a no-op
         and passes all requests through without authentication.
         """
-        # No-op if  token auth is not enabled or raylet is not available
+        # No-op if token auth is not enabled or raylet is not available
         if not auth_utils.is_token_auth_enabled():
             return await handler(request)
 
@@ -29,12 +31,12 @@ def get_token_auth_middleware():
             authentication_constants.AUTHORIZATION_HEADER_NAME, ""
         )
         if not auth_header:
-            return aiohttp.web.Response(
+            return aiohttp_module.web.Response(
                 status=401, text="Unauthorized: Missing authentication token"
             )
 
         if not auth_utils.validate_request_token(auth_header):
-            return aiohttp.web.Response(
+            return aiohttp_module.web.Response(
                 status=403, text="Forbidden: Invalid authentication token"
             )
 

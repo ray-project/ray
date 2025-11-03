@@ -26,6 +26,7 @@ def import_libs():
 
 import_libs()
 
+import aiohttp  # noqa: E402
 import runtime_env_consts  # noqa: E402
 from aiohttp import web  # noqa: E402
 from runtime_env_agent import RuntimeEnvAgent  # noqa: E402
@@ -197,7 +198,7 @@ if __name__ == "__main__":
             body=reply.SerializeToString(), content_type="application/octet-stream"
         )
 
-    app = web.Application(middlewares=[get_token_auth_middleware()])
+    app = web.Application(middlewares=[get_token_auth_middleware(aiohttp)])
 
     app.router.add_post("/get_or_create_runtime_env", get_or_create_runtime_env)
     app.router.add_post(

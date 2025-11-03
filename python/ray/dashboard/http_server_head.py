@@ -256,7 +256,7 @@ class HttpServerDashboardHead:
             client_max_size=ray_constants.DASHBOARD_CLIENT_MAX_SIZE,
             middlewares=[
                 self.metrics_middleware,
-                get_token_auth_middleware(),
+                get_token_auth_middleware(aiohttp),
                 self.path_clean_middleware,
                 self.browsers_no_post_put_middleware,
                 self.cache_control_static_middleware,
