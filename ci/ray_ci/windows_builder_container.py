@@ -10,7 +10,7 @@ class WindowsBuilderContainer(WindowsContainer):
         upload: bool,
     ) -> None:
         super().__init__(
-            "windowsbuild",
+            f"windowsbuild-py{python_version}",
             volumes=[
                 f"{os.path.abspath(os.environ.get('RAYCI_CHECKOUT_DIR'))}:{WORKDIR}",
             ],
