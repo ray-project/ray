@@ -307,12 +307,12 @@ def _make_docker_hub_response(
     [
         (
             lambda t: t.startswith("a1s2d3"),
-            ["a1s2d3-py38", "2.7.0.q2w3e4", "t5y678-py39-cu123"],
+            ["a1s2d3-py38", "2.7.0.q2w3e4", "t5y678-py310-cu123"],
             ["a1s2d3-py38"],
         ),
         (
             lambda t: t.startswith("2.7.0"),
-            ["a1s2d3-py38", "2.7.0.q2w3e4", "t5y678-py39-cu123"],
+            ["a1s2d3-py38", "2.7.0.q2w3e4", "t5y678-py310-cu123"],
             ["2.7.0.q2w3e4"],
         ),
     ],
@@ -343,7 +343,7 @@ def test_query_tags_from_docker_hub(mock_requests, filter_func, tags, expected_t
     [
         (
             lambda t: t.startswith("a1s2d3"),
-            ["a1s2d3-py38", "2.7.0.q2w3e4", "t5y678-py39-cu123"],
+            ["a1s2d3-py38", "2.7.0.q2w3e4", "t5y678-py310-cu123"],
             ["a1s2d3-py38"],
         ),
     ],
@@ -459,7 +459,7 @@ def test_backup_release_tags(
         (
             "test",
             "ray",
-            ["3.9"],
+            ["3.10"],
             ["cpu", "cu12.1.1-cudnn8"],
             ["x86_64", "aarch64"],
             [
@@ -471,20 +471,20 @@ def test_backup_release_tags(
                 "test-cu121-aarch64",
                 "test-gpu",
                 "test-gpu-aarch64",
-                "test-py39",
-                "test-py39-aarch64",
-                "test-py39-cpu",
-                "test-py39-cpu-aarch64",
-                "test-py39-cu121",
-                "test-py39-cu121-aarch64",
-                "test-py39-gpu",
-                "test-py39-gpu-aarch64",
+                "test-py310",
+                "test-py310-aarch64",
+                "test-py310-cpu",
+                "test-py310-cpu-aarch64",
+                "test-py310-cu121",
+                "test-py310-cu121-aarch64",
+                "test-py310-gpu",
+                "test-py310-gpu-aarch64",
             ],
         ),
         (
             "test",
             "ray-ml",
-            ["3.9"],
+            ["3.10"],
             ["cpu", "cu12.1.1-cudnn8"],
             ["x86_64"],
             [
@@ -492,10 +492,10 @@ def test_backup_release_tags(
                 "test-cpu",
                 "test-cu121",
                 "test-gpu",
-                "test-py39",
-                "test-py39-cpu",
-                "test-py39-cu121",
-                "test-py39-gpu",
+                "test-py310",
+                "test-py310-cpu",
+                "test-py310-cu121",
+                "test-py310-gpu",
             ],
         ),
     ],
@@ -520,28 +520,28 @@ def test_list_image_tags(
         (
             "test",
             "ray",
-            ["3.9"],
+            ["3.10"],
             ["cpu", "cu14.0.0"],
             ["x86_64"],
         ),  # platform not supported
         (
             "test",
             "ray",
-            ["3.9"],
+            ["3.10"],
             ["cpu", "cu11.8.0-cudnn8"],
             ["aarch32"],
         ),  # architecture not supported
         (
             "test",
             "ray-ml",
-            ["3.9"],
+            ["3.10"],
             ["cpu", "cu11.8.0-cudnn8"],
             ["aarch64"],
         ),  # architecture not supported
         (
             "test",
             "ray-ml",
-            ["3.9"],
+            ["3.10"],
             ["cpu", "cu11.7.1-cudnn8"],
             ["x86_64"],
         ),  # platform not supported

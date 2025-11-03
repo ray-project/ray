@@ -1,5 +1,5 @@
 name: "data9build"
-froms: ["cr.ray.io/rayproject/oss-ci-base_ml"]
+froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON"]
 dockerfile: ci/docker/data.build.Dockerfile
 srcs:
   - ci/env/install-dependencies.sh

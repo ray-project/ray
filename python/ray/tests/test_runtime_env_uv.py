@@ -46,13 +46,13 @@ def test_uv_install_in_virtualenv(shutdown_only):
 
 # Package installation succeeds.
 def test_package_install_with_uv(shutdown_only):
-    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.3.0"]}})
+    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.32.3"]}})
     def f():
         import requests
 
         return requests.__version__
 
-    assert ray.get(f.remote()) == "2.3.0"
+    assert ray.get(f.remote()) == "2.32.3"
 
 
 # Package installation succeeds, with compatibility enabled.
@@ -84,14 +84,14 @@ def test_package_install_has_conflict_with_uv(shutdown_only):
 # Specify uv version and check.
 def test_uv_with_version_and_check(shutdown_only):
     @ray.remote(
-        runtime_env={"uv": {"packages": ["requests==2.3.0"], "uv_version": "==0.4.0"}}
+        runtime_env={"uv": {"packages": ["requests==2.32.3"], "uv_version": "==0.4.0"}}
     )
     def f():
         import pkg_resources
         import requests
 
         assert pkg_resources.get_distribution("uv").version == "0.4.0"
-        assert requests.__version__ == "2.3.0"
+        assert requests.__version__ == "2.32.3"
 
     ray.get(f.remote())
 
