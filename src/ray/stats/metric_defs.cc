@@ -124,7 +124,7 @@ DEFINE_stats(scheduler_placement_time_s,
              ("WorkloadType"),
              ({0.1, 1, 10, 100, 1000, 10000}, ),
              ray::stats::HISTOGRAM);
-DEFINE_stats(local_resource_view_node_count,
+DEFINE_stats(num_known_nodes_in_cluster,
              "Number of nodes tracked in the ClusterResourceManager.",
              (),
              (),
