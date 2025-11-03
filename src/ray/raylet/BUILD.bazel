@@ -158,6 +158,7 @@ ray_cc_library(
         "//src/ray/common:status",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
+        "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:logging",
         "//src/ray/util:process",
         "//src/ray/util:time",
