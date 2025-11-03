@@ -406,3 +406,188 @@ TEST_SCENARIOS = {
         }
     )
 }
+
+
+# Test functions for the utility classes
+@pytest.mark.asyncio
+async def test_mock_embedding_model():
+    """Test MockEmbeddingModel functionality."""
+    model = MockEmbeddingModel("test_model", embedding_dim=128)
+    
+    # Test individual prediction
+    result = await model.predict("hello world")
+    assert len(result) == 128
+    assert isinstance(result[0], float)
+    assert model.predict_calls == 1
+    assert model.total_items_processed == 1
+    
+    # Test batch prediction
+    texts = ["hello", "world", "test"]
+    batch_result = await model.batch_predict(texts)
+    assert len(batch_result) == 3
+    assert len(batch_result[0]) == 128
+    assert model.batch_predict_calls == 1
+    assert model.total_items_processed == 4  # 1 + 3
+    
+    # Test stats
+    stats = model.get_stats()
+    assert stats["model_id"] == "test_model"
+    assert stats["embedding_dim"] == 128
+    assert stats["predict_calls"] == 1
+    assert stats["batch_predict_calls"] == 1
+
+
+@pytest.mark.asyncio
+async def test_mock_classification_model():
+    """Test MockClassificationModel functionality."""
+    model = MockClassificationModel("sentiment", num_classes=3)
+    
+    # Test individual prediction
+    result = await model.predict("I love this!")
+    assert len(result) == 3
+    assert all(f"class_{i}" in result for i in range(3))
+    assert abs(sum(result.values()) - 1.0) < 1e-6  # Should sum to 1
+    assert model.predict_calls == 1
+    
+    # Test batch prediction
+    texts = ["good", "bad", "neutral"]
+    batch_result = await model.batch_predict(texts)
+    assert len(batch_result) == 3
+    assert all(len(result) == 3 for result in batch_result)
+    assert model.batch_predict_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_mock_translation_model():
+    """Test MockTranslationModel functionality."""
+    model = MockTranslationModel("en_es", source_lang="en", target_lang="es")
+    
+    # Test individual translation
+    result = await model.translate("hello")
+    assert result.startswith("[es]")
+    assert "olleh" in result  # reversed text
+    assert model.translate_calls == 1
+    
+    # Test batch translation
+    texts = ["hello", "world"]
+    batch_result = await model.batch_translate(texts)
+    assert len(batch_result) == 2
+    assert all(result.startswith("[es]") for result in batch_result)
+    assert model.batch_translate_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_batching_test_helper():
+    """Test BatchingTestHelper functionality."""
+    from ray.serve.multiplex import _ModelMultiplexWrapper
+    
+    # Mock a simple wrapper
+    class MockWrapper:
+        def __init__(self):
+            self.call_count = 0
+            
+        async def predict(self, input_data, model_id):
+            self.call_count += 1
+            await asyncio.sleep(0.01)
+            return f"result_{model_id}_{input_data}"
+    
+    wrapper = MockWrapper()
+    inputs = ["test1", "test2", "test3"]
+    
+    # Test concurrent requests
+    results, total_time = await BatchingTestHelper.send_concurrent_requests(
+        wrapper, inputs, "test_model"
+    )
+    
+    assert len(results) == 3
+    assert wrapper.call_count == 3
+    assert total_time > 0
+    
+    # Test efficiency verification
+    individual_time = 0.1
+    batch_time = 0.05
+    speedup = BatchingTestHelper.verify_batching_efficiency(
+        individual_time, batch_time, 3, min_speedup=1.5
+    )
+    assert speedup == 2.0
+
+
+def test_multi_model_test_scenario():
+    """Test MultiModelTestScenario functionality."""
+    scenario = TEST_SCENARIOS["embedding_workload"]
+    
+    assert len(scenario.models) == 3
+    assert "mini" in scenario.models
+    assert "base" in scenario.models
+    assert "large" in scenario.models
+    
+    # Test analyze_results
+    mock_results = [
+        {"model_id": "mini", "result": "result1", "timestamp": 1.0},
+        {"model_id": "mini", "result": "result2", "timestamp": 1.1},
+        {"model_id": "base", "result": "result3", "timestamp": 1.2},
+    ]
+    
+    analysis = scenario.analyze_results(mock_results, 0.5)
+    assert analysis["total_requests"] == 3
+    assert analysis["total_time"] == 0.5
+    assert analysis["models_used"] == 2
+    assert analysis["requests_per_model"]["mini"] == 2
+    assert analysis["requests_per_model"]["base"] == 1
+
+
+def test_fixtures_return_correct_types(embedding_model_loader, classification_model_loader, 
+                                     translation_model_loader, sample_texts, performance_test_config):
+    """Test that all fixtures return the expected types."""
+    # Test embedding model loader
+    loader, models = embedding_model_loader
+    assert callable(loader)
+    assert isinstance(models, dict)
+    
+    # Test classification model loader
+    loader, models = classification_model_loader
+    assert callable(loader)
+    assert isinstance(models, dict)
+    
+    # Test translation model loader
+    loader, models = translation_model_loader
+    assert callable(loader)
+    assert isinstance(models, dict)
+    
+    # Test sample texts
+    assert isinstance(sample_texts, list)
+    assert len(sample_texts) > 0
+    assert all(isinstance(text, str) for text in sample_texts)
+    
+    # Test performance config
+    assert isinstance(performance_test_config, dict)
+    assert "small_batch" in performance_test_config
+    assert "min_speedup" in performance_test_config
+
+
+@pytest.mark.asyncio
+async def test_embedding_model_loader_fixture(embedding_model_loader):
+    """Test the embedding model loader fixture."""
+    loader, models = embedding_model_loader
+    
+    # Load a model
+    model = await loader("mini")
+    assert isinstance(model, MockEmbeddingModel)
+    assert model.model_id == "mini"
+    assert model.embedding_dim == 384
+    
+    # Check it's cached
+    model2 = await loader("mini")
+    assert model is model2
+    assert len(models) == 1
+    
+    # Load different model
+    model3 = await loader("base")
+    assert model3.embedding_dim == 768
+    assert len(models) == 2
+
+
+if __name__ == "__main__":
+    # Run all tests in this module
+    import sys
+    pytest.main(["-v", "-s", __file__] + sys.argv[1:])

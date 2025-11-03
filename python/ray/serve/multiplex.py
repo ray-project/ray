@@ -160,9 +160,11 @@ class _ModelMultiplexWrapper:
                 Returns:
                     List of results corresponding to each input.
                 """
+                # Re-check model availability at processing time to handle race conditions
                 model = self.models.get(model_id)
                 if model is None:
-                    raise RuntimeError(f"Model {model_id} not loaded")
+                    # Model was evicted, raise an exception that will cancel pending requests
+                    raise RuntimeError(f"Model {model_id} was evicted during batch processing")
                 
                 # Try to use batch_predict method if available
                 if hasattr(model, 'batch_predict'):
@@ -191,6 +193,124 @@ class _ModelMultiplexWrapper:
             )
         
         return self._model_batch_queues[model_id]
+
+    async def _shutdown_batch_queue(self, batch_queue_wrapper: _LazyBatchQueueWrapper, model_id: str):
+        """Gracefully shutdown a batch queue by canceling pending requests and background tasks."""
+        if batch_queue_wrapper._queue is None:
+            # Queue was never initialized, nothing to clean up
+            return
+            
+        batch_queue = batch_queue_wrapper._queue
+        
+        # Cancel the background processing task if it exists
+        if hasattr(batch_queue, '_handle_batch_task') and batch_queue._handle_batch_task:
+            batch_queue._handle_batch_task.cancel()
+            try:
+                await batch_queue._handle_batch_task
+            except asyncio.CancelledError:
+                pass  # Expected when cancelling
+        
+        # Cancel all pending requests in the queue
+        pending_requests = []
+        try:
+            while True:
+                try:
+                    request = batch_queue.queue.get_nowait()
+                    pending_requests.append(request)
+                except asyncio.QueueEmpty:
+                    break
+        except Exception:
+            pass  # Queue might be closed or corrupted
+        
+        # Handle pending requests gracefully - try to reassign rather than fail
+        reassigned_count = 0
+        failed_count = 0
+        
+        for request in pending_requests:
+            if not request.future.done():
+                try:
+                    # Try to reassign the request back to the routing system
+                    if await self._try_reassign_request(request, model_id):
+                        reassigned_count += 1
+                    else:
+                        # If reassignment fails, set a descriptive error
+                        request.future.set_exception(
+                            RuntimeError(f"Model {model_id} was evicted and could not be reassigned")
+                        )
+                        failed_count += 1
+                except Exception:
+                    # Future might already be done or other error, count as failed
+                    failed_count += 1
+        
+        logger.info(f"Shutdown batch queue for model {model_id}: reassigned {reassigned_count}, failed {failed_count} pending requests")
+
+    async def _try_reassign_request(self, request: _SingleRequest, model_id: str) -> bool:
+        """Try to reassign a pending request back to the routing system.
+        
+        Args:
+            request: The pending request to reassign
+            model_id: The model ID that was evicted
+            
+        Returns:
+            True if request was successfully reassigned, False otherwise
+        """
+        try:
+            # Extract the original input from the flattened args
+            if len(request.flattened_args) >= 2 and request.flattened_args[0] == DUMMY_TYPE:
+                original_input = request.flattened_args[1]
+            else:
+                # Fallback if format is unexpected
+                return False
+            
+            # Check if we have retry attempts left (prevent infinite loops)
+            retry_count = getattr(request, '_retry_count', 0)
+            if retry_count >= 2:  # Max 2 retries
+                return False
+            
+            # Create a new async task to retry the request with backoff
+            async def retry_request():
+                try:
+                    # Add retry count to track attempts
+                    setattr(request, '_retry_count', retry_count + 1)
+                    
+                    # Exponential backoff: wait longer for each retry
+                    backoff_time = 0.01 * (2 ** retry_count)
+                    await asyncio.sleep(backoff_time)
+                    
+                    # Try to process the request again - this will go through the full
+                    # model loading process, potentially reloading on this replica
+                    # Note: We call predict directly rather than batched_inference to avoid
+                    # potential batching complications during retry
+                    if self.enable_batching:
+                        # For batching case, try individual prediction as fallback
+                        model = await self.load_model(model_id)
+                        if hasattr(model, 'predict'):
+                            result = await model.predict(original_input)
+                        elif callable(model):
+                            result = await model(original_input)
+                        else:
+                            raise RuntimeError(f"Model {model_id} is not callable and has no predict method")
+                    else:
+                        result = await self.predict(original_input, model_id)
+                    
+                    # Set the result on the original future
+                    if not request.future.done():
+                        request.future.set_result(result)
+                    
+                except Exception as e:
+                    # If retry fails, set the exception on the original future
+                    if not request.future.done():
+                        request.future.set_exception(
+                            RuntimeError(f"Model {model_id} evicted, retry failed: {str(e)}")
+                        )
+            
+            # Start the retry task in the background
+            asyncio.create_task(retry_request())
+            return True
+            
+        except Exception as e:
+            logger.debug(f"Failed to reassign request for model {model_id}: {e}")
+            return False
 
     async def batched_inference(self, model_id: str, request: Any) -> Any:
         """Perform batched inference on a specific model."""
@@ -292,6 +412,14 @@ class _ModelMultiplexWrapper:
                 logger.exception(
                     f"Failed to unload model. Error: {e}",
                 )
+        
+        # Clean up any remaining batch queues
+        for model_id, batch_queue_wrapper in list(self._model_batch_queues.items()):
+            try:
+                await self._shutdown_batch_queue(batch_queue_wrapper, model_id)
+            except Exception as e:
+                logger.exception(f"Failed to shutdown batch queue for model {model_id}. Error: {e}")
+        self._model_batch_queues.clear()
 
     async def load_model(self, model_id: str) -> Any:
         """Load the model if it is not loaded yet, and return
@@ -373,8 +501,10 @@ class _ModelMultiplexWrapper:
         model_id, model = self.models.popitem(last=False)
         logger.info(f"Unloading model '{model_id}'.")
 
-        # Clean up the batch queue for this model if it exists
+        # Gracefully shutdown the batch queue for this model if it exists
         if model_id in self._model_batch_queues:
+            batch_queue_wrapper = self._model_batch_queues[model_id]
+            await self._shutdown_batch_queue(batch_queue_wrapper, model_id)
             del self._model_batch_queues[model_id]
 
         # If the model has __del__ attribute, call it.

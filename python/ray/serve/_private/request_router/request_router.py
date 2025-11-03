@@ -217,6 +217,11 @@ class MultiplexMixin:
         
         # Batching-aware routing: track pending requests by model ID for better batching
         self._pending_requests_by_model_id: DefaultDict[str, List] = defaultdict(list)
+        # Counters for efficient cleanup
+        self._pending_requests_added_since_cleanup = 0
+        self._last_cleanup_time = time.time()
+        self._cleanup_threshold = 50  # Cleanup after 50 new requests
+        self._cleanup_interval = 10.0  # Cleanup every 10 seconds
 
     def _get_pending_request_matching_multiplexed_model_id(
         self,
@@ -239,14 +244,29 @@ class MultiplexMixin:
         if pending_request.metadata.multiplexed_model_id:
             model_id = pending_request.metadata.multiplexed_model_id
             self._pending_requests_by_model_id[model_id].append(pending_request)
+            self._pending_requests_added_since_cleanup += 1
 
     def _get_pending_requests_for_model(self, model_id: str) -> List[PendingRequest]:
         """Get all pending requests for a specific model ID."""
-        return [pr for pr in self._pending_requests_by_model_id[model_id] 
-                if not pr.future.done()]
+        # Filter out completed requests on-the-fly for immediate use
+        active_requests = [pr for pr in self._pending_requests_by_model_id[model_id] 
+                          if not pr.future.done()]
+        return active_requests
+
+    def _should_cleanup_pending_requests(self) -> bool:
+        """Determine if we should perform cleanup based on counters and time."""
+        return (self._pending_requests_added_since_cleanup >= self._cleanup_threshold or 
+                (time.time() - self._last_cleanup_time) >= self._cleanup_interval)
 
     def _cleanup_completed_pending_requests(self):
-        """Clean up completed requests from model ID tracking."""
+        """Clean up completed requests from model ID tracking efficiently."""
+        # Only cleanup if we've accumulated enough requests or enough time has passed
+        if not self._should_cleanup_pending_requests():
+            return
+            
+        cleanup_start = time.time()
+        total_requests_before = sum(len(requests) for requests in self._pending_requests_by_model_id.values())
+        
         for model_id in list(self._pending_requests_by_model_id.keys()):
             self._pending_requests_by_model_id[model_id] = [
                 pr for pr in self._pending_requests_by_model_id[model_id]
@@ -254,6 +274,17 @@ class MultiplexMixin:
             ]
             if not self._pending_requests_by_model_id[model_id]:
                 del self._pending_requests_by_model_id[model_id]
+        
+        total_requests_after = sum(len(requests) for requests in self._pending_requests_by_model_id.values())
+        cleanup_time = time.time() - cleanup_start
+        
+        # Reset counters
+        self._pending_requests_added_since_cleanup = 0
+        self._last_cleanup_time = time.time()
+        
+        if total_requests_before != total_requests_after:
+            logger.debug(f"Cleaned up {total_requests_before - total_requests_after} completed requests "
+                        f"in {cleanup_time:.3f}s, {total_requests_after} active requests remaining")
 
     def _update_multiplexed_model_ids_with_replicas(
         self, replicas: List[RunningReplica]
@@ -349,9 +380,31 @@ class MultiplexMixin:
             if candidate_replica_ids and multiplexed_model_id:
                 pending_for_model = self._get_pending_requests_for_model(multiplexed_model_id)
                 if len(pending_for_model) > 1:  # Multiple requests for same model
-                    # Prefer replicas that are likely processing this model
-                    logger.debug(f"Found {len(pending_for_model)} pending requests for model {multiplexed_model_id}, "
-                               f"prioritizing batching-friendly routing")
+                    # Find replicas that already have pending requests for this model
+                    batching_friendly_replicas = set()
+                    
+                    for pending_req in pending_for_model:
+                        # Check if this request has been assigned to a replica
+                        if (pending_req.future.done() and 
+                            not pending_req.future.cancelled() and
+                            not pending_req.future.exception()):
+                            try:
+                                assigned_replica = pending_req.future.result()
+                                if (hasattr(assigned_replica, 'replica_id') and
+                                    assigned_replica.replica_id in candidate_replica_ids):
+                                    batching_friendly_replicas.add(assigned_replica.replica_id)
+                            except Exception:
+                                # Future might not have replica result, skip
+                                pass
+                    
+                    # If we found replicas with pending requests for this model, prioritize them
+                    if batching_friendly_replicas:
+                        candidate_replica_ids = batching_friendly_replicas
+                        logger.debug(f"Found {len(pending_for_model)} pending requests for model {multiplexed_model_id}, "
+                                   f"prioritizing {len(batching_friendly_replicas)} batching-friendly replicas")
+                    else:
+                        logger.debug(f"Found {len(pending_for_model)} pending requests for model {multiplexed_model_id}, "
+                                   f"but no batching-friendly replicas found in candidates")
             
             if (
                 not candidate_replica_ids

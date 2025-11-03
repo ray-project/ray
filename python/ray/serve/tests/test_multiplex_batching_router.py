@@ -200,21 +200,23 @@ class TestMultiplexBatchingEnd2End:
         # Load model first
         model = await wrapper_batched.load_model("batched_model")
         
-        # Send concurrent requests to same model using the model directly
+        # Send concurrent requests to the wrapper to test batching mechanism
         start_time = time.time()
         tasks = []
         for i in range(10):
-            task = model.batch_predict([f"data_{i}"])
+            # Use wrapper.predict() to test the actual batching mechanism
+            task = wrapper_batched.predict(f"data_{i}", "batched_model")
             tasks.append(task)
         
-        results_nested = await asyncio.gather(*tasks)
-        # Flatten results since batch_predict returns lists
-        results = [item for sublist in results_nested for item in sublist]
+        results = await asyncio.gather(*tasks)
         batched_time = time.time() - start_time
         
-        # Check the model's batch predict was called
+        # Check that batch predict was called (indicating batching worked)
         assert model.batch_predict_count > 0, "Batch predict should be called"
         assert len(results) == 10, "All requests should complete"
+        
+        # Verify results are correct format - should be from batch_predict
+        assert all("batch_batched_model" in result for result in results), f"Expected batch results, got: {results[:3]}"
         
         # Test without batching for comparison
         TrackableModel.reset_tracking()
