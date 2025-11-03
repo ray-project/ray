@@ -377,6 +377,9 @@ class RobustScaler(Preprocessor):
             columns will be the same as the input columns. If not None, the length of
             ``output_columns`` must match the length of ``columns``, othwerwise an error
             will be raised.
+        use_approximate: Use approximate quantile calculations to potential speed up
+            for larger datasets. Must have the TDigest library installed.
+        compression: Accuracy vs memory trade-off for when using approximate quantile.
     """
 
     def __init__(
@@ -384,10 +387,14 @@ class RobustScaler(Preprocessor):
         columns: List[str],
         quantile_range: Tuple[float, float] = (0.25, 0.75),
         output_columns: Optional[List[str]] = None,
+        use_approximate: bool = False,
+        compression: int = 100,
     ):
         super().__init__()
         self.columns = columns
         self.quantile_range = quantile_range
+        self.use_approximate = use_approximate
+        self.compression = compression
 
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
@@ -398,6 +405,19 @@ class RobustScaler(Preprocessor):
         med = 0.50
         high = self.quantile_range[1]
 
+        if self.use_approximate:
+            try:
+                self._fit_approximate(dataset, low, med, high)
+                return self
+            except ImportError:
+                print(
+                    "[dataset]: Run `pip install tdigest` to enable approximate "
+                    "quantile scaling. Falling back to exact quantile scaling."
+                )
+        self._fit_absolute(dataset, low, med, high)
+        return self
+
+    def _fit_absolute(self, dataset: "Dataset", low: float, med: float, high: float):
         num_records = dataset.count()
         max_index = num_records - 1
         split_indices = [int(percentile * max_index) for percentile in (low, med, high)]
@@ -425,7 +445,38 @@ class RobustScaler(Preprocessor):
             self.stats_[f"median({col})"] = med_val
             self.stats_[f"high_quantile({col})"] = high_val
 
-        return self
+    def _fit_approximate(self, dataset: "Dataset", low: float, med: float, high: float):
+        from tdigest import TDigest
+
+        def build_digest_batch(batch: pd.DataFrame) -> pd.DataFrame:
+            digests = {}
+            for col in self.columns:
+                digest = TDigest(delta=self.compression)
+                # Filter out NaN values
+                values = batch[col].dropna().values
+                for val in values:
+                    digest.update(val)
+                digests[col] = digest
+            return pd.DataFrame([digests])
+
+        digest_batches = dataset.map_batches(build_digest_batch, batch_format="pandas")
+
+        merged_digests = {}
+        for batch in digest_batches.iter_batches(batch_format="pandas"):
+            for col in self.columns:
+                if col not in merged_digests:
+                    merged_digests[col] = TDigest(delta=self.compression)
+
+                digest_from_batch = batch[col].iloc[0]
+                if digest_from_batch is not None:
+                    merged_digests[col] += digest_from_batch
+
+        for col in self.columns:
+            digest = merged_digests[col]
+
+            self.stats_[f"low_quantile({col})"] = digest.percentile(low * 100)
+            self.stats_[f"median({col})"] = digest.percentile(med * 100)
+            self.stats_[f"high_quantile({col})"] = digest.percentile(high * 100)
 
     def _transform_pandas(self, df: pd.DataFrame):
         def column_robust_scaler(s: pd.Series):
