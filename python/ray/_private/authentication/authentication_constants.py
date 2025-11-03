@@ -21,3 +21,5 @@ HTTP_REQUEST_INVALID_TOKEN_ERROR_MESSAGE = (
     "The authentication token you provided is invalid or incorrect.\n\n"
     + TOKEN_SETUP_INSTRUCTIONS
 )
+
+AUTHORIZATION_HEADER_NAME = "authorization"
