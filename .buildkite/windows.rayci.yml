@@ -8,6 +8,11 @@ steps:
   - name: windowsbuild
     wanda: ci/docker/windows.build.wanda.yaml
     instance_type: builder-windows
+    env:
+      PYTHON: "{{matrix}}"
+    matrix:
+      - "3.9"
+      - "3.10"
 
   - label: ":windows: wheel {{matrix}}"
     # we have linux/mac wheels tag, but do not have a windows wheels tag..
@@ -37,7 +42,7 @@ steps:
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
-        --build-name windowsbuild
+        --build-name windowsbuild-py3.9
         --operating-system windows
         --except-tags no_windows,cgroup
         --test-env=CI="1"
@@ -54,7 +59,7 @@ steps:
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
-        --build-name windowsbuild
+        --build-name windowsbuild-py3.9
         --operating-system windows
         --except-tags no_windows
         --test-env=CI="1"
@@ -71,7 +76,7 @@ steps:
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
-        --build-name windowsbuild
+        --build-name windowsbuild-py3.9
         --operating-system windows
         --except-tags no_windows,use_all_core_windows
         --test-env=CI="1"
@@ -87,7 +92,7 @@ steps:
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
-        --build-name windowsbuild
+        --build-name windowsbuild-py3.9
         --operating-system windows
         --only-tags use_all_core_windows
         --except-tags no_windows
@@ -104,7 +109,7 @@ steps:
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train:test_windows ml
-        --build-name windowsbuild
+        --build-name windowsbuild-py3.9
         --operating-system windows
         --test-env=CI="1"
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
@@ -124,7 +129,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... //python/ray/tests/... core
         --run-flaky-tests
         --except-tags no_windows
-        --build-name windowsbuild
+        --build-name windowsbuild-py3.9
         --operating-system windows
         --test-env=CI="1"
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
@@ -145,7 +150,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
         --except-tags no_windows
         --run-flaky-tests
-        --build-name windowsbuild
+        --build-name windowsbuild-py3.9
         --operating-system windows
         --test-env=CI="1"
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
