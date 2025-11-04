@@ -1,6 +1,6 @@
 import abc
 import logging
-from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 import gymnasium as gym
 import tree  # pip install dm_tree
@@ -15,7 +15,7 @@ from ray.rllib.utils.metrics import ENV_RESET_TIMER, ENV_STEP_TIMER
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import StateDict, TensorType
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.metrics import Counter
 
 if TYPE_CHECKING:

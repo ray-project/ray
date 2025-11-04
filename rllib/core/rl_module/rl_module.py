@@ -1,40 +1,40 @@
 import abc
 import dataclasses
-from dataclasses import dataclass, field
 import logging
-from typing import Any, Collection, Dict, Optional, Type, TYPE_CHECKING, Union
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Collection, Dict, Optional, Type, Union
 
 import gymnasium as gym
 
-from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.core.distribution.distribution import Distribution
-from ray.rllib.utils.annotations import (
-    override,
-    OverrideToImplementCustomLogic,
-)
-from ray.rllib.utils.checkpoints import Checkpointable
 from ray._common.deprecation import (
-    Deprecated,
     DEPRECATED_VALUE,
+    Deprecated,
     deprecation_warning,
 )
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.distribution.distribution import Distribution
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.utils.annotations import (
+    OverrideToImplementCustomLogic,
+    override,
+)
+from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.serialization import (
+    deserialize_type,
     gym_space_from_dict,
     gym_space_to_dict,
     serialize_type,
-    deserialize_type,
 )
 from ray.rllib.utils.typing import StateDict
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
+    from ray.rllib.core.models.catalog import Catalog
     from ray.rllib.core.rl_module.multi_rl_module import (
         MultiRLModule,
         MultiRLModuleSpec,
     )
-    from ray.rllib.core.models.catalog import Catalog
 
 logger = logging.getLogger("ray.rllib")
 torch, _ = try_import_torch()

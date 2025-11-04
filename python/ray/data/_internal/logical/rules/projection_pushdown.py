@@ -9,7 +9,7 @@ from ray.data._internal.logical.interfaces import (
 from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnReferenceCollector,
-    _ColumnRefRebindingVisitor,
+    _ColumnSubstitutionVisitor,
     _is_col_expr,
 )
 from ray.data.expressions import (
@@ -40,27 +40,6 @@ def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
         collector.visit(expr)
 
     return collector.get_column_refs()
-
-
-def _extract_simple_rename(expr: Expr) -> Optional[Tuple[str, str]]:
-    """
-    Check if an expression is a simple column rename.
-
-    Returns (source_name, target_name) if the expression is of form:
-        col("source").alias("dest")
-
-    Returns None for other expression types.
-    """
-    if (
-        isinstance(expr, AliasExpr)
-        and isinstance(expr.expr, ColumnExpr)
-        and expr._is_rename
-    ):
-        target_name = expr.name
-        source_name = expr.expr.name
-        return source_name, target_name
-
-    return None
 
 
 def _analyze_upstream_project(
@@ -203,7 +182,7 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
     # Upstream output column refs inside downstream expressions need to be bound
     # to upstream output column definitions to satisfy invariant #1 (common for both
     # composition/projection cases)
-    v = _ColumnRefRebindingVisitor(upstream_column_defs)
+    v = _ColumnSubstitutionVisitor(upstream_column_defs)
 
     rebound_downstream_exprs = [
         v.visit(e) for e in _filter_out_star(downstream_project.exprs)

@@ -26,6 +26,9 @@ import ray._private.services as services
 from ray._common.network_utils import build_address, parse_address
 from ray._common.usage import usage_lib
 from ray._common.utils import load_class
+from ray._private.authentication.authentication_token_setup import (
+    ensure_token_if_auth_enabled,
+)
 from ray._private.internal_api import memory_summary
 from ray._private.label_utils import (
     parse_node_labels_from_yaml_file,
@@ -937,6 +940,9 @@ def start(
                     " flag of `ray start` command."
                 )
 
+        # Ensure auth token is available if authentication mode is token
+        ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
+
         node = ray._private.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
         )
@@ -1093,6 +1099,9 @@ def start(
         )
 
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
+
+        # Ensure auth token is available if authentication mode is token
+        ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
 
         node = ray._private.node.Node(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block

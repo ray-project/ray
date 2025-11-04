@@ -34,7 +34,7 @@ helm install kuberay-operator kuberay/kuberay-operator --version 1.4.2 --set bat
 
 ## Step 4: Use Apache YuniKorn for gang scheduling
 
-This example uses gang scheduling with Apache YuniKorn and KubeRay.
+This example demonstrates gang scheduling of RayCluster custom resources with Apache YuniKorn and KubeRay. Starting with KubeRay 1.5.0, KubeRay also supports gang scheduling for RayJob custom resources.
 
 First, create a queue with a capacity of 4 CPUs and 6Gi of RAM by editing the ConfigMap:
 

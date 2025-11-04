@@ -13,6 +13,7 @@ ray_cc_test(
         "//src/mock/ray/ray_syncer:mock_ray_syncer",
         "//src/ray/ray_syncer",
         "//src/ray/rpc:grpc_server",
+        "//src/ray/rpc/authentication:authentication_token",
         "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",

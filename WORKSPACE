@@ -83,7 +83,7 @@ load("@py_deps_buildkite//:requirements.bzl", install_py_deps_buildkite = "insta
 
 install_py_deps_buildkite()
 
-register_toolchains("//:python_toolchain")
+register_toolchains("//bazel:py39_toolchain")
 
 register_execution_platforms(
     "@local_config_platform//:host",

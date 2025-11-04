@@ -134,13 +134,13 @@ Use the `bundle_label_selector` option to add label selector to placement group 
 # All bundles require the same labels:
 ray.util.placement_group(
     bundles=[{"GPU": 1}, {"GPU": 1}],
-    bundle_label_selector=[{"ray.io/accelerator-type": "H100"} * 2],
+    bundle_label_selector=[{"ray.io/accelerator-type": "H100"}] * 2,
 )
 
 # Bundles require different labels:
 ray.util.placement_group(
-    bundles=[{"CPU": 1}] + [{"GPU": 1} * 2],
-    bundle_label_selector=[{"ray.io/market-type": "spot"}] + [{"ray.io/accelerator-type": "H100"} * 2]
+    bundles=[{"CPU": 1}] + [{"GPU": 1}] * 2,
+    bundle_label_selector=[{"ray.io/market-type": "spot"}] + [{"ray.io/accelerator-type": "H100"}] * 2
 )
 ```
 ## Using labels with autoscaler
