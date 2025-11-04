@@ -1590,6 +1590,64 @@ def test_projection_pushdown_merge_rename_x(ray_start_regular_shared, flavor):
             ],
             id="drop_empty_list",
         ),
+        # === Drop Computed Columns ===
+        pytest.param(
+            [("with_column_expr", "sum", "add", "a", "b"), ("drop", ["sum"])],
+            [
+                {"a": 1, "b": 4, "c": 7},
+                {"a": 2, "b": 5, "c": 8},
+                {"a": 3, "b": 6, "c": 9},
+            ],
+            id="drop_computed_column",
+        ),
+        pytest.param(
+            [
+                ("with_column_expr", "sum", "add", "a", "b"),
+                ("with_column_expr", "product", "multiply", "a", 2),
+                ("drop", ["sum"]),
+            ],
+            [
+                {"a": 1, "b": 4, "c": 7, "product": 2},
+                {"a": 2, "b": 5, "c": 8, "product": 4},
+                {"a": 3, "b": 6, "c": 9, "product": 6},
+            ],
+            id="drop_one_of_multiple_computed_columns",
+        ),
+        pytest.param(
+            [
+                ("with_column_expr", "sum", "add", "a", "b"),
+                ("with_column_expr", "product", "multiply", "a", 2),
+                ("drop", ["sum", "product"]),
+            ],
+            [
+                {"a": 1, "b": 4, "c": 7},
+                {"a": 2, "b": 5, "c": 8},
+                {"a": 3, "b": 6, "c": 9},
+            ],
+            id="drop_multiple_computed_columns",
+        ),
+        pytest.param(
+            [
+                ("with_column_expr", "sum", "add", "a", "b"),
+                ("rename", {"a": "A"}),
+                ("drop", ["sum", "A"]),
+            ],
+            [{"b": 4, "c": 7}, {"b": 5, "c": 8}, {"b": 6, "c": 9}],
+            id="drop_mix_computed_and_renamed",
+        ),
+        pytest.param(
+            [
+                ("with_column_expr", "step1", "add", "a", "b"),
+                ("with_column_expr", "step2", "multiply", "step1", 2),
+                ("drop", ["step2"]),
+            ],
+            [
+                {"a": 1, "b": 4, "c": 7, "step1": 5},
+                {"a": 2, "b": 5, "c": 8, "step1": 7},
+                {"a": 3, "b": 6, "c": 9, "step1": 9},
+            ],
+            id="drop_dependent_computed_column",
+        ),
     ],
 )
 def test_drop_columns_comprehensive(

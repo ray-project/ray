@@ -232,6 +232,10 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         If a dropped column name references an upstream renamed column,
         translate it to reference the original column name instead.
 
+        For non-rename columns (e.g., computed expressions), the column is
+        dropped from the translated list since it doesn't exist in the input
+        schema - it should be filtered from upstream expressions instead.
+
         Args:
             expr: The drop expression.
 
@@ -248,6 +252,8 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
                 # If the substitution is a rename, extract the original column name
                 if isinstance(substitution, AliasExpr) and substitution._is_rename:
                     translated_cols.append(substitution.expr.name)
+                # else: Substitution exists but isn't a simple rename (e.g., computed expression)
+                # Don't add to translated_cols - it will be filtered from upstream expressions
             else:
                 # Column not in substitution map, keep as-is
                 # (it will be validated at execution time to check if it exists in input)
