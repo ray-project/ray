@@ -1058,7 +1058,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
               auto actor_iter = registered_actors_.find(actor_id);
               if (actor_iter != registered_actors_.end() &&
                   actor_iter->second->GetWorkerID() == worker_id) {
-                NotifyCoreWorkerToKillActor(
+                NotifyRayletToKillActor(
                     actor_iter->second, death_cause, /*force_kill=*/true);
               }
             });
