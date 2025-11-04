@@ -21,6 +21,7 @@ def get_token_auth_middleware(
         whitelisted_path_prefixes: List of path prefixes that don't require authentication
     Returns:
         An aiohttp middleware function
+    """
 
     @aiohttp_module.web.middleware
     async def token_auth_middleware(request, handler):
