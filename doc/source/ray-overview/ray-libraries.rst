@@ -94,7 +94,7 @@ more information.
             Daft is a data engine that supports SQL and Python DataFrames for data processing and analytics natively on your Ray clusters.
 
         +++
-        .. button-link:: https://www.getdaft.io
+        .. button-link:: https://docs.daft.ai/en/stable/distributed/ray/
             :color: primary
             :outline:
             :expand:
