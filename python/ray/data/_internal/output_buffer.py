@@ -70,7 +70,6 @@ class BlockOutputBuffer:
         self._output_block_size_option = output_block_size_option
         self._buffer = DelegatingBlockBuilder()
         self._finalized = False
-        self._has_yielded_blocks = False
 
     def add(self, item: Any) -> None:
         """Add a single item to this output buffer."""
@@ -123,7 +122,7 @@ class BlockOutputBuffer:
 
         # TODO remove emitting empty blocks
         if self._finalized:
-            return not self._has_yielded_blocks or self._buffer.num_rows() > 0
+            return self._buffer.num_rows() > 0
         elif self._output_block_size_option is None:
             # NOTE: When block sizing is disabled, buffer won't be producing
             #       incrementally, until the whole sequence is ingested. This
@@ -181,7 +180,5 @@ class BlockOutputBuffer:
         self._buffer = DelegatingBlockBuilder()
         if block_remainder is not None:
             self._buffer.add_block(block_remainder)
-
-        self._has_yielded_blocks = True
 
         return block

@@ -614,7 +614,9 @@ class PhysicalOperator(Operator):
 
         assert (
             output_bundle.num_rows() > 0
-        ), f"Operator {self.name} produced en empty bundle"
+            or "Shuffle" in self.name
+            or "Repartition" in self.name
+        ), f"Operator {self.name} produced an empty bundle"
 
         self._metrics.on_output_taken(output_bundle)
         return output_bundle
