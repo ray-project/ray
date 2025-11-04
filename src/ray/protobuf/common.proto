@@ -468,7 +468,7 @@ message LeaseSpec {
   map<string, double> required_resources = 9;
   map<string, double> required_placement_resources = 10;
   SchedulingStrategy scheduling_strategy = 11;
-  map<string, string> label_selector = 12;
+  LabelSelector label_selector = 12;
   int64 depth = 13;
   RuntimeEnvInfo runtime_env_info = 14;
   repeated ObjectReference dependencies = 15;
@@ -479,6 +479,7 @@ message LeaseSpec {
   int32 max_retries = 20;
   uint64 attempt_number = 21;
   string task_name = 22;
+  FallbackStrategy fallback_strategy = 23;
 }
 
 /// The task specification encapsulates all immutable information about the
@@ -597,9 +598,11 @@ message TaskSpec {
   // `RAY_record_task_actor_creation_sites` is set to `true`.
   optional string call_site = 42;
   // The key-value label constraints of the node to schedule this task or actor on.
-  map<string, string> label_selector = 43;
+  LabelSelector label_selector = 43;
   // The tensor transport type for this task.
   TensorTransport tensor_transport = 44;
+  // A list of fallback options defining the fallback strategy for scheduling.
+  FallbackStrategy fallback_strategy = 45;
 }
 
 message TaskInfoEntry {
@@ -1082,6 +1085,18 @@ message LabelSelectorConstraint {
 message LabelSelector {
   // The list of node label constraints with AND semantics.
   repeated LabelSelectorConstraint label_constraints = 1;
+}
+
+// A single fallback option. Defines requirements for a Task or Actor to use for
+// scheduling.
+message FallbackOption {
+  LabelSelector label_selector = 1;
+}
+
+// Fallback strategy is a list of fallback options to try in-order when scheduling on a
+// node.
+message FallbackStrategy {
+  repeated FallbackOption options = 1;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
