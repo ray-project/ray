@@ -1567,6 +1567,9 @@ def test_apply_transform_dag_consistency():
     #   B transformed --|
     c_transformed = c._apply_transform(transform_b)
 
+    assert c_transformed.input_dependencies[0] is a
+    assert c_transformed.input_dependencies[0].name == "A"
+
     assert c_transformed.name == "C"
     assert c_transformed.input_dependencies[0].output_dependencies[0].name == "C"
     assert c_transformed is c_transformed.input_dependencies[0].output_dependencies[0]
