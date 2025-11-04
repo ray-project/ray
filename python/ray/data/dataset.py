@@ -1243,7 +1243,7 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(
         self,
-        fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
+        fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
