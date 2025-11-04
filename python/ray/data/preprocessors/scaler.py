@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from ray.data.aggregate import AbsMax, Max, Mean, Min, Std
+from ray.data.aggregate import AbsMax, ApproximateQuantile, Max, Mean, Min, Std
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
 
@@ -311,7 +311,7 @@ class MaxAbsScaler(Preprocessor):
 
 @PublicAPI(stability="alpha")
 class RobustScaler(Preprocessor):
-    r"""Scale and translate each column using quantiles.
+    r"""Scale and translate each column using approximate quantiles.
 
     The general formula is given by
 
@@ -322,6 +322,9 @@ class RobustScaler(Preprocessor):
     :math:`\mu_{1/2}` is the column median. :math:`\mu_{h}` and :math:`\mu_{l}` are the
     high and low quantiles, respectively. By default, :math:`\mu_{h}` is the third
     quartile and :math:`\mu_{l}` is the first quartile.
+
+    Internally, the `ApproximateQuantile` aggregator is used to calculate the
+    approximate quantiles.
 
     .. tip::
         This scaler works well when your data contains many outliers.
@@ -377,9 +380,10 @@ class RobustScaler(Preprocessor):
             columns will be the same as the input columns. If not None, the length of
             ``output_columns`` must match the length of ``columns``, othwerwise an error
             will be raised.
-        use_approximate: Use approximate quantile calculations to potentially speed up
-            for larger datasets. Must have the ddsketch library installed.
-        relative_accuracy: DDSketch relative accuracy parameter.
+        quantile_precision: Controls the accuracy and memory footprint of the sketch (K in KLL);
+            higher values yield lower error but use more memory. Defaults to 800. See
+            https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html
+            for details on accuracy and size.
     """
 
     def __init__(
@@ -387,14 +391,12 @@ class RobustScaler(Preprocessor):
         columns: List[str],
         quantile_range: Tuple[float, float] = (0.25, 0.75),
         output_columns: Optional[List[str]] = None,
-        use_approximate: bool = False,
-        relative_accuracy: float = 0.01,
+        quantile_precision: int = 800,
     ):
         super().__init__()
         self.columns = columns
         self.quantile_range = quantile_range
-        self.use_approximate = use_approximate
-        self.relative_accuracy = relative_accuracy
+        self.quantile_precision = quantile_precision
 
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
@@ -404,85 +406,22 @@ class RobustScaler(Preprocessor):
         low = self.quantile_range[0]
         med = 0.50
         high = self.quantile_range[1]
-        self.stats_ = {}
+        quantiles = [low, med, high]
 
-        if self.use_approximate:
-            try:
-                self._fit_approximate(dataset, low, med, high)
-                return self
-            except ImportError:
-                print(
-                    "[dataset]: Run `pip install ddsketch` to enable approximate "
-                    "quantile scaling. Falling back to exact quantile scaling."
-                )
-        self._fit_absolute(dataset, low, med, high)
-        return self
-
-    def _fit_absolute(self, dataset: "Dataset", low: float, med: float, high: float):
-        num_records = dataset.count()
-        max_index = num_records - 1
-        split_indices = [int(percentile * max_index) for percentile in (low, med, high)]
-
-        # TODO(matt): Handle case where quantile lands between 2 numbers.
-        # The current implementation will simply choose the closest index.
-        # This will affect the results of small datasets more than large datasets.
-        for col in self.columns:
-            filtered_dataset = dataset.map_batches(
-                lambda df: df[[col]], batch_format="pandas"
+        aggregates = [
+            ApproximateQuantile(
+                on=col,
+                quantiles=quantiles,
+                quantile_precision=self.quantile_precision,
             )
-            sorted_dataset = filtered_dataset.sort(col)
-            _, low, med, high = sorted_dataset.split_at_indices(split_indices)
-
-            def _get_first_value(ds: "Dataset", c: str):
-                return ds.take(1)[0][c]
-
-            low_val = _get_first_value(low, col)
-            med_val = _get_first_value(med, col)
-            high_val = _get_first_value(high, col)
-
-            self.stats_[f"low_quantile({col})"] = low_val
-            self.stats_[f"median({col})"] = med_val
-            self.stats_[f"high_quantile({col})"] = high_val
-
-    def _fit_approximate(self, dataset: "Dataset", low: float, med: float, high: float):
-        from ddsketch import DDSketch
-
-        def build_sketch_batch(batch: pd.DataFrame) -> pd.DataFrame:
-            sketches = {}
-            for col in self.columns:
-                sketch = DDSketch(relative_accuracy=self.relative_accuracy)
-                # Update without NaN values
-                for val in batch[col].dropna().values:
-                    sketch.add(val)
-                sketches[col] = sketch
-            return pd.DataFrame([sketches])
-
-        sketch_batches = dataset.map_batches(build_sketch_batch, batch_format="pandas")
-
-        merged_sketches = {}
-        for batch in sketch_batches.iter_batches(batch_format="pandas"):
-            for col in self.columns:
-                if col not in merged_sketches:
-                    merged_sketches[col] = DDSketch(
-                        relative_accuracy=self.relative_accuracy
-                    )
-
-                sketch_from_batch = batch[col].iloc[0]
-                if sketch_from_batch is not None:
-                    merged_sketches[col].merge(sketch_from_batch)
-
-        for col in self.columns:
-            sketch: DDSketch = merged_sketches[col]
-
-            self.stats_[f"low_quantile({col})"] = sketch.get_quantile_value(low)
-            self.stats_[f"median({col})"] = sketch.get_quantile_value(med)
-            self.stats_[f"high_quantile({col})"] = sketch.get_quantile_value(high)
+            for col in self.columns
+        ]
+        self.stats_ = dataset.aggregate(*aggregates)
+        return self
 
     def _transform_pandas(self, df: pd.DataFrame):
         def column_robust_scaler(s: pd.Series):
-            s_low_q = self.stats_[f"low_quantile({s.name})"]
-            s_median = self.stats_[f"median({s.name})"]
-            s_high_q = self.stats_[f"high_quantile({s.name})"]
+            s_low_q, s_median, s_high_q = self.stats_[f"approx_quantile({s.name})"]
             diff = s_high_q - s_low_q
 
             # Handle division by zero.
