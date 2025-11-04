@@ -408,7 +408,6 @@ class RobustScaler(Preprocessor):
             0.50,
             self.quantile_range[1],
         ]
-
         aggregates = [
             ApproximateQuantile(
                 on=col,
