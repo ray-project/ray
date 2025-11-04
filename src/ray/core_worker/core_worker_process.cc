@@ -329,8 +329,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       [this](const NodeID &node_id) {
         return GetCoreWorker()->gcs_client_->Nodes().IsNodeDead(node_id);
       },
-      owned_objects_count_gauge_,
-      owned_objects_size_gauge_,
+      *owned_objects_counter_,
+      *owned_objects_size_counter_,
       RayConfig::instance().lineage_pinning_enabled());
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter;
   if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
@@ -802,6 +802,10 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       new ray::stats::Gauge(GetTotalLineageBytesGaugeMetric()));
   scheduler_placement_time_s_histogram_ = std::unique_ptr<ray::stats::Histogram>(
       new ray::stats::Histogram(GetSchedulerPlacementTimeSHistogramMetric()));
+  owned_objects_counter_ = std::unique_ptr<ray::stats::Gauge>(
+      new ray::stats::Gauge(GetOwnedObjectsByStateGaugeMetric()));
+  owned_objects_size_counter_ = std::unique_ptr<ray::stats::Gauge>(
+      new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
 
   // Initialize event framework before starting up worker.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
