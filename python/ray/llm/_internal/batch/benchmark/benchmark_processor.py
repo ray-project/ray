@@ -13,9 +13,8 @@ from dataclasses import dataclass
 from enum import Enum
 from time import perf_counter, sleep
 
-from dataset import ShareGPTDataset
-
 import ray
+from .dataset import ShareGPTDataset
 from ray import data, serve
 from ray.data.llm import (
     ServeDeploymentProcessorConfig,

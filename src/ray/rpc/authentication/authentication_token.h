@@ -86,6 +86,17 @@ class AuthenticationToken {
     }
   }
 
+  /// Get token as Authorization header value
+  /// WARNING: This exposes the raw token. Use sparingly.
+  /// Returns "Bearer <token>" format suitable for Authorization header
+  /// @return Authorization header value, or empty string if token is empty
+  std::string ToAuthorizationHeaderValue() const {
+    if (secret_.empty()) {
+      return "";
+    }
+    return kBearerPrefix + std::string(secret_.begin(), secret_.end());
+  }
+
   /// Create AuthenticationToken from gRPC metadata value
   /// Strips "Bearer " prefix and creates token object
   /// @param metadata_value The raw value from server metadata (should include "Bearer "
