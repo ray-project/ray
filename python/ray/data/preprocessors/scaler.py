@@ -403,10 +403,11 @@ class RobustScaler(Preprocessor):
         )
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        low = self.quantile_range[0]
-        med = 0.50
-        high = self.quantile_range[1]
-        quantiles = [low, med, high]
+        quantiles = [
+            self.quantile_range[0],
+            0.50,
+            self.quantile_range[1],
+        ]
 
         aggregates = [
             ApproximateQuantile(
