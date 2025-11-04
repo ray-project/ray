@@ -75,7 +75,8 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
       store_client_(std::move(store_client)),
       reference_counter_(reference_counter),
       check_signals_(std::move(check_signals)),
-      fetch_batch_size_(fetch_batch_size) {
+      fetch_batch_size_(fetch_batch_size),
+      get_request_counter_(0) {
   if (get_current_call_site != nullptr) {
     get_current_call_site_ = get_current_call_site;
   } else {
@@ -256,6 +257,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     int64_t timeout_ms,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
   std::vector<ipc::ScopedResponse> get_request_cleanup_handlers;
+  int64_t get_request_id = get_request_counter_.fetch_add(1);
 
   bool got_exception = false;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
@@ -276,7 +278,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     std::vector<rpc::Address> owner_addresses =
         reference_counter_.GetOwnerAddresses(batch_ids);
     StatusOr<ipc::ScopedResponse> status_or_cleanup =
-        raylet_ipc_client_->AsyncGetObjects(batch_ids, owner_addresses);
+        raylet_ipc_client_->AsyncGetObjects(batch_ids, owner_addresses, get_request_id);
     RAY_RETURN_NOT_OK(status_or_cleanup.status());
     get_request_cleanup_handlers.emplace_back(std::move(status_or_cleanup.value()));
 
