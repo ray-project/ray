@@ -560,10 +560,7 @@ def test_drop_expr_tree_repr():
     drop_expr = drop(["col1", "col2"])
     repr_str = repr(drop_expr)
 
-    # Verify the representation contains the dropped columns
-    assert "DROP" in repr_str
-    assert "col1" in repr_str
-    assert "col2" in repr_str
+    assert repr_str == "DROP(['col1', 'col2'])"
 
 
 if __name__ == "__main__":
