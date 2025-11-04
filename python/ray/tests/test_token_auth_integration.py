@@ -393,7 +393,9 @@ def test_dashboard_with_token_auth_integration(setup_cluster_with_token_auth):
     wait_for_condition(job_finished, timeout=30)
 
     final_status = client.get_job_status(job_id)
-    assert final_status == "SUCCEEDED", f"Job should succeed, got status: {final_status}"
+    assert (
+        final_status == "SUCCEEDED"
+    ), f"Job should succeed, got status: {final_status}"
 
 
 if __name__ == "__main__":

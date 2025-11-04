@@ -7,10 +7,6 @@ from typing import Tuple
 import grpc
 from grpc import aio as aiogrpc
 
-from ray._private.authentication import authentication_utils
-from ray._private.authentication.authentication_constants import (
-    AUTHORIZATION_HEADER_NAME,
-)
 from ray._raylet import AuthenticationTokenLoader
 
 logger = logging.getLogger(__name__)
@@ -76,7 +72,9 @@ class AuthenticationMetadataClientInterceptor(
         )
         return continuation(new_details, request)
 
-    def intercept_stream_unary(self, continuation, client_call_details, request_iterator):
+    def intercept_stream_unary(
+        self, continuation, client_call_details, request_iterator
+    ):
         metadata = list(client_call_details.metadata or [])
         metadata.extend(_get_authentication_metadata_tuple())
 
@@ -90,7 +88,9 @@ class AuthenticationMetadataClientInterceptor(
         )
         return continuation(new_details, request_iterator)
 
-    def intercept_stream_stream(self, continuation, client_call_details, request_iterator):
+    def intercept_stream_stream(
+        self, continuation, client_call_details, request_iterator
+    ):
         metadata = list(client_call_details.metadata or [])
         metadata.extend(_get_authentication_metadata_tuple())
 
@@ -141,7 +141,9 @@ class AsyncAuthenticationMetadataClientInterceptor(
         )
         return await continuation(new_details, request)
 
-    async def intercept_stream_unary(self, continuation, client_call_details, request_iterator):
+    async def intercept_stream_unary(
+        self, continuation, client_call_details, request_iterator
+    ):
         metadata = list(client_call_details.metadata or [])
         metadata.extend(_get_authentication_metadata_tuple())
 
@@ -155,7 +157,9 @@ class AsyncAuthenticationMetadataClientInterceptor(
         )
         return await continuation(new_details, request_iterator)
 
-    async def intercept_stream_stream(self, continuation, client_call_details, request_iterator):
+    async def intercept_stream_stream(
+        self, continuation, client_call_details, request_iterator
+    ):
         metadata = list(client_call_details.metadata or [])
         metadata.extend(_get_authentication_metadata_tuple())
 
