@@ -12,7 +12,10 @@ import packaging.version
 import yaml
 
 import ray
-from ray._private.authentication import authentication_constants
+from ray._private.authentication.http_token_authentication import (
+    format_authentication_http_error,
+    get_auth_headers_if_auth_enabled,
+)
 from ray._private.runtime_env.packaging import (
     create_package,
     get_uri_for_directory,
@@ -21,9 +24,7 @@ from ray._private.runtime_env.packaging import (
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.utils import split_address
-from ray._raylet import AuthenticationTokenLoader
 from ray.autoscaler._private.cli_logger import cli_logger
-from ray.dashboard.authentication_utils import is_token_auth_enabled
 from ray.dashboard.modules.job.common import uri_to_http_components
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -226,7 +227,7 @@ class SubmissionClient:
         # Headers used for all requests sent to job server, optional and only
         # needed for cases like authentication to remote cluster.
         self._headers = cluster_info.headers or {}
-        self._headers.update(**self._get_auth_headers())
+        self._headers.update(**get_auth_headers_if_auth_enabled(self._headers))
 
         # Set SSL verify parameter for the requests library and create an ssl_context
         # object when needed for the aiohttp library.
@@ -246,36 +247,6 @@ class SubmissionClient:
                 self._ssl_context = False
             else:
                 self._ssl_context = None
-
-    def _get_auth_headers(self) -> Dict[str, str]:
-        """Get authentication headers if token auth is enabled.
-
-        Returns:
-            dict: Authentication headers to merge with request headers.
-                  Empty dict if no auth needed or token unavailable.
-        """
-        if not is_token_auth_enabled():
-            return {}
-
-        # Check if user provided their own Authorization header (case-insensitive)
-        has_user_auth = any(
-            key.lower() == "authorization" for key in self._headers.keys()
-        )
-        if has_user_auth:
-            # User has provided their own auth header, don't override
-            return {}
-
-        token_loader = AuthenticationTokenLoader.instance()
-        auth_headers = token_loader.get_token_for_http_header()
-
-        if not auth_headers:
-            # Token auth enabled but no token found
-            logger.warning(
-                "Token authentication is enabled but no token was found. "
-                "Requests to authenticated clusters will fail."
-            )
-
-        return auth_headers
 
     def _check_connection_and_version(
         self, min_version: str = "1.9", version_error_message: str = None
@@ -348,18 +319,11 @@ class SubmissionClient:
         )
 
         # Check for authentication errors and provide helpful messages
-        if response.status_code == 401:
-            # Unauthorized - missing or no token provided
-            raise RuntimeError(
-                f"Authentication required: {response.text}\n\n"
-                + authentication_constants.HTTP_REQUEST_MISSING_TOKEN_ERROR_MESSAGE
-            )
-        elif response.status_code == 403:
-            # Forbidden - invalid token
-            raise RuntimeError(
-                f"Authentication failed: {response.text}\n\n"
-                + authentication_constants.HTTP_REQUEST_INVALID_TOKEN_ERROR_MESSAGE
-            )
+        formatted_error = format_authentication_http_error(
+            response.status_code, response.text
+        )
+        if formatted_error:
+            raise RuntimeError(formatted_error)
 
         return response
 

@@ -37,6 +37,7 @@
 #include "ray/ray_syncer/ray_syncer.h"
 #include "ray/ray_syncer/ray_syncer_client.h"
 #include "ray/ray_syncer/ray_syncer_server.h"
+#include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
@@ -840,8 +841,12 @@ struct MockRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackServic
         io_context(_io_context) {}
   grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage> *StartSync(
       grpc::CallbackServerContext *context) override {
-    reactor = new RayServerBidiReactor(
-        context, io_context, node_id.Binary(), message_processor, cleanup_cb);
+    reactor = new RayServerBidiReactor(context,
+                                       io_context,
+                                       node_id.Binary(),
+                                       message_processor,
+                                       cleanup_cb,
+                                       std::nullopt);
     return reactor;
   }
 
@@ -981,6 +986,200 @@ TEST_F(SyncerReactorTest, TestReactorFailure) {
   auto c_cleanup = client_cleanup.get_future().get();
   ASSERT_EQ(node_s, c_cleanup.first);
   ASSERT_EQ(true, c_cleanup.second);
+}
+
+// Authentication tests
+class SyncerAuthenticationTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    // Clear any existing environment variables and reset state
+    unsetenv("RAY_AUTH_TOKEN");
+    ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
+    RayConfig::instance().auth_mode() = "disabled";
+  }
+
+  void TearDown() override {
+    unsetenv("RAY_AUTH_TOKEN");
+    ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
+    RayConfig::instance().auth_mode() = "disabled";
+  }
+
+  struct AuthenticatedSyncerServerTest {
+    std::string server_port;
+    instrumented_io_context io_context;
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard;
+    std::unique_ptr<std::thread> thread;
+    std::unique_ptr<RaySyncer> syncer;
+    std::unique_ptr<RaySyncerService> service;
+    std::unique_ptr<grpc::Server> server;
+
+    AuthenticatedSyncerServerTest(const std::string &port, const std::string &token)
+        : server_port(port), work_guard(io_context.get_executor()) {
+      // Setup syncer and grpc server
+      syncer = std::make_unique<RaySyncer>(io_context, NodeID::FromRandom().Binary());
+      thread = std::make_unique<std::thread>([this] { io_context.run(); });
+
+      // Create service with authentication token
+      service = std::make_unique<RaySyncerService>(
+          *syncer,
+          token.empty() ? std::nullopt
+                        : std::make_optional(ray::rpc::AuthenticationToken(token)));
+
+      auto server_address = BuildAddress("0.0.0.0", port);
+      grpc::ServerBuilder builder;
+      builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+      builder.RegisterService(service.get());
+      server = builder.BuildAndStart();
+    }
+
+    ~AuthenticatedSyncerServerTest() {
+      server->Shutdown();
+      server->Wait();
+      work_guard.reset();
+      io_context.stop();
+      thread->join();
+    }
+  };
+
+  std::unique_ptr<AuthenticatedSyncerServerTest> CreateAuthenticatedServer(
+      const std::string &port, const std::string &token) {
+    return std::make_unique<AuthenticatedSyncerServerTest>(port, token);
+  }
+
+  // Helper struct to manage client io_context and syncer
+  struct ClientSyncer {
+    instrumented_io_context io_context;
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard;
+    std::thread thread;
+    std::unique_ptr<RaySyncer> syncer;
+    std::string remote_node_id;
+
+    ClientSyncer()
+        : work_guard(boost::asio::make_work_guard(io_context.get_executor())),
+          thread([this]() { io_context.run(); }) {
+      syncer = std::make_unique<RaySyncer>(io_context, NodeID::FromRandom().Binary());
+      remote_node_id = NodeID::FromRandom().Binary();
+    }
+
+    ~ClientSyncer() {
+      if (syncer) {
+        syncer->Disconnect(remote_node_id);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        syncer.reset();
+      }
+      work_guard.reset();
+      io_context.stop();
+      thread.join();
+    }
+
+    void Connect(const std::shared_ptr<grpc::Channel> &channel) {
+      syncer->Connect(remote_node_id, channel);
+    }
+  };
+};
+
+TEST_F(SyncerAuthenticationTest, MatchingTokens) {
+  // Test that connections succeed when client and server use the same token
+  const std::string test_token = "matching-test-token-12345";
+
+  // Set client token via environment variable
+  setenv("RAY_AUTH_TOKEN", test_token.c_str(), 1);
+  // Enable token authentication
+  RayConfig::instance().auth_mode() = "token";
+  ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
+
+  // Create authenticated server
+  auto server = CreateAuthenticatedServer("37892", test_token);
+
+  // Create client with separate io_context
+  ClientSyncer client;
+  auto channel = grpc::CreateChannel(BuildAddress("0.0.0.0", "37892"),
+                                     grpc::InsecureChannelCredentials());
+
+  // Should connect successfully with matching token
+  client.Connect(channel);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  // Verify connection is established
+  ASSERT_GT(client.syncer->GetAllConnectedNodeIDs().size(), 0);
+}
+
+TEST_F(SyncerAuthenticationTest, MismatchedTokens) {
+  // Test that connections fail when client and server use different tokens
+  const std::string server_token = "server-token-12345";
+  const std::string client_token = "different-client-token";
+
+  // Set client token via environment variable
+  setenv("RAY_AUTH_TOKEN", client_token.c_str(), 1);
+  // Enable token authentication
+  RayConfig::instance().auth_mode() = "token";
+  ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
+
+  // Create authenticated server with different token
+  auto server = CreateAuthenticatedServer("37893", server_token);
+
+  // Create client with separate io_context
+  ClientSyncer client;
+  auto channel = grpc::CreateChannel(BuildAddress("0.0.0.0", "37893"),
+                                     grpc::InsecureChannelCredentials());
+
+  // Should fail to connect with mismatched token
+  client.Connect(channel);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  // Verify connection fails - no connected nodes
+  ASSERT_EQ(client.syncer->GetAllConnectedNodeIDs().size(), 0);
+}
+
+TEST_F(SyncerAuthenticationTest, ServerHasTokenClientDoesNot) {
+  // Test that connections fail when server requires token but client doesn't provide it
+  const std::string server_token = "server-token-12345";
+
+  // Client has no token - auth mode is disabled (default from SetUp)
+  unsetenv("RAY_AUTH_TOKEN");
+  ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
+
+  // Create authenticated server
+  auto server = CreateAuthenticatedServer("37895", server_token);
+
+  // Create client with separate io_context
+  ClientSyncer client;
+  auto channel = grpc::CreateChannel(BuildAddress("0.0.0.0", "37895"),
+                                     grpc::InsecureChannelCredentials());
+
+  // Should fail to connect without token
+  client.Connect(channel);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  // Verify connection fails - no connected nodes
+  ASSERT_EQ(client.syncer->GetAllConnectedNodeIDs().size(), 0);
+}
+
+TEST_F(SyncerAuthenticationTest, ClientHasTokenServerDoesNotRequire) {
+  // Test that connections succeed when client has token but server doesn't require it
+  const std::string server_token = "";
+  const std::string client_token = "different-client-token";
+
+  // Set client token
+  setenv("RAY_AUTH_TOKEN", client_token.c_str(), 1);
+  // Enable token authentication
+  RayConfig::instance().auth_mode() = "token";
+  ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
+
+  // Create server without authentication (empty token)
+  auto server = CreateAuthenticatedServer("37896", server_token);
+
+  // Create client with separate io_context
+  ClientSyncer client;
+  auto channel = grpc::CreateChannel(BuildAddress("0.0.0.0", "37896"),
+                                     grpc::InsecureChannelCredentials());
+
+  // Should connect successfully - server accepts any client when auth is not required
+  client.Connect(channel);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  // Verify connection is established
+  ASSERT_GT(client.syncer->GetAllConnectedNodeIDs().size(), 0);
 }
 
 }  // namespace syncer
