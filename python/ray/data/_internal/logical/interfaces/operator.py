@@ -79,12 +79,6 @@ class Operator:
         if input_changed:
             # Make a shallow copy to avoid modifying operators in-place
             target = copy.copy(self)
-
-            # Remove old references from input operators' output dependencies
-            for input_op in self.input_dependencies:
-                if self in input_op._output_dependencies:
-                    input_op._output_dependencies.remove(self)
-
             target._wire_output_deps(transformed_input_ops)
             target._input_dependencies = transformed_input_ops
         else:
@@ -93,6 +87,11 @@ class Operator:
         return transform(target)
 
     def _wire_output_deps(self, input_dependencies: List["Operator"]):
+        # Remove old references from input operators' output dependencies
+        for input_op in self.input_dependencies:
+            if self in input_op._output_dependencies:
+                input_op._output_dependencies.remove(self)
+
         for x in input_dependencies:
             assert isinstance(x, Operator), x
             x._output_dependencies.append(self)
