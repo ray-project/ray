@@ -1,16 +1,16 @@
 import unittest
-from functools import partial
 from unittest.mock import patch
 
 import gymnasium as gym
+from gymnasium.envs.mujoco.swimmer_v4 import SwimmerEnv
 
 import ray
 from ray import tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.env_runner import StepFailedRecreateEnvError
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
-from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.examples.envs.classes.simple_corridor import SimpleCorridor
+from ray.tune.registry import ENV_CREATOR, _global_registry
 
 
 class TestSingleAgentEnvRunner(unittest.TestCase):
@@ -20,21 +20,28 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
 
         tune.register_env(
             "tune-registered",
-            lambda cfg: SimpleCorridor({"corridor_length": 10}),
+            lambda cfg: SimpleCorridor({"corridor_length": 10} | cfg),
         )
 
         gym.register(
             "TestEnv-v0",
-            partial(
-                _gym_env_creator,
-                env_context={"corridor_length": 10},
-                env_descriptor=SimpleCorridor,
-            ),
+            entry_point=SimpleCorridor,
+            kwargs={"corridor_length": 10},
+        )
+
+        gym.register(
+            "TestEnv-v1",
+            entry_point=SwimmerEnv,
+            kwargs={"forward_reward_weight": 2.0, "reset_noise_scale": 0.2},
         )
 
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
+
+        _global_registry.unregister(ENV_CREATOR, "tune-registered")
+        gym.registry.pop("TestEnv-v0")
+        gym.registry.pop("TestEnv-v1")
 
     def test_distributed_env_runner(self):
         """Tests, whether SingleAgentEnvRunner can be distributed."""
@@ -232,7 +239,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
 
         assert mock_logger.exception.call_count == 1
 
-    def test_vector_env(self):
+    def test_vector_env(self, num_envs_per_env_runner=5, rollout_fragment_length=10):
         """Tests, whether SingleAgentEnvRunner can run various vectorized envs."""
 
         for env in ["CartPole-v1", SimpleCorridor, "tune-registered"]:
@@ -240,20 +247,78 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
                 AlgorithmConfig()
                 .environment(env)
                 .env_runners(
-                    num_envs_per_env_runner=5,
-                    rollout_fragment_length=10,
+                    num_envs_per_env_runner=num_envs_per_env_runner,
+                    rollout_fragment_length=rollout_fragment_length,
                 )
             )
 
             env_runner = SingleAgentEnvRunner(config=config)
 
             # Sample with the async-vectorized env.
-            episodes = env_runner.sample(random_actions=True)
-            self.assertEqual(
-                sum(len(e) for e in episodes),
-                config.num_envs_per_env_runner * config.rollout_fragment_length,
-            )
+            for i in range(100):
+                episodes = env_runner.sample(random_actions=True)
+                total_timesteps = sum(len(e) for e in episodes)
+                self.assertTrue(
+                    num_envs_per_env_runner * rollout_fragment_length
+                    <= total_timesteps
+                    <= (
+                        num_envs_per_env_runner * rollout_fragment_length
+                        + num_envs_per_env_runner
+                    )
+                )
             env_runner.stop()
+
+    def test_env_context(self):
+        """Tests, whether SingleAgentEnvRunner can pass kwargs to the environments correctly."""
+
+        # default without env configs
+        config = AlgorithmConfig().environment("Swimmer-v4")
+        env_runner = SingleAgentEnvRunner(config=config)
+        assert env_runner.env.env.get_attr("_forward_reward_weight") == (1.0,)
+        assert env_runner.env.env.get_attr("_reset_noise_scale") == (0.1,)
+
+        # Test gym registered environment env with kwargs
+        config = AlgorithmConfig().environment(
+            "Swimmer-v4",
+            env_config={"forward_reward_weight": 2.0, "reset_noise_scale": 0.2},
+        )
+        env_runner = SingleAgentEnvRunner(config=config)
+        assert env_runner.env.env.get_attr("_forward_reward_weight") == (2.0,)
+        assert env_runner.env.env.get_attr("_reset_noise_scale") == (0.2,)
+
+        # Test gym registered environment env with pre-set kwargs
+        config = AlgorithmConfig().environment("TestEnv-v1")
+        env_runner = SingleAgentEnvRunner(config=config)
+        assert env_runner.env.env.get_attr("_forward_reward_weight") == (2.0,)
+        assert env_runner.env.env.get_attr("_reset_noise_scale") == (0.2,)
+
+        # Test using a mixture of registered kwargs and env configs
+        config = AlgorithmConfig().environment(
+            "TestEnv-v1", env_config={"forward_reward_weight": 3.0}
+        )
+        env_runner = SingleAgentEnvRunner(config=config)
+        assert env_runner.env.env.get_attr("_forward_reward_weight") == (3.0,)
+        assert env_runner.env.env.get_attr("_reset_noise_scale") == (0.2,)
+
+        # Test env-config with Tune registered or callable
+        #   default
+        config = AlgorithmConfig().environment("tune-registered")
+        env_runner = SingleAgentEnvRunner(config=config)
+        assert env_runner.env.env.get_attr("end_pos") == (10.0,)
+
+        #   tune-registered
+        config = AlgorithmConfig().environment(
+            "tune-registered", env_config={"corridor_length": 5.0}
+        )
+        env_runner = SingleAgentEnvRunner(config=config)
+        assert env_runner.env.env.get_attr("end_pos") == (5.0,)
+
+        #   callable
+        config = AlgorithmConfig().environment(
+            SimpleCorridor, env_config={"corridor_length": 5.0}
+        )
+        env_runner = SingleAgentEnvRunner(config=config)
+        assert env_runner.env.env.get_attr("end_pos") == (5.0,)
 
 
 if __name__ == "__main__":
