@@ -9,6 +9,7 @@ steps:
     label: "wanda: rllibbuild-py{{matrix}}"
     wanda: ci/docker/rllib.build.wanda.yaml
     matrix:
+      - "3.9"
       - "3.10"
     env:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml-py{{matrix}}
@@ -54,16 +55,16 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --only-tags fake_gpus,learning_tests_discrete,crashing_cartpole,stateless_cartpole,learning_tests_continuous
         --except-tags tf_only,tf2_only,gpu,multi_gpu,learning_tests_pytorch_use_all_core
-        --build-name rllibbuild-py3.10
-        --python-version 3.10
+        --build-name rllibbuild-py3.9
+        --python-version 3.9
         --test-arg --framework=torch
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --only-tags learning_tests_pytorch_use_all_core
         --except-tags tf_only,tf2_only,gpu,multi_gpu
         --test-arg --framework=torch
-        --build-name rllibbuild-py3.10
-        --python-version 3.10
+        --build-name rllibbuild-py3.9
+        --python-version 3.9
         --skip-ray-installation
     depends_on: rllibbuild-multipy
 
