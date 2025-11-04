@@ -134,6 +134,7 @@ table AsyncGetObjectsRequest {
   // Object IDs that we want the Raylet to pull locally.
   object_ids: [string];
   owner_addresses: [Address];
+  get_request_id: long;
 }
 
 table AsyncGetObjectsReply {

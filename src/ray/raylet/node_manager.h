@@ -30,7 +30,6 @@
 #include "ray/common/lease/lease.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
@@ -40,6 +39,7 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/pubsub/subscriber.h"
+#include "ray/ray_syncer/ray_syncer.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/lease_dependency_manager.h"
 #include "ray/raylet/local_lease_manager.h"
@@ -415,9 +415,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param client The client that is requesting the objects.
   /// \param object_refs The objects that are requested.
   ///
-  /// \return the request_id that will be used to cancel the get request.
-  int64_t AsyncGet(const std::shared_ptr<ClientConnection> &client,
-                   std::vector<rpc::ObjectReference> &object_refs);
+  /// \param get_request_id The ID of the get request.
+  void AsyncGet(const std::shared_ptr<ClientConnection> &client,
+                std::vector<rpc::ObjectReference> &object_refs,
+                int64_t get_request_id);
 
   /// Cancel all ongoing get requests from the client.
   ///

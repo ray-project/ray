@@ -73,7 +73,8 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     : raylet_ipc_client_(raylet_ipc_client),
       store_client_(std::move(store_client)),
       check_signals_(std::move(check_signals)),
-      fetch_batch_size_(fetch_batch_size) {
+      fetch_batch_size_(fetch_batch_size),
+      get_request_counter_(0) {
   if (get_current_call_site != nullptr) {
     get_current_call_site_ = get_current_call_site;
   } else {
@@ -256,15 +257,16 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
   std::vector<ipc::ScopedResponse> get_request_cleanup_handlers;
   absl::flat_hash_map<ObjectID, int64_t> remaining_object_id_to_idx;
+  int64_t get_request_id = get_request_counter_.fetch_add(1);
 
   // TODO(57923): Need to understand if batching is necessary. If it's necessary,
   // then the reason needs to be documented.
   bool got_exception = false;
-  int64_t total_size = static_cast<int64_t>(object_ids.size());
-  for (int64_t start = 0; start < total_size; start += fetch_batch_size_) {
+  int64_t num_total_objects = static_cast<int64_t>(object_ids.size());
+  for (int64_t start = 0; start < num_total_objects; start += fetch_batch_size_) {
     std::vector<ObjectID> batch_ids;
     std::vector<rpc::Address> batch_owner_addresses;
-    for (int64_t i = start; i < start + fetch_batch_size_ && i < total_size; i++) {
+    for (int64_t i = start; i < start + fetch_batch_size_ && i < num_total_objects; i++) {
       remaining_object_id_to_idx[object_ids[i]] = i;
 
       batch_ids.push_back(object_ids[i]);
@@ -273,7 +275,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
     // 1. Make the request to pull all objects into local plasma if not local already.
     StatusOr<ipc::ScopedResponse> status_or_cleanup =
-        raylet_ipc_client_->AsyncGetObjects(batch_ids, batch_owner_addresses);
+        raylet_ipc_client_->AsyncGetObjects(batch_ids, owner_addresses, get_request_id);
     RAY_RETURN_NOT_OK(status_or_cleanup.status());
     get_request_cleanup_handlers.emplace_back(std::move(status_or_cleanup.value()));
 
