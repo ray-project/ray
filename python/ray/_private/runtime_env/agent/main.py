@@ -8,6 +8,9 @@ from ray._common.utils import (
     get_or_create_event_loop,
 )
 from ray._private import logging_utils
+from ray._private.authentication.http_token_authentication import (
+    get_token_auth_middleware,
+)
 from ray._private.process_watcher import create_check_raylet_task
 from ray._raylet import GcsClient
 from ray.core.generated import (
@@ -23,6 +26,7 @@ def import_libs():
 
 import_libs()
 
+import aiohttp  # noqa: E402
 import runtime_env_consts  # noqa: E402
 from aiohttp import web  # noqa: E402
 from runtime_env_agent import RuntimeEnvAgent  # noqa: E402
@@ -194,7 +198,7 @@ if __name__ == "__main__":
             body=reply.SerializeToString(), content_type="application/octet-stream"
         )
 
-    app = web.Application()
+    app = web.Application(middlewares=[get_token_auth_middleware(aiohttp)])
 
     app.router.add_post("/get_or_create_runtime_env", get_or_create_runtime_env)
     app.router.add_post(

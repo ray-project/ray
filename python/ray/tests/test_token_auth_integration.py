@@ -10,12 +10,25 @@ import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray._raylet import AuthenticationTokenLoader
+
+try:
+    from ray._raylet import AuthenticationTokenLoader
+
+    _RAYLET_AVAILABLE = True
+except ImportError:
+    _RAYLET_AVAILABLE = False
+    AuthenticationTokenLoader = None
+
 from ray.tests.authentication_test_utils import (
     clear_auth_token_sources,
     reset_auth_token_state,
     set_auth_mode,
     set_env_auth_token,
+)
+
+pytestmark = pytest.mark.skipif(
+    not _RAYLET_AVAILABLE,
+    reason="Authentication tests require ray._raylet (not available in minimal installs)",
 )
 
 

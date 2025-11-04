@@ -19,6 +19,10 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
 from ray._common.network_utils import build_address, is_ipv6, is_localhost
+from ray._private.authentication.http_token_authentication import (
+    format_authentication_http_error,
+    get_auth_headers_if_auth_enabled,
+)
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -251,8 +255,11 @@ class ProxyManager:
                     self._runtime_env_agent_address, "/get_or_create_runtime_env"
                 )
                 data = create_env_request.SerializeToString()
-                req = urllib.request.Request(url, data=data, method="POST")
-                req.add_header("Content-Type", "application/octet-stream")
+                headers = {"Content-Type": "application/octet-stream"}
+                headers.update(**get_auth_headers_if_auth_enabled(headers))
+                req = urllib.request.Request(
+                    url, data=data, method="POST", headers=headers
+                )
                 response = urllib.request.urlopen(req, timeout=None)
                 response_data = response.read()
                 r = runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply()
@@ -270,6 +277,25 @@ class ProxyManager:
                     )
                 else:
                     assert False, f"Unknown status: {r.status}."
+            except urllib.error.HTTPError as e:
+                body = ""
+                try:
+                    body = e.read().decode("utf-8", "ignore")
+                except Exception:
+                    body = e.reason if hasattr(e, "reason") else str(e)
+
+                formatted_error = format_authentication_http_error(e.code, body or "")
+                if formatted_error:
+                    raise RuntimeError(formatted_error) from e
+
+                # Treat non-auth HTTP errors like URLError (retry with backoff)
+                last_exception = e
+                logger.warning(
+                    f"GetOrCreateRuntimeEnv request failed with HTTP {e.code}: {body or e}. "
+                    f"Retrying after {wait_time_s}s. "
+                    f"{max_retries-retries} retries remaining."
+                )
+
             except urllib.error.URLError as e:
                 last_exception = e
                 logger.warning(

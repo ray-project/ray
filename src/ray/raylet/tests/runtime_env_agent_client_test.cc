@@ -21,6 +21,7 @@
 #include <boost/chrono.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/thread.hpp>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <thread>
@@ -30,6 +31,8 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_config.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 
 namespace ray {
@@ -190,6 +193,10 @@ delay_after(instrumented_io_context &ioc) {
 auto dummy_shutdown_raylet_gracefully = [](const rpc::NodeDeathInfo &) {};
 
 TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
+  RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+  unsetenv("RAY_AUTH_TOKEN");
+  rpc::AuthenticationTokenLoader::instance().ResetCache();
+
   int port = GetFreePort();
   HttpServerThread http_server_thread(
       [](const http::request<http::string_body> &request,
@@ -199,6 +206,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
         ASSERT_EQ(req.job_id(), "7b000000");  // Hex 7B == Int 123
         ASSERT_EQ(req.runtime_env_config().setup_timeout_seconds(), 12);
         ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
+        ASSERT_EQ(request.find(http::field::authorization), request.end());
 
         rpc::GetOrCreateRuntimeEnvReply reply;
         reply.set_status(rpc::AGENT_RPC_STATUS_OK);
@@ -354,6 +362,74 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
+}
+
+TEST(RuntimeEnvAgentClientTest, AttachesAuthHeaderWhenEnabled) {
+  RayConfig::instance().initialize(R"({"auth_mode": "token"})");
+  setenv("RAY_AUTH_TOKEN", "header_token", 1);
+  rpc::AuthenticationTokenLoader::instance().ResetCache();
+
+  int port = GetFreePort();
+  std::string observed_auth_header;
+
+  HttpServerThread http_server_thread(
+      [&observed_auth_header](const http::request<http::string_body> &request,
+                              http::response<http::string_body> &response) {
+        rpc::GetOrCreateRuntimeEnvRequest req;
+        ASSERT_TRUE(req.ParseFromString(request.body()));
+        auto it = request.find(http::field::authorization);
+        if (it != request.end()) {
+          observed_auth_header = std::string(it->value());
+        }
+
+        rpc::GetOrCreateRuntimeEnvReply reply;
+        reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+        reply.set_serialized_runtime_env_context("serialized_runtime_env_context");
+        response.body() = reply.SerializeAsString();
+        response.content_length(response.body().size());
+        response.result(http::status::ok);
+      },
+      "127.0.0.1",
+      port);
+  http_server_thread.start();
+
+  instrumented_io_context ioc;
+
+  auto client =
+      raylet::RuntimeEnvAgentClient::Create(ioc,
+                                            "127.0.0.1",
+                                            port,
+                                            delay_after(ioc),
+                                            dummy_shutdown_raylet_gracefully,
+                                            /*agent_register_timeout_ms=*/10000,
+                                            /*agent_manager_retry_interval_ms=*/100);
+
+  auto job_id = JobID::FromInt(123);
+  std::string serialized_runtime_env = "serialized_runtime_env";
+  ray::rpc::RuntimeEnvConfig runtime_env_config;
+  runtime_env_config.set_setup_timeout_seconds(12);
+
+  size_t called_times = 0;
+  auto callback = [&](bool successful,
+                      const std::string &serialized_runtime_env_context,
+                      const std::string &setup_error_message) {
+    ASSERT_TRUE(successful);
+    ASSERT_EQ(serialized_runtime_env_context, "serialized_runtime_env_context");
+    ASSERT_TRUE(setup_error_message.empty());
+    called_times += 1;
+  };
+
+  client->GetOrCreateRuntimeEnv(
+      job_id, serialized_runtime_env, runtime_env_config, callback);
+
+  ioc.run();
+
+  ASSERT_EQ(called_times, 1);
+  ASSERT_EQ(observed_auth_header, "Bearer header_token");
+
+  RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+  unsetenv("RAY_AUTH_TOKEN");
+  rpc::AuthenticationTokenLoader::instance().ResetCache();
 }
 
 TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleOK) {
