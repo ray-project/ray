@@ -400,11 +400,18 @@ class ProjectionPushdown(Rule):
             # A projection with only star() and drop() should NOT be pushed down
             # because Read operators don't handle drops
             filtered_exprs = [
-                e
-                for e in _filter_out_star(current_project.exprs)
-                if not isinstance(e, DropExpr)
+                expr
+                for expr in _filter_out_star(current_project.exprs)
+                if not isinstance(expr, DropExpr)
             ]
-            is_projection = len(filtered_exprs) > 0 and all(
+            # Empty projection can be pushed down (select_columns([]))
+            # But projection with only drop() should not be pushed down
+            has_only_star_and_drop = (
+                current_project.has_star_expr()
+                and any(isinstance(e, DropExpr) for e in current_project.exprs)
+                and len(filtered_exprs) == 0
+            )
+            is_projection = (not has_only_star_and_drop) and all(
                 _is_col_expr(expr) for expr in filtered_exprs
             )
 

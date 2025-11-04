@@ -248,9 +248,9 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
                 # If the substitution is a rename, extract the original column name
                 if isinstance(substitution, AliasExpr) and substitution._is_rename:
                     translated_cols.append(substitution.expr.name)
-                # else: it's a computed column, don't include it in the drop list
             else:
                 # Column not in substitution map, keep as-is
+                # (it will be validated at execution time to check if it exists in input)
                 translated_cols.append(col_name)
 
         # Return new DropExpr if translation occurred, otherwise original
