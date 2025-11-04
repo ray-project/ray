@@ -1055,30 +1055,29 @@ def init_grpc_channel(
             interceptors.append(AuthenticationMetadataClientInterceptor())
 
     # Create channel with TLS if enabled
-    if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
+    use_tls = os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true")
+    if use_tls:
         server_cert_chain, private_key, ca_cert = load_certs_from_env()
         credentials = grpc.ssl_channel_credentials(
             certificate_chain=server_cert_chain,
             private_key=private_key,
             root_certificates=ca_cert,
         )
-        if asynchronous:
-            channel = grpc_module.secure_channel(
-                address, credentials, options=options, interceptors=interceptors
-            )
-        else:
-            channel = grpc_module.secure_channel(address, credentials, options=options)
+        channel_creator = grpc_module.secure_channel
+        base_args = (address, credentials)
     else:
-        if asynchronous:
-            channel = grpc_module.insecure_channel(
-                address, options=options, interceptors=interceptors
-            )
-        else:
-            channel = grpc_module.insecure_channel(address, options=options)
+        channel_creator = grpc_module.insecure_channel
+        base_args = (address,)
 
-    # Apply interceptors for sync channels (async channels get them in constructor)
-    if not asynchronous and interceptors:
-        channel = grpc.intercept_channel(channel, *interceptors)
+    # Create channel (async channels get interceptors in constructor, sync via intercept_channel)
+    if asynchronous:
+        channel = channel_creator(
+            *base_args, options=options, interceptors=interceptors
+        )
+    else:
+        channel = channel_creator(*base_args, options=options)
+        if interceptors:
+            channel = grpc.intercept_channel(channel, *interceptors)
 
     return channel
 

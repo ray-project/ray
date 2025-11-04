@@ -44,11 +44,12 @@ class AuthenticationMetadataClientInterceptor(
 ):
     """Synchronous gRPC client interceptor that adds authentication metadata."""
 
-    def intercept_unary_unary(self, continuation, client_call_details, request):
+    def _intercept_call_details(self, client_call_details):
+        """Helper method to add authentication metadata to client call details."""
         metadata = list(client_call_details.metadata or [])
         metadata.extend(_get_authentication_metadata_tuple())
 
-        new_details = _ClientCallDetails(
+        return _ClientCallDetails(
             method=client_call_details.method,
             timeout=client_call_details.timeout,
             metadata=metadata,
@@ -56,52 +57,25 @@ class AuthenticationMetadataClientInterceptor(
             wait_for_ready=getattr(client_call_details, "wait_for_ready", None),
             compression=getattr(client_call_details, "compression", None),
         )
+
+    def intercept_unary_unary(self, continuation, client_call_details, request):
+        new_details = self._intercept_call_details(client_call_details)
         return continuation(new_details, request)
 
     def intercept_unary_stream(self, continuation, client_call_details, request):
-        metadata = list(client_call_details.metadata or [])
-        metadata.extend(_get_authentication_metadata_tuple())
-
-        new_details = _ClientCallDetails(
-            method=client_call_details.method,
-            timeout=client_call_details.timeout,
-            metadata=metadata,
-            credentials=client_call_details.credentials,
-            wait_for_ready=getattr(client_call_details, "wait_for_ready", None),
-            compression=getattr(client_call_details, "compression", None),
-        )
+        new_details = self._intercept_call_details(client_call_details)
         return continuation(new_details, request)
 
     def intercept_stream_unary(
         self, continuation, client_call_details, request_iterator
     ):
-        metadata = list(client_call_details.metadata or [])
-        metadata.extend(_get_authentication_metadata_tuple())
-
-        new_details = _ClientCallDetails(
-            method=client_call_details.method,
-            timeout=client_call_details.timeout,
-            metadata=metadata,
-            credentials=client_call_details.credentials,
-            wait_for_ready=getattr(client_call_details, "wait_for_ready", None),
-            compression=getattr(client_call_details, "compression", None),
-        )
+        new_details = self._intercept_call_details(client_call_details)
         return continuation(new_details, request_iterator)
 
     def intercept_stream_stream(
         self, continuation, client_call_details, request_iterator
     ):
-        metadata = list(client_call_details.metadata or [])
-        metadata.extend(_get_authentication_metadata_tuple())
-
-        new_details = _ClientCallDetails(
-            method=client_call_details.method,
-            timeout=client_call_details.timeout,
-            metadata=metadata,
-            credentials=client_call_details.credentials,
-            wait_for_ready=getattr(client_call_details, "wait_for_ready", None),
-            compression=getattr(client_call_details, "compression", None),
-        )
+        new_details = self._intercept_call_details(client_call_details)
         return continuation(new_details, request_iterator)
 
 
@@ -113,11 +87,12 @@ class AsyncAuthenticationMetadataClientInterceptor(
 ):
     """Async gRPC client interceptor that adds authentication metadata."""
 
-    async def intercept_unary_unary(self, continuation, client_call_details, request):
+    def _intercept_call_details(self, client_call_details):
+        """Helper method to add authentication metadata to client call details."""
         metadata = list(client_call_details.metadata or [])
         metadata.extend(_get_authentication_metadata_tuple())
 
-        new_details = _ClientCallDetails(
+        return _ClientCallDetails(
             method=client_call_details.method,
             timeout=client_call_details.timeout,
             metadata=metadata,
@@ -125,50 +100,23 @@ class AsyncAuthenticationMetadataClientInterceptor(
             wait_for_ready=getattr(client_call_details, "wait_for_ready", None),
             compression=getattr(client_call_details, "compression", None),
         )
+
+    async def intercept_unary_unary(self, continuation, client_call_details, request):
+        new_details = self._intercept_call_details(client_call_details)
         return await continuation(new_details, request)
 
     async def intercept_unary_stream(self, continuation, client_call_details, request):
-        metadata = list(client_call_details.metadata or [])
-        metadata.extend(_get_authentication_metadata_tuple())
-
-        new_details = _ClientCallDetails(
-            method=client_call_details.method,
-            timeout=client_call_details.timeout,
-            metadata=metadata,
-            credentials=client_call_details.credentials,
-            wait_for_ready=getattr(client_call_details, "wait_for_ready", None),
-            compression=getattr(client_call_details, "compression", None),
-        )
+        new_details = self._intercept_call_details(client_call_details)
         return await continuation(new_details, request)
 
     async def intercept_stream_unary(
         self, continuation, client_call_details, request_iterator
     ):
-        metadata = list(client_call_details.metadata or [])
-        metadata.extend(_get_authentication_metadata_tuple())
-
-        new_details = _ClientCallDetails(
-            method=client_call_details.method,
-            timeout=client_call_details.timeout,
-            metadata=metadata,
-            credentials=client_call_details.credentials,
-            wait_for_ready=getattr(client_call_details, "wait_for_ready", None),
-            compression=getattr(client_call_details, "compression", None),
-        )
+        new_details = self._intercept_call_details(client_call_details)
         return await continuation(new_details, request_iterator)
 
     async def intercept_stream_stream(
         self, continuation, client_call_details, request_iterator
     ):
-        metadata = list(client_call_details.metadata or [])
-        metadata.extend(_get_authentication_metadata_tuple())
-
-        new_details = _ClientCallDetails(
-            method=client_call_details.method,
-            timeout=client_call_details.timeout,
-            metadata=metadata,
-            credentials=client_call_details.credentials,
-            wait_for_ready=getattr(client_call_details, "wait_for_ready", None),
-            compression=getattr(client_call_details, "compression", None),
-        )
+        new_details = self._intercept_call_details(client_call_details)
         return await continuation(new_details, request_iterator)
