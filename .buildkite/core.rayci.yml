@@ -198,10 +198,9 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker --
         python/ray/tests/modin/... core
         --install-mask all-ray-libraries
-        --build-name databuild-py3.10
-        --python-version 3.10
+        --build-name datalbuild
     depends_on:
-      - datalbuild-multipy
+      - datalbuild
       - forge
 
   - label: ":ray: core: dashboard tests"
