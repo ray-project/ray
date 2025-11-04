@@ -88,7 +88,7 @@ more information.
 
         .. div::
 
-            .. image:: https://img.shields.io/github/stars/daft/daft?style=social)]
+            .. image:: https://img.shields.io/github/stars/Eventual-Inc/Daft?style=social)
                 :target: https://github.com/Eventual-Inc/Daft
 
             Daft is a data engine that supports SQL and Python DataFrames for data processing and analytics natively on your Ray clusters.
