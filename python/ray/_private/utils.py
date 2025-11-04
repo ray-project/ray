@@ -1026,6 +1026,7 @@ def init_grpc_channel(
     import grpc
     from grpc import aio as aiogrpc
 
+    from ray._private.authentication import authentication_utils
     from ray._private.tls_utils import load_certs_from_env
 
     grpc_module = aiogrpc if asynchronous else grpc
@@ -1040,6 +1041,20 @@ def init_grpc_channel(
     )
     options = options_dict.items()
 
+    # Build interceptors list
+    interceptors = []
+    if authentication_utils.is_token_auth_enabled():
+        from ray._private.authentication.grpc_authentication_client_interceptor import (
+            AsyncAuthenticationMetadataClientInterceptor,
+            AuthenticationMetadataClientInterceptor,
+        )
+
+        if asynchronous:
+            interceptors.append(AsyncAuthenticationMetadataClientInterceptor())
+        else:
+            interceptors.append(AuthenticationMetadataClientInterceptor())
+
+    # Create channel with TLS if enabled
     if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
         server_cert_chain, private_key, ca_cert = load_certs_from_env()
         credentials = grpc.ssl_channel_credentials(
@@ -1047,9 +1062,23 @@ def init_grpc_channel(
             private_key=private_key,
             root_certificates=ca_cert,
         )
-        channel = grpc_module.secure_channel(address, credentials, options=options)
+        if asynchronous:
+            channel = grpc_module.secure_channel(
+                address, credentials, options=options, interceptors=interceptors
+            )
+        else:
+            channel = grpc_module.secure_channel(address, credentials, options=options)
     else:
-        channel = grpc_module.insecure_channel(address, options=options)
+        if asynchronous:
+            channel = grpc_module.insecure_channel(
+                address, options=options, interceptors=interceptors
+            )
+        else:
+            channel = grpc_module.insecure_channel(address, options=options)
+
+    # Apply interceptors for sync channels (async channels get them in constructor)
+    if not asynchronous and interceptors:
+        channel = grpc.intercept_channel(channel, *interceptors)
 
     return channel
 

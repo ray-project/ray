@@ -3,7 +3,7 @@ from types import ModuleType
 from typing import Dict, List, Optional
 
 from ray._private.authentication import authentication_constants
-from ray.dashboard import authentication_utils as auth_utils
+from ray._private.authentication import authentication_utils as auth_utils
 
 logger = logging.getLogger(__name__)
 
