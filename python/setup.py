@@ -313,10 +313,7 @@ if setup_spec.type == SetupType.RAY:
         set(
             setup_spec.extras["serve"]
             + [
-                "celery",
-                "celery[redis]",
-                "celery[sqs]",
-                "celery[gcpubsub]",
+                "celery[redis,sqs,gcpubsub]",
             ]
         )
     )
