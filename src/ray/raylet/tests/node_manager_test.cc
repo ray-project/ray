@@ -38,6 +38,7 @@
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_subscriber.h"
@@ -1257,6 +1258,68 @@ TEST_P(PinObjectIDsIdempotencyTest, TestHandlePinObjectIDsIdempotency) {
 INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
                          PinObjectIDsIdempotencyTest,
                          testing::Bool());
+
+class NodeManagerKillActorTest : public NodeManagerTest,
+                                 public ::testing::WithParamInterface<bool> {};
+
+TEST_P(NodeManagerKillActorTest, TestHandleKillLocalActorIdempotency) {
+  // worker_is_alive: determines whether the worker is alive and whether KillActor RPC
+  // should be sent. worker_is_alive == true: Worker is alive and KillActor RPC should be
+  // sent twice. worker_is_alive == false: Worker is dead and KillActor RPC should not be
+  // sent.
+
+  bool worker_is_alive = GetParam();
+
+  WorkerID worker_id = WorkerID::FromRandom();
+  JobID job_id = JobID::FromInt(1);
+  ActorID actor_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
+
+  auto fake_rpc_client = std::make_shared<rpc::FakeCoreWorkerClient>();
+  std::shared_ptr<raylet::MockWorker> worker;
+
+  if (worker_is_alive) {
+    worker = std::make_shared<raylet::MockWorker>(worker_id, 10);
+    worker->Connect(fake_rpc_client);
+    EXPECT_CALL(mock_worker_pool_, GetRegisteredWorker(worker_id))
+        .Times(2)
+        .WillRepeatedly(Return(worker));
+  } else {
+    EXPECT_CALL(mock_worker_pool_, GetRegisteredWorker(worker_id))
+        .Times(2)
+        .WillRepeatedly(Return(nullptr));
+  }
+
+  rpc::KillLocalActorRequest request;
+  request.set_worker_id(worker_id.Binary());
+  request.set_intended_actor_id(actor_id.Binary());
+  request.set_force_kill(false);
+  auto actor_died_ctx = request.mutable_death_cause()->mutable_actor_died_error_context();
+  actor_died_ctx->set_reason(rpc::ActorDiedErrorContext::RAY_KILL);
+  actor_died_ctx->set_error_message("Test kill");
+
+  rpc::KillLocalActorReply reply1;
+  node_manager_->HandleKillLocalActor(
+      request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  rpc::KillLocalActorReply reply2;
+  node_manager_->HandleKillLocalActor(
+      request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  size_t expected_rpc_calls = worker_is_alive ? 2 : 0;
+  ASSERT_EQ(fake_rpc_client->num_kill_actor_requests, expected_rpc_calls)
+      << "Expected " << expected_rpc_calls
+      << " KillActor RPC calls for worker_is_alive==" << worker_is_alive;
+}
+
+INSTANTIATE_TEST_SUITE_P(WorkerState, NodeManagerKillActorTest, ::testing::Bool());
 
 class NodeManagerDeathTest : public NodeManagerTest,
                              public ::testing::WithParamInterface<bool> {};
