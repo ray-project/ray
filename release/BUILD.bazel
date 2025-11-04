@@ -681,6 +681,7 @@ py_test(
         "ray_release/configs/oss_config.yaml",
         "ray_release/tests/sample_5_tests.yaml",
         "ray_release/tests/sample_tests.yaml",
+        "ray_release/tests/test_post_build_script.sh",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [

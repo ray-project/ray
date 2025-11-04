@@ -20,7 +20,7 @@
   cluster:
     byod:
       type: gpu
-      post_build_script: byod_hello_world.sh
+      post_build_script: release/ray_release/tests/test_post_build_script.sh
     cluster_compute: hello_world_compute_config.yaml
   run:
     timeout: 1800
