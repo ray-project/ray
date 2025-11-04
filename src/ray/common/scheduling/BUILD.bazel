@@ -23,6 +23,7 @@ ray_cc_library(
     deps = [
         "//src/ray/common:constants",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
@@ -82,6 +83,7 @@ ray_cc_library(
     srcs = ["scheduling_class_util.cc"],
     hdrs = ["scheduling_class_util.h"],
     deps = [
+        ":fallback_strategy",
         ":label_selector",
         ":resource_set",
         "//src/ray/common:function_descriptor",
@@ -107,5 +109,17 @@ ray_cc_library(
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+ray_cc_library(
+    name = "fallback_strategy",
+    srcs = ["fallback_strategy.cc"],
+    hdrs = ["fallback_strategy.h"],
+    deps = [
+        ":label_selector",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/hash",
     ],
 )

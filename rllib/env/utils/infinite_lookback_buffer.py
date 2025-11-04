@@ -9,8 +9,8 @@ from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 from ray.rllib.utils.spaces.space_utils import (
     batch,
     from_jsonable_if_needed,
-    get_dummy_batch_for_space,
     get_base_struct_from_space,
+    get_dummy_batch_for_space,
     to_jsonable_if_needed,
 )
 from ray.util.annotations import DeveloperAPI
