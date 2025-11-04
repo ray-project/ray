@@ -1,5 +1,5 @@
-name: "datalbuild"
-froms: ["cr.ray.io/rayproject/oss-ci-base_ml"]
+name: "databuild-py$PYTHON"
+froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON"]
 dockerfile: ci/docker/data.build.Dockerfile
 srcs:
   - ci/env/install-dependencies.sh
@@ -12,4 +12,4 @@ srcs:
 build_args:
   - ARROW_VERSION=21.*
 tags:
-  - cr.ray.io/rayproject/datalbuild
+  - cr.ray.io/rayproject/databuild-py$PYTHON
