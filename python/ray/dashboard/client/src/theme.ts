@@ -86,10 +86,10 @@ const basicTheme: ThemeOptions = {
     },
     MuiPaper: {
       styleOverrides: {
-        outlined: {
-          borderColor: "#D2DCE6",
+        outlined: ({ theme }) => ({
+          borderColor: theme.palette.divider,
           borderRadius: 8,
-        },
+        }),
       },
     },
   },
@@ -97,6 +97,7 @@ const basicTheme: ThemeOptions = {
 
 export const lightTheme = createTheme(basicTheme, {
   palette: {
+    mode: "light",
     primary: {
       main: "#036DCF",
     },
@@ -117,11 +118,13 @@ export const lightTheme = createTheme(basicTheme, {
       paper: "#fff",
       default: blueGrey[50],
     },
+    divider: "#D2DCE6",
   },
 });
 
 export const darkTheme = createTheme(basicTheme, {
   palette: {
+    mode: "dark",
     primary: {
       main: "#538DF9",
     },
@@ -142,5 +145,6 @@ export const darkTheme = createTheme(basicTheme, {
       paper: grey[800],
       default: grey[900],
     },
+    divider: grey[700],
   },
 });
