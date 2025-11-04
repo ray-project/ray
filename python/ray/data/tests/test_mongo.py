@@ -1,5 +1,4 @@
 import subprocess
-from typing import Literal
 
 import pandas as pd
 import pyarrow as pa
@@ -13,29 +12,13 @@ from ray.tests.conftest import *  # noqa
 # To run tests locally, make sure you install mongodb
 # and start a local service:
 # sudo apt-get install -y mongodb
-# for mac, run `brew install mongodb-community`
-
-
-def _run_mongo_command(command: Literal["start", "stop"]) -> None:
-    import platform
-
-    if command == "start":
-        if platform.system() == "Darwin":  # macOS
-            subprocess.check_call(["brew", "services", "start", "mongodb-community"])
-        else:  # Linux
-            subprocess.check_call(["service", "mongodb", "start"])
-    elif command == "stop":
-        if platform.system() == "Darwin":  # macOS
-            subprocess.check_call(["brew", "services", "stop", "mongodb-community"])
-        else:  # Linux
-            subprocess.check_call(["service", "mongodb", "stop"])
 
 
 @pytest.fixture
 def start_mongo():
     import pymongo
 
-    _run_mongo_command("start")
+    subprocess.check_call(["service", "mongodb", "start"])
     mongo_url = "mongodb://localhost:27017"
     client = pymongo.MongoClient(mongo_url)
     # Make sure a clean slate for each test by dropping
@@ -46,7 +29,7 @@ def start_mongo():
             client.drop_database(db)
     yield client, mongo_url
 
-    _run_mongo_command("stop")
+    subprocess.check_call(["service", "mongodb", "stop"])
 
 
 def test_read_write_mongo(ray_start_regular_shared, start_mongo):
@@ -234,15 +217,13 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         collection=foo_collection,
         override_num_blocks=2,
     ).materialize()
+    assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
         "MaterializedDataset(\n"
         "   num_blocks=2,\n"
         "   num_rows=5,\n"
-        "   schema={\n"
-        "      _id: extension<pymongoarrow.objectid<ObjectIdType>>,\n"
-        "      float_field: double,\n"
-        "      int_field: int32\n"
-        "   }\n"
+        "   schema={_id: fixed_size_binary[12], float_field: double, "
+        "int_field: int32}\n"
         ")"
     )
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
@@ -257,11 +238,8 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         "MaterializedDataset(\n"
         "   num_blocks=2,\n"
         "   num_rows=5,\n"
-        "   schema={\n"
-        "      _id: extension<pymongoarrow.objectid<ObjectIdType>>,\n"
-        "      float_field: double,\n"
-        "      int_field: int32\n"
-        "   }\n"
+        "   schema={_id: fixed_size_binary[12], float_field: double, "
+        "int_field: int32}\n"
         ")"
     )
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
@@ -285,15 +263,11 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         override_num_blocks=2,
     )
     assert ds._block_num_rows() == [2, 1]
-    # It becomes pymongoarrow.objectid<ObjectIdType> because of operator fusion with Read and Project.
     assert str(ds) == (
         "Dataset(\n"
         "   num_rows=3,\n"
-        "   schema={\n"
-        "      _id: extension<pymongoarrow.objectid<ObjectIdType>>,\n"
-        "      float_field: double,\n"
-        "      int_field: int32\n"
-        "   }\n"
+        "   schema={_id: fixed_size_binary[12], float_field: double, "
+        "int_field: int32}\n"
         ")"
     )
     df[df["int_field"] < 3].equals(ds.drop_columns(["_id"]).to_pandas())
