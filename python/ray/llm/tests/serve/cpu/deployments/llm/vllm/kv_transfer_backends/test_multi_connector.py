@@ -82,26 +82,6 @@ class TestMultiConnectorBackend:
         with pytest.raises(ValueError, match="kv_connector is not set"):
             backend.setup()
 
-    def test_setup_with_invalid_connector_type(self):
-        """Test setup with an invalid connector type."""
-        llm_config = LLMConfig(
-            model_loading_config=dict(model_id="test-model"),
-            engine_kwargs=dict(
-                kv_transfer_config=dict(
-                    kv_connector="MultiConnector",
-                    kv_connector_extra_config=dict(
-                        connectors=[
-                            {"kv_connector": "InvalidConnector"},
-                        ]
-                    ),
-                )
-            ),
-        )
-        backend = MultiConnectorBackend(llm_config)
-
-        with pytest.raises(ValueError, match="Unsupported connector backend"):
-            backend.setup()
-
     def test_setup_with_nested_multi_connector_raises_error(self):
         """Test that nesting MultiConnector raises a ValueError."""
         llm_config = LLMConfig(

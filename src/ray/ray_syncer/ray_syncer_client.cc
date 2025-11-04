@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/ray_syncer/ray_syncer_client.h"
+#include "ray/ray_syncer/ray_syncer_client.h"
 
 #include <memory>
 #include <string>
 #include <utility>
+
+#include "ray/rpc/authentication/authentication_token_loader.h"
 
 namespace ray::syncer {
 
@@ -32,6 +34,11 @@ RayClientBidiReactor::RayClientBidiReactor(
       cleanup_cb_(std::move(cleanup_cb)),
       stub_(std::move(stub)) {
   client_context_.AddMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
+  // Add authentication token if token authentication is enabled
+  auto auth_token = ray::rpc::AuthenticationTokenLoader::instance().GetToken();
+  if (auth_token.has_value() && !auth_token->empty()) {
+    auth_token->SetMetadata(client_context_);
+  }
   stub_->async()->StartSync(&client_context_, this);
   // Prevent this call from being terminated.
   // Check https://github.com/grpc/proposal/blob/master/L67-cpp-callback-api.md
