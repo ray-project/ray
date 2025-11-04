@@ -103,6 +103,15 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
                 num_timesteps=10, num_episodes=10, random_actions=True
             ),
         )
+        # Verify that an error is raised if a negative number is used
+        self.assertRaises(
+            AssertionError,
+            lambda: env_runner.sample(num_timesteps=-1, random_actions=True),
+        )
+        self.assertRaises(
+            AssertionError,
+            lambda: env_runner.sample(num_episodes=-1, random_actions=True),
+        )
 
         # Sample 10 episodes (2 per env, because num_envs_per_env_runner=5)
         # Repeat 100 times
@@ -132,7 +141,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             )
             self.assertTrue(any(e.t_started > 0 for e in episodes))
 
-        # Sample a number of timesteps thats not a factor of the number of environments
+        # Sample a number of timesteps that's not a factor of the number of environments
         # Repeat 100 times
         expected_uneven_timesteps = expected_timesteps + num_envs_per_env_runner // 2
         for _ in range(100):
@@ -158,7 +167,10 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             self.assertTrue(
                 num_envs_per_env_runner * rollout_fragment_length
                 <= total_timesteps
-                <= (num_envs_per_env_runner + 1) * rollout_fragment_length
+                <= (
+                    num_envs_per_env_runner * rollout_fragment_length
+                    + num_envs_per_env_runner
+                )
             )
             self.assertTrue(any(e.t_started > 0 for e in episodes))
 
@@ -166,21 +178,11 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         episodes = env_runner.sample(
             num_timesteps=expected_timesteps, random_actions=True, force_reset=True
         )
-        self.assertTrue(any(e.t_started == 0 for e in episodes))
+        self.assertTrue(all(e.t_started == 0 for e in episodes))
         episodes = env_runner.sample(
             num_timesteps=expected_timesteps, random_actions=True, force_reset=False
         )
         self.assertTrue(any(e.t_started > 0 for e in episodes))
-
-        # Verify that an error is raised if a negative number is used
-        self.assertRaises(
-            AssertionError,
-            lambda: env_runner.sample(num_timesteps=-1, random_actions=True),
-        )
-        self.assertRaises(
-            AssertionError,
-            lambda: env_runner.sample(num_episodes=-1, random_actions=True),
-        )
 
     @patch(target="ray.rllib.env.env_runner.logger")
     def test_step_failed_reset_required(self, mock_logger):
