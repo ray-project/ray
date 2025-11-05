@@ -30,11 +30,15 @@ class ProtocolsProvider:
             # File storage path, assumes everything packed in one zip file.
             "file",
             "http",
+            # ZDFS path, used by ant-group internally.
+            "dfs",
+            # HDFS path
+            "hdfs",
         }
 
     @classmethod
     def get_remote_protocols(cls):
-        return {"https", "s3", "gs", "file", "http"}
+        return {"https", "s3", "gs", "file", "http", "dfs", "hdfs"}
 
     @classmethod
     def download_remote_uri(cls, protocol: str, source_uri: str, dest_file: str):
@@ -48,6 +52,72 @@ class ProtocolsProvider:
         Raises:
             ImportError: If required dependencies for the protocol are not installed.
         """
+
+        def _download_dfs_file(cls, source_uri, dest_file):
+            try:
+                try:
+                    import zdfs
+                    from zdfs import zdfs_util
+                    from urllib.parse import urlparse
+                    import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
+                except ImportError:
+                    raise ImportError(
+                        "You must `pip install zdfs-dfs` "
+                        "to fetch URIs in ZDFS. " + cls._MISSING_DEPENDENCIES_WARNING
+                    )
+                parsed = urlparse(source_uri)
+                cluster_info = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+                options = zdfs.FileSystemOptions()
+                options.log_path = runtime_env_consts.ZDFS_LOG_PATH
+                options.conf_path = runtime_env_consts.ZDFS_CONF_PATH
+                pangu_options = zdfs.PanguOptions()
+                pangu_options.io_thread_num = runtime_env_consts.ZDFS_THREAD_NUM
+                pangu_options.callback_thread_num = runtime_env_consts.ZDFS_THREAD_NUM
+                pangu_options.callback_in_iothread = True
+                zdfs.PanguFileSystem.SetOptions(pangu_options)
+                fs = zdfs.PanguFileSystem.Create(cluster_info, options)
+                ec = zdfs_util.get(
+                    fs,
+                    parsed.path,
+                    dest_file,
+                    buflen=runtime_env_consts.ZDFS_BUFFER_LEN,
+                    overwrite=False,
+                )
+                if ec != 0:
+                    raise Exception(
+                        f"ZDFS client failed to download file, error code:{ec}"
+                    )
+                return
+            except Exception:
+                import shutil
+                import subprocess
+
+                def check_hadoop_client():
+                    if shutil.which("hdfs"):
+                        return ["hdfs", "dfs"]
+                    elif shutil.which("hadoop"):
+                        return ["hadoop", "fs"]
+                    else:
+                        return None
+
+                hadoop_command = check_hadoop_client()
+                if hadoop_command:
+                    result = subprocess.run(
+                        [*hadoop_command, "-get", source_uri, dest_file],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                    )
+                    if result.returncode != 0:
+                        raise Exception(
+                            f"Hadoop client failed to download file, "
+                            f"return code: {result.returncode}, "
+                            f"stderr: {result.stderr}"
+                        )
+                else:
+                    raise Exception("Hadoop client not found.")
+                return
+
         assert protocol in cls.get_remote_protocols()
 
         tp = None
@@ -68,6 +138,7 @@ class ProtocolsProvider:
                     "to fetch URIs in s3 bucket. " + cls._MISSING_DEPENDENCIES_WARNING
                 )
             tp = {"client": boto3.client("s3")}
+
         elif protocol == "gs":
             try:
                 from google.cloud import storage  # noqa: F401
@@ -78,6 +149,25 @@ class ProtocolsProvider:
                     "to fetch URIs in Google Cloud Storage bucket."
                     + cls._MISSING_DEPENDENCIES_WARNING
                 )
+
+        elif protocol == "dfs":
+            _download_dfs_file(cls, source_uri, dest_file)
+            return
+
+        elif protocol == "hdfs":
+            try:
+                from smart_open import open as open_file
+            except ImportError:
+                raise ImportError(
+                    "You must `pip install smart_open[hdfs]` "
+                    f"to fetch {protocol.upper()} URIs. "
+                    + cls._MISSING_DEPENDENCIES_WARNING
+                )
+            tp = {
+                "client": "pyarrow",
+                "hdfs_driver": "libhdfs",
+            }
+
         else:
             try:
                 from smart_open import open as open_file
