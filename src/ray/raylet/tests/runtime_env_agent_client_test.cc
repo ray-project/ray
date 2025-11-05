@@ -193,7 +193,7 @@ delay_after(instrumented_io_context &ioc) {
 auto dummy_shutdown_raylet_gracefully = [](const rpc::NodeDeathInfo &) {};
 
 TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
-  RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+  RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
   unsetenv("RAY_AUTH_TOKEN");
   rpc::AuthenticationTokenLoader::instance().ResetCache();
 
@@ -365,7 +365,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
 }
 
 TEST(RuntimeEnvAgentClientTest, AttachesAuthHeaderWhenEnabled) {
-  RayConfig::instance().initialize(R"({"auth_mode": "token"})");
+  RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
   setenv("RAY_AUTH_TOKEN", "header_token", 1);
   rpc::AuthenticationTokenLoader::instance().ResetCache();
 
@@ -427,7 +427,7 @@ TEST(RuntimeEnvAgentClientTest, AttachesAuthHeaderWhenEnabled) {
   ASSERT_EQ(called_times, 1);
   ASSERT_EQ(observed_auth_header, "Bearer header_token");
 
-  RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+  RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
   unsetenv("RAY_AUTH_TOKEN");
   rpc::AuthenticationTokenLoader::instance().ResetCache();
 }

@@ -32,7 +32,7 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
  public:
   void SetUp() override {
     // Configure token auth via RayConfig
-    std::string config_json = R"({"auth_mode": "token"})";
+    std::string config_json = R"({"AUTH_MODE": "token"})";
     RayConfig::instance().initialize(config_json);
     AuthenticationTokenLoader::instance().ResetCache();
   }
@@ -44,7 +44,7 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
     if (!client_token.empty()) {
       setenv("RAY_AUTH_TOKEN", client_token.c_str(), 1);
     } else {
-      RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+      RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
       AuthenticationTokenLoader::instance().ResetCache();
       unsetenv("RAY_AUTH_TOKEN");
     }

@@ -86,7 +86,7 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
  protected:
   void SetUp() override {
     // Enable token authentication by default
-    RayConfig::instance().initialize(R"({"auth_mode": "token"})");
+    RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
     rpc::AuthenticationTokenLoader::instance().ResetCache();
   }
 
@@ -97,7 +97,7 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
     }
     unsetenv("RAY_AUTH_TOKEN");
     // Reset to default auth mode
-    RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+    RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
     rpc::AuthenticationTokenLoader::instance().ResetCache();
   }
 
@@ -136,10 +136,10 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
   void SetClientToken(const std::string &client_token) {
     if (!client_token.empty()) {
       setenv("RAY_AUTH_TOKEN", client_token.c_str(), 1);
-      RayConfig::instance().initialize(R"({"auth_mode": "token"})");
+      RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
     } else {
       unsetenv("RAY_AUTH_TOKEN");
-      RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+      RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
     }
     rpc::AuthenticationTokenLoader::instance().ResetCache();
   }
