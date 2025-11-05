@@ -290,8 +290,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ///
   /// \param actor Contains the resources needed to lease workers from the specified node.
   /// \param reply The reply of `RequestWorkerLeaseRequest`.
+  /// \param node The node that the worker will be leased from.
   void HandleWorkerLeaseGrantedReply(std::shared_ptr<GcsActor> actor,
-                                     const rpc::RequestWorkerLeaseReply &reply);
+                                     const rpc::RequestWorkerLeaseReply &reply,
+                                     std::shared_ptr<const rpc::GcsNodeInfo> node);
 
   /// A rejected rely means resources were preempted by normal tasks. Then
   /// update the cluster resource view and reschedule immediately.
@@ -333,12 +335,15 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   void DoRetryCreatingActorOnWorker(std::shared_ptr<GcsActor> actor,
                                     std::shared_ptr<GcsLeasedWorker> worker);
 
-  /// Get an existing lease client or connect a new one.
-  std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(
-      const rpc::Address &raylet_address);
-
-  /// Kill the actor on a node
-  bool KillActorOnWorker(const rpc::Address &worker_address, ActorID actor_id);
+  /// Force-kill a leased worker for dead/cancelled actor to prevent it from being leaked.
+  /// The actor may not exist yet (actor_id can be Nil) if actor creation/setup failed,
+  /// in which case we're just killing the leased worker itself.
+  /// \param raylet_address The address of the local raylet of the worker
+  /// \param worker_address The address of the worker to clean up
+  /// \param actor_id ID of the actor (may be Nil if actor setup failed)
+  bool KillLeasedWorkerForActor(const rpc::Address &raylet_address,
+                                const rpc::Address &worker_address,
+                                ActorID actor_id);
 
   /// Schedule the actor at GCS. The target Raylet is selected by hybrid_policy by
   /// default.
