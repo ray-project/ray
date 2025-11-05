@@ -60,7 +60,14 @@ class InputDataBuffer(PhysicalOperator):
         super().start(options)
 
     def has_next(self) -> bool:
-        return self._input_data_index < len(self._input_data)
+        if self._input_data_index >= len(self._input_data):
+            return False
+        if (
+            self._input_data[self._input_data_index].num_rows() <= 0
+        ):  # skip empty blocks
+            self._input_data_index += 1
+            return False
+        return True
 
     def _get_next_inner(self) -> RefBundle:
         # We can't pop the input data. If we do, Ray might garbage collect the block
