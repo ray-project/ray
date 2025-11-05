@@ -268,9 +268,10 @@ def expect(
     max_execution_time_seconds: Optional[float] = None,
     max_execution_time: Optional[datetime.timedelta] = None,
     target_completion_time: Optional[datetime.datetime] = None,
+    optimize_for: Optional[str] = None,
     optimization_strategy: Union[
         OptimizationStrategy, str
-    ] = OptimizationStrategy.BALANCED,
+    ] = OptimizationStrategy.BALANCED,  # Deprecated, use optimize_for
     error_on_failure: bool = True,
     expectation_type: Optional[ExpectationType] = None,
 ) -> Union[Callable, Expectation]:
@@ -285,7 +286,7 @@ def expect(
             return process(data)
 
     2. As a decorator with parentheses to attach SLA requirements:
-        @ray.data.expect(max_execution_time_seconds=300, optimization_strategy="performance")
+        @ray.data.expect(max_execution_time_seconds=300, optimize_for="performance")
         def my_processing_function(data):
             return process(data)
 
@@ -321,7 +322,7 @@ def expect(
             >>> from ray.data.expectations import expect
             >>>
             >>> # Attach SLA requirement for performance optimization
-            >>> @expect(max_execution_time_seconds=300, optimization_strategy="performance")
+            >>> @expect(max_execution_time_seconds=300, optimize_for="performance")
             >>> def process_data(batch):
             ...     return batch
             >>>
@@ -372,7 +373,13 @@ def expect(
         max_execution_time_seconds: Maximum execution time in seconds (for SLA).
         max_execution_time: Maximum execution time as timedelta (for SLA).
         target_completion_time: Target completion time as datetime (for SLA).
-        optimization_strategy: Optimization strategy hint (cost/performance/balanced).
+        optimization_strategy: Optimization strategy hint ("cost", "performance", "balanced").
+            Deprecated: Use `optimize_for` instead. Only used for SLA expectations.
+        optimize_for: What to optimize for when time constraint is set.
+            - "performance": Aggressive autoscaling to meet deadline
+            - "cost": Conservative autoscaling to minimize cost
+            - "balanced": Balanced approach
+            Only used for SLA expectations with time constraints.
         error_on_failure: If True, raise exception on failure; if False, log warning.
         expectation_type: Type of expectation (auto-detected if not specified).
 

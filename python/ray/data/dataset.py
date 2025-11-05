@@ -1608,7 +1608,7 @@ class Dataset:
         description: Optional[str] = None,
         validator_fn: Optional[Callable[[Any], bool]] = None,
         max_execution_time_seconds: Optional[float] = None,
-        optimization_strategy: Union[str, "OptimizationStrategy"] = "balanced",
+        optimize_for: str = "performance",
         error_on_failure: bool = True,
         compute: Optional[ComputeStrategy] = None,
         num_cpus: Optional[float] = None,
@@ -1666,8 +1666,12 @@ class Dataset:
             >>> # SLA expectations: execution time constraints
             >>> ds = ray.data.range(1000000)
             >>> processed_ds, remaining_ds, result = ds.expect(
+            ...     max_execution_time_seconds=60
+            ... )
+            >>> # Or explicitly optimize for cost
+            >>> processed_ds, remaining_ds, result = ds.expect(
             ...     max_execution_time_seconds=60,
-            ...     optimization_strategy="performance"
+            ...     optimize_for="cost"
             ... )
 
         Time complexity: O(dataset size / parallelism)
@@ -1687,7 +1691,10 @@ class Dataset:
                 Mutually exclusive with `expr` and `expectation`.
             max_execution_time_seconds: Maximum execution time in seconds (for SLA).
                 Mutually exclusive with `expr` and `expectation`.
-            optimization_strategy: Optimization strategy hint ("cost", "performance", "balanced").
+            optimize_for: What to optimize for when time constraint is set.
+                - "performance" (default): Aggressive autoscaling to meet deadline
+                - "cost": Conservative autoscaling to minimize cost
+                - "balanced": Balanced approach
                 Only used with `max_execution_time_seconds`.
             error_on_failure: If True, raise exception on failure; if False, log warning.
             compute: The compute strategy to use for the validation operation.
@@ -1781,7 +1788,7 @@ class Dataset:
 
                 expectation = _expect(
                     max_execution_time_seconds=max_execution_time_seconds,
-                    optimization_strategy=optimization_strategy,
+                    optimization_strategy=optimize_for,
                     name=name or "SLA Requirement",
                     description=description or "SLA performance requirement",
                     error_on_failure=error_on_failure,
