@@ -1,8 +1,5 @@
 """
 Plan FillNa logical operator.
-
-This module contains the planning logic for converting FillNa logical operators
-into physical execution plans.
 """
 
 from typing import Any, Dict, List, Optional
@@ -16,7 +13,6 @@ from ray.data._internal.logical.operators.fillna_operator import FillNa
 from ray.data._internal.planner.plan_udf_map_op import (
     _create_map_transformer_for_block_based_map_op,
     _generate_transform_fn_for_map_block,
-    _try_wrap_udf_exception,
     get_compute,
 )
 from ray.data.context import DataContext
@@ -27,90 +23,46 @@ def plan_fillna_op(
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> MapOperator:
-    """Plan a FillNa logical operator into a physical MapOperator.
-
-    This function converts a FillNa logical operator into a physical execution
-    plan that fills missing values (null/None/NaN) in the dataset with specified
-    replacement values.
-
-    Args:
-        op: The FillNa logical operator containing fill configuration.
-        physical_children: List containing exactly one input physical operator.
-        data_context: The execution context for data processing.
-
-    Returns:
-        A MapOperator that performs the fillna operation on input data.
-
-    Raises:
-        AssertionError: If physical_children doesn't contain exactly one operator.
-    """
+    """Plan a FillNa logical operator into a physical MapOperator."""
     assert len(physical_children) == 1
-    input_physical_dag = physical_children[0]
-
-    value = op.value
-    method = op.method
-    subset = op.subset
-    limit = op.limit
 
     def fn(batch: pa.Table) -> pa.Table:
-        """Transform function that fills missing values in a PyArrow table.
+        if batch.num_rows == 0:
+            return batch
 
-        Args:
-            batch: Input PyArrow table to process.
+        columns_to_fill = op.subset if op.subset else batch.schema.names
+        new_columns: Dict[str, pa.Array] = {}
 
-        Returns:
-            PyArrow table with missing values filled.
-        """
-        try:
-            if batch.num_rows == 0:
-                return batch
-
-            # If no subset specified, apply to all columns
-            columns_to_fill = subset if subset else batch.schema.names
-
-            # Create a new table with filled values
-            new_columns: Dict[str, pa.Array] = {}
-
-            for col_name in batch.schema.names:
-                column = batch.column(col_name)
-
-                if col_name in columns_to_fill:
-                    if method == "value":
-                        if isinstance(value, dict):
-                            # Column-specific fill values
-                            fill_value = value.get(col_name)
-                            if fill_value is not None:
-                                new_columns[col_name] = _fill_column(column, fill_value)
-                            else:
-                                new_columns[col_name] = column
+        for col_name in batch.schema.names:
+            column = batch.column(col_name)
+            if col_name in columns_to_fill:
+                if op.method == "value":
+                    if isinstance(op.value, dict):
+                        fill_value = op.value.get(col_name)
+                        if fill_value is not None:
+                            new_columns[col_name] = _fill_column(column, fill_value)
                         else:
-                            # Scalar fill value for all columns
-                            new_columns[col_name] = _fill_column(column, value)
-                    elif method in ["forward", "backward"]:
-                        new_columns[col_name] = _fill_column_directional(
-                            column, method, limit
-                        )
-                    elif method == "interpolate":
-                        new_columns[col_name] = _fill_column_interpolate(column, limit)
+                            new_columns[col_name] = column
                     else:
-                        raise ValueError(f"Unsupported fill method: {method}")
+                        new_columns[col_name] = _fill_column(column, op.value)
+                elif op.method in ["forward", "backward"]:
+                    new_columns[col_name] = _fill_column_directional(column, op.method, op.limit)
+                elif op.method == "interpolate":
+                    new_columns[col_name] = _fill_column_interpolate(column, op.limit)
                 else:
-                    new_columns[col_name] = column
+                    raise ValueError(f"Unsupported fill method: {op.method}")
+            else:
+                new_columns[col_name] = column
 
-            return pa.table(new_columns)
-
-        except Exception as e:
-            _try_wrap_udf_exception(e, batch)
+        return pa.table(new_columns)
 
     compute = get_compute(op._compute)
     transform_fn = _generate_transform_fn_for_map_block(fn)
-    map_transformer = _create_map_transformer_for_block_based_map_op(
-        transform_fn,
-    )
+    map_transformer = _create_map_transformer_for_block_based_map_op(transform_fn)
 
     return MapOperator.create(
         map_transformer,
-        input_physical_dag,
+        physical_children[0],
         data_context,
         name="FillNa",
         compute_strategy=compute,
@@ -119,123 +71,53 @@ def plan_fillna_op(
 
 
 def _fill_column(column: pa.Array, fill_value: Any) -> pa.Array:
-    """Fill missing values in a single PyArrow column.
-
-    Handles null values and NaN values for floating point columns using PyArrow's
-    built-in capabilities with appropriate type handling and casting.
-
-    Args:
-        column: The PyArrow array to fill missing values in.
-        fill_value: The value to use for filling missing entries.
-
-    Returns:
-        A new PyArrow array with missing values filled.
-
-    Examples:
-        .. doctest::
-
-            >>> import pyarrow as pa
-            >>> column = pa.array([1, None, 3])
-            >>> filled = _fill_column(column, 0)
-            >>> filled.to_pylist()
-            [1, 0, 3]
-    """
+    """Fill missing values in a single PyArrow column."""
     try:
-        # For null type columns, let PyArrow infer the type from the fill value
         if pa.types.is_null(column.type):
-            # Create a new array with the fill value repeated for each row
-            fill_array = pa.array([fill_value] * len(column))
-            return fill_array
+            return pa.array([fill_value] * len(column))
 
-        # For string columns, ensure the fill value is converted to string
         if pa.types.is_string(column.type):
-            fill_value = str(fill_value)
-            fill_scalar = pa.scalar(fill_value, type=column.type)
+            fill_scalar = pa.scalar(str(fill_value), type=column.type)
         else:
-            # For regular columns, try to create a scalar with the column's type
             try:
                 fill_scalar = pa.scalar(fill_value, type=column.type)
             except (pa.ArrowInvalid, pa.ArrowTypeError):
-                # If type conversion fails, let PyArrow handle it by inferring from value
                 fill_scalar = pa.scalar(fill_value)
-                # Try to cast to column type, but if it fails, PyArrow will handle the type promotion
                 try:
                     fill_scalar = fill_scalar.cast(column.type)
                 except (pa.ArrowInvalid, pa.ArrowNotImplementedError):
-                    # If casting fails, use the inferred type
                     pass
 
-        # Use PyArrow's fill_null to handle null values
         filled_column = pc.fill_null(column, fill_scalar)
-
-        # For floating point columns, also handle NaN values
         if pa.types.is_floating(filled_column.type):
             nan_mask = pc.is_nan(filled_column)
             filled_column = pc.if_else(nan_mask, fill_scalar, filled_column)
 
         return filled_column
-
     except Exception:
-        # If all else fails, return original column to maintain data integrity
         return column
 
 
 def _fill_column_directional(
     column: pa.Array, method: str, limit: Optional[int] = None
 ) -> pa.Array:
-    """Fill missing values using forward or backward fill.
-
-    Args:
-        column: The PyArrow array to fill missing values in.
-        method: Either "forward" or "backward" fill method.
-        limit: Maximum number of consecutive missing values to fill.
-
-    Returns:
-        A new PyArrow array with missing values filled directionally.
-    """
+    """Fill missing values using forward or backward fill."""
     try:
-        # Convert to pandas for easier directional filling
         pd_series = column.to_pandas()
-
-        if method == "forward":
-            filled_series = pd_series.fillna(method="ffill", limit=limit)
-        elif method == "backward":
-            filled_series = pd_series.fillna(method="bfill", limit=limit)
-        else:
-            raise ValueError(f"Invalid directional method: {method}")
-
-        # Convert back to PyArrow
+        fill_method = "ffill" if method == "forward" else "bfill"
+        filled_series = pd_series.fillna(method=fill_method, limit=limit)
         return pa.array(filled_series, type=column.type)
-
     except Exception:
-        # If directional fill fails, return original column
         return column
 
 
 def _fill_column_interpolate(column: pa.Array, limit: Optional[int] = None) -> pa.Array:
-    """Fill missing values using linear interpolation.
-
-    Args:
-        column: The PyArrow array to fill missing values in.
-        limit: Maximum number of consecutive missing values to fill.
-
-    Returns:
-        A new PyArrow array with missing values interpolated.
-    """
+    """Fill missing values using linear interpolation."""
     try:
-        # Only interpolate numeric columns
         if not (pa.types.is_integer(column.type) or pa.types.is_floating(column.type)):
             return column
-
-        # Convert to pandas for interpolation
         pd_series = column.to_pandas()
-
-        # Perform linear interpolation
         filled_series = pd_series.interpolate(method="linear", limit=limit)
-
-        # Convert back to PyArrow, preserving original type
         return pa.array(filled_series, type=column.type)
-
     except Exception:
-        # If interpolation fails, return original column
         return column
