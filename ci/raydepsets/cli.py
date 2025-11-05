@@ -314,14 +314,14 @@ class DependencySetManager:
         if self._uv_cache_dir:
             args.extend(["--cache-dir", self._uv_cache_dir])
         if override_flags:
-            args = _override_uv_flags(override_flags, args)
+            args = _override_uv_flags(sorted(override_flags), args)
         if append_flags:
-            args.extend(_flatten_flags(append_flags))
+            args.extend(_flatten_flags(sorted(append_flags)))
         if constraints:
-            for constraint in constraints:
+            for constraint in sorted(constraints):
                 args.extend(["-c", constraint])
         if requirements:
-            for requirement in requirements:
+            for requirement in sorted(requirements):
                 args.extend([requirement])
         if packages:
             # need to add a dash to process stdin
