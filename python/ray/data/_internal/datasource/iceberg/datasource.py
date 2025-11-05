@@ -66,7 +66,7 @@ def _get_read_task(
         schema: Projected schema (only columns being read)
 
     Yields:
-        Arrow Table blocks containing the scanned data
+        Block: Arrow Table blocks containing the scanned data
 
     Note:
         FileScanTasks are not just simple file paths - they include:

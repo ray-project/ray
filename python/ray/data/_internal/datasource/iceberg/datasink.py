@@ -329,6 +329,9 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         Args:
             write_result: Collection of DataFile metadata from all write tasks
 
+        Returns:
+            None. The transaction is committed atomically.
+
         Note:
             The transaction was already started in on_write_start(). This ensures
             that the transaction captures the table state at the start of the write,
