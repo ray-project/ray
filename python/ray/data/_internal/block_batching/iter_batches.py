@@ -141,6 +141,7 @@ class BatchIterator:
         self, ref_bundles: Iterator[RefBundle]
     ) -> Iterator[ObjectRef[Block]]:
         return prefetch_batches_locally(
+            stats=self._stats,
             ref_bundles=ref_bundles,
             prefetcher=self._prefetcher,
             num_batches_to_prefetch=self._prefetch_batches,
@@ -320,6 +321,7 @@ def prefetch_batches_locally(
     ref_bundles: Iterator[RefBundle],
     prefetcher: BlockPrefetcher,
     num_batches_to_prefetch: int,
+    stats: Optional[DatasetStats],
     batch_size: Optional[int],
     eager_free: bool = False,
 ) -> Iterator[ObjectRef[Block]]:
@@ -332,9 +334,14 @@ def prefetch_batches_locally(
         prefetcher: The prefetcher to use.
         num_batches_to_prefetch: The number of batches to prefetch ahead of the
             current batch during the scan.
+        stats: Dataset stats object used to store ref bundle retrieval time.
         batch_size: User specified batch size, or None to let the system pick.
         eager_free: Whether to eagerly free the object reference from the object store.
     """
+
+    def get_next_ref_bundle() -> RefBundle:
+        with stats.iter_ref_bundle_retrieval_s.timer() if stats else nullcontext():
+            return next(ref_bundles)
 
     sliding_window = collections.deque()
     current_window_size = 0
@@ -358,7 +365,7 @@ def prefetch_batches_locally(
         batch_size is None and len(sliding_window) < num_batches_to_prefetch
     ):
         try:
-            next_ref_bundle = next(ref_bundles)
+            next_ref_bundle = get_next_ref_bundle()
             sliding_window.extend(next_ref_bundle.blocks)
             current_window_size += next_ref_bundle.num_rows()
         except StopIteration:
@@ -371,7 +378,7 @@ def prefetch_batches_locally(
         current_window_size -= metadata.num_rows
         if batch_size is None or current_window_size < num_rows_to_prefetch:
             try:
-                next_ref_bundle = next(ref_bundles)
+                next_ref_bundle = get_next_ref_bundle()
                 for block_ref_and_md in next_ref_bundle.blocks:
                     sliding_window.append(block_ref_and_md)
                     current_window_size += block_ref_and_md[1].num_rows
