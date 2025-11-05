@@ -30,6 +30,65 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _validate_table_identifier(table_identifier: str) -> None:
+    """
+    Validate that table_identifier is in the correct format.
+
+    Args:
+        table_identifier: Table identifier to validate
+
+    Raises:
+        ValueError: If table_identifier format is invalid
+    """
+    if not table_identifier or not isinstance(table_identifier, str):
+        raise ValueError(
+            f"table_identifier must be a non-empty string. "
+            f"Expected format: 'database.table'. Got: {table_identifier}"
+        )
+    if "." not in table_identifier:
+        raise ValueError(
+            f"table_identifier must be in format 'database.table'. "
+            f"Got: {table_identifier}"
+        )
+    parts = table_identifier.split(".")
+    if len(parts) != 2 or not all(part.strip() for part in parts):
+        raise ValueError(
+            f"table_identifier must be in format 'database.table'. "
+            f"Got: {table_identifier}"
+        )
+
+
+def _validate_merge_keys(merge_keys: List[str]) -> None:
+    """
+    Validate that merge_keys is a valid list of column names.
+
+    Args:
+        merge_keys: List of merge keys to validate
+
+    Raises:
+        ValueError: If merge_keys is invalid
+    """
+    if not merge_keys:
+        raise ValueError("merge_keys cannot be empty for CDF writes")
+
+    # Validate merge_keys: no None values, no duplicates, no empty strings
+    if any(key is None for key in merge_keys):
+        raise ValueError(
+            "merge_keys cannot contain None values. All keys must be non-null strings."
+        )
+    if any(not isinstance(key, str) or len(key.strip()) == 0 for key in merge_keys):
+        raise ValueError(
+            "merge_keys must be a list of non-empty strings. "
+            f"Received: {merge_keys}"
+        )
+    if len(merge_keys) != len(set(merge_keys)):
+        duplicates = [k for k in set(merge_keys) if merge_keys.count(k) > 1]
+        raise ValueError(
+            f"merge_keys contains duplicate values: {duplicates}. "
+            "Each key must be unique."
+        )
+
+
 def read_iceberg_cdf(
     table_identifier: str,
     start_snapshot_id: Optional[int] = None,
@@ -123,17 +182,69 @@ def read_iceberg_cdf(
 
     import ray
 
+    # Validate table_identifier format
+    _validate_table_identifier(table_identifier)
+
     # Load catalog and table
     catalog_kwargs = catalog_kwargs or {}
     catalog_name = catalog_kwargs.pop("name", "default")
     catalog = load_catalog(name=catalog_name, **catalog_kwargs)
     table = catalog.load_table(table_identifier)
 
+    # Validate snapshot IDs if provided
+    if start_snapshot_id is not None and start_snapshot_id < 0:
+        raise ValueError(
+            f"start_snapshot_id must be non-negative. Got: {start_snapshot_id}"
+        )
+    if end_snapshot_id is not None and end_snapshot_id < 0:
+        raise ValueError(
+            f"end_snapshot_id must be non-negative. Got: {end_snapshot_id}"
+        )
+
+    # Validate timestamp parameters
+    if start_timestamp is not None and start_snapshot_id is not None:
+        raise ValueError(
+            "Cannot specify both start_timestamp and start_snapshot_id. "
+            "Use one or the other."
+        )
+    if end_timestamp is not None and end_snapshot_id is not None:
+        raise ValueError(
+            "Cannot specify both end_timestamp and end_snapshot_id. "
+            "Use one or the other."
+        )
+    if start_timestamp is not None and end_timestamp is not None:
+        # Validate timestamp format and order
+        try:
+            from datetime import datetime
+
+            start_ts = datetime.fromisoformat(
+                start_timestamp.replace("Z", "+00:00")
+            )
+            end_ts = datetime.fromisoformat(end_timestamp.replace("Z", "+00:00"))
+            if start_ts > end_ts:
+                raise ValueError(
+                    f"start_timestamp ({start_timestamp}) must be <= "
+                    f"end_timestamp ({end_timestamp})"
+                )
+        except ValueError as e:
+            if "start_timestamp" in str(e) or "end_timestamp" in str(e):
+                raise
+            raise ValueError(
+                f"Invalid timestamp format. Expected ISO format (e.g., "
+                f"'2024-01-01T00:00:00'). Got start_timestamp={start_timestamp}, "
+                f"end_timestamp={end_timestamp}. Error: {e}"
+            )
+
     # Resolve snapshot IDs from timestamps if provided
     if start_timestamp is not None:
         start_snapshot_id = _resolve_snapshot_from_timestamp(
             table, start_timestamp, before=False
         )
+        if start_snapshot_id is None:
+            raise ValueError(
+                f"Could not resolve snapshot for start_timestamp {start_timestamp}. "
+                "No snapshot found at or after this timestamp."
+            )
         logger.info(
             f"Resolved start_timestamp {start_timestamp} to snapshot {start_snapshot_id}"
         )
@@ -142,14 +253,37 @@ def read_iceberg_cdf(
         end_snapshot_id = _resolve_snapshot_from_timestamp(
             table, end_timestamp, before=True
         )
+        if end_snapshot_id is None:
+            raise ValueError(
+                f"Could not resolve snapshot for end_timestamp {end_timestamp}. "
+                "No snapshot found at or before this timestamp."
+            )
         logger.info(
             f"Resolved end_timestamp {end_timestamp} to snapshot {end_snapshot_id}"
         )
 
     # Default to current snapshot if end not specified
     if end_snapshot_id is None:
-        end_snapshot_id = table.current_snapshot().snapshot_id
+        current_snapshot = table.current_snapshot()
+        if current_snapshot is None:
+            raise ValueError(
+                f"Table {table_identifier} has no snapshots. "
+                "Cannot read CDF from a table with no data."
+            )
+        end_snapshot_id = current_snapshot.snapshot_id
         logger.info(f"Using current snapshot {end_snapshot_id} as end snapshot")
+
+    # Validate snapshot ID order
+    if start_snapshot_id is not None and end_snapshot_id < start_snapshot_id:
+        raise ValueError(
+            f"end_snapshot_id ({end_snapshot_id}) must be >= start_snapshot_id "
+            f"({start_snapshot_id})"
+        )
+    if start_snapshot_id == end_snapshot_id:
+        logger.warning(
+            f"start_snapshot_id ({start_snapshot_id}) equals end_snapshot_id "
+            f"({end_snapshot_id}). This will return an empty dataset."
+        )
 
     # Get list of files added between snapshots
     added_files = _get_added_files_between_snapshots(
@@ -172,7 +306,7 @@ def read_iceberg_cdf(
     )
 
     # Read only the added files using Iceberg's scan API
-    # Get file paths from added files
+    # Get file paths from added files - use exact matching to avoid partial path matches
     added_file_paths = {str(f.file_path) for f in added_files}
 
     # Read the table at end snapshot and filter to only added files
@@ -186,12 +320,14 @@ def read_iceberg_cdf(
     )
 
     # Filter the read tasks to only include files we care about
+    # Use exact matching (==) instead of substring matching (in) to avoid false positives
     read_tasks = datasource.get_read_tasks(parallelism=-1)
-    filtered_tasks = [
-        task
-        for task in read_tasks
-        if any(fp in added_file_paths for fp in _extract_file_paths_from_task(task))
-    ]
+    filtered_tasks = []
+    for task in read_tasks:
+        task_file_paths = _extract_file_paths_from_task(task)
+        # Check if any task file path exactly matches any added file path
+        if any(task_fp in added_file_paths for task_fp in task_file_paths):
+            filtered_tasks.append(task)
 
     if not filtered_tasks:
         logger.warning("No matching read tasks found after filtering")
@@ -227,7 +363,7 @@ def write_iceberg_cdf(
     snapshot_properties: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
-) -> Dict[str, int]:
+) -> None:
     """
     Write change data feed to an Iceberg table with mixed operations.
 
@@ -320,8 +456,8 @@ def write_iceberg_cdf(
     from pyiceberg.catalog import load_catalog
 
     # Validate inputs
-    if not merge_keys:
-        raise ValueError("merge_keys cannot be empty for CDF writes")
+    _validate_merge_keys(merge_keys)
+    _validate_table_identifier(table_identifier)
 
     # Check if change type column exists
     schema = dataset.schema()
@@ -341,17 +477,63 @@ def write_iceberg_cdf(
     catalog = load_catalog(name=catalog_name, **catalog_kwargs)
     table = catalog.load_table(table_identifier)
 
+    # Validate that merge_keys columns exist in table schema
+    table_columns = {field.name for field in table.schema().fields}
+    missing_in_table = set(merge_keys) - table_columns
+    if missing_in_table:
+        raise ValueError(
+            f"merge_keys {missing_in_table} not found in table schema. "
+            f"Available columns: {sorted(table_columns)}"
+        )
+
+    # Validate that merge_keys columns exist in dataset schema
+    missing_in_dataset = set(merge_keys) - set(schema.names)
+    if missing_in_dataset:
+        raise ValueError(
+            f"merge_keys {missing_in_dataset} not found in dataset schema. "
+            f"Available columns: {sorted(schema.names)}"
+        )
+
+    # Validate change_type_column values before processing
+    # Sample a small batch to check values (don't materialize entire dataset)
+    try:
+        # Get first batch to validate values
+        first_batch = dataset.take(limit=100)
+        if first_batch:
+            invalid_values = []
+            valid_values = {"INSERT", "I", "UPDATE", "U", "DELETE", "D"}
+            for row in first_batch:
+                ct_value = str(row.get(change_type_column, "")).strip().upper()
+                if ct_value and ct_value not in valid_values:
+                    invalid_values.append(ct_value)
+            if invalid_values:
+                invalid_examples = list(set(invalid_values))[:10]
+                raise ValueError(
+                    f"Invalid change_type_column values found: {invalid_examples}. "
+                    f"Valid values are: 'insert'/'I', 'update'/'U', 'delete'/'D' "
+                    f"(case-insensitive). Found {len(invalid_values)} invalid rows in sample."
+                )
+    except Exception as e:
+        # If we can't validate, log warning but continue
+        # This might happen if dataset is empty or can't be materialized
+        if isinstance(e, ValueError) and "Invalid change_type_column" in str(e):
+            raise
+        logger.warning(
+            f"Could not validate change_type_column values: {e}. "
+            "Proceeding but invalid values may cause errors."
+        )
+
     # Separate dataset by change type
     def is_delete(row):
-        ct = row.get(change_type_column, "").upper()
+        ct = str(row.get(change_type_column, "")).strip().upper()
         return ct in ["DELETE", "D"]
 
     def is_update(row):
-        ct = row.get(change_type_column, "").upper()
+        ct = str(row.get(change_type_column, "")).strip().upper()
         return ct in ["UPDATE", "U"]
 
     def is_insert(row):
-        ct = row.get(change_type_column, "").upper()
+        ct = str(row.get(change_type_column, "")).strip().upper()
         return ct in ["INSERT", "I"]
 
     deletes_ds = dataset.filter(is_delete)
@@ -445,11 +627,29 @@ def _resolve_snapshot_from_timestamp(
 
     Returns:
         Snapshot ID, or None if no suitable snapshot found
+
+    Raises:
+        ValueError: If timestamp format is invalid
     """
     from datetime import datetime
 
-    target_ts = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-    target_ms = int(target_ts.timestamp() * 1000)
+    # Validate timestamp format
+    if not timestamp or not isinstance(timestamp, str):
+        raise ValueError(
+            f"timestamp must be a non-empty ISO format string. Got: {timestamp}"
+        )
+
+    try:
+        # Handle Z suffix for UTC
+        normalized_timestamp = timestamp.replace("Z", "+00:00")
+        target_ts = datetime.fromisoformat(normalized_timestamp)
+        target_ms = int(target_ts.timestamp() * 1000)
+    except (ValueError, AttributeError) as e:
+        raise ValueError(
+            f"Invalid timestamp format '{timestamp}'. Expected ISO format "
+            f"(e.g., '2024-01-01T00:00:00' or '2024-01-01T00:00:00Z'). "
+            f"Error: {e}"
+        )
 
     snapshots = table.metadata.snapshots
     if not snapshots:

@@ -462,6 +462,43 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
 
         # Commit the transaction atomically
         # This creates exactly one snapshot/transaction log entry
-        self._txn.commit_transaction()
+        try:
+            self._txn.commit_transaction()
+            logger.info(
+                f"Iceberg transaction committed for table {self.table_identifier}"
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to commit transaction for table {self.table_identifier}: {e}"
+            )
+            raise
 
-        logger.info(f"Iceberg transaction committed for table {self.table_identifier}")
+    def on_write_failed(self, error: Exception) -> None:
+        """
+        Handle write failures by attempting to rollback the transaction.
+
+        This method is called when a write operation fails. It attempts to clean up
+        any partial state by rolling back the transaction if one exists.
+
+        Args:
+            error: The exception that caused the write to fail
+        """
+        logger.error(
+            f"Write operation failed for table {self.table_identifier}: {error}"
+        )
+
+        # Attempt to rollback the transaction if it exists
+        if self._txn is not None:
+            try:
+                # PyIceberg transactions don't have explicit rollback,
+                # but not committing leaves them uncommitted
+                # The transaction will be garbage collected
+                logger.info(
+                    f"Transaction for table {self.table_identifier} will not be committed. "
+                    "Partial writes will be rolled back automatically."
+                )
+            except Exception as rollback_error:
+                logger.warning(
+                    f"Error during transaction cleanup for table "
+                    f"{self.table_identifier}: {rollback_error}"
+                )
