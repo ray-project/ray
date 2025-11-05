@@ -3003,7 +3003,6 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
-    @cache_result("sum", include_params=["on", "ignore_nulls"])
     def sum(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -3048,7 +3047,6 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
-    @cache_result("min", include_params=["on", "ignore_nulls"])
     def min(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -3093,7 +3091,6 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
-    @cache_result("max", include_params=["on", "ignore_nulls"])
     def max(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -3138,7 +3135,6 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
-    @cache_result("mean", include_params=["on", "ignore_nulls"])
     def mean(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -3183,7 +3179,6 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
-    @cache_result("std", include_params=["on", "ddof", "ignore_nulls"])
     def std(
         self,
         on: Optional[Union[str, List[str]]] = None,
