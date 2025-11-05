@@ -1608,7 +1608,6 @@ class Dataset:
         expr: Optional["Expr"] = None,
         name: Optional[str] = None,
         description: Optional[str] = None,
-        use_map_batches: bool = True,
         batch_format: Optional[str] = "default",
         compute: Optional[ComputeStrategy] = None,
         num_cpus: Optional[float] = None,
@@ -1622,14 +1621,14 @@ class Dataset:
         """Apply a data quality expectation to validate this dataset.
 
         This method validates data quality constraints by applying the expectation
-        to batches of data using either `map_batches` (default) or `map`. The dataset
-        is materialized to ensure all validation runs complete, and results are
-        aggregated across all batches.
+        to batches of data. The dataset is materialized to ensure all validation runs
+        complete, and results are aggregated across all batches.
 
         .. tip::
            If you use the `expr` parameter with a predicate expression, Ray Data
            optimizes your validation with native Arrow interfaces, similar to
-           :meth:`~Dataset.filter`.
+           :meth:`~Dataset.filter`. For validator functions, batches are processed
+           efficiently using :meth:`~Dataset.map_batches`.
 
         Examples:
             >>> import ray
@@ -1695,10 +1694,9 @@ class Dataset:
             name: Name for the expectation (only used when `expr` is provided).
             description: Description of what this expectation checks (only used
                 when `expr` is provided).
-            use_map_batches: If True (default), use map_batches for validation.
-                If False, use map for row-by-row validation.
             batch_format: The format of batches passed to the validator function.
-                Only used if use_map_batches=True. Options: "default", "pandas", "numpy", "pyarrow".
+                Only used for validator function-based expectations (not expression-based).
+                Options: "default", "pandas", "numpy", "pyarrow".
             compute: The compute strategy to use for the validation operation.
 
                 * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
@@ -2073,26 +2071,17 @@ class Dataset:
                     batch["_validation_passed"] = np.array([False] * num_rows)
                 return batch
 
-        # Apply validation using map_batches or map
-        if use_map_batches:
-            validated_ds = self.map_batches(
-                validation_fn,
-                batch_format=batch_format,
-                compute=compute,
-                num_cpus=num_cpus,
-                num_gpus=num_gpus,
-                memory=memory,
-                **ray_remote_args,
-            )
-        else:
-            validated_ds = self.map(
-                validation_fn,
-                compute=compute,
-                num_cpus=num_cpus,
-                num_gpus=num_gpus,
-                memory=memory,
-                **ray_remote_args,
-            )
+        # Apply validation using map_batches
+        # Always use map_batches for validator functions as they expect batch input
+        validated_ds = self.map_batches(
+            validation_fn,
+            batch_format=batch_format,
+            compute=compute,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            **ray_remote_args,
+        )
 
         # Materialize to ensure all validation runs complete
         validated_ds.materialize()
