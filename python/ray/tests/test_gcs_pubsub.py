@@ -1,13 +1,14 @@
 import asyncio
+import re
 import sys
 import threading
-import re
+
+import pytest
 
 import ray
 from ray._private.gcs_pubsub import (
     GcsAioResourceUsageSubscriber,
 )
-import pytest
 
 
 def test_publish_and_subscribe_error_info(ray_start_regular):

@@ -2,20 +2,21 @@
 import json
 import logging
 import os
-import pytest
 import sys
 import tempfile
 
+import pytest
+
+from ray._common.utils import get_ray_temp_dir
+from ray._private.ray_constants import SESSION_LATEST
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
     DEFAULT_GRAFANA_ROWS,
+    MAX_PERCENTAGE_EXPRESSION,
 )
 from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
     SERVE_GRAFANA_PANELS,
 )
 from ray.tests.conftest import _ray_start
-from ray._private.ray_constants import SESSION_LATEST
-from ray._common.utils import get_ray_temp_dir
-
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,9 @@ def test_metrics_folder_with_dashboard_override(
                     # Row panels don't have targets
                     continue
                 for target in panel["targets"]:
+                    if target["expr"] == MAX_PERCENTAGE_EXPRESSION:
+                        # We skip expressions that are constant value targets
+                        continue
                     # Check for standard_global_filters
                     assert 'SessionName=~"$SessionName"' in target["expr"]
                     # Check for custom global_filters
@@ -219,12 +223,18 @@ def test_default_dashboard_utilizes_global_filters():
     for row in DEFAULT_GRAFANA_ROWS:
         for panel in row.panels:
             for target in panel.targets:
+                if target.legend == "MAX" and target.expr == MAX_PERCENTAGE_EXPRESSION:
+                    # We skip expressions that are constant value targets serving as visual aids
+                    continue
                 assert "{global_filters}" in target.expr
 
 
 def test_serve_dashboard_utilizes_global_filters():
     for panel in SERVE_GRAFANA_PANELS:
         for target in panel.targets:
+            if target.legend == "MAX" and target.expr == MAX_PERCENTAGE_EXPRESSION:
+                # We skip expressions that are constant value targets serving as visual aids
+                continue
             assert "{global_filters}" in target.expr
 
 

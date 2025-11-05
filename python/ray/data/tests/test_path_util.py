@@ -18,6 +18,7 @@ from ray.data.datasource.path_util import (
         ("foo.csv", ["csv"], True),
         ("foo.csv", ["json", "csv"], True),
         ("foo.csv", ["json", "jsonl"], False),
+        ("foo.csv", [".csv"], True),
         ("foo.parquet.crc", ["parquet"], False),
         ("foo.parquet.crc", ["crc"], True),
         ("foo.csv", None, True),
@@ -53,6 +54,21 @@ def test_resolve_http_paths(filesystem):
 def test_windows_path(path):
     with mock.patch("sys.platform", "win32"):
         assert _is_local_windows_path(path)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "some/file",
+        "some/file;semicolon",
+        "some/file?questionmark",
+        "some/file#hash",
+        "some/file;all?of the#above",
+    ],
+)
+def test_weird_local_paths(path):
+    resolved_paths, _ = _resolve_paths_and_filesystem(path)
+    assert resolved_paths[0] == path
 
 
 if __name__ == "__main__":

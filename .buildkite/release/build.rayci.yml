@@ -2,25 +2,27 @@ group: release build
 steps:
   - name: raycpubaseextra-testdeps
     label: "wanda: ray.py{{matrix}}.cpu.base-extra-testdeps"
-    wanda: ci/docker/ray.cpu.base-extra-testdeps.wanda.yaml
+    wanda: docker/base-extra-testdeps/cpu.wanda.yaml
     matrix:
       - "3.9"
+      - "3.10"
       - "3.11"
       - "3.12"
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
-      REQUIREMENTS_FILE: "requirements_byod_{{matrix}}.txt"
+      REQUIREMENTS_FILE: "ray_base_extra_testdeps_py{{matrix}}.lock"
     depends_on:
       - raycpubaseextra
 
   - name: raycudabaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra-testdeps"
-    wanda: ci/docker/ray.cuda.base-extra-testdeps.wanda.yaml
+    wanda: docker/base-extra-testdeps/cuda.wanda.yaml
     matrix:
       setup:
         python:
           - "3.9"
+          - "3.10"
           - "3.11"
           - "3.12"
         cuda:
@@ -29,13 +31,13 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
-      REQUIREMENTS_FILE: "requirements_byod_{{matrix.python}}.txt"
+      REQUIREMENTS_FILE: "ray_base_extra_testdeps_cuda_py{{matrix.python}}.lock"
     depends_on:
       - raycudabaseextra
 
   - name: ray-llmbaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.llm.base-extra-testdeps (cuda {{matrix.cuda}})"
-    wanda: ci/docker/ray.cuda.base-extra-testdeps.wanda.yaml
+    wanda: docker/base-extra-testdeps/cuda.wanda.yaml
     matrix:
       setup:
         python:
@@ -52,24 +54,26 @@ steps:
 
   - name: ray-mlcudabaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.ml.base-extra-testdeps"
-    wanda: ci/docker/ray.cuda.base-extra-testdeps.wanda.yaml
+    wanda: docker/base-extra-testdeps/cuda.wanda.yaml
     matrix:
       setup:
         python:
           - "3.9"
+          - "3.10"
         cuda:
           - "12.1.1-cudnn8"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-ml"
-      REQUIREMENTS_FILE: "requirements_ml_byod_{{matrix.python}}.txt"
+      REQUIREMENTS_FILE: "ray_ml_base_extra_testdeps_cuda_py{{matrix.python}}.lock"
     depends_on:
       - ray-mlcudabaseextra
 
-  - label: ":tapioca: build: anyscale py{{matrix.python}}-{{matrix.platform}} docker"
+  - label: ":tapioca: build: ray py{{matrix.python}}-{{matrix.platform}} image for release tests"
     key: anyscalebuild
     instance_type: release-medium
+    mount_buildkite_agent: true
     tags:
       - oss
     commands:
@@ -87,15 +91,17 @@ steps:
           # This list should be kept in sync with the list of supported Python in
           # release test suite. We don't have release tests for Python 3.10 yet.
           - "3.9"
+          - "3.10"
           - "3.11"
           - "3.12"
         platform:
           - cu12.3.2-cudnn9
           - cpu
 
-  - label: ":tapioca: build: anyscale-llm py{{matrix}} docker"
+  - label: ":tapioca: build: ray-llm py{{matrix}} image for release tests"
     key: anyscalellmbuild
     instance_type: release-medium
+    mount_buildkite_agent: true
     tags:
       - oss
     commands:
@@ -108,9 +114,10 @@ steps:
     matrix:
       - "3.11"
 
-  - label: ":tapioca: build: anyscale-ml py{{matrix}} docker"
+  - label: ":tapioca: build: ray-ml py{{matrix}} image for release tests"
     key: anyscalemlbuild
     instance_type: release-medium
+    mount_buildkite_agent: true
     tags:
       - oss
     commands:
@@ -125,3 +132,4 @@ steps:
       # release test suite. We don't have ray-ml release tests for Python 3.10 and 3.11
       # yet.
       - "3.9"
+      - "3.10"

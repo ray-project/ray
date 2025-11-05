@@ -2,6 +2,7 @@
 This file defines the common pytest fixtures used in current directory.
 """
 
+import copy
 import json
 import logging
 import os
@@ -16,34 +17,40 @@ from pathlib import Path
 from tempfile import gettempdir
 from typing import List, Optional
 from unittest import mock
-import psutil
+
 import pytest
-import copy
 
 import ray
-from ray._common.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import build_address, find_free_port
+from ray._common.test_utils import wait_for_condition
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
-from ray._common.network_utils import build_address
 from ray._private.runtime_env import virtualenv_utils
-
 from ray._private.test_utils import (
+    RayletKiller,
+    external_redis_test_enabled,
     get_and_run_resource_killer,
+    get_redis_cli,
     init_error_pubsub,
     init_log_pubsub,
-    setup_tls,
-    teardown_tls,
-    external_redis_test_enabled,
     redis_replicas,
-    get_redis_cli,
+    redis_sentinel_replicas,
+    reset_autoscaler_v2_enabled_cache,
+    setup_tls,
     start_redis_instance,
     start_redis_sentinel_instance,
-    redis_sentinel_replicas,
-    find_free_port,
-    reset_autoscaler_v2_enabled_cache,
-    RayletKiller,
+    teardown_tls,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
+from ray.tests.authentication_test_utils import (
+    authentication_env_guard,
+    clear_auth_token_sources,
+    reset_auth_token_state,
+    set_auth_mode,
+    set_env_auth_token,
+)
+
+import psutil
 
 # TODO (mengjin) Improve the logging in the conftest files so that the logger can log
 # information in stdout as well as stderr and replace the print statements in the test
@@ -825,27 +832,6 @@ def call_ray_start_context(request):
 
 
 @pytest.fixture
-def call_ray_start_with_external_redis(request):
-    ports = getattr(request, "param", "6379")
-    port_list = ports.split(",")
-    for port in port_list:
-        temp_dir = ray._common.utils.get_ray_temp_dir()
-        start_redis_instance(temp_dir, int(port), password="123")
-    address_str = ",".join(map(lambda x: build_address("localhost", x), port_list))
-    cmd = f"ray start --head --address={address_str} --redis-password=123"
-    subprocess.call(cmd.split(" "))
-
-    yield address_str.split(",")[0]
-
-    # Disconnect from the Ray cluster.
-    ray.shutdown()
-    # Kill the Ray cluster.
-    subprocess.check_call(["ray", "stop"])
-    # Delete the cluster address just in case.
-    ray._common.utils.reset_ray_address()
-
-
-@pytest.fixture
 def init_and_serve():
     import ray.util.client.server.server as ray_client_server
 
@@ -1504,3 +1490,62 @@ def make_httpserver(httpserver_listen_address, httpserver_ssl_context):
     server.clear()
     if server.is_running():
         server.stop()
+
+
+@pytest.fixture
+def cleanup_auth_token_env():
+    """Reset authentication environment variables, files, and caches."""
+
+    with authentication_env_guard():
+        clear_auth_token_sources(remove_default=True)
+        reset_auth_token_state()
+        yield
+        reset_auth_token_state()
+
+
+@pytest.fixture
+def setup_cluster_with_token_auth(cleanup_auth_token_env):
+    """Spin up a Ray cluster with token authentication enabled."""
+
+    test_token = "test_token_12345678901234567890123456789012"
+    set_auth_mode("token")
+    set_env_auth_token(test_token)
+    reset_auth_token_state()
+
+    cluster = Cluster()
+    cluster.add_node()
+
+    try:
+        context = ray.init(address=cluster.address)
+        dashboard_url = context.address_info["webui_url"]
+        yield {
+            "cluster": cluster,
+            "dashboard_url": f"http://{dashboard_url}",
+            "token": test_token,
+        }
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+@pytest.fixture
+def setup_cluster_without_token_auth(cleanup_auth_token_env):
+    """Spin up a Ray cluster with authentication disabled."""
+
+    set_auth_mode("disabled")
+    clear_auth_token_sources(remove_default=True)
+    reset_auth_token_state()
+
+    cluster = Cluster()
+    cluster.add_node()
+
+    try:
+        context = ray.init(address=cluster.address)
+        dashboard_url = context.address_info["webui_url"]
+        yield {
+            "cluster": cluster,
+            "dashboard_url": f"http://{dashboard_url}",
+        }
+    finally:
+        ray.shutdown()
+        cluster.shutdown()

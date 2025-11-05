@@ -30,6 +30,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
+from ray._common.network_utils import is_ipv6
 from ray._common.pydantic_compat import IS_PYDANTIC_2
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import RequestMetadata
@@ -698,7 +699,10 @@ async def start_asgi_http_server(
     """
     app = _apply_middlewares(app, http_options.middlewares)
 
-    sock = socket.socket()
+    sock = socket.socket(
+        socket.AF_INET6 if is_ipv6(http_options.host) else socket.AF_INET,
+        socket.SOCK_STREAM,
+    )
     if enable_so_reuseport:
         set_socket_reuse_port(sock)
 
@@ -713,6 +717,23 @@ async def start_asgi_http_server(
     # if log level for uvicorn.error is not set. And MessageLoggerMiddleware
     # has no use to us.
     logging.getLogger("uvicorn.error").level = logging.CRITICAL
+
+    # Configure SSL if certificates are provided
+    ssl_kwargs = {}
+    if http_options.ssl_keyfile and http_options.ssl_certfile:
+        ssl_kwargs = {
+            "ssl_keyfile": http_options.ssl_keyfile,
+            "ssl_certfile": http_options.ssl_certfile,
+        }
+        if http_options.ssl_keyfile_password:
+            ssl_kwargs["ssl_keyfile_password"] = http_options.ssl_keyfile_password
+        if http_options.ssl_ca_certs:
+            ssl_kwargs["ssl_ca_certs"] = http_options.ssl_ca_certs
+
+        logger.info(
+            f"Starting HTTPS server on {http_options.host}:{http_options.port} "
+            f"with SSL certificate: {http_options.ssl_certfile}"
+        )
 
     # NOTE: We have to use lower level uvicorn Config and Server
     # class because we want to run the server as a coroutine. The only
@@ -730,6 +751,7 @@ async def start_asgi_http_server(
             access_log=False,
             log_level=None,
             log_config=None,
+            **ssl_kwargs,
         )
     )
 

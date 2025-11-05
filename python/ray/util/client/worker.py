@@ -21,7 +21,11 @@ import ray._private.tls_utils
 import ray.cloudpickle as cloudpickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray._private.ray_constants import DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
+from ray._private.ray_constants import (
+    DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD,
+    env_float,
+    env_integer,
+)
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
@@ -52,13 +56,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-INITIAL_TIMEOUT_SEC = 5
-MAX_TIMEOUT_SEC = 30
-
+INITIAL_TIMEOUT_SEC = env_integer("RAY_CLIENT_INITIAL_CONNECTION_TIMEOUT_S", 5)
+MAX_TIMEOUT_SEC = env_integer("RAY_CLIENT_MAX_CONNECTION_TIMEOUT_S", 30)
 # The max amount of time an operation can run blocking in the server. This
 # allows for Ctrl-C of the client to work without explicitly cancelling server
 # operations.
-MAX_BLOCKING_OPERATION_TIME_S: float = 2.0
+MAX_BLOCKING_OPERATION_TIME_S: float = env_float(
+    "RAY_CLIENT_MAX_BLOCKING_OPERATION_TIME_S", 2.0
+)
 
 # If the total size (bytes) of all outbound messages to schedule tasks since
 # the connection began exceeds this value, a warning should be raised
@@ -66,9 +71,9 @@ MESSAGE_SIZE_THRESHOLD = 10 * 2**20  # 10 MB
 
 # Links to the Ray Design Pattern doc to use in the task overhead warning
 # message
-DESIGN_PATTERN_FINE_GRAIN_TASKS_LINK = "https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit#heading=h.f7ins22n6nyl"  # noqa E501
+DESIGN_PATTERN_FINE_GRAIN_TASKS_LINK = "https://docs.ray.io/en/latest/ray-core/patterns/too-fine-grained-tasks.html"  # noqa E501
 
-DESIGN_PATTERN_LARGE_OBJECTS_LINK = "https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit#heading=h.1afmymq455wu"  # noqa E501
+DESIGN_PATTERN_LARGE_OBJECTS_LINK = "https://docs.ray.io/en/latest/ray-core/patterns/closure-capture-large-objects.html"  # noqa E501
 
 
 def backoff(timeout: int) -> int:
@@ -416,19 +421,14 @@ class Worker:
         else:
             deadline = time.monotonic() + timeout
 
-        max_blocking_operation_time = MAX_BLOCKING_OPERATION_TIME_S
-        if "RAY_CLIENT_MAX_BLOCKING_OPERATION_TIME_S" in os.environ:
-            max_blocking_operation_time = float(
-                os.environ["RAY_CLIENT_MAX_BLOCKING_OPERATION_TIME_S"]
-            )
         while True:
             if deadline:
                 op_timeout = min(
-                    max_blocking_operation_time,
+                    MAX_BLOCKING_OPERATION_TIME_S,
                     max(deadline - time.monotonic(), 0.001),
                 )
             else:
-                op_timeout = max_blocking_operation_time
+                op_timeout = MAX_BLOCKING_OPERATION_TIME_S
             try:
                 res = self._get(to_get, op_timeout)
                 break

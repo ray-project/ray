@@ -227,14 +227,15 @@ def test_torch_conversion_null_type(ray_start_regular_shared, null_array_table):
         assert batch["fruit_apple"].shape == (3,)
 
 
-def test_iterator_to_materialized_dataset(ray_start_regular_shared):
+@pytest.mark.parametrize("should_equalize", [True, False])
+def test_iterator_to_materialized_dataset(ray_start_regular_shared, should_equalize):
     """Tests that `DataIterator.materialize` fully consumes the
     iterator and returns a `MaterializedDataset` view of the data
     that can be used to interact with the full dataset
     (e.g. load it all into memory)."""
     ds = ray.data.range(10)
     num_splits = 2
-    iters = ds.streaming_split(num_splits, equal=True)
+    iters = ds.streaming_split(num_splits, equal=should_equalize)
 
     def consume_in_parallel(fn):
         runners = [

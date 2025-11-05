@@ -22,13 +22,20 @@ from ray.data._internal.execution.backpressure_policy import (
 from ray.data._internal.execution.backpressure_policy.backpressure_policy import (
     BackpressurePolicy,
 )
-from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskDurationStats
+from ray.data._internal.execution.dataset_state import DatasetState
+from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    TaskDurationStats,
+    histogram_bucket_rows,
+    histogram_buckets_bytes,
+    histogram_buckets_s,
+)
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.stats import (
     DatasetStats,
     NodeMetrics,
     StatsManager,
     _get_or_create_stats_actor,
+    _StatsActor,
 )
 from ray.data._internal.util import MemoryProfiler
 from ray.data.context import DataContext
@@ -63,16 +70,43 @@ def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared
         assert profiler.estimate_max_uss() > array_nbytes
 
 
+def gen_histogram_metrics_value_str(histogram_buckets: List[float], *vals):
+    """
+    For a histogram with 5 buckets, generate a string like:
+    [Z, Z, Z, Z, Z, Z]
+    (The extra element is for the +Inf bucket)
+
+    *vals can be used to prefill the elements in the list starting from the first element.
+    For example, if *vals is [N, N, N, N, N], the string will be:
+    [N, N, N, N, N, Z]
+
+    """
+    return f"[{', '.join([*vals, *['Z' for _ in range(len(histogram_buckets) + 1 - len(vals))]])}]"
+
+
 def gen_expected_metrics(
     is_map: bool,
     spilled: bool = False,
     task_backpressure: bool = False,
     task_output_backpressure: bool = False,
     extra_metrics: Optional[List[str]] = None,
+    canonicalize_histogram_values: bool = False,
 ):
+    # If canonicalize_histogram_values is True, we replace the histogram entire histogram bucket values list with HV.
+    # Otherwise, we generate a list of values that we expect to see in the metrics.
+    gen_histogram_values = (
+        gen_histogram_metrics_value_str
+        if not canonicalize_histogram_values
+        else lambda *args: "HB"
+    )
+
     if is_map:
         metrics = [
             "'average_num_outputs_per_task': N",
+            "'average_num_inputs_per_task': N",
+            "'num_output_blocks_per_task_s': N",
+            "'average_total_task_completion_time_s': N",
+            "'average_task_completion_excl_backpressure_time_s': N",
             "'average_bytes_per_output': N",
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue': Z",
@@ -99,8 +133,10 @@ def gen_expected_metrics(
             "'num_outputs_of_finished_tasks': N",
             "'bytes_outputs_of_finished_tasks': N",
             "'rows_outputs_of_finished_tasks': N",
-            "'num_external_inqueue_blocks': N",
-            "'num_external_inqueue_bytes': N",
+            "'num_external_inqueue_blocks': Z",
+            "'num_external_inqueue_bytes': Z",
+            "'num_external_outqueue_blocks': Z",
+            "'num_external_outqueue_bytes': Z",
             "'num_tasks_submitted': N",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': N",
@@ -115,10 +151,23 @@ def gen_expected_metrics(
                 "'task_output_backpressure_time': "
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
-            ("'task_completion_time': " f"{'N' if task_backpressure else 'Z'}"),
             (
-                "'task_completion_time_without_backpressure': "
-                f"{'N' if task_backpressure else 'Z'}"
+                "'task_completion_time': "
+                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
+            ),
+            (
+                "'block_completion_time': "
+                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
+            ),
+            "'task_completion_time_s': N",
+            "'task_completion_time_excl_backpressure_s': N",
+            (
+                "'block_size_bytes': "
+                f"{gen_histogram_values(histogram_buckets_bytes, 'N')}"
+            ),
+            (
+                "'block_size_rows': "
+                f"{gen_histogram_values(histogram_bucket_rows, 'N')}"
             ),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
@@ -134,6 +183,10 @@ def gen_expected_metrics(
     else:
         metrics = [
             "'average_num_outputs_per_task': None",
+            "'average_num_inputs_per_task': None",
+            "'num_output_blocks_per_task_s': None",
+            "'average_total_task_completion_time_s': None",
+            "'average_task_completion_excl_backpressure_time_s': None",
             "'average_bytes_per_output': None",
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue': Z",
@@ -160,8 +213,10 @@ def gen_expected_metrics(
             "'num_outputs_of_finished_tasks': Z",
             "'bytes_outputs_of_finished_tasks': Z",
             "'rows_outputs_of_finished_tasks': Z",
-            "'num_external_inqueue_blocks': N",
-            "'num_external_inqueue_bytes': N",
+            "'num_external_inqueue_blocks': Z",
+            "'num_external_inqueue_bytes': Z",
+            "'num_external_outqueue_blocks': Z",
+            "'num_external_outqueue_bytes': Z",
             "'num_tasks_submitted': Z",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': Z",
@@ -176,10 +231,26 @@ def gen_expected_metrics(
                 "'task_output_backpressure_time': "
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
-            ("'task_completion_time': " f"{'N' if task_backpressure else 'Z'}"),
             (
-                "'task_completion_time_without_backpressure': "
+                "'task_completion_time': "
+                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
+            ),
+            (
+                "'block_completion_time': "
+                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
+            ),
+            ("'task_completion_time_s': " f"{'N' if task_backpressure else 'Z'}"),
+            (
+                "'task_completion_time_excl_backpressure_s': "
                 f"{'N' if task_backpressure else 'Z'}"
+            ),
+            (
+                "'block_size_bytes': "
+                f"{gen_histogram_values(histogram_buckets_bytes, 'N')}"
+            ),
+            (
+                "'block_size_rows': "
+                f"{gen_histogram_values(histogram_bucket_rows, 'N')}"
             ),
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
@@ -225,6 +296,18 @@ STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
     extra_metrics=[
         "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
     ],
+)
+
+STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_CANONICALIZE_HISTOGRAM_VALUES = (
+    gen_expected_metrics(
+        is_map=True,
+        spilled=False,
+        task_backpressure=True,
+        canonicalize_histogram_values=True,
+        extra_metrics=[
+            "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+        ],
+    )
 )
 
 LARGE_ARGS_EXTRA_METRICS = gen_expected_metrics(
@@ -277,9 +360,19 @@ Dataset memory:
 EXECUTION_STRING = "N tasks executed, N blocks produced in T"
 
 
-def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
+def canonicalize(
+    stats: str,
+    filter_global_stats: bool = True,
+    canonicalize_histogram_values: bool = False,
+) -> str:
     # Dataset UUID expression.
     canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", stats)
+
+    if canonicalize_histogram_values:
+        # Replace the histogram entire histogram bucket values list with HB since it's
+        # hard to predict which buckets will have values vs which will have zeroes.
+        canonicalized_stats = re.sub(r": \[.*?\]", ": HB", canonicalized_stats)
+
     # Time expressions.
     canonicalized_stats = re.sub(r"[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
     # Memory expressions.
@@ -294,6 +387,14 @@ def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     )
     # Handle floats in (0, 1)
     canonicalized_stats = re.sub(r" (0\.0*[1-9][0-9]*)", " N", canonicalized_stats)
+    # Replace input rows value (0 or non-0) with 'N' while keeping key prefix
+    canonicalized_stats = re.sub(
+        r"(Total input num rows: )\d+(\.\d+)?", r"\g<1>N", canonicalized_stats
+    )
+    # Replace output rows value (0 or non-0) with 'N' while keeping key prefix
+    canonicalized_stats = re.sub(
+        r"(Total output num rows: )\d+(\.\d+)?", r"\g<1>N", canonicalized_stats
+    )
     # Handle zero values specially so we can check for missing values.
     canonicalized_stats = re.sub(r" [0]+(\.[0])?", " Z", canonicalized_stats)
     # Scientific notation for small or large numbers
@@ -382,6 +483,8 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
 * Operator throughput:
+    * Total input num rows: N rows
+    * Total output num rows: N rows
     * Ray Data throughput: N rows/s
     * Estimated single node throughput: N rows/s
 * Extra metrics: {extra_metrics_1}
@@ -395,6 +498,7 @@ Dataset iterator time breakdown:
 * Total time overall: T
     * Total time in Ray Data iterator initialization code: T
     * Total time user thread is blocked by Ray Data iter_batches: T
+    * Total time spent waiting for the first batch after starting iteration: T
     * Total execution time for user thread: T
 * Batch iteration time breakdown (summed across prefetch threads):
     * In ray.get(): T min, T max, T avg, T total
@@ -426,7 +530,7 @@ def test_large_args_scheduling_strategy(
     #     )
 
     map_extra_metrics = gen_extra_metrics_str(
-        LARGE_ARGS_EXTRA_METRICS_TASK_BACKPRESSURE,
+        LARGE_ARGS_EXTRA_METRICS,
         verbose_stats_logs,
     )
     # if verbose_stats_logs:
@@ -445,6 +549,8 @@ def test_large_args_scheduling_strategy(
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
+        f"    * Total input num rows: N rows\n"
+        f"    * Total output num rows: N rows\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
         f"{read_extra_metrics}\n"
@@ -458,6 +564,8 @@ def test_large_args_scheduling_strategy(
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
+        f"    * Total input num rows: N rows\n"
+        f"    * Total output num rows: N rows\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
         f"{map_extra_metrics}"
@@ -502,6 +610,8 @@ def test_dataset_stats_basic(
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
                 f"* Tasks per node: N min, N max, N mean; N nodes used\n"
                 f"* Operator throughput:\n"
+                f"    * Total input num rows: N rows\n"
+                f"    * Total output num rows: N rows\n"
                 f"    * Ray Data throughput: N rows/s\n"
                 f"    * Estimated single node throughput: N rows/s\n"
                 f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE, verbose_stats_logs)}"  # noqa: E501
@@ -527,6 +637,8 @@ def test_dataset_stats_basic(
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
                 f"* Tasks per node: N min, N max, N mean; N nodes used\n"
                 f"* Operator throughput:\n"
+                f"    * Total input num rows: N rows\n"
+                f"    * Total output num rows: N rows\n"
                 f"    * Ray Data throughput: N rows/s\n"
                 f"    * Estimated single node throughput: N rows/s\n"
                 f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE, verbose_stats_logs)}"  # noqa: E501
@@ -557,6 +669,8 @@ def test_dataset_stats_basic(
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
+        f"    * Total input num rows: N rows\n"
+        f"    * Total output num rows: N rows\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
         f"{extra_metrics}\n"
@@ -570,6 +684,8 @@ def test_dataset_stats_basic(
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
+        f"    * Total input num rows: N rows\n"
+        f"    * Total output num rows: N rows\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
         f"{extra_metrics}\n"
@@ -577,6 +693,7 @@ def test_dataset_stats_basic(
         f"* Total time overall: T\n"
         f"    * Total time in Ray Data iterator initialization code: T\n"
         f"    * Total time user thread is blocked by Ray Data iter_batches: T\n"
+        f"    * Total time spent waiting for the first batch after starting iteration: T\n"
         f"    * Total execution time for user thread: T\n"
         f"* Batch iteration time breakdown (summed across prefetch threads):\n"
         f"    * In ray.get(): T min, T max, T avg, T total\n"
@@ -611,6 +728,8 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
+        f"    * Total input num rows: N rows\n"
+        f"    * Total output num rows: N rows\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
         f"\n"
@@ -618,6 +737,7 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
         f"* Total time overall: T\n"
         f"    * Total time in Ray Data iterator initialization code: T\n"
         f"    * Total time user thread is blocked by Ray Data iter_batches: T\n"
+        f"    * Total time spent waiting for the first batch after starting iteration: T\n"
         f"    * Total execution time for user thread: T\n"
         f"* Batch iteration time breakdown (summed across prefetch threads):\n"
         f"    * In ray.get(): T min, T max, T avg, T total\n"
@@ -649,6 +769,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   number=N,\n"
         "   extra_metrics={\n"
         "      average_num_outputs_per_task: N,\n"
+        "      average_num_inputs_per_task: N,\n"
+        "      num_output_blocks_per_task_s: N,\n"
+        "      average_total_task_completion_time_s: N,\n"
+        "      average_task_completion_excl_backpressure_time_s: N,\n"
         "      average_bytes_per_output: N,\n"
         "      obj_store_mem_internal_inqueue: Z,\n"
         "      obj_store_mem_internal_outqueue: Z,\n"
@@ -675,8 +799,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_outputs_of_finished_tasks: N,\n"
         "      bytes_outputs_of_finished_tasks: N,\n"
         "      rows_outputs_of_finished_tasks: N,\n"
-        "      num_external_inqueue_blocks: N,\n"
-        "      num_external_inqueue_bytes: N,\n"
+        "      num_external_inqueue_blocks: Z,\n"
+        "      num_external_inqueue_bytes: Z,\n"
+        "      num_external_outqueue_blocks: Z,\n"
+        "      num_external_outqueue_bytes: Z,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -685,8 +811,12 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
-        "      task_completion_time: N,\n"
-        "      task_completion_time_without_backpressure: N,\n"
+        f"      task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
+        f"      block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
+        "      task_completion_time_s: N,\n"
+        "      task_completion_time_excl_backpressure_s: N,\n"
+        f"      block_size_bytes: {gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')},\n"
+        f"      block_size_rows: {gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')},\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
@@ -779,6 +909,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   number=N,\n"
         "   extra_metrics={\n"
         "      average_num_outputs_per_task: N,\n"
+        "      average_num_inputs_per_task: N,\n"
+        "      num_output_blocks_per_task_s: N,\n"
+        "      average_total_task_completion_time_s: N,\n"
+        "      average_task_completion_excl_backpressure_time_s: N,\n"
         "      average_bytes_per_output: N,\n"
         "      obj_store_mem_internal_inqueue: Z,\n"
         "      obj_store_mem_internal_outqueue: Z,\n"
@@ -805,8 +939,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_outputs_of_finished_tasks: N,\n"
         "      bytes_outputs_of_finished_tasks: N,\n"
         "      rows_outputs_of_finished_tasks: N,\n"
-        "      num_external_inqueue_blocks: N,\n"
-        "      num_external_inqueue_bytes: N,\n"
+        "      num_external_inqueue_blocks: Z,\n"
+        "      num_external_inqueue_bytes: Z,\n"
+        "      num_external_outqueue_blocks: Z,\n"
+        "      num_external_outqueue_bytes: Z,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -815,8 +951,12 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
-        "      task_completion_time: N,\n"
-        "      task_completion_time_without_backpressure: N,\n"
+        f"      task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
+        f"      block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
+        "      task_completion_time_s: N,\n"
+        "      task_completion_time_excl_backpressure_s: N,\n"
+        f"      block_size_bytes: {gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')},\n"
+        f"      block_size_rows: {gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')},\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
@@ -864,6 +1004,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "         number=N,\n"
         "         extra_metrics={\n"
         "            average_num_outputs_per_task: N,\n"
+        "            average_num_inputs_per_task: N,\n"
+        "            num_output_blocks_per_task_s: N,\n"
+        "            average_total_task_completion_time_s: N,\n"
+        "            average_task_completion_excl_backpressure_time_s: N,\n"
         "            average_bytes_per_output: N,\n"
         "            obj_store_mem_internal_inqueue: Z,\n"
         "            obj_store_mem_internal_outqueue: Z,\n"
@@ -890,8 +1034,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_outputs_of_finished_tasks: N,\n"
         "            bytes_outputs_of_finished_tasks: N,\n"
         "            rows_outputs_of_finished_tasks: N,\n"
-        "            num_external_inqueue_blocks: N,\n"
-        "            num_external_inqueue_bytes: N,\n"
+        "            num_external_inqueue_blocks: Z,\n"
+        "            num_external_inqueue_bytes: Z,\n"
+        "            num_external_outqueue_blocks: Z,\n"
+        "            num_external_outqueue_bytes: Z,\n"
         "            num_tasks_submitted: N,\n"
         "            num_tasks_running: Z,\n"
         "            num_tasks_have_outputs: N,\n"
@@ -900,8 +1046,12 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            block_generation_time: N,\n"
         "            task_submission_backpressure_time: N,\n"
         "            task_output_backpressure_time: Z,\n"
-        "            task_completion_time: N,\n"
-        "            task_completion_time_without_backpressure: N,\n"
+        f"            task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
+        f"            block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
+        "            task_completion_time_s: N,\n"
+        "            task_completion_time_excl_backpressure_s: N,\n"
+        f"            block_size_bytes: {gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')},\n"
+        f"            block_size_rows: {gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')},\n"
         "            num_alive_actors: Z,\n"
         "            num_restarting_actors: Z,\n"
         "            num_pending_actors: Z,\n"
@@ -1001,6 +1151,8 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
     * Operator throughput:
+        * Total input num rows: N rows
+        * Total output num rows: N rows
         * Ray Data throughput: N rows/s
         * Estimated single node throughput: N rows/s
 
@@ -1014,6 +1166,8 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
     * Operator throughput:
+        * Total input num rows: N rows
+        * Total output num rows: N rows
         * Ray Data throughput: N rows/s
         * Estimated single node throughput: N rows/s
 
@@ -1029,6 +1183,8 @@ Operator N Repartition: executed in T
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
     * Operator throughput:
+        * Total input num rows: N rows
+        * Total output num rows: N rows
         * Ray Data throughput: N rows/s
         * Estimated single node throughput: N rows/s
 
@@ -1042,6 +1198,8 @@ Operator N Repartition: executed in T
     * Output rows per task: N min, N max, N mean, N tasks used
     * Tasks per node: N min, N max, N mean; N nodes used
     * Operator throughput:
+        * Total input num rows: N rows
+        * Total output num rows: N rows
         * Ray Data throughput: N rows/s
         * Estimated single node throughput: N rows/s
 
@@ -1101,6 +1259,8 @@ def test_dataset_stats_range(ray_start_regular_shared, tmp_path):
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
+        f"    * Total input num rows: N rows\n"
+        f"    * Total output num rows: N rows\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
         f"\n"
@@ -1110,7 +1270,10 @@ def test_dataset_stats_range(ray_start_regular_shared, tmp_path):
     )
 
 
-def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
+def test_dataset_split_stats(ray_start_regular_shared, tmp_path, restore_data_context):
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
+
     ds = ray.data.range(100, override_num_blocks=10).map(
         column_udf("id", lambda x: x + 1)
     )
@@ -1130,6 +1293,8 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Output rows per task: N min, N max, N mean, N tasks used\n"
             f"* Tasks per node: N min, N max, N mean; N nodes used\n"
             f"* Operator throughput:\n"
+            f"    * Total input num rows: N rows\n"
+            f"    * Total output num rows: N rows\n"
             f"    * Ray Data throughput: N rows/s\n"
             f"    * Estimated single node throughput: N rows/s\n"
             f"\n"
@@ -1143,6 +1308,8 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Output rows per task: N min, N max, N mean, N tasks used\n"
             f"* Tasks per node: N min, N max, N mean; N nodes used\n"
             f"* Operator throughput:\n"
+            f"    * Total input num rows: N rows\n"
+            f"    * Total output num rows: N rows\n"
             f"    * Ray Data throughput: N rows/s\n"
             f"    * Estimated single node throughput: N rows/s\n"
             f"\n"
@@ -1156,6 +1323,8 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Output rows per task: N min, N max, N mean, N tasks used\n"
             f"* Tasks per node: N min, N max, N mean; N nodes used\n"
             f"* Operator throughput:\n"
+            f"    * Total input num rows: N rows\n"
+            f"    * Total output num rows: N rows\n"
             f"    * Ray Data throughput: N rows/s\n"
             f"    * Estimated single node throughput: N rows/s\n"
             f"\n"
@@ -1356,6 +1525,8 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
 * Operator throughput:
+    * Total input num rows: N rows
+    * Total output num rows: N rows
     * Ray Data throughput: N rows/s
     * Estimated single node throughput: N rows/s
 
@@ -1363,6 +1534,7 @@ Dataset iterator time breakdown:
 * Total time overall: T
     * Total time in Ray Data iterator initialization code: T
     * Total time user thread is blocked by Ray Data iter_batches: T
+    * Total time spent waiting for the first batch after starting iteration: T
     * Total execution time for user thread: T
 * Batch iteration time breakdown (summed across prefetch threads):
     * In ray.get(): T min, T max, T avg, T total
@@ -1393,6 +1565,8 @@ def test_write_ds_stats(ray_start_regular_shared, tmp_path):
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
 * Operator throughput:
+    * Total input num rows: N rows
+    * Total output num rows: N rows
     * Ray Data throughput: N rows/s
     * Estimated single node throughput: N rows/s
 
@@ -1424,6 +1598,8 @@ Dataset throughput:
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
 * Operator throughput:
+    * Total input num rows: N rows
+    * Total output num rows: N rows
     * Ray Data throughput: N rows/s
     * Estimated single node throughput: N rows/s
 
@@ -1437,6 +1613,8 @@ Operator N Write: {EXECUTION_STRING}
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
 * Operator throughput:
+    * Total input num rows: N rows
+    * Total output num rows: N rows
     * Ray Data throughput: N rows/s
     * Estimated single node throughput: N rows/s
 
@@ -1515,7 +1693,7 @@ def test_runtime_metrics(ray_start_regular_shared):
     assert total_percent == 100
 
     for time_s, percent in metrics_dict.values():
-        assert time_s < total_time
+        assert time_s <= total_time
         # Check percentage, this is done with some expected loss of precision
         # due to rounding in the intital output.
         assert isclose(percent, time_s / total_time * 100, rel_tol=0.01)
@@ -1634,9 +1812,8 @@ def test_dataset_throughput(shutdown_only):
     f = dummy_map_batches_sleep(0.01)
     ds = ray.data.range(100).map(f).materialize().map(f).materialize()
 
-    # Pattern to match operator throughput
     operator_pattern = re.compile(
-        r"Operator (\d+).*?Ray Data throughput: (\d+\.\d+) rows/s.*?Estimated single node throughput: (\d+\.\d+) rows/s",  # noqa: E501
+        r"Operator (\d+).*?\* Operator throughput:\s*.*?\* Ray Data throughput: (\d+\.\d+) rows/s.*?\* Estimated single node throughput: (\d+\.\d+) rows/s",
         re.DOTALL,
     )
 
@@ -1653,6 +1830,73 @@ def test_dataset_throughput(shutdown_only):
 
     dataset_match = dataset_pattern.search(ds.stats())
     assert float(dataset_match[1]) >= float(dataset_match[2])
+
+
+def test_individual_operator_num_rows(shutdown_only):
+    # The input num rows of an individual operator should be the same as the output num rows of its parent operator.
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    data = [{"id": i, "value": i * 1.5, "category": i % 5} for i in range(500)]
+    ds = (
+        ray.data.from_items(data)
+        .map(lambda x: {**x, "value_squared": x["value"] ** 2})
+        .filter(lambda x: x["value_squared"] > 300)
+    )
+
+    stats_output = ds.materialize().stats()
+    re_op0_output = re.compile(r"Operator 0.*?Total output num rows: (\d+)", re.DOTALL)
+    re_op1_input = re.compile(r"Operator 1.*?Total input num rows: (\d+)", re.DOTALL)
+
+    op0_output = int(re_op0_output.search(stats_output).group(1))
+    op1_input = int(re_op1_input.search(stats_output).group(1))
+
+    assert op0_output == 500
+    assert op0_output == op1_input
+
+
+def test_sub_operator_num_rows(shutdown_only):
+    # The input num rows of sub operator:
+    # The first sub-operator: total output from all parent nodes
+    # Subsequent sub-operators: output of the previous sub-operator
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    data1 = [{"id": i, "value1": i * 1.5, "category1": i % 5} for i in range(500)]
+    ds1 = ray.data.from_items(data1)
+    data2 = [{"id": i, "value2": i * 1.5, "category2": i % 5} for i in range(300)]
+    ds2 = ray.data.from_items(data2)
+    ds = ds1.join(ds2, join_type="left_outer", num_partitions=2)
+
+    stats_output = ds.materialize().stats()
+
+    patterns = {
+        "operator0_output": re.compile(
+            r"Operator 0.*?Total output num rows: (\d+)", re.DOTALL
+        ),
+        "subop0_input": re.compile(
+            r"Suboperator 0.*?Total input num rows: (\d+)", re.DOTALL
+        ),
+        "subop0_output": re.compile(
+            r"Suboperator 0.*?Total output num rows: (\d+)", re.DOTALL
+        ),
+        "subop1_input": re.compile(
+            r"Suboperator 1.*?Total input num rows: (\d+)", re.DOTALL
+        ),
+    }
+
+    extracted_data = {}
+    for key, pattern in patterns.items():
+        match = pattern.search(stats_output)
+        if match:
+            extracted_data[key] = int(match.group(1))
+        else:
+            extracted_data[key] = None
+
+    assert extracted_data["operator0_output"] == 500
+    assert extracted_data["subop0_output"] == 800
+    assert extracted_data["operator0_output"] == extracted_data["subop0_input"]
+    assert extracted_data["subop0_output"] == extracted_data["subop1_input"]
 
 
 @pytest.mark.parametrize("verbose_stats_logs", [True, False])
@@ -1680,6 +1924,8 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
         f"* Tasks per node: N min, N max, N mean; N nodes used\n"
         f"* Operator throughput:\n"
+        f"    * Total input num rows: N rows\n"
+        f"    * Total output num rows: N rows\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
         f"{extra_metrics}\n"
@@ -1843,45 +2089,21 @@ for epoch in range({num_epochs}):
         assert f"Starting execution of Dataset {dataset_id}" in out
 
 
-def test_op_metrics_logging():
-    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
-    with patch.object(logger, "debug") as mock_logger:
-        ray.data.range(100).map_batches(lambda x: x).materialize()
-        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
-        input_str = (
-            "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
-            + gen_expected_metrics(is_map=False)
-        )  # .replace("'obj_store_mem_used': N", "'obj_store_mem_used': Z")
-        # InputDataBuffer has no inqueue, manually set to 0
-        input_str = input_str.replace(
-            "'num_external_inqueue_blocks': N", "'num_external_inqueue_blocks': Z"
-        )
-        input_str = input_str.replace(
-            "'num_external_inqueue_bytes': N", "'num_external_inqueue_bytes': Z"
-        )
-        map_str = (
-            "Operator TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
-            "Operator Metrics:\n"
-        ) + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
+def test_executor_logs_metrics_on_operator_completion(caplog, propagate_logs):
+    """Test that operator completion metrics are logged exactly once per operator."""
+    EXPECTED_COMPLETION_MESSAGE = (
+        "Operator TaskPoolMapOperator[ReadRange] completed. Operator Metrics:"
+    )
 
-        # Check that these strings are logged exactly once.
-        assert sum([log == input_str for log in logs]) == 1, (logs, input_str)
-        assert sum([log == map_str for log in logs]) == 1, (logs, map_str)
+    with caplog.at_level(logging.DEBUG):
+        ray.data.range(1).take_all()
 
-
-def test_op_state_logging():
-    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
-    with patch.object(logger, "debug") as mock_logger:
-        ray.data.range(100).map_batches(lambda x: x).materialize()
-        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
-
-        times_asserted = 0
-        for i, log in enumerate(logs):
-            if log == "Execution Progress:":
-                times_asserted += 1
-                assert "Input" in logs[i + 1]
-                assert "ReadRange->MapBatches(<lambda>)" in logs[i + 2]
-        assert times_asserted > 0
+    log_messages = [record.message for record in caplog.records]
+    actual_count = sum(EXPECTED_COMPLETION_MESSAGE in msg for msg in log_messages)
+    assert actual_count == 1, (
+        f"Expected operator completion message to appear exactly once, "
+        f"but found {actual_count} occurrences"
+    )
 
 
 def test_stats_actor_datasets(ray_start_cluster):
@@ -1909,6 +2131,79 @@ def test_stats_actor_datasets(ray_start_cluster):
         assert value["progress"] == 20
         assert value["total"] == 20
         assert value["state"] == "FINISHED"
+
+
+def test_stats_actor_datasets_eviction(ray_start_cluster):
+    """
+    Tests that finished datasets are evicted from the _StatsActor when
+    the number of datasets exceeds the configured `max_stats` limit.
+    """
+    # Set a low max_stats limit to easily trigger eviction.
+    max_stats = 2
+    # Create a dedicated _StatsActor for this test to avoid interfering
+    # with the global actor.
+    stats_actor = _StatsActor.remote(max_stats=max_stats)
+
+    # Patch the function that retrieves the stats actor to return our
+    # test-specific actor instance.
+    with patch(
+        "ray.data._internal.stats._get_or_create_stats_actor",
+        return_value=stats_actor,
+    ):
+
+        def check_ds_finished(ds_name):
+            """Helper to check if a dataset is marked as FINISHED in the actor."""
+            datasets = ray.get(stats_actor.get_datasets.remote())
+            ds_tag = next((tag for tag in datasets if tag.startswith(ds_name)), None)
+            if not ds_tag:
+                return False
+            return datasets[ds_tag]["state"] == DatasetState.FINISHED.name
+
+        # --- DS1 ---
+        # Create and materialize the first dataset.
+        ds1 = ray.data.range(1, override_num_blocks=1)
+        ds1.set_name("ds1")
+        ds1.materialize()
+        # Wait until the actor has been updated with the FINISHED state.
+        wait_for_condition(lambda: check_ds_finished("ds1"))
+
+        # --- DS2 ---
+        # Create and materialize the second dataset.
+        # This brings the total number of datasets to the `max_stats` limit.
+        ds2 = ray.data.range(1, override_num_blocks=1)
+        ds2.set_name("ds2")
+        ds2.materialize()
+        wait_for_condition(lambda: check_ds_finished("ds2"))
+
+        # --- Verify state before eviction ---
+        # At this point, both ds1 and ds2 should be in the actor.
+        datasets = ray.get(stats_actor.get_datasets.remote())
+        names_in_actor = {k.split("_")[0] for k in datasets.keys()}
+        assert names_in_actor == {"ds1", "ds2"}
+
+        # --- DS3 ---
+        # Create and materialize the third dataset. This should trigger the
+        # eviction of the oldest finished dataset (ds1).
+        ds3 = ray.data.range(1, override_num_blocks=1)
+        ds3.set_name("ds3")
+        ds3.materialize()
+
+        def check_eviction():
+            """
+            Helper to check that the actor state reflects the eviction.
+            The actor should now contain ds2 and ds3, but not ds1.
+            """
+            datasets = ray.get(stats_actor.get_datasets.remote())
+            # The eviction happens asynchronously, so we might briefly see 3 datasets.
+            # We wait until the count is back to 2.
+            if len(datasets) == max_stats + 1:
+                return False
+            names = {k.split("_")[0] for k in datasets.keys()}
+            assert names == {"ds2", "ds3"}
+            return True
+
+        # Wait until the eviction has occurred and the actor state is correct.
+        wait_for_condition(check_eviction)
 
 
 @patch.object(StatsManager, "STATS_ACTOR_UPDATE_INTERVAL_SECONDS", new=0.5)

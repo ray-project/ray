@@ -24,7 +24,7 @@ from ray import serve
 class ClassPredictor:
     def __init__(self, model_id, artifacts_dir, device="cuda"):
         """Initialize the model."""
-        # Embdding model
+        # Embedding model
         self.processor = CLIPProcessor.from_pretrained(model_id)
         self.model = CLIPModel.from_pretrained(model_id)
         self.model.to(device=device)
@@ -42,7 +42,7 @@ class ClassPredictor:
         with torch.inference_mode():
             embedding = self.model.get_image_features(**inputs).cpu().numpy()
         outputs = self.predictor.predict_probabilities(
-            collate_fn({"embedding": embedding})
+            collate_fn({"embedding": embedding}, device=self.device)
         )
         return {"probabilities": outputs["probabilities"][0]}
 

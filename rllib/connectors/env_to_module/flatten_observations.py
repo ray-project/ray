@@ -1,9 +1,9 @@
 from typing import Any, Collection, Dict, List, Optional
 
 import gymnasium as gym
-from gymnasium.spaces import Box
 import numpy as np
 import tree  # pip install dm_tree
+from gymnasium.spaces import Box
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule

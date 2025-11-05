@@ -38,9 +38,7 @@ def _plan_hash_shuffle_repartition(
         key_columns=tuple(normalized_key_columns),  # noqa: type
         # NOTE: In case number of partitions is not specified, we fall back to
         #       default min parallelism configured
-        num_partitions=(
-            logical_op._num_outputs or data_context.default_hash_shuffle_parallelism
-        ),
+        num_partitions=logical_op._num_outputs,
         should_sort=logical_op._sort,
         # TODO wire in aggregator args overrides
     )
@@ -65,9 +63,7 @@ def _plan_hash_shuffle_aggregate(
         aggregation_fns=tuple(logical_op._aggs),  # noqa: type
         # NOTE: In case number of partitions is not specified, we fall back to
         #       default min parallelism configured
-        num_partitions=(
-            logical_op._num_partitions or data_context.default_hash_shuffle_parallelism
-        ),
+        num_partitions=logical_op._num_partitions,
         # TODO wire in aggregator args overrides
     )
 
@@ -161,7 +157,6 @@ def plan_all_to_all_op(
         fn,
         input_physical_dag,
         data_context,
-        target_max_block_size=None,
         num_outputs=op._num_outputs,
         sub_progress_bar_names=op._sub_progress_bar_names,
         name=op.name,

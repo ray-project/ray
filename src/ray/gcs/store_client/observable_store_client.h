@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "ray/gcs/store_client/store_client.h"
+#include "ray/observability/metric_interface.h"
 
 namespace ray {
 
@@ -28,48 +29,56 @@ namespace gcs {
 /// Wraps around a StoreClient instance and observe the metrics.
 class ObservableStoreClient : public StoreClient {
  public:
-  explicit ObservableStoreClient(std::unique_ptr<StoreClient> delegate)
-      : delegate_(std::move(delegate)) {}
+  explicit ObservableStoreClient(
+      std::unique_ptr<StoreClient> delegate,
+      ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram,
+      ray::observability::MetricInterface &storage_operation_count_counter)
+      : delegate_(std::move(delegate)),
+        storage_operation_latency_in_ms_histogram_(
+            storage_operation_latency_in_ms_histogram),
+        storage_operation_count_counter_(storage_operation_count_counter) {}
 
-  Status AsyncPut(const std::string &table_name,
-                  const std::string &key,
-                  std::string data,
-                  bool overwrite,
-                  Postable<void(bool)> callback) override;
+  void AsyncPut(const std::string &table_name,
+                const std::string &key,
+                std::string data,
+                bool overwrite,
+                Postable<void(bool)> callback) override;
 
-  Status AsyncGet(const std::string &table_name,
-                  const std::string &key,
-                  ToPostable<OptionalItemCallback<std::string>> callback) override;
+  void AsyncGet(const std::string &table_name,
+                const std::string &key,
+                ToPostable<OptionalItemCallback<std::string>> callback) override;
 
-  Status AsyncGetAll(
+  void AsyncGetAll(
       const std::string &table_name,
       Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) override;
 
-  Status AsyncMultiGet(
+  void AsyncMultiGet(
       const std::string &table_name,
       const std::vector<std::string> &keys,
       Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) override;
 
-  Status AsyncDelete(const std::string &table_name,
-                     const std::string &key,
-                     Postable<void(bool)> callback) override;
+  void AsyncDelete(const std::string &table_name,
+                   const std::string &key,
+                   Postable<void(bool)> callback) override;
 
-  Status AsyncBatchDelete(const std::string &table_name,
-                          const std::vector<std::string> &keys,
-                          Postable<void(int64_t)> callback) override;
+  void AsyncBatchDelete(const std::string &table_name,
+                        const std::vector<std::string> &keys,
+                        Postable<void(int64_t)> callback) override;
 
-  Status AsyncGetNextJobID(Postable<void(int)> callback) override;
+  void AsyncGetNextJobID(Postable<void(int)> callback) override;
 
-  Status AsyncGetKeys(const std::string &table_name,
-                      const std::string &prefix,
-                      Postable<void(std::vector<std::string>)> callback) override;
+  void AsyncGetKeys(const std::string &table_name,
+                    const std::string &prefix,
+                    Postable<void(std::vector<std::string>)> callback) override;
 
-  Status AsyncExists(const std::string &table_name,
-                     const std::string &key,
-                     Postable<void(bool)> callback) override;
+  void AsyncExists(const std::string &table_name,
+                   const std::string &key,
+                   Postable<void(bool)> callback) override;
 
  private:
   std::unique_ptr<StoreClient> delegate_;
+  ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram_;
+  ray::observability::MetricInterface &storage_operation_count_counter_;
 };
 
 }  // namespace gcs

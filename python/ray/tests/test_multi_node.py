@@ -2,7 +2,6 @@ import os
 import sys
 import time
 
-import psutil
 import pytest
 
 import ray
@@ -16,12 +15,14 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
 )
 
+import psutil
+
 
 @pytest.mark.parametrize(
     "call_ray_start",
     [
         "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0",
+        "--max-worker-port=0 --port 0"
     ],
     indirect=True,
 )

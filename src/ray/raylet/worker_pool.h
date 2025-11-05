@@ -34,13 +34,12 @@
 #include "absl/time/time.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
+#include "ray/common/lease/lease.h"
 #include "ray/common/runtime_env_manager.h"
-#include "ray/common/task/task.h"
-#include "ray/common/task/task_common.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/ipc/client_connection.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/raylet/runtime_env_agent_client.h"
-#include "ray/raylet/worker.h"
+#include "ray/raylet/worker_interface.h"
+#include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/stats/metric.h"
 
 namespace ray {
@@ -49,6 +48,9 @@ namespace raylet {
 
 using WorkerCommandMap =
     absl::flat_hash_map<Language, std::vector<std::string>, std::hash<int>>;
+
+// TODO(#54703): Put this type in a separate target.
+using AddProcessToCgroupHook = std::function<void(const std::string &)>;
 
 enum PopWorkerStatus {
   // OK.
@@ -67,7 +69,7 @@ enum PopWorkerStatus {
   // Any fails of runtime env creation.
   // A nullptr worker will be returned with callback.
   RuntimeEnvCreationFailed = 4,
-  // The task's job has finished.
+  // The lease's job has finished.
   // A nullptr worker will be returned with callback.
   JobFinished = 5,
 };
@@ -154,7 +156,7 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
   /// Pop an idle worker from the pool. The caller is responsible for pushing
   /// the worker back onto the pool once the worker has completed its work.
   ///
-  /// \param task_spec The returned worker must be able to execute this task.
+  /// \param lease_spec The returned worker must be able to execute this lease.
   /// \param callback The callback function that executed when gets the result of
   /// worker popping.
   /// The callback will be executed with an empty worker in following cases:
@@ -168,7 +170,7 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
   /// Case 1: An suitable worker was found in idle worker pool.
   /// Case 2: An suitable worker registered to raylet.
   /// The corresponding PopWorkerStatus will be passed to the callback.
-  virtual void PopWorker(const TaskSpecification &task_spec,
+  virtual void PopWorker(const LeaseSpecification &lease_spec,
                          const PopWorkerCallback &callback) = 0;
   /// Add an idle worker to the pool.
   ///
@@ -217,7 +219,7 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
       std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client) = 0;
 
   virtual std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
-      bool filter_dead_drivers = false) const = 0;
+      bool filter_dead_drivers = false, bool filter_system_drivers = false) const = 0;
 
   virtual Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
                                 const rpc::JobConfig &job_config,
@@ -238,7 +240,7 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
 
   virtual void DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) = 0;
 
-  virtual void PrestartWorkers(const TaskSpecification &task_spec,
+  virtual void PrestartWorkers(const LeaseSpecification &lease_spec,
                                int64_t backlog_size) = 0;
 
   virtual void StartNewWorker(
@@ -250,14 +252,14 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
 class WorkerInterface;
 class Worker;
 
-enum class WorkerUnfitForTaskReason {
+enum class WorkerUnfitForLeaseReason {
   NONE = 0,                      // OK
   ROOT_MISMATCH = 1,             // job ID or root detached actor ID mismatch
   RUNTIME_ENV_MISMATCH = 2,      // runtime env hash mismatch
   DYNAMIC_OPTIONS_MISMATCH = 3,  // dynamic options mismatch
   OTHERS = 4,                    // reasons we don't do stats for (e.g. language)
 };
-static constexpr std::string_view kWorkerUnfitForTaskReasonDebugName[] = {
+static constexpr std::string_view kWorkerUnfitForLeaseReasonDebugName[] = {
     "NONE",
     "ROOT_MISMATCH",
     "RUNTIME_ENV_MISMATCH",
@@ -266,8 +268,8 @@ static constexpr std::string_view kWorkerUnfitForTaskReasonDebugName[] = {
 };
 
 inline std::ostream &operator<<(std::ostream &os,
-                                const WorkerUnfitForTaskReason &reason) {
-  os << kWorkerUnfitForTaskReasonDebugName[static_cast<int>(reason)];
+                                const WorkerUnfitForLeaseReason &reason) {
+  os << kWorkerUnfitForLeaseReasonDebugName[static_cast<int>(reason)];
   return os;
 }
 
@@ -305,24 +307,26 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
   /// \param get_time A callback to get the current time in milliseconds.
-  /// \param enable_resource_isolation If true, core worker enables resource isolation by
-  /// adding itself into appropriate cgroup.
-  WorkerPool(instrumented_io_context &io_service,
-             const NodeID &node_id,
-             std::string node_address,
-             std::function<int64_t()> get_num_cpus_available,
-             int num_prestarted_python_workers,
-             int maximum_startup_concurrency,
-             int min_worker_port,
-             int max_worker_port,
-             const std::vector<int> &worker_ports,
-             gcs::GcsClient &gcs_client,
-             const WorkerCommandMap &worker_commands,
-             std::string native_library_path,
-             std::function<void()> starting_worker_timeout_callback,
-             int ray_debugger_external,
-             std::function<absl::Time()> get_time,
-             bool enable_resource_isolation);
+  /// \param add_to_cgroup_hook A lifecycle hook that the forked worker process will
+  /// execute becoming a worker process. The hook adds a newly forked process into
+  /// the appropriate cgroup.
+  WorkerPool(
+      instrumented_io_context &io_service,
+      const NodeID &node_id,
+      std::string node_address,
+      std::function<int64_t()> get_num_cpus_available,
+      int num_prestarted_python_workers,
+      int maximum_startup_concurrency,
+      int min_worker_port,
+      int max_worker_port,
+      const std::vector<int> &worker_ports,
+      gcs::GcsClient &gcs_client,
+      const WorkerCommandMap &worker_commands,
+      std::string native_library_path,
+      std::function<void()> starting_worker_timeout_callback,
+      int ray_debugger_external,
+      std::function<absl::Time()> get_time,
+      AddProcessToCgroupHook add_to_cgroup_hook = [](const std::string &) {});
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   ~WorkerPool() override;
@@ -477,19 +481,20 @@ class WorkerPool : public WorkerPoolInterface {
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// See interface.
-  void PopWorker(const TaskSpecification &task_spec,
+  void PopWorker(const LeaseSpecification &lease_spec,
                  const PopWorkerCallback &callback) override;
 
-  /// Try to prestart a number of workers suitable the given task spec. Prestarting
+  /// Try to prestart a number of workers suitable the given lease spec. Prestarting
   /// is needed since core workers request one lease at a time, if starting is slow,
   /// then it means it takes a long time to scale up.
   ///
-  /// \param task_spec The returned worker must be able to execute this task.
-  /// \param backlog_size The number of tasks in the client backlog of this shape.
+  /// \param lease_spec The returned worker must be able to execute this lease.
+  /// \param backlog_size The number of leases in the client backlog of this shape.
   /// We aim to prestart 1 worker per CPU, up to the backlog size.
-  void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size) override;
+  void PrestartWorkers(const LeaseSpecification &lease_spec,
+                       int64_t backlog_size) override;
 
-  void PrestartWorkersInternal(const TaskSpecification &task_spec, int64_t num_needed);
+  void PrestartWorkersInternal(const LeaseSpecification &lease_spec, int64_t num_needed);
 
   /// Return the current size of the worker pool for the requested language. Counts only
   /// idle workers.
@@ -514,10 +519,14 @@ class WorkerPool : public WorkerPoolInterface {
   ///
   /// \param filter_dead_drivers whether or not if this method will filter dead drivers
   /// that are still registered.
+  /// \param filter_system_drivers whether or not if this method will filter system
+  /// drivers. A system driver is a driver with job config namespace starting with
+  /// "__ray_internal__".
   ///
   /// \return A list containing all the drivers.
   std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
-      bool filter_dead_drivers = false) const override;
+      bool filter_dead_drivers = false,
+      bool filter_system_drivers = false) const override;
 
   /// Returns debug string for class.
   ///
@@ -534,7 +543,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// Internal implementation of PopWorker.
   void PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request);
 
-  // Find an idle worker that can serve the task. If found, pop it out and return it.
+  // Find an idle worker that can serve the lease. If found, pop it out and return it.
   // Otherwise, return nullptr.
   std::shared_ptr<WorkerInterface> FindAndPopIdleWorker(
       const PopWorkerRequest &pop_worker_request);
@@ -570,8 +579,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param serialized_runtime_env_context The context of runtime env.
   /// \param runtime_env_info The raw runtime env info.
   /// \param worker_startup_keep_alive_duration If set, the worker will be kept alive for
-  ///   this duration even if it's idle. This is only applicable before a task is assigned
-  ///   to the worker.
+  ///   this duration even if it's idle. This is only applicable before a lease is
+  ///   assigned to the worker.
   /// \return The process that we started and a token. If the token is less than 0,
   /// we didn't start a process.
   std::tuple<Process, StartupToken> StartWorkerProcess(
@@ -639,7 +648,7 @@ class WorkerPool : public WorkerPoolInterface {
     rpc::RuntimeEnvInfo runtime_env_info;
     /// The dynamic_options.
     std::vector<std::string> dynamic_options;
-    /// The duration to keep the newly created worker alive before it's assigned a task.
+    /// The duration to keep the newly created worker alive before it's assigned a lease.
     std::optional<absl::Duration> worker_startup_keep_alive_duration;
   };
 
@@ -843,9 +852,9 @@ class WorkerPool : public WorkerPoolInterface {
   ///
   /// \param[in] worker The worker.
   /// \param[in] pop_worker_request The pop worker request.
-  /// \return WorkerUnfitForTaskReason::NONE if the worker can be used, else a
+  /// \return WorkerUnfitForLeaseReason::NONE if the worker can be used, else a
   ///         status indicating why it cannot.
-  WorkerUnfitForTaskReason WorkerFitsForTask(
+  WorkerUnfitForLeaseReason WorkerFitForLease(
       const WorkerInterface &worker, const PopWorkerRequest &pop_worker_request) const;
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
@@ -854,6 +863,8 @@ class WorkerPool : public WorkerPoolInterface {
   const NodeID node_id_;
   /// Address of the current node.
   const std::string node_address_;
+  /// Address family for the node IP address (AF_INET or AF_INET6).
+  const int node_address_family_;
   /// A callback to get the number of CPUs available. We use this to determine
   /// how many idle workers to keep around.
   std::function<int64_t()> get_num_cpus_available_;
@@ -912,9 +923,7 @@ class WorkerPool : public WorkerPoolInterface {
   int64_t process_failed_pending_registration_ = 0;
   int64_t process_failed_runtime_env_setup_failed_ = 0;
 
-  // If true, core worker enables resource isolation by adding itself into appropriate
-  // cgroup after it is created.
-  bool enable_resource_isolation_ = false;
+  AddProcessToCgroupHook add_to_cgroup_hook_;
 
   /// Ray metrics
   ray::stats::Sum ray_metric_num_workers_started_{

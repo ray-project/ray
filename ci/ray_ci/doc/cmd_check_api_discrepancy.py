@@ -62,7 +62,9 @@ TEAM_API_CONFIGS = {
             # These are deprecated APIs, so just white-listing them here for CI.
             "ray.train.error.SessionMisuseError",
             "ray.train.base_trainer.TrainingFailedError",
+            "ray.train.TrainingFailedError",
             "ray.train.context.TrainContext",
+            "ray.train.context.get_context",
         },
     },
     "tune": {

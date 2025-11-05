@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import (
     Any,
@@ -37,7 +38,12 @@ def is_remote_path(path: str) -> bool:
     Returns:
         True if the path is a remote path, False otherwise.
     """
-    return path.startswith("s3://") or path.startswith("gs://")
+    return (
+        path.startswith("s3://")
+        or path.startswith("gs://")
+        or path.startswith("abfss://")
+        or path.startswith("azure://")
+    )
 
 
 class ExtraFiles(BaseModelExtended):
@@ -46,10 +52,10 @@ class ExtraFiles(BaseModelExtended):
 
 
 class CloudMirrorConfig(BaseModelExtended):
-    """Unified mirror config for cloud storage (S3 or GCS).
+    """Unified mirror config for cloud storage (S3, GCS, or Azure).
 
     Args:
-        bucket_uri: URI of the bucket (s3:// or gs://)
+        bucket_uri: URI of the bucket (s3://, gs://, abfss://, or azure://)
         extra_files: Additional files to download
     """
 
@@ -65,19 +71,23 @@ class CloudMirrorConfig(BaseModelExtended):
         if not is_remote_path(value):
             raise ValueError(
                 f'Got invalid value "{value}" for bucket_uri. '
-                'Expected a URI that starts with "s3://" or "gs://".'
+                'Expected a URI that starts with "s3://", "gs://", "abfss://", or "azure://".'
             )
         return value
 
     @property
     def storage_type(self) -> str:
-        """Returns the storage type ('s3' or 'gcs') based on the URI prefix."""
+        """Returns the storage type ('s3', 'gcs', 'abfss', or 'azure') based on the URI prefix."""
         if self.bucket_uri is None:
             return None
         elif self.bucket_uri.startswith("s3://"):
             return "s3"
         elif self.bucket_uri.startswith("gs://"):
             return "gcs"
+        elif self.bucket_uri.startswith("abfss://"):
+            return "abfss"
+        elif self.bucket_uri.startswith("azure://"):
+            return "azure"
         return None
 
 
@@ -96,20 +106,26 @@ class LoraMirrorConfig(BaseModelExtended):
         if not is_remote_path(value):
             raise ValueError(
                 f'Got invalid value "{value}" for bucket_uri. '
-                'Expected a URI that starts with "s3://" or "gs://".'
+                'Expected a URI that starts with "s3://", "gs://", "abfss://", or "azure://".'
             )
         return value
 
     @property
     def _bucket_name_and_path(self) -> str:
-        for prefix in ["s3://", "gs://"]:
+        for prefix in ["s3://", "gs://", "abfss://", "azure://"]:
             if self.bucket_uri.startswith(prefix):
                 return self.bucket_uri[len(prefix) :]
         return self.bucket_uri
 
     @property
     def bucket_name(self) -> str:
-        return self._bucket_name_and_path.split("/")[0]
+        bucket_part = self._bucket_name_and_path.split("/")[0]
+
+        # For ABFSS and Azure URIs, extract container name from container@account format
+        if self.bucket_uri.startswith(("abfss://", "azure://")) and "@" in bucket_part:
+            return bucket_part.split("@")[0]
+
+        return bucket_part
 
     @property
     def bucket_path(self) -> str:
@@ -120,7 +136,7 @@ class CloudFileSystem:
     """A unified interface for cloud file system operations using PyArrow.
 
     This class provides a simple interface for common operations on cloud storage
-    systems (S3, GCS) using PyArrow's filesystem interface.
+    systems (S3, GCS, Azure) using PyArrow's filesystem interface.
     """
 
     @staticmethod
@@ -128,7 +144,7 @@ class CloudFileSystem:
         """Get the appropriate filesystem and path from a URI.
 
         Args:
-            object_uri: URI of the file (s3:// or gs://)
+            object_uri: URI of the file (s3://, gs://, abfss://, or azure://)
                 If URI contains 'anonymous@', anonymous access is used.
                 Example: s3://anonymous@bucket/path
 
@@ -136,9 +152,11 @@ class CloudFileSystem:
             Tuple of (filesystem, path)
         """
         anonymous = False
-        # Check for anonymous access pattern
+        # Check for anonymous access pattern (only for S3/GCS)
         # e.g. s3://anonymous@bucket/path
-        if "@" in object_uri:
+        if "@" in object_uri and not (
+            object_uri.startswith("abfss://") or object_uri.startswith("azure://")
+        ):
             parts = object_uri.split("@", 1)
             # Check if the first part ends with "anonymous"
             if parts[0].endswith("anonymous"):
@@ -159,10 +177,110 @@ class CloudFileSystem:
         elif object_uri.startswith("gs://"):
             fs = pa_fs.GcsFileSystem(anonymous=anonymous)
             path = object_uri[5:]  # Remove "gs://"
+        elif object_uri.startswith("abfss://"):
+            fs, path = CloudFileSystem._create_abfss_filesystem(object_uri)
+        elif object_uri.startswith("azure://"):
+            fs, path = CloudFileSystem._create_azure_filesystem(object_uri)
         else:
             raise ValueError(f"Unsupported URI scheme: {object_uri}")
 
         return fs, path
+
+    @staticmethod
+    def _create_azure_filesystem(object_uri: str) -> Tuple[pa_fs.FileSystem, str]:
+        """Create an Azure filesystem for Azure Blob Storage or ABFSS.
+
+        Args:
+            object_uri: Azure URI (azure://container@account.blob.core.windows.net/path or
+                       abfss://container@account.dfs.core.windows.net/path)
+
+        Returns:
+            Tuple of (PyArrow FileSystem, path without scheme prefix)
+
+        Raises:
+            ImportError: If required dependencies are not installed.
+            ValueError: If the Azure URI format is invalid.
+        """
+        try:
+            import adlfs
+            from azure.identity import DefaultAzureCredential
+        except ImportError:
+            raise ImportError(
+                "You must `pip install adlfs azure-identity` "
+                "to use Azure/ABFSS URIs. "
+                "Note that these must be preinstalled on all nodes in the Ray cluster."
+            )
+
+        from urllib.parse import urlparse
+
+        # Parse and validate the Azure URI
+        parsed = urlparse(object_uri)
+        scheme = parsed.scheme.lower()
+
+        # Validate URI format: scheme://container@account.domain/path
+        if not parsed.netloc or "@" not in parsed.netloc:
+            raise ValueError(
+                f"Invalid {scheme.upper()} URI format - missing container@account: {object_uri}"
+            )
+
+        container_part, hostname_part = parsed.netloc.split("@", 1)
+
+        # Validate container name (must be non-empty)
+        if not container_part:
+            raise ValueError(
+                f"Invalid {scheme.upper()} URI format - empty container name: {object_uri}"
+            )
+
+        # Validate hostname format based on scheme
+        valid_hostname = False
+        if scheme == "abfss":
+            valid_hostname = hostname_part.endswith(".dfs.core.windows.net")
+            expected_domains = ".dfs.core.windows.net"
+        elif scheme == "azure":
+            valid_hostname = hostname_part.endswith(
+                ".blob.core.windows.net"
+            ) or hostname_part.endswith(".dfs.core.windows.net")
+            expected_domains = ".blob.core.windows.net or .dfs.core.windows.net"
+
+        if not hostname_part or not valid_hostname:
+            raise ValueError(
+                f"Invalid {scheme.upper()} URI format - invalid hostname (must end with {expected_domains}): {object_uri}"
+            )
+
+        # Extract and validate account name
+        azure_storage_account_name = hostname_part.split(".")[0]
+        if not azure_storage_account_name:
+            raise ValueError(
+                f"Invalid {scheme.upper()} URI format - empty account name: {object_uri}"
+            )
+
+        # Create the adlfs filesystem
+        adlfs_fs = adlfs.AzureBlobFileSystem(
+            account_name=azure_storage_account_name,
+            credential=DefaultAzureCredential(),
+        )
+
+        # Wrap with PyArrow's PyFileSystem for compatibility
+        fs = pa_fs.PyFileSystem(pa_fs.FSSpecHandler(adlfs_fs))
+
+        # Return the path without the scheme prefix
+        path = f"{container_part}{parsed.path}"
+
+        return fs, path
+
+    @staticmethod
+    def _create_abfss_filesystem(object_uri: str) -> Tuple[pa_fs.FileSystem, str]:
+        """Create an ABFSS filesystem for Azure Data Lake Storage Gen2.
+
+        This is a wrapper around _create_azure_filesystem for backward compatibility.
+
+        Args:
+            object_uri: ABFSS URI (abfss://container@account.dfs.core.windows.net/path)
+
+        Returns:
+            Tuple of (PyArrow FileSystem, path without abfss:// prefix)
+        """
+        return CloudFileSystem._create_azure_filesystem(object_uri)
 
     @staticmethod
     def get_file(
@@ -229,6 +347,53 @@ class CloudFileSystem:
             return []
 
     @staticmethod
+    def _filter_files(
+        fs: pa_fs.FileSystem,
+        source_path: str,
+        destination_path: str,
+        substrings_to_include: Optional[List[str]] = None,
+        suffixes_to_exclude: Optional[List[str]] = None,
+    ) -> List[Tuple[str, str]]:
+        """Filter files from cloud storage based on inclusion and exclusion criteria.
+
+        Args:
+            fs: PyArrow filesystem instance
+            source_path: Source path in cloud storage
+            destination_path: Local destination path
+            substrings_to_include: Only include files containing these substrings
+            suffixes_to_exclude: Exclude files ending with these suffixes
+
+        Returns:
+            List of tuples containing (source_file_path, destination_file_path)
+        """
+        file_selector = pa_fs.FileSelector(source_path, recursive=True)
+        file_infos = fs.get_file_info(file_selector)
+
+        path_pairs = []
+        for file_info in file_infos:
+            if file_info.type != pa_fs.FileType.File:
+                continue
+
+            rel_path = file_info.path[len(source_path) :].lstrip("/")
+
+            # Apply filters
+            if substrings_to_include:
+                if not any(
+                    substring in rel_path for substring in substrings_to_include
+                ):
+                    continue
+
+            if suffixes_to_exclude:
+                if any(rel_path.endswith(suffix) for suffix in suffixes_to_exclude):
+                    continue
+
+            path_pairs.append(
+                (file_info.path, os.path.join(destination_path, rel_path))
+            )
+
+        return path_pairs
+
+    @staticmethod
     def download_files(
         path: str,
         bucket_uri: str,
@@ -249,40 +414,104 @@ class CloudFileSystem:
             # Ensure the destination directory exists
             os.makedirs(path, exist_ok=True)
 
-            # List all files in the bucket
-            file_selector = pa_fs.FileSelector(source_path, recursive=True)
-            file_infos = fs.get_file_info(file_selector)
+            # Get filtered files to download
+            files_to_download = CloudFileSystem._filter_files(
+                fs, source_path, path, substrings_to_include, suffixes_to_exclude
+            )
 
             # Download each file
-            for file_info in file_infos:
-                if file_info.type != pa_fs.FileType.File:
-                    continue
-
-                # Get relative path from source prefix
-                rel_path = file_info.path[len(source_path) :].lstrip("/")
-
-                # Check if file matches substring filters
-                if substrings_to_include:
-                    if not any(
-                        substring in rel_path for substring in substrings_to_include
-                    ):
-                        continue
-
-                # Check if file matches suffixes to exclude filter
-                if suffixes_to_exclude:
-                    if any(rel_path.endswith(suffix) for suffix in suffixes_to_exclude):
-                        continue
-
+            for source_file_path, dest_file_path in files_to_download:
                 # Create destination directory if needed
-                if "/" in rel_path:
-                    dest_dir = os.path.join(path, os.path.dirname(rel_path))
+                dest_dir = os.path.dirname(dest_file_path)
+                if dest_dir:
                     os.makedirs(dest_dir, exist_ok=True)
 
                 # Download the file
-                dest_path = os.path.join(path, rel_path)
-                with fs.open_input_file(file_info.path) as source_file:
-                    with open(dest_path, "wb") as dest_file:
+                with fs.open_input_file(source_file_path) as source_file:
+                    with open(dest_file_path, "wb") as dest_file:
                         dest_file.write(source_file.read())
+
+        except Exception as e:
+            logger.exception(f"Error downloading files from {bucket_uri}: {e}")
+            raise
+
+    @staticmethod
+    def download_files_parallel(
+        path: str,
+        bucket_uri: str,
+        substrings_to_include: Optional[List[str]] = None,
+        suffixes_to_exclude: Optional[List[str]] = None,
+        max_concurrency: int = 10,
+        chunk_size: int = 64 * 1024 * 1024,
+    ) -> None:
+        """Multi-threaded download of files from cloud storage.
+
+        Args:
+            path: Local directory where files will be downloaded
+            bucket_uri: URI of cloud directory
+            substrings_to_include: Only include files containing these substrings
+            suffixes_to_exclude: Exclude certain files from download
+            max_concurrency: Maximum number of concurrent files to download (default: 10)
+            chunk_size: Size of transfer chunks (default: 64MB)
+        """
+        try:
+            fs, source_path = CloudFileSystem.get_fs_and_path(bucket_uri)
+
+            # Ensure destination exists
+            os.makedirs(path, exist_ok=True)
+
+            # If no filters, use direct copy_files
+            if not substrings_to_include and not suffixes_to_exclude:
+                pa_fs.copy_files(
+                    source=source_path,
+                    destination=path,
+                    source_filesystem=fs,
+                    destination_filesystem=pa_fs.LocalFileSystem(),
+                    use_threads=True,
+                    chunk_size=chunk_size,
+                )
+                return
+
+            # List and filter files
+            files_to_download = CloudFileSystem._filter_files(
+                fs, source_path, path, substrings_to_include, suffixes_to_exclude
+            )
+
+            if not files_to_download:
+                logger.info("Filters do not match any of the files, skipping download")
+                return
+
+            def download_single_file(file_paths):
+                source_file_path, dest_file_path = file_paths
+                # Create destination directory if needed
+                dest_dir = os.path.dirname(dest_file_path)
+                if dest_dir:
+                    os.makedirs(dest_dir, exist_ok=True)
+
+                # Use PyArrow's copy_files for individual files,
+                pa_fs.copy_files(
+                    source=source_file_path,
+                    destination=dest_file_path,
+                    source_filesystem=fs,
+                    destination_filesystem=pa_fs.LocalFileSystem(),
+                    use_threads=True,
+                    chunk_size=chunk_size,
+                )
+                return dest_file_path
+
+            max_workers = min(max_concurrency, len(files_to_download))
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(download_single_file, file_paths)
+                    for file_paths in files_to_download
+                ]
+
+                for future in futures:
+                    try:
+                        future.result()
+                    except Exception as e:
+                        logger.error(f"Failed to download file: {e}")
+                        raise
 
         except Exception as e:
             logger.exception(f"Error downloading files from {bucket_uri}: {e}")
@@ -347,11 +576,12 @@ class CloudFileSystem:
 
             safetensors_to_exclude = [".safetensors"] if exclude_safetensors else None
 
-            CloudFileSystem.download_files(
+            CloudFileSystem.download_files_parallel(
                 path=destination_dir,
                 bucket_uri=bucket_uri,
                 substrings_to_include=tokenizer_file_substrings,
                 suffixes_to_exclude=safetensors_to_exclude,
+                chunk_size=64 * 1024 * 1024,  # 64MB chunks for large model files
             )
 
         except Exception as e:

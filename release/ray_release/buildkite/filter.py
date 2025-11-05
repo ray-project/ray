@@ -22,28 +22,47 @@ def _unflattened_lookup(lookup: Dict, flat_key: str, delimiter: str = "/") -> An
 def filter_tests(
     test_collection: List[Test],
     frequency: Frequency,
-    test_attr_regex_filters: Optional[Dict[str, str]] = None,
+    test_filters: Optional[Dict[str, list]] = None,
     prefer_smoke_tests: bool = False,
     run_jailed_tests: bool = False,
     run_unstable_tests: bool = False,
 ) -> List[Tuple[Test, bool]]:
-    if test_attr_regex_filters is None:
-        test_attr_regex_filters = {}
+    if test_filters is None:
+        test_filters = {}
 
     tests_to_run = []
     for test in test_collection:
+        attr_mismatch = False
         # Skip kuberay tests for now.
         # TODO: (khluu) Remove this once we start running KubeRay release tests.
         if test.is_kuberay() and get_global_config()["kuberay_disabled"]:
             continue
-        # First, filter by string attributes
-        attr_mismatch = False
-        for attr, regex in test_attr_regex_filters.items():
-            if not re.fullmatch(regex, _unflattened_lookup(test, attr) or ""):
-                attr_mismatch = True
-                break
+
+        # Check if test attributes match filters
+        # Logic: OR within same attribute, AND across different attributes
+        if test_filters:
+            for attr, values in test_filters.items():
+                # Check if at least one value matches for this attribute (OR logic)
+                attr_matched = False
+                for value in values:
+                    # Only prefix filter doesn't use regex
+                    if attr == "prefix":
+                        if test.get_name().startswith(value):
+                            attr_matched = True
+                            break
+                    else:  # Match filters using regex
+                        attr_value = _unflattened_lookup(test, attr) or ""
+                        if re.match(value, attr_value):
+                            attr_matched = True
+                            break
+
+                # If none of the values matched for this attribute, skip this test
+                if not attr_matched:
+                    attr_mismatch = True
+                    break
         if attr_mismatch:
             continue
+
         if not run_jailed_tests:
             clone_test = copy.deepcopy(test)
             clone_test.update_from_s3()

@@ -1,25 +1,24 @@
+import _thread
 import random
 import signal
 import sys
 import threading
-import _thread
 import time
-import numpy as np
 from typing import List
 
+import numpy as np
 import pytest
 
 import ray
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.utils import DeferSigint
 from ray.exceptions import (
-    TaskCancelledError,
-    RayTaskError,
     GetTimeoutError,
+    RayTaskError,
+    TaskCancelledError,
     WorkerCrashedError,
 )
 from ray.types import ObjectRef
-from ray._private.utils import DeferSigint
-from ray._common.test_utils import SignalActor
-from ray._common.test_utils import wait_for_condition
 from ray.util.state import list_tasks
 
 

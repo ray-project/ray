@@ -1,7 +1,7 @@
 .. _expressions-api:
 
 Expressions API
-===============
+================
 
 .. currentmodule:: ray.data.expressions
 
@@ -17,8 +17,11 @@ Public API
     :nosignatures:
     :toctree: doc/
 
+    star
     col
     lit
+    udf
+    download
 
 Expression Classes
 ------------------
@@ -34,3 +37,6 @@ instantiate them directly, but you may encounter them when working with expressi
     ColumnExpr
     LiteralExpr
     BinaryExpr
+    UnaryExpr
+    UDFExpr
+    StarExpr

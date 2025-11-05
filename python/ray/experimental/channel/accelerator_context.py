@@ -1,10 +1,11 @@
-import threading
 import importlib
-import ray
-from typing import TYPE_CHECKING, Optional, Type, ContextManager, List
+import threading
 from contextlib import nullcontext
-from ray.experimental.channel.communicator import Communicator
+from typing import TYPE_CHECKING, ContextManager, List, Optional, Type
+
+import ray
 from ray._private.accelerators import get_accelerator_manager_for_resource
+from ray.experimental.channel.communicator import Communicator
 
 if TYPE_CHECKING:
     import torch
@@ -134,7 +135,7 @@ class AcceleratorContext:
             for accelerator_id in accelerator_ids:
                 try:
                     device_ids.append(accelerator_visible_list.index(accelerator_id))
-                except IndexError:
+                except ValueError:
                     raise RuntimeError(
                         f"{accelerator_manager.get_visible_accelerator_ids_env_var()} set incorrectly. "
                         f"expected to include {accelerator_id}. "
