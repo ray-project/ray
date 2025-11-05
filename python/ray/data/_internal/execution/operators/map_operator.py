@@ -577,8 +577,11 @@ def _map_task(
     with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
         for b_out in map_transformer.apply_transform(iter(blocks), ctx):
             # TODO(Clark): Add input file propagation from input blocks.
-            m_out = BlockAccessor.for_block(b_out).get_metadata()
-            s_out = BlockAccessor.for_block(b_out).schema()
+            accessor = BlockAccessor.for_block(b_out)
+            if accessor.num_rows() == 0:
+                continue
+            m_out = accessor.get_metadata()
+            s_out = accessor.schema()
             m_out.exec_stats = stats.build()
             m_out.exec_stats.udf_time_s = map_transformer.udf_time()
             m_out.exec_stats.task_idx = ctx.task_idx
