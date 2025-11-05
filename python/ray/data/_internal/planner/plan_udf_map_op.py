@@ -198,8 +198,6 @@ def plan_filter_op(
             for block in blocks:
                 block_accessor = BlockAccessor.for_block(block)
                 filtered_block = block_accessor.filter(predicate_expr)
-                if BlockAccessor.for_block(filtered_block).num_rows() == 0:
-                    continue
                 yield filtered_block
 
         init_fn = None
