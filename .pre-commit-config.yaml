@@ -177,7 +177,6 @@ repos:
 
   - repo: https://github.com/pre-commit/mirrors-clang-format
     # `rev` specifies a tag on the above repo that mirrors the corresponding clang-format version.
-    # The version should be kept in sync with the version in `ci/lint/format.sh`.
     rev: v12.0.1
     hooks:
       - id: clang-format
@@ -214,6 +213,12 @@ repos:
     hooks:
       - id: vale
         files: ^doc/source/data/.*\.(md|rst)$
+
+  - repo: https://github.com/MarcoGorelli/cython-lint
+    rev: v0.18.1
+    hooks:
+      - id: cython-lint
+        args: [--no-pycodestyle]
 
   - repo: local
     hooks:

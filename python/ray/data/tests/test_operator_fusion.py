@@ -337,7 +337,7 @@ def test_map_batches_batch_size_fusion(
         LogicalPlan(input_op, context),
     )
 
-    mapped_ds = ds.map_batches(lambda x: x, batch_size=2,).map_batches(
+    mapped_ds = ds.map_batches(lambda x: x, batch_size=2).map_batches(
         lambda x: x,
         batch_size=5,
     )
