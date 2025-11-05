@@ -1,11 +1,7 @@
 """
 Utility functions for Iceberg merge and upsert operations in Ray Data.
 
-This module provides convenience functions for performing MERGE INTO and UPSERT operations
-on Iceberg tables using PyIceberg's native upsert capabilities (PyIceberg 0.9.0+).
-
-For older versions of PyIceberg, it falls back to a read-merge-write pattern.
-
+Provides MERGE INTO and UPSERT operations on Iceberg tables using PyIceberg.
 See: https://py.iceberg.apache.org/reference/pyiceberg/table/
 """
 
@@ -43,58 +39,36 @@ def _build_key_filter(join_columns: List[str], keys_df) -> "BooleanExpression":
         unique_keys = keys_df[col_name].unique().tolist()
         return EqualTo(col_name, unique_keys[0]) if len(unique_keys) == 1 else In(col_name, unique_keys)
 
-    # Multi-column keys: build OR of AND expressions
     unique_combinations = keys_df.drop_duplicates().head(1000)
     if len(unique_combinations) < len(keys_df):
-        logger.warning(
-            f"Upsert has {len(keys_df)} unique key combinations. "
-            "Limiting to first 1000 for filter expression."
-        )
+        logger.warning(f"Limiting {len(keys_df)} key combinations to 1000 for filter expression")
 
-    filters = []
-    for _, row in unique_combinations.iterrows():
-        key_filters = [EqualTo(key, row[key]) for key in join_columns]
-        filters.append(key_filters[0] if len(key_filters) == 1 else And(*key_filters))
-
+    filters = [And(*[EqualTo(k, row[k]) for k in join_columns]) for _, row in unique_combinations.iterrows()]
     return filters[0] if len(filters) == 1 else Or(*filters)
 
 
-def _deduplicate_rows(join_columns: List[str], priority_col: str = "_merge_priority"):
-    """Create deduplication function that keeps row with highest priority."""
-
-    def deduplicate(batch):
-        import pyarrow as pa
-
-        if not isinstance(batch, pa.Table):
-            batch = pa.Table.from_pandas(batch)
-
-        if len(batch) == 0:
-            return batch.drop([priority_col]) if priority_col in batch.schema.names else batch
-
-        df = batch.to_pandas(zero_copy_only=False, self_destruct=True)
-        df.sort_values(priority_col, ascending=False, inplace=True, kind="mergesort")
-        df.drop_duplicates(subset=join_columns, keep="first", inplace=True)
-        df.drop(columns=[priority_col], inplace=True)
-
-        return pa.Table.from_pandas(df, schema=batch.drop([priority_col]).schema)
-
-    return deduplicate
+def _add_priority_column(batch, priority_col: str, priority: int):
+    """Add priority column to batch."""
+    import pyarrow as pa
+    if isinstance(batch, pa.Table):
+        return batch.append_column(priority_col, pa.array([priority] * len(batch), type=pa.int8()))
+    batch[priority_col] = priority
+    return batch
 
 
-def _add_priority_column(priority_col: str = "_merge_priority"):
-    """Create function to add priority column to batches."""
+def _deduplicate_batch(batch, join_columns: List[str], priority_col: str):
+    """Deduplicate batch keeping row with highest priority."""
+    import pyarrow as pa
+    if not isinstance(batch, pa.Table):
+        batch = pa.Table.from_pandas(batch)
+    if len(batch) == 0 or priority_col not in batch.schema.names:
+        return batch.drop([priority_col]) if priority_col in batch.schema.names else batch
 
-    def add_priority(batch, priority: int):
-        import pyarrow as pa
-
-        if isinstance(batch, pa.Table):
-            return batch.append_column(
-                priority_col, pa.array([priority] * len(batch), type=pa.int8())
-            )
-        batch[priority_col] = priority
-        return batch
-
-    return add_priority
+    df = batch.to_pandas(zero_copy_only=False, self_destruct=True)
+    df.sort_values(priority_col, ascending=False, inplace=True, kind="mergesort")
+    df.drop_duplicates(subset=join_columns, keep="first", inplace=True)
+    df.drop(columns=[priority_col], inplace=True)
+    return pa.Table.from_pandas(df, schema=batch.drop([priority_col]).schema)
 
 
 def upsert_to_iceberg(
@@ -122,14 +96,6 @@ def upsert_to_iceberg(
         update_filter: Optional filter to limit which rows can be updated
         ray_remote_args: kwargs passed to ray.remote
         concurrency: Maximum number of concurrent Ray tasks
-
-    Examples:
-        >>> new_data.write_iceberg(  # doctest: +SKIP
-        ...     table_identifier="db.customers",
-        ...     mode="merge",
-        ...     merge_keys=["customer_id"],
-        ...     catalog_kwargs={"type": "glue"}
-        ... )
     """
     _check_import(None, module="pyiceberg", package="pyiceberg")
 
@@ -184,79 +150,58 @@ def _upsert_native(
     table = catalog.load_table(table_identifier)
 
     # Validate schemas
-    dataset_schema = dataset.schema()
-    source_columns = set(dataset_schema.names)
-    table_columns = {field.name for field in table.schema().fields}
-
+    source_columns, table_columns = set(dataset.schema().names), {f.name for f in table.schema().fields}
     missing_in_source = set(join_columns) - source_columns
     missing_in_target = set(join_columns) - table_columns
     if missing_in_source:
-        raise ValueError(
-            f"Join columns {missing_in_source} not found in source dataset. "
-            f"Available: {sorted(source_columns)}"
-        )
+        raise ValueError(f"Join columns {missing_in_source} not in source. Available: {sorted(source_columns)}")
     if missing_in_target:
-        raise ValueError(
-            f"Join columns {missing_in_target} not found in target table. "
-            f"Available: {sorted(table_columns)}"
-        )
+        raise ValueError(f"Join columns {missing_in_target} not in table. Available: {sorted(table_columns)}")
 
     # Check partition alignment
     partition_fields = table.spec().fields
     if partition_fields:
-        partition_column_names = {
-            table.schema().find_column_name(field.source_id)
-            for field in partition_fields
-        }
-        if not set(join_columns).issubset(partition_column_names):
-            logger.warning(
-                f"Merge keys {join_columns} don't match partition columns "
-                f"{sorted(partition_column_names)}. This may cause more data files "
-                "to be rewritten than necessary."
-            )
+        partition_cols = {table.schema().find_column_name(f.source_id) for f in partition_fields}
+        if not set(join_columns).issubset(partition_cols):
+            logger.warning(f"Merge keys {join_columns} don't match partition columns {sorted(partition_cols)}")
 
-    # Collect keys and build filter
+    # Build filter
     source_keys_table = dataset.select_columns(join_columns).to_arrow()
     if len(join_columns) == 1:
-        col_name = join_columns[0]
-        source_keys = set(source_keys_table[col_name].to_pylist())
-        read_filter = In(col_name, list(source_keys))
+        read_filter = In(join_columns[0], list(set(source_keys_table[join_columns[0]].to_pylist())))
     else:
-        # For multi-column keys, convert to pandas for filter building
-        keys_df = source_keys_table.to_pandas()
-        read_filter = _build_key_filter(join_columns, keys_df)
+        read_filter = _build_key_filter(join_columns, source_keys_table.to_pandas())
 
     read_filter_with_update = And(read_filter, update_filter) if update_filter else read_filter
 
-    # Read existing matching rows
+    # Read existing rows, merge, and deduplicate
     existing_rows = ray.data.read_iceberg(
         table_identifier=table_identifier,
         catalog_kwargs={"name": catalog_name, **catalog_kwargs},
         row_filter=read_filter_with_update,
     )
-
-    # Merge and deduplicate
-    add_priority = _add_priority_column()
-    new_data_marked = dataset.map_batches(
-        lambda batch: add_priority(batch, 1), batch_format="pyarrow"
+    merged = dataset.map_batches(
+        lambda b: _add_priority_column(b, "_merge_priority", 1), batch_format="pyarrow"
+    ).union(existing_rows.map_batches(
+        lambda b: _add_priority_column(b, "_merge_priority", 0), batch_format="pyarrow"
+    )).map_batches(
+        lambda b: _deduplicate_batch(b, join_columns, "_merge_priority"), batch_format="pyarrow"
     )
-    existing_data_marked = existing_rows.map_batches(
-        lambda batch: add_priority(batch, 0), batch_format="pyarrow"
-    )
-    merged_data = new_data_marked.union(existing_data_marked)
-    deduped_data = merged_data.map_batches(_deduplicate_rows(join_columns), batch_format="pyarrow")
 
     # Write with partial overwrite
     from ray.data._internal.datasource.iceberg import IcebergDatasink
 
-    datasink = IcebergDatasink(
-        table_identifier=table_identifier,
-        catalog_kwargs={"name": catalog_name, **catalog_kwargs},
-        snapshot_properties=snapshot_properties,
-        mode="overwrite",
-        overwrite_filter=read_filter,
+    merged.write_datasink(
+        IcebergDatasink(
+            table_identifier=table_identifier,
+            catalog_kwargs={"name": catalog_name, **catalog_kwargs},
+            snapshot_properties=snapshot_properties,
+            mode="overwrite",
+            overwrite_filter=read_filter,
+        ),
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
     )
-    deduped_data.write_datasink(datasink, ray_remote_args=ray_remote_args, concurrency=concurrency)
 
 
 def _upsert_fallback(
@@ -275,37 +220,27 @@ def _upsert_fallback(
     import ray
 
     catalog_name = catalog_kwargs.pop("name", "default")
-
-    # Collect keys and build filter
     keys_df = dataset.select_columns(join_columns).to_pandas()
     if len(keys_df) == 0:
         logger.warning("Source dataset is empty, nothing to upsert")
         return
 
-    read_filter = _build_key_filter(join_columns, keys_df)
-    if update_filter:
-        read_filter = And(read_filter, update_filter)
-
-    # Read existing matching rows
+    read_filter = And(_build_key_filter(join_columns, keys_df), update_filter) if update_filter else _build_key_filter(join_columns, keys_df)
     existing_data = ray.data.read_iceberg(
         table_identifier=table_identifier,
         catalog_kwargs={"name": catalog_name, **catalog_kwargs},
         row_filter=read_filter,
     )
 
-    # Merge and deduplicate (same logic as native)
-    add_priority = _add_priority_column("_source_priority")
-    new_data_marked = dataset.map_batches(
-        lambda batch: add_priority(batch, 1)
+    merged = dataset.map_batches(
+        lambda b: _add_priority_column(b, "_source_priority", 1), batch_format="pyarrow"
+    ).union(existing_data.map_batches(
+        lambda b: _add_priority_column(b, "_source_priority", 0), batch_format="pyarrow"
+    )).map_batches(
+        lambda b: _deduplicate_batch(b, join_columns, "_source_priority"), batch_format="pyarrow"
     )
-    existing_data_marked = existing_data.map_batches(
-        lambda batch: add_priority(batch, 0)
-    )
-    merged = new_data_marked.union(existing_data_marked)
-    deduped = merged.map_batches(_deduplicate_rows(join_columns, "_source_priority"), batch_format="pyarrow")
 
-    # Write with partial overwrite
-    deduped.write_iceberg(
+    merged.write_iceberg(
         table_identifier=table_identifier,
         catalog_kwargs={"name": catalog_name, **catalog_kwargs},
         snapshot_properties=snapshot_properties,

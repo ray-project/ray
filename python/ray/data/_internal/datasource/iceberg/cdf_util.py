@@ -86,14 +86,10 @@ def read_iceberg_cdf(
     _validate_table_identifier(table_identifier)
 
     # Validate parameters
-    if start_snapshot_id is not None and start_snapshot_id < 0:
-        raise ValueError(f"start_snapshot_id must be non-negative. Got: {start_snapshot_id}")
-    if end_snapshot_id is not None and end_snapshot_id < 0:
-        raise ValueError(f"end_snapshot_id must be non-negative. Got: {end_snapshot_id}")
-    if start_timestamp and start_snapshot_id:
-        raise ValueError("Cannot specify both start_timestamp and start_snapshot_id")
-    if end_timestamp and end_snapshot_id:
-        raise ValueError("Cannot specify both end_timestamp and end_snapshot_id")
+    if (start_snapshot_id is not None and start_snapshot_id < 0) or (end_snapshot_id is not None and end_snapshot_id < 0):
+        raise ValueError("Snapshot IDs must be non-negative")
+    if (start_timestamp and start_snapshot_id) or (end_timestamp and end_snapshot_id):
+        raise ValueError("Cannot specify both timestamp and snapshot_id")
     if start_timestamp and end_timestamp:
         from datetime import datetime
         try:
@@ -135,12 +131,8 @@ def read_iceberg_cdf(
 
     # Get files added between snapshots
     added_files = _get_added_files_between_snapshots(table, start_snapshot_id, end_snapshot_id)
-    if not added_files:
-        import pyarrow as pa
-        return ray.data.from_arrow(pa.Table.from_pylist([], schema=table.schema().as_arrow()))
-
-    # Filter read tasks to only added files
     added_file_paths = {str(f.file_path) for f in added_files}
+
     from ray.data._internal.datasource.iceberg.datasource import IcebergDatasource
 
     datasource = IcebergDatasource(
@@ -148,9 +140,8 @@ def read_iceberg_cdf(
         catalog_kwargs={"name": catalog_name, **catalog_kwargs},
         snapshot_id=end_snapshot_id,
     )
-    read_tasks = datasource.get_read_tasks(parallelism=-1)
     filtered_tasks = [
-        task for task in read_tasks
+        task for task in datasource.get_read_tasks(parallelism=-1)
         if any(fp in added_file_paths for fp in _extract_file_paths_from_task(task))
     ]
 
@@ -253,8 +244,9 @@ def write_iceberg_cdf(
         logger.warning(f"Could not validate change_type_column values: {e}")
 
     # Separate by change type and remove change_type_column
-    def get_change_type(row):
-        return str(row.get(change_type_column, "")).strip().upper()
+    def split_by_change_type(row):
+        ct = str(row.get(change_type_column, "")).strip().upper()
+        return ct in ["DELETE", "D"], ct in ["UPDATE", "U"], ct in ["INSERT", "I"]
 
     def drop_change_column(batch):
         import pyarrow as pa
@@ -262,13 +254,9 @@ def write_iceberg_cdf(
             return batch.drop([change_type_column]) if change_type_column in batch.schema.names else batch
         return batch.drop(columns=[change_type_column]) if change_type_column in batch.columns else batch
 
-    deletes_ds = dataset.filter(lambda r: get_change_type(r) in ["DELETE", "D"])
-    updates_ds = dataset.filter(lambda r: get_change_type(r) in ["UPDATE", "U"])
-    inserts_ds = dataset.filter(lambda r: get_change_type(r) in ["INSERT", "I"])
-
-    deletes_clean = deletes_ds.map_batches(drop_change_column, batch_format="pyarrow")
-    updates_clean = updates_ds.map_batches(drop_change_column, batch_format="pyarrow")
-    inserts_clean = inserts_ds.map_batches(drop_change_column, batch_format="pyarrow")
+    deletes_clean = dataset.filter(lambda r: split_by_change_type(r)[0]).map_batches(drop_change_column, batch_format="pyarrow")
+    updates_clean = dataset.filter(lambda r: split_by_change_type(r)[1]).map_batches(drop_change_column, batch_format="pyarrow")
+    inserts_clean = dataset.filter(lambda r: split_by_change_type(r)[2]).map_batches(drop_change_column, batch_format="pyarrow")
 
     # Process in order: DELETE → UPDATE → INSERT
     # Note: Creates separate snapshots (not atomic across all three types)
