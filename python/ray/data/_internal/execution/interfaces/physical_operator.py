@@ -621,7 +621,6 @@ class PhysicalOperator(Operator):
             or "Shuffle" in self.name
             or "Repartition" in self.name
             or isinstance(self, HashShufflingOperatorBase)
-            or "limit=1" in self.name  # for schema
         ), f"Operator {self.name} produced an empty bundle"
 
         self._metrics.on_output_taken(output_bundle)
