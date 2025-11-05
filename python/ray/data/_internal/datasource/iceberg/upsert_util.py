@@ -139,7 +139,7 @@ def _upsert_native(
     concurrency: Optional[int],
 ) -> None:
     """Perform efficient merge using partial overwrite."""
-    from pyiceberg.expressions import And, In
+    from pyiceberg.expressions import And, In, Not
 
     import ray
 
@@ -174,21 +174,50 @@ def _upsert_native(
 
     read_filter_with_update = And(read_filter, update_filter) if update_filter else read_filter
 
-    # Read existing rows, merge, and deduplicate
+    # Read existing rows matching keys
+    # If update_filter is provided, we need to read ALL rows matching keys (not just filtered ones)
+    # to ensure rows that don't match the filter are preserved
     existing_rows = ray.data.read_iceberg(
         table_identifier=table_identifier,
         catalog_kwargs={"name": catalog_name, **catalog_kwargs},
-        row_filter=read_filter_with_update,
+        row_filter=read_filter,  # Read all rows matching keys
     )
+
+    # When update_filter is provided, we need to:
+    # 1. Only merge rows that match the update_filter
+    # 2. Preserve rows that don't match the filter
+    # So we read existing rows matching the filter for merging, and separately preserve others
+    if update_filter:
+        # Read rows matching both keys AND update_filter for merging
+        existing_rows_to_merge = ray.data.read_iceberg(
+            table_identifier=table_identifier,
+            catalog_kwargs={"name": catalog_name, **catalog_kwargs},
+            row_filter=read_filter_with_update,
+        )
+    else:
+        existing_rows_to_merge = existing_rows
+
+    # Merge new data with existing rows that match the filter
     merged = dataset.map_batches(
         lambda b: _add_priority_column(b, "_merge_priority", 1), batch_format="pyarrow"
-    ).union(existing_rows.map_batches(
+    ).union(existing_rows_to_merge.map_batches(
         lambda b: _add_priority_column(b, "_merge_priority", 0), batch_format="pyarrow"
     )).map_batches(
         lambda b: _deduplicate_batch(b, join_columns, "_merge_priority"), batch_format="pyarrow"
     )
 
-    # Write with partial overwrite
+    # If update_filter is provided, we need to also include rows that don't match the filter
+    if update_filter:
+        # Read rows matching keys but NOT matching update_filter
+        from pyiceberg.expressions import Not
+        existing_rows_to_preserve = ray.data.read_iceberg(
+            table_identifier=table_identifier,
+            catalog_kwargs={"name": catalog_name, **catalog_kwargs},
+            row_filter=And(read_filter, Not(update_filter)),
+        )
+        merged = merged.union(existing_rows_to_preserve)
+
+    # Write with partial overwrite - only overwrite rows matching both keys AND update_filter
     from ray.data._internal.datasource.iceberg import IcebergDatasink
 
     merged.write_datasink(
@@ -197,7 +226,7 @@ def _upsert_native(
             catalog_kwargs={"name": catalog_name, **catalog_kwargs},
             snapshot_properties=snapshot_properties,
             mode="overwrite",
-            overwrite_filter=read_filter,
+            overwrite_filter=read_filter_with_update,  # Only overwrite rows matching keys AND update_filter
         ),
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
