@@ -56,6 +56,7 @@ from ray.data.read_api import (  # noqa: F401
     read_delta_sharing_tables,
     read_hudi,
     read_iceberg,
+    read_iceberg_cdf,
     read_images,
     read_json,
     read_lance,

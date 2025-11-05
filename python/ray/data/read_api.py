@@ -3154,7 +3154,7 @@ def from_dask(df: "dask.dataframe.DataFrame") -> MaterializedDataset:
             return df
         else:
             raise ValueError(
-                "Expected a Ray object ref or a Pandas DataFrame, " f"got {type(df)}"
+                f"Expected a Ray object ref or a Pandas DataFrame, got {type(df)}"
             )
 
     ds = from_pandas_refs(
@@ -3284,12 +3284,11 @@ def from_pandas_refs(
         for df in dfs:
             if not isinstance(df, ray.ObjectRef):
                 raise ValueError(
-                    "Expected list of Ray object refs, "
-                    f"got list containing {type(df)}"
+                    f"Expected list of Ray object refs, got list containing {type(df)}"
                 )
     else:
         raise ValueError(
-            "Expected Ray object ref or list of Ray object refs, " f"got {type(df)}"
+            f"Expected Ray object ref or list of Ray object refs, got {type(df)}"
         )
 
     context = DataContext.get_current()
@@ -4108,6 +4107,113 @@ def read_iceberg(
     )
 
     return dataset
+
+
+@PublicAPI
+def read_iceberg_cdf(
+    table_identifier: str,
+    start_snapshot_id: Optional[int] = None,
+    end_snapshot_id: Optional[int] = None,
+    start_timestamp: Optional[str] = None,
+    end_timestamp: Optional[str] = None,
+    catalog_kwargs: Optional[Dict[str, Any]] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Read incremental changes from an Iceberg table between two snapshots.
+
+    This function reads only the data files that were added between the start and end
+    snapshots, enabling efficient incremental data processing without scanning the
+    entire table. This is useful for CDC pipelines, incremental ETL, and streaming-like
+    batch processing.
+
+    The function uses Iceberg's manifest entries to identify which files were added
+    in each snapshot, then reads only those files. This provides significant performance
+    improvements over full table scans.
+
+    Args:
+        table_identifier: Fully qualified table identifier (e.g., "db_name.table_name")
+        start_snapshot_id: Starting snapshot ID (exclusive). If not provided, reads
+            from the beginning of the table history.
+        end_snapshot_id: Ending snapshot ID (inclusive). If not provided, uses the
+            current snapshot.
+        start_timestamp: Starting timestamp (ISO format, e.g., "2024-01-01T00:00:00").
+            Alternative to start_snapshot_id. The snapshot at or after this timestamp
+            will be used.
+        end_timestamp: Ending timestamp (ISO format). Alternative to end_snapshot_id.
+            The snapshot at or before this timestamp will be used.
+        catalog_kwargs: Arguments to pass to PyIceberg's catalog.load_catalog()
+            function. See https://py.iceberg.apache.org/configuration/
+        ray_remote_args: kwargs passed to ray.remote in the read tasks
+        num_cpus: The number of CPUs to reserve for each parallel read worker
+        num_gpus: The number of GPUs to reserve for each parallel read worker
+        memory: The heap memory in bytes to reserve for each parallel read worker
+        override_num_blocks: Override the number of output blocks from all read tasks
+
+    Returns:
+        Dataset containing only the rows from files added between the snapshots.
+        The dataset includes all original columns from the table.
+
+    Examples:
+        Read changes between two snapshots:
+
+        >>> import ray
+        >>> ds = ray.data.read_iceberg_cdf(  # doctest: +SKIP
+        ...     table_identifier="db.users",
+        ...     start_snapshot_id=12345,
+        ...     end_snapshot_id=12350,
+        ...     catalog_kwargs={"type": "glue"}
+        ... )
+
+        Read changes since a specific timestamp:
+
+        >>> ds = ray.data.read_iceberg_cdf(  # doctest: +SKIP
+        ...     table_identifier="db.orders",
+        ...     start_timestamp="2024-01-01T00:00:00",
+        ...     catalog_kwargs={"type": "glue"}
+        ... )
+
+        Read all changes up to a snapshot:
+
+        >>> ds = ray.data.read_iceberg_cdf(  # doctest: +SKIP
+        ...     table_identifier="db.events",
+        ...     end_snapshot_id=12345,
+        ...     catalog_kwargs={"type": "glue"}
+        ... )
+
+    Note:
+        - This function reads entire data files, not individual rows. If a file was
+          added between snapshots, all rows in that file are returned.
+        - Deleted files are not tracked in the returned dataset. To detect deletions,
+          you need to track row-level primary keys.
+        - For tables with frequent small updates, this may read more data than strictly
+          necessary. Consider table maintenance (compaction) for optimal performance.
+        - Start snapshot is exclusive, end snapshot is inclusive.
+
+    Performance:
+        This operation is significantly faster than reading full snapshots and computing
+        differences, as it only reads the files that changed between snapshots.
+    """
+    from ray.data._internal.datasource.iceberg.cdf_util import (
+        read_iceberg_cdf as _read_iceberg_cdf,
+    )
+
+    return _read_iceberg_cdf(
+        table_identifier=table_identifier,
+        start_snapshot_id=start_snapshot_id,
+        end_snapshot_id=end_snapshot_id,
+        start_timestamp=start_timestamp,
+        end_timestamp=end_timestamp,
+        catalog_kwargs=catalog_kwargs,
+        ray_remote_args=ray_remote_args,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        override_num_blocks=override_num_blocks,
+    )
 
 
 @PublicAPI
