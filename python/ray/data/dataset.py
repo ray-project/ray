@@ -1601,14 +1601,9 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP, stability="alpha")
     def expect(
         self,
-        expectation: Union[
-            Expectation, DataQualityExpectation, "Expr", ExpectationSuite
-        ],
+        expectation: Optional[Union[Expectation, "Expr", ExpectationSuite]] = None,
         *,
         expr: Optional["Expr"] = None,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        batch_format: Optional[str] = "default",
         compute: Optional[ComputeStrategy] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1620,9 +1615,9 @@ class Dataset:
     ]:
         """Apply a data quality expectation to validate this dataset.
 
-        This method validates data quality constraints by applying the expectation
-        to batches of data. The dataset is materialized to ensure all validation runs
-        complete, and results are aggregated across all batches.
+        This method validates data quality constraints and returns datasets containing
+        rows that passed and failed validation. The dataset is materialized to ensure
+        all validation runs complete, and results are aggregated across all batches.
 
         .. tip::
            If you use the `expr` parameter with a predicate expression, Ray Data
@@ -1632,71 +1627,56 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> from ray.data.expectations import expect
+            >>> from ray.data.expectations import expect, ExpectationSuite
+            >>> from ray.data.expectations import expect_column_values_to_be_between
             >>> from ray.data.expressions import col
             >>>
-            >>> # Create a data quality expectation with validator function
-            >>> quality_check = expect(
-            ...     name="positive_values",
-            ...     validator_fn=lambda batch: batch["value"].min() > 0
-            ... )
+            >>> # Simple expression-based validation (most common)
             >>> ds = ray.data.from_items([{"value": 1}, {"value": 2}, {"value": -1}])
-            >>> passed_ds, failed_ds, result = ds.expect(quality_check)
+            >>> passed_ds, failed_ds, result = ds.expect(expr=col("value") > 0)
             >>> print(result.passed)
             False
             >>> print(failed_ds.take_all())
             [{'value': -1}]
             >>>
-            >>> # Use expression directly (more Pythonic and Ray-like)
-            >>> ds = ray.data.from_items([{"value": 1}, {"value": 2}, {"value": 3}])
-            >>> passed_ds, failed_ds, result = ds.expect(expr=col("value") > 0)
-            >>> print(result.passed)
-            True
-            >>> print(failed_ds.count())
-            0
-            >>>
             >>> # Or pass expression as positional argument
-            >>> passed_ds, failed_ds, result = ds.expect(col("value") > 0, name="positive_check")
-            >>> print(result.passed)
-            True
+            >>> passed_ds, failed_ds, result = ds.expect(col("value") > 0)
             >>>
-            >>> # Use for quarantine workflows
+            >>> # Use expectation object
+            >>> expectation = expect_column_values_to_be_between("age", 0, 120)
+            >>> ds = ray.data.from_items([{"age": 25}, {"age": 150}])
+            >>> passed_ds, failed_ds, result = ds.expect(expectation)
+            >>>
+            >>> # Use ExpectationSuite for multiple expectations
+            >>> suite = ExpectationSuite("user_data_quality")
+            >>> suite.add_expectation(expect_column_values_to_be_between("age", 0, 120))
+            >>> suite.add_expectation(expect(expr=col("email").is_not_null()))
+            >>> passed_ds, failed_ds, results = ds.expect(suite)
+            >>>
+            >>> # Quarantine workflows
             >>> raw_ds = ray.data.from_items([{"user_id": 1, "score": 95}, {"user_id": 2, "score": -5}])
             >>> valid_ds, invalid_ds, result = raw_ds.expect(expr=col("score") >= 0)
-            >>> # Process valid data
             >>> valid_ds.write_parquet("s3://bucket/valid/")
-            >>> # Quarantine invalid data for investigation
             >>> invalid_ds.write_parquet("s3://bucket/quarantine/")
             >>>
             >>> # SLA expectations: execution time constraints
             >>> sla_expectation = expect(
-            ...     name="execution_time_limit",
             ...     max_execution_time_seconds=60,
             ...     optimization_strategy="performance"
             ... )
             >>> ds = ray.data.range(1000000)
             >>> processed_ds, remaining_ds, result = ds.expect(sla_expectation)
-            >>> print(f"Execution time: {result.execution_time_seconds:.2f}s")
-            >>> print(f"Passed: {result.passed}")
-            >>> # processed_ds contains data processed before timeout
-            >>> # remaining_ds contains unprocessed data (if timeout exceeded)
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            expectation: The expectation to apply (DataQualityExpectation or SLAExpectation)
-                or an expression (Expr) for validation. If an expression is provided,
-                it will be converted to a DataQualityExpectation automatically.
+            expectation: An Expectation object (DataQualityExpectation or SLAExpectation)
+                or ExpectationSuite to apply. If None, `expr` must be provided.
                 Mutually exclusive with `expr`.
             expr: An expression that represents a predicate (boolean condition) for
                 validation. Uses the same expression API as :meth:`~Dataset.filter`.
-                Mutually exclusive with `expectation`.
-            name: Name for the expectation (only used when `expr` is provided).
-            description: Description of what this expectation checks (only used
-                when `expr` is provided).
-            batch_format: The format of batches passed to the validator function.
-                Only used for validator function-based expectations (not expression-based).
-                Options: "default", "pandas", "numpy", "pyarrow".
+                Mutually exclusive with `expectation`. Can also be passed as a positional
+                argument: ``ds.expect(col("value") > 0)``.
             compute: The compute strategy to use for the validation operation.
 
                 * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
@@ -1727,23 +1707,29 @@ class Dataset:
               or remaining unprocessed data (for SLA expectations with timeout).
             - ExpectationResult: The result of the expectation validation containing
               pass/fail status, failure counts, execution time (for SLA), and a descriptive message.
+              For ExpectationSuite, returns a list of ExpectationResult objects.
 
         Raises:
-            TypeError: If expectation is not an Expectation object or not a
-                DataQualityExpectation or SLAExpectation.
-            ValueError: If expectation is not a DataQualityExpectation or SLAExpectation,
-                or if validation fails and error_on_failure is True.
+            TypeError: If expectation is not an Expectation object or Expr.
+            ValueError: If neither expectation nor expr is provided, or if both are provided.
 
         .. seealso::
 
-            :meth:`~Dataset.map_batches`
-                Call this method to transform batches of data.
+            :meth:`~Dataset.filter`
+                Filter rows based on a predicate expression.
 
-            :meth:`~Dataset.map`
-                Call this method to transform one row at time.
+            :meth:`~Dataset.map_batches`
+                Transform batches of data.
         """
         # Import here to avoid circular dependencies
         from ray.data.expressions import Expr as _Expr
+
+        # Validate that at least one of expectation or expr is provided
+        if expectation is None and expr is None:
+            raise ValueError(
+                "Must provide either `expectation` or `expr` argument. "
+                "Examples: ds.expect(expr=col('value') > 0) or ds.expect(expectation=my_expectation)"
+            )
 
         # Handle ExpectationSuite (apply all expectations in suite)
         if isinstance(expectation, ExpectationSuite):
@@ -1769,15 +1755,15 @@ class Dataset:
 
             expectation = _expect(
                 expr=expr,
-                name=name or "Data Quality Check",
-                description=description or f"Validate expression: {expr}",
+                name="Data Quality Check",
+                description=f"Validate expression: {expr}",
             )
 
         # Validate expectation object
         if not isinstance(expectation, Expectation):
             raise TypeError(
                 f"expectation must be an Expectation object or Expr, "
-                f"got {type(expectation).__name__}"
+                f"got {type(expectation).__name__ if expectation is not None else 'None'}"
             )
 
         # Handle SLA expectations (time-based execution constraints)
@@ -2075,7 +2061,7 @@ class Dataset:
         # Always use map_batches for validator functions as they expect batch input
         validated_ds = self.map_batches(
             validation_fn,
-            batch_format=batch_format,
+            batch_format="default",
             compute=compute,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
