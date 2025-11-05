@@ -57,11 +57,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 INITIAL_TIMEOUT_SEC = env_integer("RAY_CLIENT_INITIAL_CONNECTION_TIMEOUT_S", 5)
-MAX_TIMEOUT_SEC =  env_integer("RAY_CLIENT_MAX_CONNECTION_TIMEOUT_S", 30)
+MAX_TIMEOUT_SEC = env_integer("RAY_CLIENT_MAX_CONNECTION_TIMEOUT_S", 30)
 # The max amount of time an operation can run blocking in the server. This
 # allows for Ctrl-C of the client to work without explicitly cancelling server
 # operations.
-MAX_BLOCKING_OPERATION_TIME_S: float = env_float("RAY_CLIENT_MAX_BLOCKING_OPERATION_TIME_S", 2.0)
+MAX_BLOCKING_OPERATION_TIME_S: float = env_float(
+    "RAY_CLIENT_MAX_BLOCKING_OPERATION_TIME_S", 2.0
+)
 
 # If the total size (bytes) of all outbound messages to schedule tasks since
 # the connection began exceeds this value, a warning should be raised
