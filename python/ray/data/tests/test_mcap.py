@@ -458,7 +458,9 @@ def multi_file_mcap_dir(tmp_path):
     return mcap_dir, base_time
 
 
-def test_read_mcap_file_metadata_provider(ray_start_regular_shared, multi_file_mcap_dir):
+def test_read_mcap_file_metadata_provider(
+    ray_start_regular_shared, multi_file_mcap_dir
+):
     """Test that MCAPFileMetadataProvider correctly extracts file metadata."""
     mcap_dir, base_time = multi_file_mcap_dir
 
@@ -502,10 +504,7 @@ def test_read_mcap_directory_with_time_range_filter(
     mcap_dir, base_time = multi_file_mcap_dir
 
     # Read only messages from the first file's time range
-    time_range = TimeRange(
-        start_time=base_time,
-        end_time=base_time + 6000000
-    )
+    time_range = TimeRange(start_time=base_time, end_time=base_time + 6000000)
     ds = ray.data.read_mcap(mcap_dir, time_range=time_range)
     rows = ds.take_all()
 
@@ -616,8 +615,7 @@ def test_mcap_predicate_pushdown_with_initial_filter(
     assert len(rows2) == 2
     assert all(row["topic"] == "/topic_a" for row in rows2)
     assert all(
-        base_time + 20000000 <= row["log_time"] < base_time + 30000000
-        for row in rows2
+        base_time + 20000000 <= row["log_time"] < base_time + 30000000 for row in rows2
     )
 
 
@@ -650,9 +648,7 @@ def test_mcap_supports_predicate_pushdown(ray_start_regular_shared, simple_mcap_
     assert ds_internal.supports_predicate_pushdown() is True
 
 
-def test_mcap_file_level_metadata_blocks(
-    ray_start_regular_shared, multi_file_mcap_dir
-):
+def test_mcap_file_level_metadata_blocks(ray_start_regular_shared, multi_file_mcap_dir):
     """Test that file-level metadata provides accurate block sizing information."""
     mcap_dir, base_time = multi_file_mcap_dir
 
