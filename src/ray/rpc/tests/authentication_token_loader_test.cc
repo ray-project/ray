@@ -288,7 +288,7 @@ TEST_F(AuthenticationTokenLoaderTest, TestNoTokenFoundWhenAuthDisabled) {
   EXPECT_FALSE(loader.GetToken().has_value());
 
   // Re-enable for other tests
-  RayConfig::instance().initialize(R"({"auth_mode": "token"})");
+  RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
 }
 
 TEST_F(AuthenticationTokenLoaderTest, TestErrorWhenAuthEnabledButNoToken) {
