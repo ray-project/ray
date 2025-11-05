@@ -244,7 +244,7 @@ def _upsert_fallback(
     concurrency: Optional[int],
 ) -> None:
     """Fallback upsert for PyIceberg < 0.9.0."""
-    from pyiceberg.expressions import And
+    from pyiceberg.expressions import And, Not
 
     import ray
 
@@ -254,27 +254,47 @@ def _upsert_fallback(
         logger.warning("Source dataset is empty, nothing to upsert")
         return
 
-    read_filter = And(_build_key_filter(join_columns, keys_df), update_filter) if update_filter else _build_key_filter(join_columns, keys_df)
-    existing_data = ray.data.read_iceberg(
-        table_identifier=table_identifier,
-        catalog_kwargs={"name": catalog_name, **catalog_kwargs},
-        row_filter=read_filter,
-    )
+    read_filter = _build_key_filter(join_columns, keys_df)
+    read_filter_with_update = And(read_filter, update_filter) if update_filter else read_filter
+
+    # Read existing rows matching filter for merging
+    if update_filter:
+        existing_data_to_merge = ray.data.read_iceberg(
+            table_identifier=table_identifier,
+            catalog_kwargs={"name": catalog_name, **catalog_kwargs},
+            row_filter=read_filter_with_update,
+        )
+        # Also preserve rows that don't match the filter
+        existing_data_to_preserve = ray.data.read_iceberg(
+            table_identifier=table_identifier,
+            catalog_kwargs={"name": catalog_name, **catalog_kwargs},
+            row_filter=And(read_filter, Not(update_filter)),
+        )
+    else:
+        existing_data_to_merge = ray.data.read_iceberg(
+            table_identifier=table_identifier,
+            catalog_kwargs={"name": catalog_name, **catalog_kwargs},
+            row_filter=read_filter,
+        )
+        existing_data_to_preserve = None
 
     merged = dataset.map_batches(
         lambda b: _add_priority_column(b, "_source_priority", 1), batch_format="pyarrow"
-    ).union(existing_data.map_batches(
+    ).union(existing_data_to_merge.map_batches(
         lambda b: _add_priority_column(b, "_source_priority", 0), batch_format="pyarrow"
     )).map_batches(
         lambda b: _deduplicate_batch(b, join_columns, "_source_priority"), batch_format="pyarrow"
     )
+
+    if existing_data_to_preserve is not None:
+        merged = merged.union(existing_data_to_preserve)
 
     merged.write_iceberg(
         table_identifier=table_identifier,
         catalog_kwargs={"name": catalog_name, **catalog_kwargs},
         snapshot_properties=snapshot_properties,
         mode="overwrite",
-        overwrite_filter=read_filter,
+        overwrite_filter=read_filter_with_update,  # Only overwrite rows matching keys AND update_filter
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
     )
