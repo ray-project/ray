@@ -214,7 +214,6 @@ class IcebergDatasource(Datasource):
         return self._plan_files
 
     def _get_data_scan(self) -> "DataScan":
-
         data_scan = self.table.scan(
             row_filter=self._row_filter,
             selected_fields=self._selected_fields,

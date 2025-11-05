@@ -9,6 +9,7 @@ Ray Data's transformation primitives.
 
 See: https://py.iceberg.apache.org/reference/pyiceberg/table/
 """
+
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -530,7 +531,6 @@ def _upsert_fallback(
 
     See: https://py.iceberg.apache.org/api/#partial-overwrites
     """
-    from pyiceberg.catalog import load_catalog
     from pyiceberg.expressions import And, EqualTo, In, Or
 
     import ray
@@ -540,10 +540,8 @@ def _upsert_fallback(
         f"(PyIceberg < 0.9.0 detected)"
     )
 
-    # Get catalog and table
+    # Get catalog name for later use
     catalog_name = catalog_kwargs.pop("name", "default")
-    catalog = load_catalog(catalog_name, **catalog_kwargs)
-    table = catalog.load_table(table_identifier)
 
     # Step 1: Collect unique keys from source dataset (only materialize keys)
     logger.info("Collecting unique keys from source dataset")

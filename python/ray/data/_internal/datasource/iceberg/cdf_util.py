@@ -23,8 +23,9 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from ray.data._internal.util import _check_import
 
 if TYPE_CHECKING:
-    import ray
     from pyiceberg.table import Table
+
+    import ray
 
 logger = logging.getLogger(__name__)
 

@@ -11,6 +11,7 @@ Key features:
 - Transaction safety: Uses Iceberg's ACID transactions
 - Partition-aware: Works with Iceberg's partition transforms
 """
+
 import logging
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Literal, Optional
@@ -214,11 +215,18 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         # Validate partition transforms are supported
         # PyIceberg requires partition transforms to support PyArrow for writing
         # See: https://py.iceberg.apache.org/api/#partition-transforms
-        if unsupported_partitions := [
-            field
-            for field in self._table_metadata.spec().fields
-            if not field.transform.supports_pyarrow_transform
-        ]:
+        # Use getattr() to safely check for supports_pyarrow_transform attribute
+        # Some transform types may not have this attribute (e.g., IdentityTransform)
+        unsupported_partitions = []
+        for field in self._table_metadata.spec().fields:
+            transform = field.transform
+            # Check if transform supports PyArrow
+            # Default to True if attribute doesn't exist (assume supported)
+            supports_pyarrow = getattr(transform, "supports_pyarrow_transform", True)
+            if not supports_pyarrow:
+                unsupported_partitions.append(field)
+
+        if unsupported_partitions:
             raise ValueError(
                 f"Not all partition types are supported for writes. The following "
                 f"partitions cannot be written using PyArrow: {unsupported_partitions}. "
