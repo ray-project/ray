@@ -29,44 +29,7 @@ HTML_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 1.5
 
 @DeveloperAPI
 class HTMLDatasource(FileBasedDatasource):
-    """A datasource for reading HTML files.
-
-    This datasource reads HTML files and extracts:
-    - Text content (with various cleaning options)
-    - Tables as structured data
-    - Links and metadata
-    - Custom element selection via CSS selectors
-
-    Features:
-    - Multiple text extraction modes (clean, raw, markdown)
-    - Table extraction with pandas DataFrame conversion
-    - Link and image URL extraction
-    - Metadata extraction (title, meta tags, headers)
-    - Encoding detection and handling
-    - CSS selector support for targeted extraction
-
-    Examples:
-        Read HTML files and extract clean text:
-
-        >>> import ray
-        >>> ds = ray.data.read_html("s3://bucket/pages/")  # doctest: +SKIP
-        >>> ds.take(1)  # doctest: +SKIP
-        [{'text': 'Clean page content...', 'title': 'Page Title', 'url': '...'}]
-
-        Extract tables from HTML:
-
-        >>> ds = ray.data.read_html(  # doctest: +SKIP
-        ...     "s3://bucket/tables.html",
-        ...     extract_tables=True
-        ... )
-
-        Extract with CSS selector:
-
-        >>> ds = ray.data.read_html(  # doctest: +SKIP
-        ...     "s3://bucket/docs/",
-        ...     selector="article.main-content"
-        ... )
-    """
+    """Datasource for reading HTML files and extracting text, tables, links, and metadata."""
 
     _FILE_EXTENSIONS = ["html", "htm"]
     _COLUMN_NAME = "text"
@@ -89,19 +52,13 @@ class HTMLDatasource(FileBasedDatasource):
 
         Args:
             paths: Path(s) to HTML file(s).
-            text_mode: Text extraction mode. Options:
-                - "clean": Remove extra whitespace, scripts, styles (default)
-                - "raw": Preserve all text including whitespace
-                - "markdown": Convert to markdown format
+            text_mode: Text extraction mode ("clean", "raw", or "markdown").
             extract_tables: Whether to extract HTML tables as structured data.
             extract_links: Whether to extract all links from the HTML.
             extract_metadata: Whether to extract metadata (title, meta tags).
             selector: CSS selector to extract specific elements only.
             encoding: Character encoding. If None, auto-detect.
             **file_based_datasource_kwargs: Additional arguments for FileBasedDatasource.
-
-        Raises:
-            ValueError: If text_mode is not valid.
         """
         super().__init__(paths, **file_based_datasource_kwargs)
 
@@ -165,113 +122,55 @@ class HTMLDatasource(FileBasedDatasource):
             # Auto-detect encoding
             html_content = self._decode_html(data, path)
 
-        # Parse HTML with appropriate parser
-        # Try lxml first (faster) if available, otherwise use html.parser
-        soup = None
-        parser = None
-        parse_error = None
-
-        # First try lxml parser (faster)
         try:
             soup = BeautifulSoup(html_content, "lxml")
             parser = "lxml"
-        except Exception as e:
-            # lxml not available or failed, try html.parser
-            parse_error = e
+        except Exception:
             try:
                 soup = BeautifulSoup(html_content, "html.parser")
                 parser = "html.parser"
-            except Exception as fallback_error:
-                # Both parsers failed, raise error with details
-                raise ValueError(
-                    f"Failed to parse HTML file '{path}'. "
-                    f"lxml parser error: {parse_error}. "
-                    f"html.parser error: {fallback_error}"
-                ) from fallback_error
+            except Exception as e:
+                raise ValueError(f"Failed to parse HTML file '{path}': {e}") from e
 
-        # Extract document-level metadata from full document (before selector)
-        # This includes title, description, keywords from <head> section
-        doc_metadata = None
         if self.extract_metadata:
             doc_metadata = self._extract_document_metadata(soup)
+        else:
+            doc_metadata = None
 
-        # Apply selector if specified (for content extraction)
         content_soup = soup
         if self.selector:
             elements = soup.select(self.selector)
             if not elements:
-                logger.warning(
-                    f"CSS selector '{self.selector}' matched no elements in '{path}'"
-                )
-                # Create empty soup for consistent behavior
+                logger.warning(f"CSS selector '{self.selector}' matched no elements in '{path}'")
                 content_soup = BeautifulSoup("", parser)
             else:
-                # Create new soup with selected elements while preserving structure
                 import copy
 
                 from bs4 import BeautifulSoup as BS
 
-                # Create minimal HTML document structure
                 new_soup = BS("<html><body></body></html>", parser)
-                body = new_soup.body
-
-                # Clone and append selected elements directly to preserve context
                 for elem in elements:
-                    # Use deepcopy to preserve nested structure and attributes
-                    elem_copy = copy.deepcopy(elem)
-                    body.append(elem_copy)
-
+                    new_soup.body.append(copy.deepcopy(elem))
                 content_soup = new_soup
 
-        # Extract content-specific metadata (headers) from selected content
-        # and combine with document metadata
         if self.extract_metadata:
             content_metadata = self._extract_content_metadata(content_soup)
-            # Merge metadata: start with document metadata, then add content metadata
-            # Document metadata (title, description, keywords) takes precedence over
-            # any potential conflicts with content metadata (headers)
-            metadata = {}
-            if doc_metadata:
-                metadata.update(doc_metadata)
-            if content_metadata:
-                # Only add content metadata keys that don't conflict with document metadata
-                for key, value in content_metadata.items():
-                    if key not in metadata:
-                        metadata[key] = value
+            metadata = {**(doc_metadata or {}), **(content_metadata or {})}
         else:
             metadata = None
 
-        # Build row data
-        row_data = self._extract_content(content_soup, path, metadata)
-
-        # Create block
         builder = DelegatingBlockBuilder()
-        builder.add(row_data)
+        builder.add(self._extract_content(content_soup, path, metadata))
         yield builder.build()
 
     def _decode_html(self, data: bytes, path: str) -> str:
-        """Decode HTML with encoding detection.
-
-        Args:
-            data: Raw bytes.
-            path: File path for error reporting.
-
-        Returns:
-            Decoded HTML string.
-        """
-        # Try common encodings in order
-        encodings = ["utf-8", "latin-1", "cp1252", "iso-8859-1"]
-
-        for encoding in encodings:
+        """Decode HTML with encoding detection."""
+        for encoding in ["utf-8", "latin-1", "cp1252", "iso-8859-1"]:
             try:
                 return data.decode(encoding)
             except UnicodeDecodeError:
                 continue
-
-        # If all fail, use utf-8 with error replacement
-        logger.warning(
-            f"Could not detect encoding for '{path}', using utf-8 with error replacement"
-        )
+        logger.warning(f"Could not detect encoding for '{path}', using utf-8 with error replacement")
         return data.decode("utf-8", errors="replace")
 
     def _extract_content(
@@ -280,224 +179,90 @@ class HTMLDatasource(FileBasedDatasource):
         path: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Extract content from parsed HTML.
-
-        Args:
-            soup: BeautifulSoup object for content extraction.
-            path: File path (for logging/debugging, not added to output).
-            metadata: Pre-extracted metadata from full document (optional).
-
-        Returns:
-            Dictionary with extracted data.
-
-        Note:
-            The 'path' column is automatically added by FileBasedDatasource
-            if include_paths=True. Do not manually add it here.
-        """
-        row_data = {}
-
-        # Extract text
-        if self.text_mode == "clean":
-            row_data[self._COLUMN_NAME] = self._extract_clean_text(soup)
-        elif self.text_mode == "raw":
-            row_data[self._COLUMN_NAME] = soup.get_text()
-        elif self.text_mode == "markdown":
-            row_data[self._COLUMN_NAME] = self._extract_markdown(soup)
-
-        # Add pre-extracted metadata (if provided)
-        if metadata is not None:
+        """Extract content from parsed HTML."""
+        row_data = {self._COLUMN_NAME: self._extract_text(soup)}
+        if metadata:
             row_data.update(metadata)
-
-        # Extract tables
         if self.extract_tables:
-            tables = self._extract_tables(soup)
-            row_data["tables"] = tables
-
-        # Extract links
+            row_data["tables"] = self._extract_tables(soup)
         if self.extract_links:
-            links = self._extract_links(soup)
-            row_data["links"] = links
-
+            row_data["links"] = self._extract_links(soup)
         return row_data
 
+    def _extract_text(self, soup: "BeautifulSoup") -> str:
+        """Extract text based on text_mode."""
+        if self.text_mode == "clean":
+            return self._extract_clean_text(soup)
+        elif self.text_mode == "raw":
+            return soup.get_text()
+        elif self.text_mode == "markdown":
+            return self._extract_markdown(soup)
+        return ""
+
     def _extract_clean_text(self, soup: "BeautifulSoup") -> str:
-        """Extract clean text from HTML.
-
-        Removes scripts, styles, and extra whitespace.
-
-        Args:
-            soup: BeautifulSoup object.
-
-        Returns:
-            Clean text string.
-        """
-        # Remove script and style elements
+        """Extract clean text from HTML, removing scripts, styles, and extra whitespace."""
         for element in soup(["script", "style", "noscript", "iframe"]):
             element.decompose()
-
-        # Get text and clean whitespace
-        text = soup.get_text(separator=" ")
-
-        # Clean up whitespace (collapse all whitespace to single spaces)
-        text = " ".join(text.split())
-
-        return text
+        return " ".join(soup.get_text(separator=" ").split())
 
     def _extract_markdown(self, soup: "BeautifulSoup") -> str:
-        """Convert HTML to markdown.
-
-        Args:
-            soup: BeautifulSoup object.
-
-        Returns:
-            Markdown string.
-        """
+        """Convert HTML to markdown."""
         from markdownify import markdownify as md
 
-        # Remove script and style elements
         for element in soup(["script", "style", "noscript", "iframe"]):
             element.decompose()
-
-        html_str = str(soup)
-        markdown_text = md(html_str, heading_style="ATX", bullets="-")
-
-        return markdown_text.strip()
+        return md(str(soup), heading_style="ATX", bullets="-").strip()
 
     def _extract_document_metadata(self, soup: "BeautifulSoup") -> Dict[str, Any]:
-        """Extract document-level metadata from HTML.
-
-        This extracts metadata from the document's <head> section, including
-        title, meta description, and meta keywords. This should be called on
-        the full document before applying any CSS selectors.
-
-        Args:
-            soup: BeautifulSoup object for the full document.
-
-        Returns:
-            Dictionary with document-level metadata.
-        """
+        """Extract document-level metadata from HTML <head> section."""
         metadata = {}
-
-        # Extract title
         title_tag = soup.find("title")
         metadata["title"] = title_tag.get_text().strip() if title_tag else None
-
-        # Extract meta description
         meta_desc = soup.find("meta", attrs={"name": "description"})
-        if meta_desc and meta_desc.get("content"):
-            metadata["description"] = meta_desc["content"]
-        else:
-            metadata["description"] = None
-
-        # Extract meta keywords
+        metadata["description"] = meta_desc.get("content") if meta_desc else None
         meta_keywords = soup.find("meta", attrs={"name": "keywords"})
-        if meta_keywords and meta_keywords.get("content"):
-            metadata["keywords"] = meta_keywords["content"]
-        else:
-            metadata["keywords"] = None
-
+        metadata["keywords"] = meta_keywords.get("content") if meta_keywords else None
         return metadata
 
     def _extract_content_metadata(self, soup: "BeautifulSoup") -> Dict[str, Any]:
-        """Extract content-specific metadata from HTML.
-
-        This extracts metadata from the content, such as headers (h1-h6).
-        This should be called on the selected content after applying CSS selectors.
-
-        Args:
-            soup: BeautifulSoup object for the content (possibly filtered by selector).
-
-        Returns:
-            Dictionary with content-specific metadata.
-        """
-        metadata = {}
-
-        # Extract headers
+        """Extract content-specific metadata from HTML (headers h1-h6)."""
         headers = {}
-        for i in range(1, 7):  # h1 to h6
+        for i in range(1, 7):
             h_tags = soup.find_all(f"h{i}")
             if h_tags:
                 headers[f"h{i}"] = [h.get_text().strip() for h in h_tags]
-
-        if headers:
-            metadata["headers"] = headers
-
-        return metadata
+        return {"headers": headers} if headers else {}
 
     def _extract_tables(self, soup: "BeautifulSoup") -> List[List[List[str]]]:
-        """Extract tables from HTML.
-
-        Args:
-            soup: BeautifulSoup object.
-
-        Returns:
-            List of tables, where each table is a list of rows,
-            and each row is a list of cell values.
-        """
+        """Extract tables from HTML."""
         tables = []
-
         for table in soup.find_all("table"):
             table_data = []
-
-            # Extract table rows
             for row in table.find_all("tr"):
-                row_data = []
-                # Get both td and th cells
-                for cell in row.find_all(["td", "th"]):
-                    cell_text = cell.get_text().strip()
-                    row_data.append(cell_text)
-                if row_data:  # Only add non-empty rows
+                row_data = [cell.get_text().strip() for cell in row.find_all(["td", "th"])]
+                if row_data:
                     table_data.append(row_data)
-
             if table_data:
                 tables.append(table_data)
-
         return tables
 
     def _extract_links(self, soup: "BeautifulSoup") -> List[Dict[str, str]]:
-        """Extract links from HTML.
-
-        Args:
-            soup: BeautifulSoup object.
-
-        Returns:
-            List of dictionaries with link data (href, text).
-        """
-        links = []
-
-        for a_tag in soup.find_all("a", href=True):
-            link_data = {
-                "href": a_tag["href"],
-                "text": a_tag.get_text().strip(),
-            }
-            links.append(link_data)
-
-        return links
+        """Extract links from HTML."""
+        return [
+            {"href": a_tag["href"], "text": a_tag.get_text().strip()}
+            for a_tag in soup.find_all("a", href=True)
+        ]
 
     def _rows_per_file(self):
         """Return number of rows per file."""
         return 1
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        """Estimate in-memory size of parsed HTML data.
-
-        Returns:
-            Estimated size in bytes, or None if size cannot be estimated.
-        """
-        total_size = 0
-        has_any_size = False
-
-        for file_size in self._file_sizes():
-            if file_size is not None:
-                total_size += file_size
-                has_any_size = True
-
-        # Return None if no file sizes available (Ray Data will handle accordingly)
-        if not has_any_size:
+        """Estimate in-memory size of parsed HTML data."""
+        sizes = [s for s in self._file_sizes() if s is not None]
+        if not sizes:
             return None
-
-        # Apply encoding ratio (HTML expands in memory after parsing)
-        return int(total_size * self._encoding_ratio)
+        return int(sum(sizes) * self._encoding_ratio)
 
 
 @DeveloperAPI
@@ -505,16 +270,11 @@ class HTMLFileMetadataProvider(DefaultFileMetadataProvider):
     """Metadata provider for HTML files with custom encoding ratio."""
 
     def __init__(self):
-        """Initialize with default encoding ratio."""
         super().__init__()
         self._encoding_ratio = HTML_ENCODING_RATIO_ESTIMATE_DEFAULT
 
     def _set_encoding_ratio(self, encoding_ratio: float):
-        """Set HTML file encoding ratio.
-
-        Args:
-            encoding_ratio: Ratio for estimating in-memory size.
-        """
+        """Set HTML file encoding ratio."""
         self._encoding_ratio = encoding_ratio
 
     def _get_block_metadata(
@@ -524,16 +284,7 @@ class HTMLFileMetadataProvider(DefaultFileMetadataProvider):
         rows_per_file: Optional[int],
         file_sizes: List[Optional[int]],
     ) -> BlockMetadata:
-        """Get block metadata with adjusted size estimate.
-
-        Args:
-            paths: File paths.
-            rows_per_file: Rows per file.
-            file_sizes: File sizes in bytes.
-
-        Returns:
-            BlockMetadata with adjusted size estimate.
-        """
+        """Get block metadata with adjusted size estimate."""
         metadata = super()._get_block_metadata(
             paths, rows_per_file=rows_per_file, file_sizes=file_sizes
         )

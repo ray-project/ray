@@ -1243,11 +1243,7 @@ def read_html(
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from HTML files.
 
-    This function reads HTML files and extracts text content, tables, links, and
-    metadata. It's particularly useful for web scraping, documentation processing,
-    and building RAG (Retrieval-Augmented Generation) pipelines.
-
-    The column name defaults to "text" (configurable via ``text_mode``).
+    Extracts text content, tables, links, and metadata from HTML files.
 
     Examples:
         Read HTML files and extract clean text:
