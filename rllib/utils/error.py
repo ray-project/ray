@@ -46,7 +46,7 @@ b) Not a tune-registered environment creator.
 c) Not a valid env class string.
 
 Try one of the following:
-a) For Atari support: `pip install gym[atari] autorom[accept-rom-license]`.
+a) For Atari support: `pip install gymnasium[atari]`.
 b) To register your custom env, do `from ray import tune;
    tune.register_env('[name]', lambda cfg: [return env obj from here using cfg])`.
    Then in your config, do `config.environment(env='[name]').
