@@ -2,10 +2,10 @@
 FillNa logical operator.
 
 This module defines the FillNa logical operator for filling missing values
-in Ray datasets with advanced features for production use.
+in Ray datasets.
 """
 
-from typing import Any, Dict, List, Optional, Union, Literal
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -16,22 +16,6 @@ FillMethod = Literal["value", "forward", "backward", "interpolate"]
 
 class FillNa(AbstractMap):
     """Logical operator for fillna operation.
-
-    This operator represents the logical intent to fill missing values
-    in a dataset with specified replacement values or methods.
-
-    Examples:
-        This operator is used internally by Ray Data's fillna() method.
-
-        Basic usage:
-        - Fill all missing values with a scalar: FillNa(input_op, value=0)
-        - Fill column-specific values: FillNa(input_op, value={"col1": 0, "col2": "missing"})
-        - Fill only specific columns: FillNa(input_op, value=0, subset=["col1", "col2"])
-
-        Advanced usage:
-        - Forward fill: FillNa(input_op, method="forward")
-        - Backward fill: FillNa(input_op, method="backward")
-        - Limit fill operations: FillNa(input_op, value=0, limit=5)
 
     Args:
         input_op: The input logical operator.
@@ -96,53 +80,29 @@ class FillNa(AbstractMap):
 
     @property
     def value(self) -> Union[Any, Dict[str, Any]]:
-        """The fill value(s) to use for replacing missing entries.
-
-        Returns:
-            Either a scalar value or a dictionary of column-specific values.
-        """
+        """The fill value(s) to use for replacing missing entries."""
         return self._value
 
     @property
     def method(self) -> FillMethod:
-        """The method used for filling missing values.
-
-        Returns:
-            The filling method: "value", "forward", "backward", or "interpolate".
-        """
+        """The method used for filling missing values."""
         return self._method
 
     @property
     def subset(self) -> Optional[List[str]]:
-        """The subset of columns to apply the fill operation to.
-
-        Returns:
-            List of column names, or None if all columns should be processed.
-        """
+        """The subset of columns to apply the fill operation to."""
         return self._subset
 
     @property
     def limit(self) -> Optional[int]:
-        """The maximum number of consecutive missing values to fill.
-
-        Returns:
-            Integer limit, or None if no limit is applied.
-        """
+        """The maximum number of consecutive missing values to fill."""
         return self._limit
 
     @property
     def inplace(self) -> bool:
-        """Whether to modify the dataset in-place (always False for Ray Data).
-
-        Returns:
-            False, as Ray Data datasets are immutable.
-        """
+        """Whether to modify the dataset in-place (always False for Ray Data)."""
         return self._inplace
 
     def can_modify_num_rows(self) -> bool:
-        """Check if this operator can modify the number of rows.
-
-        Returns:
-            False, as fillna operations preserve the number of rows.
-        """
+        """Check if this operator can modify the number of rows."""
         return False

@@ -2,10 +2,10 @@
 DropNa logical operator.
 
 This module defines the DropNa logical operator for removing rows with missing
-values from Ray datasets with advanced features for production use.
+values from Ray datasets.
 """
 
-from typing import Any, Dict, List, Optional, Literal
+from typing import Any, Dict, List, Literal, Optional
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -16,21 +16,6 @@ DropMethod = Literal["any", "all"]
 
 class DropNa(AbstractMap):
     """Logical operator for dropna operation.
-
-    This operator represents the logical intent to remove rows containing
-    missing values from a dataset based on specified criteria.
-
-    Examples:
-        This operator is used internally by Ray Data's dropna() method.
-
-        Basic usage:
-        - Drop rows with any missing values: DropNa(input_op, how="any")
-        - Drop rows only if all values are missing: DropNa(input_op, how="all")
-        - Drop rows with missing values in specific columns: DropNa(input_op, subset=["col1", "col2"])
-        - Keep rows with at least N non-missing values: DropNa(input_op, thresh=2)
-
-        Advanced usage:
-        - Treat additional values as missing: DropNa(input_op, ignore_values=[0, ""])
 
     Args:
         input_op: The input logical operator.
@@ -93,54 +78,29 @@ class DropNa(AbstractMap):
 
     @property
     def how(self) -> DropMethod:
-        """The strategy for determining which rows to drop.
-
-        Returns:
-            Either 'any' (drop if any column has missing values) or
-            'all' (drop only if all columns have missing values).
-        """
+        """The strategy for determining which rows to drop."""
         return self._how
 
     @property
     def subset(self) -> Optional[List[str]]:
-        """The subset of columns to consider for missing values.
-
-        Returns:
-            List of column names, or None if all columns should be considered.
-        """
+        """The subset of columns to consider for missing values."""
         return self._subset
 
     @property
     def thresh(self) -> Optional[int]:
-        """The minimum number of non-missing values required to keep a row.
-
-        Returns:
-            Integer threshold, or None if not using threshold-based dropping.
-        """
+        """The minimum number of non-missing values required to keep a row."""
         return self._thresh
 
     @property
     def ignore_values(self) -> List[Any]:
-        """Additional values to treat as missing beyond None and NaN.
-
-        Returns:
-            List of values to treat as missing.
-        """
+        """Additional values to treat as missing beyond None and NaN."""
         return self._ignore_values
 
     @property
     def inplace(self) -> bool:
-        """Whether to modify the dataset in-place (always False for Ray Data).
-
-        Returns:
-            False, as Ray Data datasets are immutable.
-        """
+        """Whether to modify the dataset in-place (always False for Ray Data)."""
         return self._inplace
 
     def can_modify_num_rows(self) -> bool:
-        """Check if this operator can modify the number of rows.
-
-        Returns:
-            True, as dropna operations can remove rows from the dataset.
-        """
+        """Check if this operator can modify the number of rows."""
         return True

@@ -41,6 +41,8 @@ class Operation(Enum):
         IS_NOT_NULL: Check if value is not null
         IN: Check if value is in a list
         NOT_IN: Check if value is not in a list
+        FILL_NULL: Fill null values with a replacement value
+        COALESCE: Return first non-null value from multiple expressions
     """
 
     ADD = "add"
@@ -61,6 +63,8 @@ class Operation(Enum):
     IS_NOT_NULL = "is_not_null"
     IN = "in"
     NOT_IN = "not_in"
+    FILL_NULL = "fill_null"
+    COALESCE = "coalesce"
 
 
 class _ExprVisitor(ABC, Generic[T]):
@@ -153,6 +157,10 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
             result = pc.is_in(left, right)
             return pc.invert(result) if expr.op == Operation.NOT_IN else result
 
+        if expr.op == Operation.COALESCE:
+            coalesce_exprs = self._collect_coalesce_exprs(expr)
+            return pc.coalesce(coalesce_exprs)
+
         left = self.visit(expr.left)
         right = self.visit(expr.right)
         from ray.data._internal.planner.plan_expression.expression_evaluator import (
@@ -162,6 +170,19 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
         if expr.op in _ARROW_EXPR_OPS_MAP:
             return _ARROW_EXPR_OPS_MAP[expr.op](left, right)
         raise ValueError(f"Unsupported binary operation for PyArrow: {expr.op}")
+
+    def _collect_coalesce_exprs(self, expr: "BinaryExpr") -> List["pyarrow.compute.Expression"]:
+        """Collect all expressions in a nested COALESCE operation."""
+        exprs = []
+        current = expr
+        while isinstance(current, BinaryExpr) and current.op == Operation.COALESCE:
+            exprs.append(self.visit(current.left))
+            if isinstance(current.right, BinaryExpr) and current.right.op == Operation.COALESCE:
+                current = current.right
+            else:
+                exprs.append(self.visit(current.right))
+                break
+        return exprs
 
     def visit_unary(self, expr: "UnaryExpr") -> "pyarrow.compute.Expression":
         operand = self.visit(expr.operand)
@@ -381,6 +402,27 @@ class Expr(ABC):
         if not isinstance(values, Expr):
             values = LiteralExpr(values)
         return self._bin(values, Operation.NOT_IN)
+
+    def fill_null(self, fill_value: Any) -> "Expr":
+        """Fill null values with a replacement value.
+
+        Args:
+            fill_value: The value to use for filling null entries. Can be a literal
+                value or another expression.
+
+        Returns:
+            An expression that replaces null values with the specified fill value.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> # Fill null values in a column with 0
+            >>> expr = col("value").fill_null(0)
+            >>> # Fill null values with another column's value
+            >>> expr = col("value").fill_null(col("default_value"))
+        """
+        if not isinstance(fill_value, Expr):
+            fill_value = LiteralExpr(fill_value)
+        return BinaryExpr(Operation.FILL_NULL, self, fill_value)
 
     def alias(self, name: str) -> "Expr":
         """Rename the expression.
@@ -793,6 +835,47 @@ def col(name: str) -> ColumnExpr:
     return ColumnExpr(name)
 
 
+@PublicAPI(stability="alpha")
+def coalesce(*exprs: Union["Expr", Any]) -> "Expr":
+    """
+    Return the first non-null value from multiple expressions.
+
+    This function evaluates expressions in order and returns the first one
+    that is not null. If all expressions are null, returns null.
+
+    Args:
+        *exprs: Variable number of expressions or values to evaluate. Can be
+            a mix of Expr objects and literal values.
+
+    Returns:
+        An expression that returns the first non-null value from the provided expressions.
+
+    Example:
+        >>> from ray.data.expressions import col, lit, coalesce
+        >>> # Use coalesce to provide fallback values
+        >>> expr = coalesce(col("primary"), col("fallback"), lit("default"))
+        >>> # Use with Dataset.with_column()
+        >>> import ray
+        >>> ds = ray.data.from_items([
+        ...     {"primary": None, "fallback": "backup"},
+        ...     {"primary": "value", "fallback": None}
+        ... ])
+        >>> ds = ds.with_column("result", coalesce(col("primary"), col("fallback"), lit("none")))
+    """
+    if len(exprs) < 2:
+        raise ValueError("coalesce() requires at least 2 expressions")
+
+    # Convert all arguments to expressions
+    expr_list = [expr if isinstance(expr, Expr) else LiteralExpr(expr) for expr in exprs]
+
+    # Build coalesce as nested fill_null operations: fill_null(expr1, fill_null(expr2, expr3))
+    result = expr_list[-1]
+    for expr in reversed(expr_list[:-1]):
+        result = BinaryExpr(Operation.COALESCE, expr, result)
+
+    return result
+
+
 @PublicAPI(stability="beta")
 def lit(value: Any) -> LiteralExpr:
     """
@@ -892,6 +975,7 @@ __all__ = [
     "udf",
     "col",
     "lit",
+    "coalesce",
     "download",
     "star",
 ]
