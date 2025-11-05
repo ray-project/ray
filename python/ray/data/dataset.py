@@ -1604,6 +1604,12 @@ class Dataset:
         expectation: Optional[Union[Expectation, "Expr", List[Expectation]]] = None,
         *,
         expr: Optional["Expr"] = None,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        validator_fn: Optional[Callable[[Any], bool]] = None,
+        max_execution_time_seconds: Optional[float] = None,
+        optimization_strategy: Union[str, "OptimizationStrategy"] = "balanced",
+        error_on_failure: bool = True,
         compute: Optional[ComputeStrategy] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1638,13 +1644,11 @@ class Dataset:
             >>> print(failed_ds.take_all())
             [{'value': -1}]
             >>>
+            >>> # Pass expression as positional argument with optional name
+            >>> passed_ds, failed_ds, result = ds.expect(col("value") > 0, name="positive_values")
+            >>>
             >>> # Or pass expression as positional argument
             >>> passed_ds, failed_ds, result = ds.expect(col("value") > 0)
-            >>>
-            >>> # Use expectation object from expect()
-            >>> expectation = expect(expr=col("age") >= 0, name="non_negative_age")
-            >>> ds = ray.data.from_items([{"age": 25}, {"age": -5}])
-            >>> passed_ds, failed_ds, result = ds.expect(expectation)
             >>>
             >>> # Multiple expectations (pass as list)
             >>> expectations = [
@@ -1660,23 +1664,32 @@ class Dataset:
             >>> invalid_ds.write_parquet("s3://bucket/quarantine/")
             >>>
             >>> # SLA expectations: execution time constraints
-            >>> sla_expectation = expect(
+            >>> ds = ray.data.range(1000000)
+            >>> processed_ds, remaining_ds, result = ds.expect(
             ...     max_execution_time_seconds=60,
             ...     optimization_strategy="performance"
             ... )
-            >>> ds = ray.data.range(1000000)
-            >>> processed_ds, remaining_ds, result = ds.expect(sla_expectation)
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             expectation: An Expectation object returned from `expect()`, an expression (Expr),
-                or a list of expectations. If None, `expr` must be provided.
+                or a list of expectations. If None, `expr` or other parameters must be provided.
                 Mutually exclusive with `expr`.
             expr: An expression that represents a predicate (boolean condition) for
                 validation. Uses the same expression API as :meth:`~Dataset.filter`.
                 Mutually exclusive with `expectation`. Can also be passed as a positional
-                argument: ``ds.expect(col("value") > 0)``.
+                argument: ``ds.expect(col("value") > 0, name="check")``.
+            name: Name for the expectation (only used when creating from expr/validator_fn/SLA).
+            description: Description of what this expectation checks (only used when creating
+                from expr/validator_fn/SLA).
+            validator_fn: Function for data quality validation (takes batch, returns bool).
+                Mutually exclusive with `expr` and `expectation`.
+            max_execution_time_seconds: Maximum execution time in seconds (for SLA).
+                Mutually exclusive with `expr` and `expectation`.
+            optimization_strategy: Optimization strategy hint ("cost", "performance", "balanced").
+                Only used with `max_execution_time_seconds`.
+            error_on_failure: If True, raise exception on failure; if False, log warning.
             compute: The compute strategy to use for the validation operation.
 
                 * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
@@ -1723,12 +1736,13 @@ class Dataset:
         """
         # Import here to avoid circular dependencies
         from ray.data.expressions import Expr as _Expr
+        from ray.data.expectations import OptimizationStrategy
 
         # Validate that at least one of expectation or expr is provided
         if expectation is None and expr is None:
             raise ValueError(
                 "Must provide either `expectation` or `expr` argument. "
-                "Examples: ds.expect(expr=col('value') > 0) or ds.expect(expectation=my_expectation)"
+                "Examples: ds.expect(expr=col('value') > 0) or ds.expect(col('value') > 0, name='check')"
             )
 
         # Handle lists of expectations (simplified suite functionality)
@@ -1753,11 +1767,39 @@ class Dataset:
 
             from ray.data.expectations import expect as _expect
 
+            # Create expectation from expression with optional parameters
             expectation = _expect(
                 expr=expr,
-                name="Data Quality Check",
-                description=f"Validate expression: {expr}",
+                name=name or "Data Quality Check",
+                description=description or f"Validate expression: {expr}",
+                error_on_failure=error_on_failure,
             )
+        elif expectation is None:
+            # No expression provided, check if SLA parameters are provided
+            if max_execution_time_seconds is not None:
+                from ray.data.expectations import expect as _expect
+
+                expectation = _expect(
+                    max_execution_time_seconds=max_execution_time_seconds,
+                    optimization_strategy=optimization_strategy,
+                    name=name or "SLA Requirement",
+                    description=description or "SLA performance requirement",
+                    error_on_failure=error_on_failure,
+                )
+            elif validator_fn is not None:
+                from ray.data.expectations import expect as _expect
+
+                expectation = _expect(
+                    validator_fn=validator_fn,
+                    name=name or "Data Quality Check",
+                    description=description or "Data quality validation",
+                    error_on_failure=error_on_failure,
+                )
+            else:
+                raise ValueError(
+                    "Must provide either `expr`, `validator_fn`, `max_execution_time_seconds`, "
+                    "or an `expectation` object."
+                )
 
         # Validate expectation object
         if not isinstance(expectation, Expectation):
