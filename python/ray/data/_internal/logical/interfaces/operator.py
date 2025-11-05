@@ -19,6 +19,9 @@ class Operator:
 
         self._wire_output_deps(input_dependencies)
 
+    def __reduce__(self):
+        raise ValueError(f"Operator {self._name} is not serializable.")
+
     @property
     def name(self) -> str:
         return self._name
