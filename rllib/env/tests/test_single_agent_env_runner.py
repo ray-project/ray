@@ -2,7 +2,6 @@ import unittest
 from unittest.mock import patch
 
 import gymnasium as gym
-from ale_py import AtariVectorEnv
 from gymnasium.envs.classic_control.cartpole import CartPoleVectorEnv
 from gymnasium.envs.mujoco.swimmer_v4 import SwimmerEnv
 
@@ -348,8 +347,9 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             ("CartPole-v1", gym.VectorizeMode.ASYNC, gym.vector.AsyncVectorEnv),
             ("CartPole-v1", "vector_entry_point", CartPoleVectorEnv),
             ("CartPole-v1", gym.VectorizeMode.VECTOR_ENTRY_POINT, CartPoleVectorEnv),
-            ("ALE/Pong-v5", "vector_entry_point", AtariVectorEnv),
-            ("ALE/Pong-v5", gym.VectorizeMode.VECTOR_ENTRY_POINT, AtariVectorEnv),
+            # TODO (mark) re-add with ale-py 0.11 support
+            # ("ALE/Pong-v5", "vector_entry_point", AtariVectorEnv),
+            # ("ALE/Pong-v5", gym.VectorizeMode.VECTOR_ENTRY_POINT, AtariVectorEnv),
         ]:
             config = (
                 AlgorithmConfig()
