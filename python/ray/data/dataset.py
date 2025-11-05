@@ -4032,154 +4032,52 @@ class Dataset:
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to an Iceberg table.
 
-        This method writes Ray Data to Apache Iceberg tables using PyIceberg.
-        It supports append, overwrite, and merge (upsert) modes with optional
-        partition filtering.
+        Supports append, overwrite, merge (upsert), and CDF (Change Data Feed) modes.
 
         .. tip::
             For more details on PyIceberg, see https://py.iceberg.apache.org/
 
         Examples:
-            Append data to an existing table:
+            Append data:
 
              .. testcode::
                 :skipif: True
 
-                import ray
-                import pandas as pd
-                docs = [{"title": "Iceberg data sink test"} for key in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
                 ds.write_iceberg(
                     table_identifier="db_name.table_name",
                     catalog_kwargs={"name": "default", "type": "sql"},
                     mode="append"
                 )
 
-            Overwrite entire table:
+            Merge (upsert) with keys:
 
              .. testcode::
                 :skipif: True
 
                 ds.write_iceberg(
-                    table_identifier="db_name.table_name",
-                    catalog_kwargs={"name": "default", "type": "sql"},
-                    mode="overwrite"
-                )
-
-            Dynamic partition overwrite (replace only matching partitions):
-
-             .. testcode::
-                :skipif: True
-
-                from pyiceberg.expressions import GreaterThanOrEqual
-                ds.write_iceberg(
-                    table_identifier="db_name.table_name",
-                    catalog_kwargs={"name": "default", "type": "sql"},
-                    mode="overwrite",
-                    overwrite_filter=GreaterThanOrEqual("year", 2024)
-                )
-
-            Merge (upsert) data based on key columns:
-
-             .. testcode::
-                :skipif: True
-
-                # Update existing customers and insert new ones
-                updated_customers.write_iceberg(
                     table_identifier="db.customers",
                     catalog_kwargs={"type": "glue"},
                     mode="merge",
                     merge_keys=["customer_id"]
                 )
 
-            Merge with update filter (only update active records):
-
-             .. testcode::
-                :skipif: True
-
-                from pyiceberg.expressions import EqualTo
-                new_data.write_iceberg(
-                    table_identifier="db.customers",
-                    catalog_kwargs={"type": "glue"},
-                    mode="merge",
-                    merge_keys=["customer_id"],
-                    update_filter=EqualTo("status", "active")
-                )
-
         Args:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)
-            catalog_kwargs: Arguments to pass to PyIceberg's
-                ``load_catalog()`` function. Common keys:
-
-                - ``"name"``: Catalog name (default: ``"default"``)
-                - ``"type"``: Catalog type (e.g., ``"glue"``, ``"sql"``, ``"hive"``, ``"rest"``)
-                - Additional catalog-specific configuration
-
-                See the `PyIceberg catalog documentation
-                <https://py.iceberg.apache.org/configuration/>`_ for details.
-            snapshot_properties: Custom properties to attach to the Iceberg snapshot
-                when committing. Useful for tracking metadata (e.g.,
-                ``{"app": "ray_data", "user": "data_team"}``).
-            mode: Write mode:
-
-                - ``"append"``: Add new data without removing existing data
-                - ``"overwrite"``: Replace existing data (optionally with filter)
-                - ``"merge"``: Upsert operation - update matching rows and insert new rows
-                  based on ``merge_keys``. Requires PyIceberg 0.9.0+ for optimal performance.
-                - ``"cdf"``: Change Data Feed - apply mixed INSERT/UPDATE/DELETE operations
-                  in a single transaction. Requires ``change_type_column`` and ``merge_keys``.
-
-                Defaults to ``"append"``.
-            overwrite_filter: PyIceberg BooleanExpression to filter which data to
-                overwrite. Only used when ``mode="overwrite"``. When provided, only
-                partitions matching the filter are replaced (dynamic partition overwrite).
-                When not provided, the entire table is replaced. See the `PyIceberg
-                expressions documentation <https://py.iceberg.apache.org/api/#expressions>`_
-                for filter syntax.
-            merge_keys: List of column names to use as keys for merge operations.
-                Required when ``mode="merge"``. These columns act as the join keys to
-                match rows between the source dataset and target table. Matching rows
-                are updated with new values, non-matching rows are inserted.
-
-                For optimal performance, use merge keys that align with the table's
-                partition scheme. Misaligned keys may cause Iceberg to rewrite more
-                data files than strictly necessary, though the operation remains correct.
-            update_filter: PyIceberg BooleanExpression to filter which existing rows
-                to read for merging. Only used when ``mode="merge"``. This filters the
-                existing rows that are candidates for update, but does not affect which
-                rows are deleted during the overwrite. New rows with matching keys will
-                replace ALL existing rows with those keys, regardless of filter status.
-            change_type_column: Column name containing change types when ``mode="cdf"``.
-                Valid values: ``"insert"/"I"``, ``"update"/"U"``, ``"delete"/"D"``.
-                The column is automatically removed before writing. Defaults to ``"_change_type"``.
-            ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
-            concurrency: The maximum number of Ray tasks to run concurrently. Set this
-                to control the number of tasks running simultaneously. This doesn't change the
-                total number of tasks run. By default, concurrency is dynamically
-                determined based on available resources.
-
-        Note:
-            The merge operation (``mode="merge"``) uses PyIceberg's native upsert functionality
-            when available (PyIceberg 0.9.0+). For older versions, it falls back to a
-            read-merge-write pattern. Consider upgrading PyIceberg for optimal performance.
-
-            **Merge Performance**: For best performance, merge keys should align with the
-            table's partition scheme. When keys don't match partitions (e.g., merging by
-            ``customer_id`` on a table partitioned by ``date``), Iceberg may rewrite entire
-            data files even if only a few rows changed. The operation is still correct but
-            may be slower for tables with many partitions.
-
-            For simple DELETE or UPDATE operations without merging new data, use Ray
-            Data's transformation primitives:
-
-            - **Delete**: :meth:`~Dataset.filter` out unwanted rows, then overwrite
-            - **Update**: :meth:`~Dataset.map_batches` to transform rows, then overwrite
+            catalog_kwargs: Arguments for PyIceberg ``load_catalog()``. Common keys:
+                ``"name"`` (default: ``"default"``), ``"type"`` (e.g., ``"glue"``, ``"sql"``).
+                See https://py.iceberg.apache.org/configuration/
+            snapshot_properties: Custom properties to attach to snapshot
+            mode: Write mode: ``"append"``, ``"overwrite"``, ``"merge"`` (upsert), or ``"cdf"``
+            overwrite_filter: PyIceberg BooleanExpression to filter which data to overwrite
+                (only for ``mode="overwrite"``)
+            merge_keys: Column names for merge operations (required for ``mode="merge"`` or ``"cdf"``)
+            update_filter: PyIceberg BooleanExpression to filter which rows can be updated (only for ``mode="merge"``)
+            change_type_column: Column name containing change types for ``mode="cdf"`` (default: ``"_change_type"``)
+            ray_remote_args: kwargs passed to :func:`ray.remote` in write tasks
+            concurrency: Maximum number of concurrent Ray tasks
 
         Raises:
-            ValueError: If ``mode="merge"`` but ``merge_keys`` is not provided, or if
-                invalid combinations of parameters are used.
-            ValueError: If ``mode="cdf"`` but ``merge_keys`` or ``change_type_column``
-                is not provided, or if dataset contains invalid change types.
+            ValueError: If invalid parameter combinations are used
         """
         # Handle CDF mode - apply mixed INSERT/UPDATE/DELETE operations
         if mode == "cdf":
