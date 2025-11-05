@@ -2,7 +2,6 @@ import logging
 import math
 import time
 from collections import defaultdict
-from functools import partial
 from typing import Collection, DefaultDict, List, Optional, Union
 
 import gymnasium as gym
@@ -26,7 +25,6 @@ from ray.rllib.env import INPUT_ENV_SINGLE_SPACES, INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import ENV_STEP_FAILURE, EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
@@ -215,6 +213,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
             # Sample n timesteps.
             if num_timesteps is not None:
+                assert num_timesteps >= 0
                 samples = self._sample(
                     num_timesteps=num_timesteps,
                     explore=explore,
@@ -223,6 +222,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 )
             # Sample m episodes.
             elif num_episodes is not None:
+                assert num_episodes >= 0
                 samples = self._sample(
                     num_episodes=num_episodes,
                     explore=explore,
@@ -640,49 +640,59 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     f"{e.args[0]}"
                 )
 
-        env_ctx = self.config.env_config
-        if not isinstance(env_ctx, EnvContext):
+        env_config = self.config.env_config
+        if not isinstance(env_config, EnvContext):
             env_ctx = EnvContext(
-                env_ctx,
+                env_config,
                 worker_index=self.worker_index,
                 num_workers=self.num_workers,
                 remote=self.config.remote_worker_envs,
             )
+        else:
+            env_ctx = env_config
 
         # No env provided -> Error.
         if not self.config.env:
             raise ValueError(
-                "`config.env` is not provided! You should provide a valid environment "
-                "to your config through `config.environment([env descriptor e.g. "
-                "'CartPole-v1'])`."
+                "`config.env` is not provided! "
+                "You should provide a valid environment to your config through "
+                "`config.environment([env descriptor e.g. 'CartPole-v1'])`."
             )
         # Register env for the local context.
         # Note, `gym.register` has to be called on each worker.
         elif isinstance(self.config.env, str) and _global_registry.contains(
             ENV_CREATOR, self.config.env
         ):
-            entry_point = partial(
-                _global_registry.get(ENV_CREATOR, self.config.env),
-                env_ctx,
+            env_name = "rllib-single-agent-env-v0"
+            entry_point = _global_registry.get(ENV_CREATOR, self.config.env)
+            gym.register(
+                env_name,
+                entry_point=lambda: entry_point(env_ctx),
+                vector_entry_point=lambda num_envs: entry_point(
+                    env_ctx | {"num_envs": num_envs}
+                ),
             )
+            env_config = {}
+        elif callable(self.config.env):
+            env_name = "rllib-single-agent-env-v0"
+            gym.register(
+                env_name,
+                entry_point=lambda: self.config.env(env_ctx),
+                vector_entry_point=lambda num_envs: self.config.env(
+                    env_ctx | {"num_envs": num_envs}
+                ),
+            )
+            env_config = {}
         else:
-            entry_point = partial(
-                _gym_env_creator,
-                env_descriptor=self.config.env,
-                env_context=env_ctx,
-            )
-        gym.register("rllib-single-agent-env-v0", entry_point=entry_point)
-        vectorize_mode = self.config.gym_env_vectorize_mode
+            env_name = self.config.env
 
+        vectorize_mode = gym.VectorizeMode(self.config.gym_env_vectorize_mode)
         self.env = DictInfoToList(
             gym.make_vec(
-                "rllib-single-agent-env-v0",
+                env_name,
                 num_envs=self.config.num_envs_per_env_runner,
-                vectorization_mode=(
-                    vectorize_mode
-                    if isinstance(vectorize_mode, gym.envs.registration.VectorizeMode)
-                    else gym.envs.registration.VectorizeMode(vectorize_mode.lower())
-                ),
+                vectorization_mode=vectorize_mode,
+                **env_config,
             )
         )
 
