@@ -4,6 +4,7 @@ from ray.includes.rpc_token_authentication cimport (
     CAuthenticationToken,
     CAuthenticationTokenLoader,
 )
+from ray._private.authentication.authentication_constants import AUTHORIZATION_HEADER_NAME
 
 
 # Authentication mode enum exposed to Python
@@ -11,7 +12,6 @@ class AuthenticationMode:
     DISABLED = CAuthenticationMode.DISABLED
     TOKEN = CAuthenticationMode.TOKEN
 
-_AUTHORIZATION_HEADER_NAME = "authorization"
 
 def get_authentication_mode():
     """Get the current authentication mode.
@@ -92,4 +92,4 @@ class AuthenticationTokenLoader:
         if not token_opt.has_value() or token_opt.value().empty():
             return {}
 
-        return {_AUTHORIZATION_HEADER_NAME: token_opt.value().ToAuthorizationHeaderValue().decode('utf-8')}
+        return {AUTHORIZATION_HEADER_NAME: token_opt.value().ToAuthorizationHeaderValue().decode('utf-8')}
