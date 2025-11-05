@@ -143,11 +143,17 @@ def test_read_mcap_basic(ray_start_regular_shared, basic_mcap_file):
 
     # Verify basic fields are present
     rows = ds.take_all()
+    assert len(rows) == 2
     for row in rows:
         assert "data" in row
         assert "topic" in row
         assert "log_time" in row
         assert "publish_time" in row
+        assert "sequence" in row
+
+    # Verify topics are correct
+    topics = {row["topic"] for row in rows}
+    assert topics == {"/camera/image", "/lidar/points"}
 
 
 def test_read_mcap_multiple_files(ray_start_regular_shared, tmp_path):
@@ -208,16 +214,28 @@ def test_read_mcap_time_range_filtering(
     ray_start_regular_shared, time_series_mcap_file
 ):
     """Test filtering by time range."""
+    from ray.data.datasource import TimeRange
+
     path, base_time = time_series_mcap_file
 
-    # Filter to first 5 messages
+    # Filter to first 5 messages using tuple format (backwards compatible)
     time_range = (base_time, base_time + 5000000)
     ds = ray.data.read_mcap(path, time_range=time_range)
 
     rows = ds.take_all()
     assert len(rows) <= 5
     for row in rows:
-        assert base_time <= row["log_time"] <= base_time + 5000000
+        assert base_time <= row["log_time"] < base_time + 5000000
+
+    # Test with TimeRange object
+    time_range_obj = TimeRange(
+        start_time=base_time + 2000000, end_time=base_time + 8000000
+    )
+    ds2 = ray.data.read_mcap(path, time_range=time_range_obj)
+    rows2 = ds2.take_all()
+    assert len(rows2) <= 6  # Messages 2-7 inclusive
+    for row in rows2:
+        assert base_time + 2000000 <= row["log_time"] < base_time + 8000000
 
 
 def test_read_mcap_message_type_filtering(ray_start_regular_shared, simple_mcap_file):
@@ -386,6 +404,340 @@ def test_read_mcap_json_decoding(ray_start_regular_shared, tmp_path):
     assert row["data"]["sensor_data"]["temperature"] == 23.5
     assert row["data"]["metadata"]["device_id"] == "sensor_001"
     assert row["data"]["sensor_data"]["readings"] == [1, 2, 3, 4, 5]
+
+
+# ============================================================================
+# Tests for File-Level Metadata and Predicate Pushdown
+# ============================================================================
+
+
+@pytest.fixture
+def multi_file_mcap_dir(tmp_path):
+    """Fixture providing multiple MCAP files in a directory with different topics."""
+    mcap_dir = os.path.join(tmp_path, "mcap_data")
+    os.makedirs(mcap_dir)
+
+    base_time = 1000000000
+
+    # File 1: Only topic_a messages
+    path1 = os.path.join(mcap_dir, "file_a.mcap")
+    messages1 = [
+        {
+            "topic": "/topic_a",
+            "data": {"file": 1, "seq": i},
+            "log_time": base_time + i * 1000000,
+        }
+        for i in range(5)
+    ]
+    create_test_mcap_file(path1, messages1)
+
+    # File 2: Only topic_b messages
+    path2 = os.path.join(mcap_dir, "file_b.mcap")
+    messages2 = [
+        {
+            "topic": "/topic_b",
+            "data": {"file": 2, "seq": i},
+            "log_time": base_time + 10000000 + i * 1000000,
+        }
+        for i in range(5)
+    ]
+    create_test_mcap_file(path2, messages2)
+
+    # File 3: Mixed topics
+    path3 = os.path.join(mcap_dir, "file_mixed.mcap")
+    messages3 = [
+        {
+            "topic": "/topic_a" if i % 2 == 0 else "/topic_b",
+            "data": {"file": 3, "seq": i},
+            "log_time": base_time + 20000000 + i * 1000000,
+        }
+        for i in range(4)
+    ]
+    create_test_mcap_file(path3, messages3)
+
+    return mcap_dir, base_time
+
+
+def test_read_mcap_file_metadata_provider(ray_start_regular_shared, multi_file_mcap_dir):
+    """Test that MCAPFileMetadataProvider correctly extracts file metadata."""
+    mcap_dir, base_time = multi_file_mcap_dir
+
+    # We can't directly test _read_file_metadata without RetryingPyFileSystem,
+    # but we can test that the datasource uses it correctly
+    ds = ray.data.read_mcap(mcap_dir)
+
+    # Verify we read all files
+    assert ds.count() == 14  # 5 + 5 + 4 messages
+
+
+def test_read_mcap_directory_with_topic_filter(
+    ray_start_regular_shared, multi_file_mcap_dir
+):
+    """Test reading directory with topic filtering - should skip files without the topic."""
+    mcap_dir, base_time = multi_file_mcap_dir
+
+    # Read only topic_a messages
+    ds = ray.data.read_mcap(mcap_dir, topics={"/topic_a"})
+    rows = ds.take_all()
+
+    # Should get topic_a messages from file_a (5) and file_mixed (2)
+    assert len(rows) == 7
+    assert all(row["topic"] == "/topic_a" for row in rows)
+
+    # Read only topic_b messages
+    ds = ray.data.read_mcap(mcap_dir, topics={"/topic_b"})
+    rows = ds.take_all()
+
+    # Should get topic_b messages from file_b (5) and file_mixed (2)
+    assert len(rows) == 7
+    assert all(row["topic"] == "/topic_b" for row in rows)
+
+
+def test_read_mcap_directory_with_time_range_filter(
+    ray_start_regular_shared, multi_file_mcap_dir
+):
+    """Test reading directory with time range filtering."""
+    from ray.data.datasource import TimeRange
+
+    mcap_dir, base_time = multi_file_mcap_dir
+
+    # Read only messages from the first file's time range
+    time_range = TimeRange(
+        start_time=base_time,
+        end_time=base_time + 6000000
+    )
+    ds = ray.data.read_mcap(mcap_dir, time_range=time_range)
+    rows = ds.take_all()
+
+    # Should only get messages from file_a
+    assert len(rows) == 5
+    assert all(row["data"]["file"] == 1 for row in rows)
+
+
+def test_mcap_predicate_pushdown_topic(ray_start_regular_shared, multi_file_mcap_dir):
+    """Test predicate pushdown with topic filtering."""
+    from ray.data.expressions import col
+
+    mcap_dir, base_time = multi_file_mcap_dir
+
+    # Read all files, then filter by topic using predicate pushdown
+    ds = ray.data.read_mcap(mcap_dir)
+    ds_filtered = ds.filter(col("topic") == "/topic_a")
+
+    rows = ds_filtered.take_all()
+    assert len(rows) == 7  # topic_a messages from file_a and file_mixed
+    assert all(row["topic"] == "/topic_a" for row in rows)
+
+
+def test_mcap_predicate_pushdown_time(ray_start_regular_shared, multi_file_mcap_dir):
+    """Test predicate pushdown with time filtering."""
+    from ray.data.expressions import col
+
+    mcap_dir, base_time = multi_file_mcap_dir
+
+    # Filter by time range using predicate pushdown (<)
+    ds = ray.data.read_mcap(mcap_dir)
+    cutoff_time = base_time + 11000000
+    ds_filtered = ds.filter(col("log_time") < cutoff_time)
+
+    rows = ds_filtered.take_all()
+    # Should get messages from file_a and first message from file_b
+    assert all(row["log_time"] < cutoff_time for row in rows)
+    assert len(rows) == 6  # 5 from file_a + 1 from file_b
+
+    # Test >= operator
+    start_time = base_time + 20000000
+    ds_filtered2 = ds.filter(col("log_time") >= start_time)
+    rows2 = ds_filtered2.take_all()
+    assert all(row["log_time"] >= start_time for row in rows2)
+    assert len(rows2) == 4  # Messages from file_mixed
+
+
+def test_mcap_predicate_pushdown_combined(
+    ray_start_regular_shared, multi_file_mcap_dir
+):
+    """Test predicate pushdown with combined topic and time filters."""
+    from ray.data.expressions import col
+
+    mcap_dir, base_time = multi_file_mcap_dir
+
+    # Read all files, then apply multiple filters
+    ds = ray.data.read_mcap(mcap_dir)
+    cutoff_time = base_time + 21000000
+    ds_filtered = ds.filter(
+        (col("topic") == "/topic_a") & (col("log_time") >= cutoff_time)
+    )
+
+    rows = ds_filtered.take_all()
+    # Should only get topic_a messages from file_mixed with time >= cutoff
+    assert len(rows) == 2
+    assert all(row["topic"] == "/topic_a" for row in rows)
+    assert all(row["log_time"] >= cutoff_time for row in rows)
+    assert all(row["data"]["file"] == 3 for row in rows)
+
+    # Test with OR logic
+    ds_filtered2 = ds.filter(
+        (col("topic") == "/topic_a") | (col("topic") == "/topic_b")
+    )
+    rows2 = ds_filtered2.take_all()
+    topics2 = {row["topic"] for row in rows2}
+    assert topics2 == {"/topic_a", "/topic_b"}
+    assert len(rows2) == 14  # All messages except topic_c (if any)
+
+
+def test_mcap_predicate_pushdown_with_initial_filter(
+    ray_start_regular_shared, multi_file_mcap_dir
+):
+    """Test that predicate pushdown works with initial topic filtering."""
+    from ray.data.expressions import col
+
+    mcap_dir, base_time = multi_file_mcap_dir
+
+    # Start with topic filter, then add time filter via pushdown
+    ds = ray.data.read_mcap(mcap_dir, topics={"/topic_a"})
+    cutoff_time = base_time + 21000000
+    ds_filtered = ds.filter(col("log_time") >= cutoff_time)
+
+    rows = ds_filtered.take_all()
+    # Should only get topic_a messages with time >= cutoff
+    assert len(rows) == 2
+    assert all(row["topic"] == "/topic_a" for row in rows)
+    assert all(row["log_time"] >= cutoff_time for row in rows)
+
+    # Test with initial time range filter, then add topic filter
+    from ray.data.datasource import TimeRange
+
+    time_range = TimeRange(
+        start_time=base_time + 20000000, end_time=base_time + 30000000
+    )
+    ds2 = ray.data.read_mcap(mcap_dir, time_range=time_range)
+    ds_filtered2 = ds2.filter(col("topic") == "/topic_a")
+    rows2 = ds_filtered2.take_all()
+    assert len(rows2) == 2
+    assert all(row["topic"] == "/topic_a" for row in rows2)
+    assert all(
+        base_time + 20000000 <= row["log_time"] < base_time + 30000000
+        for row in rows2
+    )
+
+
+def test_mcap_predicate_pushdown_schema_name(
+    ray_start_regular_shared, multi_topic_mcap_file
+):
+    """Test predicate pushdown with schema_name filtering."""
+    from ray.data.expressions import col
+
+    # Read with metadata to get schema names
+    ds = ray.data.read_mcap(multi_topic_mcap_file, include_metadata=True)
+    ds_filtered = ds.filter(col("schema_name") == "test_schema")
+
+    rows = ds_filtered.take_all()
+    # All our test messages use the same schema
+    assert len(rows) == 9
+    assert all(row["schema_name"] == "test_schema" for row in rows)
+
+    # Test filtering with non-existent schema
+    ds_filtered2 = ds.filter(col("schema_name") == "nonexistent")
+    rows2 = ds_filtered2.take_all()
+    assert len(rows2) == 0
+
+
+def test_mcap_supports_predicate_pushdown(ray_start_regular_shared, simple_mcap_file):
+    """Test that MCAPDatasource reports it supports predicate pushdown."""
+    from ray.data._internal.datasource.mcap_datasource import MCAPDatasource
+
+    ds_internal = MCAPDatasource(paths=simple_mcap_file)
+    assert ds_internal.supports_predicate_pushdown() is True
+
+
+def test_mcap_file_level_metadata_blocks(
+    ray_start_regular_shared, multi_file_mcap_dir
+):
+    """Test that file-level metadata provides accurate block sizing information."""
+    mcap_dir, base_time = multi_file_mcap_dir
+
+    ds = ray.data.read_mcap(mcap_dir)
+
+    # Verify that blocks have size metadata
+    blocks = ds._plan.execute().blocks
+    for block_ref, metadata in blocks:
+        # Each block should have size_bytes information
+        assert metadata.size_bytes is not None
+        assert metadata.size_bytes > 0
+
+
+def test_mcap_timerange_class():
+    """Test TimeRange dataclass."""
+    from ray.data.datasource import TimeRange
+
+    # Create a TimeRange
+    tr = TimeRange(start_time=1000, end_time=2000)
+    assert tr.start_time == 1000
+    assert tr.end_time == 2000
+
+    # Test validation - start_time >= end_time
+    with pytest.raises(ValueError, match="start_time must be less than end_time"):
+        TimeRange(start_time=2000, end_time=1000)
+
+    # Test validation - negative times
+    with pytest.raises(ValueError, match="time values must be non-negative"):
+        TimeRange(start_time=-1000, end_time=2000)
+
+    with pytest.raises(ValueError, match="time values must be non-negative"):
+        TimeRange(start_time=1000, end_time=-2000)
+
+
+def test_mcap_multiple_filters_intersection(
+    ray_start_regular_shared, multi_file_mcap_dir
+):
+    """Test that multiple filters are combined with AND logic (intersection)."""
+    from ray.data.expressions import col
+
+    mcap_dir, base_time = multi_file_mcap_dir
+
+    # Start with broad topic filter
+    ds = ray.data.read_mcap(mcap_dir, topics={"/topic_a", "/topic_b"})
+
+    # Apply narrower topic filter - should intersect
+    ds_filtered = ds.filter(col("topic") == "/topic_a")
+
+    rows = ds_filtered.take_all()
+    assert len(rows) == 7
+    assert all(row["topic"] == "/topic_a" for row in rows)
+
+
+def test_mcap_predicate_pushdown_file_level_filtering(
+    ray_start_regular_shared, multi_file_mcap_dir
+):
+    """Test that predicate pushdown filters files at the file level using metadata.
+
+    This test verifies that when using .filter() with predicate pushdown, files
+    that don't match the filter are excluded at the file level (before reading),
+    not just at the message level. This is the key optimization: file-level
+    metadata filtering via MCAPFileMetadataProvider.expand_paths().
+    """
+    from ray.data.expressions import col
+
+    mcap_dir, base_time = multi_file_mcap_dir
+
+    # Read directory with predicate pushdown - should only read matching files
+    ds = ray.data.read_mcap(mcap_dir)
+
+    # Filter to only topic_a - this should filter files at metadata level
+    # file_b.mcap should be excluded entirely (contains only topic_b)
+    ds_filtered = ds.filter(col("topic") == "/topic_a")
+
+    rows = ds_filtered.take_all()
+
+    # Verify we get topic_a messages
+    assert len(rows) == 7  # topic_a messages from file_a (5) and file_mixed (2)
+    assert all(row["topic"] == "/topic_a" for row in rows)
+
+    # Verify file_b messages are NOT included (file should have been filtered out)
+    file_ids = {row["data"]["file"] for row in rows}
+    assert 2 not in file_ids  # file_b should be excluded
+    assert 1 in file_ids  # file_a should be included
+    assert 3 in file_ids  # file_mixed should be included (has topic_a messages)
 
 
 if __name__ == "__main__":

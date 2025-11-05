@@ -3,6 +3,7 @@ from ray.data._internal.datasource.delta_sharing_datasource import (
 )
 from ray.data._internal.datasource.mcap_datasource import (
     MCAPDatasource,
+    MCAPFileMetadataProvider,
     TimeRange,
 )
 from ray.data._internal.datasource.sql_datasource import Connection
@@ -59,6 +60,7 @@ __all__ = [
     "FileMetadataProvider",
     "FilenameProvider",
     "MCAPDatasource",
+    "MCAPFileMetadataProvider",
     "PartitionStyle",
     "PathPartitionFilter",
     "PathPartitionParser",
