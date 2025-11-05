@@ -17,7 +17,7 @@ from ray.data._internal.logical.optimizers import get_plan_conversion_fns
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockMetadataWithSchema, _take_first_non_empty_schema
 from ray.data.context import DataContext
-from ray.data.expectations import SLAExpectation, OptimizationStrategy
+from ray.data.expectations import SLAExpectation
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import (
@@ -116,27 +116,6 @@ class ExecutionPlan:
         """
         return self._sla_expectations.copy()
 
-    def get_optimization_strategy(self) -> OptimizationStrategy:
-        """Get the optimization strategy hint based on SLA expectations.
-
-        If multiple SLA expectations exist, returns the most performance-oriented
-        strategy (performance > balanced > cost).
-
-        Returns:
-            Optimization strategy hint.
-        """
-        if not self._sla_expectations:
-            return OptimizationStrategy.BALANCED
-
-        # Find the most performance-oriented strategy
-        strategies = [exp.optimization_strategy for exp in self._sla_expectations]
-        if OptimizationStrategy.PERFORMANCE in strategies:
-            return OptimizationStrategy.PERFORMANCE
-        elif OptimizationStrategy.COST in strategies:
-            return OptimizationStrategy.COST
-        else:
-            return OptimizationStrategy.BALANCED
-
     def get_max_execution_time_seconds(self) -> Optional[float]:
         """Get the maximum execution time from SLA expectations.
 
@@ -171,84 +150,8 @@ class ExecutionPlan:
 
         self._run_index += 1
 
-        # Apply enterprise optimization rules based on SLA expectations
-        self._apply_enterprise_optimizations()
-
         executor = StreamingExecutor(self._context, self.get_dataset_id())
         return executor
-
-    def _apply_enterprise_optimizations(self) -> None:
-        """Apply enterprise optimization rules based on SLA expectations.
-
-        This method uses the rule-based optimization engine to adjust various
-        execution parameters based on the optimization strategy and time constraints.
-        """
-        from ray.data._internal.optimization_rules import (
-            OptimizationContext,
-            get_optimization_rules_engine,
-        )
-        from ray.data._internal.execution.interfaces.execution_options import (
-            ExecutionResources,
-        )
-
-        optimization_strategy = self.get_optimization_strategy()
-        max_execution_time = self.get_max_execution_time_seconds()
-
-        # Create optimization context
-        context = OptimizationContext(
-            strategy=optimization_strategy,
-            max_execution_time_seconds=max_execution_time,
-            elapsed_time=0.0,  # At start of execution
-            base_resource_limits=self._context.execution_options.resource_limits,
-            base_object_store_memory_fraction=(
-                self._context.override_object_store_memory_limit_fraction
-                if self._context.override_object_store_memory_limit_fraction is not None
-                else 0.25  # Default
-            ),
-            base_reservation_ratio=self._context.op_resource_reservation_ratio,
-        )
-
-        # Get total available resources
-        try:
-            import ray
-
-            total_resources_dict = ray.available_resources()
-            total_resources = ExecutionResources.from_resource_dict(
-                total_resources_dict
-            )
-            context.total_resources = total_resources
-        except Exception:
-            # If we can't get total resources, continue without them
-            pass
-
-        # Apply optimization rules
-        engine = get_optimization_rules_engine()
-
-        # Adjust resource limits
-        adjusted_limits = engine.adjust_resource_limits(context)
-        if adjusted_limits is not None:
-            # Update execution options with adjusted limits
-            new_options = self._context.execution_options.copy(
-                resource_limits=adjusted_limits,
-                optimization_strategy=optimization_strategy,
-            )
-            self._context.execution_options = new_options
-        else:
-            # Still update optimization strategy even if we can't adjust limits
-            new_options = self._context.execution_options.copy(
-                optimization_strategy=optimization_strategy
-            )
-            self._context.execution_options = new_options
-
-        # Adjust object store memory fraction and reservation ratio
-        # These are stored in DataContext, not ExecutionOptions
-        adjusted_memory_fraction = engine.adjust_object_store_memory_fraction(context)
-        adjusted_reservation_ratio = engine.adjust_reservation_ratio(context)
-
-        # Store these in DataContext for use by ResourceManager
-        # We'll use a custom attribute to pass these through
-        self._context._optimization_memory_fraction = adjusted_memory_fraction
-        self._context._optimization_reservation_ratio = adjusted_reservation_ratio
 
     def __repr__(self) -> str:
         return (

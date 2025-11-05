@@ -7,7 +7,9 @@ from ray.data._internal.execution.util import memory_string
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.data.expectations import OptimizationStrategy
+    from ray.data._internal.execution.interfaces.execution_options import (
+        ExecutionResources,
+    )
 
 
 class ExecutionResources:
@@ -296,10 +298,6 @@ class ExecutionOptions:
         verbose_progress: Whether to report progress individually per operator. By
             default, only AllToAll operators and global progress is reported. This
             option is useful for performance debugging. On by default.
-        optimization_strategy: Optimization strategy hint from SLA expectations.
-            - PERFORMANCE: More aggressive autoscaling, prioritize speed over cost
-            - COST: More conservative autoscaling, prioritize cost efficiency
-            - BALANCED: Default balanced approach
     """
 
     def __init__(
@@ -310,7 +308,6 @@ class ExecutionOptions:
         preserve_order: bool = False,
         actor_locality_enabled: bool = True,
         verbose_progress: Optional[bool] = None,
-        optimization_strategy: Optional["OptimizationStrategy"] = None,
     ):
         if resource_limits is None:
             resource_limits = ExecutionResources.for_limits()
@@ -327,13 +324,6 @@ class ExecutionOptions:
             )
         self.verbose_progress = verbose_progress
 
-        # Import here to avoid circular dependencies
-        if optimization_strategy is None:
-            from ray.data.expectations import OptimizationStrategy
-
-            optimization_strategy = OptimizationStrategy.BALANCED
-        self.optimization_strategy = optimization_strategy
-
     def __repr__(self) -> str:
         return (
             f"ExecutionOptions(resource_limits={self.resource_limits}, "
@@ -341,8 +331,7 @@ class ExecutionOptions:
             f"locality_with_output={self.locality_with_output}, "
             f"preserve_order={self.preserve_order}, "
             f"actor_locality_enabled={self.actor_locality_enabled}, "
-            f"verbose_progress={self.verbose_progress}, "
-            f"optimization_strategy={self.optimization_strategy})"
+            f"verbose_progress={self.verbose_progress})"
         )
 
     @property
@@ -370,7 +359,6 @@ class ExecutionOptions:
         preserve_order: Optional[bool] = None,
         actor_locality_enabled: Optional[bool] = None,
         verbose_progress: Optional[bool] = None,
-        optimization_strategy: Optional["OptimizationStrategy"] = None,
     ) -> "ExecutionOptions":
         """Return a copy of this object, overriding specified fields.
 
@@ -381,7 +369,6 @@ class ExecutionOptions:
             preserve_order: Optional preserve order override.
             actor_locality_enabled: Optional actor locality override.
             verbose_progress: Optional verbose progress override.
-            optimization_strategy: Optional optimization strategy override.
 
         Returns:
             A new ExecutionOptions object with overridden fields.
@@ -393,7 +380,6 @@ class ExecutionOptions:
             preserve_order=preserve_order if preserve_order is not None else self.preserve_order,
             actor_locality_enabled=actor_locality_enabled if actor_locality_enabled is not None else self.actor_locality_enabled,
             verbose_progress=verbose_progress if verbose_progress is not None else self.verbose_progress,
-            optimization_strategy=optimization_strategy if optimization_strategy is not None else self.optimization_strategy,
         )
 
     def validate(self) -> None:

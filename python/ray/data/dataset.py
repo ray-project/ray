@@ -142,8 +142,6 @@ from ray.data.expectations import (
     SLAExpectation,
     ExpectationResult,
     ExpectationType,
-    ExpectationSuite,
-    get_sla_expectations_from_function,
 )
 
 logger = logging.getLogger(__name__)
@@ -182,7 +180,8 @@ class Dataset:
 
     Datasets can be created in multiple ways:
 
-    * from external storage systems such as local disk, S3, HDFS etc. via the ``read_*()`` APIs.
+    * from external storage systems such as local disk, S3, HDFS etc.
+      via the ``read_*()`` APIs.
     * from existing memory data via ``from_*()`` APIs
     * from synthetic data via ``range_*()`` APIs
 
@@ -218,7 +217,8 @@ class Dataset:
     * transformations such as :py:meth:`.map_batches()`
     * aggregations such as :py:meth:`.min()`/:py:meth:`.max()`/:py:meth:`.mean()`,
     * grouping via :py:meth:`.groupby()`,
-    * shuffling operations such as :py:meth:`.sort()`, :py:meth:`.random_shuffle()`, and :py:meth:`.repartition()`
+    * shuffling operations such as :py:meth:`.sort()`,
+      :py:meth:`.random_shuffle()`, and :py:meth:`.repartition()`
     * joining via :py:meth:`.join()`
 
     Examples:
@@ -413,11 +413,6 @@ class Dataset:
         )
 
         plan = self._plan.copy()
-
-        # Extract and attach SLA expectations from the function
-        sla_expectations = get_sla_expectations_from_function(fn)
-        for sla_exp in sla_expectations:
-            plan.add_sla_expectation(sla_exp)
 
         map_op = MapRows(
             self._logical_plan.dag,
@@ -783,11 +778,6 @@ class Dataset:
             )
 
         plan = self._plan.copy()
-
-        # Extract and attach SLA expectations from the function
-        sla_expectations = get_sla_expectations_from_function(fn)
-        for sla_exp in sla_expectations:
-            plan.add_sla_expectation(sla_exp)
 
         map_batches_op = MapBatches(
             self._logical_plan.dag,
@@ -1608,7 +1598,6 @@ class Dataset:
         description: Optional[str] = None,
         validator_fn: Optional[Callable[[Any], bool]] = None,
         max_execution_time_seconds: Optional[float] = None,
-        optimize_for: str = "performance",
         error_on_failure: bool = True,
         compute: Optional[ComputeStrategy] = None,
         num_cpus: Optional[float] = None,
@@ -1668,11 +1657,6 @@ class Dataset:
             >>> processed_ds, remaining_ds, result = ds.expect(
             ...     max_execution_time_seconds=60
             ... )
-            >>> # Or explicitly optimize for cost
-            >>> processed_ds, remaining_ds, result = ds.expect(
-            ...     max_execution_time_seconds=60,
-            ...     optimize_for="cost"
-            ... )
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1691,11 +1675,6 @@ class Dataset:
                 Mutually exclusive with `expr` and `expectation`.
             max_execution_time_seconds: Maximum execution time in seconds (for SLA).
                 Mutually exclusive with `expr` and `expectation`.
-            optimize_for: What to optimize for when time constraint is set.
-                - "performance" (default): Aggressive autoscaling to meet deadline
-                - "cost": Conservative autoscaling to minimize cost
-                - "balanced": Balanced approach
-                Only used with `max_execution_time_seconds`.
             error_on_failure: If True, raise exception on failure; if False, log warning.
             compute: The compute strategy to use for the validation operation.
 
@@ -1743,13 +1722,26 @@ class Dataset:
         """
         # Import here to avoid circular dependencies
         from ray.data.expressions import Expr as _Expr
-        from ray.data.expectations import OptimizationStrategy
+
+        # Validate max_execution_time_seconds
+        if max_execution_time_seconds is not None:
+            if max_execution_time_seconds <= 0:
+                raise ValueError(
+                    f"max_execution_time_seconds must be positive, "
+                    f"got {max_execution_time_seconds}"
+                )
 
         # Validate that at least one of expectation or expr is provided
-        if expectation is None and expr is None:
+        if (
+            expectation is None
+            and expr is None
+            and validator_fn is None
+            and max_execution_time_seconds is None
+        ):
             raise ValueError(
-                "Must provide either `expectation` or `expr` argument. "
-                "Examples: ds.expect(expr=col('value') > 0) or ds.expect(col('value') > 0, name='check')"
+                "Must provide at least one of: `expectation`, `expr`, `validator_fn`, "
+                "or `max_execution_time_seconds`. "
+                "Examples: ds.expect(expr=col('value') > 0) or ds.expect(max_execution_time_seconds=60)"
             )
 
         # Handle lists of expectations (simplified suite functionality)
@@ -1765,6 +1757,16 @@ class Dataset:
                 raise ValueError(
                     "Cannot specify both `expectation` and `expr`. "
                     "Use either an Expectation object or an expression."
+                )
+            if validator_fn is not None:
+                raise ValueError(
+                    "Cannot specify both `expr` and `validator_fn`. "
+                    "Use either expression-based validation or a validator function."
+                )
+            if max_execution_time_seconds is not None:
+                raise ValueError(
+                    "Cannot specify both `expr` and `max_execution_time_seconds`. "
+                    "Use `expr` for data quality validation or `max_execution_time_seconds` for SLA."
                 )
 
             # Convert expression to expectation
@@ -1784,11 +1786,15 @@ class Dataset:
         elif expectation is None:
             # No expression provided, check if SLA parameters are provided
             if max_execution_time_seconds is not None:
+                if validator_fn is not None:
+                    raise ValueError(
+                        "Cannot specify both `validator_fn` and `max_execution_time_seconds`. "
+                        "Use `validator_fn` for data quality validation or `max_execution_time_seconds` for SLA."
+                    )
                 from ray.data.expectations import expect as _expect
 
                 expectation = _expect(
                     max_execution_time_seconds=max_execution_time_seconds,
-                    optimization_strategy=optimize_for,
                     name=name or "SLA Requirement",
                     description=description or "SLA performance requirement",
                     error_on_failure=error_on_failure,
@@ -1803,6 +1809,7 @@ class Dataset:
                     error_on_failure=error_on_failure,
                 )
             else:
+                # This should not happen due to earlier validation, but add check for clarity
                 raise ValueError(
                     "Must provide either `expr`, `validator_fn`, `max_execution_time_seconds`, "
                     "or an `expectation` object."
@@ -1812,7 +1819,8 @@ class Dataset:
         if not isinstance(expectation, Expectation):
             raise TypeError(
                 f"expectation must be an Expectation object or Expr, "
-                f"got {type(expectation).__name__ if expectation is not None else 'None'}"
+                f"got {type(expectation).__name__ if expectation is not None else 'None'}. "
+                f"If you passed a list, use ds.expect([exp1, exp2]) instead of ds.expect(exp1, exp2)."
             )
 
         # Handle SLA expectations (time-based execution constraints)
@@ -2169,6 +2177,69 @@ class Dataset:
 
         return passed_ds, failed_ds, result
 
+    def _count_rows_in_batch(self, batch: Any) -> int:
+        """Count rows in a batch regardless of format.
+
+        Supports dict, pandas DataFrame, PyArrow Table, and other formats.
+        Uses BlockAccessor for consistent row counting across formats.
+
+        Args:
+            batch: Batch in any supported format.
+
+        Returns:
+            Number of rows in the batch, or 0 if counting fails.
+        """
+        try:
+            from ray.data.block import BlockAccessor
+
+            accessor = BlockAccessor.for_block(batch)
+            return accessor.num_rows()
+        except Exception:
+            # Fallback for unsupported formats
+            try:
+                if isinstance(batch, dict):
+                    first_key = next(iter(batch.keys()))
+                    return len(batch[first_key])
+                else:
+                    import pandas as pd  # https://pandas.pydata.org/docs/
+
+                    if isinstance(batch, pd.DataFrame):
+                        return len(batch)
+                    else:
+                        import pyarrow as pa  # https://arrow.apache.org/docs/python/
+
+                        if isinstance(batch, pa.Table):
+                            return len(batch)
+            except Exception:
+                pass
+            return 0
+
+    def _create_dataset_from_batches(self, batches: List[Any]) -> "Dataset":
+        """Create a dataset from a list of batches.
+
+        Uses DelegatingBlockBuilder to efficiently combine batches into blocks.
+
+        Args:
+            batches: List of batches in any supported format.
+
+        Returns:
+            Dataset containing all batches, or empty dataset if batches is empty.
+        """
+        if not batches:
+            return ray.data.from_items([])
+
+        from ray.data._internal.delegating_block_builder import (
+            DelegatingBlockBuilder,
+        )
+        from ray.data.read_api import from_blocks
+
+        builder = DelegatingBlockBuilder()
+        for batch in batches:
+            builder.add_batch(batch)
+        processed_block = builder.build()
+
+        return from_blocks([processed_block])
+
     def _expect_sla(
         self, expectation: SLAExpectation
     ) -> Tuple["Dataset", "Dataset", ExpectationResult]:
@@ -2187,7 +2258,6 @@ class Dataset:
             - result: ExpectationResult with execution time and pass/fail status.
         """
         import time
-        from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 
         max_time_seconds = expectation.get_max_execution_time_seconds()
         if max_time_seconds is None or max_time_seconds <= 0:
@@ -2215,23 +2285,8 @@ class Dataset:
                     break
 
                 processed_batches.append(batch)
-                # Count rows in batch
-                try:
-                    if isinstance(batch, dict):
-                        first_key = next(iter(batch.keys()))
-                        processed_rows += len(batch[first_key])
-                    else:
-                        import pandas as pd
-
-                        if isinstance(batch, pd.DataFrame):
-                            processed_rows += len(batch)
-                        else:
-                            import pyarrow as pa
-
-                            if isinstance(batch, pa.Table):
-                                processed_rows += len(batch)
-                except Exception:
-                    pass  # If we can't count, continue
+                # Count rows in batch using helper function
+                processed_rows += self._count_rows_in_batch(batch)
 
         except Exception as e:
             # If execution fails, treat as timeout exceeded
@@ -2247,24 +2302,8 @@ class Dataset:
         elapsed_time = time.perf_counter() - start_time
         passed = not timeout_exceeded and elapsed_time <= max_time_seconds
 
-        # Create datasets from processed batches
-        if processed_batches:
-            # Convert batches to blocks and create dataset
-            from ray.data._internal.delegating_block_builder import (
-                DelegatingBlockBuilder,
-            )
-            from ray.data.read_api import from_blocks
-
-            builder = DelegatingBlockBuilder()
-            for batch in processed_batches:
-                builder.add_batch(batch)
-            processed_block = builder.build()
-
-            # Create dataset from processed block
-            passed_ds = from_blocks([processed_block])
-        else:
-            # Empty dataset if no batches processed
-            passed_ds = ray.data.from_items([])
+        # Create datasets from processed batches using helper function
+        passed_ds = self._create_dataset_from_batches(processed_batches)
 
         # Failed dataset = remaining unprocessed data
         # For V1, we return empty dataset as we can't easily track unprocessed data
@@ -2280,13 +2319,15 @@ class Dataset:
         if passed:
             message = (
                 f"SLA expectation '{expectation.name}' passed: "
-                f"execution completed in {elapsed_time:.2f}s (limit: {max_time_seconds:.2f}s)"
+                f"execution completed in {elapsed_time:.2f}s "
+                f"(limit: {max_time_seconds:.2f}s)"
             )
         else:
             message = (
                 f"SLA expectation '{expectation.name}' failed: "
-                f"execution exceeded time limit ({elapsed_time:.2f}s > {max_time_seconds:.2f}s). "
-                f"Processed {processed_rows} rows before timeout."
+                f"execution exceeded time limit ({elapsed_time:.2f}s > "
+                f"{max_time_seconds:.2f}s). Processed {processed_rows} rows "
+                "before timeout."
             )
             if expectation.description:
                 message += f" {expectation.description}"
@@ -2321,7 +2362,19 @@ class Dataset:
             - results: List of ExpectationResult objects, one per expectation.
         """
         if not expectations:
-            raise ValueError("List of expectations cannot be empty")
+            raise ValueError(
+                "List of expectations cannot be empty. "
+                "Provide at least one expectation: ds.expect([expectation1, expectation2])"
+            )
+
+        # Validate all items are Expectations
+        for i, exp in enumerate(expectations):
+            if not isinstance(exp, Expectation):
+                raise TypeError(
+                    f"All items in expectations list must be Expectation objects. "
+                    f"Item at index {i} is {type(exp).__name__}. "
+                    f"Use expect() to create expectations: expect(expr=col('x') > 0)"
+                )
 
         # Start with the full dataset
         current_ds = self
