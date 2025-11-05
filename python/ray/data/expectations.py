@@ -61,7 +61,7 @@ class OptimizationStrategy(str, Enum):
     BALANCED = "balanced"
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 @dataclass
 class Expectation:
     """Base class for all expectations.
@@ -93,7 +93,7 @@ class Expectation:
         raise NotImplementedError("Subclasses must implement validate()")
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 @dataclass
 class DataQualityExpectation(Expectation):
     """Data quality expectation for validating data correctness.
@@ -160,7 +160,7 @@ class DataQualityExpectation(Expectation):
             return False
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 @dataclass
 class SLAExpectation(Expectation):
     """SLA expectation for expressing performance and timing requirements.
@@ -228,7 +228,7 @@ class SLAExpectation(Expectation):
         return execution_time_seconds <= max_time
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 @dataclass
 class ExpectationResult:
     """Result of validating an expectation.
@@ -747,7 +747,7 @@ def get_sla_expectations_from_function(func: Callable) -> List[SLAExpectation]:
     return [exp for exp in all_expectations if isinstance(exp, SLAExpectation)]
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 class ExpectationSuite:
     """A collection of expectations that can be applied together.
 
@@ -878,7 +878,7 @@ class ExpectationSuite:
 # flexibility.
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 def expect_column_values_to_be_between(
     column: str,
     min_value: Optional[Union[int, float]] = None,
@@ -954,7 +954,7 @@ def expect_column_values_to_be_between(
     )
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 def expect_column_values_to_not_be_null(
     column: str,
     *,
@@ -999,7 +999,7 @@ def expect_column_values_to_not_be_null(
     )
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 def expect_column_values_to_be_unique(
     column: str,
     *,
@@ -1065,7 +1065,7 @@ def expect_column_values_to_be_unique(
     )
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 def expect_column_values_to_be_in_set(
     column: str,
     value_set: Union[List[Any], set],
@@ -1116,7 +1116,7 @@ def expect_column_values_to_be_in_set(
     )
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 def expect_table_row_count_to_be_between(
     min_count: Optional[int] = None,
     max_count: Optional[int] = None,

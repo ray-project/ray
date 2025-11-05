@@ -1601,7 +1601,7 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP, stability="alpha")
     def expect(
         self,
-        expectation: Optional[Union[Expectation, "Expr", ExpectationSuite]] = None,
+        expectation: Optional[Union[Expectation, "Expr", List[Expectation]]] = None,
         *,
         expr: Optional["Expr"] = None,
         compute: Optional[ComputeStrategy] = None,
@@ -1627,8 +1627,7 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> from ray.data.expectations import expect, ExpectationSuite
-            >>> from ray.data.expectations import expect_column_values_to_be_between
+            >>> from ray.data.expectations import expect
             >>> from ray.data.expressions import col
             >>>
             >>> # Simple expression-based validation (most common)
@@ -1642,17 +1641,17 @@ class Dataset:
             >>> # Or pass expression as positional argument
             >>> passed_ds, failed_ds, result = ds.expect(col("value") > 0)
             >>>
-            >>> # Use expectation object
-            >>> expectation = expect_column_values_to_be_between("age", 0, 120)
-            >>> ds = ray.data.from_items([{"age": 25}, {"age": 150}])
+            >>> # Use expectation object from expect()
+            >>> expectation = expect(expr=col("age") >= 0, name="non_negative_age")
+            >>> ds = ray.data.from_items([{"age": 25}, {"age": -5}])
             >>> passed_ds, failed_ds, result = ds.expect(expectation)
             >>>
-            >>> # Use ExpectationSuite for multiple expectations
-            >>> suite = ExpectationSuite("user_data_quality", [
-            ...     expect_column_values_to_be_between("age", 0, 120),
+            >>> # Multiple expectations (pass as list)
+            >>> expectations = [
+            ...     expect(expr=col("age") >= 0),
             ...     expect(expr=col("email").is_not_null())
-            ... ])
-            >>> passed_ds, failed_ds, results = ds.expect(suite)
+            ... ]
+            >>> passed_ds, failed_ds, results = ds.expect(expectations)
             >>>
             >>> # Quarantine workflows
             >>> raw_ds = ray.data.from_items([{"user_id": 1, "score": 95}, {"user_id": 2, "score": -5}])
@@ -1671,8 +1670,8 @@ class Dataset:
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            expectation: An Expectation object (DataQualityExpectation or SLAExpectation)
-                or ExpectationSuite to apply. If None, `expr` must be provided.
+            expectation: An Expectation object returned from `expect()`, an expression (Expr),
+                or a list of expectations. If None, `expr` must be provided.
                 Mutually exclusive with `expr`.
             expr: An expression that represents a predicate (boolean condition) for
                 validation. Uses the same expression API as :meth:`~Dataset.filter`.
@@ -1708,7 +1707,7 @@ class Dataset:
               or remaining unprocessed data (for SLA expectations with timeout).
             - ExpectationResult: The result of the expectation validation containing
               pass/fail status, failure counts, execution time (for SLA), and a descriptive message.
-              For ExpectationSuite, returns a list of ExpectationResult objects.
+              For lists of expectations, returns a list of ExpectationResult objects.
 
         Raises:
             TypeError: If expectation is not an Expectation object or Expr.
@@ -1732,9 +1731,9 @@ class Dataset:
                 "Examples: ds.expect(expr=col('value') > 0) or ds.expect(expectation=my_expectation)"
             )
 
-        # Handle ExpectationSuite (apply all expectations in suite)
-        if isinstance(expectation, ExpectationSuite):
-            return self._expect_suite(expectation)
+        # Handle lists of expectations (simplified suite functionality)
+        if isinstance(expectation, list):
+            return self._expect_list(expectation)
 
         # Handle expression-based expectations (more Pythonic and Ray-like)
         # Similar to how filter() accepts expressions
@@ -2254,17 +2253,17 @@ class Dataset:
 
         return passed_ds, failed_ds, result
 
-    def _expect_suite(
-        self, suite: ExpectationSuite
+    def _expect_list(
+        self, expectations: List[Expectation]
     ) -> Tuple["Dataset", "Dataset", List[ExpectationResult]]:
-        """Handle ExpectationSuite by applying all expectations sequentially.
+        """Handle list of expectations by applying them sequentially.
 
-        This method applies each expectation in the suite sequentially, accumulating
+        This method applies each expectation sequentially, accumulating
         all failures. The passed dataset contains rows that passed ALL expectations,
         while the failed dataset contains rows that failed ANY expectation.
 
         Args:
-            suite: ExpectationSuite containing multiple expectations.
+            expectations: List of Expectation objects to apply.
 
         Returns:
             Tuple of (passed_ds, failed_ds, results) where:
@@ -2272,10 +2271,8 @@ class Dataset:
             - failed_ds: Dataset containing rows that failed any expectation.
             - results: List of ExpectationResult objects, one per expectation.
         """
-        if not suite.expectations:
-            raise ValueError(
-                f"ExpectationSuite '{suite.name}' contains no expectations"
-            )
+        if not expectations:
+            raise ValueError("List of expectations cannot be empty")
 
         # Start with the full dataset
         current_ds = self
@@ -2283,7 +2280,7 @@ class Dataset:
         results = []
 
         # Apply each expectation sequentially
-        for exp in suite.expectations:
+        for exp in expectations:
             passed_ds, failed_ds, result = current_ds.expect(exp)
 
             # Accumulate failed rows
