@@ -754,12 +754,12 @@ def test_cache_with_kwargs(ray_start_regular_shared):
     assert len(result1) == 10
 
     # Call take with keyword argument (should use same cache entry)
-    result2 = ds.take(n=10)
+    result2 = ds.take(limit=10)
     assert len(result2) == 10
     assert result1 == result2
 
     # Call take with different keyword argument (should create new cache entry)
-    result3 = ds.take(n=5)
+    result3 = ds.take(limit=5)
     assert len(result3) == 5
     assert result1 != result3
 
