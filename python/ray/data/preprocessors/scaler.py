@@ -416,12 +416,22 @@ class RobustScaler(Preprocessor):
             )
             for col in self.columns
         ]
-        self.stats_ = dataset.aggregate(*aggregates)
+        aggregated = dataset.aggregate(*aggregates)
+
+        self.stats_ = {}
+        for col in self.columns:
+            low_q, med_q, high_q = aggregated[f"approx_quantile({col})"]
+            self.stats_[f"low_quantile({col})"] = low_q
+            self.stats_[f"median({col})"] = med_q
+            self.stats_[f"high_quantile({col})"] = high_q
+
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
         def column_robust_scaler(s: pd.Series):
-            s_low_q, s_median, s_high_q = self.stats_[f"approx_quantile({s.name})"]
+            s_low_q = self.stats_[f"low_quantile({s.name})"]
+            s_median = self.stats_[f"median({s.name})"]
+            s_high_q = self.stats_[f"high_quantile({s.name})"]
             diff = s_high_q - s_low_q
 
             # Handle division by zero.
