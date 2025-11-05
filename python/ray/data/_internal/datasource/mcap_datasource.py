@@ -118,7 +118,9 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
         """Expand paths and filter based on MCAP file metadata (file-level predicate pushdown)."""
         from ray.data.datasource.file_meta_provider import _expand_paths
 
-        for path, file_size in _expand_paths(paths, filesystem, partitioning, ignore_missing_paths):
+        for path, file_size in _expand_paths(
+            paths, filesystem, partitioning, ignore_missing_paths
+        ):
             if not path.endswith(".mcap"):
                 continue
 
@@ -180,16 +182,18 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
         """Extract topics and message types from MCAP summary."""
         topics = set()
         message_types = set()
-
         if hasattr(summary, "channels") and summary.channels:
             for channel in summary.channels.values():
                 topics.add(channel.topic)
-                if hasattr(channel, "schema_id") and channel.schema_id:
-                    if hasattr(summary, "schemas") and summary.schemas:
-                        schema = summary.schemas.get(channel.schema_id)
-                        if schema:
-                            message_types.add(schema.name)
-
+                if (
+                    hasattr(channel, "schema_id")
+                    and channel.schema_id
+                    and hasattr(summary, "schemas")
+                    and summary.schemas
+                ):
+                    schema = summary.schemas.get(channel.schema_id)
+                    if schema:
+                        message_types.add(schema.name)
         return topics, message_types
 
     def _extract_statistics(self, summary) -> Tuple[int, Optional[int], Optional[int]]:
@@ -197,7 +201,6 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
         num_messages = 0
         start_time = None
         end_time = None
-
         if hasattr(summary, "statistics") and summary.statistics:
             stat = summary.statistics
             if hasattr(stat, "message_count"):
@@ -206,10 +209,11 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
                 start_time = stat.message_start_time
             if hasattr(stat, "message_end_time"):
                 end_time = stat.message_end_time
-
         return num_messages, start_time, end_time
 
-    def _get_file_size(self, path: str, filesystem: "RetryingPyFileSystem") -> Optional[int]:
+    def _get_file_size(
+        self, path: str, filesystem: "RetryingPyFileSystem"
+    ) -> Optional[int]:
         """Get file size from filesystem."""
         try:
             file_info = filesystem.get_file_info(path)
@@ -231,13 +235,17 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
 
     def _should_include_file(self, metadata: MCAPFileMetadata) -> bool:
         """Check if file should be included based on filters. Includes conservatively if no metadata."""
-        has_metadata = bool(metadata.topics or metadata.message_types or metadata.start_time)
+        has_metadata = bool(
+            metadata.topics or metadata.message_types or metadata.start_time
+        )
         if not has_metadata:
             return True
 
         if self._topics and not metadata.topics.intersection(self._topics):
             return False
-        if self._message_types and not metadata.message_types.intersection(self._message_types):
+        if self._message_types and not metadata.message_types.intersection(
+            self._message_types
+        ):
             return False
         if self._time_range and metadata.start_time and metadata.end_time:
             if (
@@ -310,7 +318,9 @@ class MCAPDatasource(FileBasedDatasource):
         """
         # Use MCAP-specific metadata provider if none provided
         meta_provider = file_based_datasource_kwargs.get("meta_provider")
-        if meta_provider is None or isinstance(meta_provider, DefaultFileMetadataProvider):
+        if meta_provider is None or isinstance(
+            meta_provider, DefaultFileMetadataProvider
+        ):
             meta_provider = MCAPFileMetadataProvider(
                 topics=topics,
                 time_range=time_range,
@@ -327,10 +337,6 @@ class MCAPDatasource(FileBasedDatasource):
         self._message_types = set(message_types) if message_types else None
         self._time_range = time_range
         self._include_metadata = include_metadata
-        # Track pushed-down filters to avoid duplicate application
-        self._pushed_down_topics = None
-        self._pushed_down_time_range = None
-        self._pushed_down_message_types = None
         self._predicate_expr = None
 
     def supports_predicate_pushdown(self) -> bool:
@@ -347,13 +353,17 @@ class MCAPDatasource(FileBasedDatasource):
 
     def apply_predicate(self, predicate_expr: Expr) -> "MCAPDatasource":
         """Apply predicate expression with file-level filtering via metadata."""
-        topics, time_range, message_types = self._extract_filters_from_predicate(predicate_expr)
+        topics, time_range, message_types = self._extract_filters_from_predicate(
+            predicate_expr
+        )
 
         new_topics = self._merge_filters(self._topics, topics)
         new_message_types = self._merge_filters(self._message_types, message_types)
         new_time_range = self._merge_time_ranges(self._time_range, time_range)
         new_predicate_expr = (
-            self._predicate_expr & predicate_expr if self._predicate_expr else predicate_expr
+            self._predicate_expr & predicate_expr
+            if self._predicate_expr
+            else predicate_expr
         )
 
         filesystem = (
@@ -382,10 +392,6 @@ class MCAPDatasource(FileBasedDatasource):
             file_extensions=self._FILE_EXTENSIONS,
         )
         clone._predicate_expr = new_predicate_expr
-        clone._pushed_down_topics = new_topics
-        clone._pushed_down_time_range = new_time_range
-        clone._pushed_down_message_types = new_message_types
-
         return clone
 
     def _merge_filters(
@@ -419,10 +425,16 @@ class MCAPDatasource(FileBasedDatasource):
                 return set(values)
             return {values} if not isinstance(values, set) else values
 
-        def update_set(current: Optional[Set], new_values: Union[Any, Set, List], is_and: bool) -> Set:
+        def update_set(
+            current: Optional[Set], new_values: Union[Any, Set, List], is_and: bool
+        ) -> Set:
             """Update set with intersection (AND) or union (OR)."""
             new_set = normalize_to_set(new_values)
-            return new_set if current is None else (current.intersection(new_set) if is_and else current | new_set)
+            return (
+                new_set
+                if current is None
+                else (current.intersection(new_set) if is_and else current | new_set)
+            )
 
         def extract_value(expr: Expr) -> Optional[Union[Any, List[Any]]]:
             """Extract value from literal expression."""
@@ -442,7 +454,11 @@ class MCAPDatasource(FileBasedDatasource):
                 return False
             left_col = get_column_name(expr.left)
             right_col = get_column_name(expr.right)
-            return left_col == right_col and left_col in ("topic", "log_time", "schema_name")
+            return left_col == right_col and left_col in (
+                "topic",
+                "log_time",
+                "schema_name",
+            )
 
         def visit_expr(expr: Expr, is_and_context: bool = False):
             """Visit expression tree and extract filters."""
@@ -489,14 +505,18 @@ class MCAPDatasource(FileBasedDatasource):
                         if col_name == "topic":
                             topics = update_set(topics, value, is_and_context)
                         elif col_name == "schema_name":
-                            message_types = update_set(message_types, value, is_and_context)
+                            message_types = update_set(
+                                message_types, value, is_and_context
+                            )
                     return
 
                 if op == Operation.EQ and isinstance(right, LiteralExpr):
                     if col_name == "topic":
                         topics = update_set(topics, {right.value}, is_and_context)
                     elif col_name == "schema_name":
-                        message_types = update_set(message_types, {right.value}, is_and_context)
+                        message_types = update_set(
+                            message_types, {right.value}, is_and_context
+                        )
                     return
 
                 if col_name == "log_time" and isinstance(right, LiteralExpr):
@@ -531,14 +551,10 @@ class MCAPDatasource(FileBasedDatasource):
             return existing
         if not existing:
             return new
-
         start_time = max(existing.start_time, new.start_time)
         end_time = min(existing.end_time, new.end_time)
-
-        # If no overlap, return range that matches nothing
         if start_time >= end_time:
             return TimeRange(start_time=start_time, end_time=start_time + 1)
-
         return TimeRange(start_time=start_time, end_time=end_time)
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
@@ -562,7 +578,8 @@ class MCAPDatasource(FileBasedDatasource):
 
         if builder.num_rows() > 0:
             block = builder.build()
-            if self._predicate_expr is not None and self._has_unpushed_predicate():
+            # Apply predicate expression if it contains unpushed parts
+            if self._predicate_expr is not None:
                 try:
                     filter_expr = self._predicate_expr.to_pyarrow()
                     block_accessor = BlockAccessor.for_block(block)
@@ -570,15 +587,10 @@ class MCAPDatasource(FileBasedDatasource):
                     filtered_table = table.filter(filter_expr)
                     block = block_accessor.from_arrow(filtered_table)
                 except Exception as e:
-                    logger.debug(f"Could not apply predicate expression to MCAP block: {e}")
+                    logger.debug(
+                        f"Could not apply predicate expression to MCAP block: {e}"
+                    )
             yield block
-
-    def _has_unpushed_predicate(self) -> bool:
-        """Check if predicate contains filters that weren't pushed down."""
-        if self._predicate_expr is None:
-            return False
-        # Conservatively apply predicate if it exists (future: analyze expression tree)
-        return True
 
     def _should_include_message(
         self, schema: "Schema", channel: "Channel", message: "Message"
