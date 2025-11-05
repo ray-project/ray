@@ -1648,9 +1648,10 @@ class Dataset:
             >>> passed_ds, failed_ds, result = ds.expect(expectation)
             >>>
             >>> # Use ExpectationSuite for multiple expectations
-            >>> suite = ExpectationSuite("user_data_quality")
-            >>> suite.add_expectation(expect_column_values_to_be_between("age", 0, 120))
-            >>> suite.add_expectation(expect(expr=col("email").is_not_null()))
+            >>> suite = ExpectationSuite("user_data_quality", [
+            ...     expect_column_values_to_be_between("age", 0, 120),
+            ...     expect(expr=col("email").is_not_null())
+            ... ])
             >>> passed_ds, failed_ds, results = ds.expect(suite)
             >>>
             >>> # Quarantine workflows

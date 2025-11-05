@@ -759,14 +759,23 @@ class ExpectationSuite:
         >>> from ray.data.expectations import ExpectationSuite, expect_column_values_to_be_between
         >>> from ray.data.expressions import col
         >>>
-        >>> # Create a suite with multiple expectations
+        >>> # Create suite with expectations in constructor (most Pythonic)
+        >>> suite = ExpectationSuite("user_data_quality", [
+        ...     expect_column_values_to_be_between("age", 0, 120),
+        ...     expect(expr=col("email").is_not_null())
+        ... ])
+        >>>
+        >>> # Or create empty and add expectations (list-like)
         >>> suite = ExpectationSuite("user_data_quality")
-        >>> suite.add_expectation(
-        ...     expect_column_values_to_be_between("age", min_value=0, max_value=120)
-        ... )
-        >>> suite.add_expectation(
-        ...     expect(name="email_not_null", expr=col("email").is_not_null())
-        ... )
+        >>> suite.append(expect_column_values_to_be_between("age", 0, 120))
+        >>> suite.append(expect(expr=col("email").is_not_null()))
+        >>>
+        >>> # Or use list operations
+        >>> expectations = [
+        ...     expect_column_values_to_be_between("age", 0, 120),
+        ...     expect(expr=col("email").is_not_null())
+        ... ]
+        >>> suite = ExpectationSuite("user_data_quality", expectations)
         >>>
         >>> # Apply suite to dataset
         >>> ds = ray.data.from_items([{"age": 25, "email": "user@example.com"}])
@@ -775,14 +784,21 @@ class ExpectationSuite:
     Attributes:
         name: Name of this expectation suite.
         description: Description of what this suite validates.
-        expectations: List of expectations in this suite.
     """
 
-    def __init__(self, name: str, description: Optional[str] = None):
+    def __init__(
+        self,
+        name: str,
+        expectations: Optional[Union[List[Expectation], Expectation]] = None,
+        *,
+        description: Optional[str] = None,
+    ):
         """Initialize an expectation suite.
 
         Args:
             name: Name for this expectation suite.
+            expectations: Optional list of expectations or single expectation to add.
+                Can also be added later using list-like methods (append, extend).
             description: Optional description of what this suite validates.
         """
         if not name:
@@ -791,7 +807,21 @@ class ExpectationSuite:
         self.description = description or f"Expectation suite: {name}"
         self.expectations: List[Expectation] = []
 
-    def add_expectation(self, expectation: Expectation) -> None:
+        # Add initial expectations if provided
+        if expectations is not None:
+            if isinstance(expectations, Expectation):
+                # Single expectation
+                self.append(expectations)
+            elif isinstance(expectations, (list, tuple)):
+                # List of expectations
+                self.extend(expectations)
+            else:
+                raise TypeError(
+                    f"expectations must be an Expectation or list of Expectations, "
+                    f"got {type(expectations).__name__}"
+                )
+
+    def append(self, expectation: Expectation) -> None:
         """Add an expectation to this suite.
 
         Args:
@@ -804,21 +834,33 @@ class ExpectationSuite:
             raise TypeError(f"Expected Expectation, got {type(expectation).__name__}")
         self.expectations.append(expectation)
 
-    def add_expectations(self, expectations: List[Expectation]) -> None:
+    def extend(
+        self, expectations: Union[List[Expectation], "ExpectationSuite"]
+    ) -> None:
         """Add multiple expectations to this suite.
 
         Args:
-            expectations: List of expectations to add.
+            expectations: List of expectations or another ExpectationSuite to add.
 
         Raises:
             TypeError: If any expectation is not an Expectation instance.
         """
+        if isinstance(expectations, ExpectationSuite):
+            expectations = expectations.expectations
         for exp in expectations:
-            self.add_expectation(exp)
+            self.append(exp)
 
     def __len__(self) -> int:
         """Return the number of expectations in this suite."""
         return len(self.expectations)
+
+    def __getitem__(self, index: int) -> Expectation:
+        """Get expectation by index."""
+        return self.expectations[index]
+
+    def __iter__(self):
+        """Iterate over expectations."""
+        return iter(self.expectations)
 
     def __repr__(self) -> str:
         """Return string representation of this suite."""
