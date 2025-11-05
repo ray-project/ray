@@ -132,7 +132,6 @@ class DatasetCache:
 
         # Call ray.get() outside lock to avoid blocking other threads.
         # Ray.get() may block on network I/O, so we release the lock first.
-        # See: https://docs.ray.io/en/latest/ray-core/api/doc/ray.html#ray.get
         try:
             import ray
 
@@ -196,8 +195,6 @@ class DatasetCache:
 
         Stores the result in Ray's distributed object store and keeps a reference
         in the cache. The object reference allows retrieving the value later.
-
-        See: https://docs.ray.io/en/latest/ray-core/api/doc/ray.html#ray.put
         """
         try:
             import ray

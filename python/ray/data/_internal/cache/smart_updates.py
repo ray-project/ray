@@ -13,10 +13,6 @@ try:
 except ImportError:
     ray = None
 
-# Ray object store API documentation:
-# https://docs.ray.io/en/latest/ray-core/api/doc/ray.html#ray.put
-# https://docs.ray.io/en/latest/ray-core/api/doc/ray.html#ray.get
-
 from ray.data._internal.cache.constants import (
     CACHE_PRESERVATION_RULES,
     TRANSFORMATION_TYPES,
@@ -267,7 +263,6 @@ class SmartCacheUpdater:
                 # Handle specific Ray exceptions if available.
                 # Ray ObjectLostError occurs when an object is evicted from object
                 # store.
-                # See: https://docs.ray.io/en/latest/ray-core/api/doc/ray.exceptions.ObjectLostError.html
                 if ray is not None and hasattr(ray, "exceptions"):
                     if isinstance(e, ray.exceptions.ObjectLostError):
                         # Object was lost, remove from cache
