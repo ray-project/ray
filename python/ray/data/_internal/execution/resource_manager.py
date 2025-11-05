@@ -90,6 +90,11 @@ class ResourceManager:
 
         self._op_resource_allocator: Optional["OpResourceAllocator"] = None
 
+        # Apply enterprise optimization rules for reservation ratio
+        reservation_ratio = data_context.op_resource_reservation_ratio
+        if hasattr(data_context, "_optimization_reservation_ratio"):
+            reservation_ratio = data_context._optimization_reservation_ratio
+
         if data_context.op_resource_reservation_enabled:
             # We'll enable memory reservation if all operators have
             # implemented accurate memory accounting.
@@ -98,10 +103,11 @@ class ResourceManager:
             )
             if should_enable:
                 self._op_resource_allocator = ReservationOpResourceAllocator(
-                    self, data_context.op_resource_reservation_ratio
+                    self, reservation_ratio
                 )
 
-        self._object_store_memory_limit_fraction = (
+        # Apply enterprise optimization rules for object store memory fraction
+        base_memory_fraction = (
             data_context.override_object_store_memory_limit_fraction
             if data_context.override_object_store_memory_limit_fraction is not None
             else (
@@ -110,6 +116,14 @@ class ResourceManager:
                 else self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_NO_RESERVATION
             )
         )
+
+        # Use optimization-adjusted memory fraction if available
+        if hasattr(data_context, "_optimization_memory_fraction"):
+            self._object_store_memory_limit_fraction = (
+                data_context._optimization_memory_fraction
+            )
+        else:
+            self._object_store_memory_limit_fraction = base_memory_fraction
 
         self._warn_about_object_store_memory_if_needed()
 
@@ -135,8 +149,8 @@ class ResourceManager:
             ):
                 logger.warning(
                     f"{WARN_PREFIX} Ray's object store is configured to use only "
-                    f"{object_store_fraction:.1%} of available memory ({object_store_memory/GiB:.1f}GiB "
-                    f"out of {total_memory/GiB:.1f}GiB total). For optimal Ray Data performance, "
+                    f"{object_store_fraction:.1%} of available memory ({object_store_memory / GiB:.1f}GiB "
+                    f"out of {total_memory / GiB:.1f}GiB total). For optimal Ray Data performance, "
                     f"we recommend setting the object store to at least 50% of available memory. "
                     f"You can do this by setting the 'object_store_memory' parameter when calling "
                     f"ray.init() or by setting the RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION environment variable."

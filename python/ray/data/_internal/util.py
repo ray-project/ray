@@ -542,6 +542,7 @@ def get_compute_strategy(
     fn_constructor_args: Optional[Iterable[Any]] = None,
     compute: Optional[Union[str, "ComputeStrategy"]] = None,
     concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+    optimization_strategy: Optional["OptimizationStrategy"] = None,
 ) -> "ComputeStrategy":
     """Get `ComputeStrategy` based on the function or class, and concurrency
     information.

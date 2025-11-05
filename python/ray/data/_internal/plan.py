@@ -17,8 +17,7 @@ from ray.data._internal.logical.optimizers import get_plan_conversion_fns
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockMetadataWithSchema, _take_first_non_empty_schema
 from ray.data.context import DataContext
-from ray.data.exceptions import omit_traceback_stdout
-from ray.util.debug import log_once
+from ray.data.expectations import SLAExpectation, OptimizationStrategy
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import (
@@ -88,6 +87,76 @@ class ExecutionPlan:
 
         self._context = data_context
 
+        # Track SLA expectations for optimization hints
+        self._sla_expectations: List[SLAExpectation] = []
+
+    def add_sla_expectation(self, expectation: SLAExpectation) -> None:
+        """Add an SLA expectation to this execution plan.
+
+        This allows the execution plan to track SLA requirements and
+        inform optimization strategies.
+
+        Args:
+            expectation: The SLA expectation to add.
+
+        Raises:
+            TypeError: If expectation is not an SLAExpectation instance.
+        """
+        if not isinstance(expectation, SLAExpectation):
+            raise TypeError(
+                f"Expected SLAExpectation, got {type(expectation).__name__}"
+            )
+        self._sla_expectations.append(expectation)
+
+    def get_sla_expectations(self) -> List[SLAExpectation]:
+        """Get all SLA expectations attached to this plan.
+
+        Returns:
+            List of SLA expectations.
+        """
+        return self._sla_expectations.copy()
+
+    def get_optimization_strategy(self) -> OptimizationStrategy:
+        """Get the optimization strategy hint based on SLA expectations.
+
+        If multiple SLA expectations exist, returns the most performance-oriented
+        strategy (performance > balanced > cost).
+
+        Returns:
+            Optimization strategy hint.
+        """
+        if not self._sla_expectations:
+            return OptimizationStrategy.BALANCED
+
+        # Find the most performance-oriented strategy
+        strategies = [exp.optimization_strategy for exp in self._sla_expectations]
+        if OptimizationStrategy.PERFORMANCE in strategies:
+            return OptimizationStrategy.PERFORMANCE
+        elif OptimizationStrategy.COST in strategies:
+            return OptimizationStrategy.COST
+        else:
+            return OptimizationStrategy.BALANCED
+
+    def get_max_execution_time_seconds(self) -> Optional[float]:
+        """Get the maximum execution time from SLA expectations.
+
+        Returns:
+            Minimum max execution time from all SLA expectations, or None if no time constraints.
+        """
+        if not self._sla_expectations:
+            return None
+
+        max_times = [
+            exp.get_max_execution_time_seconds()
+            for exp in self._sla_expectations
+            if exp.get_max_execution_time_seconds() is not None
+        ]
+
+        if not max_times:
+            return None
+
+        return min(max_times)
+
     def get_dataset_id(self) -> str:
         """Unique ID of the dataset, including the dataset name,
         UUID, and current execution index.
@@ -101,8 +170,85 @@ class ExecutionPlan:
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
         self._run_index += 1
+
+        # Apply enterprise optimization rules based on SLA expectations
+        self._apply_enterprise_optimizations()
+
         executor = StreamingExecutor(self._context, self.get_dataset_id())
         return executor
+
+    def _apply_enterprise_optimizations(self) -> None:
+        """Apply enterprise optimization rules based on SLA expectations.
+
+        This method uses the rule-based optimization engine to adjust various
+        execution parameters based on the optimization strategy and time constraints.
+        """
+        from ray.data._internal.optimization_rules import (
+            OptimizationContext,
+            get_optimization_rules_engine,
+        )
+        from ray.data._internal.execution.interfaces.execution_options import (
+            ExecutionResources,
+        )
+
+        optimization_strategy = self.get_optimization_strategy()
+        max_execution_time = self.get_max_execution_time_seconds()
+
+        # Create optimization context
+        context = OptimizationContext(
+            strategy=optimization_strategy,
+            max_execution_time_seconds=max_execution_time,
+            elapsed_time=0.0,  # At start of execution
+            base_resource_limits=self._context.execution_options.resource_limits,
+            base_object_store_memory_fraction=(
+                self._context.override_object_store_memory_limit_fraction
+                if self._context.override_object_store_memory_limit_fraction is not None
+                else 0.25  # Default
+            ),
+            base_reservation_ratio=self._context.op_resource_reservation_ratio,
+        )
+
+        # Get total available resources
+        try:
+            import ray
+
+            total_resources_dict = ray.available_resources()
+            total_resources = ExecutionResources.from_resource_dict(
+                total_resources_dict
+            )
+            context.total_resources = total_resources
+        except Exception:
+            # If we can't get total resources, continue without them
+            pass
+
+        # Apply optimization rules
+        engine = get_optimization_rules_engine()
+
+        # Adjust resource limits
+        adjusted_limits = engine.adjust_resource_limits(context)
+        if adjusted_limits is not None:
+            # Update execution options with adjusted limits
+            new_options = self._context.execution_options.copy(
+                resource_limits=adjusted_limits,
+                optimization_strategy=optimization_strategy,
+            )
+            self._context.execution_options = new_options
+        else:
+            # Still update optimization strategy even if we can't adjust limits
+            new_options = self._context.execution_options.copy(
+                optimization_strategy=optimization_strategy
+            )
+            self._context.execution_options = new_options
+
+        # Adjust object store memory fraction and reservation ratio
+        # These are stored in DataContext, not ExecutionOptions
+        adjusted_memory_fraction = engine.adjust_object_store_memory_fraction(context)
+        adjusted_reservation_ratio = engine.adjust_reservation_ratio(context)
+
+        # Store these in DataContext for use by ResourceManager
+        # We'll use a custom attribute to pass these through
+        self._context._optimization_memory_fraction = adjusted_memory_fraction
+        self._context._optimization_reservation_ratio = adjusted_reservation_ratio
 
     def __repr__(self) -> str:
         return (
@@ -128,7 +274,6 @@ class ExecutionPlan:
 
         sections = []
         for title, convert_fn in zip(titles, convert_fns):
-
             # 2. Convert plan to new plan
             plan = convert_fn(plan)
 
@@ -359,6 +504,7 @@ class ExecutionPlan:
             plan_copy._snapshot_operator = self._snapshot_operator
             plan_copy._snapshot_stats = self._snapshot_stats
         plan_copy._dataset_name = self._dataset_name
+        plan_copy._sla_expectations = self._sla_expectations.copy()
         return plan_copy
 
     def deep_copy(self) -> "ExecutionPlan":
@@ -379,6 +525,7 @@ class ExecutionPlan:
             plan_copy._snapshot_operator = copy.copy(self._snapshot_operator)
             plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
         plan_copy._dataset_name = self._dataset_name
+        plan_copy._sla_expectations = copy.deepcopy(self._sla_expectations)
         return plan_copy
 
     def initial_num_blocks(self) -> Optional[int]:

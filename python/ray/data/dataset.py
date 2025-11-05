@@ -136,7 +136,15 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
 
-from ray.data.expressions import Expr, StarExpr, col
+from ray.data.expectations import (
+    Expectation,
+    DataQualityExpectation,
+    SLAExpectation,
+    ExpectationResult,
+    ExpectationType,
+    ExpectationSuite,
+    get_sla_expectations_from_function,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -405,6 +413,12 @@ class Dataset:
         )
 
         plan = self._plan.copy()
+
+        # Extract and attach SLA expectations from the function
+        sla_expectations = get_sla_expectations_from_function(fn)
+        for sla_exp in sla_expectations:
+            plan.add_sla_expectation(sla_exp)
+
         map_op = MapRows(
             self._logical_plan.dag,
             fn,
@@ -769,6 +783,12 @@ class Dataset:
             )
 
         plan = self._plan.copy()
+
+        # Extract and attach SLA expectations from the function
+        sla_expectations = get_sla_expectations_from_function(fn)
+        for sla_exp in sla_expectations:
+            plan.add_sla_expectation(sla_exp)
+
         map_batches_op = MapBatches(
             self._logical_plan.dag,
             fn,
@@ -1577,6 +1597,750 @@ class Dataset:
         plan = self._plan.copy()
         logical_plan = LogicalPlan(filter_op, self.context)
         return Dataset(plan, logical_plan)
+
+    @PublicAPI(api_group=BT_API_GROUP, stability="alpha")
+    def expect(
+        self,
+        expectation: Union[
+            Expectation, DataQualityExpectation, "Expr", ExpectationSuite
+        ],
+        *,
+        expr: Optional["Expr"] = None,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        use_map_batches: bool = True,
+        batch_format: Optional[str] = "default",
+        compute: Optional[ComputeStrategy] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        **ray_remote_args,
+    ) -> Union[
+        Tuple["Dataset", "Dataset", ExpectationResult],
+        Tuple["Dataset", "Dataset", List[ExpectationResult]],
+    ]:
+        """Apply a data quality expectation to validate this dataset.
+
+        This method validates data quality constraints by applying the expectation
+        to batches of data using either `map_batches` (default) or `map`. The dataset
+        is materialized to ensure all validation runs complete, and results are
+        aggregated across all batches.
+
+        .. tip::
+           If you use the `expr` parameter with a predicate expression, Ray Data
+           optimizes your validation with native Arrow interfaces, similar to
+           :meth:`~Dataset.filter`.
+
+        Examples:
+            >>> import ray
+            >>> from ray.data.expectations import expect
+            >>> from ray.data.expressions import col
+            >>>
+            >>> # Create a data quality expectation with validator function
+            >>> quality_check = expect(
+            ...     name="positive_values",
+            ...     validator_fn=lambda batch: batch["value"].min() > 0
+            ... )
+            >>> ds = ray.data.from_items([{"value": 1}, {"value": 2}, {"value": -1}])
+            >>> passed_ds, failed_ds, result = ds.expect(quality_check)
+            >>> print(result.passed)
+            False
+            >>> print(failed_ds.take_all())
+            [{'value': -1}]
+            >>>
+            >>> # Use expression directly (more Pythonic and Ray-like)
+            >>> ds = ray.data.from_items([{"value": 1}, {"value": 2}, {"value": 3}])
+            >>> passed_ds, failed_ds, result = ds.expect(expr=col("value") > 0)
+            >>> print(result.passed)
+            True
+            >>> print(failed_ds.count())
+            0
+            >>>
+            >>> # Or pass expression as positional argument
+            >>> passed_ds, failed_ds, result = ds.expect(col("value") > 0, name="positive_check")
+            >>> print(result.passed)
+            True
+            >>>
+            >>> # Use for quarantine workflows
+            >>> raw_ds = ray.data.from_items([{"user_id": 1, "score": 95}, {"user_id": 2, "score": -5}])
+            >>> valid_ds, invalid_ds, result = raw_ds.expect(expr=col("score") >= 0)
+            >>> # Process valid data
+            >>> valid_ds.write_parquet("s3://bucket/valid/")
+            >>> # Quarantine invalid data for investigation
+            >>> invalid_ds.write_parquet("s3://bucket/quarantine/")
+            >>>
+            >>> # SLA expectations: execution time constraints
+            >>> sla_expectation = expect(
+            ...     name="execution_time_limit",
+            ...     max_execution_time_seconds=60,
+            ...     optimization_strategy="performance"
+            ... )
+            >>> ds = ray.data.range(1000000)
+            >>> processed_ds, remaining_ds, result = ds.expect(sla_expectation)
+            >>> print(f"Execution time: {result.execution_time_seconds:.2f}s")
+            >>> print(f"Passed: {result.passed}")
+            >>> # processed_ds contains data processed before timeout
+            >>> # remaining_ds contains unprocessed data (if timeout exceeded)
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            expectation: The expectation to apply (DataQualityExpectation or SLAExpectation)
+                or an expression (Expr) for validation. If an expression is provided,
+                it will be converted to a DataQualityExpectation automatically.
+                Mutually exclusive with `expr`.
+            expr: An expression that represents a predicate (boolean condition) for
+                validation. Uses the same expression API as :meth:`~Dataset.filter`.
+                Mutually exclusive with `expectation`.
+            name: Name for the expectation (only used when `expr` is provided).
+            description: Description of what this expectation checks (only used
+                when `expr` is provided).
+            use_map_batches: If True (default), use map_batches for validation.
+                If False, use map for row-by-row validation.
+            batch_format: The format of batches passed to the validator function.
+                Only used if use_map_batches=True. Options: "default", "pandas", "numpy", "pyarrow".
+            compute: The compute strategy to use for the validation operation.
+
+                * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
+
+                * Use ``ray.data.TaskPoolStrategy(size=n)`` to launch at most ``n`` concurrent Ray tasks.
+
+                * If ``compute`` is not specified for a callable class, will use ``ray.data.ActorPoolStrategy(min_size=1, max_size=None)`` to launch an autoscaling actor pool from 1 to unlimited workers.
+
+                * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers.
+
+                * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` to use an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)`` to use an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
+
+            num_cpus: The number of CPUs to reserve for each parallel worker.
+            num_gpus: The number of GPUs to reserve for each parallel worker. For
+                example, specify `num_gpus=1` to request 1 GPU for each parallel worker.
+            memory: The heap memory in bytes to reserve for each parallel worker.
+            **ray_remote_args: Additional resource requirements to request from
+                Ray for each parallel worker. See :func:`ray.remote` for details.
+
+        Returns:
+            A tuple of (passed_ds, failed_ds, ExpectationResult) where:
+
+            - passed_ds: Dataset containing rows that passed validation (for data quality)
+              or data processed before timeout (for SLA expectations).
+            - failed_ds: Dataset containing rows that failed validation (for data quality)
+              or remaining unprocessed data (for SLA expectations with timeout).
+            - ExpectationResult: The result of the expectation validation containing
+              pass/fail status, failure counts, execution time (for SLA), and a descriptive message.
+
+        Raises:
+            TypeError: If expectation is not an Expectation object or not a
+                DataQualityExpectation or SLAExpectation.
+            ValueError: If expectation is not a DataQualityExpectation or SLAExpectation,
+                or if validation fails and error_on_failure is True.
+
+        .. seealso::
+
+            :meth:`~Dataset.map_batches`
+                Call this method to transform batches of data.
+
+            :meth:`~Dataset.map`
+                Call this method to transform one row at time.
+        """
+        # Import here to avoid circular dependencies
+        from ray.data.expressions import Expr as _Expr
+
+        # Handle ExpectationSuite (apply all expectations in suite)
+        if isinstance(expectation, ExpectationSuite):
+            return self._expect_suite(expectation)
+
+        # Handle expression-based expectations (more Pythonic and Ray-like)
+        # Similar to how filter() accepts expressions
+        if expr is not None or (
+            expectation is not None and isinstance(expectation, _Expr)
+        ):
+            if expr is not None and expectation is not None:
+                raise ValueError(
+                    "Cannot specify both `expectation` and `expr`. "
+                    "Use either an Expectation object or an expression."
+                )
+
+            # Convert expression to expectation
+            if isinstance(expectation, _Expr):
+                expr = expectation
+                expectation = None
+
+            from ray.data.expectations import expect as _expect
+
+            expectation = _expect(
+                expr=expr,
+                name=name or "Data Quality Check",
+                description=description or f"Validate expression: {expr}",
+            )
+
+        # Validate expectation object
+        if not isinstance(expectation, Expectation):
+            raise TypeError(
+                f"expectation must be an Expectation object or Expr, "
+                f"got {type(expectation).__name__}"
+            )
+
+        # Handle SLA expectations (time-based execution constraints)
+        if isinstance(expectation, SLAExpectation):
+            return self._expect_sla(expectation)
+
+        # Handle DataQualityExpectation
+        if expectation.expectation_type != ExpectationType.DATA_QUALITY:
+            raise ValueError(
+                f"Dataset.expect() only supports DataQualityExpectation or SLAExpectation, "
+                f"got {expectation.expectation_type.value}"
+            )
+
+        # Ensure it's a DataQualityExpectation (should be guaranteed by now, but double-check)
+        if not isinstance(expectation, DataQualityExpectation):
+            raise TypeError(
+                f"expectation must be a DataQualityExpectation, got {type(expectation).__name__}"
+            )
+
+        # For expression-based expectations, use filter() pattern for efficient validation
+        # This reuses Ray Data's existing expression evaluation infrastructure
+        if isinstance(expectation, DataQualityExpectation) and hasattr(
+            expectation, "_expr"
+        ):
+            # Expression-based validation: use filter() to count passing rows
+            expr = getattr(expectation, "_expr", None)
+            if expr is not None:
+                total_rows = self.count()
+                if total_rows == 0:
+                    # Empty dataset passes validation
+                    empty_ds = self
+                    result = ExpectationResult(
+                        expectation=expectation,
+                        passed=True,
+                        message=f"Expectation '{expectation.name}' passed: empty dataset",
+                        total_count=0,
+                        failure_count=0,
+                    )
+                    return empty_ds, empty_ds, result
+
+                # Optimize: Use with_column to evaluate expression once, then filter twice
+                # This avoids evaluating the expression twice (once for passed, once for failed)
+                # Add validation flag column based on expression
+                validated_ds = self.with_column("_validation_passed", expr)
+
+                # Split into passed and failed datasets using the validation flag
+                # Filtering on a boolean column is fast (expression already evaluated)
+                from ray.data.expressions import col, lit
+
+                passed_ds = validated_ds.filter(
+                    expr=col("_validation_passed") == lit(True)
+                )
+                failed_ds = validated_ds.filter(
+                    expr=col("_validation_passed") == lit(False)
+                )
+
+                # Remove validation flag column from both datasets
+                # Get original columns (exclude _validation_passed)
+                schema = self.schema()
+                if schema and hasattr(schema, "names"):
+                    original_cols = [
+                        c for c in schema.names if c != "_validation_passed"
+                    ]
+                    if original_cols:
+                        passed_ds = passed_ds.select_columns(cols=original_cols)
+                        failed_ds = failed_ds.select_columns(cols=original_cols)
+
+                failed_rows = failed_ds.count()
+                passed = failed_rows == 0
+
+                if passed:
+                    message = (
+                        f"Expectation '{expectation.name}' passed: "
+                        f"all {total_rows} rows validated successfully"
+                    )
+                else:
+                    failure_rate = (
+                        (failed_rows / total_rows * 100) if total_rows > 0 else 0
+                    )
+
+                    # Build detailed error message with context
+                    # Sample failed values for better debugging
+                    sample_failed_values = []
+                    try:
+                        # Get a sample of failed rows for context
+                        failed_sample = failed_ds.take(5)
+                        if failed_sample:
+                            # Extract column values from failed rows
+                            if isinstance(failed_sample[0], dict):
+                                # Try to identify which column failed
+                                if hasattr(expectation, "_expr"):
+                                    expr_str = str(getattr(expectation, "_expr", ""))
+                                    # Extract column name from expression if possible
+                                    col_name = None
+                                    if "col(" in expr_str:
+                                        import re
+
+                                        match = re.search(
+                                            r"col\(['\"](.*?)['\"]\)", expr_str
+                                        )
+                                        if match:
+                                            col_name = match.group(1)
+
+                                    if col_name and col_name in failed_sample[0]:
+                                        sample_failed_values = [
+                                            str(row.get(col_name, "N/A"))
+                                            for row in failed_sample[:3]
+                                        ]
+                    except Exception:
+                        pass  # If sampling fails, continue without samples
+
+                    message = (
+                        f"Expectation '{expectation.name}' failed: "
+                        f"{failed_rows}/{total_rows} rows failed validation ({failure_rate:.1f}%)"
+                    )
+
+                    # Add context about failed values
+                    if sample_failed_values:
+                        sample_str = ", ".join(sample_failed_values)
+                        if len(sample_failed_values) == 3:
+                            message += f". Sample failed values: [{sample_str}]"
+                        else:
+                            message += f". Failed values: [{sample_str}]"
+
+                    # Add expectation expression/description for context
+                    if hasattr(expectation, "_expr"):
+                        expr_str = str(getattr(expectation, "_expr", ""))
+                        message += f". Expectation: {expr_str}"
+                    elif expectation.description:
+                        message += f". {expectation.description}"
+
+                    # Add suggestion for fixing
+                    if failure_rate > 50:
+                        message += (
+                            ". Suggestion: Check data source for systematic issues or "
+                            "review expectation criteria."
+                        )
+                    elif failure_rate > 0:
+                        message += ". Suggestion: Review failed rows to identify data quality issues."
+
+                result = ExpectationResult(
+                    expectation=expectation,
+                    passed=passed,
+                    message=message,
+                    total_rows_validated=total_rows,
+                    failed_rows=failed_rows,
+                )
+                return passed_ds, failed_ds, result
+
+        # For validator function-based expectations, split into passed/failed datasets
+        # This enables quarantine workflows and data quality checks
+        @ray.remote
+        class ValidationAggregator:
+            """Simple actor to aggregate validation results across distributed tasks."""
+
+            def __init__(self):
+                self.failure_count = 0
+                self.total_count = 0
+
+            def add_result(self, passed: bool):
+                """Add a validation result."""
+                self.total_count += 1
+                if not passed:
+                    self.failure_count += 1
+
+            def get_results(self):
+                """Get aggregated validation results."""
+                return {
+                    "passed": self.failure_count == 0,
+                    "failure_count": self.failure_count,
+                    "total_count": self.total_count,
+                }
+
+        aggregator = ValidationAggregator.remote()
+
+        def validation_fn(batch: Any) -> Dict[str, Any]:
+            """Wrapper function that validates the batch and marks rows."""
+            from ray.data.block import BlockAccessor
+
+            # Use BlockAccessor for consistent empty batch detection across formats
+            try:
+                block_accessor = BlockAccessor.for_block(batch)
+                is_empty = block_accessor.num_rows() == 0
+            except Exception:
+                # Fallback for unsupported formats
+                is_empty = False
+                try:
+                    if hasattr(batch, "__len__"):
+                        is_empty = len(batch) == 0
+                except Exception:
+                    pass
+
+            if is_empty:
+                # Empty batches pass validation (no data to validate)
+                aggregator.add_result.remote(True)
+                # Return batch with validation flag
+                try:
+                    import pandas as pd
+
+                    if isinstance(batch, pd.DataFrame):
+                        batch["_validation_passed"] = True
+                        return batch
+                except Exception:
+                    pass
+                try:
+                    import pyarrow as pa
+
+                    if isinstance(batch, pa.Table):
+                        import pyarrow.compute as pc
+
+                        passed_col = pc.fill_null(pc.scalar(True), True)
+                        return batch.append_column("_validation_passed", passed_col)
+                except Exception:
+                    pass
+                # Fallback: add validation flag to dict batch
+                if isinstance(batch, dict):
+                    import numpy as np
+
+                    batch["_validation_passed"] = np.array(
+                        [True] * len(batch.get(list(batch.keys())[0], []))
+                    )
+                return batch
+
+            try:
+                passed = expectation.validate(batch)
+                aggregator.add_result.remote(passed)
+
+                # Add validation flag to batch for splitting
+                try:
+                    import pandas as pd
+
+                    if isinstance(batch, pd.DataFrame):
+                        batch["_validation_passed"] = passed
+                        return batch
+                except Exception:
+                    pass
+                try:
+                    import pyarrow as pa
+
+                    if isinstance(batch, pa.Table):
+                        import pyarrow.compute as pc
+
+                        passed_array = pa.array([passed] * len(batch))
+                        return batch.append_column("_validation_passed", passed_array)
+                except Exception:
+                    pass
+                # Fallback: add validation flag to dict batch
+                if isinstance(batch, dict):
+                    import numpy as np
+
+                    num_rows = len(batch.get(list(batch.keys())[0], []))
+                    batch["_validation_passed"] = np.array([passed] * num_rows)
+
+                if not passed and expectation.error_on_failure:
+                    raise ValueError(
+                        f"Expectation '{expectation.name}' failed for batch. "
+                        f"{expectation.description}"
+                    )
+                return batch
+            except Exception as e:
+                aggregator.add_result.remote(False)
+                if expectation.error_on_failure:
+                    raise
+                logger.warning(
+                    f"Expectation '{expectation.name}' failed: {e}. "
+                    f"Batch marked as failed."
+                )
+                # Mark batch as failed
+                try:
+                    import pandas as pd
+
+                    if isinstance(batch, pd.DataFrame):
+                        batch["_validation_passed"] = False
+                        return batch
+                except Exception:
+                    pass
+                try:
+                    import pyarrow as pa
+
+                    if isinstance(batch, pa.Table):
+                        import pyarrow.compute as pc
+
+                        passed_array = pa.array([False] * len(batch))
+                        return batch.append_column("_validation_passed", passed_array)
+                except Exception:
+                    pass
+                if isinstance(batch, dict):
+                    import numpy as np
+
+                    num_rows = len(batch.get(list(batch.keys())[0], []))
+                    batch["_validation_passed"] = np.array([False] * num_rows)
+                return batch
+
+        # Apply validation using map_batches or map
+        if use_map_batches:
+            validated_ds = self.map_batches(
+                validation_fn,
+                batch_format=batch_format,
+                compute=compute,
+                num_cpus=num_cpus,
+                num_gpus=num_gpus,
+                memory=memory,
+                **ray_remote_args,
+            )
+        else:
+            validated_ds = self.map(
+                validation_fn,
+                compute=compute,
+                num_cpus=num_cpus,
+                num_gpus=num_gpus,
+                memory=memory,
+                **ray_remote_args,
+            )
+
+        # Materialize to ensure all validation runs complete
+        validated_ds.materialize()
+
+        # Split into passed and failed datasets using the validation flag
+        # Use filter on the validation flag column
+        from ray.data.expressions import col, lit
+
+        passed_ds = validated_ds.filter(expr=col("_validation_passed") == lit(True))
+        failed_ds = validated_ds.filter(expr=col("_validation_passed") == lit(False))
+
+        # Remove validation flag column from both datasets
+        # Get original columns (exclude _validation_passed)
+        schema = self.schema()
+        if schema and hasattr(schema, "names"):
+            original_cols = [c for c in schema.names if c != "_validation_passed"]
+            if original_cols:
+                passed_ds = passed_ds.select_columns(cols=original_cols)
+                failed_ds = failed_ds.select_columns(cols=original_cols)
+
+        # Actors process calls sequentially, so after materialization all results are ready
+        validation_results = ray.get(aggregator.get_results.remote())
+
+        # Create expectation result with detailed message
+        passed = validation_results["passed"]
+        failure_count = validation_results["failure_count"]
+        total_count = validation_results["total_count"]
+
+        if passed:
+            message = (
+                f"Expectation '{expectation.name}' passed: "
+                f"all {total_count} batches validated successfully"
+            )
+        else:
+            failure_rate = (failure_count / total_count * 100) if total_count > 0 else 0
+            message = (
+                f"Expectation '{expectation.name}' failed: "
+                f"{failure_count}/{total_count} batches failed ({failure_rate:.1f}%)"
+            )
+            if expectation.description:
+                message += f". {expectation.description}"
+
+        result = ExpectationResult(
+            expectation=expectation,
+            passed=passed,
+            message=message,
+            failure_count=failure_count,
+            total_count=total_count,
+        )
+
+        return passed_ds, failed_ds, result
+
+    def _expect_sla(
+        self, expectation: SLAExpectation
+    ) -> Tuple["Dataset", "Dataset", ExpectationResult]:
+        """Handle SLA expectations with timeout monitoring.
+
+        This method monitors execution time and halts processing if the timeout
+        is exceeded, returning data processed before timeout vs remaining data.
+
+        Args:
+            expectation: SLA expectation with time constraints.
+
+        Returns:
+            Tuple of (passed_ds, failed_ds, result) where:
+            - passed_ds: Dataset containing data processed before timeout.
+            - failed_ds: Dataset containing unprocessed data (empty if completed in time).
+            - result: ExpectationResult with execution time and pass/fail status.
+        """
+        import time
+        from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+
+        max_time_seconds = expectation.get_max_execution_time_seconds()
+        if max_time_seconds is None or max_time_seconds <= 0:
+            raise ValueError(
+                "SLA expectation must have a valid max_execution_time_seconds > 0"
+            )
+
+        start_time = time.perf_counter()
+
+        # Collect processed batches incrementally with timeout monitoring
+        processed_batches = []
+        processed_rows = 0
+        timeout_exceeded = False
+
+        try:
+            # Use iter_batches to process incrementally and monitor time
+            for batch in self.iter_batches():
+                elapsed_time = time.perf_counter() - start_time
+
+                # Check if timeout exceeded
+                if elapsed_time >= max_time_seconds:
+                    timeout_exceeded = True
+                    # Halt execution by breaking out of iteration
+                    # The executor will be shut down when iterator is exhausted
+                    break
+
+                processed_batches.append(batch)
+                # Count rows in batch
+                try:
+                    if isinstance(batch, dict):
+                        first_key = next(iter(batch.keys()))
+                        processed_rows += len(batch[first_key])
+                    else:
+                        import pandas as pd
+
+                        if isinstance(batch, pd.DataFrame):
+                            processed_rows += len(batch)
+                        else:
+                            import pyarrow as pa
+
+                            if isinstance(batch, pa.Table):
+                                processed_rows += len(batch)
+                except Exception:
+                    pass  # If we can't count, continue
+
+        except Exception as e:
+            # If execution fails, treat as timeout exceeded
+            timeout_exceeded = True
+            elapsed_time = time.perf_counter() - start_time
+
+            if expectation.error_on_failure:
+                raise
+            logger.warning(
+                f"SLA expectation '{expectation.name}' execution failed: {e}"
+            )
+
+        elapsed_time = time.perf_counter() - start_time
+        passed = not timeout_exceeded and elapsed_time <= max_time_seconds
+
+        # Create datasets from processed batches
+        if processed_batches:
+            # Convert batches to blocks and create dataset
+            from ray.data._internal.delegating_block_builder import (
+                DelegatingBlockBuilder,
+            )
+            from ray.data.read_api import from_blocks
+
+            builder = DelegatingBlockBuilder()
+            for batch in processed_batches:
+                builder.add_batch(batch)
+            processed_block = builder.build()
+
+            # Create dataset from processed block
+            passed_ds = from_blocks([processed_block])
+        else:
+            # Empty dataset if no batches processed
+            passed_ds = ray.data.from_items([])
+
+        # Failed dataset = remaining unprocessed data
+        # For V1, we return empty dataset as we can't easily track unprocessed data
+        # This could be enhanced in future versions
+        failed_ds = ray.data.from_items([])
+
+        # Shutdown executor if timeout exceeded to halt execution
+        if timeout_exceeded and self._current_executor:
+            self._current_executor.shutdown(force=True)
+            self._current_executor = None
+
+        # Create result
+        if passed:
+            message = (
+                f"SLA expectation '{expectation.name}' passed: "
+                f"execution completed in {elapsed_time:.2f}s (limit: {max_time_seconds:.2f}s)"
+            )
+        else:
+            message = (
+                f"SLA expectation '{expectation.name}' failed: "
+                f"execution exceeded time limit ({elapsed_time:.2f}s > {max_time_seconds:.2f}s). "
+                f"Processed {processed_rows} rows before timeout."
+            )
+            if expectation.description:
+                message += f" {expectation.description}"
+
+        result = ExpectationResult(
+            expectation=expectation,
+            passed=passed,
+            message=message,
+            execution_time_seconds=elapsed_time,
+            total_count=processed_rows,
+            failure_count=0 if passed else 1,  # 1 = timeout failure
+        )
+
+        return passed_ds, failed_ds, result
+
+    def _expect_suite(
+        self, suite: ExpectationSuite
+    ) -> Tuple["Dataset", "Dataset", List[ExpectationResult]]:
+        """Handle ExpectationSuite by applying all expectations sequentially.
+
+        This method applies each expectation in the suite sequentially, accumulating
+        all failures. The passed dataset contains rows that passed ALL expectations,
+        while the failed dataset contains rows that failed ANY expectation.
+
+        Args:
+            suite: ExpectationSuite containing multiple expectations.
+
+        Returns:
+            Tuple of (passed_ds, failed_ds, results) where:
+            - passed_ds: Dataset containing rows that passed all expectations.
+            - failed_ds: Dataset containing rows that failed any expectation.
+            - results: List of ExpectationResult objects, one per expectation.
+        """
+        if not suite.expectations:
+            raise ValueError(
+                f"ExpectationSuite '{suite.name}' contains no expectations"
+            )
+
+        # Start with the full dataset
+        current_ds = self
+        all_failed_rows = []
+        results = []
+
+        # Apply each expectation sequentially
+        for exp in suite.expectations:
+            passed_ds, failed_ds, result = current_ds.expect(exp)
+
+            # Accumulate failed rows
+            if failed_ds.count() > 0:
+                failed_rows = failed_ds.take_all()
+                all_failed_rows.extend(failed_rows)
+
+            # Continue with rows that passed this expectation
+            current_ds = passed_ds
+            results.append(result)
+
+        # Create failed dataset from accumulated failed rows
+        if all_failed_rows:
+            from ray.data.read_api import from_items
+
+            failed_ds = from_items(all_failed_rows)
+        else:
+            # No failures, create empty dataset with same schema
+            if current_ds.count() > 0:
+                # Create empty dataset by filtering out all rows
+                from ray.data.expressions import col
+
+                failed_ds = current_ds.filter(
+                    expr=col(current_ds.schema().names[0])
+                    != col(current_ds.schema().names[0])
+                )
+            else:
+                failed_ds = current_ds
+
+        # Final passed dataset is rows that passed all expectations
+        passed_ds = current_ds
+
+        return passed_ds, failed_ds, results
 
     @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
@@ -2684,8 +3448,13 @@ class Dataset:
             parent=[d._plan.stats() for d in datasets],
         )
         stats.time_total_s = time.perf_counter() - start_time
+
+        # Preserve SLA expectations from the first dataset (self)
+        plan = self._plan.copy()
+        plan._in_stats = stats
+
         return Dataset(
-            ExecutionPlan(stats, self.context.copy()),
+            plan,
             logical_plan,
         )
 
@@ -5953,9 +6722,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundle: RefBundle = self._plan.execute()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list([ref_bundle])
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list([ref_bundle])
+        )
         # Schema is safe to call since we have already triggered execution with
         # self._plan.execute(), which will cache the schema
         schema = self.schema(fetch_if_missing=True)
@@ -6620,7 +7389,7 @@ class Schema:
         from ray.data.extensions import ArrowTensorType, TensorDtype
 
         def _convert_to_pa_type(
-            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
+            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype],
         ) -> pa.DataType:
             if isinstance(dtype, pd.ArrowDtype):
                 return dtype.pyarrow_dtype

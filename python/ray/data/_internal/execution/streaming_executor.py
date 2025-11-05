@@ -151,6 +151,39 @@ class StreamingExecutor(Executor, threading.Thread):
         thread_name = f"StreamingExecutor-{self._dataset_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
 
+    def _get_autoscaling_config_for_optimization(self):
+        """Get autoscaling config adjusted for optimization strategy.
+
+        For PERFORMANCE strategy: More aggressive autoscaling (lower upscaling threshold)
+        For COST strategy: More conservative autoscaling (higher upscaling threshold)
+        For BALANCED strategy: Use default config
+        """
+        from ray.data.context import AutoscalingConfig
+        from ray.data.expectations import OptimizationStrategy
+
+        base_config = self._data_context.autoscaling_config
+        optimization_strategy = self._options.optimization_strategy
+
+        if optimization_strategy == OptimizationStrategy.PERFORMANCE:
+            # More aggressive autoscaling: scale up sooner (lower threshold)
+            # Scale up when utilization exceeds 50% (instead of default 75%)
+            # Scale down when utilization drops below 30% (instead of default 50%)
+            return AutoscalingConfig(
+                actor_pool_util_upscaling_threshold=0.5,  # More aggressive
+                actor_pool_util_downscaling_threshold=0.3,  # Scale down faster
+            )
+        elif optimization_strategy == OptimizationStrategy.COST:
+            # More conservative autoscaling: scale up later (higher threshold)
+            # Scale up when utilization exceeds 90% (instead of default 75%)
+            # Scale down when utilization drops below 70% (instead of default 50%)
+            return AutoscalingConfig(
+                actor_pool_util_upscaling_threshold=0.9,  # More conservative
+                actor_pool_util_downscaling_threshold=0.7,  # Scale down slower
+            )
+        else:
+            # BALANCED: Use default config
+            return base_config
+
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
     ) -> OutputIterator:
@@ -213,7 +246,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._actor_autoscaler = create_actor_autoscaler(
             self._topology,
             self._resource_manager,
-            config=self._data_context.autoscaling_config,
+            config=self._get_autoscaling_config_for_optimization(),
         )
 
         self._has_op_completed = dict.fromkeys(self._topology, False)

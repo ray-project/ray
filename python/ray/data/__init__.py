@@ -14,7 +14,23 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.logging import configure_logging
 from ray.data.context import DataContext, DatasetContext
-from ray.data.dataset import Dataset, Schema, SinkMode, ClickHouseTableSettings
+from ray.data.expectations import (
+    Expectation,
+    DataQualityExpectation,
+    SLAExpectation,
+    ExpectationResult,
+    ExpectationType,
+    ExpectationSuite,
+    OptimizationStrategy,
+    expect,
+    expect_column_values_to_be_between,
+    expect_column_values_to_not_be_null,
+    expect_column_values_to_be_unique,
+    expect_column_values_to_be_in_set,
+    expect_table_row_count_to_be_between,
+    get_expectations_from_function,
+    get_sla_expectations_from_function,
+)
 from ray.data.datasource import (
     BlockBasedFileDatasink,
     Datasink,
@@ -127,6 +143,21 @@ __all__ = [
     "Datasource",
     "ExecutionOptions",
     "ExecutionResources",
+    "Expectation",
+    "DataQualityExpectation",
+    "SLAExpectation",
+    "ExpectationResult",
+    "ExpectationType",
+    "ExpectationSuite",
+    "OptimizationStrategy",
+    "expect",
+    "expect_column_values_to_be_between",
+    "expect_column_values_to_not_be_null",
+    "expect_column_values_to_be_unique",
+    "expect_column_values_to_be_in_set",
+    "expect_table_row_count_to_be_between",
+    "get_expectations_from_function",
+    "get_sla_expectations_from_function",
     "FileShuffleConfig",
     "NodeIdStr",
     "ReadTask",

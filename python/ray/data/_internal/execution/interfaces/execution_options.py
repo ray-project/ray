@@ -1,10 +1,13 @@
 import math
 import os
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 
 from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    from ray.data.expectations import OptimizationStrategy
 
 
 class ExecutionResources:
@@ -293,6 +296,10 @@ class ExecutionOptions:
         verbose_progress: Whether to report progress individually per operator. By
             default, only AllToAll operators and global progress is reported. This
             option is useful for performance debugging. On by default.
+        optimization_strategy: Optimization strategy hint from SLA expectations.
+            - PERFORMANCE: More aggressive autoscaling, prioritize speed over cost
+            - COST: More conservative autoscaling, prioritize cost efficiency
+            - BALANCED: Default balanced approach
     """
 
     def __init__(
@@ -303,6 +310,7 @@ class ExecutionOptions:
         preserve_order: bool = False,
         actor_locality_enabled: bool = True,
         verbose_progress: Optional[bool] = None,
+        optimization_strategy: Optional["OptimizationStrategy"] = None,
     ):
         if resource_limits is None:
             resource_limits = ExecutionResources.for_limits()
@@ -319,6 +327,13 @@ class ExecutionOptions:
             )
         self.verbose_progress = verbose_progress
 
+        # Import here to avoid circular dependencies
+        if optimization_strategy is None:
+            from ray.data.expectations import OptimizationStrategy
+
+            optimization_strategy = OptimizationStrategy.BALANCED
+        self.optimization_strategy = optimization_strategy
+
     def __repr__(self) -> str:
         return (
             f"ExecutionOptions(resource_limits={self.resource_limits}, "
@@ -326,7 +341,8 @@ class ExecutionOptions:
             f"locality_with_output={self.locality_with_output}, "
             f"preserve_order={self.preserve_order}, "
             f"actor_locality_enabled={self.actor_locality_enabled}, "
-            f"verbose_progress={self.verbose_progress})"
+            f"verbose_progress={self.verbose_progress}, "
+            f"optimization_strategy={self.optimization_strategy})"
         )
 
     @property
@@ -345,6 +361,40 @@ class ExecutionOptions:
     def is_resource_limits_default(self):
         """Returns True if resource_limits is the default value."""
         return self._resource_limits == ExecutionResources.for_limits()
+
+    def copy(
+        self,
+        resource_limits: Optional[ExecutionResources] = None,
+        exclude_resources: Optional[ExecutionResources] = None,
+        locality_with_output: Optional[Union[bool, List[NodeIdStr]]] = None,
+        preserve_order: Optional[bool] = None,
+        actor_locality_enabled: Optional[bool] = None,
+        verbose_progress: Optional[bool] = None,
+        optimization_strategy: Optional["OptimizationStrategy"] = None,
+    ) -> "ExecutionOptions":
+        """Return a copy of this object, overriding specified fields.
+
+        Args:
+            resource_limits: Optional resource limits override.
+            exclude_resources: Optional exclude resources override.
+            locality_with_output: Optional locality override.
+            preserve_order: Optional preserve order override.
+            actor_locality_enabled: Optional actor locality override.
+            verbose_progress: Optional verbose progress override.
+            optimization_strategy: Optional optimization strategy override.
+
+        Returns:
+            A new ExecutionOptions object with overridden fields.
+        """
+        return ExecutionOptions(
+            resource_limits=resource_limits if resource_limits is not None else self.resource_limits,
+            exclude_resources=exclude_resources if exclude_resources is not None else self.exclude_resources,
+            locality_with_output=locality_with_output if locality_with_output is not None else self.locality_with_output,
+            preserve_order=preserve_order if preserve_order is not None else self.preserve_order,
+            actor_locality_enabled=actor_locality_enabled if actor_locality_enabled is not None else self.actor_locality_enabled,
+            verbose_progress=verbose_progress if verbose_progress is not None else self.verbose_progress,
+            optimization_strategy=optimization_strategy if optimization_strategy is not None else self.optimization_strategy,
+        )
 
     def validate(self) -> None:
         """Validate the options."""
