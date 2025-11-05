@@ -11,14 +11,14 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
-from .constants import (
+from ray.data._internal.cache.constants import (
     DEFAULT_MAX_CACHE_SIZE_BYTES,
     LOCAL_CACHE_THRESHOLD_BYTES,
     MAX_CACHE_ENTRIES,
     RAY_CACHE_THRESHOLD_BYTES,
 )
-from .key_generation import make_cache_key
-from .smart_updates import SmartCacheUpdater
+from ray.data._internal.cache.key_generation import make_cache_key
+from ray.data._internal.cache.smart_updates import SmartCacheUpdater
 from ray.data._internal.logical.interfaces import LogicalPlan
 
 if TYPE_CHECKING:
@@ -106,6 +106,14 @@ class DatasetCache:
 
         Checks local cache first, then Ray cache. For Ray cache, ray.get()
         is called outside the lock to avoid blocking.
+
+        Args:
+            logical_plan: The logical plan to generate cache key from.
+            operation_name: Name of the operation (e.g., "count", "schema").
+            **params: Additional parameters to include in cache key.
+
+        Returns:
+            Cached result if found, None otherwise.
         """
         cache_key = make_cache_key(logical_plan, operation_name, **params)
 
@@ -116,33 +124,33 @@ class DatasetCache:
                 self._hit_count += 1
                 return result
 
-            object_ref = None
             if cache_key in self._ray_cache:
-                try:
-                    import ray
-
-                    object_ref = self._ray_cache[cache_key]
-                except Exception:
-                    self._ray_cache.pop(cache_key, None)
-                    self._miss_count += 1
-                    return None
+                object_ref = self._ray_cache[cache_key]
             else:
                 self._miss_count += 1
                 return None
 
-        # Call ray.get() outside lock to avoid blocking
+        # Call ray.get() outside lock to avoid blocking other threads.
+        # Ray.get() may block on network I/O, so we release the lock first.
+        # See: https://docs.ray.io/en/latest/ray-core/api/doc/ray.html#ray.get
         try:
+            import ray
+
             result = ray.get(object_ref)
 
             with self._lock:
+                # Re-check cache key exists (may have been evicted during ray.get()).
                 if cache_key in self._ray_cache:
                     self._ray_cache.move_to_end(cache_key)
                     self._hit_count += 1
                     return result
                 return None
         except Exception:
+            # Object may have been lost or evicted from Ray object store.
+            # Remove from cache and return None.
             with self._lock:
                 self._ray_cache.pop(cache_key, None)
+            self._miss_count += 1
             return None
 
     def put(
@@ -151,29 +159,62 @@ class DatasetCache:
         """Cache a result in a thread-safe manner.
 
         Determines where to cache (local vs Ray) based on size, with LRU eviction.
+        Large objects (> 10MB) are not cached.
+
+        Args:
+            logical_plan: The logical plan to generate cache key from.
+            operation_name: Name of the operation (e.g., "count", "schema").
+            result: The result to cache.
+            **params: Additional parameters to include in cache key.
         """
         cache_key = make_cache_key(logical_plan, operation_name, **params)
         strategy = _get_cache_strategy(operation_name, result)
 
         if strategy == CacheStrategy.LOCAL:
             with self._lock:
-                while len(self._local_cache) >= self._config.max_entries:
-                    self._local_cache.popitem(last=False)
+                self._evict_if_full(self._local_cache)
                 self._local_cache[cache_key] = result
-
         elif strategy == CacheStrategy.RAY:
-            try:
-                import ray
+            self._put_in_ray_cache(cache_key, result)
 
-                object_ref = ray.put(result)
+    def _evict_if_full(self, cache: OrderedDict) -> None:
+        """Evict oldest entry if cache is at capacity.
 
-                with self._lock:
-                    while len(self._ray_cache) >= self._config.max_entries:
-                        self._ray_cache.popitem(last=False)
+        Uses LRU (Least Recently Used) eviction: removes the oldest entry
+        (first item) when cache reaches max_entries. OrderedDict maintains
+        insertion order, and move_to_end() updates recency.
 
-                    self._ray_cache[cache_key] = object_ref
-            except Exception:
-                pass
+        Args:
+            cache: OrderedDict cache to evict from (local or ray cache).
+        """
+        while len(cache) >= self._config.max_entries:
+            # popitem(last=False) removes the oldest (first) entry.
+            cache.popitem(last=False)
+
+    def _put_in_ray_cache(self, cache_key: str, result: Any) -> None:
+        """Put result in Ray object store cache.
+
+        Stores the result in Ray's distributed object store and keeps a reference
+        in the cache. The object reference allows retrieving the value later.
+
+        See: https://docs.ray.io/en/latest/ray-core/api/doc/ray.html#ray.put
+        """
+        try:
+            import ray
+
+            # Store object in Ray's distributed object store.
+            # Returns an ObjectRef that can be used to retrieve the value.
+            object_ref = ray.put(result)
+
+            with self._lock:
+                # Evict oldest entries if cache is full (LRU eviction).
+                self._evict_if_full(self._ray_cache)
+                # Store object reference in cache.
+                self._ray_cache[cache_key] = object_ref
+        except Exception:
+            # If Ray.put() fails (e.g., Ray not initialized), silently skip caching.
+            # This allows the code to work even if Ray object store is unavailable.
+            pass
 
     def invalidate_for_transform(
         self,
@@ -182,7 +223,17 @@ class DatasetCache:
         target_plan: LogicalPlan,
         **transform_params,
     ) -> None:
-        """Update cache for a transformation in a thread-safe manner."""
+        """Update cache for a transformation in a thread-safe manner.
+
+        Preserves valid cache entries after transformation and computes
+        new values where possible (e.g., count after limit).
+
+        Args:
+            operation_name: Name of the transformation operation.
+            source_plan: Logical plan of the source dataset.
+            target_plan: Logical plan of the target dataset.
+            **transform_params: Transformation parameters.
+        """
         source_key_prefix = make_cache_key(source_plan, "")
         target_key_prefix = make_cache_key(target_plan, "")
 
@@ -192,13 +243,21 @@ class DatasetCache:
             )
 
     def clear(self) -> None:
-        """Clear all cache entries in a thread-safe manner."""
+        """Clear all cache entries in a thread-safe manner.
+
+        Removes all entries from both local and Ray caches.
+        """
         with self._lock:
             self._local_cache.clear()
             self._ray_cache.clear()
 
     def get_stats(self) -> CacheStats:
-        """Get cache statistics as a dataclass in a thread-safe manner."""
+        """Get cache statistics as a dataclass in a thread-safe manner.
+
+        Returns:
+            CacheStats object containing hit count, miss count, hit rate,
+            and entry counts for both caches.
+        """
         with self._lock:
             return CacheStats(
                 hit_count=self._hit_count,

@@ -25,12 +25,10 @@ class CachePreservationRules:
     """Defines what cache entries can be preserved for each transformation type."""
 
     preserves_count: bool = False
-    preserves_aggregations: bool = False
     preserves_schema: bool = False
     preserves_columns: bool = False
     preserves_size_metadata: bool = False
     can_compute_count: bool = False
-    can_compute_columns: bool = False
 
     @classmethod
     def structure_and_count_preserving(cls) -> "CachePreservationRules":
@@ -46,7 +44,6 @@ class CachePreservationRules:
         """Rules for transformations that only reorder data."""
         return cls(
             preserves_count=True,
-            preserves_aggregations=True,
             preserves_schema=True,
             preserves_columns=True,
             preserves_size_metadata=True,
