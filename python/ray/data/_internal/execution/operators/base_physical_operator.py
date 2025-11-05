@@ -160,6 +160,12 @@ class AllToAllOperator(
         super().all_inputs_done()
 
     def has_next(self) -> bool:
+        while (
+            "Repartition" not in self._name
+            and len(self._output_buffer) > 0
+            and self._output_buffer[0].num_rows() <= 0
+        ):  # stop propagating empty blocks to downstream operators
+            self._output_buffer.pop(0)
         return len(self._output_buffer) > 0
 
     def _get_next_inner(self) -> RefBundle:

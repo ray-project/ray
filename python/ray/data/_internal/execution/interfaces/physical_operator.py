@@ -610,12 +610,18 @@ class PhysicalOperator(Operator):
 
         Subclasses should override `_get_next_inner` instead of this method.
         """
+        from ray.data._internal.execution.operators.hash_shuffle import (
+            HashShufflingOperatorBase,
+        )
+
         output_bundle = self._get_next_inner()
 
         assert (
             output_bundle.num_rows() > 0
             or "Shuffle" in self.name
             or "Repartition" in self.name
+            or isinstance(self, HashShufflingOperatorBase)
+            or "limit=1" in self.name  # for schema
         ), f"Operator {self.name} produced an empty bundle"
 
         self._metrics.on_output_taken(output_bundle)
