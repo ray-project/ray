@@ -1,4 +1,5 @@
 import copy
+import threading
 from typing import Callable, Iterator, List
 
 
@@ -17,10 +18,10 @@ class Operator:
         self._input_dependencies = input_dependencies
         self._output_dependencies = []
 
-        self._wire_output_deps(input_dependencies)
+        # Make operator unserializable
+        self._lock = threading.Lock()
 
-    def __reduce__(self):
-        raise ValueError(f"Operator {self._name} is not serializable.")
+        self._wire_output_deps(input_dependencies)
 
     @property
     def name(self) -> str:
