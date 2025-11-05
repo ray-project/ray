@@ -804,81 +804,6 @@ class Dataset:
     ) -> "Dataset":
         """Fill missing values in the dataset.
 
-        This method fills missing values (null/NaN) with the specified value or method.
-        Ray Data considers ``None``, ``np.nan``, and ``pd.NaT`` to be missing values.
-
-        Examples:
-            Fill all missing values with a scalar:
-
-            .. testcode::
-
-                import ray
-                import numpy as np
-
-                ds = ray.data.from_items([
-                    {"a": 1, "b": 2.0},
-                    {"a": None, "b": np.nan},
-                    {"a": 3, "b": None}
-                ])
-                ds.fillna(0).show()
-
-            Fill missing values with column-specific values:
-
-            .. testcode::
-
-                import ray
-                import numpy as np
-
-                ds = ray.data.from_items([
-                    {"a": 1, "b": 2.0},
-                    {"a": None, "b": np.nan},
-                    {"a": 3, "b": None}
-                ])
-                ds.fillna({"a": 0, "b": -1.0}).show()
-
-            Fill missing values in specific columns:
-
-            .. testcode::
-
-                import ray
-                import numpy as np
-
-                ds = ray.data.from_items([
-                    {"a": 1, "b": 2.0, "c": "x"},
-                    {"a": None, "b": np.nan, "c": None},
-                    {"a": 3, "b": None, "c": "z"}
-                ])
-                ds.fillna(0, subset=["a"]).show()
-
-            Forward fill missing values:
-
-            .. testcode::
-
-                import ray
-                import numpy as np
-
-                ds = ray.data.from_items([
-                    {"a": 1, "b": 2.0},
-                    {"a": None, "b": np.nan},
-                    {"a": None, "b": 4.0},
-                    {"a": 3, "b": None}
-                ])
-                ds.fillna(method="forward").show()
-
-            Limit the number of consecutive fills:
-
-            .. testcode::
-
-                import ray
-                import numpy as np
-
-                ds = ray.data.from_items([
-                    {"a": 1}, {"a": None}, {"a": None}, {"a": None}, {"a": 5}
-                ])
-                ds.fillna(0, limit=2).show()
-
-        Time complexity: O(dataset size / parallelism)
-
         Args:
             value: Value to use to fill missing values. Can be a scalar value to fill all
                 missing values, or a dictionary mapping column names to fill values for
@@ -901,7 +826,7 @@ class Dataset:
                 :func:`ray.remote` for details.
 
         Returns:
-            A new dataset with missing values filled.
+            A new dataset with missing values filled according to the specified method.
 
         Raises:
             ValueError: If method is not supported or if value is required but not provided.
@@ -933,87 +858,6 @@ class Dataset:
         **ray_remote_args,
     ) -> "Dataset":
         """Drop rows with missing values from the dataset.
-
-        This method removes rows containing missing values (null/NaN).
-        Ray Data considers ``None``, ``np.nan``, and ``pd.NaT`` to be missing values.
-
-        Examples:
-            Drop rows with any missing values:
-
-            .. testcode::
-
-                import ray
-                import numpy as np
-
-                ds = ray.data.from_items([
-                    {"a": 1, "b": 2.0},
-                    {"a": None, "b": 3.0},
-                    {"a": 2, "b": np.nan},
-                    {"a": 3, "b": 4.0}
-                ])
-                ds.dropna().show()
-
-            Drop rows where all values are missing:
-
-            .. testcode::
-
-                import ray
-                import numpy as np
-
-                ds = ray.data.from_items([
-                    {"a": 1, "b": 2.0},
-                    {"a": None, "b": None},
-                    {"a": 2, "b": np.nan},
-                    {"a": 3, "b": 4.0}
-                ])
-                ds.dropna(how="all").show()
-
-            Drop rows with missing values in specific columns:
-
-            .. testcode::
-
-                import ray
-                import numpy as np
-
-                ds = ray.data.from_items([
-                    {"a": 1, "b": 2.0, "c": "x"},
-                    {"a": None, "b": 3.0, "c": "y"},
-                    {"a": 2, "b": np.nan, "c": "z"},
-                    {"a": 3, "b": 4.0, "c": None}
-                ])
-                ds.dropna(subset=["a", "b"]).show()
-
-            Drop rows with less than a threshold of non-null values:
-
-            .. testcode::
-
-                import ray
-                import numpy as np
-
-                ds = ray.data.from_items([
-                    {"a": 1, "b": 2.0, "c": "x"},
-                    {"a": None, "b": None, "c": "y"},
-                    {"a": 2, "b": np.nan, "c": None},
-                    {"a": 3, "b": 4.0, "c": None}
-                ])
-                ds.dropna(thresh=2).show()
-
-            Drop rows with custom missing values:
-
-            .. testcode::
-
-                import ray
-                import numpy as np
-
-                ds = ray.data.from_items([
-                    {"a": 1, "b": "valid"},
-                    {"a": 0, "b": ""},  # Treat 0 and empty string as missing
-                    {"a": 2, "b": "valid"},
-                    {"a": None, "b": "valid"}
-                ])
-                ds.dropna(ignore_values=[0, ""]).show()
-
-        Time complexity: O(dataset size / parallelism)
 
         Args:
             how: Determines how to drop rows:
