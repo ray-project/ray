@@ -1,5 +1,4 @@
 import copy
-import threading
 from typing import Callable, Iterator, List
 
 
@@ -17,9 +16,6 @@ class Operator:
         self._name = name
         self._input_dependencies = input_dependencies
         self._output_dependencies = []
-
-        # Make operator unserializable
-        self._lock = threading.Lock()
 
         self._wire_output_deps(input_dependencies)
 
