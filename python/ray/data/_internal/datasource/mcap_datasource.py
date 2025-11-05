@@ -24,11 +24,11 @@ from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.data._internal.util import RetryingPyFileSystem
-    from ray.data.datasource.partitioning import Partitioning
-
     import pyarrow
     from mcap.reader import Channel, Message, Schema  # noqa: F401
+
+    from ray.data._internal.util import RetryingPyFileSystem
+    from ray.data.datasource.partitioning import Partitioning
 
 logger = logging.getLogger(__name__)
 
@@ -455,6 +455,11 @@ class MCAPDatasource(FileBasedDatasource):
         self._message_types = set(message_types) if message_types else None
         self._time_range = time_range
         self._include_metadata = include_metadata
+        # Track pushed-down filters to avoid duplicate application
+        self._pushed_down_topics = None
+        self._pushed_down_time_range = None
+        self._pushed_down_message_types = None
+        self._predicate_expr = None
 
     def supports_predicate_pushdown(self) -> bool:
         """Whether this datasource supports predicate pushdown.
@@ -539,6 +544,10 @@ class MCAPDatasource(FileBasedDatasource):
             file_extensions=self._FILE_EXTENSIONS,
         )
         clone._predicate_expr = new_predicate_expr
+        # Track which filters were pushed down to avoid duplicate filtering
+        clone._pushed_down_topics = new_topics
+        clone._pushed_down_time_range = new_time_range
+        clone._pushed_down_message_types = new_message_types
 
         return clone
 
@@ -562,6 +571,11 @@ class MCAPDatasource(FileBasedDatasource):
         - Time range filters: col("log_time") > start and col("log_time") < end
         - Message type filters: col("schema_name") == value
 
+        This method correctly handles:
+        - AND predicates: Intersects filters for same column, unions for different columns
+        - OR predicates: Only pushes down if both sides reference the same column type
+        - Commutative expressions: Handles both col("log_time") > 1000 and 1000 < col("log_time")
+
         Args:
             predicate_expr: Predicate expression to extract filters from.
 
@@ -575,8 +589,16 @@ class MCAPDatasource(FileBasedDatasource):
         time_range_end = None
         message_types = None
 
-        def add_to_set(current: Optional[Set], new_values: Union[Any, Set, List]) -> Set:
-            """Helper to add values to a set."""
+        def intersect_sets(current: Optional[Set], new_values: Union[Any, Set, List]) -> Set:
+            """Helper to intersect values with existing set (for AND operations)."""
+            if isinstance(new_values, (list, tuple)):
+                new_values = set(new_values)
+            elif not isinstance(new_values, set):
+                new_values = {new_values}
+            return new_values if current is None else current.intersection(new_values)
+
+        def union_sets(current: Optional[Set], new_values: Union[Any, Set, List]) -> Set:
+            """Helper to union values with existing set (for OR operations)."""
             if isinstance(new_values, (list, tuple)):
                 new_values = set(new_values)
             elif not isinstance(new_values, set):
@@ -592,62 +614,138 @@ class MCAPDatasource(FileBasedDatasource):
                 return expr.value
             return None
 
-        def visit_expr(expr: Expr):
+        def get_column_name(expr: Expr) -> Optional[str]:
+            """Extract column name from expression."""
+            if isinstance(expr, ColumnExpr):
+                return expr.name
+            return None
+
+        def can_pushdown_or(expr: Expr) -> bool:
+            """Check if OR expression can be safely pushed down.
+
+            OR can only be pushed down if both sides reference the same column type
+            (both topic, both log_time, or both schema_name). Otherwise, skip pushdown.
+            """
+            if not isinstance(expr, BinaryExpr) or expr.op != Operation.OR:
+                return False
+
+            left_col = get_column_name(expr.left)
+            right_col = get_column_name(expr.right)
+
+            # If both sides reference the same column, we can push down
+            if left_col == right_col and left_col in ("topic", "log_time", "schema_name"):
+                return True
+
+            # If neither side references a column, can't push down
+            if not left_col and not right_col:
+                return False
+
+            # If different columns, cannot push down (would require AND logic)
+            return False
+
+        def visit_expr(expr: Expr, is_and_context: bool = False):
+            """Visit expression tree and extract filters.
+
+            Args:
+                expr: Expression to visit.
+                is_and_context: True if we're in an AND context (use intersection).
+            """
             nonlocal topics, time_range_start, time_range_end, message_types
 
             if not isinstance(expr, BinaryExpr):
                 return
 
-            # Handle AND operations - recursively visit both sides
+            # Handle AND operations - recursively visit both sides with AND context
             if expr.op == Operation.AND:
-                visit_expr(expr.left)
-                visit_expr(expr.right)
+                visit_expr(expr.left, is_and_context=True)
+                visit_expr(expr.right, is_and_context=True)
                 return
 
-            # Handle OR operations - recursively visit both sides
+            # Handle OR operations - only push down if both sides reference same column
             if expr.op == Operation.OR:
-                visit_expr(expr.left)
-                visit_expr(expr.right)
+                if can_pushdown_or(expr):
+                    # Both sides reference same column type, can push down
+                    visit_expr(expr.left, is_and_context=False)
+                    visit_expr(expr.right, is_and_context=False)
+                # Otherwise, skip pushdown - let block-level filtering handle it
                 return
+
+            # Handle commutative expressions: 1000 < col("log_time") -> col("log_time") > 1000
+            left, right = expr.left, expr.right
+            op = expr.op
+
+            # Swap operands and invert operator if column is on right
+            if isinstance(right, ColumnExpr) and isinstance(left, LiteralExpr):
+                left, right = right, left
+                op_map = {
+                    Operation.LT: Operation.GT,
+                    Operation.LE: Operation.GE,
+                    Operation.GT: Operation.LT,
+                    Operation.GE: Operation.LE,
+                    Operation.EQ: Operation.EQ,
+                    Operation.NE: Operation.NE,
+                }
+                if op in op_map:
+                    op = op_map[op]
+                else:
+                    # Not a supported commutative operation
+                    return
 
             # Process binary operations with column on left
-            if isinstance(expr.left, ColumnExpr):
-                col_name = expr.left.name
+            if isinstance(left, ColumnExpr):
+                col_name = left.name
 
                 # Handle is_in() operations
-                if expr.op == Operation.IN:
-                    value = extract_value_from_literal(expr.right)
+                if op == Operation.IN:
+                    value = extract_value_from_literal(right)
                     if value is not None:
                         if col_name == "topic":
-                            topics = add_to_set(topics, value)
+                            topics = (
+                                intersect_sets(topics, value)
+                                if is_and_context
+                                else union_sets(topics, value)
+                            )
                         elif col_name == "schema_name":
-                            message_types = add_to_set(message_types, value)
+                            message_types = (
+                                intersect_sets(message_types, value)
+                                if is_and_context
+                                else union_sets(message_types, value)
+                            )
                     return
 
                 # Handle equality operations
-                if expr.op == Operation.EQ and isinstance(expr.right, LiteralExpr):
-                    value = expr.right.value
+                if op == Operation.EQ and isinstance(right, LiteralExpr):
+                    value = right.value
                     if col_name == "topic":
-                        topics = add_to_set(topics, {value})
+                        topics = (
+                            intersect_sets(topics, {value})
+                            if is_and_context
+                            else union_sets(topics, {value})
+                        )
                     elif col_name == "schema_name":
-                        message_types = add_to_set(message_types, {value})
+                        message_types = (
+                            intersect_sets(message_types, {value})
+                            if is_and_context
+                            else union_sets(message_types, {value})
+                        )
                     return
 
                 # Handle time range operations
-                if col_name == "log_time" and isinstance(expr.right, LiteralExpr):
-                    value = expr.right.value
-                    if expr.op in (Operation.GT, Operation.GE):
+                if col_name == "log_time" and isinstance(right, LiteralExpr):
+                    value = right.value
+                    if op in (Operation.GT, Operation.GE):
                         # Update start time (take maximum for GT/GE)
                         if time_range_start is None or value > time_range_start:
                             time_range_start = value
-                    elif expr.op in (Operation.LT, Operation.LE):
+                    elif op in (Operation.LT, Operation.LE):
                         # Update end time (take minimum for LT/LE)
                         if time_range_end is None or value < time_range_end:
                             time_range_end = value
+                    return
 
             # Recursively visit children for other cases
-            visit_expr(expr.left)
-            visit_expr(expr.right)
+            visit_expr(expr.left, is_and_context)
+            visit_expr(expr.right, is_and_context)
 
         visit_expr(predicate_expr)
 
@@ -726,9 +824,11 @@ class MCAPDatasource(FileBasedDatasource):
         if builder.num_rows() > 0:
             block = builder.build()
 
-            # Apply any remaining predicate expression that couldn't be pushed down
-            # This handles complex expressions that we couldn't extract into MCAP filters
-            if self._predicate_expr is not None:
+            # Only apply predicate expression if there are parts that weren't pushed down
+            # Topics, time_range are handled by MCAP's iter_messages()
+            # message_types are handled by _should_include_message()
+            # Only apply remaining predicate if it contains unhandled expressions
+            if self._predicate_expr is not None and self._has_unpushed_predicate():
                 try:
                     # Convert predicate to PyArrow expression and filter the block
                     filter_expr = self._predicate_expr.to_pyarrow()
@@ -743,6 +843,29 @@ class MCAPDatasource(FileBasedDatasource):
                     logger.debug(f"Could not apply predicate expression to MCAP block: {e}")
 
             yield block
+
+    def _has_unpushed_predicate(self) -> bool:
+        """Check if predicate contains filters that weren't pushed down.
+
+        Returns True if predicate contains expressions beyond what was pushed down
+        (topics, time_range, message_types).
+
+        This method helps avoid duplicate filtering - if all filters were successfully
+        pushed down to MCAP level, we don't need to re-apply the predicate expression.
+        """
+        # If no predicate, nothing to check
+        if self._predicate_expr is None:
+            return False
+
+        # If we have pushed-down filters, the predicate expression might still contain
+        # unpushed parts (e.g., complex OR expressions on different columns, other filters).
+        # We conservatively apply the predicate if it exists to ensure correctness.
+        # However, if ALL filters were pushed down and the predicate is simple enough,
+        # we could skip re-application. For now, we apply it to be safe.
+        #
+        # Future optimization: Analyze the predicate expression tree to determine
+        # if it's fully represented by the pushed-down filters.
+        return True
 
     def _should_include_message(
         self, schema: "Schema", channel: "Channel", message: "Message"
