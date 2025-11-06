@@ -180,6 +180,9 @@ class MockDeploymentStateManager:
         self._scaling_decisions[id] = target_num_replicas
         return True
 
+    def get_deployment_route_patterns(self, id: DeploymentID) -> Optional[List[str]]:
+        return None
+
 
 @pytest.fixture
 def mocked_application_state_manager() -> (
