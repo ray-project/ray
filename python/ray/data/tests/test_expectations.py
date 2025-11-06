@@ -581,20 +581,23 @@ def test_expectation_with_large_dataset(ray_start_regular_shared):
     assert passed_ds.count() == 10000
 
 
-def test_expectation_result_with_all_fields():
+def test_expectation_result_with_all_fields(ray_start_regular_shared):
     """Test ExpectationResult with all fields."""
+    from ray.data.expressions import col
+
+    exp = expect(expr=col("value") > 0, name="test_expectation")
     result = ExpectationResult(
-        expectation_name="test_expectation",
+        expectation=exp,
         passed=True,
-        total_rows_validated=1000,
-        failed_rows=0,
+        total_count=1000,
+        failure_count=0,
         execution_time_seconds=5.2,
-        message="All checks passed",
+        message="All checks passed for test_expectation",
     )
 
     assert result.passed is True
-    assert result.total_rows_validated == 1000
-    assert result.failed_rows == 0
+    assert result.total_count == 1000
+    assert result.failure_count == 0
     assert result.execution_time_seconds == 5.2
     assert "test_expectation" in result.message
 

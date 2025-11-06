@@ -12,36 +12,6 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.expressions import Expr
-else:
-    # Import for runtime type checking
-    try:
-        from ray.data.expressions import Expr as _ExprType  # noqa: F401
-    except ImportError:
-        _ExprType = None  # type: ignore
-
-
-def _is_expr(obj: Any) -> bool:
-    """Check if an object is a Ray Data expression.
-
-    Uses isinstance if Expr is available, otherwise falls back to duck typing.
-    This ensures we can detect expressions even if the import fails.
-    """
-    # Import here to avoid circular dependencies and handle lazy import
-    try:
-        from ray.data.expressions import Expr as ExprType
-
-        return isinstance(obj, ExprType)
-    except (ImportError, TypeError):
-        pass
-
-    # Duck typing fallback for Expr detection
-    # Expectation is defined later in the file, but we can check by class name
-    obj_type = type(obj).__name__
-    if obj_type == "Expectation" or obj_type.endswith("Expectation"):
-        return False
-    if callable(obj):
-        return False
-    return hasattr(obj, "to_pyarrow") and hasattr(obj, "data_type")
 
 
 class ExpectationType(str, Enum):
@@ -191,7 +161,7 @@ class ExecutionTimeExpectation(Expectation):
         if self.max_execution_time_seconds is None and self.max_execution_time is None:
             if self.target_completion_time is None:
                 raise ValueError(
-                    "Must specify either max_execution_time_seconds, "
+                    "Must specify at least one time constraint: max_execution_time_seconds, "
                     "max_execution_time, or target_completion_time"
                 )
 

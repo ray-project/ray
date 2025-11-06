@@ -1965,8 +1965,8 @@ class Dataset:
                     expectation=expectation,
                     passed=passed,
                     message=message,
-                    total_rows_validated=total_rows,
-                    failed_rows=failed_rows,
+                    total_count=total_rows,
+                    failure_count=failed_rows,
                 )
                 return passed_ds, failed_ds, result
 
@@ -2308,7 +2308,8 @@ class Dataset:
         # Failed dataset = remaining unprocessed data
         # For V1, we return empty dataset as we can't easily track unprocessed data
         # This could be enhanced in future versions
-        failed_ds = ray.data.from_items([])
+        # Use limit(0) to preserve schema from original dataset
+        failed_ds = self.limit(0)
 
         # Shutdown executor if timeout exceeded to halt execution
         if timeout_exceeded and self._current_executor:
@@ -2338,7 +2339,7 @@ class Dataset:
             message=message,
             execution_time_seconds=elapsed_time,
             total_count=processed_rows,
-            failure_count=0 if passed else 1,  # 1 = timeout failure
+            failure_count=0,  # Timeout is tracked via passed=False, not failure_count
         )
 
         return passed_ds, failed_ds, result
@@ -2378,44 +2379,31 @@ class Dataset:
 
         # Start with the full dataset
         current_ds = self
-        all_failed_rows = []
+        all_failed_datasets = []
         results = []
 
         # Apply each expectation sequentially
         for exp in expectations:
             passed_ds, failed_ds, result = current_ds.expect(exp)
-
-            # Accumulate failed rows
-            if failed_ds.count() > 0:
-                failed_rows = failed_ds.take_all()
-                all_failed_rows.extend(failed_rows)
-
-            # Continue with rows that passed this expectation
-            current_ds = passed_ds
             results.append(result)
 
-        # Create failed dataset from accumulated failed rows
-        if all_failed_rows:
-            from ray.data.read_api import from_items
+            # Collect failed datasets instead of rows to avoid memory issues
+            if failed_ds.count() > 0:
+                all_failed_datasets.append(failed_ds)
 
-            failed_ds = from_items(all_failed_rows)
+            # Continue with passed dataset for next expectation
+            current_ds = passed_ds
+
+        # Union all failed datasets to preserve distributed data
+        if all_failed_datasets:
+            failed_ds = all_failed_datasets[0]
+            for ds in all_failed_datasets[1:]:
+                failed_ds = failed_ds.union(ds)
         else:
-            # No failures, create empty dataset with same schema
-            if current_ds.count() > 0:
-                # Create empty dataset by filtering out all rows
-                from ray.data.expressions import col
+            # Create empty dataset with correct schema
+            failed_ds = self.limit(0)
 
-                failed_ds = current_ds.filter(
-                    expr=col(current_ds.schema().names[0])
-                    != col(current_ds.schema().names[0])
-                )
-            else:
-                failed_ds = current_ds
-
-        # Final passed dataset is rows that passed all expectations
-        passed_ds = current_ds
-
-        return passed_ds, failed_ds, results
+        return current_ds, failed_ds, results
 
     @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
