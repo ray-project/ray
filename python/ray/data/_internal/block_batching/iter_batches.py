@@ -340,7 +340,7 @@ def prefetch_batches_locally(
     """
 
     def get_next_ref_bundle() -> RefBundle:
-        with stats.iter_ref_bundle_retrieval_s.timer() if stats else nullcontext():
+        with stats.iter_get_ref_bundles_s.timer() if stats else nullcontext():
             return next(ref_bundles)
 
     sliding_window = collections.deque()
