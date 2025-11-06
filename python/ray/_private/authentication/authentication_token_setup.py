@@ -9,6 +9,9 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from ray._private.authentication.authentication_constants import (
+    TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
+)
 from ray._private.authentication.authentication_token_generator import (
     generate_new_authentication_token,
 )
@@ -19,13 +22,6 @@ from ray._raylet import (
 )
 
 logger = logging.getLogger(__name__)
-
-TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE = (
-    "Token authentication is enabled but no authentication token was found. Please provide a token with one of these options:\n"
-    + "  1. RAY_AUTH_TOKEN environment variable\n"
-    + "  2. RAY_AUTH_TOKEN_PATH environment variable (path to token file)\n"
-    + "  3. Default token file: ~/.ray/auth_token"
-)
 
 
 def generate_and_save_token() -> None:
