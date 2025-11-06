@@ -581,7 +581,7 @@ class Test(dict):
         if post_build_script:
             with open(
                 os.path.join(
-                    _bazel_workspace_dir, "ray_release/byod", post_build_script
+                    _bazel_workspace_dir, "release/ray_release/byod", post_build_script
                 ),
                 "r",
             ) as f:
@@ -589,7 +589,7 @@ class Test(dict):
         if python_depset_file:
             with open(
                 os.path.join(
-                    _bazel_workspace_dir, "ray_release/byod", python_depset_file
+                    _bazel_workspace_dir, "release/ray_release/byod", python_depset_file
                 ),
                 "r",
             ) as f:
