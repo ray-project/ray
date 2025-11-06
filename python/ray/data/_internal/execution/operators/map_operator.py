@@ -381,14 +381,14 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
             (
                 input_refs,
                 bundled_input,
-                task_kwargs,
+                task_kwargs_for_bundle,
             ) = self._block_ref_bundler.get_next_bundle()
             for bundle in input_refs:
                 self._metrics.on_input_dequeued(bundle)
 
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue
-            self._add_bundled_input(bundled_input, task_kwargs),
+            self._add_bundled_input(bundled_input, task_kwargs_for_bundle),
 
     def _get_dynamic_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
@@ -428,7 +428,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
     @abstractmethod
     def _add_bundled_input(
-        self, refs: RefBundle, task_kwargs: Optional[Dict[str, Any]] = None
+        self, refs: RefBundle, task_kwargs_for_bundle: Optional[Dict[str, Any]] = None
     ):
         """Add a pre-bundled upstream output to this operator.
 
@@ -440,8 +440,8 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
         Args:
             refs: The fully-bundled ref bundle that should be added as input.
-            task_kwargs: A dictionary of kwargs to pass to the map task. You can
-                access these kwargs through the `TaskContext.kwargs` dictionary.
+            task_kwargs_for_bundle: A dictionary of kwargs to pass to the map task. You can
+                access these kwargs for the bundle through the `TaskContext.kwargs` dictionary.
         """
         raise NotImplementedError
 
@@ -522,8 +522,12 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         self._block_ref_bundler.done_adding_bundles()
         if self._block_ref_bundler.has_bundle():
             # Handle any leftover bundles in the bundler.
-            _, bundled_input, task_kwargs = self._block_ref_bundler.get_next_bundle()
-            self._add_bundled_input(bundled_input, task_kwargs)
+            (
+                _,
+                bundled_input,
+                task_kwargs_for_bundle,
+            ) = self._block_ref_bundler.get_next_bundle()
+            self._add_bundled_input(bundled_input, task_kwargs_for_bundle)
         super().all_inputs_done()
 
     def has_next(self) -> bool:
