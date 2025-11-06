@@ -40,10 +40,20 @@ examples:
       - large language models
       - generative ai
     link: ../llm/examples/batch/vllm-with-structural-output
-  - title: ETL beginner's guide
-    skill_level: beginner
+  - title: ETL Processing and Optimization
+    skill_level: intermediate
     frameworks:
-      - pandas
+      - Pandas
     use_cases:
-      - ETL
-    link: examples/etl-ray-data/README
+      - etl
+      - data warehousing
+    link: examples/etl-optimization/content/etl-optimization
+  - title: Unstructured Data Ingestion and Processing
+    skill_level: advanced
+    frameworks:
+      - Transformers
+      - Unstructured
+    use_cases:
+      - document processing
+      - data ingestion
+    link: examples/unstructured-data-ingestion/content/unstructured-data-ingestion
