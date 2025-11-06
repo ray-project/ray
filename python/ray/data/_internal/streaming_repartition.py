@@ -39,11 +39,6 @@ class StreamingRepartitionContributorSpec:
     start_offset: int
     end_offset: int
 
-    @property
-    def num_rows_in_slice(self) -> int:
-        """Number of rows contributed by this slice."""
-        return self.end_offset - self.start_offset
-
 
 @dataclass
 class StreamingRepartitionOutputSpec:
