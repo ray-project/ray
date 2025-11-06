@@ -1227,6 +1227,9 @@ class ReplicaActor:
         - Handles passed as init args/kwargs to the deployment constructor
 
         This is used to determine which deployments are reachable from this replica.
+        The list of DeploymentIDs can change over time as new handles can be created at runtime.
+        Also its not guaranteed that the list of DeploymentIDs are identical across replicas
+        because it depends on user code.
 
         Returns:
             A list of DeploymentIDs that this replica calls into.
@@ -1249,8 +1252,7 @@ class ReplicaActor:
 
             for handle in handles:
                 deployment_id = handle.deployment_id
-                if deployment_id not in seen_deployment_ids:
-                    seen_deployment_ids.add(deployment_id)
+                seen_deployment_ids.add(deployment_id)
         finally:
             scanner.clear()
 
