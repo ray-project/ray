@@ -21,6 +21,9 @@ from ray.data.exceptions import omit_traceback_stdout
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        PhysicalOperator,
+    )
     from ray.data._internal.execution.streaming_executor import (
         StreamingExecutor,
     )
@@ -447,7 +450,12 @@ class ExecutionPlan:
     @omit_traceback_stdout
     def execute_to_iterator(
         self,
-    ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["StreamingExecutor"]]:
+    ) -> Tuple[
+        Iterator[RefBundle],
+        DatasetStats,
+        Optional["StreamingExecutor"],
+        Optional["PhysicalOperator"],
+    ]:
         """Execute this plan, returning an iterator.
 
         This will use streaming execution to generate outputs.
@@ -464,7 +472,7 @@ class ExecutionPlan:
 
         if self.has_computed_output():
             bundle = self.execute()
-            return iter([bundle]), self._snapshot_stats, None
+            return iter([bundle]), self._snapshot_stats, None, None
 
         from ray.data._internal.execution.legacy_compat import (
             execute_to_legacy_bundle_iterator,
@@ -480,7 +488,8 @@ class ExecutionPlan:
         except StopIteration:
             pass
         self._snapshot_stats = executor.get_stats()
-        return bundle_iter, self._snapshot_stats, executor
+        last_op = executor._last_operator
+        return bundle_iter, self._snapshot_stats, executor, last_op
 
     @omit_traceback_stdout
     def execute(

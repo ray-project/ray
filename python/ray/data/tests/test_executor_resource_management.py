@@ -591,6 +591,148 @@ def test_execution_resources_to_resource_dict():
     }
 
 
+def test_prefetch_count_reporting_regular_iterator(
+    ray_start_10_cpus_shared,
+):
+    """Test prefetch count reporting for regular iterators."""
+    ctx = DataContext.get_current()
+    # Create a dataset with multiple blocks
+    ds = ray.data.range(100, override_num_blocks=10)
+
+    # Track all prefetch count updates
+    prefetch_counts = []
+
+    # Create iterator with prefetch_batches > 1
+    iterator = iter(ds.iter_batches(prefetch_batches=3, batch_size=10))
+
+    # Consume first batch to trigger executor creation
+    first_batch = next(iterator)
+
+    # Get executor and last operator
+    executor = ds._current_executor
+    last_op = executor._last_operator
+
+    # Patch update_prefetch_count to track all calls
+    original_update = last_op.update_prefetch_count
+
+    def tracked_update(count):
+        prefetch_counts.append(count)
+        original_update(count)
+
+    last_op.update_prefetch_count = tracked_update
+
+    # Record initial prefetch count
+    initial_count = last_op.metrics.num_prefetched_blocks
+    prefetch_counts.append(initial_count)
+
+    # Consume batches and track prefetch counts
+    batches = [first_batch]
+    for i, batch in enumerate(iterator):
+        batches.append(batch)
+        if i >= 4:  # Total of 5 batches
+            break
+
+    # Verify prefetch counts are within expected range
+    assert all(
+        0 <= count <= 3 for count in prefetch_counts
+    ), f"All prefetch counts should be 0-3, got: {prefetch_counts}"
+
+    # Verify resource manager accounts for prefetched blocks
+    from ray.data._internal.execution.resource_manager import ResourceManager
+    from ray.data._internal.execution.streaming_executor_state import (
+        Topology,
+    )
+
+    topology: Topology = executor._topology
+    resource_manager = ResourceManager(
+        topology=topology,
+        options=ExecutionOptions(),
+        get_total_resources=lambda: ExecutionResources.for_limits(),
+        data_context=ctx,
+    )
+
+    op_state = topology.get(last_op)
+    current_prefetch = last_op.metrics.num_prefetched_blocks
+
+    # Verify prefetch memory accounting (requires target_max_block_size to be set)
+    assert (
+        ctx.target_max_block_size is not None
+    ), "target_max_block_size must be set to verify prefetch memory accounting"
+
+    # Get memory estimate with current prefetch count
+    estimated_memory_with_prefetch = resource_manager._estimate_object_store_memory(
+        last_op, op_state
+    )
+
+    # Temporarily set prefetch to 0 to get baseline
+    original_prefetch = last_op.metrics.num_prefetched_blocks
+    last_op.metrics.num_prefetched_blocks = 0
+    estimated_memory_without_prefetch = resource_manager._estimate_object_store_memory(
+        last_op, op_state
+    )
+    last_op.metrics.num_prefetched_blocks = original_prefetch
+
+    # Verify the difference equals the prefetch memory
+    expected_prefetch_memory = current_prefetch * ctx.target_max_block_size
+    actual_prefetch_memory = (
+        estimated_memory_with_prefetch - estimated_memory_without_prefetch
+    )
+    assert actual_prefetch_memory == expected_prefetch_memory, (
+        f"Memory difference ({actual_prefetch_memory}) should equal "
+        f"prefetch memory ({expected_prefetch_memory}) for "
+        f"{current_prefetch} prefetched blocks"
+    )
+
+
+def test_prefetch_count_reporting_streaming_split(
+    ray_start_10_cpus_shared,
+):
+    """Test prefetch count reporting for streaming split iterators."""
+    # Create a small dataset
+    ds = ray.data.range(20, override_num_blocks=4)
+
+    # Create streaming split iterator
+    iterators = ds.streaming_split(2, equal=False, locality_hints=None)
+
+    # Get the coordinator actor
+    coord_actor = iterators[0]._coord_actor
+
+    # Verify the coordinator has the methods
+    ray.get(coord_actor.update_prefetch_count.remote(5))
+    count = ray.get(coord_actor.get_prefetch_count.remote())
+    assert count >= 0
+
+    # Consume from both iterators in parallel and verify prefetch counts during iteration
+    @ray.remote
+    def consume(iterator, coord_actor):
+        counts = []
+        for i, _ in enumerate(iterator.iter_batches(prefetch_batches=2, batch_size=10)):
+            # Check prefetch count periodically during iteration
+            if i > 0 and i % 2 == 0:
+                count = ray.get(coord_actor.get_prefetch_count.remote())
+                counts.append(count)
+        return counts
+
+    # Consume from both iterators
+    results = ray.get(
+        [
+            consume.remote(iterators[0], coord_actor),
+            consume.remote(iterators[1], coord_actor),
+        ]
+    )
+
+    # Verify prefetch counts were reported during iteration
+    all_counts = [c for counts in results for c in counts]
+    if len(all_counts) > 0:
+        assert all(
+            0 <= count <= 2 for count in all_counts
+        ), f"All prefetch counts should be 0-2, got: {all_counts}"
+
+    # Verify prefetch count update works after iteration
+    ray.get(coord_actor.update_prefetch_count.remote(5))
+    assert ray.get(coord_actor.get_prefetch_count.remote()) == 5
+
+
 if __name__ == "__main__":
     import sys
 

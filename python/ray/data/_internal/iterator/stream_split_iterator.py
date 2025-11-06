@@ -2,7 +2,7 @@ import logging
 import threading
 import time
 from dataclasses import replace
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
@@ -73,7 +73,12 @@ class StreamSplitDataIterator(DataIterator):
 
     def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
+    ) -> Tuple[
+        Iterator[RefBundle],
+        Optional[DatasetStats],
+        bool,
+        Optional[Callable[[int], None]],
+    ]:
         def gen_blocks() -> Iterator[RefBundle]:
             cur_epoch = ray.get(
                 self._coord_actor.start_epoch.remote(self._output_split_idx)
@@ -95,7 +100,13 @@ class StreamSplitDataIterator(DataIterator):
                         schema=block_ref_and_md.schema,
                     )
 
-        return gen_blocks(), self._iter_stats, False
+        # For streaming split, prefetch reporting is handled via the coordinator actor
+        # since the operator is on a different node. Create a callback that calls
+        # the coordinator actor's update_prefetch_count method.
+        def prefetch_count_update(count: int) -> None:
+            self._coord_actor.update_prefetch_count.remote(count)
+
+        return gen_blocks(), self._iter_stats, False, prefetch_count_update
 
     def stats(self) -> str:
         """Implements DataIterator."""
@@ -159,6 +170,7 @@ class SplitCoordinator:
         self._next_bundle: Dict[int, RefBundle] = {}
         self._unfinished_clients_in_epoch = n
         self._cur_epoch = -1
+        self._last_operator = None
 
         # Add a new stats field to track coordinator overhead
         self._coordinator_overhead_s = 0.0
@@ -169,6 +181,8 @@ class SplitCoordinator:
                 output_iterator = execute_to_legacy_bundle_iterator(
                     self._executor, dataset._plan
                 )
+                # Get the last operator from the executor for prefetch reporting
+                self._last_operator = self._executor._last_operator
                 yield output_iterator
 
         self._next_epoch = gen_epochs()
@@ -283,3 +297,25 @@ class SplitCoordinator:
 
         assert self._output_iterator is not None
         return starting_epoch + 1
+
+    def update_prefetch_count(self, count: int) -> None:
+        """Update the number of outstanding prefetched blocks.
+
+        This is called by the client iterator to report prefetch counts.
+        The coordinator actor updates the last operator's metrics.
+
+        Args:
+            count: Number of outstanding prefetched blocks.
+        """
+        if self._last_operator is not None:
+            self._last_operator.update_prefetch_count(count)
+
+    def get_prefetch_count(self) -> int:
+        """Get the current number of outstanding prefetched blocks.
+
+        Returns:
+            Number of outstanding prefetched blocks, or 0 if no operator.
+        """
+        if self._last_operator is not None:
+            return self._last_operator.metrics.num_prefetched_blocks
+        return 0

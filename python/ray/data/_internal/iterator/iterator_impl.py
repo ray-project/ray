@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Callable, Iterator, Optional, Tuple, Union
 
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.stats import DatasetStats
@@ -23,9 +23,25 @@ class DataIteratorImpl(DataIterator):
 
     def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
-        ref_bundles_iterator, stats = self._base_dataset._execute_to_iterator()
-        return ref_bundles_iterator, stats, False
+    ) -> Tuple[
+        Iterator[RefBundle],
+        Optional[DatasetStats],
+        bool,
+        Optional[Callable[[int], None]],
+    ]:
+        (
+            ref_bundles_iterator,
+            stats,
+            _executor,
+            last_operator,
+        ) = self._base_dataset._execute_to_iterator()
+
+        # Create callback to report prefetch counts to the last operator
+        def prefetch_count_update(count: int) -> None:
+            if last_operator is not None:
+                last_operator.update_prefetch_count(count)
+
+        return ref_bundles_iterator, stats, False, prefetch_count_update
 
     def stats(self) -> str:
         return self._base_dataset.stats()

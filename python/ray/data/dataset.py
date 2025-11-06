@@ -134,6 +134,10 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        PhysicalOperator,
+    )
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.grouped_data import GroupedData
 
 from ray.data.expressions import Expr, StarExpr, col
@@ -6143,7 +6147,7 @@ class Dataset:
         Returns:
             An iterator over this Dataset's ``RefBundles``.
         """
-        iter_ref_bundles, _, _ = self._plan.execute_to_iterator()
+        iter_ref_bundles, _, _, _ = self._plan.execute_to_iterator()
         self._synchronize_progress_bar()
 
         return iter_ref_bundles
@@ -6510,13 +6514,20 @@ class Dataset:
             self._current_executor.shutdown(force=True)
             self._current_executor = None
 
-    def _execute_to_iterator(self) -> Tuple[Iterator[RefBundle], DatasetStats]:
-        bundle_iter, stats, executor = self._plan.execute_to_iterator()
+    def _execute_to_iterator(
+        self,
+    ) -> Tuple[
+        Iterator[RefBundle],
+        DatasetStats,
+        Optional["StreamingExecutor"],
+        Optional["PhysicalOperator"],
+    ]:
+        bundle_iter, stats, executor, last_operator = self._plan.execute_to_iterator()
         # Capture current executor to be able to clean it up properly, once
         # dataset is garbage-collected
         self._current_executor = executor
 
-        return bundle_iter, stats
+        return bundle_iter, stats, executor, last_operator
 
     def __getstate__(self):
         # Note: excludes _current_executor which is not serializable.

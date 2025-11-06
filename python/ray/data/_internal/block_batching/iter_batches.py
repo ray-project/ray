@@ -108,6 +108,7 @@ class BatchIterator:
         shuffle_seed: Optional[int] = None,
         ensure_copy: bool = False,
         prefetch_batches: int = 1,
+        prefetch_count_update: Optional[Callable[[int], None]] = None,
     ):
         self._ref_bundles = ref_bundles
         self._stats = stats
@@ -136,6 +137,8 @@ class BatchIterator:
             else WaitBlockPrefetcher()
         )
         self._yielded_first_batch = False
+        self._prefetch_count_update = prefetch_count_update
+        self._dataset_tag = dataset_tag
 
     def _prefetch_blocks(
         self, ref_bundles: Iterator[RefBundle]
@@ -146,6 +149,7 @@ class BatchIterator:
             num_batches_to_prefetch=self._prefetch_batches,
             batch_size=self._batch_size,
             eager_free=self._eager_free,
+            prefetch_count_update=self._prefetch_count_update,
         )
 
     def _resolve_block_refs(
@@ -322,6 +326,7 @@ def prefetch_batches_locally(
     num_batches_to_prefetch: int,
     batch_size: Optional[int],
     eager_free: bool = False,
+    prefetch_count_update: Optional[Callable[[int], None]] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterator of batched RefBundles, returns an iterator over the
     corresponding block references while prefetching `num_batches_to_prefetch`
@@ -334,12 +339,21 @@ def prefetch_batches_locally(
             current batch during the scan.
         batch_size: User specified batch size, or None to let the system pick.
         eager_free: Whether to eagerly free the object reference from the object store.
+        prefetch_count_update: Optional callback to report the number of outstanding
+            prefetched blocks. Called whenever the count changes.
     """
 
     sliding_window = collections.deque()
     current_window_size = 0
 
+    def _report_prefetch_count():
+        """Report the current number of outstanding prefetched blocks."""
+        if prefetch_count_update is not None:
+            prefetch_count_update(len(sliding_window))
+
     if num_batches_to_prefetch <= 0:
+        if prefetch_count_update is not None:
+            prefetch_count_update(0)
         for ref_bundle in ref_bundles:
             for block_ref in ref_bundle.block_refs:
                 yield block_ref
@@ -365,6 +379,7 @@ def prefetch_batches_locally(
             break
 
     prefetcher.prefetch_blocks([block_ref for block_ref, _ in list(sliding_window)])
+    _report_prefetch_count()
 
     while sliding_window:
         block_ref, metadata = sliding_window.popleft()
@@ -378,10 +393,14 @@ def prefetch_batches_locally(
                 prefetcher.prefetch_blocks(
                     [block_ref for block_ref, _ in list(sliding_window)]
                 )
+                _report_prefetch_count()
             except StopIteration:
                 pass
         yield block_ref
         trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
+        _report_prefetch_count()
+    if prefetch_count_update is not None:
+        prefetch_count_update(0)
     prefetcher.stop()
 
 

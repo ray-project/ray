@@ -99,6 +99,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # Stores if an operator is completed,
         # used for marking when an op has just completed.
         self._has_op_completed: Optional[Dict[PhysicalOperator, bool]] = None
+        self._last_operator: Optional[PhysicalOperator] = None
         self._max_errored_blocks = self._data_context.max_errored_blocks
         self._num_errored_blocks = 0
 
@@ -212,6 +213,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._has_op_completed = dict.fromkeys(self._topology, False)
 
         self._output_node = dag, self._topology[dag]
+        self._last_operator = dag
 
         op_to_id = {
             op: self._get_operator_id(op, i) for i, op in enumerate(self._topology)

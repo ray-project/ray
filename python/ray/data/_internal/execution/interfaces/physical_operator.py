@@ -457,6 +457,17 @@ class PhysicalOperator(Operator):
         self._metrics._extra_metrics = self._extra_metrics()
         return self._metrics
 
+    def update_prefetch_count(self, count: int) -> None:
+        """Update the number of outstanding prefetched blocks.
+
+        This is called by the iterator to report how many blocks are currently
+        prefetched, so the resource manager can account for object store memory.
+
+        Args:
+            count: Number of outstanding prefetched blocks.
+        """
+        self._metrics.num_prefetched_blocks = count
+
     def _extra_metrics(self) -> Dict[str, Any]:
         """Subclasses should override this method to report extra metrics
         that are specific to them."""
