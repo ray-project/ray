@@ -18,10 +18,10 @@ steps:
   - name: datalbuild-multipy
     label: "wanda: datalbuild-py{{matrix}}"
     wanda: ci/docker/datal.build.wanda.yaml
-    matrix:
-      - "3.10"
+    matrix: ["3.10", "3.12"]
     env:
       PYTHON: "{{matrix}}"
+    tags: cibase
 
   - name: databuild-multipy
     label: "wanda: databuild-py{{matrix}}"
@@ -31,26 +31,24 @@ steps:
       PYTHON: "{{matrix}}"
     tags: cibase
 
-  - name: datanbuild
+  - name: datanbuild-multipy
     wanda: ci/docker/datan.build.wanda.yaml
+    env:
+      PYTHON: "3.10"
     tags: cibase
 
   - name: datamongobuild-multipy
-    label: "wanda: datamongobuild-py{{matrix}}"
+    label: "wanda: datamongobuild-py3.10"
     wanda: ci/docker/datamongo.build.wanda.yaml
-    matrix:
-      - "3.10"
     env:
-      PYTHON: "{{matrix}}"
+      PYTHON: "3.10"
     tags: cibase
 
   - name: datatfxbslbuild-multipy
-    label: "wanda: datatfxbslbuild-py{{matrix}}"
+    label: "wanda: datatfxbslbuild-py3.10"
     wanda: ci/docker/datatfxbsl.build.wanda.yaml
-    matrix:
-      - "3.10"
     env:
-      PYTHON: "{{matrix}}"
+      PYTHON: "3.10"
     tags: cibase
 
   # tests
@@ -63,9 +61,9 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name data9build
+        --build-name data9build-py3.10 --python-version 3.10
         --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials
-    depends_on: data9build
+    depends_on: data9build-multipy
 
   - label: ":database: data: arrow v9 tests (data_non_parallel)"
     tags:
@@ -77,9 +75,9 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --build-name data9build
+        --build-name data9build-py3.10 --python-version 3.10
         --only-tags data_non_parallel
-    depends_on: data9build
+    depends_on: data9build-multipy
 
   - label: ":database: data: arrow v21 tests"
     tags:
@@ -91,8 +89,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name databuild-py3.10
-        --python-version 3.10
+        --build-name datalbuild-py3.10 --python-version 3.10
         --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials
     depends_on: datalbuild-multipy
 
@@ -107,12 +104,11 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --build-name databuild-py3.10
-        --python-version 3.10
+        --build-name datalbuild-py3.10 --python-version 3.10
         --only-tags data_non_parallel
     depends_on: datalbuild-multipy
 
-  - label: ":database: data: arrow v21 {{matrix.python}} tests ({{matrix.worker_id}})"
+  - label: ":database: data: arrow v21 py{{matrix.python}} tests ({{matrix.worker_id}})"
     key: datal_python_tests
     if: build.pull_request.labels includes "continuous-build" || pipeline.id == "0189e759-8c96-4302-b6b5-b4274406bf89" || pipeline.id == "018f4f1e-1b73-4906-9802-92422e3badaa"
     tags:
@@ -121,15 +117,15 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
-        --python-version {{matrix.python}}
+        --build-name datalbuild-py{{matrix.python}} --python-version {{matrix.python}}
         --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials
-    depends_on: databuild-multipy
+    depends_on: datalbuild-multipy
     matrix:
       setup:
         python: ["3.12"]
         worker_id: ["0", "1"]
 
-  - label: ":database: data: arrow v21 {{matrix.python}} tests (data_non_parallel)"
+  - label: ":database: data: arrow v21 py{{matrix.python}} tests (data_non_parallel)"
     key: datal_python_non_parallel_tests
     if: build.pull_request.labels includes "continuous-build" || pipeline.id == "0189e759-8c96-4302-b6b5-b4274406bf89" || pipeline.id == "018f4f1e-1b73-4906-9802-92422e3badaa"
     tags:
@@ -137,9 +133,9 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
-        --python-version {{matrix.python}}
+        --build-name datalbuild-py{{matrix.python}} --python-version {{matrix.python}}
         --only-tags data_non_parallel
-    depends_on: databuild-multipy
+    depends_on: datalbuild-multipy
     matrix:
       setup:
         python: ["3.12"]
@@ -155,9 +151,9 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name datanbuild
+        --build-name datanbuild-py3.10 --python-version 3.10
         --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials
-    depends_on: datanbuild
+    depends_on: datanbuild-multipy
     soft_fail: true
 
   - label: ":database: data: arrow nightly tests (data_non_parallel)"
@@ -168,9 +164,9 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
-        --build-name datanbuild
+        --build-name datanbuild-py3.10 --python-version 3.10
         --only-tags data_non_parallel
-    depends_on: datanbuild
+    depends_on: datanbuild-multipy
     soft_fail: true
 
   - label: ":database: data: dask tests"
@@ -180,8 +176,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name databuild-py3.12
-        --python-version 3.12
+        --build-name databuild-py3.12 --python-version 3.12
         --only-tags dask
     depends_on: databuild-multipy
 
@@ -191,8 +186,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name datatfxbslbuild-py3.10
-        --python-version 3.10
+        --build-name datatfxbslbuild-py3.10 --python-version 3.10
         --only-tags tfxbsl
     depends_on: datatfxbslbuild-multipy
 
