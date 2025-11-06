@@ -193,7 +193,6 @@ def test_result_restore(
         storage_context = StorageContext(
             storage_path=storage_path,
             experiment_dir_name=exp_name,
-            skip_validation=True,
         )
 
         trial_dir = storage_context.experiment_fs_path
