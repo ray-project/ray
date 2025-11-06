@@ -1996,6 +1996,38 @@ class Dataset:
 
         aggregator = ValidationAggregator.remote()
 
+        def _add_validation_flag(batch: Any, flag_value: bool, is_empty: bool) -> Any:
+            """Helper function to add validation flag to batch regardless of format."""
+            try:
+                import pandas as pd
+
+                if isinstance(batch, pd.DataFrame):
+                    batch["_validation_passed"] = flag_value
+                    return batch
+            except Exception:
+                pass
+            try:
+                import pyarrow as pa
+
+                if isinstance(batch, pa.Table):
+                    import pyarrow.compute as pc
+
+                    if is_empty:
+                        passed_col = pc.fill_null(pc.scalar(flag_value), flag_value)
+                    else:
+                        passed_array = pa.array([flag_value] * len(batch))
+                        passed_col = passed_array
+                    return batch.append_column("_validation_passed", passed_col)
+            except Exception:
+                pass
+            # Fallback: add validation flag to dict batch
+            if isinstance(batch, dict):
+                import numpy as np
+
+                num_rows = len(batch.get(list(batch.keys())[0], []))
+                batch["_validation_passed"] = np.array([flag_value] * num_rows)
+            return batch
+
         def validation_fn(batch: Any) -> Dict[str, Any]:
             """Wrapper function that validates the batch and marks rows."""
             from ray.data.block import BlockAccessor
@@ -2016,63 +2048,12 @@ class Dataset:
             if is_empty:
                 # Empty batches pass validation (no data to validate)
                 aggregator.add_result.remote(True)
-                # Return batch with validation flag
-                try:
-                    import pandas as pd
-
-                    if isinstance(batch, pd.DataFrame):
-                        batch["_validation_passed"] = True
-                        return batch
-                except Exception:
-                    pass
-                try:
-                    import pyarrow as pa
-
-                    if isinstance(batch, pa.Table):
-                        import pyarrow.compute as pc
-
-                        passed_col = pc.fill_null(pc.scalar(True), True)
-                        return batch.append_column("_validation_passed", passed_col)
-                except Exception:
-                    pass
-                # Fallback: add validation flag to dict batch
-                if isinstance(batch, dict):
-                    import numpy as np
-
-                    batch["_validation_passed"] = np.array(
-                        [True] * len(batch.get(list(batch.keys())[0], []))
-                    )
-                return batch
+                return _add_validation_flag(batch, True, is_empty=True)
 
             try:
                 passed = expectation.validate(batch)
                 aggregator.add_result.remote(passed)
-
-                # Add validation flag to batch for splitting
-                try:
-                    import pandas as pd
-
-                    if isinstance(batch, pd.DataFrame):
-                        batch["_validation_passed"] = passed
-                        return batch
-                except Exception:
-                    pass
-                try:
-                    import pyarrow as pa
-
-                    if isinstance(batch, pa.Table):
-                        import pyarrow.compute as pc
-
-                        passed_array = pa.array([passed] * len(batch))
-                        return batch.append_column("_validation_passed", passed_array)
-                except Exception:
-                    pass
-                # Fallback: add validation flag to dict batch
-                if isinstance(batch, dict):
-                    import numpy as np
-
-                    num_rows = len(batch.get(list(batch.keys())[0], []))
-                    batch["_validation_passed"] = np.array([passed] * num_rows)
+                batch = _add_validation_flag(batch, passed, is_empty=False)
 
                 if not passed and expectation.error_on_failure:
                     raise ValueError(
@@ -2089,30 +2070,7 @@ class Dataset:
                     f"Batch marked as failed."
                 )
                 # Mark batch as failed
-                try:
-                    import pandas as pd
-
-                    if isinstance(batch, pd.DataFrame):
-                        batch["_validation_passed"] = False
-                        return batch
-                except Exception:
-                    pass
-                try:
-                    import pyarrow as pa
-
-                    if isinstance(batch, pa.Table):
-                        import pyarrow.compute as pc
-
-                        passed_array = pa.array([False] * len(batch))
-                        return batch.append_column("_validation_passed", passed_array)
-                except Exception:
-                    pass
-                if isinstance(batch, dict):
-                    import numpy as np
-
-                    num_rows = len(batch.get(list(batch.keys())[0], []))
-                    batch["_validation_passed"] = np.array([False] * num_rows)
-                return batch
+                return _add_validation_flag(batch, False, is_empty=False)
 
         # Apply validation using map_batches
         # Always use map_batches for validator functions as they expect batch input
