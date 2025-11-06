@@ -96,7 +96,7 @@ class CoreWorkerTest : public ::testing::Test {
       return Status::OK();
     };
 
-    auto client_call_manager = std::make_unique<rpc::ClientCallManager>(
+    client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
         io_service_, /*record_stats=*/false, /*local_address=*/"");
 
     auto core_worker_client_pool =
@@ -167,7 +167,7 @@ class CoreWorkerTest : public ::testing::Test {
 
     auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
         std::make_unique<gcs::MockGcsClient>(),
-        std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager),
+        std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager_),
         "test_session");
 
     task_manager_ = std::make_shared<TaskManager>(
@@ -248,7 +248,6 @@ class CoreWorkerTest : public ::testing::Test {
     core_worker_ = std::make_shared<CoreWorker>(std::move(options),
                                                 std::move(worker_context),
                                                 io_service_,
-                                                std::move(client_call_manager),
                                                 std::move(core_worker_client_pool),
                                                 std::move(raylet_client_pool),
                                                 std::move(periodical_runner),
@@ -289,6 +288,7 @@ class CoreWorkerTest : public ::testing::Test {
   boost::thread io_thread_;
 
   rpc::Address rpc_address_;
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   ActorTaskSubmitter *actor_task_submitter_;
