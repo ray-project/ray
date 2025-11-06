@@ -219,6 +219,10 @@ class VLLMEngineConfig(BaseModelExtended):
         return self.engine_kwargs.get("pipeline_parallel_size", 1)
 
     @property
+    def data_parallel_degree(self) -> int:
+        return self.engine_kwargs.get("data_parallel_size", 1)
+
+    @property
     def num_devices(self) -> int:
         return self.tensor_parallel_degree * self.pipeline_parallel_degree
 
@@ -285,13 +289,34 @@ class VLLMEngineConfig(BaseModelExtended):
             GPUType.NVIDIA_A100_80G.value,
         )
 
-    def get_or_create_pg(self) -> PlacementGroup:
-        """Gets or a creates a placement group.
+    def get_or_create_pg(self, temporary_for_init: bool = False) -> Optional[PlacementGroup]:
+        """Gets or creates a placement group.
 
         If we are already in a placement group, return the existing placement group.
         Else, create a new placement group based on the scaling config.
+        
+        Args:
+            temporary_for_init: If True and using Ray DP backend, create a temporary PG
+                for node initialization that will be freed before vLLM starts.
         """
+        dp_size = self.engine_kwargs.get("data_parallel_size", 1)
         dp_rank = self.engine_kwargs.get("data_parallel_rank", None)
+        
+        # For Ray DP backend with temporary flag, create minimal PG for init
+        if dp_size > 1 and self.engine_kwargs.get("data_parallel_backend") == "ray":
+            if not temporary_for_init:
+                logger.info(
+                    "Skipping placement group creation for Ray DP backend "
+                    f"(data_parallel_size={dp_size}). vLLM will create them."
+                )
+                return None
+            # Create temporary PG for node initialization
+            # Use TP×PP bundles (not DP) since this is just for downloads
+            logger.info(
+                f"Creating temporary placement group for node initialization "
+                f"(will be freed before vLLM starts)"
+            )
+        
         pg = get_current_placement_group()
         if pg:
             logger.debug(

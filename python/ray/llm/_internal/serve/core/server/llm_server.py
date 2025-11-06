@@ -143,8 +143,40 @@ class LLMServer(LLMServerProtocol):
                 Defaults to `LoraModelLoader`.
         """
         super().__init__()
+        
+        # Handle data parallel configuration
+        dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
+        if dp_size > 1:
+            self._validate_and_setup_data_parallel(llm_config, dp_size)
+        
         self._init_shared(llm_config, engine_cls, model_downloader)
         await self.start()
+
+    def _validate_and_setup_data_parallel(
+        self, llm_config: LLMConfig, dp_size: int
+    ) -> None:
+        """Validate and setup data parallel configuration.
+        
+        Args:
+            llm_config: LLM configuration to validate and update.
+            dp_size: The data parallel size from engine_kwargs.
+        
+        Raises:
+            ValueError: If data_parallel_backend isn't set to 'ray' when dp_size > 1.
+        """
+        logger.info(
+            f"Initializing DP group with {dp_size} workers "
+            "(vLLM will spawn them internally via Ray backend)"
+        )
+        
+        # Enforce that data_parallel_backend is set to "ray"
+        dp_backend = llm_config.engine_kwargs.get("data_parallel_backend", None)
+        if dp_backend is None:
+            llm_config.update_engine_kwargs(data_parallel_backend="ray")
+        elif dp_backend != "ray":
+            raise ValueError(
+                f"data_parallel_backend must be set to 'ray' when data_parallel_size > 1, but got: {dp_backend}"
+            )
 
     def _init_shared(
         self,
@@ -491,18 +523,29 @@ class LLMServer(LLMServerProtocol):
                 "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. You can override the default values by setting the `placement_group_config` in the LLMConfig."
             )
 
-        # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
-        # more generic place.
-        pg_bundles = _merge_replica_actor_and_child_actor_bundles(
-            engine_config.placement_bundles, replica_actor_resources
-        )
+        # For DP deployments, don't create placement groups in Serve
+        # vLLM's Ray backend will create them internally (one PG per DP rank)
+        dp_size = llm_config.engine_kwargs.get("data_parallel_size")
+        if dp_size is not None and dp_size > 1:
+            # Don't set placement_group_bundles or placement_group_strategy
+            # vLLM will handle placement groups for DP workers
+            logger.info(
+                "DP deployment: vLLM Ray backend will manage placement groups "
+                f"for {dp_size} DP workers"
+            )
+        else:
+            # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
+            # more generic place.
+            pg_bundles = _merge_replica_actor_and_child_actor_bundles(
+                engine_config.placement_bundles, replica_actor_resources
+            )
 
-        deployment_options.update(
-            {
-                "placement_group_bundles": pg_bundles,
-                "placement_group_strategy": engine_config.placement_strategy,
-            }
-        )
+            deployment_options.update(
+                {
+                    "placement_group_bundles": pg_bundles,
+                    "placement_group_strategy": engine_config.placement_strategy,
+                }
+            )
 
         # Handle env vars from runtime_env
         default_runtime_env = ray.get_runtime_context().runtime_env
