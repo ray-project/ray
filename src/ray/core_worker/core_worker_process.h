@@ -153,9 +153,6 @@ class CoreWorkerProcessImpl {
   /// The various options.
   const CoreWorkerOptions options_;
 
-  /// The core worker instance of this worker process.
-  MutexProtected<std::shared_ptr<CoreWorker>> core_worker_;
-
   /// The worker ID of this worker.
   const WorkerID worker_id_;
 
@@ -165,6 +162,10 @@ class CoreWorkerProcessImpl {
 
   /// Keeps the io_service_ alive.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
+
+  /// Shared client call manager across all gRPC clients in the core worker process.
+  /// This is used by the CoreWorker and the MetricsAgentClient.
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
   /// Event loop where tasks are processed.
   /// task_execution_service_ should be destructed first to avoid
@@ -178,6 +179,9 @@ class CoreWorkerProcessImpl {
 
   // Thread that runs a boost::asio service to process IO events.
   boost::thread io_thread_;
+
+  /// The core worker instance of this worker process.
+  MutexProtected<std::shared_ptr<CoreWorker>> core_worker_;
 
   /// The proxy service handler that routes the RPC calls to the core worker.
   std::unique_ptr<CoreWorkerServiceHandlerProxy> service_handler_;
