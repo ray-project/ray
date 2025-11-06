@@ -2051,6 +2051,7 @@
 # APPO
 # --------------------------
 - name: rllib_learning_tests_pong_appo_torch
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2084,6 +2085,7 @@
         cluster_compute: 2gpus_64cpus_gce.yaml
 
 - name: rllib_learning_tests_halfcheetah_appo_torch
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2118,6 +2120,7 @@
 # DreamerV3
 # --------------------------
 - name: rllib_learning_tests_pong_dreamerv3_torch
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2149,6 +2152,7 @@
         cluster_compute: 4gpus_64cpus_gce.yaml
 
 - name: rllib_learning_tests_pendulum_dreamerv3_torch
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2183,6 +2187,7 @@
 # IMPALA
 # --------------------------
 - name: rllib_learning_tests_pong_impala_torch
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2217,6 +2222,7 @@
 # PPO
 # --------------------------
 - name: rllib_learning_tests_pong_ppo_torch
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2252,6 +2258,7 @@
 # SAC
 # --------------------------
 - name: rllib_learning_tests_halfcheetah_sac_torch
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
