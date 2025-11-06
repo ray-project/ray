@@ -371,6 +371,9 @@ CoreWorker::CoreWorker(
                               object_id]() { free_actor_object_callback(object_id); },
                              "CoreWorker.FreeActorObjectCallback");
           }) {
+  // Initialize shutdown synchronization
+  shutdown_complete_future_ = shutdown_complete_promise_.get_future().share();
+
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -525,22 +528,95 @@ CoreWorker::CoreWorker(
   // in case there is a problem during construction.
   ConnectToRayletInternal();
 
-  // Initialize shutdown coordinator last - after all services are ready
-  // Create concrete shutdown executor that implements real shutdown operations
-  auto shutdown_executor = std::make_unique<CoreWorkerShutdownExecutor>(this);
+}
+
+CoreWorker::~CoreWorker() {
+  // Wait for shutdown to complete before destruction
+  WaitForShutdownComplete();
+  RAY_LOG(INFO) << "Core worker is destructed";
+}
+
+void CoreWorker::InitializeShutdownExecutor(std::shared_ptr<CoreWorker> self) {
+  RAY_CHECK(self.get() == this) << "Passed shared_ptr does not match this CoreWorker";
+
+  // Create concrete shutdown executor with the shared_ptr
+  auto shutdown_executor = std::make_unique<CoreWorkerShutdownExecutor>(self);
   shutdown_coordinator_ = std::make_unique<ShutdownCoordinator>(
       std::move(shutdown_executor), options_.worker_type);
 
   RAY_LOG(DEBUG) << "Initialized unified shutdown coordinator with concrete executor for "
-                    "worker type: "
-                 << WorkerTypeString(options_.worker_type);
-}  // NOLINT(readability/fn_size)
-
-CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
+                    "worker type: " << WorkerTypeString(options_.worker_type);
+}
 
 void CoreWorker::Shutdown() {
   shutdown_coordinator_->RequestShutdown(
       /*force_shutdown=*/false, ShutdownReason::kGracefulExit, "ray.shutdown() called");
+}
+
+void CoreWorker::WaitForShutdownComplete(std::chrono::milliseconds timeout_ms) {
+  if (shutdown_coordinator_ && shutdown_coordinator_->IsShuttingDown()) {
+    RAY_LOG(INFO) << "Waiting for shutdown to complete (timeout: " << timeout_ms.count() << "ms)...";
+    auto status = shutdown_complete_future_.wait_for(timeout_ms);
+    if (status == std::future_status::timeout) {
+      RAY_LOG(ERROR) << "Shutdown did not complete within " << timeout_ms.count()
+                     << "ms, proceeding with destruction anyway";
+    } else {
+      RAY_LOG(INFO) << "Shutdown completed successfully";
+    }
+  }
+}
+
+void CoreWorker::NotifyShutdownComplete() {
+  try {
+    shutdown_complete_promise_.set_value();
+    RAY_LOG(DEBUG) << "Shutdown completion notified";
+  } catch (const std::future_error& e) {
+    // Promise may have already been set if multiple paths call this
+    RAY_LOG(DEBUG) << "Shutdown completion already notified: " << e.what();
+  }
+}
+
+bool CoreWorker::IsConnected() const {
+  absl::MutexLock lock(&connected_mutex_);
+  return connected_internal_;
+}
+
+bool CoreWorker::SetDisconnectedIfConnected() {
+  absl::MutexLock lock(&connected_mutex_);
+  if (!connected_internal_) {
+    return false;  // Already disconnected
+  }
+  connected_internal_ = false;
+  // Also update the old connected_ flag for backward compatibility
+  connected_ = false;
+  return true;  // Successfully disconnected
+}
+
+CoreWorker::ShutdownState CoreWorker::GetShutdownState() const {
+  absl::MutexLock lock(&shutdown_state_mutex_);
+  return shutdown_state_;
+}
+
+void CoreWorker::SetShutdownState(ShutdownState state) {
+  absl::MutexLock lock(&shutdown_state_mutex_);
+
+  // Only allow forward transitions
+  if (state <= shutdown_state_) {
+    RAY_LOG(WARNING) << "Ignoring backward/same shutdown state transition from "
+                     << static_cast<int>(shutdown_state_) << " to "
+                     << static_cast<int>(state);
+    return;
+  }
+
+  RAY_LOG(INFO) << "Shutdown state transition: "
+                << static_cast<int>(shutdown_state_) << " -> "
+                << static_cast<int>(state);
+  shutdown_state_ = state;
+}
+
+std::function<void()> CoreWorker::GetActorShutdownCallback() const {
+  absl::MutexLock lock(&actor_callback_mutex_);
+  return actor_shutdown_callback_;
 }
 
 void CoreWorker::ConnectToRayletInternal() {
@@ -580,9 +656,9 @@ void CoreWorker::Disconnect(
   }
 
   opencensus::stats::StatsExporter::ExportNow();
-  if (connected_) {
+
+  if (SetDisconnectedIfConnected()) {
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
-    connected_ = false;
     Status status = raylet_ipc_client_->Disconnect(
         exit_type, exit_detail, creation_task_exception_pb_bytes);
     if (status.ok()) {
@@ -590,6 +666,8 @@ void CoreWorker::Disconnect(
     } else {
       RAY_LOG(WARNING) << "Failed to disconnect from the local raylet: " << status;
     }
+  } else {
+    RAY_LOG(DEBUG) << "Already disconnected, skipping disconnect message";
   }
 }
 
@@ -824,12 +902,28 @@ void CoreWorker::InternalHeartbeat() {
 }
 
 void CoreWorker::RecordMetrics() {
-  // Record metrics for owned tasks.
-  task_manager_->RecordMetrics();
-  // Record metrics for executed tasks.
-  task_counter_.RecordMetrics();
-  // Record worker heap memory metrics.
-  memory_store_->RecordMetrics();
+  // Skip metrics recording if we're shutting down to avoid accessing
+  // components that may be in inconsistent state
+  if (GetShutdownState() != RUNNING) {
+    RAY_LOG(DEBUG) << "Skipping metrics recording during shutdown";
+    return;
+  }
+
+  // Wrap in try-catch to handle any exceptions during shutdown
+  try {
+    // Record metrics for owned tasks.
+    if (task_manager_) {
+      task_manager_->RecordMetrics();
+    }
+    // Record metrics for executed tasks.
+    task_counter_.RecordMetrics();
+    // Record worker heap memory metrics.
+    if (memory_store_) {
+      memory_store_->RecordMetrics();
+    }
+  } catch (const std::exception& e) {
+    RAY_LOG(WARNING) << "Failed to record metrics: " << e.what();
+  }
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
