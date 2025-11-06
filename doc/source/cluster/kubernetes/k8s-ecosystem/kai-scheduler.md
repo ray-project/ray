@@ -44,17 +44,14 @@ You can arrange queues hierarchically for organizations with multiple teams, for
 * Kubernetes cluster with GPU nodes
 * NVIDIA GPU Operator 
 * kubectl configured to access your cluster
-
-## Step 1: Install KAI Scheduler
-
-Install KAI Scheduler with gpu-sharing enabled. Choose the desired release version from [KAI Scheduler releases](https://github.com/NVIDIA/KAI-Scheduler/releases) and replace the `<KAI_SCHEDULER_VERSION>` in the following command.
+* Install KAI Scheduler with gpu-sharing enabled. Choose the desired release version from [KAI Scheduler releases](https://github.com/NVIDIA/KAI-Scheduler/releases) and replace the `<KAI_SCHEDULER_VERSION>` in the following command. It's recommended to choose v0.10.0 or higher version.
 
 ```bash
 # Install KAI Scheduler
 helm upgrade -i kai-scheduler oci://ghcr.io/nvidia/kai-scheduler/kai-scheduler -n kai-scheduler --create-namespace --version <KAI_SCHEDULER_VERSION> --set "global.gpuSharing=true"
 ```
 
-## Step 2: Install the KubeRay operator with KAI Scheduler as the batch scheduler
+## Step 1: Install the KubeRay operator with KAI Scheduler as the batch scheduler
 
 Follow the official KubeRay operator [installation documentation](https://docs.ray.io/en/master/cluster/kubernetes/getting-started/kuberay-operator-installation.html#kuberay-operator-installation) and add the following configuration to enable KAI Scheduler integration:
 
@@ -62,7 +59,7 @@ Follow the official KubeRay operator [installation documentation](https://docs.r
 --set batchScheduler.name=kai-scheduler
 ```
 
-## Step 3: Create KAI Scheduler Queues
+## Step 2: Create KAI Scheduler Queues
 
 Create a basic queue structure for department-1 and its child team-a. For demo reasons, this example doesn't enforce any quota, overQuotaWeight, or limit. You can configure these parameters depending on your needs: 
 
@@ -112,7 +109,7 @@ spec:
 
 Note: To make this demo easier to follow, we combined these queue definitions with the RayCluster example in the next step. You can use the single combined YAML file and apply both queues and workloads at once.
 
-## Step 4: Gang scheduling with KAI Scheduler
+## Step 3: Gang scheduling with KAI Scheduler
 
 The key pattern is to add the queue label to your RayCluster. [Here's a basic example](https://github.com/ray-project/kuberay/tree/master/ray-operator/config/samples/ray-cluster.kai-scheduler.yaml) from the KubeRay repository:
 
@@ -175,7 +172,7 @@ You can submit the same workload above with a specific priority. Modify the abov
 ```
 See the [documentation](https://github.com/NVIDIA/KAI-Scheduler/tree/main/docs/priority) for more information.
 
-## Step 5: Submitting Ray workers with GPU sharing 
+## Step 4: Submitting Ray workers with GPU sharing 
 
 This example creates two workers that share a single GPU (0.5 each, with time-slicing) within a RayCluster. See the [YAML file](https://github.com/ray-project/kuberay/tree/master/ray-operator/config/samples/ray-cluster.kai-gpu-sharing.yaml)):
 

@@ -4301,6 +4301,7 @@
 
 
 - name: distributing_pytorch  # do not use dashes (regex sensitive)
+  python: "3.10"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4325,6 +4326,7 @@
 
 
 - name: pytorch_fsdp  # do not use dashes (regex sensitive)
+  python: "3.10"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4349,6 +4351,7 @@
 
 
 - name: deepspeed_finetune  # do not use dashes (regex sensitive)
+  python: "3.10"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4373,6 +4376,7 @@
 
 
 - name: pytorch_profiling  # do not use dashes (regex sensitive)
+  python: "3.10"
   frequency: weekly
   group: ray-examples
   team: ml

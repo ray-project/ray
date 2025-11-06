@@ -1,3 +1,4 @@
+import os
 import sys
 
 import pytest
@@ -10,6 +11,8 @@ from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
+
+import psutil
 
 
 @pytest.mark.parametrize("deterministic_failure", ["request", "response"])
@@ -136,6 +139,45 @@ def test_release_unused_bundles_idempotent(
     # If the leaked bundle wasn't cleaned up, this task will hang due to resource unavailability
     result = ray.get(task.remote())
     assert result == "success"
+
+
+def test_kill_local_actor_rpc_retry_and_idempotency(monkeypatch, shutdown_only):
+    """Test that KillLocalActor RPC retries work correctly and guarantee actor death.
+    Not testing response since the actor is killed either way.
+    """
+
+    monkeypatch.setenv(
+        "RAY_testing_rpc_failure",
+        "NodeManagerService.grpc_client.KillLocalActor=1:100:0",
+    )
+
+    ray.init()
+
+    @ray.remote
+    class SimpleActor:
+        def ping(self):
+            return "pong"
+
+        def get_pid(self):
+            return os.getpid()
+
+    actor = SimpleActor.remote()
+
+    result = ray.get(actor.ping.remote())
+    assert result == "pong"
+
+    worker_pid = ray.get(actor.get_pid.remote())
+
+    # NOTE: checking the process is still alive rather than checking the actor state from the GCS
+    # since as long as KillActor is sent the GCS will mark the actor as dead even though it may not actually be
+    assert psutil.pid_exists(worker_pid)
+
+    ray.kill(actor)
+
+    def verify_process_killed():
+        return not psutil.pid_exists(worker_pid)
+
+    wait_for_condition(verify_process_killed, timeout=30)
 
 
 if __name__ == "__main__":

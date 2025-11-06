@@ -1,7 +1,7 @@
 (serve-llm-architecture-prefill-decode)=
 # Prefill-decode disaggregation
 
-Prefill-decode (PD) disaggregation is a serving pattern that separates the prefill phase (processing input prompts) from the decode phase (generating tokens). This pattern optimizes resource utilization by scaling each phase independently based on its specific requirements.
+Prefill-decode (PD) disaggregation is a serving pattern that separates the prefill phase (processing input prompts) from the decode phase (generating tokens). This pattern was first pioneered in [DistServe](https://hao-ai-lab.github.io/blogs/distserve/) and optimizes resource utilization by scaling each phase independently based on its specific requirements.
 
 ## Architecture overview
 

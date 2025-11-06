@@ -18,6 +18,7 @@ from ray.data.datasource.path_util import (
         ("foo.csv", ["csv"], True),
         ("foo.csv", ["json", "csv"], True),
         ("foo.csv", ["json", "jsonl"], False),
+        ("foo.csv", [".csv"], True),
         ("foo.parquet.crc", ["parquet"], False),
         ("foo.parquet.crc", ["crc"], True),
         ("foo.csv", None, True),

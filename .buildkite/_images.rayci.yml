@@ -188,7 +188,6 @@ steps:
       - skip-on-release-tests
     wanda: docker/base-slim/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -206,7 +205,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
