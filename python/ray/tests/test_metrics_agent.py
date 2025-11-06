@@ -16,7 +16,7 @@ import requests
 from google.protobuf.timestamp_pb2 import Timestamp
 
 import ray
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, find_free_port
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.metrics_agent import (
     Gauge as MetricsAgentGauge,
@@ -27,7 +27,6 @@ from ray._private.test_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,
     fetch_prometheus_timeseries,
-    find_free_port,
     get_log_batch,
     raw_metric_timeseries,
 )
@@ -439,7 +438,7 @@ def test_metrics_export_node_metrics(shutdown_only):
             samples = avail_metrics[metric]
             for sample in samples:
                 components.add(sample.labels["Component"])
-        assert components == {"gcs", "raylet", "agent", "ray::IDLE"}
+        assert components == {"gcs", "raylet", "agent", "ray::IDLE", sys.executable}
 
         avail_metrics = set(avail_metrics)
 
@@ -886,6 +885,7 @@ def test_per_func_name_stats(shutdown_only):
                 components.add(sample.labels["Component"])
         print(components)
         assert {
+            sys.executable,  # driver process
             "raylet",
             "agent",
             "ray::Actor",

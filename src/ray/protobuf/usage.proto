@@ -104,6 +104,8 @@ enum TagKey {
   SERVE_NUM_REPLICAS_VIA_API_CALL_UPDATED = 33;
   // Whether task consumer wrapper was used ("1" if used)
   SERVE_NUM_REPLICAS_USING_ASYNCHRONOUS_INFERENCE = 34;
+  // Whether a custom autoscaling policy was used ("1" if used)
+  SERVE_CUSTOM_AUTOSCALING_POLICY_USED = 35;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of

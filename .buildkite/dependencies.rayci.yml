@@ -24,11 +24,6 @@ steps:
     tags: always
     instance_type: small
     commands:
-      # TODO: add raydepsets build all command
-      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayllm.depsets.yaml --check
-      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayimg.depsets.yaml --check
-      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/release_multimodal_inference_benchmarks_tests.depsets.yaml --check
-      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/docs.depsets.yaml --check
-      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/req_compiled.depsets.yaml --check
+      - bazel run //ci/raydepsets:raydepsets -- build --all-configs --check
     job_env: manylinux
     depends_on: manylinux

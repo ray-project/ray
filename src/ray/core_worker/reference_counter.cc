@@ -1261,12 +1261,8 @@ void ReferenceCounter::AddNestedObjectIdsInternal(const ObjectID &object_id,
           WaitForRefRemoved(inner_it, owner_address, object_id);
         }
       } else {
-        auto inserted = inner_it->second.mutable_borrow()
-                            ->stored_in_objects.emplace(object_id, owner_address)
-                            .second;
-        // This should be the first time that we have stored this object ID
-        // inside this return ID.
-        RAY_CHECK(inserted);
+        inner_it->second.mutable_borrow()->stored_in_objects.emplace(object_id,
+                                                                     owner_address);
       }
       PRINT_REF_COUNT(inner_it);
     }

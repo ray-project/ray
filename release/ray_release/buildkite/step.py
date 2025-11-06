@@ -141,6 +141,10 @@ def get_step(
     if smoke_test:
         cmd += ["--smoke-test"]
 
+    num_retries = test.get("run", {}).get("num_retries")
+    if num_retries:
+        step["retry"]["automatic"][0]["limit"] = num_retries
+
     step["plugins"][0][DOCKER_PLUGIN_KEY]["command"] = cmd
 
     env_to_use = test.get("env", DEFAULT_ENVIRONMENT)

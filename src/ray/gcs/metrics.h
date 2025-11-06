@@ -36,6 +36,7 @@ struct GcsServerMetrics {
   ray::observability::MetricInterface &event_recorder_dropped_events_counter;
   ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram;
   ray::observability::MetricInterface &storage_operation_count_counter;
+  ray::observability::MetricInterface &scheduler_placement_time_s_histogram;
 };
 
 inline ray::stats::Gauge GetRunningJobGaugeMetric() {

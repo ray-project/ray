@@ -51,7 +51,7 @@ class DefaultActorAutoscaler(ActorAutoscaler):
     ) -> ActorPoolScalingRequest:
         # If all inputs have been consumed, short-circuit
         if op.completed() or (
-            op._inputs_complete and op_state.total_enqueued_input_bundles() == 0
+            op._inputs_complete and op_state.total_enqueued_input_blocks() == 0
         ):
             return ActorPoolScalingRequest.downscale(
                 delta=-1, force=True, reason="consumed all inputs"
@@ -125,19 +125,29 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 self._validate_actor_pool_autoscaling_config(actor_pool, op)
 
     def _validate_actor_pool_autoscaling_config(
-        self, actor_pool: AutoscalingActorPool, op: "PhysicalOperator"
-    ):
+        self,
+        actor_pool: "AutoscalingActorPool",
+        op: "PhysicalOperator",
+    ) -> None:
+        """Validate autoscaling configuration.
+
+        Args:
+            actor_pool: Actor pool to validate configuration thereof.
+            op: ``PhysicalOperator`` using target actor pool.
+        """
+        max_tasks_in_flight_per_actor = actor_pool.max_tasks_in_flight_per_actor()
+        max_concurrency = actor_pool.max_actor_concurrency()
+
         if (
-            actor_pool.max_actor_concurrency()
-            == actor_pool.max_tasks_in_flight_per_actor()
-            and self._actor_pool_scaling_up_threshold > 1.0
+            max_tasks_in_flight_per_actor / max_concurrency
+            < self._actor_pool_scaling_up_threshold
         ):
             logger.warning(
                 f"{WARN_PREFIX} Actor Pool configuration of the {op} will not allow it to scale up: "
-                f"upscaling threshold ({self._actor_pool_scaling_up_threshold}) is above "
-                f"100%, but actor pool utilization won't be able to exceed it because "
-                f"actor pool is configured to avoid buffering (its "
-                f"`max_tasks_in_flight_per_actor` == `max_concurrency`)"
+                f"configured utilization threshold ({self._actor_pool_scaling_up_threshold * 100}%) "
+                f"couldn't be reached with configured max_concurrency={max_concurrency} "
+                f"and max_tasks_in_flight_per_actor={max_tasks_in_flight_per_actor} "
+                f"(max utilization will be max_tasks_in_flight_per_actor / max_concurrency = {(max_tasks_in_flight_per_actor / max_concurrency) * 100:g}%)"
             )
 
 

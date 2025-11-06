@@ -1090,11 +1090,19 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             )
         else:
             # NOTE: In cases when we're unable to estimate dataset size,
-            #       we simply fallback to request
-            #       ``DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION`` worth of
-            #       memory for every Aggregator
-            estimated_aggregator_memory_required = (
-                DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION
+            #       we simply fallback to request the minimum of:
+            #       - conservative 50% of total available memory for a join operation.
+            #       - ``DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION`` worth of
+            #       memory for every Aggregator.
+
+            max_memory_per_aggregator = (
+                total_available_cluster_resources.memory / num_aggregators
+            )
+            modest_memory_per_aggregator = max_memory_per_aggregator / 2
+
+            estimated_aggregator_memory_required = min(
+                modest_memory_per_aggregator,
+                DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION,
             )
 
         remote_args = {
