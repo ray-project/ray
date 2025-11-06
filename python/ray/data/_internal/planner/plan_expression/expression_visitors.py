@@ -5,6 +5,7 @@ from ray.data.expressions import (
     AliasExpr,
     BinaryExpr,
     ColumnExpr,
+    DownloadExpr,
     Expr,
     LiteralExpr,
     StarExpr,
@@ -95,7 +96,7 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
         self.visit(expr.expr)
 
 
-class _ColumnRefRebindingVisitor(_ExprVisitor[Expr]):
+class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
     """Visitor rebinding column references in ``Expression``s.
 
     This visitor traverses given ``Expression`` trees and substitutes column references
@@ -225,3 +226,124 @@ def _is_col_expr(expr: Expr) -> bool:
     return isinstance(expr, ColumnExpr) or (
         isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr)
     )
+
+
+class _TreeReprVisitor(_ExprVisitor[str]):
+    """Visitor that generates a readable tree representation of expressions. Returns in pre-order traversal."""
+
+    def __init__(self, prefix: str = "", is_last: bool = True):
+        """
+        Initialize the tree representation visitor.
+
+        Args:
+            prefix: The prefix string for indentation (accumulated from parent nodes)
+            is_last: Whether this node is the last child of its parent
+        """
+        self.prefix = prefix
+        self.is_last = is_last
+        self._max_length = 50  # Maximum length of the node label
+
+    def _make_tree_lines(
+        self,
+        node_label: str,
+        children: List[tuple[str, "Expr"]] = None,
+        expr: "Expr" = None,
+    ) -> str:
+        """
+        Format a node and its children with tree box-drawing characters.
+
+        Args:
+            node_label: The label for this node (e.g., "ADD")
+            children: List of (label, child_expr) tuples to render as children
+            expr: The expression node (used to extract datatype)
+
+        Returns:
+            Multi-line string representation of the tree
+        """
+        lines = [node_label]
+
+        if children:
+            for i, (label, child_expr) in enumerate(children):
+                is_last_child = i == len(children) - 1
+
+                # Build prefix for the child based on whether current node is last
+                child_prefix = self.prefix + ("    " if self.is_last else "│   ")
+
+                # Choose connector: └── for last child, ├── for others
+                connector = "└── " if is_last_child else "├── "
+
+                # Recursively visit the child with updated prefix
+                child_visitor = _TreeReprVisitor(child_prefix, is_last_child)
+                child_lines = child_visitor.visit(child_expr).split("\n")
+
+                # Add the first line with label and connector
+                if label:
+                    lines.append(f"{child_prefix}{connector}{label}: {child_lines[0]}")
+                else:
+                    lines.append(f"{child_prefix}{connector}{child_lines[0]}")
+
+                # Add remaining lines from child with proper indentation
+                for line in child_lines[1:]:
+                    lines.append(line)
+
+        return "\n".join(lines)
+
+    def visit_column(self, expr: "ColumnExpr") -> str:
+        return self._make_tree_lines(f"COL({expr.name!r})", expr=expr)
+
+    def visit_literal(self, expr: "LiteralExpr") -> str:
+        # Truncate long values for readability
+        value_repr = repr(expr.value)
+        if len(value_repr) > self._max_length:
+            value_repr = value_repr[: self._max_length - 3] + "..."
+        return self._make_tree_lines(f"LIT({value_repr})", expr=expr)
+
+    def visit_binary(self, expr: "BinaryExpr") -> str:
+        return self._make_tree_lines(
+            f"{expr.op.name}",
+            children=[
+                ("left", expr.left),
+                ("right", expr.right),
+            ],
+            expr=expr,
+        )
+
+    def visit_unary(self, expr: "UnaryExpr") -> str:
+        return self._make_tree_lines(
+            f"{expr.op.name}",
+            children=[("operand", expr.operand)],
+            expr=expr,
+        )
+
+    def visit_alias(self, expr: "AliasExpr") -> str:
+        rename_marker = " [rename]" if expr._is_rename else ""
+        return self._make_tree_lines(
+            f"ALIAS({expr.name!r}){rename_marker}",
+            children=[("", expr.expr)],
+            expr=expr,
+        )
+
+    def visit_udf(self, expr: "UDFExpr") -> str:
+        # Get function name for better readability
+        fn_name = getattr(expr.fn, "__name__", str(expr.fn))
+
+        children = []
+        # Add positional arguments
+        for i, arg in enumerate(expr.args):
+            children.append((f"arg[{i}]", arg))
+
+        # Add keyword arguments
+        for key, value in expr.kwargs.items():
+            children.append((f"kwarg[{key!r}]", value))
+
+        return self._make_tree_lines(
+            f"UDF({fn_name})",
+            children=children if children else None,
+            expr=expr,
+        )
+
+    def visit_download(self, expr: "DownloadExpr") -> str:
+        return self._make_tree_lines(f"DOWNLOAD({expr.uri_column_name!r})", expr=expr)
+
+    def visit_star(self, expr: "StarExpr") -> str:
+        return self._make_tree_lines("COL(*)", expr=expr)

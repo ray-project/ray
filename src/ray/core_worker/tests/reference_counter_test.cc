@@ -2988,6 +2988,65 @@ TEST_F(ReferenceCountTest, TestOwnDynamicStreamingTaskReturnRef) {
   ASSERT_FALSE(rc->HasReference(object_id_2));
 }
 
+TEST(DistributedReferenceCountTest, TestAddNestedObjectIdsIdempotency) {
+  auto caller = std::make_shared<MockWorkerClient>("1");
+  auto executor = std::make_shared<MockWorkerClient>(
+      "2", [&](const rpc::Address &addr) { return caller; });
+
+  {
+    // Case 1: ray.put a nested object
+    // object_id_1 = ray.put([object_id_2])
+    auto object_id_1 = ObjectID::FromRandom();
+    auto object_id_2 = ObjectID::FromRandom();
+    executor->rc_.AddOwnedObject(
+        object_id_1, {}, executor->address_, "", 0, false, /*add_local_ref=*/true);
+    executor->rc_.AddNestedObjectIds(object_id_1, {object_id_2}, executor->address_);
+    executor->rc_.AddNestedObjectIds(object_id_1, {object_id_2}, executor->address_);
+    ASSERT_TRUE(executor->rc_.HasReference(object_id_1));
+    ASSERT_TRUE(executor->rc_.HasReference(object_id_2));
+    executor->rc_.RemoveLocalReference(object_id_1, nullptr);
+    executor->rc_.RemoveLocalReference(object_id_2, nullptr);
+    ASSERT_FALSE(executor->rc_.HasReference(object_id_1));
+    ASSERT_FALSE(executor->rc_.HasReference(object_id_2));
+  }
+
+  {
+    // Case 2: task returns an owned nested object
+    auto object_id_3 = ObjectID::FromRandom();
+    auto object_id_4 = ObjectID::FromRandom();
+    executor->rc_.AddOwnedObject(
+        object_id_3, {}, executor->address_, "", 0, false, /*add_local_ref=*/true);
+    executor->rc_.AddNestedObjectIds(object_id_4, {object_id_3}, caller->address_);
+    executor->rc_.AddNestedObjectIds(object_id_4, {object_id_3}, caller->address_);
+    ASSERT_TRUE(executor->rc_.HasReference(object_id_3));
+    // There should be one WaitForRefRemoved call due to idempotency.
+    ASSERT_EQ(caller->num_requests_, 1);
+    executor->rc_.RemoveLocalReference(object_id_3, nullptr);
+    // Caller is still borrowing
+    ASSERT_TRUE(executor->rc_.HasReference(object_id_3));
+    // Caller is no longer borrowing
+    caller->FlushBorrowerCallbacks();
+    ASSERT_FALSE(executor->rc_.HasReference(object_id_3));
+  }
+
+  {
+    // Case 3: task returns a borrowed nested object
+    auto object_id_5 = ObjectID::FromRandom();
+    auto object_id_6 = ObjectID::FromRandom();
+    executor->rc_.AddBorrowedObject(object_id_5, ObjectID::Nil(), caller->address_);
+    executor->rc_.AddNestedObjectIds(object_id_6, {object_id_5}, caller->address_);
+    executor->rc_.AddNestedObjectIds(object_id_6, {object_id_5}, caller->address_);
+    ASSERT_TRUE(executor->rc_.HasReference(object_id_5));
+    // Task finishes and we return the borrower info to the owner.
+    ReferenceCounterInterface::ReferenceTableProto refs;
+    executor->rc_.PopAndClearLocalBorrowers({object_id_5}, &refs, nullptr);
+    ASSERT_EQ(refs.size(), 1);
+    ASSERT_EQ(refs[0].stored_in_objects().size(), 1);
+    ASSERT_EQ(refs[0].stored_in_objects()[0].object_id(), object_id_6.Binary());
+    ASSERT_FALSE(executor->rc_.HasReference(object_id_5));
+  }
+}
+
 }  // namespace core
 }  // namespace ray
 

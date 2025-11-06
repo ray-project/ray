@@ -162,13 +162,14 @@ class MapBatches(AbstractUDFMap):
         fn: UserDefinedFunction,
         batch_size: Optional[int] = None,
         batch_format: str = "default",
-        zero_copy_batch: bool = False,
+        zero_copy_batch: bool = True,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         min_rows_per_bundled_input: Optional[int] = None,
         compute: Optional[ComputeStrategy] = None,
+        udf_modifying_row_count: bool = False,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -188,9 +189,10 @@ class MapBatches(AbstractUDFMap):
         self._batch_size = batch_size
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
+        self._udf_modifying_row_count = udf_modifying_row_count
 
     def can_modify_num_rows(self) -> bool:
-        return False
+        return self._udf_modifying_row_count
 
 
 class MapRows(AbstractUDFMap):
@@ -265,6 +267,15 @@ class Filter(AbstractUDFMap):
 
     def can_modify_num_rows(self) -> bool:
         return True
+
+    def is_expression_based(self) -> bool:
+        return self._predicate_expr is not None
+
+    def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
+        if self.is_expression_based():
+            # TODO: Use a truncated expression prefix here instead of <expression>.
+            return f"{op_name}(<expression>)"
+        return super()._get_operator_name(op_name, fn)
 
 
 class Project(AbstractMap):

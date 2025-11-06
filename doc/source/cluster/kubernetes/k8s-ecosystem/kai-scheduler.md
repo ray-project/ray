@@ -44,17 +44,14 @@ You can arrange queues hierarchically for organizations with multiple teams, for
 * Kubernetes cluster with GPU nodes
 * NVIDIA GPU Operator 
 * kubectl configured to access your cluster
-
-## Step 1: Install KAI Scheduler
-
-Install KAI Scheduler with gpu-sharing enabled. Choose the desired release version from [KAI Scheduler releases](https://github.com/NVIDIA/KAI-Scheduler/releases) and replace the `<KAI_SCHEDULER_VERSION>` in the following command.
+* Install KAI Scheduler with gpu-sharing enabled. Choose the desired release version from [KAI Scheduler releases](https://github.com/NVIDIA/KAI-Scheduler/releases) and replace the `<KAI_SCHEDULER_VERSION>` in the following command. It's recommended to choose v0.10.0 or higher version.
 
 ```bash
 # Install KAI Scheduler
 helm upgrade -i kai-scheduler oci://ghcr.io/nvidia/kai-scheduler/kai-scheduler -n kai-scheduler --create-namespace --version <KAI_SCHEDULER_VERSION> --set "global.gpuSharing=true"
 ```
 
-## Step 2: Install the KubeRay operator with KAI Scheduler as the batch scheduler
+## Step 1: Install the KubeRay operator with KAI Scheduler as the batch scheduler
 
 Follow the official KubeRay operator [installation documentation](https://docs.ray.io/en/master/cluster/kubernetes/getting-started/kuberay-operator-installation.html#kuberay-operator-installation) and add the following configuration to enable KAI Scheduler integration:
 
@@ -62,7 +59,7 @@ Follow the official KubeRay operator [installation documentation](https://docs.r
 --set batchScheduler.name=kai-scheduler
 ```
 
-## Step 3: Create KAI Scheduler Queues
+## Step 2: Create KAI Scheduler Queues
 
 Create a basic queue structure for department-1 and its child team-a. For demo reasons, this example doesn't enforce any quota, overQuotaWeight, or limit. You can configure these parameters depending on your needs: 
 
@@ -112,7 +109,7 @@ spec:
 
 Note: To make this demo easier to follow, we combined these queue definitions with the RayCluster example in the next step. You can use the single combined YAML file and apply both queues and workloads at once.
 
-## Step 4: Gang scheduling with KAI Scheduler
+## Step 3: Gang scheduling with KAI Scheduler
 
 The key pattern is to add the queue label to your RayCluster. [Here's a basic example](https://github.com/ray-project/kuberay/tree/master/ray-operator/config/samples/ray-cluster.kai-scheduler.yaml) from the KubeRay repository:
 
@@ -132,9 +129,27 @@ kubectl apply -f ray-cluster.kai-scheduler.yaml
 
 #Verify queues are created
 kubectl get queues
+# NAME           PRIORITY   PARENT         CHILDREN     DISPLAYNAME
+# department-1                             ["team-a"]   
+# team-a                    department-1                
 
 # Watch the pods get scheduled
 kubectl get pods -w
+# NAME                                    READY   STATUS              RESTARTS   AGE
+# kuberay-operator-7d86f4f46b-dq22x       1/1     Running             0          50s
+# raycluster-sample-head-rvrkz            0/1     ContainerCreating   0          13s
+# raycluster-sample-worker-worker-mlvtz   0/1     Init:0/1            0          13s
+# raycluster-sample-worker-worker-rcb54   0/1     Init:0/1            0          13s
+# raycluster-sample-worker-worker-mlvtz   0/1     Init:0/1            0          40s
+# raycluster-sample-worker-worker-rcb54   0/1     Init:0/1            0          41s
+# raycluster-sample-head-rvrkz            0/1     Running             0          42s
+# raycluster-sample-head-rvrkz            1/1     Running             0          54s
+# raycluster-sample-worker-worker-rcb54   0/1     PodInitializing     0          59s
+# raycluster-sample-worker-worker-mlvtz   0/1     PodInitializing     0          59s
+# raycluster-sample-worker-worker-rcb54   0/1     Running             0          60s
+# raycluster-sample-worker-worker-mlvtz   0/1     Running             0          60s
+# raycluster-sample-worker-worker-rcb54   1/1     Running             0          71s
+# raycluster-sample-worker-worker-mlvtz   1/1     Running             0          71s
 ```
 
 ## Set priorities for workloads
@@ -157,7 +172,7 @@ You can submit the same workload above with a specific priority. Modify the abov
 ```
 See the [documentation](https://github.com/NVIDIA/KAI-Scheduler/tree/main/docs/priority) for more information.
 
-## Step 5: Submitting Ray workers with GPU sharing 
+## Step 4: Submitting Ray workers with GPU sharing 
 
 This example creates two workers that share a single GPU (0.5 each, with time-slicing) within a RayCluster. See the [YAML file](https://github.com/ray-project/kuberay/tree/master/ray-operator/config/samples/ray-cluster.kai-gpu-sharing.yaml)):
 
@@ -168,6 +183,22 @@ kubectl apply -f ray-cluster.kai-gpu-sharing.yaml
 
 # Watch the pods get scheduled
 kubectl get pods -w
+# NAME                                          READY   STATUS    RESTARTS   AGE
+# kuberay-operator-7d86f4f46b-dq22x             1/1     Running   0          4m9s
+# raycluster-half-gpu-head-9rtxf                0/1     Running   0          4s
+# raycluster-half-gpu-shared-gpu-worker-5l7cn   0/1     Pending   0          4s
+# raycluster-half-gpu-shared-gpu-worker-98tzh   0/1     Pending   0          4s
+# ... (skip for brevity)
+# raycluster-half-gpu-shared-gpu-worker-5l7cn   0/1     Init:0/1   0          6s
+# raycluster-half-gpu-shared-gpu-worker-5l7cn   0/1     Init:0/1   0          7s
+# raycluster-half-gpu-shared-gpu-worker-98tzh   0/1     Init:0/1   0          8s
+# raycluster-half-gpu-head-9rtxf                1/1     Running    0          19s
+# raycluster-half-gpu-shared-gpu-worker-5l7cn   0/1     PodInitializing   0          19s
+# raycluster-half-gpu-shared-gpu-worker-98tzh   0/1     PodInitializing   0          19s
+# raycluster-half-gpu-shared-gpu-worker-5l7cn   0/1     Running           0          20s
+# raycluster-half-gpu-shared-gpu-worker-98tzh   0/1     Running           0          20s
+# raycluster-half-gpu-shared-gpu-worker-5l7cn   1/1     Running           0          31s
+# raycluster-half-gpu-shared-gpu-worker-98tzh   1/1     Running           0          31s
 ```
 
 Note: GPU sharing with time slicing in this example occurs only at the Kubernetes layer, allowing multiple pods to share a single GPU device. The scheduler doesn't enforce memory isolation, so applications must manage their own usage to prevent interference. For other GPU sharing approaches (e.g., MPS), see the [the KAI documentation](https://github.com/NVIDIA/KAI-Scheduler/tree/main/docs/gpu-sharing).
