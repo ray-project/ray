@@ -38,6 +38,7 @@ from ray import cloudpickle
 from ray._common.filters import CoreContextFilter
 from ray._common.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
+from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.common import (
@@ -1219,48 +1220,39 @@ class ReplicaActor:
         return self._replica_impl.get_num_ongoing_requests()
 
     def list_outbound_deployments(self) -> List[DeploymentID]:
-        """List all outbound deployment IDs this replica calls into."""
+        """List all outbound deployment IDs this replica calls into.
+
+        This includes:
+        - Handles created via get_deployment_handle()
+        - Handles passed as init args/kwargs to the deployment constructor
+
+        This is used to determine which deployments are reachable from this replica.
+
+        Returns:
+            A list of DeploymentIDs that this replica calls into.
+        """
         seen_deployment_ids: Set[DeploymentID] = set()
 
         # First, collect dynamically created handles
         for deployment_id in self._replica_impl.get_dynamically_created_handles():
             seen_deployment_ids.add(deployment_id)
 
-        # Get the initialized user callable
-        user_callable = self._replica_impl._user_callable_wrapper._callable
-        if user_callable is None:
-            # Callable hasn't been initialized yet, return only dynamic handles
-            return list(seen_deployment_ids)
+        # Get the init args/kwargs
+        init_args = self._replica_impl._user_callable_wrapper._init_args
+        init_kwargs = self._replica_impl._user_callable_wrapper._init_kwargs
 
-        # Inspect all attributes of the user callable for stored handles
-        def _find_handles_in_object(obj: Any, visited: set) -> None:
-            """Recursively find DeploymentHandle objects in an object's attributes."""
-            # Avoid infinite recursion
-            obj_id = id(obj)
-            if obj_id in visited:
-                return
-            visited.add(obj_id)
+        # Use _PyObjScanner to find all DeploymentHandle objects in:
+        # The init_args and init_kwargs (handles might be passed as init args)
+        scanner = _PyObjScanner(source_type=DeploymentHandle)
+        try:
+            handles = scanner.find_nodes((init_args, init_kwargs))
 
-            if isinstance(obj, DeploymentHandle):
-                deployment_id = obj.deployment_id
+            for handle in handles:
+                deployment_id = handle.deployment_id
                 if deployment_id not in seen_deployment_ids:
                     seen_deployment_ids.add(deployment_id)
-            elif isinstance(obj, (list, tuple)):
-                for item in obj:
-                    _find_handles_in_object(item, visited)
-            elif isinstance(obj, dict):
-                for value in obj.values():
-                    _find_handles_in_object(value, visited)
-            elif hasattr(obj, "__dict__"):
-                try:
-                    for attr_value in obj.__dict__.values():
-                        _find_handles_in_object(attr_value, visited)
-                except (TypeError, AttributeError):
-                    # Some objects don't allow __dict__ access
-                    pass
-
-        visited = set()
-        _find_handles_in_object(user_callable, visited)
+        finally:
+            scanner.clear()
 
         return list(seen_deployment_ids)
 
