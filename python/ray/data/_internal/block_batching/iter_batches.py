@@ -321,7 +321,7 @@ def prefetch_batches_locally(
     ref_bundles: Iterator[RefBundle],
     prefetcher: BlockPrefetcher,
     num_batches_to_prefetch: int,
-    stats: Optional[DatasetStats],
+    stats: Optional[DatasetStats] = None,
     batch_size: Optional[int],
     eager_free: bool = False,
 ) -> Iterator[ObjectRef[Block]]:
