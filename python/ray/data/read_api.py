@@ -4035,135 +4035,21 @@ def read_iceberg(
     )
 
     if is_cdf_read:
-        # Handle incremental reads (CDF) - consolidated logic
-        from ray.data._internal.datasource.iceberg.cdf_util import (
-            _extract_file_paths_from_task,
-            _get_added_files_between_snapshots,
-            _resolve_snapshot_from_timestamp,
-            _validate_table_identifier,
-        )
-        from ray.data._internal.util import _check_import
+        # Handle incremental reads (CDF) - use internal function
+        from ray.data._internal.datasource.iceberg.cdf_util import _read_iceberg_cdf
 
-        _check_import(None, module="pyiceberg", package="pyiceberg")
-        from pyiceberg.catalog import load_catalog
-
-        import ray
-
-        _validate_table_identifier(table_identifier)
-
-        # Validate parameters
-        if (start_snapshot_id is not None and start_snapshot_id < 0) or (
-            end_snapshot_id is not None and end_snapshot_id < 0
-        ):
-            raise ValueError("Snapshot IDs must be non-negative")
-        if (start_timestamp and start_snapshot_id) or (
-            end_timestamp and end_snapshot_id
-        ):
-            raise ValueError("Cannot specify both timestamp and snapshot_id")
-        if start_timestamp and end_timestamp:
-            from datetime import datetime
-
-            try:
-                start_ts = datetime.fromisoformat(
-                    start_timestamp.replace("Z", "+00:00")
-                )
-                end_ts = datetime.fromisoformat(end_timestamp.replace("Z", "+00:00"))
-                if start_ts > end_ts:
-                    raise ValueError(
-                        f"start_timestamp ({start_timestamp}) must be <= "
-                        f"end_timestamp ({end_timestamp})"
-                    )
-            except ValueError as e:
-                raise ValueError(
-                    f"Invalid timestamp format. Expected ISO format. Error: {e}"
-                )
-
-        # Load catalog and table
-        catalog_kwargs = catalog_kwargs or {}
-        catalog_name = catalog_kwargs.pop("name", "default")
-        catalog = load_catalog(name=catalog_name, **catalog_kwargs)
-        table = catalog.load_table(table_identifier)
-
-        # Resolve snapshot IDs from timestamps
-        if start_timestamp:
-            start_snapshot_id = _resolve_snapshot_from_timestamp(
-                table, start_timestamp, before=False
-            )
-            if start_snapshot_id is None:
-                raise ValueError(
-                    f"No snapshot found at or after start_timestamp {start_timestamp}"
-                )
-        if end_timestamp:
-            end_snapshot_id = _resolve_snapshot_from_timestamp(
-                table, end_timestamp, before=True
-            )
-            if end_snapshot_id is None:
-                raise ValueError(
-                    f"No snapshot found at or before end_timestamp {end_timestamp}"
-                )
-
-        # Default to current snapshot if end not specified
-        if end_snapshot_id is None:
-            current_snapshot = table.current_snapshot()
-            if current_snapshot is None:
-                raise ValueError(f"Table {table_identifier} has no snapshots")
-            end_snapshot_id = current_snapshot.snapshot_id
-
-        # Validate snapshot order
-        if start_snapshot_id is not None and end_snapshot_id < start_snapshot_id:
-            raise ValueError(
-                f"end_snapshot_id ({end_snapshot_id}) must be >= "
-                f"start_snapshot_id ({start_snapshot_id})"
-            )
-        if start_snapshot_id == end_snapshot_id:
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.warning(
-                f"start_snapshot_id equals end_snapshot_id ({end_snapshot_id}). "
-                "Will return empty dataset."
-            )
-
-        # Get files added between snapshots
-        added_files = _get_added_files_between_snapshots(
-            table, start_snapshot_id, end_snapshot_id
-        )
-        added_file_paths = {str(f.file_path) for f in added_files}
-
-        datasource = IcebergDatasource(
+        return _read_iceberg_cdf(
             table_identifier=table_identifier,
-            catalog_kwargs={"name": catalog_name, **catalog_kwargs},
-            snapshot_id=end_snapshot_id,
-        )
-        filtered_tasks = [
-            task
-            for task in datasource.get_read_tasks(parallelism=-1)
-            if any(
-                fp in added_file_paths
-                for fp in _extract_file_paths_from_task(task)
-            )
-        ]
-
-        if not filtered_tasks:
-            import pyarrow as pa
-
-            return ray.data.from_arrow(
-                pa.Table.from_pylist([], schema=table.schema().as_arrow())
-            )
-
-        # Create dataset from filtered tasks
-        from ray.data._internal.execution.interfaces import RefBundle
-        from ray.data._internal.logical.operators.read_operator import Read
-        from ray.data._internal.plan import ExecutionPlan
-        from ray.data.dataset import MaterializedDataset
-
-        return MaterializedDataset(
-            ExecutionPlan(
-                _in_blocks=RefBundle(
-                    [(task.read(), task.metadata()) for task in filtered_tasks]
-                )
-            ),
-            Read(datasource),
+            start_snapshot_id=start_snapshot_id,
+            end_snapshot_id=end_snapshot_id,
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
+            catalog_kwargs=catalog_kwargs,
+            ray_remote_args=ray_remote_args,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            override_num_blocks=override_num_blocks,
         )
 
     # Standard read (point-in-time)
