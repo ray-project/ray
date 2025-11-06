@@ -39,7 +39,7 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/rpc/authentication:authentication_mode",
-        "//src/ray/rpc/authentication:authentication_token_loader",
+        "//src/ray/rpc/authentication:token_auth_client_interceptor",
         "//src/ray/util:network_util",
     ],
 )

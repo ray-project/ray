@@ -14,55 +14,14 @@
 
 #include "ray/rpc/grpc_client.h"
 
-#include <grpcpp/support/client_interceptor.h>
-
 #include <memory>
 #include <string>
-#include <utility>
-#include <vector>
 
-#include "ray/common/constants.h"
 #include "ray/rpc/authentication/authentication_mode.h"
-#include "ray/rpc/authentication/authentication_token_loader.h"
+#include "ray/rpc/authentication/token_auth_client_interceptor.h"
 
 namespace ray {
 namespace rpc {
-
-namespace {
-
-/// Client interceptor that automatically adds Ray authentication tokens to outgoing RPCs.
-/// The token is loaded from AuthenticationTokenLoader and added as a Bearer token
-/// in the "authorization" metadata key.
-class RayTokenAuthClientInterceptor : public grpc::experimental::Interceptor {
- public:
-  void Intercept(grpc::experimental::InterceptorBatchMethods *methods) override {
-    if (methods->QueryInterceptionHookPoint(
-            grpc::experimental::InterceptionHookPoints::PRE_SEND_INITIAL_METADATA)) {
-      auto token = AuthenticationTokenLoader::instance().GetToken();
-
-      // If token is present and non-empty, add it to the metadata
-      if (token.has_value() && !token->empty()) {
-        // Get the metadata map and add the authorization header
-        auto *metadata = methods->GetSendInitialMetadata();
-        metadata->insert(
-            std::make_pair(kAuthTokenKey, token->ToAuthorizationHeaderValue()));
-      }
-    }
-    methods->Proceed();
-  }
-};
-
-/// Factory for creating RayAuthClientInterceptor instances
-class RayTokenAuthClientInterceptorFactory
-    : public grpc::experimental::ClientInterceptorFactoryInterface {
- public:
-  grpc::experimental::Interceptor *CreateClientInterceptor(
-      grpc::experimental::ClientRpcInfo *info) override {
-    return new RayTokenAuthClientInterceptor();
-  }
-};
-
-}  // namespace
 
 std::shared_ptr<grpc::Channel> BuildChannel(
     const std::string &address,
@@ -105,13 +64,8 @@ std::shared_ptr<grpc::Channel> BuildChannel(
 
   if (GetAuthenticationMode() == AuthenticationMode::TOKEN) {
     // Create channel with auth interceptor
-    std::vector<std::unique_ptr<grpc::experimental::ClientInterceptorFactoryInterface>>
-        interceptor_factories;
-    interceptor_factories.push_back(
-        std::make_unique<RayTokenAuthClientInterceptorFactory>());
-
     return grpc::experimental::CreateCustomChannelWithInterceptors(
-        target_address, channel_creds, *arguments, std::move(interceptor_factories));
+        target_address, channel_creds, *arguments, CreateTokenAuthInterceptorFactories());
   } else {
     // Create channel without interceptors
     return grpc::CreateCustomChannel(target_address, channel_creds, *arguments);
