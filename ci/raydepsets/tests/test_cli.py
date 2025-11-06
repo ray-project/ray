@@ -39,16 +39,18 @@ _runfiles = runfiles.Create()
 
 
 def _create_test_manager(
-    tmpdir: str, config_path: Optional[str] = None, check: bool = False
+    tmpdir: str,
+    config_path: Optional[str] = "test.depsets.yaml",
+    check: bool = False,
+    build_all_configs: Optional[bool] = False,
 ) -> DependencySetManager:
-    if config_path is None:
-        config_path = "test.depsets.yaml"
     uv_cache_dir = Path(tmpdir) / "uv_cache"
     return DependencySetManager(
         config_path=config_path,
         workspace_dir=tmpdir,
         uv_cache_dir=uv_cache_dir.as_posix(),
         check=check,
+        build_all_configs=build_all_configs,
     )
 
 
@@ -802,6 +804,16 @@ class TestCli(unittest.TestCase):
                     "requirements_test.txt",
                 ]
             )
+
+    def test_build_all_configs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(
+                tmpdir, config_path="*.depsets.yaml", build_all_configs=True
+            )
+            assert manager.build_graph is not None
+            assert len(manager.build_graph.nodes) == 12
+            assert len(manager.build_graph.edges) == 8
 
 
 if __name__ == "__main__":

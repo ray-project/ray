@@ -419,16 +419,16 @@ class PhysicalOperator(Operator):
         """
         from ..operators.base_physical_operator import InternalQueueOperatorMixin
 
-        internal_queue_size = (
-            self.internal_queue_size()
-            if isinstance(self, InternalQueueOperatorMixin)
-            else 0
-        )
+        internal_input_queue_num_blocks = 0
+        internal_output_queue_num_blocks = 0
+        if isinstance(self, InternalQueueOperatorMixin):
+            internal_input_queue_num_blocks = self.internal_input_queue_num_blocks()
+            internal_output_queue_num_blocks = self.internal_output_queue_num_blocks()
 
         if not self._execution_finished:
             if (
                 self._inputs_complete
-                and internal_queue_size == 0
+                and internal_input_queue_num_blocks == 0
                 and self.num_active_tasks() == 0
             ):
                 # NOTE: Operator is considered completed iff
@@ -437,7 +437,15 @@ class PhysicalOperator(Operator):
                 #   - There are no active or pending tasks
                 self._execution_finished = True
 
-        return self._execution_finished and not self.has_next()
+        # NOTE: We check for (internal_output_queue_size == 0) and
+        # (not self.has_next()) because _OrderedOutputQueue can
+        # return False for self.has_next(), but have a non-empty queue size.
+        # Draining the internal output queue is important to free object refs.
+        return (
+            self._execution_finished
+            and not self.has_next()
+            and internal_output_queue_num_blocks == 0
+        )
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
@@ -702,13 +710,12 @@ class PhysicalOperator(Operator):
     def min_max_resource_requirements(
         self,
     ) -> Tuple[ExecutionResources, ExecutionResources]:
-        """Returns the min and max resources to start the operator and make progress.
+        """Returns lower/upper boundary of resource requirements for this operator:
 
-        For example, an operator that creates an actor pool requiring 8 GPUs could
-        return ExecutionResources(gpu=8) as its minimum usage.
-
-        This method is used by the resource manager to reserve minimum resources and to
-        ensure that it doesn't over-provision resources.
+        - Minimal: lower bound (min) of resources required to start this operator
+        (for most operators this is 0, except the ones that utilize actors)
+        - Maximum: upper bound (max) of how many resources this operator could
+        utilize.
         """
         return ExecutionResources.zero(), ExecutionResources.inf()
 
@@ -805,6 +812,11 @@ class PhysicalOperator(Operator):
             op.num_outputs_total() or 0 for op in self.input_dependencies
         )
         return upstream_op_num_outputs
+
+    def get_max_concurrency_limit(self) -> Optional[int]:
+        """Max value of how many tasks this operator could run
+        concurrently (if limited)"""
+        return None
 
 
 class ReportsExtraResourceUsage(abc.ABC):
