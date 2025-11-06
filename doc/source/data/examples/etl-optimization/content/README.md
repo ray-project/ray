@@ -1,3 +1,9 @@
+<!--
+Do not modify this README. This file is a copy of the notebook and is not used to display the content.
+Modify etl-optimization.ipynb instead, then regenerate this file with:
+jupyter nbconvert "$nb_filename" --to markdown --output "README.md"
+-->
+
 # ETL Processing and Optimization With Ray Data
 
 **Time to complete**: 40 min | **Difficulty**: Intermediate | **Prerequisites**: ETL concepts, basic SQL knowledge, data processing experience
@@ -794,5 +800,3 @@ for i, record in enumerate(sample_analytics):
           f"Year: {record['order_year']}, Orders: {record['count()']}, Revenue: ${record['sum(o_totalprice)']:,.0f}")
 
 ```
-
-
