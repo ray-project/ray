@@ -178,5 +178,7 @@ class HcclTensorTransport(TensorTransportManager):
             )
 
     @staticmethod
-    def garbage_collect(tensor_transport_meta: HcclTransportMetadata):
+    def garbage_collect(
+        obj_id: str, tensor_transport_meta: HcclTransportMetadata
+        ):
         pass
