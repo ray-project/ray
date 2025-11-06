@@ -221,4 +221,4 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         target = max(1, target)
         if not math.isinf(cap_cfg):
             target = min(target, int(cap_cfg))
-        return target
+        return int(target)
