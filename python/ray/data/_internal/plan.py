@@ -17,7 +17,9 @@ from ray.data._internal.logical.optimizers import get_plan_conversion_fns
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockMetadataWithSchema, _take_first_non_empty_schema
 from ray.data.context import DataContext
-from ray.data.expectations import SLAExpectation
+from ray.data.exceptions import omit_traceback_stdout
+from ray.data.expectations import ExecutionTimeExpectation
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import (
@@ -87,47 +89,49 @@ class ExecutionPlan:
 
         self._context = data_context
 
-        # Track SLA expectations for optimization hints
-        self._sla_expectations: List[SLAExpectation] = []
+        # Track execution time expectations for optimization hints
+        self._execution_time_expectations: List[ExecutionTimeExpectation] = []
 
-    def add_sla_expectation(self, expectation: SLAExpectation) -> None:
-        """Add an SLA expectation to this execution plan.
+    def add_execution_time_expectation(
+        self, expectation: ExecutionTimeExpectation
+    ) -> None:
+        """Add an execution time expectation to this execution plan.
 
-        This allows the execution plan to track SLA requirements and
+        This allows the execution plan to track execution time requirements and
         inform optimization strategies.
 
         Args:
-            expectation: The SLA expectation to add.
+            expectation: The execution time expectation to add.
 
         Raises:
-            TypeError: If expectation is not an SLAExpectation instance.
+            TypeError: If expectation is not an ExecutionTimeExpectation instance.
         """
-        if not isinstance(expectation, SLAExpectation):
+        if not isinstance(expectation, ExecutionTimeExpectation):
             raise TypeError(
-                f"Expected SLAExpectation, got {type(expectation).__name__}"
+                f"Expected ExecutionTimeExpectation, got {type(expectation).__name__}"
             )
-        self._sla_expectations.append(expectation)
+        self._execution_time_expectations.append(expectation)
 
-    def get_sla_expectations(self) -> List[SLAExpectation]:
-        """Get all SLA expectations attached to this plan.
+    def get_execution_time_expectations(self) -> List[ExecutionTimeExpectation]:
+        """Get all execution time expectations attached to this plan.
 
         Returns:
-            List of SLA expectations.
+            List of execution time expectations.
         """
-        return self._sla_expectations.copy()
+        return self._execution_time_expectations.copy()
 
     def get_max_execution_time_seconds(self) -> Optional[float]:
-        """Get the maximum execution time from SLA expectations.
+        """Get the maximum execution time from execution time expectations.
 
         Returns:
-            Minimum max execution time from all SLA expectations, or None if no time constraints.
+            Minimum max execution time from all execution time expectations, or None if no time constraints.
         """
-        if not self._sla_expectations:
+        if not self._execution_time_expectations:
             return None
 
         max_times = [
             exp.get_max_execution_time_seconds()
-            for exp in self._sla_expectations
+            for exp in self._execution_time_expectations
             if exp.get_max_execution_time_seconds() is not None
         ]
 
@@ -407,7 +411,7 @@ class ExecutionPlan:
             plan_copy._snapshot_operator = self._snapshot_operator
             plan_copy._snapshot_stats = self._snapshot_stats
         plan_copy._dataset_name = self._dataset_name
-        plan_copy._sla_expectations = self._sla_expectations.copy()
+        plan_copy._execution_time_expectations = self._execution_time_expectations.copy()
         return plan_copy
 
     def deep_copy(self) -> "ExecutionPlan":
@@ -428,7 +432,9 @@ class ExecutionPlan:
             plan_copy._snapshot_operator = copy.copy(self._snapshot_operator)
             plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
         plan_copy._dataset_name = self._dataset_name
-        plan_copy._sla_expectations = copy.deepcopy(self._sla_expectations)
+        plan_copy._execution_time_expectations = copy.deepcopy(
+            self._execution_time_expectations
+        )
         return plan_copy
 
     def initial_num_blocks(self) -> Optional[int]:

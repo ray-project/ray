@@ -137,9 +137,9 @@ if TYPE_CHECKING:
     from ray.data.grouped_data import GroupedData
 
 from ray.data.expectations import (
-    Expectation,
     DataQualityExpectation,
-    SLAExpectation,
+    ExecutionTimeExpectation,
+    Expectation,
     ExpectationResult,
     ExpectationType,
 )
@@ -1652,7 +1652,7 @@ class Dataset:
             >>> valid_ds.write_parquet("s3://bucket/valid/")
             >>> invalid_ds.write_parquet("s3://bucket/quarantine/")
             >>>
-            >>> # SLA expectations: execution time constraints
+            >>> # Execution time expectations: execution time constraints
             >>> ds = ray.data.range(1000000)
             >>> processed_ds, remaining_ds, result = ds.expect(
             ...     max_execution_time_seconds=60
@@ -1668,12 +1668,12 @@ class Dataset:
                 validation. Uses the same expression API as :meth:`~Dataset.filter`.
                 Mutually exclusive with `expectation`. Can also be passed as a positional
                 argument: ``ds.expect(col("value") > 0, name="check")``.
-            name: Name for the expectation (only used when creating from expr/validator_fn/SLA).
+            name: Name for the expectation (only used when creating from expr/validator_fn/execution time).
             description: Description of what this expectation checks (only used when creating
-                from expr/validator_fn/SLA).
+                from expr/validator_fn/execution time).
             validator_fn: Function for data quality validation (takes batch, returns bool).
                 Mutually exclusive with `expr` and `expectation`.
-            max_execution_time_seconds: Maximum execution time in seconds (for SLA).
+            max_execution_time_seconds: Maximum execution time in seconds (for execution time expectations).
                 Mutually exclusive with `expr` and `expectation`.
             error_on_failure: If True, raise exception on failure; if False, log warning.
             compute: The compute strategy to use for the validation operation.
@@ -1701,11 +1701,11 @@ class Dataset:
             A tuple of (passed_ds, failed_ds, ExpectationResult) where:
 
             - passed_ds: Dataset containing rows that passed validation (for data quality)
-              or data processed before timeout (for SLA expectations).
+              or data processed before timeout (for execution time expectations).
             - failed_ds: Dataset containing rows that failed validation (for data quality)
-              or remaining unprocessed data (for SLA expectations with timeout).
+              or remaining unprocessed data (for execution time expectations with timeout).
             - ExpectationResult: The result of the expectation validation containing
-              pass/fail status, failure counts, execution time (for SLA), and a descriptive message.
+              pass/fail status, failure counts, execution time (for execution time expectations), and a descriptive message.
               For lists of expectations, returns a list of ExpectationResult objects.
 
         Raises:
@@ -1766,7 +1766,7 @@ class Dataset:
             if max_execution_time_seconds is not None:
                 raise ValueError(
                     "Cannot specify both `expr` and `max_execution_time_seconds`. "
-                    "Use `expr` for data quality validation or `max_execution_time_seconds` for SLA."
+                    "Use `expr` for data quality validation or `max_execution_time_seconds` for execution time expectations."
                 )
 
             # Convert expression to expectation
@@ -1784,19 +1784,19 @@ class Dataset:
                 error_on_failure=error_on_failure,
             )
         elif expectation is None:
-            # No expression provided, check if SLA parameters are provided
+            # No expression provided, check if execution time parameters are provided
             if max_execution_time_seconds is not None:
                 if validator_fn is not None:
                     raise ValueError(
                         "Cannot specify both `validator_fn` and `max_execution_time_seconds`. "
-                        "Use `validator_fn` for data quality validation or `max_execution_time_seconds` for SLA."
+                        "Use `validator_fn` for data quality validation or `max_execution_time_seconds` for execution time expectations."
                     )
                 from ray.data.expectations import expect as _expect
 
                 expectation = _expect(
                     max_execution_time_seconds=max_execution_time_seconds,
-                    name=name or "SLA Requirement",
-                    description=description or "SLA performance requirement",
+                    name=name or "Execution Time Requirement",
+                    description=description or "Execution time constraint",
                     error_on_failure=error_on_failure,
                 )
             elif validator_fn is not None:
@@ -1823,14 +1823,14 @@ class Dataset:
                 f"If you passed a list, use ds.expect([exp1, exp2]) instead of ds.expect(exp1, exp2)."
             )
 
-        # Handle SLA expectations (time-based execution constraints)
-        if isinstance(expectation, SLAExpectation):
-            return self._expect_sla(expectation)
+        # Handle execution time expectations (time-based execution constraints)
+        if isinstance(expectation, ExecutionTimeExpectation):
+            return self._expect_execution_time(expectation)
 
         # Handle DataQualityExpectation
         if expectation.expectation_type != ExpectationType.DATA_QUALITY:
             raise ValueError(
-                f"Dataset.expect() only supports DataQualityExpectation or SLAExpectation, "
+                f"Dataset.expect() only supports DataQualityExpectation or ExecutionTimeExpectation, "
                 f"got {expectation.expectation_type.value}"
             )
 
@@ -2240,16 +2240,16 @@ class Dataset:
 
         return from_blocks([processed_block])
 
-    def _expect_sla(
-        self, expectation: SLAExpectation
+    def _expect_execution_time(
+        self, expectation: ExecutionTimeExpectation
     ) -> Tuple["Dataset", "Dataset", ExpectationResult]:
-        """Handle SLA expectations with timeout monitoring.
+        """Handle execution time expectations with timeout monitoring.
 
         This method monitors execution time and halts processing if the timeout
         is exceeded, returning data processed before timeout vs remaining data.
 
         Args:
-            expectation: SLA expectation with time constraints.
+            expectation: Execution time expectation with time constraints.
 
         Returns:
             Tuple of (passed_ds, failed_ds, result) where:
@@ -2262,7 +2262,7 @@ class Dataset:
         max_time_seconds = expectation.get_max_execution_time_seconds()
         if max_time_seconds is None or max_time_seconds <= 0:
             raise ValueError(
-                "SLA expectation must have a valid max_execution_time_seconds > 0"
+                "Execution time expectation must have a valid max_execution_time_seconds > 0"
             )
 
         start_time = time.perf_counter()
@@ -2296,7 +2296,7 @@ class Dataset:
             if expectation.error_on_failure:
                 raise
             logger.warning(
-                f"SLA expectation '{expectation.name}' execution failed: {e}"
+                f"Execution time expectation '{expectation.name}' execution failed: {e}"
             )
 
         elapsed_time = time.perf_counter() - start_time
@@ -2318,13 +2318,13 @@ class Dataset:
         # Create result
         if passed:
             message = (
-                f"SLA expectation '{expectation.name}' passed: "
+                f"Execution time expectation '{expectation.name}' passed: "
                 f"execution completed in {elapsed_time:.2f}s "
                 f"(limit: {max_time_seconds:.2f}s)"
             )
         else:
             message = (
-                f"SLA expectation '{expectation.name}' failed: "
+                f"Execution time expectation '{expectation.name}' failed: "
                 f"execution exceeded time limit ({elapsed_time:.2f}s > "
                 f"{max_time_seconds:.2f}s). Processed {processed_rows} rows "
                 "before timeout."
@@ -3524,7 +3524,7 @@ class Dataset:
         )
         stats.time_total_s = time.perf_counter() - start_time
 
-        # Preserve SLA expectations from the first dataset (self)
+        # Preserve execution time expectations from the first dataset (self)
         plan = self._plan.copy()
         plan._in_stats = stats
 

@@ -2,10 +2,10 @@ import datetime
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Optional,
-    TYPE_CHECKING,
 )
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -48,7 +48,7 @@ class ExpectationType(str, Enum):
     """Type of expectation."""
 
     DATA_QUALITY = "data_quality"
-    SLA = "sla"
+    EXECUTION_TIME = "execution_time"
 
 
 @DeveloperAPI
@@ -57,12 +57,12 @@ class Expectation:
     """Base class for all expectations.
 
     Expectations can be attached to dataset operations or functions to
-    express data quality requirements or SLA constraints.
+    express data quality requirements or execution time constraints.
 
     Attributes:
         name: Human-readable name for this expectation.
         description: Detailed description of what this expectation checks.
-        expectation_type: Type of expectation (data quality or SLA).
+        expectation_type: Type of expectation (data quality or execution time).
         error_on_failure: If True, raise an exception when expectation fails.
             If False, log a warning.
     """
@@ -154,28 +154,30 @@ class DataQualityExpectation(Expectation):
 
 @DeveloperAPI
 @dataclass
-class SLAExpectation(Expectation):
-    """SLA expectation for expressing performance and timing requirements.
+class ExecutionTimeExpectation(Expectation):
+    """Execution time expectation for expressing timing requirements.
 
-    Use this to express business SLAs like "Job must finish by Y time".
+    Use this to express execution time constraints like "Job must finish by Y time".
 
     Attributes:
         name: Human-readable name for this expectation.
-        description: Detailed description of what this SLA requires.
+        description: Detailed description of what this execution time constraint requires.
         max_execution_time_seconds: Maximum allowed execution time in seconds.
             If None, no time constraint is enforced.
         max_execution_time: Maximum allowed execution time as datetime.timedelta.
             Alternative to max_execution_time_seconds.
         target_completion_time: Target completion time as datetime.datetime.
             Used for deadline-based optimization.
-        error_on_failure: If True, raise an exception when SLA is violated.
+        error_on_failure: If True, raise an exception when execution time constraint is violated.
             If False, log a warning.
     """
 
     max_execution_time_seconds: Optional[float] = None
     max_execution_time: Optional[datetime.timedelta] = None
     target_completion_time: Optional[datetime.datetime] = None
-    expectation_type: ExpectationType = field(default=ExpectationType.SLA, init=False)
+    expectation_type: ExpectationType = field(
+        default=ExpectationType.EXECUTION_TIME, init=False
+    )
 
     def __post_init__(self):
         super().__post_init__()
@@ -207,7 +209,7 @@ class SLAExpectation(Expectation):
         return None
 
     def validate(self, execution_time_seconds: float) -> bool:
-        """Validate that execution time meets SLA requirements."""
+        """Validate that execution time meets requirements."""
         max_time = self.get_max_execution_time_seconds()
         if max_time is None:
             return True
@@ -223,7 +225,7 @@ class ExpectationResult:
         expectation: The expectation that was validated.
         passed: Whether the expectation passed.
         message: Human-readable message describing the result.
-        execution_time_seconds: Execution time in seconds (for SLA expectations).
+        execution_time_seconds: Execution time in seconds (for execution time expectations).
         failure_count: Number of batches/rows that failed validation (for data quality).
         total_count: Total number of batches/rows validated (for data quality).
     """
@@ -256,7 +258,7 @@ def expect(
     error_on_failure: bool = True,
     expectation_type: Optional[ExpectationType] = None,
 ) -> Expectation:
-    """Create an expectation object for data quality or SLA requirements.
+    """Create an expectation object for data quality or execution time requirements.
 
     Examples:
         >>> from ray.data.expressions import col
@@ -270,7 +272,7 @@ def expect(
         >>> # Validator function
         >>> exp = expect(validator_fn=lambda batch: batch["value"].min() > 0)
         >>>
-        >>> # SLA requirement
+        >>> # Execution time requirement
         >>> exp = expect(max_execution_time_seconds=60.0)
 
     Args:
@@ -280,9 +282,9 @@ def expect(
             Mutually exclusive with `expr`.
         expr: Expression for data quality validation (e.g., col("value") > 0).
             Mutually exclusive with `validator_fn`.
-        max_execution_time_seconds: Maximum execution time in seconds (for SLA).
-        max_execution_time: Maximum execution time as timedelta (for SLA).
-        target_completion_time: Target completion time as datetime (for SLA).
+        max_execution_time_seconds: Maximum execution time in seconds (for execution time expectations).
+        max_execution_time: Maximum execution time as timedelta (for execution time expectations).
+        target_completion_time: Target completion time as datetime (for execution time expectations).
         error_on_failure: If True, raise exception on failure; if False, log warning.
         expectation_type: Type of expectation (auto-detected if not specified).
 
@@ -306,8 +308,8 @@ def expect(
             or target_completion_time is not None
         ):
             raise ValueError(
-                "Cannot specify both `expr` (data quality) and time constraints (SLA). "
-                "Use `expr` for data quality validation or time constraints for SLA requirements."
+                "Cannot specify both `expr` (data quality) and time constraints (execution time). "
+                "Use `expr` for data quality validation or time constraints for execution time requirements."
             )
         validator_fn = _create_validator_from_expression(_expr)
         expectation_type = ExpectationType.DATA_QUALITY
@@ -321,11 +323,11 @@ def expect(
             or max_execution_time is not None
             or target_completion_time is not None
         ):
-            expectation_type = ExpectationType.SLA
+            expectation_type = ExpectationType.EXECUTION_TIME
         else:
             raise ValueError(
                 "Must specify either validator_fn or expr (for data quality) "
-                "or time constraints (for SLA). "
+                "or time constraints (for execution time). "
                 "Examples: expect(expr=col('x') > 0) or expect(max_execution_time_seconds=60)"
             )
 
@@ -354,7 +356,7 @@ def expect(
         if _expr is not None:
             exp._expr = _expr
     else:
-        # Validate SLA parameters
+        # Validate execution time parameters
         if max_execution_time_seconds is not None and max_execution_time_seconds <= 0:
             raise ValueError(
                 f"max_execution_time_seconds must be positive, "
@@ -366,10 +368,10 @@ def expect(
             )
 
         if name is None:
-            name = "SLA Requirement"
+            name = "Execution Time Requirement"
         if description is None:
-            description = "SLA performance requirement"
-        exp = SLAExpectation(
+            description = "Execution time constraint"
+        exp = ExecutionTimeExpectation(
             name=name,
             description=description,
             max_execution_time_seconds=max_execution_time_seconds,
@@ -400,8 +402,9 @@ def _convert_batch_to_arrow_block(batch: Any) -> Any:
     Returns:
         PyArrow Table suitable for expression evaluation.
     """
-    from ray.data.block import BlockAccessor
     import pyarrow as pa
+
+    from ray.data.block import BlockAccessor
 
     # Use BlockAccessor - this is the standard Ray Data way to handle batches
     try:

@@ -8,19 +8,18 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.data.expressions import col
-from ray.data.expectations import (
-    DataQualityExpectation,
-    Expectation,
-    ExpectationResult,
-    ExpectationType,
-    SLAExpectation,
-    expect,
-)
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
-
+from ray.data.expectations import (
+    DataQualityExpectation,
+    ExecutionTimeExpectation,
+    Expectation,
+    ExpectationResult,
+    ExpectationType,
+    expect,
+)
+from ray.data.expressions import col
 from ray.tests.conftest import *  # noqa
 
 
@@ -70,7 +69,9 @@ def test_expectation_empty_description():
 
 def test_data_quality_creation():
     """Test creating data quality expectations."""
-    validator = lambda batch: batch["value"].min() > 0
+
+    def validator(batch):
+        return batch["value"].min() > 0
 
     exp = DataQualityExpectation(
         name="positive_values",
@@ -85,7 +86,9 @@ def test_data_quality_creation():
 
 def test_data_quality_validation_passes():
     """Test data quality validation when it passes."""
-    validator = lambda batch: batch["value"].min() > 0
+
+    def validator(batch):
+        return batch["value"].min() > 0
 
     exp = DataQualityExpectation(
         name="positive_values",
@@ -99,7 +102,9 @@ def test_data_quality_validation_passes():
 
 def test_data_quality_validation_fails():
     """Test data quality validation when it fails."""
-    validator = lambda batch: batch["value"].min() > 0
+
+    def validator(batch):
+        return batch["value"].min() > 0
 
     exp = DataQualityExpectation(
         name="positive_values",
@@ -113,7 +118,9 @@ def test_data_quality_validation_fails():
 
 def test_data_quality_with_pandas():
     """Test data quality validation with pandas DataFrames."""
-    validator = lambda batch: batch["value"].min() > 0
+
+    def validator(batch):
+        return batch["value"].min() > 0
 
     exp = DataQualityExpectation(
         name="positive_values",
@@ -125,9 +132,9 @@ def test_data_quality_with_pandas():
     assert exp.validate(batch) is True
 
 
-def test_sla_creation_with_seconds():
-    """Test creating SLA expectations with seconds."""
-    exp = SLAExpectation(
+def test_execution_time_creation_with_seconds():
+    """Test creating execution time expectations with seconds."""
+    exp = ExecutionTimeExpectation(
         name="fast_job",
         description="Job must finish in 60 seconds",
         max_execution_time_seconds=60.0,
@@ -137,9 +144,9 @@ def test_sla_creation_with_seconds():
     assert exp.max_execution_time_seconds == 60.0
 
 
-def test_sla_creation_with_timedelta():
-    """Test creating SLA expectations with timedelta."""
-    exp = SLAExpectation(
+def test_execution_time_creation_with_timedelta():
+    """Test creating execution time expectations with timedelta."""
+    exp = ExecutionTimeExpectation(
         name="fast_job",
         description="Job must finish in 60 seconds",
         max_execution_time=datetime.timedelta(seconds=60),
@@ -147,11 +154,11 @@ def test_sla_creation_with_timedelta():
     assert exp.max_execution_time_seconds == 60.0
 
 
-def test_sla_creation_with_target_time():
-    """Test creating SLA expectations with target completion time."""
+def test_execution_time_creation_with_target_time():
+    """Test creating execution time expectations with target completion time."""
     target = datetime.datetime.now() + datetime.timedelta(seconds=60)
 
-    exp = SLAExpectation(
+    exp = ExecutionTimeExpectation(
         name="fast_job",
         description="Job must finish by target time",
         target_completion_time=target,
@@ -161,9 +168,9 @@ def test_sla_creation_with_target_time():
     assert exp.max_execution_time_seconds > 0
 
 
-def test_sla_validation_passes():
-    """Test SLA validation when it passes."""
-    exp = SLAExpectation(
+def test_execution_time_validation_passes():
+    """Test execution time validation when it passes."""
+    exp = ExecutionTimeExpectation(
         name="fast_job",
         description="Job must finish in 60 seconds",
         max_execution_time_seconds=60.0,
@@ -172,9 +179,9 @@ def test_sla_validation_passes():
     assert exp.validate(30.0) is True
 
 
-def test_sla_validation_fails():
-    """Test SLA validation when it fails."""
-    exp = SLAExpectation(
+def test_execution_time_validation_fails():
+    """Test execution time validation when it fails."""
+    exp = ExecutionTimeExpectation(
         name="fast_job",
         description="Job must finish in 60 seconds",
         max_execution_time_seconds=60.0,
@@ -182,10 +189,10 @@ def test_sla_validation_fails():
     assert exp.validate(90.0) is False
 
 
-def test_sla_no_time_constraints_error():
-    """Test that SLA without time constraints raises error."""
+def test_execution_time_no_time_constraints_error():
+    """Test that execution time expectation without time constraints raises error."""
     with pytest.raises(ValueError, match="at least one time constraint"):
-        SLAExpectation(
+        ExecutionTimeExpectation(
             name="fast_job",
             description="Job must finish quickly",
         )
@@ -231,7 +238,9 @@ def test_dataset_expect_basic(ray_start_regular_shared):
     """Test basic dataset.expect() usage."""
     ds = ray.data.range(10)
 
-    validator = lambda batch: batch["id"] >= 0
+    def validator(batch):
+        return batch["id"] >= 0
+
     exp = DataQualityExpectation(
         name="non_negative",
         description="IDs must be non-negative",
@@ -249,7 +258,9 @@ def test_dataset_expect_validation_fails(ray_start_regular_shared):
     """Test dataset.expect() when validation fails."""
     ds = ray.data.from_items([{"value": -1}, {"value": 2}])
 
-    validator = lambda batch: batch["value"] > 0
+    def validator(batch):
+        return batch["value"] > 0
+
     exp = DataQualityExpectation(
         name="positive",
         description="Values must be positive",
@@ -274,17 +285,17 @@ def test_dataset_expect_with_expression(ray_start_regular_shared):
     assert failed_ds.count() == 0
 
 
-def test_dataset_expect_sla_expectation(ray_start_regular_shared):
-    """Test dataset.expect() with SLA expectation."""
+def test_dataset_expect_execution_time_expectation(ray_start_regular_shared):
+    """Test dataset.expect() with execution time expectation."""
     ds = ray.data.range(10)
 
-    sla_exp = SLAExpectation(
+    execution_time_exp = ExecutionTimeExpectation(
         name="fast",
         description="Must be fast",
         max_execution_time_seconds=60.0,
     )
 
-    passed_ds, failed_ds, result = ds.expect(sla_exp)
+    passed_ds, failed_ds, result = ds.expect(execution_time_exp)
     assert isinstance(result, ExpectationResult)
 
 
@@ -293,7 +304,9 @@ def test_dataset_expect_data_unchanged(ray_start_regular_shared):
     original_data = [{"value": i} for i in range(10)]
     ds = ray.data.from_items(original_data)
 
-    validator = lambda batch: batch["value"] >= 0
+    def validator(batch):
+        return batch["value"] >= 0
+
     exp = DataQualityExpectation(
         name="non_negative",
         description="Values must be non-negative",
@@ -305,40 +318,40 @@ def test_dataset_expect_data_unchanged(ray_start_regular_shared):
     assert passed_ds.take_all() == original_data
 
 
-def test_execution_plan_add_sla_expectation():
-    """Test adding SLA expectations to execution plan."""
+def test_execution_plan_add_execution_time_expectation():
+    """Test adding execution time expectations to execution plan."""
     context = DataContext()
     stats = DatasetStats(metadata={}, parent=None)
     plan = ExecutionPlan(stats, run_by_consumer=False, dataset_context=context)
 
-    exp = SLAExpectation(
+    exp = ExecutionTimeExpectation(
         name="fast_job",
         description="Job must finish in 60 seconds",
         max_execution_time_seconds=60.0,
     )
 
-    plan.add_sla_expectation(exp)
+    plan.add_execution_time_expectation(exp)
 
     assert plan.get_max_execution_time_seconds() == 60.0
-    assert len(plan.get_sla_expectations()) == 1
+    assert len(plan.get_execution_time_expectations()) == 1
 
 
-def test_execution_plan_multiple_sla_expectations():
-    """Test multiple SLA expectations with minimum time."""
+def test_execution_plan_multiple_execution_time_expectations():
+    """Test multiple execution time expectations with minimum time."""
     context = DataContext()
     stats = DatasetStats(metadata={}, parent=None)
     plan = ExecutionPlan(stats, run_by_consumer=False, dataset_context=context)
 
-    plan.add_sla_expectation(
-        SLAExpectation(
+    plan.add_execution_time_expectation(
+        ExecutionTimeExpectation(
             name="job1",
             description="Job 1",
             max_execution_time_seconds=120.0,
         )
     )
 
-    plan.add_sla_expectation(
-        SLAExpectation(
+    plan.add_execution_time_expectation(
+        ExecutionTimeExpectation(
             name="job2",
             description="Job 2",
             max_execution_time_seconds=60.0,
@@ -346,21 +359,21 @@ def test_execution_plan_multiple_sla_expectations():
     )
 
     assert plan.get_max_execution_time_seconds() == 60.0
-    assert len(plan.get_sla_expectations()) == 2
+    assert len(plan.get_execution_time_expectations()) == 2
 
 
-def test_execution_plan_copy_preserves_sla_expectations():
-    """Test that copying execution plan preserves SLA expectations."""
+def test_execution_plan_copy_preserves_execution_time_expectations():
+    """Test that copying execution plan preserves execution time expectations."""
     context = DataContext()
     stats = DatasetStats(metadata={}, parent=None)
     plan = ExecutionPlan(stats, run_by_consumer=False, dataset_context=context)
 
-    exp = SLAExpectation(
+    exp = ExecutionTimeExpectation(
         name="fast_job",
         description="Job must finish in 60 seconds",
         max_execution_time_seconds=60.0,
     )
-    plan.add_sla_expectation(exp)
+    plan.add_execution_time_expectation(exp)
 
     copied_plan = plan.copy()
 
@@ -368,20 +381,20 @@ def test_execution_plan_copy_preserves_sla_expectations():
 
 
 def test_expectations_persist_through_filter(ray_start_regular_shared):
-    """Test SLA expectations persist through filter operation."""
+    """Test execution time expectations persist through filter operation."""
     exp = expect(max_execution_time_seconds=60.0)
     ds = ray.data.range(100)
-    ds._plan.add_sla_expectation(exp)
+    ds._plan.add_execution_time_expectation(exp)
     filtered_ds = ds.filter(lambda row: row["id"] % 2 == 0)
 
     assert filtered_ds._plan.get_max_execution_time_seconds() == 60.0
 
 
 def test_expectations_persist_through_union(ray_start_regular_shared):
-    """Test SLA expectations persist through union operation."""
+    """Test execution time expectations persist through union operation."""
     exp = expect(max_execution_time_seconds=60.0)
     ds1 = ray.data.range(50)
-    ds1._plan.add_sla_expectation(exp)
+    ds1._plan.add_execution_time_expectation(exp)
     ds2 = ray.data.range(50, 100)
 
     unioned_ds = ds1.union(ds2)
@@ -390,30 +403,30 @@ def test_expectations_persist_through_union(ray_start_regular_shared):
 
 
 def test_expectations_persist_through_groupby(ray_start_regular_shared):
-    """Test SLA expectations persist through groupby operation."""
+    """Test execution time expectations persist through groupby operation."""
     exp = expect(max_execution_time_seconds=60.0)
     ds = ray.data.range(100)
-    ds._plan.add_sla_expectation(exp)
+    ds._plan.add_execution_time_expectation(exp)
     grouped_ds = ds.groupby("id").count()
 
     assert grouped_ds._plan.get_max_execution_time_seconds() == 60.0
 
 
 def test_expectations_persist_through_repartition(ray_start_regular_shared):
-    """Test SLA expectations persist through repartition."""
+    """Test execution time expectations persist through repartition."""
     exp = expect(max_execution_time_seconds=60.0)
     ds = ray.data.range(100)
-    ds._plan.add_sla_expectation(exp)
+    ds._plan.add_execution_time_expectation(exp)
     repartitioned_ds = ds.repartition(5)
 
     assert repartitioned_ds._plan.get_max_execution_time_seconds() == 60.0
 
 
 def test_expectations_persist_through_select_columns(ray_start_regular_shared):
-    """Test SLA expectations persist through select_columns."""
+    """Test execution time expectations persist through select_columns."""
     exp = expect(max_execution_time_seconds=60.0)
     ds = ray.data.range(100)
-    ds._plan.add_sla_expectation(exp)
+    ds._plan.add_execution_time_expectation(exp)
     selected_ds = ds.select_columns(cols=["id"])
 
     assert selected_ds._plan.get_max_execution_time_seconds() == 60.0
@@ -423,7 +436,9 @@ def test_expect_with_empty_dataset(ray_start_regular_shared):
     """Test expectations with empty dataset."""
     ds = ray.data.range(0)
 
-    validator = lambda batch: True
+    def validator(batch):
+        return True
+
     exp = DataQualityExpectation(
         name="always_true",
         description="Always passes",
@@ -466,20 +481,20 @@ def test_validator_function_raises_exception(ray_start_regular_shared):
     assert result.passed is False
 
 
-def test_sla_with_zero_time():
-    """Test SLA with zero execution time."""
+def test_execution_time_with_zero_time():
+    """Test execution time expectation with zero execution time."""
     with pytest.raises(ValueError, match="must be positive"):
-        SLAExpectation(
+        ExecutionTimeExpectation(
             name="instant_job",
             description="Job must finish instantly",
             max_execution_time_seconds=0.0,
         )
 
 
-def test_sla_with_negative_time():
-    """Test SLA with negative execution time."""
+def test_execution_time_with_negative_time():
+    """Test execution time expectation with negative execution time."""
     with pytest.raises(ValueError, match="must be positive"):
-        SLAExpectation(
+        ExecutionTimeExpectation(
             name="time_travel_job",
             description="Job finished yesterday",
             max_execution_time_seconds=-10.0,
@@ -501,9 +516,9 @@ def test_expectation_serialization():
     assert unpickled.description == exp.description
 
 
-def test_sla_expectation_serialization():
-    """Test that SLA expectations can be pickled."""
-    exp = SLAExpectation(
+def test_execution_time_expectation_serialization():
+    """Test that execution time expectations can be pickled."""
+    exp = ExecutionTimeExpectation(
         name="fast_job",
         description="Job must finish in 60 seconds",
         max_execution_time_seconds=60.0,
@@ -543,17 +558,17 @@ def test_expectation_chaining(ray_start_regular_shared):
     assert passed_ds2.count() == 10
 
 
-def test_both_sla_and_data_quality_expectations(ray_start_regular_shared):
-    """Test using both SLA and data quality expectations together."""
+def test_both_execution_time_and_data_quality_expectations(ray_start_regular_shared):
+    """Test using both execution time and data quality expectations together."""
     ds = ray.data.from_items([{"value": i} for i in range(1, 11)])
 
     passed_ds, failed_ds, dq_result = ds.expect(expr=col("value") > 0)
     assert dq_result.passed is True
 
-    processed_ds, remaining_ds, sla_result = passed_ds.expect(
+    processed_ds, remaining_ds, execution_time_result = passed_ds.expect(
         max_execution_time_seconds=60.0
     )
-    assert isinstance(sla_result, ExpectationResult)
+    assert isinstance(execution_time_result, ExpectationResult)
 
 
 def test_expectation_with_large_dataset(ray_start_regular_shared):
@@ -588,16 +603,16 @@ def test_expectations_import():
     """Test importing expectations from ray.data."""
     from ray.data import (
         DataQualityExpectation,
+        ExecutionTimeExpectation,
         Expectation,
         ExpectationResult,
         ExpectationType,
-        SLAExpectation,
         expect,
     )
 
     assert Expectation is not None
     assert DataQualityExpectation is not None
-    assert SLAExpectation is not None
+    assert ExecutionTimeExpectation is not None
     assert ExpectationResult is not None
     assert ExpectationType is not None
     assert expect is not None

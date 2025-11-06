@@ -1,6 +1,6 @@
 import math
 import os
-from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
