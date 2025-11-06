@@ -706,6 +706,78 @@ class TestTaskConsumerWithRayServe:
             lambda: "test_data_3" in handle.get_message_received.remote().result()
         )
 
+    def test_flower_monitors_queue_with_redis(
+        self, external_redis, serve_instance  # noqa: F811
+    ):
+        """Test that queue monitor can monitor queue lengths with Redis broker."""
+
+        redis_address = os.environ.get("RAY_REDIS_ADDRESS")
+        processor_config = TaskProcessorConfig(
+            queue_name="flower_test_queue",
+            adapter_config=CeleryAdapterConfig(
+                broker_url=f"redis://{redis_address}/0",
+                backend_url=f"redis://{redis_address}/1",
+                app_custom_config={"worker_prefetch_multiplier": 1},
+            ),
+        )
+
+        signal = SignalActor.remote()
+
+        @serve.deployment(max_ongoing_requests=1)
+        @task_consumer(task_processor_config=processor_config)
+        class BlockingTaskConsumer:
+            def __init__(self, signal_actor):
+                self._signal = signal_actor
+                self.tasks_started = 0
+
+            @task_handler(name="blocking_task")
+            def blocking_task(self, data):
+                self.tasks_started += 1
+                ray.get(
+                    self._signal.wait.remote()
+                )  # Block indefinitely waiting for signal
+                return f"processed: {data}"
+
+            def get_tasks_started(self):
+                return self.tasks_started
+
+            def get_queue_lengths(self):
+                return self._adapter.get_queue_lengths_sync()
+
+        handle = serve.run(BlockingTaskConsumer.bind(signal))
+
+        # Push 10 tasks to the queue
+        num_tasks = 10
+        for i in range(num_tasks):
+            send_request_to_queue.remote(
+                processor_config, f"task_{i}", task_name="blocking_task"
+            )
+
+        # Wait for one task to start (will be blocked waiting for signal)
+        wait_for_condition(
+            lambda: handle.get_tasks_started.remote().result() == 1,
+            timeout=30,
+            retry_interval_ms=1000,
+        )
+
+        def check_queue_lengths():
+            result = handle.get_queue_lengths.remote().result()
+            # 8 should still be queued (1 executing, 1 prefetched)
+            return result.get("flower_test_queue", 0) == 8
+
+        wait_for_condition(check_queue_lengths, timeout=20)
+
+        # Get final queue lengths
+        queue_lengths = handle.get_queue_lengths.remote().result()
+
+        assert len(queue_lengths) > 0, "Should have queue length data"
+        assert "flower_test_queue" in queue_lengths, "Should report main queue"
+        assert (
+            queue_lengths["flower_test_queue"] == 8
+        ), f"Expected 8 tasks in queue, got {queue_lengths['flower_test_queue']} instead"
+
+        ray.get(signal.send.remote())
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 class TestTaskConsumerWithDLQsConfiguration:
