@@ -39,12 +39,13 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   // Lock the weak_ptr to get a shared_ptr. If CoreWorker is already destroyed, return.
   auto core_worker = core_worker_.lock();
   if (!core_worker) {
-    RAY_LOG(WARNING) << "CoreWorker already destroyed, skipping graceful shutdown operations";
+    RAY_LOG(WARNING)
+        << "CoreWorker already destroyed, skipping graceful shutdown operations";
     return;
   }
 
   // Transition to SHUTTING_DOWN state
-  core_worker->SetShutdownState(CoreWorker::SHUTTING_DOWN);
+  core_worker->SetShutdownState(ShutdownState::kShuttingDown);
 
   if (core_worker->options_.worker_type == WorkerType::WORKER) {
     if (!core_worker->worker_context_->GetCurrentActorID().IsNil()) {
@@ -66,7 +67,7 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   core_worker->task_event_buffer_->Stop();
 
   // Mark event loops as stopped if not already done
-  if (!core_worker->options_.worker_type == WorkerType::WORKER) {
+  if (core_worker->options_.worker_type != WorkerType::WORKER) {
     core_worker->SetEventLoopsStopped();
   }
   core_worker->io_service_.stop();
@@ -83,7 +84,7 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   }
 
   // Transition to DISCONNECTING state
-  core_worker->SetShutdownState(CoreWorker::DISCONNECTING);
+  core_worker->SetShutdownState(ShutdownState::kDisconnecting);
 
   // Shutdown gRPC server
   core_worker->core_worker_server_->Shutdown();
@@ -99,7 +100,7 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   }
 
   // Transition to SHUTDOWN state
-  core_worker->SetShutdownState(CoreWorker::SHUTDOWN);
+  core_worker->SetShutdownState(ShutdownState::kShutdown);
 
   RAY_LOG(INFO) << "Core worker ready to be deallocated.";
 
@@ -138,20 +139,21 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
   // Capture weak_ptr to avoid use-after-free in the callback
   std::weak_ptr<CoreWorker> weak_core_worker = core_worker_;
 
-  auto shutdown_callback = [this, weak_core_worker,
+  auto shutdown_callback = [this,
+                            weak_core_worker,
                             exit_type = std::string(exit_type),
                             detail = std::string(detail),
                             creation_task_exception_pb_bytes]() {
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
-    auto core_worker = weak_core_worker.lock();
-    if (!core_worker) {
+    auto worker = weak_core_worker.lock();
+    if (!worker) {
       RAY_LOG(WARNING) << "CoreWorker destroyed during shutdown callback";
       return;
     }
 
     // Check if event loops are still running before posting
-    if (!core_worker->AreEventLoopsRunning()) {
+    if (!worker->AreEventLoopsRunning()) {
       RAY_LOG(WARNING) << "Event loops already stopped, executing shutdown directly";
       rpc::DrainServerCallExecutor();
       KillChildProcessesImmediately();
@@ -161,7 +163,7 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
       return;
     }
 
-    core_worker->task_execution_service_.post(
+    worker->task_execution_service_.post(
         [this, exit_type, detail, creation_task_exception_pb_bytes]() {
           rpc::DrainServerCallExecutor();
           KillChildProcessesImmediately();
@@ -172,30 +174,30 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
         "CoreWorker.Shutdown");
   };
 
-  auto drain_references_callback = [this, weak_core_worker, shutdown_callback]() {
+  auto drain_references_callback = [weak_core_worker, shutdown_callback]() {
     // Post to the event loop to avoid a deadlock between the TaskManager and
     // the ReferenceCounter. The deadlock can occur because this callback may
     // get called by the TaskManager while the ReferenceCounter's lock is held,
     // but the callback itself must acquire the ReferenceCounter's lock to
     // drain the object references.
-    auto core_worker = weak_core_worker.lock();
-    if (!core_worker) {
+    auto worker = weak_core_worker.lock();
+    if (!worker) {
       RAY_LOG(WARNING) << "CoreWorker destroyed during drain references callback";
       return;
     }
 
     // Check if event loops are still running
-    if (!core_worker->AreEventLoopsRunning()) {
+    if (!worker->AreEventLoopsRunning()) {
       RAY_LOG(WARNING) << "Event loops already stopped, cannot drain references";
       // Try to execute shutdown callback directly
       shutdown_callback();
       return;
     }
 
-    core_worker->task_execution_service_.post(
-        [this, weak_core_worker, shutdown_callback]() {
-          auto core_worker = weak_core_worker.lock();
-          if (!core_worker) {
+    worker->task_execution_service_.post(
+        [weak_core_worker, shutdown_callback]() {
+          auto worker_inner = weak_core_worker.lock();
+          if (!worker_inner) {
             RAY_LOG(WARNING) << "CoreWorker destroyed during drain references execution";
             return;
           }
@@ -205,10 +207,10 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
           // Wait for currently executing tasks in the underlying thread pools to
           // finish. Note that if tasks have been posted to the thread pools but not
           // started yet, they will not be executed.
-          core_worker->task_receiver_->Stop();
+          worker_inner->task_receiver_->Stop();
 
           // Release resources only after tasks have stopped executing.
-          auto status = core_worker->raylet_ipc_client_->NotifyWorkerBlocked();
+          auto status = worker_inner->raylet_ipc_client_->NotifyWorkerBlocked();
           if (!status.ok()) {
             RAY_LOG(WARNING)
                 << "Failed to notify Raylet. The raylet may have already shut down or "
@@ -217,8 +219,8 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
 
           bool not_actor_task = false;
           {
-            absl::MutexLock lock(&core_worker->mutex_);
-            not_actor_task = core_worker->actor_id_.IsNil();
+            absl::MutexLock lock(&worker_inner->mutex_);
+            not_actor_task = worker_inner->actor_id_.IsNil();
           }
           if (not_actor_task) {
             // Normal tasks should not hold any object references in the heap after
@@ -236,8 +238,8 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
             // See: https://github.com/ray-project/ray/pull/53002.
             RAY_LOG(INFO)
                 << "Releasing local references, then draining reference counter.";
-            core_worker->reference_counter_->ReleaseAllLocalReferences();
-            core_worker->reference_counter_->DrainAndShutdown(shutdown_callback);
+            worker_inner->reference_counter_->ReleaseAllLocalReferences();
+            worker_inner->reference_counter_->DrainAndShutdown(shutdown_callback);
           } else {
             // If we are an actor, then we may be holding object references in the
             // heap. Then, we should not wait to drain the object references before

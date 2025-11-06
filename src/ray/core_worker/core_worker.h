@@ -258,8 +258,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Wait for shutdown to complete before destruction
   /// This method blocks until shutdown is complete or times out
   /// \param timeout_ms Maximum time to wait in milliseconds (default: 30 seconds)
-  void WaitForShutdownComplete(std::chrono::milliseconds timeout_ms =
-                               std::chrono::milliseconds(30000));
+  void WaitForShutdownComplete(
+      std::chrono::milliseconds timeout_ms = std::chrono::milliseconds(30000));
 
   /// Notify that shutdown is complete
   /// This method should be called by the shutdown executor when all shutdown
@@ -271,8 +271,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   bool SetDisconnectedIfConnected();
 
   /// Thread-safe shutdown state methods
-  ShutdownState GetShutdownState() const;
-  void SetShutdownState(ShutdownState state);
+  ray::core::ShutdownState GetShutdownState() const;
+  void SetShutdownState(ray::core::ShutdownState state);
 
   /// Thread-safe event loop status
   bool AreEventLoopsRunning() const { return event_loops_running_.load(); }
@@ -1989,8 +1989,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   bool connected_internal_ ABSL_GUARDED_BY(connected_mutex_) = true;
 
   mutable absl::Mutex shutdown_state_mutex_;
-  enum ShutdownState { RUNNING, SHUTTING_DOWN, DISCONNECTING, SHUTDOWN };
-  ShutdownState shutdown_state_ ABSL_GUARDED_BY(shutdown_state_mutex_) = RUNNING;
+  ray::core::ShutdownState shutdown_state_ ABSL_GUARDED_BY(shutdown_state_mutex_) =
+      ray::core::ShutdownState::kRunning;
 
   std::atomic<bool> event_loops_running_{true};
   mutable absl::Mutex actor_callback_mutex_;

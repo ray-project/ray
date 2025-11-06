@@ -527,7 +527,6 @@ CoreWorker::CoreWorker(
   // NOTE: This also marks the worker as available in Raylet. We do this at the very end
   // in case there is a problem during construction.
   ConnectToRayletInternal();
-
 }
 
 CoreWorker::~CoreWorker() {
@@ -545,7 +544,8 @@ void CoreWorker::InitializeShutdownExecutor(std::shared_ptr<CoreWorker> self) {
       std::move(shutdown_executor), options_.worker_type);
 
   RAY_LOG(DEBUG) << "Initialized unified shutdown coordinator with concrete executor for "
-                    "worker type: " << WorkerTypeString(options_.worker_type);
+                    "worker type: "
+                 << WorkerTypeString(options_.worker_type);
 }
 
 void CoreWorker::Shutdown() {
@@ -555,7 +555,8 @@ void CoreWorker::Shutdown() {
 
 void CoreWorker::WaitForShutdownComplete(std::chrono::milliseconds timeout_ms) {
   if (shutdown_coordinator_ && shutdown_coordinator_->IsShuttingDown()) {
-    RAY_LOG(INFO) << "Waiting for shutdown to complete (timeout: " << timeout_ms.count() << "ms)...";
+    RAY_LOG(INFO) << "Waiting for shutdown to complete (timeout: " << timeout_ms.count()
+                  << "ms)...";
     auto status = shutdown_complete_future_.wait_for(timeout_ms);
     if (status == std::future_status::timeout) {
       RAY_LOG(ERROR) << "Shutdown did not complete within " << timeout_ms.count()
@@ -570,7 +571,7 @@ void CoreWorker::NotifyShutdownComplete() {
   try {
     shutdown_complete_promise_.set_value();
     RAY_LOG(DEBUG) << "Shutdown completion notified";
-  } catch (const std::future_error& e) {
+  } catch (const std::future_error &e) {
     // Promise may have already been set if multiple paths call this
     RAY_LOG(DEBUG) << "Shutdown completion already notified: " << e.what();
   }
@@ -592,12 +593,12 @@ bool CoreWorker::SetDisconnectedIfConnected() {
   return true;  // Successfully disconnected
 }
 
-CoreWorker::ShutdownState CoreWorker::GetShutdownState() const {
+ray::core::ShutdownState CoreWorker::GetShutdownState() const {
   absl::MutexLock lock(&shutdown_state_mutex_);
   return shutdown_state_;
 }
 
-void CoreWorker::SetShutdownState(ShutdownState state) {
+void CoreWorker::SetShutdownState(ray::core::ShutdownState state) {
   absl::MutexLock lock(&shutdown_state_mutex_);
 
   // Only allow forward transitions
@@ -608,9 +609,8 @@ void CoreWorker::SetShutdownState(ShutdownState state) {
     return;
   }
 
-  RAY_LOG(INFO) << "Shutdown state transition: "
-                << static_cast<int>(shutdown_state_) << " -> "
-                << static_cast<int>(state);
+  RAY_LOG(INFO) << "Shutdown state transition: " << static_cast<int>(shutdown_state_)
+                << " -> " << static_cast<int>(state);
   shutdown_state_ = state;
 }
 
@@ -904,7 +904,7 @@ void CoreWorker::InternalHeartbeat() {
 void CoreWorker::RecordMetrics() {
   // Skip metrics recording if we're shutting down to avoid accessing
   // components that may be in inconsistent state
-  if (GetShutdownState() != RUNNING) {
+  if (GetShutdownState() != ray::core::ShutdownState::kRunning) {
     RAY_LOG(DEBUG) << "Skipping metrics recording during shutdown";
     return;
   }
@@ -921,7 +921,7 @@ void CoreWorker::RecordMetrics() {
     if (memory_store_) {
       memory_store_->RecordMetrics();
     }
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     RAY_LOG(WARNING) << "Failed to record metrics: " << e.what();
   }
 }
