@@ -3462,8 +3462,6 @@ class RemoteDecorator(Protocol):
     ) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
         ...
 
-    # Pass on typing actors for now. The following makes it so no type errors
-    # are generated for actors.
     @overload
     def __call__(self, __t: Type[T]) -> ActorClass[T]:
         ...
