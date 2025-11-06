@@ -3399,6 +3399,10 @@ def _make_remote(function_or_class, options):
 
 class RemoteDecorator(Protocol):
     @overload
+    def __call__(self, __t: Type[T]) -> ActorClass[T]:
+        ...
+
+    @overload
     def __call__(self, __function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
         ...
 
@@ -3461,7 +3465,7 @@ class RemoteDecorator(Protocol):
     # Pass on typing actors for now. The following makes it so no type errors
     # are generated for actors.
     @overload
-    def __call__(self, __t: type) -> Any:
+    def __call__(self, __t: Type[T]) -> ActorClass[T]:
         ...
 
 
