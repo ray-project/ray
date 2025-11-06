@@ -138,10 +138,16 @@ class HCCLGroup(BaseGroup):
                 "Use ray.experimental.collective.create_collective_group to create the group."
             )
 
+        ASCEND_VISIBLE_DEVICES = os.getenv("ASCEND_VISIBLE_DEVICES")
+        ASCEND_RT_VISIBLE_DEVICES = ",".join(
+            str(i) for i in range(len(ASCEND_VISIBLE_DEVICES.split(",")))
+        )
+        os.environ["ASCEND_RT_VISIBLE_DEVICES"] = ASCEND_RT_VISIBLE_DEVICES
         metadata = metadata.decode()
         master_addr, master_port = metadata.split(":")
         os.environ["MASTER_ADDR"] = master_addr
         os.environ["MASTER_PORT"] = master_port
+        torch_npu.npu.set_device(rank)
         dist.init_process_group(backend="hccl", rank=rank, world_size=world_size)
         super(HCCLGroup, self).__init__(world_size, rank, group_name)
         self._dev_comm_map = {}
@@ -371,7 +377,7 @@ class HCCLGroup(BaseGroup):
         """
 
         def p2p_fn(tensor: torch.Tensor, comm, stream, peer):
-            with torch.npu.device(tensor.device):
+            with torch.npu.device(dist.get_rank()):
                 exec_result = self.libhccl.HcclSend(
                     buffer_type(tensor.data_ptr()),
                     tensor.numel(),
@@ -386,7 +392,7 @@ class HCCLGroup(BaseGroup):
             ), f"Failed to execute `HcclSend`. Error code: {exec_result}."
 
         self._point2point(
-            tensors, p2p_fn, send_options.dst_rank, send_options.dst_device_index
+            tensors, p2p_fn, send_options.dst_rank, send_options.dst_gpu_index
         )
 
     def recv(self, tensors, recv_options=RecvOptions()):
@@ -399,7 +405,7 @@ class HCCLGroup(BaseGroup):
         """
 
         def p2p_fn(tensor: torch.Tensor, comm, stream, peer):
-            with torch.npu.device(tensor.device):
+            with torch.npu.device(dist.get_rank()):
                 exec_result = self.libhccl.HcclRecv(
                     buffer_type(tensor.data_ptr()),
                     tensor.numel(),
@@ -414,7 +420,7 @@ class HCCLGroup(BaseGroup):
             ), f"Failed to execute `HcclRecv`. Error code: {exec_result}."
 
         self._point2point(
-            tensors, p2p_fn, recv_options.src_rank, recv_options.src_device_index
+            tensors, p2p_fn, recv_options.src_rank, recv_options.src_gpu_index
         )
 
     def _generate_group_key(self, comm_key):
@@ -623,9 +629,10 @@ class HCCLGroup(BaseGroup):
     def _point2point(self, tensors, p2p_fn, peer_rank: int, peer_npu_idx: int):
         assert len(tensors) == 1
 
-        my_npu_idx = get_tensor_device(tensors[0])
+        tensor_npu_idx = get_tensor_device(tensors[0])
+        my_npu_idx = get_rank_device()
         comm_key = _get_comm_key_send_recv(
-            self.rank, my_npu_idx, peer_rank, peer_npu_idx
+            self.rank, tensor_npu_idx, peer_rank, peer_npu_idx
         )
         comms = self._get_hccl_p2p_communicator(
             comm_key, my_npu_idx, peer_rank, peer_npu_idx
@@ -676,6 +683,9 @@ def _get_comm_key_from_devices(devices: List[int]):
     """
     return ",".join([str(d) for d in devices])
 
+
+def get_rank_device():
+    return dist.get_rank()
 
 def get_tensor_device(tensor):
     """Return the NPU index of a tensor."""
