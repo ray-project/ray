@@ -1110,8 +1110,6 @@ exceptiongroup==1.3.0 ; python_full_version < '3.11' \
     --hash=sha256:4d111e6e0c13d0644cad6ddaa7ed0261a0b36971f6d23e7ec9b4b9097da78a10 \
     --hash=sha256:b241f5885f560bc56a59ee63ca4c6a8bfa46ae4ad651af316d4e81817bb9fd88
     # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   anyio
     #   pytest
 executing==2.0.1 \
@@ -1924,8 +1922,6 @@ grpcio==1.76.0 \
     --hash=sha256:fd5ef5932f6475c436c4a55e4336ebbe47bd3272be04964a03d316bbf4afbcbc \
     --hash=sha256:ff8a59ea85a1f2191a0ffcc61298c571bc566332f82e5f5be1b83c9d8e668a62
     # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r docker/base-extra/requirements.in
     #   google-api-core
     #   googleapis-common-protos
