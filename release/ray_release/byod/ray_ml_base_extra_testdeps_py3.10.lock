@@ -266,13 +266,14 @@ asttokens==2.4.1 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   stack-data
-async-timeout==4.0.3 ; python_full_version < '3.11' \
+async-timeout==4.0.3 ; python_full_version < '3.12' \
     --hash=sha256:4640d96be84d82d02ed59ea2b7105a0f7b33abe8703703cd0ab0bf87c427522f \
     --hash=sha256:7405140ff1230c310e51dc27b3145b9092d659ce68ff733fb0cefe3ee42be028
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   aiohttp
+    #   redis
 attrs==25.1.0 \
     --hash=sha256:1c97078a80c814273a76b2a298a932eb681c87415c11dee0a6921de7f1b02c3e \
     --hash=sha256:c75a69e28a550a7e93789579c22aa26b0f5b83b75dc4e08fe092980051e1090a
@@ -379,6 +380,8 @@ boto3==1.29.7 \
     #   -r docker/base-deps/requirements.in
     #   -r release/ray_release/byod/requirements_ml_byod_3.10.in
     #   anyscale
+    #   celery
+    #   kombu
     #   smart-open
 botocore==1.32.7 \
     --hash=sha256:58b33d02cafa23461c8a9d211b30e8cded992380a84de409379fd02811fa3e11 \
@@ -1218,6 +1221,8 @@ exceptiongroup==1.3.0 ; python_full_version < '3.11' \
     --hash=sha256:4d111e6e0c13d0644cad6ddaa7ed0261a0b36971f6d23e7ec9b4b9097da78a10 \
     --hash=sha256:b241f5885f560bc56a59ee63ca4c6a8bfa46ae4ad651af316d4e81817bb9fd88
     # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -c release/ray_release/byod/requirements_compiled.txt
     #   anyio
     #   pytest
 executing==2.0.1 \
@@ -2088,8 +2093,6 @@ grpcio==1.74.0 \
     --hash=sha256:fd3c71aeee838299c5887230b8a1822795325ddfea635edd82954c1eaa831e24 \
     --hash=sha256:fe0f540750a13fd8e5da4b3eaba91a785eea8dca5ccd2bc2ffe978caa403090e
     # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r docker/base-extra/requirements.in
     #   google-api-core
     #   googleapis-common-protos
@@ -4670,6 +4673,13 @@ qpd==0.4.4 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   fugue
+redis==4.5.4 \
+    --hash=sha256:2c19e6767c474f2e85167909061d525ed65bea9301c0770bb151e041b7ac89a2 \
+    --hash=sha256:73ec35da4da267d6847e47f68730fdd5f62e2ca69e3ef5885c6a78a9374c3893
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   kombu
 referencing==0.36.2 \
     --hash=sha256:df2e89862cd09deabbdba16944cc3f10feb6b3e6f18e902f7cc25609a34775aa \
     --hash=sha256:e8699adbbf8b5c7de96d8ffa0eb5c158b3beafce084968e2ea8bb08c6794dcd0
@@ -6172,7 +6182,9 @@ urllib3==1.26.19 \
     #   -r release/ray_release/byod/requirements_ml_byod_3.10.in
     #   anyscale
     #   botocore
+    #   celery
     #   geventhttpclient
+    #   kombu
     #   requests
     #   sentry-sdk
 utilsforecast==0.2.0 \

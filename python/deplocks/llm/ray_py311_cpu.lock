@@ -132,6 +132,12 @@ anyio==3.7.1 \
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   starlette
     #   watchfiles
+async-timeout==4.0.3 ; python_full_version < '3.12' \
+    --hash=sha256:4640d96be84d82d02ed59ea2b7105a0f7b33abe8703703cd0ab0bf87c427522f \
+    --hash=sha256:7405140ff1230c310e51dc27b3145b9092d659ce68ff733fb0cefe3ee42be028
+    # via
+    #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   redis
 attrs==25.1.0 \
     --hash=sha256:1c97078a80c814273a76b2a298a932eb681c87415c11dee0a6921de7f1b02c3e \
     --hash=sha256:c75a69e28a550a7e93789579c22aa26b0f5b83b75dc4e08fe092980051e1090a
@@ -146,6 +152,20 @@ billiard==4.2.1 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   celery
+boto3==1.29.7 \
+    --hash=sha256:1eb4c548118b5fc5e018dee956fd33e6fb249cd1f2def85f1bba816aef4d9f3e \
+    --hash=sha256:96e9890ebe7cd823b5f4976dd676e112c000c6528c28e20a2f274590589dd18b
+    # via
+    #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   celery
+    #   kombu
+botocore==1.32.7 \
+    --hash=sha256:58b33d02cafa23461c8a9d211b30e8cded992380a84de409379fd02811fa3e11 \
+    --hash=sha256:c6795c731b04c8e3635588c44cfd1a4462fc5987859195522c96812cf3eceff9
+    # via
+    #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   boto3
+    #   s3transfer
 cachetools==5.5.2 \
     --hash=sha256:1a661caa9175d26759571b2e19580f9d6393969e5dfca11fdb1f947a23e640d4 \
     --hash=sha256:d26a22bcc62eb95c3beabd9f1ee5e820d3d2704fe2967cbe350e20c8ffcd3f0a
@@ -766,6 +786,13 @@ jinja2==3.1.6 ; sys_platform != 'win32' \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   memray
+jmespath==1.0.1 \
+    --hash=sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980 \
+    --hash=sha256:90261b206d6defd58fdd5e85f478bf633a2901798906be2ad389150c5c60edbe
+    # via
+    #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   boto3
+    #   botocore
 jsonschema==4.23.0 \
     --hash=sha256:d71497fef26351a33265337fa77ffeb82423f3ea21283cd9467bb03999266bc4 \
     --hash=sha256:fbadb6f8b144a8f8cf9f0b89ba94501d143e50411a1278633f56a7acf7fd5566
@@ -1667,6 +1694,7 @@ python-dateutil==2.8.2 \
     --hash=sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   botocore
     #   celery
     #   pandas
 pytz==2022.7.1 \
@@ -1730,6 +1758,12 @@ pyyaml==6.0.1 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   -r python/requirements.txt
+redis==4.5.4 \
+    --hash=sha256:2c19e6767c474f2e85167909061d525ed65bea9301c0770bb151e041b7ac89a2 \
+    --hash=sha256:73ec35da4da267d6847e47f68730fdd5f62e2ca69e3ef5885c6a78a9374c3893
+    # via
+    #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   kombu
 referencing==0.36.2 \
     --hash=sha256:df2e89862cd09deabbdba16944cc3f10feb6b3e6f18e902f7cc25609a34775aa \
     --hash=sha256:e8699adbbf8b5c7de96d8ffa0eb5c158b3beafce084968e2ea8bb08c6794dcd0
@@ -1866,6 +1900,12 @@ rsa==4.7.2 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   google-auth
+s3transfer==0.8.0 \
+    --hash=sha256:baa479dc2e63e5c2ed51611b4d46cdf0295e2070d8d0b86b22f335ee5b954986 \
+    --hash=sha256:e8d6bd52ffd99841e3a57b34370a54841f12d3aab072af862cdcc50955288002
+    # via
+    #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   boto3
 scikit-image==0.24.0 \
     --hash=sha256:18836a18d3a7b6aca5376a2d805f0045826bc6c9fc85331659c33b4813e0b563 \
     --hash=sha256:190ebde80b4470fe8838764b9b15f232a964f1a20391663e31008d76f0c696f7 \
@@ -2004,6 +2044,9 @@ urllib3==1.26.19 \
     --hash=sha256:3e3d753a8618b86d7de333b4223005f68720bcd6a7d2bcb9fbd2229ec7c1e429
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   botocore
+    #   celery
+    #   kombu
     #   requests
 uvicorn==0.22.0 \
     --hash=sha256:79277ae03db57ce7d9aa0567830bbb51d7a612f54d6e1e3e92da3ef24c2c8ed8 \

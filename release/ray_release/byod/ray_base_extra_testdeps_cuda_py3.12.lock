@@ -276,6 +276,8 @@ boto3==1.29.7 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r docker/base-deps/requirements.in
     #   anyscale
+    #   celery
+    #   kombu
     #   smart-open
 botocore==1.32.7 \
     --hash=sha256:58b33d02cafa23461c8a9d211b30e8cded992380a84de409379fd02811fa3e11 \
@@ -1174,7 +1176,6 @@ grpcio==1.74.0 \
     --hash=sha256:fd3c71aeee838299c5887230b8a1822795325ddfea635edd82954c1eaa831e24 \
     --hash=sha256:fe0f540750a13fd8e5da4b3eaba91a785eea8dca5ccd2bc2ffe978caa403090e
     # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r docker/base-extra/requirements.in
     #   google-api-core
     #   google-cloud-secret-manager
@@ -2811,6 +2812,12 @@ pyzmq==26.0.3 \
     #   jupyter-server
     #   nbclassic
     #   notebook
+redis==4.5.4 \
+    --hash=sha256:2c19e6767c474f2e85167909061d525ed65bea9301c0770bb151e041b7ac89a2 \
+    --hash=sha256:73ec35da4da267d6847e47f68730fdd5f62e2ca69e3ef5885c6a78a9374c3893
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   kombu
 referencing==0.36.2 \
     --hash=sha256:df2e89862cd09deabbdba16944cc3f10feb6b3e6f18e902f7cc25609a34775aa \
     --hash=sha256:e8699adbbf8b5c7de96d8ffa0eb5c158b3beafce084968e2ea8bb08c6794dcd0
@@ -3216,6 +3223,8 @@ urllib3==1.26.19 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   anyscale
     #   botocore
+    #   celery
+    #   kombu
     #   requests
 uvicorn==0.22.0 \
     --hash=sha256:79277ae03db57ce7d9aa0567830bbb51d7a612f54d6e1e3e92da3ef24c2c8ed8 \

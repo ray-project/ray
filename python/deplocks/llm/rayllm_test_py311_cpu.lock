@@ -211,6 +211,10 @@ asttokens==2.4.1 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   stack-data
+async-timeout==5.0.1 ; python_full_version < '3.11.3' \
+    --hash=sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c \
+    --hash=sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3
+    # via redis
 attrs==25.1.0 \
     --hash=sha256:1c97078a80c814273a76b2a298a932eb681c87415c11dee0a6921de7f1b02c3e \
     --hash=sha256:c75a69e28a550a7e93789579c22aa26b0f5b83b75dc4e08fe092980051e1090a
@@ -386,6 +390,8 @@ boto3==1.29.7 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   -r python/requirements/cloud-requirements.txt
+    #   celery
+    #   kombu
     #   smart-open
 botocore==1.32.7 \
     --hash=sha256:58b33d02cafa23461c8a9d211b30e8cded992380a84de409379fd02811fa3e11 \
@@ -3710,6 +3716,10 @@ pyzmq==26.0.3 \
     #   nbclassic
     #   notebook
     #   vllm
+redis==5.2.1 \
+    --hash=sha256:16f2e22dff21d5125e8481515e386711a34cbec50f0e44413dd7d9c060a54e0f \
+    --hash=sha256:ee7e1056b9aea0f04c6c2ed59452947f34c4940ee025f5dd83e6a6418b6989e4
+    # via kombu
 referencing==0.36.2 \
     --hash=sha256:df2e89862cd09deabbdba16944cc3f10feb6b3e6f18e902f7cc25609a34775aa \
     --hash=sha256:e8699adbbf8b5c7de96d8ffa0eb5c158b3beafce084968e2ea8bb08c6794dcd0
@@ -4704,6 +4714,8 @@ urllib3==1.26.19 \
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   -r python/requirements/cloud-requirements.txt
     #   botocore
+    #   celery
+    #   kombu
     #   requests
 uvicorn==0.22.0 \
     --hash=sha256:79277ae03db57ce7d9aa0567830bbb51d7a612f54d6e1e3e92da3ef24c2c8ed8 \
