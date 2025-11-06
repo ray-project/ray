@@ -24,11 +24,11 @@ from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.data._internal.util import RetryingPyFileSystem
-    from ray.data.datasource.partitioning import Partitioning
-
     import pyarrow
     from mcap.reader import Channel, Message, Schema  # noqa: F401
+
+    from ray.data._internal.util import RetryingPyFileSystem
+    from ray.data.datasource.partitioning import Partitioning
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +157,9 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
         """
         from ray.data.datasource.file_meta_provider import _expand_paths
 
-        for path, file_size in _expand_paths(paths, filesystem, partitioning, ignore_missing_paths):
+        for path, file_size in _expand_paths(
+            paths, filesystem, partitioning, ignore_missing_paths
+        ):
             if not path.endswith(".mcap"):
                 continue
 
@@ -277,7 +279,9 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
 
         return num_messages, start_time, end_time
 
-    def _get_file_size(self, path: str, filesystem: "RetryingPyFileSystem") -> Optional[int]:
+    def _get_file_size(
+        self, path: str, filesystem: "RetryingPyFileSystem"
+    ) -> Optional[int]:
         """Get file size from filesystem."""
         try:
             file_info = filesystem.get_file_info(path)
@@ -312,7 +316,9 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
         """
         # If metadata is empty (no summary in file), include it conservatively
         # Filtering will happen at message-read time
-        has_metadata = bool(metadata.topics or metadata.message_types or metadata.start_time)
+        has_metadata = bool(
+            metadata.topics or metadata.message_types or metadata.start_time
+        )
 
         if not has_metadata:
             # No metadata available, include file and filter at message level
@@ -323,7 +329,9 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
             return False
 
         # Filter by message types - file must contain at least one requested type
-        if self._message_types and not metadata.message_types.intersection(self._message_types):
+        if self._message_types and not metadata.message_types.intersection(
+            self._message_types
+        ):
             return False
 
         # Filter by time range - file must overlap with requested range
@@ -438,7 +446,9 @@ class MCAPDatasource(FileBasedDatasource):
         """
         # Use MCAP-specific metadata provider if none provided
         meta_provider = file_based_datasource_kwargs.get("meta_provider")
-        if meta_provider is None or isinstance(meta_provider, DefaultFileMetadataProvider):
+        if meta_provider is None or isinstance(
+            meta_provider, DefaultFileMetadataProvider
+        ):
             meta_provider = MCAPFileMetadataProvider(
                 topics=topics,
                 time_range=time_range,
@@ -503,9 +513,11 @@ class MCAPDatasource(FileBasedDatasource):
         new_topics = self._merge_filters(self._topics, topics)
         new_message_types = self._merge_filters(self._message_types, message_types)
         new_time_range = self._merge_time_ranges(self._time_range, time_range)
+        # Combine predicates using AND (matching default mixin behavior)
+        # _predicate_expr is initialized by _DatasourcePredicatePushdownMixin.__init__()
         new_predicate_expr = (
             self._predicate_expr & predicate_expr
-            if self._predicate_expr
+            if self._predicate_expr is not None
             else predicate_expr
         )
 
@@ -575,7 +587,9 @@ class MCAPDatasource(FileBasedDatasource):
         time_range_end = None
         message_types = None
 
-        def add_to_set(current: Optional[Set], new_values: Union[Any, Set, List]) -> Set:
+        def add_to_set(
+            current: Optional[Set], new_values: Union[Any, Set, List]
+        ) -> Set:
             """Helper to add values to a set."""
             if isinstance(new_values, (list, tuple)):
                 new_values = set(new_values)
@@ -792,7 +806,9 @@ class MCAPDatasource(FileBasedDatasource):
                 except Exception as e:
                     # If predicate conversion fails, log and continue without filtering
                     # This can happen with unsupported expressions
-                    logger.debug(f"Could not apply predicate expression to MCAP block: {e}")
+                    logger.debug(
+                        f"Could not apply predicate expression to MCAP block: {e}"
+                    )
 
             yield block
 
