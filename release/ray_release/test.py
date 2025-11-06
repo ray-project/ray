@@ -594,6 +594,8 @@ class Test(dict):
                 "r",
             ) as f:
                 custom_content += f.read()
+
+        time.sleep(1000000)
         tag = f"{self.get_byod_base_image_tag(build_id)}-{dict_hash(custom_content)}"
         ray_version = self.get_ray_version()
         if ray_version:
