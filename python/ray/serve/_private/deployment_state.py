@@ -3078,13 +3078,17 @@ class DeploymentState:
             return
 
         result = set()
+        has_polled = False
         for replica in running_replicas:
             outbound_deployments = replica.poll_outbound_deployments(
                 self._outbound_poll_delay
             )
             if outbound_deployments is not None:
                 result.update(outbound_deployments)
-        if not result:
+                has_polled = True
+
+        if not has_polled:
+            # None of the replicas have polled yet.
             return
 
         if not self._outbound_deployments_cache:
