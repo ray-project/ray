@@ -313,6 +313,17 @@ class StorageContext:
     """Shared context that holds the source of truth for all paths and
     storage utilities, passed along from the driver to workers.
 
+    Args:
+        storage_path: Path where all results and checkpoints are persisted.
+            Can be a local directory or a remote URI (e.g., s3://bucket/path).
+        experiment_dir_name: Name of the experiment directory within the storage path.
+        storage_filesystem: Optional custom PyArrow filesystem to use for storage.
+            If not provided, will be auto-resolved from the storage_path URI.
+        skip_validation: If True, skips creating and checking the storage validation
+            marker file. This should be set to True for read-only operations (e.g.,
+            restoring from an existing experiment directory) to avoid unnecessary
+            file system writes. Defaults to False.
+
     This object defines a few types of paths:
     1. *_fs_path: A path on the `storage_filesystem`. This is a regular path
         which has been prefix-stripped by pyarrow.fs.FileSystem.from_uri and

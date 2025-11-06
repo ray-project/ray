@@ -188,12 +188,11 @@ def test_result_restore(
     assert len(result.best_checkpoints) == num_checkpoints
 
     """
-    Top-3 checkpoints with metrics:
+    Top-2 checkpoints with metrics:
 
                         | iter   | metric_a    metric_b
-    checkpoint_000004        4            4          -4
-    checkpoint_000003        3            3          -3
     checkpoint_000002        2            2          -2
+    checkpoint_000001        1            1          -1
     """
     # Check if the checkpoints bounded with correct metrics
     best_ckpt_a = result.get_best_checkpoint(metric="metric_a", mode="max")
