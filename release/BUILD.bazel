@@ -942,7 +942,7 @@ py_library(
 py_binary(
     name = "custom_image_build_and_test_init",
     srcs = ["ray_release/scripts/custom_image_build_and_test_init.py"],
-    data = glob(["release_*.yaml"]),
+    data = glob(["release_*.yaml"]) + glob(["ray_release/byod/*.sh"]),
     exec_compatible_with = ["//:hermetic_python"],
     deps = [
         ":ray_release",
