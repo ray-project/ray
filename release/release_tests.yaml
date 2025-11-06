@@ -2439,6 +2439,7 @@
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py --experimental
 
 - name: compiled_graphs_GPU
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2454,6 +2455,7 @@
     script: python experimental/compiled_graph_gpu_microbenchmark.py
 
 - name: compiled_graphs_GPU_multinode
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2469,6 +2471,7 @@
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
 - name: gpu_object_GPU
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2484,6 +2487,7 @@
     script: python experimental/gpu_object_microbenchmark.py
 
 - name: gpu_object_GPU_multinode
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2833,6 +2837,7 @@
         frequency: manual
 
 - name: single_node_oom
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2884,6 +2889,7 @@
 
 
 - name: many_nodes_actor_test_on_v2
+  python: "3.10"
   group: core-daily-test
   working_dir: benchmarks
 
