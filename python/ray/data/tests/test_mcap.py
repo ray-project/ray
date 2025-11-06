@@ -575,14 +575,61 @@ def test_mcap_predicate_pushdown_combined(
     assert all(row["log_time"] >= cutoff_time for row in rows)
     assert all(row["data"]["file"] == 3 for row in rows)
 
-    # Test with OR logic
+    # Test with OR logic - same column (should be pushed down correctly)
     ds_filtered2 = ds.filter(
         (col("topic") == "/topic_a") | (col("topic") == "/topic_b")
     )
     rows2 = ds_filtered2.take_all()
     topics2 = {row["topic"] for row in rows2}
     assert topics2 == {"/topic_a", "/topic_b"}
-    assert len(rows2) == 14  # All messages except topic_c (if any)
+    assert len(rows2) == 14  # All messages from topic_a and topic_b
+
+
+def test_mcap_predicate_pushdown_or_same_column(
+    ray_start_regular_shared, multi_topic_mcap_file
+):
+    """Test that OR expressions with the same column are correctly pushed down.
+
+    This test verifies the fix for recursive column extraction in OR expressions.
+    Expressions like (col("topic") == "/a") | (col("topic") == "/b") should
+    be detected as referencing the same column and pushed down correctly.
+
+    Previously, get_column_name() only checked direct ColumnExpr objects, causing
+    it to return None for BinaryExpr objects like (col("topic") == value), which
+    prevented can_pushdown_or() from detecting that both sides reference the
+    same column.
+    """
+    from ray.data.expressions import col
+
+    # Test OR with same column (topic) - should be pushed down
+    ds = ray.data.read_mcap(multi_topic_mcap_file)
+    ds_filtered = ds.filter(
+        (col("topic") == "/topic_a") | (col("topic") == "/topic_b")
+    )
+
+    rows = ds_filtered.take_all()
+    topics = {row["topic"] for row in rows}
+    assert topics == {"/topic_a", "/topic_b"}
+    assert len(rows) == 6  # 2/3 of messages (3 per topic, 2 topics)
+
+    # Test OR with same column (schema_name) - should be pushed down
+    ds2 = ray.data.read_mcap(multi_topic_mcap_file, include_metadata=True)
+    ds_filtered2 = ds2.filter(
+        (col("schema_name") == "test_schema") | (col("schema_name") == "test_schema")
+    )
+    rows2 = ds_filtered2.take_all()
+    # All messages use test_schema, so should get all 9
+    assert len(rows2) == 9
+    assert all(row["schema_name"] == "test_schema" for row in rows2)
+
+    # Test OR with different columns (should still work, but not optimized)
+    ds_filtered3 = ds.filter(
+        (col("topic") == "/topic_a") | (col("log_time") > 1000000000)
+    )
+    rows3 = ds_filtered3.take_all()
+    # Should get topic_a messages OR messages with log_time > base_time
+    # Since all messages have log_time > base_time, should get all messages
+    assert len(rows3) == 9
 
 
 def test_mcap_predicate_pushdown_with_initial_filter(

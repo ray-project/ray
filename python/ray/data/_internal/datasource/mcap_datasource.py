@@ -592,6 +592,48 @@ class MCAPDatasource(FileBasedDatasource):
                 return expr.value
             return None
 
+        def get_column_name(expr: Expr) -> Optional[str]:
+            """Recursively extract column name from an expression.
+
+            This function traverses nested BinaryExpr objects to find ColumnExpr
+            nodes. For example, it can extract "topic" from (col("topic") == value).
+
+            Args:
+                expr: Expression to extract column name from.
+
+            Returns:
+                Column name if found, None otherwise.
+            """
+            if isinstance(expr, ColumnExpr):
+                return expr.name
+            if isinstance(expr, BinaryExpr):
+                # Recursively check left side (columns are typically on the left)
+                left_col = get_column_name(expr.left)
+                if left_col:
+                    return left_col
+                # Check right side as fallback
+                return get_column_name(expr.right)
+            return None
+
+        def can_pushdown_or(left_expr: Expr, right_expr: Expr) -> bool:
+            """Check if an OR expression can be pushed down.
+
+            An OR expression can be pushed down if both sides reference the same
+            column with equality comparisons. For example:
+            - (col("topic") == "/a") | (col("topic") == "/b") -> True
+            - (col("topic") == "/a") | (col("log_time") > 1000) -> False
+
+            Args:
+                left_expr: Left side of OR expression.
+                right_expr: Right side of OR expression.
+
+            Returns:
+                True if both sides reference the same column, False otherwise.
+            """
+            left_col = get_column_name(left_expr)
+            right_col = get_column_name(right_expr)
+            return left_col is not None and left_col == right_col
+
         def visit_expr(expr: Expr):
             nonlocal topics, time_range_start, time_range_end, message_types
 
@@ -604,10 +646,20 @@ class MCAPDatasource(FileBasedDatasource):
                 visit_expr(expr.right)
                 return
 
-            # Handle OR operations - recursively visit both sides
+            # Handle OR operations
             if expr.op == Operation.OR:
-                visit_expr(expr.left)
-                visit_expr(expr.right)
+                # Optimize OR expressions where both sides reference the same column
+                # For example: (col("topic") == "/a") | (col("topic") == "/b")
+                # This can be pushed down as topics={"/a", "/b"}
+                if can_pushdown_or(expr.left, expr.right):
+                    # Both sides reference the same column, extract values from both
+                    visit_expr(expr.left)
+                    visit_expr(expr.right)
+                else:
+                    # Different columns or complex expressions - recursively visit both sides
+                    # This will still extract filters, but may not be optimal
+                    visit_expr(expr.left)
+                    visit_expr(expr.right)
                 return
 
             # Process binary operations with column on left
