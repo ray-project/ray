@@ -8,8 +8,6 @@ jupyter nbconvert "$nb_filename" --to markdown --output "README.md"
 
 **Time to complete**: 40 min | **Difficulty**: Intermediate | **Prerequisites**: ETL concepts, basic SQL knowledge, data processing experience
 
-## What you'll build
-
 Build comprehensive ETL pipelines using Ray Data's distributed processing capabilities, from foundational concepts with TPC-H benchmark to production-scale optimization techniques for enterprise data processing.
 
 ## Table of Contents
@@ -23,7 +21,7 @@ Build comprehensive ETL pipelines using Ray Data's distributed processing capabi
 
 **Why ETL optimization matters**: The difference between fast and slow data pipelines directly impacts business agility and operational costs. Understanding optimization techniques enables data teams to deliver insights faster while reducing infrastructure costs.
 
-**Ray Data's ETL capabilities**: Native operations for distributed processing that automatically optimize memory, CPU, and I/O utilization. You'll learn how Ray Data's architecture enables efficient processing of large datasets.
+**Ray Data's ETL capabilities**: Native operations for distributed processing that automatically optimize memory, CPU, and I/O utilization. Learn how Ray Data's architecture enables efficient processing of large datasets.
 
 **TPC-H benchmark patterns**: Learn ETL fundamentals using the TPC-H sample pipeline that simulates complex business environments with customers, orders, suppliers, and products.
 
@@ -64,7 +62,7 @@ ctx = ray.data.DataContext.get_current()
 ctx.enable_progress_bars = False
 ctx.enable_operator_progress_bars = False
 
-# Reinitialize Ray so we can set the Ray Data context
+# Reinitialize Ray to set the Ray Data context
 ray.init(ignore_reinit_error=True)
 
 # Load sample dataset for ETL demonstration
@@ -84,7 +82,7 @@ sample_data = sample_data.rename_columns([
     "c_comment",
     ])
 
-# Note: For large datasets, we don't want to use count() because it will load the entire dataset into memory
+# Note: For large datasets, don't use count() because it loads the entire dataset into memory
 print(f"Loaded ETL sample dataset: {sample_data.count()} records")
 print(f"Schema: {sample_data.schema()}")
 print("\nSample records:")
@@ -332,14 +330,14 @@ print(stats_df.to_string(index=False))
 
 ## Step 2: Data Transformations and Processing
 
-This section demonstrates how Ray Data handles common ETL transformation patterns including data enrichment, filtering, and complex business logic. You'll learn to build production-grade transformations that scale efficiently.
+This section demonstrates how Ray Data handles common ETL transformation patterns including data enrichment, filtering, and complex business logic. Learn to build production-grade transformations that scale efficiently.
 
-### Why do we split up the stages?
+### Why split up the stages?
 
 Modern data pipelines often organize data into progressive layers, each adding more structure and value:
 
 - **Raw Layer**: The first stage stores unprocessed, ingested data exactly as it arrives, preserving fidelity and acting as a source of truth for traceability.
-- **Cleaned/Enriched Layer**: Here, data quality improvements, type conversions, deduplication, and light enrichment are performed. The result is standardized, trusted data, ready for analytical processing.
+- **Cleaned/Enriched Layer**: Here, the pipeline performs data quality improvements, type conversions, deduplication, and light enrichment. This layer produces standardized, trusted data, ready for analytical processing.
 - **Business Layer**: The final layer aggregates, joins, or otherwise transforms the silver data to create business-driven tables and metrics, serving dashboards, reports, and advanced analytics.
 
 This staged approach separates concerns and enables teams to reprocess or backfill data efficiently, while delivering trustworthy, production-ready datasets to downstream consumers. 
@@ -360,7 +358,7 @@ Data transformations convert raw data into business-valuable information. Common
 
 <div style="margin:1em 0; padding:12px 16px; border-left:4px solid #2e7d32; background:#f1f8e9; border-radius:4px;">
 
-  **GPU Acceleration for Pandas ETL Operations**: For complex pandas transformations in your ETL pipeline, you can use **NVIDIA RAPIDS cuDF** to accelerate DataFrame operations on GPUs. 
+  **GPU Acceleration for Pandas ETL Operations**: For complex pandas transformations in your ETL pipeline, you can use **Nvidia RAPIDS cuDF** to accelerate DataFrame operations on GPUs. 
   
   Replace `import pandas as pd` with `import cudf as pd` in your `map_batches` functions to use GPU acceleration for operations like datetime parsing, groupby, joins, and aggregations.
 
@@ -454,9 +452,9 @@ print(f"   Is Urgent: {sample.get('is_urgent')}")
 
 Filtering is a crucial phase in ETL pipelines for both reducing data volume earlier and improving query performance. By removing unnecessary rows up front, subsequent transformations and aggregations become faster and require less memory. 
 
-Whenever possible, filters should be applied immediately after reading data—a pattern known as filter pushdown or predicate pushdown. This allows underlying data sources or distributed compute engines to prune unneeded data blocks before they are loaded or distributed across the cluster, significantly reducing data transfer and CPU costs. Ray Data supports applying these predicates right after loading, so you should apply filters as early as practical in your data pipeline to maximize efficiency.
+Whenever possible, apply filters immediately after reading data—a pattern known as filter pushdown or predicate pushdown. This allows underlying data sources or distributed compute engines to prune unneeded data blocks before loading or distributing them across the cluster, significantly reducing data transfer and CPU costs. Ray Data supports applying these predicates right after loading, so you should apply filters as early as practical in your data pipeline to maximize efficiency.
 
-Below, we explore advanced filtering techniques using Ray Data's expression API.
+Below, the tutorial explores advanced filtering techniques using Ray Data's expression API.
 
 
 ```python
@@ -720,7 +718,7 @@ In modern enterprise environments, it's increasingly common to see a diversified
 
 This heterogeneous landscape brings several benefits. By leveraging the unique strengths of each platform, enterprises can serve varied application types more efficiently—ranging from business reporting and ad hoc analytics to real-time machine learning and AI. It also provides flexibility, as teams are no longer forced into one-size-fits-all solutions, and can integrate with multiple data sources and sinks as their needs evolve.
  
-In this context, having native integrations with a variety of warehouses and analytic stores is not just common—it's a strategic advantage. Ray Data's ability to connect directly with popular systems like Snowflake, BigQuery, Delta Lake, and Parquet allows teams to build robust, production-grade pipelines while taking full advantage of the specialized capabilities of each data platform in their stack.
+In this context, having native integrations with a variety of warehouses and analytic stores isn't just common—it's a strategic advantage. Ray Data's ability to connect directly with popular systems like Snowflake, BigQuery, Delta Lake, and Parquet allows teams to build robust, production-grade pipelines while taking full advantage of the specialized capabilities of each data platform in their stack.
 
 
 

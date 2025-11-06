@@ -6,9 +6,7 @@ jupyter nbconvert "$nb_filename" --to markdown --output "README.md"
 
 # Unstructured Data Ingestion and Processing With Ray Data
 
-**Time to complete**: 35 min | **Difficulty**: Advanced | **Prerequisites**: Data engineering experience, document processing, basic NLP knowledge
-
-## What you'll build
+**Time to complete**: 35 min | **Difficulty**: Advanced | **Prerequisites**: Data engineering experience, document processing, basic natural language processing (NLP) knowledge
 
 Build a comprehensive document ingestion pipeline that transforms unstructured documents from data lakes into structured, analytics-ready datasets using Ray Data's distributed processing capabilities for enterprise data warehouse workflows.
 
@@ -42,7 +40,7 @@ Build a comprehensive document ingestion pipeline that transforms unstructured d
 **Solution**: Ray Data enables end-to-end document ingestion pipelines with native distributed operations for processing millions of documents efficiently.
 
 - **Scale**: Using Streaming Execution and massive scalability capabilities to process petabytes or even exabytes of data.
-- **Consistency**: A flexible API for supporting quality checks through `map` as well as support for any type of PyArrow schema. All data read also has to be consistent or else the pipeline will fail along with additional configuration options for this behavior.
+- **Consistency**: A flexible API for supporting quality checks through `map` as well as support for any type of PyArrow schema. All data read also has to be consistent or else the pipeline fails along with additional configuration options for this behavior.
 - **Integration**: Supports integration with all data types as well as any AI types, running on CPUs/GPUs/Accelerators on cloud and on-prem
 - **Warehouse integration**: Pre-built connectors to popular data warehouses as well as having the ability to build custom connectors easily.
 - **Increasing data sizes**: Can be used for single node optimization to scaling across 10k+ nodes
@@ -83,7 +81,7 @@ ctx = ray.data.DataContext.get_current()
 ctx.enable_progress_bars = False
 ctx.enable_operator_progress_bars = False
 
-# Initialize Ray cluster connection so we can set the Ray Data context
+# Initialize Ray cluster connection to set the Ray Data context
 ray.init(ignore_reinit_error=True)
 ```
 
@@ -510,14 +508,14 @@ def create_text_chunks(record: Dict[str, Any]) -> List[Dict[str, Any]]:
     # - 150 char overlap ≈ 10% overlap (preserves context without too much redundancy)
     # - You can adjust these based on your use case
     
-    # Let's create chunks of data by a sliding window
+    # Create chunks of data by a sliding window
     chunks = []
     start = 0  # Starting position in the text
     chunk_index = 0  # Track which chunk number this is
 
-    # There are many more advanced chunking methods, we'll use this simple technique for demo purposes
+    # There are many more advanced chunking methods, this example uses a simple technique for demo purposes
     
-    # Loop until we've processed all the text
+    # Loop until processing all the text
     while start < len(text):
         # Calculate end position (don't go past text length)
         end = min(start + chunk_size, len(text))
@@ -603,7 +601,7 @@ processing_date = datetime.now().isoformat()[:10]
 
 
 # Data warehouses need clean, organized schemas
-# We'll select only the columns we need and organize them logically
+# Select only the columns needed and organize them logically
 #
 # Why not keep all columns?
 # - Cleaner schema = easier queries
@@ -847,15 +845,15 @@ quality_distribution.write_parquet(
 
 ## Verification and Summary
 
-After writing data to the warehouse, it's important to verify everything worked correctly. This section demonstrates:
+After writing data to the warehouse, verify everything worked correctly. This section demonstrates:
 
 **Why verification matters:**
-- Ensures data was written successfully
+- Ensures the pipeline wrote data successfully
 - Validates record counts match expectations
 - Confirms schema is correct
 - Provides sample data for visual inspection
 
-**What we'll verify:**
+**What to verify:**
 1. Main table record count (should be 10,000+ chunks)
 2. Summary tables exist and have data
 3. Schema includes all expected columns
@@ -871,13 +869,13 @@ After writing data to the warehouse, it's important to verify everything worked 
 # This is a critical production practice
 print("Verifying data warehouse integration...")
 
-# Use Ray Data's read_parquet() to read what we just wrote
+# Use Ray Data's read_parquet() to read what was just written
 # This verifies:
 # 1. Files were written successfully
 # 2. Partitioning works correctly
 # 3. Data can be read back (no corruption)
 #
-# Ray Data will automatically discover all partitions:
+# Ray Data automatically discovers all partitions:
 # - main_table/business_category=finance/processing_date=2025-10-15/*.parquet
 # - main_table/business_category=legal/processing_date=2025-10-15/*.parquet
 # - etc.
@@ -923,7 +921,7 @@ for i, record in enumerate(samples):
 
 ## Summary and Next Steps
 
-Congratulations! You've built a complete end-to-end document ingestion pipeline using Ray Data. Let's review what you learned and where to go from here.
+You have built a complete end-to-end document ingestion pipeline using Ray Data. This section reviews what you learned and where to go from here.
 
 ### What You Built
 

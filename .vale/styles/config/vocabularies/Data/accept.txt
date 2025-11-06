@@ -37,3 +37,16 @@ XGBoost
 YOLO
 [Ss]harding
 [Ss]harded
+[Dd]atabricks
+[Dd]ocstrings
+[pP][aA][rR][tT]
+PARTSUPP
+[Rr]ollups
+[Dd]atetime
+ad hoc
+hoc
+[Pp][Dd][Ff]s
+[Qq]ueryable
+NLP
+process_file
+assess_quality
