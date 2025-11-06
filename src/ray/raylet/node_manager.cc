@@ -50,6 +50,7 @@
 #include "ray/raylet/worker_killing_policy_group_by_owner.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
@@ -254,8 +255,9 @@ NodeManager::NodeManager(
   // Run the node manager rpc server.
   node_manager_server_.RegisterService(
       std::make_unique<rpc::NodeManagerGrpcService>(io_service, *this), false);
-  node_manager_server_.RegisterService(
-      std::make_unique<syncer::RaySyncerService>(ray_syncer_));
+  // Pass auth token from the RPC server to the syncer service
+  node_manager_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(
+      ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken()));
   node_manager_server_.Run();
   // GCS will check the health of the service named with the node id.
   // Fail to setup this will lead to the health check failure.
@@ -452,7 +454,7 @@ void NodeManager::RegisterGcs() {
                     << "GCS consider this node to be dead. This may happen when "
                     << "GCS is not backed by a DB and restarted or there is data loss "
                     << "in the DB.";
-              } else if (status.IsAuthError()) {
+              } else if (status.IsUnauthenticated()) {
                 RAY_LOG(FATAL)
                     << "GCS returned an authentication error. This may happen when "
                     << "GCS is not backed by a DB and restarted or there is data loss "
@@ -545,9 +547,8 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
         (worker->GetAssignedJobId() == job_id)) {
       // Don't kill worker processes belonging to the detached actor
       // since those are expected to outlive the job.
-      RAY_LOG(INFO).WithField(worker->WorkerId())
-          << "The leased worker "
-          << " is killed because the job " << job_id << " finished.";
+      RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(job_id)
+          << "Killing leased worker because its job finished.";
       rpc::ExitRequest request;
       request.set_force_exit(true);
       worker->rpc_client()->Exit(
@@ -948,7 +949,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
     // If the leased worker's owner was on the failed node, then kill the leased
     // worker.
     RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(owner_node_id)
-        << "The leased worker is killed because the owner node died.";
+        << "Killing leased worker because its owner's node died.";
     worker->KillAsync(io_service_);
   }
 
@@ -989,9 +990,10 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
       continue;
     }
     // If the failed worker was a leased worker's owner, then kill the leased worker.
-    RAY_LOG(INFO) << "The leased worker " << worker->WorkerId()
-                  << " is killed because the owner process " << owner_worker_id
-                  << " died.";
+    RAY_LOG(INFO)
+            .WithField(worker->WorkerId())
+            .WithField("owner_worker_id", owner_worker_id)
+        << "Killing leased worker because its owner died.";
     worker->KillAsync(io_service_);
   }
 }
@@ -1053,6 +1055,8 @@ bool NodeManager::ResourceDeleted(const NodeID &node_id,
 void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
                                          rpc::NotifyGCSRestartReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO)
+      << "The GCS has restarted. Resubscribing to pubsub and notifying local workers.";
   // When GCS restarts, it'll notify raylet to do some initialization work
   // (resubscribing). Raylet will also notify all workers to do this job. Workers are
   // registered to raylet first (blocking call) and then connect to GCS, so there is no
@@ -1090,10 +1094,9 @@ void NodeManager::HandleClientConnectionError(
       error.value(),
       ". ",
       error.message(),
-      ". There are some potential root causes. (1) The process is killed by "
-      "SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is "
-      "called. (3) The worker is crashed unexpectedly due to SIGSEGV or other "
-      "unexpected errors.");
+      ". Some common causes include: (1) the process was killed by the OOM killer "
+      "due to high memory usage, (2) ray stop --force was called, or (3) the worker "
+      "crashed unexpectedly due to SIGSEGV or another unexpected error.");
 
   // Disconnect the client and don't process more messages.
   DisconnectClient(
@@ -1413,31 +1416,27 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    rpc::WorkerExitType disconnect_type,
                                    const std::string &disconnect_detail,
                                    const rpc::RayException *creation_task_exception) {
-  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
-  if (worker) {
-    // The client is a worker.
+  std::shared_ptr<WorkerInterface> worker;
+  if ((worker = worker_pool_.GetRegisteredWorker(client))) {
     is_worker = true;
+    RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(worker->GetAssignedJobId())
+        << "Disconnecting worker, graceful=" << std::boolalpha << graceful
+        << ", disconnect_type=" << disconnect_type
+        << ", has_creation_task_exception=" << std::boolalpha
+        << (creation_task_exception != nullptr);
+  } else if ((worker = worker_pool_.GetRegisteredDriver(client))) {
+    is_driver = true;
+    RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(worker->GetAssignedJobId())
+        << "Disconnecting driver, graceful=" << std::boolalpha << graceful
+        << ", disconnect_type=" << disconnect_type;
   } else {
-    worker = worker_pool_.GetRegisteredDriver(client);
-    if (worker) {
-      // The client is a driver.
-      is_driver = true;
-    } else {
-      RAY_LOG(INFO)
-          << "Not disconnecting client disconnect it has already been disconnected.";
-      return;
-    }
+    RAY_LOG(INFO) << "Got disconnect message from an unregistered client, ignoring.";
+    return;
   }
 
-  RAY_LOG(INFO).WithField(worker->WorkerId())
-      << "Disconnecting client, graceful=" << std::boolalpha << graceful
-      << ", disconnect_type=" << disconnect_type
-      << ", has_creation_task_exception=" << std::boolalpha
-      << (creation_task_exception != nullptr);
+  RAY_CHECK(is_worker != is_driver) << "Client must be a registered worker or driver.";
 
-  RAY_CHECK(worker != nullptr);
-  RAY_CHECK(!(is_worker && is_driver));
   // Clean up any open ray.get or ray.wait calls that the worker made.
   lease_dependency_manager_.CancelGetRequest(worker->WorkerId());
   lease_dependency_manager_.CancelWaitRequest(worker->WorkerId());
@@ -1809,7 +1808,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
                                            rpc::SendReplyCallback send_reply_callback) {
   auto lease_id = LeaseID::FromBinary(request.lease_spec().lease_id());
   // If the lease is already granted, this is a retry and forward the address of the
-  // already leased worker to use.
+  // already leased worker to use
   if (leased_workers_.contains(lease_id)) {
     const auto &worker = leased_workers_[lease_id];
     RAY_LOG(DEBUG) << "Lease " << lease_id
@@ -1847,9 +1846,6 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
     actor_id = lease.GetLeaseSpecification().ActorId();
   }
 
-  const auto &lease_spec = lease.GetLeaseSpecification();
-  worker_pool_.PrestartWorkers(lease_spec, request.backlog_size());
-
   auto send_reply_callback_wrapper =
       [this, is_actor_creation_task, actor_id, reply, send_reply_callback](
           Status status, std::function<void()> success, std::function<void()> failure) {
@@ -1880,11 +1876,34 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
         send_reply_callback(status, std::move(success), std::move(failure));
       };
 
-  cluster_lease_manager_.QueueAndScheduleLease(std::move(lease),
-                                               request.grant_or_reject(),
-                                               request.is_selected_based_on_locality(),
-                                               reply,
-                                               std::move(send_reply_callback_wrapper));
+  if (cluster_lease_manager_.IsLeaseQueued(
+          lease.GetLeaseSpecification().GetSchedulingClass(), lease_id)) {
+    RAY_CHECK(cluster_lease_manager_.AddReplyCallback(
+        lease.GetLeaseSpecification().GetSchedulingClass(),
+        lease_id,
+        std::move(send_reply_callback_wrapper),
+        reply));
+    return;
+  }
+
+  if (local_lease_manager_.IsLeaseQueued(
+          lease.GetLeaseSpecification().GetSchedulingClass(), lease_id)) {
+    RAY_CHECK(local_lease_manager_.AddReplyCallback(
+        lease.GetLeaseSpecification().GetSchedulingClass(),
+        lease_id,
+        std::move(send_reply_callback_wrapper),
+        reply));
+    return;
+  }
+
+  const auto &lease_spec = lease.GetLeaseSpecification();
+  worker_pool_.PrestartWorkers(lease_spec, request.backlog_size());
+
+  cluster_lease_manager_.QueueAndScheduleLease(
+      std::move(lease),
+      request.grant_or_reject(),
+      request.is_selected_based_on_locality(),
+      {internal::ReplyCallback(std::move(send_reply_callback_wrapper), reply)});
 }
 
 void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
@@ -2200,8 +2219,7 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
       cluster_lease_manager_.QueueAndScheduleLease(work->lease_,
                                                    work->grant_or_reject_,
                                                    work->is_selected_based_on_locality_,
-                                                   work->reply_,
-                                                   work->send_reply_callback_);
+                                                   work->reply_callbacks_);
     }
   }
 }
@@ -3337,6 +3355,68 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
       this->shutdown_raylet_gracefully_,
       true,
       add_process_to_system_cgroup_hook_);
+}
+
+void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
+                                       rpc::KillLocalActorReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  auto worker =
+      worker_pool_.GetRegisteredWorker(WorkerID::FromBinary(request.worker_id()));
+  // If the worker is not registered, then it must have already been killed
+  if (!worker || worker->IsDead()) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
+  auto worker_id = worker->WorkerId();
+
+  rpc::KillActorRequest kill_actor_request;
+  kill_actor_request.set_intended_actor_id(request.intended_actor_id());
+  kill_actor_request.set_force_kill(request.force_kill());
+  kill_actor_request.mutable_death_cause()->CopyFrom(request.death_cause());
+  std::shared_ptr<bool> replied = std::make_shared<bool>(false);
+
+  auto timer = execute_after(
+      io_service_,
+      [this, send_reply_callback, worker_id, replied]() {
+        auto current_worker = worker_pool_.GetRegisteredWorker(worker_id);
+        if (current_worker) {
+          // If the worker is still alive, force kill it
+          RAY_LOG(INFO) << "Worker with PID=" << current_worker->GetProcess().GetId()
+                        << " did not exit after "
+                        << RayConfig::instance().kill_worker_timeout_milliseconds()
+                        << "ms, force killing with SIGKILL.";
+          DestroyWorker(current_worker,
+                        rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+                        "Actor killed by GCS",
+                        /*force=*/true);
+        }
+
+        *replied = true;
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      },
+      std::chrono::milliseconds(
+          RayConfig::instance().kill_worker_timeout_milliseconds()));
+
+  worker->rpc_client()->KillActor(
+      kill_actor_request,
+      [actor_id = ActorID::FromBinary(request.intended_actor_id()),
+       timer,
+       send_reply_callback,
+       replied](const ray::Status &status, const rpc::KillActorReply &) {
+        if (!status.ok() && !*replied) {
+          std::ostringstream stream;
+          stream << "KillActor RPC failed for actor " << actor_id << ": "
+                 << status.ToString();
+          const auto &msg = stream.str();
+          RAY_LOG(DEBUG) << msg;
+          timer->cancel();
+          send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
+        }
+        // NOTE: on a successful kill, we don't expect a reply back from the dead actor.
+        // The only case where we receive a reply is if the mismatched actor ID check is
+        // triggered.
+      });
 }
 
 }  // namespace ray::raylet

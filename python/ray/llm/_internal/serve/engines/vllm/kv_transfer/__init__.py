@@ -1,16 +1,5 @@
-from typing import Dict
+"""KV Transfer connector backends for Ray Serve LLM.
 
-from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
-    BaseConnectorBackend,
-)
-from ray.llm._internal.serve.engines.vllm.kv_transfer.lmcache import (
-    LMCacheConnectorV1Backend,
-)
-from ray.llm._internal.serve.engines.vllm.kv_transfer.nixl import (
-    NixlConnectorBackend,
-)
-
-SUPPORTED_BACKENDS: Dict[str, BaseConnectorBackend] = {
-    "LMCacheConnectorV1": LMCacheConnectorV1Backend,
-    "NixlConnector": NixlConnectorBackend,
-}
+This package provides connector backends for KV cache transfer in vLLM.
+All backends are lazily loaded through the factory to avoid circular imports.
+"""
