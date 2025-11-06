@@ -2,6 +2,12 @@ build_arg_sets:
   py311:
     PYTHON_VERSION: "3.11"
     PYTHON_SHORT: "311"
+  py312:
+    PYTHON_VERSION: "3.12"
+    PYTHON_SHORT: "312"
+  py313:
+    PYTHON_VERSION: "3.13"
+    PYTHON_SHORT: "313"
 
 
 depsets:
@@ -36,3 +42,4 @@ depsets:
       - --no-header
     build_arg_sets:
       - py311
+      - py312
