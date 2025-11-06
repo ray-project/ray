@@ -319,7 +319,7 @@
 #################
 
 - name: "iter_batches_{{format}}"
-
+  python: "3.10"
   matrix:
     setup:
       format: [numpy, pandas, pyarrow]
@@ -332,7 +332,7 @@
       --iter-batches {{format}}
 
 - name: to_tf
-
+  python: "3.10"
   run:
     timeout: 2400
     script: >
@@ -341,7 +341,7 @@
       --to-tf image image
 
 - name: iter_torch_batches
-
+  python: "3.10"
   cluster:
     cluster_compute: fixed_size_gpu_head_compute.yaml
 
@@ -357,17 +357,19 @@
 ###########
 
 - name: map
+  python: "3.10"
   run:
     timeout: 1800
     script: python map_benchmark.py --api map --sf 100
 
 - name: flat_map
+  python: "3.10"
   run:
     timeout: 1800
     script: python map_benchmark.py --api flat_map --sf 100
 
 - name: "map_batches_{{scaling}}_{{compute}}_{{format}}_{{repeat_map_batches}}"
-
+  python: "3.10"
   matrix:
     setup:
       # Fixed-size task tests with different formats.
