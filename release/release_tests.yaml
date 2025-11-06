@@ -839,7 +839,6 @@
 
   variations:
     - __suffix__: aws
-      python: "3.10"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -922,7 +921,6 @@
 
   variations:
     - __suffix__: aws
-      python: "3.10"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1056,7 +1054,6 @@
 
   variations:
     - __suffix__: aws
-      python: "3.10"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1141,7 +1138,6 @@
 
   variations:
     - __suffix__: aws
-      python: "3.10"
     - __suffix__: gce
       env: gce
       frequency: manual
