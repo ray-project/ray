@@ -77,7 +77,7 @@ compile_pip_dependencies() {
     pip install --no-cache-dir numpy torch
 
     pip-compile --verbose --resolver=backtracking \
-      --pip-args --no-deps --strip-extras --no-header \
+      --pip-args --no-deps --no-header \
       --unsafe-package ray \
       --unsafe-package pip \
       --unsafe-package setuptools \

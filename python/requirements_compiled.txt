@@ -24,7 +24,7 @@ adagio==0.2.4
     #   qpd
 adal==1.2.7
     # via msrestazure
-adlfs==2023.8.0
+adlfs[abfs]==2023.8.0
     # via -r python/requirements/cloud-requirements.txt
 aim==3.23.0 ; python_version < "3.12"
     # via -r python/requirements/ml/tune-test-requirements.txt
@@ -36,7 +36,7 @@ aimrocks==0.5.2
     # via aim
 aioboto3==12.1.0
     # via -r python/requirements/ml/data-requirements.txt
-aiobotocore==2.8.0
+aiobotocore[boto3]==2.8.0
     # via
     #   aioboto3
     #   s3fs
@@ -410,7 +410,7 @@ cython==0.29.37
     # via
     #   -r python/requirements/test-requirements.txt
     #   gpy
-dask==2023.6.1 ; python_version < "3.12"
+dask[array,complete,dataframe,diagnostics,distributed]==2023.6.1 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   distributed
@@ -498,7 +498,7 @@ entrypoints==0.4
     #   nbconvert
 et-xmlfile==1.1.0
     # via openpyxl
-etils==1.5.2 ; python_version < "3.12"
+etils[array-types,enp,epath,epy,etqdm,etree]==1.5.2 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   array-record
@@ -506,7 +506,7 @@ etils==1.5.2 ; python_version < "3.12"
     #   tensorflow-datasets
 evaluate==0.4.3
     # via -r python/requirements/ml/train-test-requirements.txt
-everett==3.1.0
+everett[ini]==3.1.0
     # via comet-ml
 execnet==2.1.1
     # via pytest-shutil
@@ -577,7 +577,7 @@ frozenlist==1.4.1
     #   aiosignal
 fs==2.4.16
     # via triad
-fsspec==2023.12.1
+fsspec[http]==2023.12.1
     # via
     #   -r python/requirements.txt
     #   adlfs
@@ -623,7 +623,7 @@ glfw==2.6.3
     #   mujoco
 glom==22.1.0
     # via semgrep
-google-api-core==2.24.2
+google-api-core[grpc]==2.24.2
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   google-api-python-client
@@ -636,7 +636,7 @@ google-api-python-client==2.111.0
     # via -r python/requirements/test-requirements.txt
 google-apitools==0.5.32
     # via gsutil
-google-auth==2.23.4
+google-auth[aiohttp]==2.23.4
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   databricks-sdk
@@ -920,7 +920,7 @@ jsonpointer==2.4
     # via
     #   jsonpatch
     #   jsonschema
-jsonschema==4.23.0
+jsonschema[format-nongpl]==4.23.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -1109,13 +1109,13 @@ more-itertools==10.7.0
     # via configspace
 mosaicml==0.3.1 ; python_version < "3.12"
     # via -r python/requirements/ml/train-test-requirements.txt
-moto==4.2.12
+moto[s3,server]==4.2.12
     # via -r python/requirements/test-requirements.txt
 moviepy==0.2.3.1
     # via -r python/requirements/ml/rllib-test-requirements.txt
 mpmath==1.3.0
     # via sympy
-msal==1.28.1
+msal[broker]==1.28.1
     # via
     #   azure-cli-core
     #   azure-datalake-store
@@ -1684,9 +1684,9 @@ pygments==2.18.0
     #   nbconvert
     #   rich
     #   sphinx
-pyiceberg==0.9.0
+pyiceberg[sql-sqlite]==0.9.0
     # via -r python/requirements/ml/data-test-requirements.txt
-pyjwt==2.8.0
+pyjwt[crypto]==2.8.0
     # via
     #   adal
     #   azure-cli-core
@@ -1815,7 +1815,7 @@ python-dateutil==2.8.2
     #   pandas
     #   segment-analytics-python
     #   strictyaml
-python-jose==3.3.0
+python-jose[cryptography]==3.3.0
     # via moto
 python-json-logger==2.0.7
     # via jupyter-events
@@ -1899,7 +1899,7 @@ regex==2024.5.15
     # via
     #   cfn-lint
     #   transformers
-requests==2.32.3
+requests[socks]==2.32.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -2128,7 +2128,7 @@ six==1.16.0
     #   tensorflow-probability
     #   triad
     #   vapi-runtime
-smart-open==6.2.0
+smart-open[azure,gcs,http,s3]==6.2.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt

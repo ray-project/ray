@@ -17,7 +17,6 @@ from ci.raydepsets.workspace import Depset, Workspace
 
 DEFAULT_UV_FLAGS = """
     --generate-hashes
-    --strip-extras
     --unsafe-package setuptools
     --index-url https://pypi.org/simple
     --index-strategy unsafe-best-match
