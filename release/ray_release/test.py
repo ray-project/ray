@@ -49,6 +49,7 @@ WINDOWS_BISECT_DAILY_RATE_LIMIT = 3
 BISECT_DAILY_RATE_LIMIT = 10
 
 _asyncio_thread_pool = concurrent.futures.ThreadPoolExecutor()
+_bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
 
 def _convert_env_list_to_dict(env_list: List[str]) -> Dict[str, str]:
@@ -578,12 +579,21 @@ class Test(dict):
         python_depset_file = self.get_byod_python_depset()
         custom_content = ""
         if post_build_script:
-            with open(post_build_script, "r") as f:
+            with open(
+                os.path.join(
+                    _bazel_workspace_dir, "ray_release/byod", post_build_script
+                ),
+                "r",
+            ) as f:
                 custom_content += f.read()
         if python_depset_file:
-            with open(python_depset_file, "r") as f:
+            with open(
+                os.path.join(
+                    _bazel_workspace_dir, "ray_release/byod", python_depset_file
+                ),
+                "r",
+            ) as f:
                 custom_content += f.read()
-        print(f"custom_content: {custom_content}")
         tag = f"{self.get_byod_base_image_tag(build_id)}-{dict_hash(custom_content)}"
         ray_version = self.get_ray_version()
         if ray_version:
