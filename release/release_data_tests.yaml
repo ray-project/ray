@@ -321,6 +321,7 @@
 #################
 
 - name: "iter_batches_{{format}}"
+
   matrix:
     setup:
       format: [numpy, pandas, pyarrow]
