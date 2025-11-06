@@ -30,8 +30,8 @@ from ray.autoscaler.v2.tests.util import (
 from ray.core.generated import autoscaler_pb2, autoscaler_pb2_grpc
 from ray.core.generated.autoscaler_pb2 import ClusterResourceState, NodeStatus
 from ray.core.generated.common_pb2 import LabelSelectorOperator
-from ray.util.state.api import list_nodes
 from ray.tests import authentication_test_utils
+from ray.util.state.api import list_nodes
 
 
 def _autoscaler_state_service_stub():
@@ -942,14 +942,9 @@ def test_autoscaler_api_with_token_auth(
 
     Tests request_cluster_resources with valid, invalid, and missing tokens.
     """
-    cluster_info = setup_cluster_with_token_auth
-    cluster = cluster_info["cluster"]
-
     # Setup token state (this changes the client-side token)
     setup_token()
 
-    # Ray is already initialized by the fixture, so just use it
-    # For invalid token test, this creates a mismatch between client and server tokens
     if should_fail:
         # API call should fail with invalid token
         with pytest.raises(Exception) as exc_info:
@@ -962,9 +957,7 @@ def test_autoscaler_api_with_token_auth(
         error_str = str(exc_info.value).lower()
         assert (
             "unauthenticated" in error_str or "invalidauthtoken" in error_str
-        ), (
-            f"request_cluster_resources with {token_state} token should return auth error, got: {exc_info.value}"
-        )
+        ), f"request_cluster_resources with {token_state} token should return auth error, got: {exc_info.value}"
     else:
         # API call should succeed with valid token
         request_cluster_resources(
@@ -975,9 +968,9 @@ def test_autoscaler_api_with_token_auth(
         # Verify the request was successful using the autoscaler state service stub
         stub = _autoscaler_state_service_stub()
         state = get_cluster_resource_state(stub)
-        assert len(state.cluster_resource_constraints) > 0, (
-            f"request_cluster_resources with {token_state} token should succeed"
-        )
+        assert (
+            len(state.cluster_resource_constraints) > 0
+        ), f"request_cluster_resources with {token_state} token should succeed"
 
 
 def _setup_invalid_token():

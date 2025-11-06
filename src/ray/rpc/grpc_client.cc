@@ -16,6 +16,11 @@
 
 #include <grpcpp/support/client_interceptor.h>
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/common/constants.h"
 #include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
@@ -39,8 +44,8 @@ class RayTokenAuthClientInterceptor : public grpc::experimental::Interceptor {
       if (token.has_value() && !token->empty()) {
         // Get the metadata map and add the authorization header
         auto *metadata = methods->GetSendInitialMetadata();
-        metadata->insert(std::make_pair(kAuthTokenKey,
-                                        token->ToAuthorizationHeaderValue()));
+        metadata->insert(
+            std::make_pair(kAuthTokenKey, token->ToAuthorizationHeaderValue()));
       }
     }
     methods->Proceed();
