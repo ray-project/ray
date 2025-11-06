@@ -862,8 +862,7 @@ async def test_api_manager_list_workers(state_api_manager):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("exception",
-    "status_code"),
+    ("exception", "status_code"),
     [
         (None, 200),
         (ValueError("Invalid filter parameter"), 400),
@@ -885,7 +884,7 @@ async def test_handle_list_api_status_codes(
     from ray.dashboard.state_api_utils import handle_list_api
     from ray.util.state.common import ListApiResponse
 
-    # Mock aiohttp request with proper query interface
+    # 1. Mock aiohttp request with proper query interface
     mock_request = MagicMock()
 
     def mock_get(key, default=None):
@@ -894,7 +893,7 @@ async def test_handle_list_api_status_codes(
     mock_request.query = MagicMock()
     mock_request.query.get = mock_get
 
-    # Test 1: Success returns HTTP 200 OK
+    # 2. Mock response whether success or failure.
     if exception is None:
         mock_backend = AsyncMock(
             return_value=ListApiResponse(
@@ -909,6 +908,8 @@ async def test_handle_list_api_status_codes(
         mock_backend = AsyncMock(side_effect=exception)
 
     response = await handle_list_api(mock_backend, mock_request)
+
+    # 3. Assert status_code is correct.
     assert response.status == status_code
 
 
