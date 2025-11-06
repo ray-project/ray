@@ -42,7 +42,7 @@ class ClassPredictor:
         with torch.inference_mode():
             embedding = self.model.get_image_features(**inputs).cpu().numpy()
         outputs = self.predictor.predict_probabilities(
-            collate_fn({"embedding": embedding})
+            collate_fn({"embedding": embedding}, device=self.device)
         )
         return {"probabilities": outputs["probabilities"][0]}
 
