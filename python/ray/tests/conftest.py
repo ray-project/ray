@@ -1519,6 +1519,7 @@ def event_routing_config(request, monkeypatch):
         )
     yield
 
+
 @pytest.fixture
 def cleanup_auth_token_env():
     """Reset authentication environment variables, files, and caches."""

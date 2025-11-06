@@ -419,29 +419,6 @@ def wait_for_dashboard_agent_available(cluster):
     )
 
 
-def wait_for_aggregator_agent_ready(address, node_id):
-    gcs_client = GcsClient(address=address)
-    # Wait for the agent to publish its address
-    wait_for_condition(
-        lambda: get_dashboard_agent_address(gcs_client, node_id) is not None
-    )
-    # Wait for the agent to be ready
-    def _is_aggregator_agent_ready() -> bool:
-        ready_key = (
-            f"{dashboard_consts.DASHBOARD_AGGREGATOR_AGENT_READY_NODE_ID_PREFIX}{node_id}"
-        ).encode()
-        val = gcs_client.internal_kv_get(
-            ready_key,
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
-        )
-        return val == b"1"
-
-    wait_for_condition(_is_aggregator_agent_ready)
-    # wait for 2 extra seconds to make sure the agent is ready
-    time.sleep(2)
-
-
 def wait_for_pid_to_exit(pid: int, timeout: float = 20):
     start_time = time.time()
     while time.time() - start_time < timeout:

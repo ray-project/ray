@@ -102,10 +102,3 @@ PARENT_HEALTH_CHECK_BY_PIPE = env_bool(
 SUBPROCESS_MODULE_WAIT_READY_TIMEOUT = env_float(
     "RAY_DASHBOARD_SUBPROCESS_MODULE_WAIT_READY_TIMEOUT", 30.0
 )
-
-# Aggregator agent readiness signal stored in GCS Internal KV.
-# Key format: f"{DASHBOARD_AGGREGATOR_AGENT_READY_NODE_ID_PREFIX}{node_id}"
-# Value: "1" when the aggregator gRPC servicer has been registered.
-DASHBOARD_AGGREGATOR_AGENT_READY_NODE_ID_PREFIX = (
-    "DASHBOARD_AGGREGATOR_AGENT_READY_NODE_ID_PREFIX:"
-)
