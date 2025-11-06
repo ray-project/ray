@@ -395,6 +395,9 @@ class StorageContext:
         )
         self.storage_fs_path = Path(self.storage_fs_path).as_posix()
 
+        self._create_validation_file()
+        self._check_validation_file()
+
     def __str__(self):
         return (
             "StorageContext<\n"
