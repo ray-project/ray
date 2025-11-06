@@ -141,12 +141,12 @@ class BatchIterator:
         self, ref_bundles: Iterator[RefBundle]
     ) -> Iterator[ObjectRef[Block]]:
         return prefetch_batches_locally(
-            stats=self._stats,
             ref_bundles=ref_bundles,
             prefetcher=self._prefetcher,
             num_batches_to_prefetch=self._prefetch_batches,
             batch_size=self._batch_size,
             eager_free=self._eager_free,
+            stats=self._stats,
         )
 
     def _resolve_block_refs(
@@ -321,9 +321,9 @@ def prefetch_batches_locally(
     ref_bundles: Iterator[RefBundle],
     prefetcher: BlockPrefetcher,
     num_batches_to_prefetch: int,
-    stats: Optional[DatasetStats] = None,
     batch_size: Optional[int],
     eager_free: bool = False,
+    stats: Optional[DatasetStats] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterator of batched RefBundles, returns an iterator over the
     corresponding block references while prefetching `num_batches_to_prefetch`
@@ -334,9 +334,9 @@ def prefetch_batches_locally(
         prefetcher: The prefetcher to use.
         num_batches_to_prefetch: The number of batches to prefetch ahead of the
             current batch during the scan.
-        stats: Dataset stats object used to store ref bundle retrieval time.
         batch_size: User specified batch size, or None to let the system pick.
         eager_free: Whether to eagerly free the object reference from the object store.
+        stats: Dataset stats object used to store ref bundle retrieval time.
     """
 
     def get_next_ref_bundle() -> RefBundle:
