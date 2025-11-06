@@ -13,7 +13,6 @@ import pytest
 import ray
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._private import ray_constants
-from ray._private.gcs_utils import GcsClient
 from ray._private.state_api_test_utils import (
     PidActor,
     _is_actor_task_running,
@@ -26,6 +25,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
 )
+from ray._raylet import GcsClient
 from ray.util.state import (
     StateApiClient,
     list_actors,
