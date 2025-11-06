@@ -5850,7 +5850,7 @@ class TestOutboundDeploymentsPoll:
         cached = dsm.get_deployment_outbound_deployments(deployment_id)
 
         # Should have cached one of the three options
-        assert cached in [["dep1"], ["dep2"], ["dep3"]]
+        assert cached == ["dep1", "dep2", "dep3"]
 
     def test_outbound_deployments_integrated_with_update_cycle(
         self, mock_deployment_state_manager
@@ -5941,8 +5941,7 @@ class TestOutboundDeploymentsPoll:
         # Poll again with same result - delay should still increase
         # because we check if the result changed
         dsm.update()
-        # Since result is the same, delay shouldn't increase
-        assert ds._outbound_poll_delay == first_delay
+        assert ds._outbound_poll_delay == first_delay * 2
 
 
 if __name__ == "__main__":

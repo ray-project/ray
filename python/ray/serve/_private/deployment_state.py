@@ -997,7 +997,7 @@ class ActorReplicaWrapper:
             self._last_outbound_deployments_poll_time = time.time()
             try:
                 self._outbound_deployments_ref = (
-                    self._actor_handle.get_outbound_deployments.remote()
+                    self._actor_handle.list_outbound_deployments.remote()
                 )
             except Exception:
                 logger.exception(
@@ -1868,7 +1868,7 @@ class DeploymentState:
         self._route_patterns: Optional[List[str]] = None
 
         # Outbound deployments polling state
-        self._outbound_deployments_cache: Optional[List[DeploymentID]] = None
+        self._outbound_deployments_cache: Optional[Set[DeploymentID]] = None
         self._outbound_poll_delay: float = (
             RAY_SERVE_OUTBOUND_DEPLOYMENTS_INITIAL_POLL_DELAY_S
         )
@@ -3068,39 +3068,40 @@ class DeploymentState:
         return self._target_state.info.ingress
 
     def poll_outbound_deployments_if_needed(self) -> None:
-        """Poll a random RUNNING replica for its outbound deployments.
+        """Poll all RUNNING replicas for their outbound deployments.
 
-        Uses exponential backoff for polling frequency, capping at 10 minutes.
-        Randomly selects one replica to avoid overwhelming the system with polls.
+        Uses exponential backoff for polling frequency, capping at
+        RAY_SERVE_OUTBOUND_DEPLOYMENTS_MAX_POLL_DELAY_S.
         """
         running_replicas = self._replicas.get([ReplicaState.RUNNING])
         if not running_replicas:
             return
 
-        # Randomly pick one replica to poll
-        replica = random.choice(running_replicas)
+        result = set()
+        for replica in running_replicas:
+            outbound_deployments = replica.poll_outbound_deployments(
+                self._outbound_poll_delay
+            )
+            if outbound_deployments is not None:
+                result.update(outbound_deployments)
+        if not result:
+            return
 
-        # Poll the replica with the current delay period
-        outbound_deployments = replica.poll_outbound_deployments(
-            self._outbound_poll_delay
-        )
+        if not self._outbound_deployments_cache:
+            self._outbound_deployments_cache = result
+        else:
+            # Union the new outbound deployments with the cached set to ensure we don't miss
+            # deployments that may have been added dynamically (e.g., created at runtime in
+            # conditional branches or after initialization).
+            self._outbound_deployments_cache = self._outbound_deployments_cache.union(
+                result
+            )
 
-        # If we got a result, update the cache
-        # The replica's internal throttling ensures we don't update too frequently
-        if outbound_deployments is not None:
-            # Only log and update backoff if the result actually changed
-            if self._outbound_deployments_cache != outbound_deployments:
-                self._outbound_deployments_cache = outbound_deployments
-
-                # Update exponential backoff delay, capping at max delay
-                self._outbound_poll_delay = min(
-                    self._outbound_poll_delay * 2, self._max_outbound_poll_delay
-                )
-
-                logger.debug(
-                    f"Cached outbound deployments for {self._id}: "
-                    f"{outbound_deployments}. Next poll in {self._outbound_poll_delay}s"
-                )
+        # If the deployment is healthy, increase the poll delay.
+        if self.curr_status_info.status == DeploymentStatus.HEALTHY:
+            self._outbound_poll_delay = min(
+                self._outbound_poll_delay * 2, self._max_outbound_poll_delay
+            )
 
     def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
         """Get the cached outbound deployments.
@@ -3109,7 +3110,9 @@ class DeploymentState:
             List of deployment IDs that this deployment calls, or None if
             not yet polled.
         """
-        return self._outbound_deployments_cache
+        if self._outbound_deployments_cache is None:
+            return None
+        return sorted(self._outbound_deployments_cache)
 
 
 class DeploymentStateManager:
