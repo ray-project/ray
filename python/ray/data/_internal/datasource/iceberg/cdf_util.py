@@ -38,7 +38,7 @@ def _validate_merge_keys(merge_keys: List[str]) -> None:
         raise ValueError(f"merge_keys contains duplicates: {duplicates}")
 
 
-def read_iceberg_cdf(
+def _read_iceberg_cdf(
     table_identifier: str,
     start_snapshot_id: Optional[int] = None,
     end_snapshot_id: Optional[int] = None,
@@ -51,11 +51,9 @@ def read_iceberg_cdf(
     memory: Optional[float] = None,
     override_num_blocks: Optional[int] = None,
 ) -> "ray.data.Dataset":
-    """
-    Read incremental changes from an Iceberg table between two snapshots.
+    """Read incremental changes from an Iceberg table between two snapshots.
 
-    Reads only data files added between snapshots, enabling efficient incremental
-    processing without full table scans.
+    Internal function used by read_iceberg() for CDF reads.
 
     Args:
         table_identifier: Fully qualified table identifier (e.g., "db_name.table_name")
@@ -73,10 +71,6 @@ def read_iceberg_cdf(
 
     Returns:
         Dataset containing rows from files added between snapshots.
-
-    Note:
-        Reads entire data files (not individual rows). Start snapshot is exclusive,
-        end snapshot is inclusive. See https://py.iceberg.apache.org/configuration/
     """
     _check_import(None, module="pyiceberg", package="pyiceberg")
     from pyiceberg.catalog import load_catalog
