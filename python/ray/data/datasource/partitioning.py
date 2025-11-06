@@ -279,7 +279,9 @@ class PathPartitionParser:
         """
         dirs = [d for d in dir_path.split("/") if d and (d.count("=") == 1)]
         kv_pairs = [d.split("=") for d in dirs] if dirs else []
-        # URL-decode partition values
+        # NOTE: PyArrow URL-encodes partition values when writing to cloud storage. To
+        #       ensure the values are consistent when you read them back, we need to
+        #       URL-decode them. See https://github.com/apache/arrow/issues/34905.
         kv_pairs = [[key, urllib.parse.unquote(value)] for key, value in kv_pairs]
 
         field_names = self._scheme.field_names
