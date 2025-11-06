@@ -68,6 +68,7 @@ class Result(ResultV1):
             storage_path=storage_path,
             experiment_dir_name=experiment_dir_name,
             storage_filesystem=fs,
+            skip_validation=True,
         )
 
         # Validate that the checkpoint manager snapshot file exists
