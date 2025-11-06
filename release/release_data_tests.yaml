@@ -67,7 +67,6 @@
       s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
 
 - name: read_tfrecords
-  python: "3.10"
   run:
     timeout: 3600
     script: >
@@ -89,7 +88,6 @@
     script: python read_from_uris_benchmark.py
 
 - name: read_images_comparison_microbenchmark_single_node
-  python: "3.10"
   frequency: manual
 
   cluster:
