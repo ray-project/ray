@@ -130,7 +130,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       GcsActorSchedulerSuccessCallback schedule_success_handler,
       rpc::RayletClientPool &raylet_client_pool,
       rpc::CoreWorkerClientPool &worker_client_pool,
-      ray::observability::MetricInterface &scheduler_placement_time_s_histogram,
+      ray::observability::MetricInterface &scheduler_placement_time_ms_histogram,
       std::function<void(const NodeID &, const rpc::ResourcesData &)>
           normal_task_resources_changed_callback = nullptr);
 
@@ -395,7 +395,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// The resource changed listeners.
   std::vector<std::function<void()>> resource_changed_listeners_;
 
-  ray::observability::MetricInterface &scheduler_placement_time_s_histogram_;
+  ray::observability::MetricInterface &scheduler_placement_time_ms_histogram_;
 
   /// Normal task resources changed callback.
   std::function<void(const NodeID &, const rpc::ResourcesData &)>
