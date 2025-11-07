@@ -17,15 +17,15 @@ kind create cluster --image=kindest/node:v1.26.0
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
-# Install both CRDs and KubeRay operator v1.4.2.
-helm install kuberay-operator kuberay/kuberay-operator --version 1.4.2
+# Install both CRDs and KubeRay operator v1.5.0.
+helm install kuberay-operator kuberay/kuberay-operator --version 1.5.0
 ```
 
 ### Method 2: Kustomize
 
 ```sh
 # Install CRD and KubeRay operator.
-kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.4.2"
+kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.5.0"
 ```
 
 ## Step 3: Validate Installation
