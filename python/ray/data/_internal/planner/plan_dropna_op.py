@@ -2,7 +2,7 @@
 Plan DropNa logical operator.
 """
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -13,6 +13,7 @@ from ray.data._internal.logical.operators.dropna_operator import DropNa
 from ray.data._internal.planner.plan_udf_map_op import (
     _create_map_transformer_for_block_based_map_op,
     _generate_transform_fn_for_map_block,
+    _try_wrap_udf_exception,
     get_compute,
 )
 from ray.data.context import DataContext
@@ -27,22 +28,25 @@ def plan_dropna_op(
     assert len(physical_children) == 1
 
     def fn(batch: pa.Table) -> pa.Table:
-        if batch.num_rows == 0:
-            return batch
-
-        if op.subset:
-            columns_to_check = [col for col in op.subset if col in batch.schema.names]
-            if not columns_to_check:
+        try:
+            if batch.num_rows == 0:
                 return batch
-        else:
-            columns_to_check = list(batch.schema.names)
 
-        if op.thresh is not None:
-            mask = _create_thresh_mask(batch, columns_to_check, op.thresh)
-        else:
-            mask = _create_how_mask(batch, columns_to_check, op.how)
+            if op.subset:
+                columns_to_check = [col for col in op.subset if col in batch.schema.names]
+                if not columns_to_check:
+                    return batch
+            else:
+                columns_to_check = list(batch.schema.names)
 
-        return _filter_with_schema_preservation(batch, mask)
+            if op.thresh is not None:
+                mask = _create_thresh_mask(batch, columns_to_check, op.thresh, op.ignore_values)
+            else:
+                mask = _create_how_mask(batch, columns_to_check, op.how, op.ignore_values)
+
+            return _filter_with_schema_preservation(batch, mask)
+        except Exception as e:
+            _try_wrap_udf_exception(e, batch)
 
     compute = get_compute(op._compute)
     transform_fn = _generate_transform_fn_for_map_block(fn)
@@ -58,21 +62,57 @@ def plan_dropna_op(
     )
 
 
-def _is_not_missing(column: pa.Array) -> pa.Array:
-    """Check if values in a column are not missing (not null and not NaN)."""
+def _is_not_missing(column: pa.Array, ignore_values: List[Any]) -> pa.Array:
+    """Check if values in a column are not missing (not null, not NaN, and not in ignore_values)."""
     is_not_null = pc.is_valid(column)
     if pa.types.is_floating(column.type) or pa.types.is_decimal(column.type):
-        return pc.and_(is_not_null, pc.invert(pc.is_nan(column)))
-    return is_not_null
+        is_not_null = pc.and_(is_not_null, pc.invert(pc.is_nan(column)))
+
+    if not ignore_values:
+        return is_not_null
+
+    # Check if values are in ignore_values list
+    is_not_ignored = _create_not_ignored_mask(column, ignore_values)
+    return pc.and_(is_not_null, is_not_ignored)
+
+
+def _create_not_ignored_mask(column: pa.Array, ignore_values: List[Any]) -> pa.Array:
+    """Create mask for values not in ignore_values list."""
+    if not ignore_values:
+        return pa.array([True] * len(column))
+
+    is_ignored_mask: Optional[pa.Array] = None
+    for ignore_val in set(ignore_values):
+        try:
+            ignore_scalar = pa.scalar(ignore_val, type=column.type)
+        except (pa.ArrowInvalid, pa.ArrowTypeError):
+            try:
+                ignore_scalar = pa.scalar(ignore_val).cast(column.type)
+            except (pa.ArrowInvalid, pa.ArrowNotImplementedError) as e:
+                raise ValueError(
+                    f"Cannot compare ignore_value {ignore_val!r} with column type {column.type}"
+                ) from e
+
+        equals_ignore = pc.equal(column, ignore_scalar)
+        is_ignored_mask = (
+            equals_ignore if is_ignored_mask is None else pc.or_(is_ignored_mask, equals_ignore)
+        )
+
+    if is_ignored_mask is None:
+        return pa.array([True] * len(column))
+    return pc.invert(is_ignored_mask)
 
 
 def _create_thresh_mask(
-    batch: pa.Table, columns_to_check: List[str], thresh: int
+    batch: pa.Table, columns_to_check: List[str], thresh: int, ignore_values: List[Any]
 ) -> pa.Array:
     """Create mask for threshold-based row dropping."""
+    if not columns_to_check:
+        return pa.array([True] * batch.num_rows)
+
     non_missing_counts: Optional[pa.Array] = None
     for col_name in columns_to_check:
-        is_not_missing_int = pc.cast(_is_not_missing(batch.column(col_name)), pa.int32())
+        is_not_missing_int = pc.cast(_is_not_missing(batch.column(col_name), ignore_values), pa.int32())
         if non_missing_counts is None:
             non_missing_counts = is_not_missing_int
         else:
@@ -81,12 +121,15 @@ def _create_thresh_mask(
 
 
 def _create_how_mask(
-    batch: pa.Table, columns_to_check: List[str], how: str
+    batch: pa.Table, columns_to_check: List[str], how: str, ignore_values: List[Any]
 ) -> pa.Array:
     """Create mask for how-based row dropping ('any' or 'all')."""
+    if not columns_to_check:
+        return pa.array([True] * batch.num_rows)
+
     mask: Optional[pa.Array] = None
     for col_name in columns_to_check:
-        is_not_missing = _is_not_missing(batch.column(col_name))
+        is_not_missing = _is_not_missing(batch.column(col_name), ignore_values)
         if mask is None:
             mask = is_not_missing
         elif how == "any":
@@ -102,14 +145,5 @@ def _filter_with_schema_preservation(batch: pa.Table, mask: pa.Array) -> pa.Tabl
     """Filter table while preserving original schema."""
     filtered_batch = pc.filter(batch, mask)
     if filtered_batch.schema != batch.schema:
-        try:
-            filtered_batch = filtered_batch.cast(batch.schema)
-        except pa.ArrowInvalid:
-            if filtered_batch.num_rows == 0:
-                filtered_batch = pa.table(
-                    {
-                        name: pa.array([], type=field.type)
-                        for name, field in zip(batch.schema.names, batch.schema)
-                    }
-                )
+        filtered_batch = filtered_batch.cast(batch.schema)
     return filtered_batch
