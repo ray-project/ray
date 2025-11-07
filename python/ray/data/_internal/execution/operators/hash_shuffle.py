@@ -17,8 +17,9 @@ from typing import (
     Dict,
     List,
     Optional,
+    Set,
     Tuple,
-    Union, Set,
+    Union,
 )
 
 import numpy as np
@@ -907,8 +908,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         # NOTE: This doesn't affect determinism, since this only impacts order
         #       of finalization (hence not required to be seeded)
         target_partition_ids = random.sample(
-            list(self._pending_finalization_partition_ids),
-            next_batch_size
+            list(self._pending_finalization_partition_ids), next_batch_size
         )
 
         logger.debug(
