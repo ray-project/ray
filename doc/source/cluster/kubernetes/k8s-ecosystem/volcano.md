@@ -332,7 +332,7 @@ Starting with KubeRay 1.5.0, KubeRay supports gang scheduling for RayJob custom 
 First, create a queue with a capacity of 4 CPUs and 6Gi of RAM and RayJob a with a head node (1 CPU + 2Gi of RAM), two workers (1 CPU + 1Gi of RAM each) and a submitter pod (0.5 CPU + 200Mi of RAM), for a total of 3500m CPU and 4296Mi of RAM
 
 ```shell
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/refs/tags/v1.5.0-rc.0/ray-operator/config/samples/ray-job.volcano-scheduler-queue.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.5.0/ray-operator/config/samples/ray-job.volcano-scheduler-queue.yaml
 kubectl apply -f ray-job.volcano-scheduler-queue.yaml
 ```
 
