@@ -22,7 +22,10 @@ from ray._private.metrics_agent import (
     Gauge as MetricsAgentGauge,
     PrometheusServiceDiscoveryWriter,
 )
-from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
+from ray._private.ray_constants import (
+    PROMETHEUS_SERVICE_DISCOVERY_FILE,
+    RAY_ENABLE_OPEN_TELEMETRY,
+)
 from ray._private.test_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,
@@ -204,7 +207,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
             "event_stats_print_interval_ms": 500,
             "event_stats": True,
             "enable_metrics_collection": enable_metrics_collection,
-            "enable_open_telemetry": os.getenv("RAY_enable_open_telemetry") == "1",
+            "enable_open_telemetry": RAY_ENABLE_OPEN_TELEMETRY,
         }
     )
     # Add worker nodes.
@@ -320,7 +323,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
                 "test_driver_counter_total",
                 "test_gauge",
             ]
-            if os.environ.get("RAY_enable_open_telemetry") != "1"
+            if not RAY_ENABLE_OPEN_TELEMETRY
             else [
                 "test_counter_total",
                 "test_driver_counter_total",
@@ -744,7 +747,7 @@ def test_histogram(_setup_cluster_for_test):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
 @pytest.mark.skipif(
-    os.environ.get("RAY_enable_open_telemetry") == "1",
+    RAY_ENABLE_OPEN_TELEMETRY,
     reason="OpenTelemetry backend does not support Counter exported as gauge.",
 )
 def test_counter_exported_as_gauge(shutdown_only):
