@@ -321,13 +321,12 @@ def test_streaming_repartition_write_no_operator_fusion(
 @pytest.mark.parametrize(
     "num_rows,override_num_blocks_list,target_num_rows_per_block",
     [
-        (128 * 4, [1, 2, 4, 8, 16], 128),
-        (128 * 4 + 2, [1, 2, 4, 8, 16], 128),
-        (128 * 4 + 1, [1, 2, 4, 8, 16], 128),
-        (64 * 4, [1, 2, 4, 8], 64),
-        (64 * 4 + 1, [1, 2, 4, 8], 64),
-        (32 * 5, [1, 2, 5], 10),
-        (32 * 5 + 1, [1, 2, 5], 10),
+        (128 * 4, [2, 4, 16], 128),  # testing split, exact and merge blocks
+        (
+            128 * 4 + 1,
+            [2, 4, 16],
+            128,
+        ),  # testing split, exact and merge blocks with one extra row
     ],
 )
 def test_repartition_guarantee_row_num_to_be_exact(

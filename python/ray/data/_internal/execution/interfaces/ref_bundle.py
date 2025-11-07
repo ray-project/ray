@@ -11,6 +11,16 @@ from ray.types import ObjectRef
 
 
 @dataclass
+class BlockSlice:
+    """A slice of a block."""
+
+    block_index: int
+    start_offset: int
+    end_offset: int
+    output_index: Optional[int] = None
+
+
+@dataclass
 class RefBundle:
     """A group of data block references and their metadata.
 

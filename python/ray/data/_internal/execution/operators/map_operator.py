@@ -27,6 +27,7 @@ from ray.data._internal.compute import (
     TaskPoolStrategy,
 )
 from ray.data._internal.execution.interfaces import (
+    BlockSlice,
     ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
@@ -85,7 +86,7 @@ class BaseRefBundler(ABC):
     @abstractmethod
     def get_next_bundle(
         self,
-    ) -> Tuple[List[RefBundle], RefBundle, Optional[Dict[str, Any]]]:
+    ) -> Tuple[List[RefBundle], RefBundle, Optional[List[BlockSlice]]]:
         pass
 
     @abstractmethod
@@ -381,14 +382,14 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
             (
                 input_refs,
                 bundled_input,
-                task_kwargs_for_bundle,
+                block_slices,
             ) = self._block_ref_bundler.get_next_bundle()
             for bundle in input_refs:
                 self._metrics.on_input_dequeued(bundle)
 
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue
-            self._add_bundled_input(bundled_input, task_kwargs_for_bundle),
+            self._add_bundled_input(bundled_input, block_slices)
 
     def _get_dynamic_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
@@ -428,7 +429,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
     @abstractmethod
     def _add_bundled_input(
-        self, refs: RefBundle, task_kwargs_for_bundle: Optional[Dict[str, Any]] = None
+        self, refs: RefBundle, slices: Optional[List[BlockSlice]] = None
     ):
         """Add a pre-bundled upstream output to this operator.
 
@@ -440,8 +441,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
         Args:
             refs: The fully-bundled ref bundle that should be added as input.
-            task_kwargs_for_bundle: A dictionary of kwargs to pass to the map task. You can
-                access these kwargs for the bundle through the `TaskContext.kwargs` dictionary.
+            slices: List of block slices for the bundle.
         """
         raise NotImplementedError
 
@@ -525,9 +525,9 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
             (
                 _,
                 bundled_input,
-                task_kwargs_for_bundle,
+                block_slices,
             ) = self._block_ref_bundler.get_next_bundle()
-            self._add_bundled_input(bundled_input, task_kwargs_for_bundle)
+            self._add_bundled_input(bundled_input, block_slices)
         super().all_inputs_done()
 
     def has_next(self) -> bool:
@@ -596,6 +596,7 @@ def _map_task(
     data_context: DataContext,
     ctx: TaskContext,
     *blocks: Block,
+    slices: Optional[List[BlockSlice]] = None,
     **kwargs: Dict[str, Any],
 ) -> Iterator[Union[Block, "BlockMetadataWithSchema"]]:
     """Remote function for a single operator task.
@@ -604,6 +605,7 @@ def _map_task(
         fn: The callable that takes Iterator[Block] as input and returns
             Iterator[Block] as output.
         blocks: The concrete block values from the task ref bundle.
+        slices: List of block slices for this task to process.
 
     Returns:
         A generator of blocks, followed by the list of BlockMetadata for the blocks
@@ -620,7 +622,7 @@ def _map_task(
     stats = BlockExecStats.builder()
     map_transformer.override_target_max_block_size(ctx.target_max_block_size_override)
     with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
-        for b_out in map_transformer.apply_transform(iter(blocks), ctx):
+        for b_out in map_transformer.apply_transform(iter(blocks), ctx, slices):
             # TODO(Clark): Add input file propagation from input blocks.
             m_out = BlockAccessor.for_block(b_out).get_metadata()
             s_out = BlockAccessor.for_block(b_out).schema()
@@ -680,7 +682,7 @@ class BlockRefBundler(BaseRefBundler):
 
     def get_next_bundle(
         self,
-    ) -> Tuple[List[RefBundle], RefBundle, Optional[Dict[str, Any]]]:
+    ) -> Tuple[List[RefBundle], RefBundle, Optional[List[BlockSlice]]]:
         """Gets the next bundle.
 
         Returns:
