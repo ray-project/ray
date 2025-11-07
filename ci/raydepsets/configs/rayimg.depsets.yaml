@@ -125,6 +125,7 @@ depsets:
       - /tmp/ray-deps/requirements_compiled.txt
     output: python/deplocks/base_deps/ray_base_deps_py${PYTHON_VERSION}.lock
     append_flags:
+      - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
     build_arg_sets:
