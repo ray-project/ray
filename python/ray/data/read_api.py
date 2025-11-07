@@ -2930,6 +2930,7 @@ def read_hive(
         configuration=configuration,
         kerberos_service_name=kerberos_service_name,
         filesystem=filesystem,
+        timeout=None,  # Can be added to public API in future if needed
         **reader_kwargs,
     )
 
