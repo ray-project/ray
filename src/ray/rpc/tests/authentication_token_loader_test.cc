@@ -117,7 +117,7 @@ class AuthenticationTokenLoaderTest : public ::testing::Test {
 
   void unset_env_var(const char *name) {
 #ifdef _WIN32
-    _putenv_s(name, "")
+    _putenv_s(name, "");
 #else
     unsetenv(name);
 #endif
