@@ -165,14 +165,14 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def internal_output_queue_num_bytes(self) -> int:
         return self._output_queue.size_bytes()
 
-    def clear_internal_queues(self) -> None:
-        """Clear all internal input and output queues."""
-        # Clear internal input queue (block ref bundler)
+    def clear_internal_input_queue(self) -> None:
+        """Clear internal input queue (block ref bundler)."""
         while self._block_ref_bundler.has_bundle():
             (_, bundle) = self._block_ref_bundler.get_next_bundle()
             self._metrics.on_input_dequeued(bundle)
 
-        # Clear internal output queue
+    def clear_internal_output_queue(self) -> None:
+        """Clear internal output queue."""
         while self._output_queue.has_next():
             bundle = self._output_queue.get_next()
             self._metrics.on_output_dequeued(bundle)
