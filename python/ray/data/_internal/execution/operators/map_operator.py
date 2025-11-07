@@ -68,30 +68,38 @@ logger = logging.getLogger(__name__)
 
 
 class BaseRefBundler(ABC):
+    """Interface for the rebundling behavior of the MapOperator."""
+
     @abstractmethod
     def num_blocks(self) -> int:
+        """Return the total number of blocks buffered inside the bundler."""
         pass
 
     @abstractmethod
     def add_bundle(self, bundle: RefBundle):
+        """Add a new input bundle to the bundler."""
         pass
 
     @abstractmethod
     def has_bundle(self) -> bool:
+        """Return whether the bundler currently holds a full bundle ready to emit."""
         pass
 
     @abstractmethod
     def size_bytes(self) -> int:
+        """Estimate the total size in bytes of buffered bundles."""
         pass
 
     @abstractmethod
     def get_next_bundle(
         self,
     ) -> Tuple[List[RefBundle], RefBundle, Optional[List[BlockSlice]]]:
+        """Pop and return the next bundled input ready for task submission."""
         pass
 
     @abstractmethod
     def done_adding_bundles(self):
+        """Signal that no additional bundles will be added to the bundler so the bundler can be finalized."""
         pass
 
 
