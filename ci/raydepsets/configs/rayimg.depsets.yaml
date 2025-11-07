@@ -123,7 +123,7 @@ depsets:
       - docker/base-deps/requirements.in
     constraints:
       - /tmp/ray-deps/requirements_compiled.txt
-    output: release/ray_release/byod/ray_base_deps_py${PYTHON_VERSION}.lock
+    output: python/deplocks/base_deps/ray_base_deps_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
