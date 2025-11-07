@@ -231,7 +231,7 @@ exclude_patterns = [
     "serve/tutorials/deployment-serve-llm/README.*",
     "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
     "data/examples/**/*.ipynb",
-    "data/examples/**/content/**/README.md",
+    "data/examples/**/content/README.md",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
