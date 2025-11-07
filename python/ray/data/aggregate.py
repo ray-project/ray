@@ -15,6 +15,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
@@ -934,10 +935,12 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         return self._to_set(current_accumulator) | self._to_set(new)
 
     def aggregate_block(self, block: Block) -> List[Any]:
-        import pyarrow.compute as pac
-
         col = BlockAccessor.for_block(block).to_arrow().column(self._target_col_name)
-        return pac.unique(col).to_pylist()
+        if pyarrow.types.is_list(col.type):
+            py_list = col.to_pylist()
+            str_list = [str(v) for v in py_list]
+            col = pyarrow.array(str_list, type=pyarrow.string())
+        return pc.unique(col).to_pylist()
 
     @staticmethod
     def _to_set(x):

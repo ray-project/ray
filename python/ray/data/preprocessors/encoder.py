@@ -336,7 +336,6 @@ class OneHotEncoder(Preprocessor):
 
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
-        print(f"!!!{self.stats_}")
 
         # Compute new one-hot encoded columns
         for column, output_column in zip(self.columns, self.output_columns):
