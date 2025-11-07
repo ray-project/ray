@@ -386,12 +386,14 @@ class RobustScaler(Preprocessor):
             for details on accuracy and size.
     """
 
+    DEFAULT_QUANTILE_PRECISION = 800
+
     def __init__(
         self,
         columns: List[str],
         quantile_range: Tuple[float, float] = (0.25, 0.75),
         output_columns: Optional[List[str]] = None,
-        quantile_precision: int = 800,
+        quantile_precision: int = DEFAULT_QUANTILE_PRECISION,
     ):
         super().__init__()
         self.columns = columns
