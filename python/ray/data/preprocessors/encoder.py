@@ -1,3 +1,4 @@
+import math
 from collections import Counter
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, Hashable, List, Optional, Set
@@ -7,7 +8,7 @@ import pandas as pd
 import pandas.api.types
 
 from ray.air.util.data_batch_conversion import BatchFormat
-from ray.data.aggregate import Unique
+from ray.data.aggregate import ApproximateTopK, Unique
 from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
 from ray.data.preprocessors.utils import make_post_processor
 from ray.util.annotations import PublicAPI
@@ -242,7 +243,10 @@ class OneHotEncoder(Preprocessor):
         output_columns: The names of the transformed columns. If None, the transformed
             columns will be the same as the input columns. If not None, the length of
             ``output_columns`` must match the length of ``columns``, othwerwise an error
-            will be raised.
+            will be raised.'
+        log_capacity: Base 2 logarithm of the maximum size of the internal hash map for
+            top-K calculation. Higher values increase accuracy but use more memory.
+            Defaults to 11 (2048 categories).
 
     .. seealso::
 
@@ -261,23 +265,19 @@ class OneHotEncoder(Preprocessor):
         *,
         max_categories: Optional[Dict[str, int]] = None,
         output_columns: Optional[List[str]] = None,
+        log_capacity: int = 11,
     ):
         super().__init__()
         # TODO: add `drop` parameter.
         self.columns = columns
         self.max_categories = max_categories or {}
+        self.log_capacity = log_capacity
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         calculate_unique = []
-
-        for col in self.columns:
-            if col in self.max_categories:
-                pass
-            else:
-                calculate_unique.append(col)
 
         def one_hot_unique_post_fn(values: List):
             if any(pd.isnull(k) for k in values):
@@ -287,6 +287,35 @@ class OneHotEncoder(Preprocessor):
                 )
             return {k: j for j, k in enumerate(sorted(values))}
 
+        def one_host_approx_top_k_post_fn_gen(col: str):
+            def one_host_approx_top_k_post_fn(values: List[Dict[str, Any]]):
+                # we don't filter for null values because ApproximateTopK
+                # skips them. Null values will later be caught in _validate_df.
+                top_k = [d[col] for d in values]
+                return {k: j for j, k in enumerate(sorted(top_k))}
+
+            return one_host_approx_top_k_post_fn
+
+        for col in self.columns:
+            if col in self.max_categories:
+                k = self.max_categories[col]
+                if k > 2**self.log_capacity:
+                    raise ValueError(
+                        f"Maximum categories for column {col} ({k}) is greater than the "
+                        f"internal hashmap size ({2 ** self.log_capacity}). Increase "
+                        f"`log_capacity` to at least {math.ceil(math.log2(k))}."
+                    )
+                self.stat_computation_plan.add_aggregator(
+                    aggregator_fn=lambda col: ApproximateTopK(
+                        col, k=k, log_capacity=self.log_capacity
+                    ),
+                    post_process_fn=one_host_approx_top_k_post_fn_gen(col),
+                    post_key_fn=lambda col: f"unique_values({col})",
+                    columns=[col],
+                )
+            else:
+                calculate_unique.append(col)
+
         if len(calculate_unique) > 0:
             self.stat_computation_plan.add_aggregator(
                 aggregator_fn=lambda col: Unique(col, ignore_nulls=False),
@@ -295,19 +324,6 @@ class OneHotEncoder(Preprocessor):
                 columns=calculate_unique,
             )
 
-        # self.stat_computation_plan.add_callable_stat(
-        #     stat_fn=lambda key_gen: compute_unique_value_indices(
-        #         dataset=dataset,
-        #         columns=self.columns,
-        #         encode_lists=False,
-        #         key_gen=key_gen,
-        #         max_categories=self.max_categories,
-        #     ),
-        #     post_process_fn=unique_post_fn(),
-        #     stat_key_fn=lambda col: f"unique({col})",
-        #     post_key_fn=lambda col: f"unique_values({col})",
-        #     columns=self.columns,
-        # )
         return self
 
     def safe_get(self, v: Any, stats: Dict[str, int]):
@@ -320,6 +336,7 @@ class OneHotEncoder(Preprocessor):
 
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
+        print(f"!!!{self.stats_}")
 
         # Compute new one-hot encoded columns
         for column, output_column in zip(self.columns, self.output_columns):
