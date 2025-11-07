@@ -44,6 +44,22 @@ class _DatasourceProjectionPushdownMixin:
         renames = {k: v for k, v in self._projection_map.items() if k != v}
         return renames if renames else None
 
+    def _get_data_columns(self) -> Optional[List[str]]:
+        """Extract data columns from projection map.
+
+        Helper method for datasources that need to pass columns to legacy
+        read functions expecting separate columns and rename_map parameters.
+
+        Returns:
+            List of column names, or None if all columns should be read.
+            Empty list [] means no columns.
+        """
+        return (
+            list(self._projection_map.keys())
+            if self._projection_map is not None
+            else None
+        )
+
     @staticmethod
     def _combine_projection_map(
         prev_projection_map: Optional[Dict[str, str]],

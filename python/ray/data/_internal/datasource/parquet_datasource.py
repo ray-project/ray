@@ -317,27 +317,6 @@ class ParquetDatasource(Datasource):
             sampled_file_infos, DataContext.get_current().target_max_block_size
         )
 
-    def _get_data_columns(self) -> Optional[List[str]]:
-        """Extract data columns from projection map.
-
-        Returns:
-            List of column names, or None if all columns should be read.
-            Empty list [] means no columns.
-        """
-        return (
-            list(self._projection_map.keys())
-            if self._projection_map is not None
-            else None
-        )
-
-    def _get_data_columns_rename_map(self) -> Optional[Dict[str, str]]:
-        """Extract rename map from projection map."""
-        if self._projection_map is None:
-            return None
-        # Only include renames (where key != value)
-        renames = {k: v for k, v in self._projection_map.items() if k != v}
-        return renames if renames else None
-
     def estimate_inmemory_data_size(self) -> int:
         # In case of empty projections no data will be read
         if self._projection_map == {}:
@@ -410,7 +389,7 @@ class ParquetDatasource(Datasource):
                 self._to_batches_kwargs,
                 self._default_batch_size,
                 self._get_data_columns(),
-                self._get_data_columns_rename_map(),
+                self.get_column_renames(),
                 self._partition_columns,
                 self._read_schema,
                 self._include_paths,
