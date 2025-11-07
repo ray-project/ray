@@ -94,7 +94,7 @@ class DataIterator(abc.ABC):
         Iterator[RefBundle],
         Optional[DatasetStats],
         bool,
-        Optional[Callable[[int], None]],
+        Optional[Callable[[int, int], None]],
     ]:
         """Returns the iterator to use for `iter_batches`.
 

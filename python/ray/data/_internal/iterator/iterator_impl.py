@@ -27,7 +27,7 @@ class DataIteratorImpl(DataIterator):
         Iterator[RefBundle],
         Optional[DatasetStats],
         bool,
-        Optional[Callable[[int], None]],
+            Optional[Callable[[int, int], None]],
     ]:
         (
             ref_bundles_iterator,
@@ -36,9 +36,9 @@ class DataIteratorImpl(DataIterator):
         ) = self._base_dataset._execute_to_iterator()
 
         # Create callback to report prefetch counts to the last operator
-        def prefetch_count_update(count: int) -> None:
+        def prefetch_count_update(blocks: int, bytes: int) -> None:
             if last_operator is not None:
-                last_operator.update_prefetch_count(count)
+                last_operator.update_prefetch_count(blocks, bytes)
 
         return ref_bundles_iterator, stats, False, prefetch_count_update
 

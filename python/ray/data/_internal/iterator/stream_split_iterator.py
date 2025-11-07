@@ -103,8 +103,8 @@ class StreamSplitDataIterator(DataIterator):
         # For streaming split, prefetch reporting is handled via the coordinator actor
         # since the operator is on a different node. Create a callback that calls
         # the coordinator actor's update_prefetch_count method.
-        def prefetch_count_update(count: int) -> None:
-            self._coord_actor.update_prefetch_count.remote(count)
+        def prefetch_count_update(blocks: int, bytes: int) -> None:
+            self._coord_actor.update_prefetch_count.remote(blocks, bytes)
 
         return gen_blocks(), self._iter_stats, False, prefetch_count_update
 
@@ -298,17 +298,18 @@ class SplitCoordinator:
         assert self._output_iterator is not None
         return starting_epoch + 1
 
-    def update_prefetch_count(self, count: int) -> None:
-        """Update the number of outstanding prefetched blocks.
+    def update_prefetch_count(self, blocks: int, bytes: int) -> None:
+        """Update the number of outstanding prefetched blocks and their byte size.
 
         This is called by the client iterator to report prefetch counts.
         The coordinator actor updates the last operator's metrics.
 
         Args:
-            count: Number of outstanding prefetched blocks.
+            blocks: Number of outstanding prefetched blocks.
+            bytes: Total byte size of outstanding prefetched blocks.
         """
         if self._last_operator is not None:
-            self._last_operator.update_prefetch_count(count)
+            self._last_operator.update_prefetch_count(blocks, bytes)
 
     def get_prefetch_count(self) -> int:
         """Get the current number of outstanding prefetched blocks.

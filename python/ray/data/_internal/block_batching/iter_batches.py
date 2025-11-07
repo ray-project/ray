@@ -108,7 +108,7 @@ class BatchIterator:
         shuffle_seed: Optional[int] = None,
         ensure_copy: bool = False,
         prefetch_batches: int = 1,
-        prefetch_count_update: Optional[Callable[[int], None]] = None,
+        prefetch_count_update: Optional[Callable[[int, int], None]] = None,
     ):
         self._ref_bundles = ref_bundles
         self._stats = stats
@@ -342,7 +342,8 @@ def prefetch_batches_locally(
         batch_size: User specified batch size, or None to let the system pick.
         eager_free: Whether to eagerly free the object reference from the object store.
         prefetch_count_update: Optional callback to report the number of outstanding
-            prefetched blocks. Called whenever the count changes.
+            prefetched blocks and their byte size. Called with (blocks, bytes) whenever
+            the count changes.
         stats: Dataset stats object used to store ref bundle retrieval time.
     """
 
@@ -354,13 +355,18 @@ def prefetch_batches_locally(
     current_window_size = 0
 
     def _report_prefetch_count():
-        """Report the current number of outstanding prefetched blocks."""
+        """Report the current number of outstanding prefetched blocks and their bytes."""
         if prefetch_count_update is not None:
-            prefetch_count_update(len(sliding_window))
+            num_blocks = len(sliding_window)
+            total_bytes = sum(
+                metadata.size_bytes or 0
+                for _, metadata in sliding_window
+            )
+            prefetch_count_update(num_blocks, total_bytes)
 
     if num_batches_to_prefetch <= 0:
         if prefetch_count_update is not None:
-            prefetch_count_update(0)
+            prefetch_count_update(0, 0)
         for ref_bundle in ref_bundles:
             for block_ref in ref_bundle.block_refs:
                 yield block_ref
@@ -407,7 +413,7 @@ def prefetch_batches_locally(
         trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
         _report_prefetch_count()
     if prefetch_count_update is not None:
-        prefetch_count_update(0)
+        prefetch_count_update(0, 0)
     prefetcher.stop()
 
 

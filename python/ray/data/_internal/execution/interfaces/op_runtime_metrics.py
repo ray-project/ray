@@ -430,6 +430,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Number of outstanding prefetched blocks in the iterator",
         metrics_group=MetricsGroup.OUTPUTS,
     )
+    num_prefetched_bytes: int = metric_field(
+        default=0,
+        description="Byte size of outstanding prefetched blocks in the iterator",
+        metrics_group=MetricsGroup.OUTPUTS,
+    )
 
     # === Tasks-related metrics ===
     num_tasks_submitted: int = metric_field(

@@ -168,12 +168,9 @@ class ResourceManager:
         # These blocks have been taken from the operator's output queue but are still
         # in the object store waiting to be consumed by the user.
         num_prefetched_blocks = op.metrics.num_prefetched_blocks or 0
-        if num_prefetched_blocks > 0:
-            # Estimate memory for prefetched blocks using target max block size
-            target_max_block_size = op.data_context.target_max_block_size
-            if target_max_block_size is not None:
-                mem_prefetched = num_prefetched_blocks * target_max_block_size
-                mem_op_outputs += mem_prefetched
+        num_prefetched_bytes = op.metrics.num_prefetched_bytes or 0
+        if num_prefetched_blocks > 0 and not op.execution_finished():
+            mem_op_outputs += num_prefetched_bytes
 
         self._mem_op_internal[op] = mem_op_internal
         self._mem_op_outputs[op] = mem_op_outputs

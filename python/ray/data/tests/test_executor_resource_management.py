@@ -615,9 +615,9 @@ def test_prefetch_count_reporting_regular_iterator(
     # Patch update_prefetch_count to track all calls
     original_update = last_op.update_prefetch_count
 
-    def tracked_update(count):
-        prefetch_counts.append(count)
-        original_update(count)
+    def tracked_update(blocks, bytes):
+        prefetch_counts.append(blocks)
+        original_update(blocks, bytes)
 
     last_op.update_prefetch_count = tracked_update
 
@@ -652,12 +652,6 @@ def test_prefetch_count_reporting_regular_iterator(
     )
 
     op_state = topology.get(last_op)
-    current_prefetch = last_op.metrics.num_prefetched_blocks
-
-    # Verify prefetch memory accounting (requires target_max_block_size to be set)
-    assert (
-        ctx.target_max_block_size is not None
-    ), "target_max_block_size must be set to verify prefetch memory accounting"
 
     # Get memory estimate with current prefetch count
     estimated_memory_with_prefetch = resource_manager._estimate_object_store_memory(
@@ -665,22 +659,26 @@ def test_prefetch_count_reporting_regular_iterator(
     )
 
     # Temporarily set prefetch to 0 to get baseline
-    original_prefetch = last_op.metrics.num_prefetched_blocks
+    original_prefetch_blocks = last_op.metrics.num_prefetched_blocks
+    original_prefetch_bytes = last_op.metrics.num_prefetched_bytes
     last_op.metrics.num_prefetched_blocks = 0
+    last_op.metrics.num_prefetched_bytes = 0
     estimated_memory_without_prefetch = resource_manager._estimate_object_store_memory(
         last_op, op_state
     )
-    last_op.metrics.num_prefetched_blocks = original_prefetch
+    last_op.metrics.num_prefetched_blocks = original_prefetch_blocks
+    last_op.metrics.num_prefetched_bytes = original_prefetch_bytes
 
     # Verify the difference equals the prefetch memory
-    expected_prefetch_memory = current_prefetch * ctx.target_max_block_size
+    # Use the reported bytes directly
+    expected_prefetch_memory = last_op.metrics.num_prefetched_bytes
     actual_prefetch_memory = (
         estimated_memory_with_prefetch - estimated_memory_without_prefetch
     )
     assert actual_prefetch_memory == expected_prefetch_memory, (
         f"Memory difference ({actual_prefetch_memory}) should equal "
         f"prefetch memory ({expected_prefetch_memory}) for "
-        f"{current_prefetch} prefetched blocks"
+        f"{last_op.metrics.num_prefetched_blocks} prefetched blocks"
     )
 
 
@@ -724,7 +722,7 @@ def test_prefetch_count_reporting_streaming_split(
         ), f"All prefetch counts should be 0-2, got: {all_counts}"
 
     # Verify prefetch count update works after iteration
-    ray.get(coord_actor.update_prefetch_count.remote(5))
+    ray.get(coord_actor.update_prefetch_count.remote(5, 1000))
     assert ray.get(coord_actor.get_prefetch_count.remote()) == 5
 
 
