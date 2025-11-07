@@ -21,8 +21,8 @@ py_test_run_all_notebooks(
 filegroup(
     name = "data_example_configs",
     srcs = glob([
-        "./**/ci/aws.yaml",
-        "./**/ci/gce.yaml"
+        "**/ci/aws.yaml",
+        "**/ci/gce.yaml"
     ]),
     visibility = ["//release:__pkg__"],
 )
