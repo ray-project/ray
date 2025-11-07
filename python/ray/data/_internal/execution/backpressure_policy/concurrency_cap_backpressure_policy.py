@@ -30,7 +30,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         scale proxy: `dev = EWMA(|q - level_prev|)`.
       - Define deadband: Deadband is the acceptable range of the output queue size
         around the typical level where the queue size is expected to stay stable.
-        deadback [lower, upper] = [level - K_DEV*dev, level + K_DEV*dev].
+        deadband [lower, upper] = [level - K_DEV*dev, level + K_DEV*dev].
       - If q > upper -> target cap = running - BACKOFF_FACTOR  (back off)
         If q < lower -> target cap = running + RAMPUP_FACTOR  (ramp up)
         Else         -> target cap = running      (hold)
