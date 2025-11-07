@@ -81,6 +81,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: ""
+      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix.python}}.lock"
     depends_on: raycudabase
 
   - name: ray-llmbase
