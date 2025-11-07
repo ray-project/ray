@@ -329,7 +329,6 @@ CoreWorker::CoreWorker(
       periodical_runner_(std::move(periodical_runner)),
       core_worker_server_(std::move(core_worker_server)),
       rpc_address_(std::move(rpc_address)),
-      connected_(true),
       gcs_client_(std::move(gcs_client)),
       raylet_ipc_client_(std::move(raylet_ipc_client)),
       local_raylet_rpc_client_(std::move(local_raylet_rpc_client)),
@@ -576,15 +575,14 @@ void CoreWorker::NotifyShutdownComplete() {
 
 bool CoreWorker::IsConnected() const {
   absl::MutexLock lock(&connected_mutex_);
-  return connected_internal_;
+  return connected_;
 }
 
 bool CoreWorker::SetDisconnectedIfConnected() {
   absl::MutexLock lock(&connected_mutex_);
-  if (!connected_internal_) {
+  if (!connected_) {
     return false;
   }
-  connected_internal_ = false;
   connected_ = false;
   return true;
 }

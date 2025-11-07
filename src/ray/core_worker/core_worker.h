@@ -1778,9 +1778,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Address of our RPC server.
   rpc::Address rpc_address_;
 
-  /// Whether or not this worker is connected to the raylet and GCS.
-  bool connected_ = false;
-
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
@@ -1982,7 +1979,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   // Shutdown synchronization primitives
   mutable absl::Mutex connected_mutex_;
-  bool connected_internal_ ABSL_GUARDED_BY(connected_mutex_) = true;
+  bool connected_ ABSL_GUARDED_BY(connected_mutex_) = true;
 
   mutable absl::Mutex shutdown_state_mutex_;
   ray::core::ShutdownState shutdown_state_ ABSL_GUARDED_BY(shutdown_state_mutex_) =
@@ -1990,9 +1987,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   std::atomic<bool> event_loops_running_{true};
   mutable absl::Mutex actor_callback_mutex_;
-
-  mutable absl::Mutex idle_check_mutex_;
-  mutable std::atomic<uint64_t> idle_sequence_num_{0};
 
   std::promise<void> shutdown_complete_promise_;
   std::shared_future<void> shutdown_complete_future_;
