@@ -148,7 +148,20 @@ class HCCLGroup(BaseGroup):
         os.environ["MASTER_ADDR"] = master_addr
         os.environ["MASTER_PORT"] = master_port
         torch_npu.npu.set_device(rank)
-        dist.init_process_group(backend="hccl", rank=rank, world_size=world_size)
+        if not dist.is_initialized(): # create new process group
+            dist.init_process_group(backend="hccl", rank=rank, world_size=world_size)
+            self._pg = dist.group.WORLD
+        else: # process group exists
+            default_pg = dist.group.WORLD
+            try:
+                default_backend = dist.get_backend(default_pg)
+            except Exception:
+                default_backend = None
+
+            if default_backend == "hccl": # if same backend, simply use existing group
+                self._pg = default_pg
+            else: # otherwise create separate group
+                self._pg = dist.new_group(ranks=list(range(world_size)))
         super(HCCLGroup, self).__init__(world_size, rank, group_name)
         self._dev_comm_map = {}
         self._dev_streams_map = {}
@@ -377,7 +390,7 @@ class HCCLGroup(BaseGroup):
         """
 
         def p2p_fn(tensor: torch.Tensor, comm, stream, peer):
-            with torch.npu.device(dist.get_rank()):
+            with torch.npu.device(dist.get_rank(group=self._pg)):
                 exec_result = self.libhccl.HcclSend(
                     buffer_type(tensor.data_ptr()),
                     tensor.numel(),
@@ -405,7 +418,7 @@ class HCCLGroup(BaseGroup):
         """
 
         def p2p_fn(tensor: torch.Tensor, comm, stream, peer):
-            with torch.npu.device(dist.get_rank()):
+            with torch.npu.device(dist.get_rank(group=self._pg)):
                 exec_result = self.libhccl.HcclRecv(
                     buffer_type(tensor.data_ptr()),
                     tensor.numel(),
@@ -597,7 +610,7 @@ class HCCLGroup(BaseGroup):
         with torch.npu.device(f"npu:{my_npu_idx}"):
             comm = hcclComm_t()
             exec_result = self.libhccl.HcclCommInitRootInfo(
-                2, ctypes.byref(root_info), my_p2p_rank, ctypes.byref(comm)
+                self.world_size, ctypes.byref(root_info), my_p2p_rank, ctypes.byref(comm)
             )
             assert (
                 exec_result == 0
@@ -630,7 +643,7 @@ class HCCLGroup(BaseGroup):
         assert len(tensors) == 1
 
         tensor_npu_idx = get_tensor_device(tensors[0])
-        my_npu_idx = get_rank_device()
+        my_npu_idx = get_rank_device(self._pg)
         comm_key = _get_comm_key_send_recv(
             self.rank, tensor_npu_idx, peer_rank, peer_npu_idx
         )
@@ -684,8 +697,9 @@ def _get_comm_key_from_devices(devices: List[int]):
     return ",".join([str(d) for d in devices])
 
 
-def get_rank_device():
-    return dist.get_rank()
+def get_rank_device(pg):
+    return dist.get_rank(group=pg)
+    
 
 def get_tensor_device(tensor):
     """Return the NPU index of a tensor."""
