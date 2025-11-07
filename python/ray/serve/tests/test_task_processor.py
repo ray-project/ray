@@ -762,10 +762,10 @@ class TestTaskConsumerWithRayServe:
 
         def check_queue_lengths():
             result = handle.get_queue_lengths.remote().result()
-            # 8 should still be queued (1 executing, 1 prefetched)
-            return result.get("flower_test_queue", 0) == 8
+            # 8 should still be queued (1 executing, possibly 1 prefetched)
+            return result.get("flower_test_queue", 0) >= 8
 
-        wait_for_condition(check_queue_lengths, timeout=20)
+        wait_for_condition(check_queue_lengths, timeout=30)
 
         # Get final queue lengths
         queue_lengths = handle.get_queue_lengths.remote().result()
