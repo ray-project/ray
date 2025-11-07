@@ -58,6 +58,9 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
     def health_check_sync(self) -> List[Dict]:
         pass
 
+    def get_queue_lengths_sync(self) -> Dict[str, int]:
+        pass
+
 
 @pytest.fixture
 def config():
