@@ -28,6 +28,19 @@ py_library(
 )
 
 py_test_module_list(
+    size = "small",
+    files = glob(["tests/unit/**/test_*.py"]),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
     size = "medium",
     files = glob(["tests/block_batching/test_*.py"]),
     tags = [
