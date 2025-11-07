@@ -30,8 +30,6 @@ depsets:
       - python/requirements/ml/tune-requirements.txt
       - python/requirements/ml/tune-test-requirements.txt
       - python/requirements/security-requirements.txt
-    constraints:
-      - /tmp/ray-deps/requirements_compiled.txt
     output: python/deplocks/req_compiled/req_compiled_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
@@ -42,5 +40,3 @@ depsets:
     build_arg_sets:
       - py311
       - py312
-    pre_hooks:
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
