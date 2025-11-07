@@ -64,14 +64,18 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     }
 
     auto &node_versions = GetNodeComponentVersions(message->node_id());
-    if (node_versions[message->message_type()] < message->version()) {
-      node_versions[message->message_type()] = message->version();
-      sending_buffer_[std::make_pair(message->node_id(), message->message_type())] =
-          std::move(message);
-      StartSend();
-      return true;
+    if (node_versions[message->message_type()] >= message->version()) {
+      RAY_LOG(INFO) << "Dropping sync message with stale version. latest version: "
+                    << node_versions[message->message_type()]
+                    << ", dropped message version: " << message->version();
+      return false;
     }
-    return false;
+
+    node_versions[message->message_type()] = message->version();
+    sending_buffer_[std::make_pair(message->node_id(), message->message_type())] =
+        std::move(message);
+    StartSend();
+    return true;
   }
 
   virtual ~RaySyncerBidiReactorBase() = default;
