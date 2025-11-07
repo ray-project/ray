@@ -471,5 +471,38 @@ void RayletClient::GetNodeStats(
                   /*method_timeout_ms*/ -1);
 }
 
+void RayletClient::GetWorkerPIDs(
+    const gcs::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
+  rpc::GetWorkerPIDsRequest request;
+  auto client_callback = [callback](const Status &status,
+                                    rpc::GetWorkerPIDsReply &&reply) {
+    if (status.ok()) {
+      std::vector<int32_t> workers(reply.pids().begin(), reply.pids().end());
+      callback(status, workers);
+    } else {
+      callback(status, std::nullopt);
+    }
+  };
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            GetWorkerPIDs,
+                            request,
+                            client_callback,
+                            grpc_client_,
+                            timeout_ms);
+}
+
+void RayletClient::KillLocalActor(
+    const rpc::KillLocalActorRequest &request,
+    const rpc::ClientCallback<rpc::KillLocalActorReply> &callback) {
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            KillLocalActor,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
+}
+
 }  // namespace rpc
 }  // namespace ray

@@ -37,6 +37,7 @@ if is_v2_enabled():
         ) from exc
     from ray.train.v2.api.callback import UserCallback  # noqa: F811
     from ray.train.v2.api.config import (  # noqa: F811
+        CheckpointConfig,
         FailureConfig,
         RunConfig,
         ScalingConfig,

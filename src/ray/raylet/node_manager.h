@@ -30,7 +30,6 @@
 #include "ray/common/lease/lease.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
@@ -40,6 +39,7 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/pubsub/subscriber.h"
+#include "ray/ray_syncer/ray_syncer.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/lease_dependency_manager.h"
 #include "ray/raylet/local_lease_manager.h"
@@ -303,6 +303,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleDrainRaylet(rpc::DrainRayletRequest request,
                          rpc::DrainRayletReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleKillLocalActor(rpc::KillLocalActorRequest request,
+                            rpc::KillLocalActorReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
 
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
@@ -656,6 +660,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
                               rpc::NotifyGCSRestartReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `GetWorkerPIDs` request.
+  void HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
+                           rpc::GetWorkerPIDsReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Checks the local socket connection for all registered workers and drivers.
   /// If any of them have disconnected unexpectedly (i.e., we receive a SIGHUP),

@@ -36,6 +36,7 @@ import pyarrow.fs
 import ray
 from ray._common.retry import call_with_retry
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
+from ray.util.annotations import DeveloperAPI
 
 import psutil
 
@@ -1712,3 +1713,21 @@ def merge_resources_to_ray_remote_args(
     if memory is not None:
         ray_remote_args["memory"] = memory
     return ray_remote_args
+
+
+@DeveloperAPI
+def infer_compression(path: str) -> Optional[str]:
+    import pyarrow as pa
+
+    compression = None
+    try:
+        # Try to detect compression codec from path.
+        compression = pa.Codec.detect(path).name
+    except (ValueError, TypeError):
+        # Arrow's compression inference on the file path doesn't work for Snappy, so we double-check ourselves.
+        import pathlib
+
+        suffix = pathlib.Path(path).suffix
+        if suffix and suffix[1:] == "snappy":
+            compression = "snappy"
+    return compression

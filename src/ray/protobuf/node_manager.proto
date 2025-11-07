@@ -399,6 +399,26 @@ message IsLocalWorkerDeadReply {
   bool is_dead = 1;
 }
 
+message GetWorkerPIDsRequest {}
+
+message GetWorkerPIDsReply {
+  // PIDs of all drivers and workers managed by the local raylet.
+  repeated int32 pids = 1;
+}
+
+message KillLocalActorRequest {
+  // ID of the actor that is intended to be killed.
+  bytes intended_actor_id = 1;
+  // ID of the worker the actor is on
+  bytes worker_id = 2;
+  // Whether to force kill the actor.
+  bool force_kill = 3;
+  // The precise reason why this actor receives a kill request.
+  ActorDeathCause death_cause = 4;
+}
+
+message KillLocalActorReply {}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Handle the case when GCS restarted.
@@ -512,4 +532,14 @@ service NodeManagerService {
   // Failure: Is currently only used when grpc channel is unavailable for retryable core
   // worker clients. The unavailable callback will eventually be retried so if this fails.
   rpc IsLocalWorkerDead(IsLocalWorkerDeadRequest) returns (IsLocalWorkerDeadReply);
+  // Get the PIDs of all workers currently alive that are managed by the local Raylet.
+  // This includes connected driver processes but excludes system drivers (with namespace
+  // prefix "_ray_internal_")
+  // Failure: Will retry with the default timeout 1000ms. If fails, reply return an empty
+  // list.
+  rpc GetWorkerPIDs(GetWorkerPIDsRequest) returns (GetWorkerPIDsReply);
+  // Request from the GCS actor manager or actor scheduler that the worker shut down
+  // without completing outstanding work.
+  // Failure: Retries, it's idempotent.
+  rpc KillLocalActor(KillLocalActorRequest) returns (KillLocalActorReply);
 }
