@@ -15,9 +15,7 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
-from ray.data._internal.execution.operators.map_operator import (
-    MapOperator,
-)
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
     ReservationOpResourceAllocator,
