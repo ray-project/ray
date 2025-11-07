@@ -604,7 +604,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         # their schemas)
         self._has_schemas_broadcasted: DefaultDict[int, bool] = defaultdict(bool)
         # Set of partitions still pending finalization
-        self._pending_finalization_partition_ids: Set[int] = set(range(num_partitions))
+        self._pending_finalization_partition_ids: Set[int] = set(range(target_num_partitions))
 
         self._output_queue: Deque[RefBundle] = deque()
 
