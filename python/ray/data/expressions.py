@@ -549,7 +549,6 @@ _LIST_METHODS = {
     "len": _PyArrowMethodConfig(
         "list_value_length", DataType.int32(), docstring="Get the length of each list."
     ),
-    # Note: sort is manually defined below to use Literal type for order parameter
     "flatten": _PyArrowMethodConfig(
         "list_flatten", DataType(object), docstring="Flatten nested lists."
     ),
@@ -630,6 +629,11 @@ _STRING_METHODS = {
         DataType.bool(),
         docstring="Check if strings contain only printable characters.",
     ),
+    "is_ascii": _PyArrowMethodConfig(
+        "string_is_ascii",
+        DataType.bool(),
+        docstring="Check if strings contain only ASCII characters.",
+    ),
     # Searching (parameterized)
     "starts_with": _PyArrowMethodConfig(
         "starts_with",
@@ -666,6 +670,24 @@ _STRING_METHODS = {
         DataType.int32(),
         params=["pattern", "ignore_case"],
         docstring="Count occurrences of a substring.",
+    ),
+    "find_regex": _PyArrowMethodConfig(
+        "find_substring_regex",
+        DataType.int32(),
+        params=["pattern", "ignore_case"],
+        docstring="Find the first occurrence matching a regex pattern.",
+    ),
+    "count_regex": _PyArrowMethodConfig(
+        "count_substring_regex",
+        DataType.int32(),
+        params=["pattern", "ignore_case"],
+        docstring="Count occurrences matching a regex pattern.",
+    ),
+    "match_regex": _PyArrowMethodConfig(
+        "match_substring_regex",
+        DataType.bool(),
+        params=["pattern", "ignore_case"],
+        docstring="Check if strings match a regex pattern.",
     ),
     # Transformations
     "reverse": _PyArrowMethodConfig(
@@ -753,25 +775,6 @@ class _ListNamespace:
             return pc.list_slice(arr, start=start or 0, stop=stop, step=step or 1)
 
         return _list_slice(self._expr)
-
-    def sort(
-        self, order: Literal["ascending", "descending"] = "ascending"
-    ) -> "UDFExpr":
-        """Sort each list.
-
-        Args:
-            order: Sort order, either "ascending" or "descending".
-
-        Returns:
-            UDFExpr that sorts each list in the column.
-        """
-        import pyarrow.compute as pc
-
-        @udf(return_dtype=DataType(object))
-        def _list_sort(arr):
-            return pc.list_sort(arr, order=order)
-
-        return _list_sort(self._expr)
 
 
 @dataclass
