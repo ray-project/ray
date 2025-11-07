@@ -916,6 +916,10 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         ignore_nulls: Whether to ignore null values when collecting unique items.
                       Default is True (nulls are excluded).
         alias_name: Optional name for the resulting column.
+        encode_lists: If ``True``, encode list elements.  If ``False``, encode
+            whole lists (i.e., the entire list is considered as a single object).
+            ``False`` by default. To encode list elements, each individual
+            element must be of the same type.
     """
 
     def __init__(
@@ -923,6 +927,7 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         on: Optional[str] = None,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
+        encode_lists: bool = False,
     ):
         super().__init__(
             alias_name if alias_name else f"unique({str(on)})",
@@ -930,6 +935,7 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
             ignore_nulls=ignore_nulls,
             zero_factory=set,
         )
+        self.encode_lists = encode_lists
 
     def combine(self, current_accumulator: Set[Any], new: Set[Any]) -> Set[Any]:
         return self._to_set(current_accumulator) | self._to_set(new)
@@ -937,9 +943,12 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
     def aggregate_block(self, block: Block) -> List[Any]:
         col = BlockAccessor.for_block(block).to_arrow().column(self._target_col_name)
         if pyarrow.types.is_list(col.type):
-            py_list = col.to_pylist()
-            str_list = [str(v) for v in py_list]
-            col = pyarrow.array(str_list, type=pyarrow.string())
+            if self.encode_lists:
+                col = pc.list_flatten(col)
+            else:
+                py_list = col.to_pylist()
+                str_list = [str(v) for v in py_list]
+                col = pyarrow.array(str_list, type=pyarrow.string())
         return pc.unique(col).to_pylist()
 
     @staticmethod
@@ -1453,6 +1462,7 @@ class ApproximateTopK(AggregateFnV2):
         k: int,
         log_capacity: int = 15,
         alias_name: Optional[str] = None,
+        encode_lists: bool = False,
     ):
         """
         Computes the approximate top k items in a column by using a datasketches frequent_strings_sketch.
@@ -1489,11 +1499,15 @@ class ApproximateTopK(AggregateFnV2):
             log_capacity: Base 2 logarithm of the maximum size of the internal hash map.
                 Higher values increase accuracy but use more memory. Defaults to 15.
             alias_name: The name of the aggregate. Defaults to None.
+            encode_lists: If ``True``, encode list elements.  If ``False``, encode
+                whole lists (i.e., the entire list is considered as a single object).
+                ``False`` by default.
         """
 
         self.k = k
         self._log_capacity = log_capacity
         self._frequent_strings_sketch = self._require_datasketches()
+        self.encode_lists = encode_lists
         super().__init__(
             alias_name if alias_name else f"approx_topk({str(on)})",
             on=on,
@@ -1511,7 +1525,12 @@ class ApproximateTopK(AggregateFnV2):
         sketch = self.zero(self._log_capacity)
         for value in column:
             if value.as_py() is not None:
-                sketch.update(str(value.as_py()))
+                py_value = value.as_py()
+                if self.encode_lists and isinstance(py_value, list):
+                    for item in py_value:
+                        sketch.update(str(item))
+                else:
+                    sketch.update(str(py_value))
         return sketch.serialize()
 
     def combine(self, current_accumulator: bytes, new: bytes) -> bytes:

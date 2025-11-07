@@ -10,7 +10,7 @@ import pandas.api.types
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.aggregate import ApproximateTopK, Unique
 from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
-from ray.data.preprocessors.utils import make_post_processor
+from ray.data.preprocessors.utils import StatComputationPlan, make_post_processor
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -120,15 +120,11 @@ class OrdinalEncoder(Preprocessor):
         )
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self.stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=self.columns,
-                encode_lists=self.encode_lists,
-                key_gen=key_gen,
+        self.stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: Unique(
+                col, ignore_nulls=False, encode_lists=self.encode_lists
             ),
             post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
             post_key_fn=lambda col: f"unique_values({col})",
             columns=self.columns,
         )
@@ -146,7 +142,7 @@ class OrdinalEncoder(Preprocessor):
                     return s.map(partial(encode_list, name=s.name))
 
                 def list_as_category(element):
-                    key = tuple(element)
+                    key = str(element)
                     return self.stats_[f"unique_values({s.name})"].get(key)
 
                 return s.apply(list_as_category)
@@ -277,53 +273,13 @@ class OneHotEncoder(Preprocessor):
         )
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        calculate_unique = []
-
-        def one_hot_unique_post_fn(values: List):
-            if any(pd.isnull(k) for k in values):
-                raise ValueError(
-                    "Unable to fit column because it contains null"
-                    " values. Consider imputing missing values first."
-                )
-            return {k: j for j, k in enumerate(sorted(values))}
-
-        def one_host_approx_top_k_post_fn_gen(col: str):
-            def one_host_approx_top_k_post_fn(values: List[Dict[str, Any]]):
-                # we don't filter for null values because ApproximateTopK
-                # skips them. Null values will later be caught in _validate_df.
-                top_k = [d[col] for d in values]
-                return {k: j for j, k in enumerate(sorted(top_k))}
-
-            return one_host_approx_top_k_post_fn
-
-        for col in self.columns:
-            if col in self.max_categories:
-                k = self.max_categories[col]
-                if k > 2**self.log_capacity:
-                    raise ValueError(
-                        f"Maximum categories for column {col} ({k}) is greater than the "
-                        f"internal hashmap size ({2 ** self.log_capacity}). Increase "
-                        f"`log_capacity` to at least {math.ceil(math.log2(k))}."
-                    )
-                self.stat_computation_plan.add_aggregator(
-                    aggregator_fn=lambda col: ApproximateTopK(
-                        col, k=k, log_capacity=self.log_capacity
-                    ),
-                    post_process_fn=one_host_approx_top_k_post_fn_gen(col),
-                    post_key_fn=lambda col: f"unique_values({col})",
-                    columns=[col],
-                )
-            else:
-                calculate_unique.append(col)
-
-        if len(calculate_unique) > 0:
-            self.stat_computation_plan.add_aggregator(
-                aggregator_fn=lambda col: Unique(col, ignore_nulls=False),
-                post_process_fn=one_hot_unique_post_fn,
-                post_key_fn=lambda col: f"unique_values({col})",
-                columns=calculate_unique,
-            )
-
+        fit_hot_encoders(
+            self.stat_computation_plan,
+            self.columns,
+            self.max_categories,
+            self.log_capacity,
+            False,
+        )
         return self
 
     def safe_get(self, v: Any, stats: Dict[str, int]):
@@ -433,6 +389,9 @@ class MultiHotEncoder(Preprocessor):
             columns will be the same as the input columns. If not None, the length of
             ``output_columns`` must match the length of ``columns``, othwerwise an error
             will be raised.
+        log_capacity: Base 2 logarithm of the maximum size of the internal hash map for
+            top-K calculation. Higher values increase accuracy but use more memory.
+            Defaults to 11 (2048 categories).
 
     .. seealso::
 
@@ -453,28 +412,24 @@ class MultiHotEncoder(Preprocessor):
         *,
         max_categories: Optional[Dict[str, int]] = None,
         output_columns: Optional[List[str]] = None,
+        log_capacity: int = 11,
     ):
         super().__init__()
         # TODO: add `drop` parameter.
         self.columns = columns
         self.max_categories = max_categories or {}
+        self.log_capacity = log_capacity
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self.stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=self.columns,
-                encode_lists=True,
-                key_gen=key_gen,
-                max_categories=self.max_categories,
-            ),
-            post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: f"unique_values({col})",
-            columns=self.columns,
+        fit_hot_encoders(
+            self.stat_computation_plan,
+            self.columns,
+            self.max_categories,
+            self.log_capacity,
+            True,
         )
         return self
 
@@ -825,6 +780,55 @@ def compute_unique_value_indices(
     return unique_values_by_col
 
 
+def fit_hot_encoders(
+    stat_computation_plan: StatComputationPlan,
+    columns: List[str],
+    max_categories: Optional[Dict[str, int]],
+    log_capacity: int,
+    encode_lists: bool,
+):
+    """
+    Fits OneHotEncoders and MultiHotEncoders. Refer to argument descriptions for OneHot
+    and MultiHot encoders.
+    """
+    to_aggregate_unique = []
+
+    for col in columns:
+        if col in max_categories:
+            k = max_categories[col]
+            if k > 2**log_capacity:
+                raise ValueError(
+                    f"Maximum categories for column {col} ({k}) is greater than the "
+                    f"internal hashmap size ({2 ** log_capacity}). Increase "
+                    f"`log_capacity` to at least {math.ceil(math.log2(k))}."
+                )
+            stat_computation_plan.add_aggregator(
+                aggregator_fn=lambda col: ApproximateTopK(
+                    col,
+                    k=k,
+                    log_capacity=log_capacity,
+                    encode_lists=encode_lists,
+                ),
+                post_process_fn=approx_top_k_post_fn(col),
+                post_key_fn=lambda col: f"unique_values({col})",
+                columns=[col],
+            )
+        else:
+            to_aggregate_unique.append(col)
+
+    if len(to_aggregate_unique) > 0:
+        stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: Unique(
+                col,
+                ignore_nulls=False,
+                encode_lists=encode_lists,
+            ),
+            post_process_fn=unique_post_fn(),
+            post_key_fn=lambda col: f"unique_values({col})",
+            columns=to_aggregate_unique,
+        )
+
+
 def unique_post_fn(drop_na_values: bool = False) -> Callable[[Set], Dict[str, int]]:
     """
     Returns a post-processing function that generates an encoding map by
@@ -836,7 +840,7 @@ def unique_post_fn(drop_na_values: bool = False) -> Callable[[Set], Dict[str, in
              mapping each value to a unique integer index.
     """
 
-    def gen_value_index(values: Set) -> Dict[str, int]:
+    def gen_value_index(values: List | Set) -> Dict[str, int]:
         if drop_na_values:
             values = {k for k in values if not pd.isnull(k)}
         else:
@@ -846,6 +850,27 @@ def unique_post_fn(drop_na_values: bool = False) -> Callable[[Set], Dict[str, in
                     " values. Consider imputing missing values first."
                 )
         return {k: j for j, k in enumerate(sorted(values))}
+
+    return gen_value_index
+
+
+def approx_top_k_post_fn(col: str):
+    """
+    Returns a post-processing function that generates an encoding map by
+    sorting the unique values produced during aggregation or stats computation,
+    specifically for results from the ApproximateTopK aggregator.
+
+    :param drop_na_values: If True, NA/null values will be silently dropped from the encoding map.
+                           If False, raises an error if any NA/null values are present.
+    :return: A callable that takes a set of unique values and returns a dictionary
+             mapping each value to a unique integer index.
+    """
+
+    def gen_value_index(values: List[Dict[str, Any]]):
+        # we don't filter for null values because ApproximateTopK
+        # skips them. Null values will later be caught in _validate_df.
+        top_k = [d[col] for d in values]
+        return {k: j for j, k in enumerate(sorted(top_k))}
 
     return gen_value_index
 
