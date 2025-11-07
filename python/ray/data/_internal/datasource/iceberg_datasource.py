@@ -141,19 +141,39 @@ class IcebergDatasource(Datasource):
         self.table_identifier = table_identifier
 
         self._row_filter = row_filter if row_filter is not None else AlwaysTrue()
-        # Convert selected_fields to List (None = all columns, matching parquet convention)
-        self._data_columns = (
-            None
-            if selected_fields is None or selected_fields == ("*",)
-            else list(selected_fields)
-        )
-        self._data_columns_rename_map = None
+        # Convert selected_fields to projection_map (identity mapping if specified)
+        # Note: Empty tuple () means no columns, None/"*" means all columns
+        if selected_fields is None or selected_fields == ("*",):
+            self._projection_map = None
+        else:
+            self._projection_map = {col: col for col in selected_fields}
 
         if snapshot_id:
             self._scan_kwargs["snapshot_id"] = snapshot_id
 
         self._plan_files = None
         self._table = None
+
+    def _get_data_columns(self) -> Optional[List[str]]:
+        """Extract data columns from projection map.
+
+        Returns:
+            List of column names, or None if all columns should be read.
+            Empty list [] means no columns.
+        """
+        return (
+            list(self._projection_map.keys())
+            if self._projection_map is not None
+            else None
+        )
+
+    def _get_data_columns_rename_map(self) -> Optional[Dict[str, str]]:
+        """Extract rename map from projection map."""
+        if self._projection_map is None:
+            return None
+        # Only include renames (where key != value)
+        renames = {k: v for k, v in self._projection_map.items() if k != v}
+        return renames if renames else None
 
     def _get_catalog(self) -> "Catalog":
         from pyiceberg import catalog
@@ -210,9 +230,8 @@ class IcebergDatasource(Datasource):
         combined_filter = self._get_combined_filter()
 
         # Convert back to tuple for PyIceberg API (None -> ("*",))
-        selected_fields = (
-            ("*",) if self._data_columns is None else tuple(self._data_columns)
-        )
+        data_columns = self._get_data_columns()
+        selected_fields = ("*",) if data_columns is None else tuple(data_columns)
 
         data_scan = self.table.scan(
             row_filter=combined_filter,
@@ -322,7 +341,7 @@ class IcebergDatasource(Datasource):
             case_sensitive=case_sensitive,
             limit=limit,
             schema=projected_schema,
-            column_rename_map=self._data_columns_rename_map,
+            column_rename_map=self._get_data_columns_rename_map(),
         )
 
         read_tasks = []

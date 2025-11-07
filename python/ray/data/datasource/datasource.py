@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Generator, Iterable, List, Optional, Tuple
+from typing import Callable, Dict, Generator, Iterable, List, Optional
 
 import numpy as np
 
@@ -17,117 +17,93 @@ class _DatasourceProjectionPushdownMixin:
         being pushed down into the reading layer"""
         return False
 
-    def get_current_projection(self) -> Optional[List[str]]:
-        """Return the current projection (selected columns).
+    def get_projection_map(self) -> Optional[Dict[str, str]]:
+        """Return the projection map (original column names -> final column names).
 
         Returns:
-            List of column names to project, or None if all columns are selected.
+            Dict mapping original column names (in storage) to final column names
+            (after optional renames). Keys indicate which columns are selected.
+            None means all columns are selected with no renames.
+            Empty dict {} means no columns are selected.
         """
-        return self._data_columns
+        return self._projection_map
 
     def get_column_renames(self) -> Optional[Dict[str, str]]:
-        """Return the column renames applied to this datasource.
+        """Return the column renames from the projection map.
+
+        This is used by predicate pushdown to rewrite filter expressions
+        from renamed column names back to original column names.
 
         Returns:
-            A dictionary mapping old column names to new column names,
+            Dict mapping original column names to renamed names,
             or None if no renaming has been applied.
         """
-        return self._data_columns_rename_map if self._data_columns_rename_map else None
+        if self._projection_map is None:
+            return None
+        # Only include actual renames (where key != value)
+        renames = {k: v for k, v in self._projection_map.items() if k != v}
+        return renames if renames else None
 
     @staticmethod
-    def _apply_column_mapping(
-        columns: List[str],
-        mapping: Dict[str, str],
-    ) -> List[str]:
-        """Apply a column name mapping, keeping unmapped columns as-is.
-
-        Args:
-            columns: List of column names to map
-            mapping: Dictionary mapping from one name to another
-
-        Returns:
-            List of column names with mapping applied
-        """
-        return [mapping.get(col, col) for col in columns]
-
-    @staticmethod
-    def _process_projection_with_renames(
-        columns: Optional[List[str]],
-        existing_rename_map: Optional[Dict[str, str]],
-    ) -> Tuple[List[str], Optional[Dict[str, str]]]:
-        """Process column projection accounting for existing renames.
-
-        When columns have been renamed, this handles:
-        1. Translating column names from renamed space back to original names
-        2. Filtering the rename map to only include selected columns
-
-        Args:
-            columns: Columns to select (in renamed space if rename_map exists)
-            existing_rename_map: Current rename mapping (original -> renamed)
-
-        Returns:
-            _ProjectionProcessingResult containing:
-            - rebound_columns: Column names in original/storage space
-            - filtered_rename_map: Rename map containing only selected columns
-        """
-        if not existing_rename_map or columns is None:
-            # No renames to process
-            return columns, existing_rename_map
-
-        # Create reverse mapping: renamed -> original
-        reverse_map = {
-            renamed: original for original, renamed in existing_rename_map.items()
-        }
-
-        # Translate columns to original space
-        rebound_columns = _DatasourceProjectionPushdownMixin._apply_column_mapping(
-            columns, reverse_map
-        )
-
-        # Filter rename map to only selected columns (where renamed name is in columns)
-        filtered_rename_map = {
-            original: renamed
-            for original, renamed in existing_rename_map.items()
-            if renamed in columns
-        }
-
-        return rebound_columns, filtered_rename_map or None
-
-    @staticmethod
-    def _combine_rename_map(
-        prev_column_rename_map: Optional[Dict[str, str]],
-        new_column_rename_map: Optional[Dict[str, str]],
+    def _combine_projection_map(
+        prev_projection_map: Optional[Dict[str, str]],
+        new_projection_map: Optional[Dict[str, str]],
     ) -> Optional[Dict[str, str]]:
-        """Combine two column rename maps, handling transitive renames.
+        """Combine two projection maps via transitive composition.
 
         Args:
-            prev_column_rename_map: Previous rename map (original -> renamed)
-            new_column_rename_map: New rename map to apply (original -> renamed)
+            prev_projection_map: Previous projection (original -> intermediate names)
+            new_projection_map: New projection to apply (intermediate -> final names)
 
         Returns:
-            Combined rename map with transitive mappings collapsed
+            Combined projection map (original -> final names)
+
+        Examples:
+            >>> # Select columns a, b with no renames
+            >>> prev = {"a": "a", "b": "b"}
+            >>> # Select only 'a', rename to 'x'
+            >>> new = {"a": "x"}
+            >>> _combine_projection_map(prev, new)
+            {'a': 'x'}
+
+            >>> # First rename a->temp
+            >>> prev = {"a": "temp"}
+            >>> # Then rename temp->final
+            >>> new = {"temp": "final"}
+            >>> _combine_projection_map(prev, new)
+            {'a': 'final'}
         """
-        from ray.data._internal.collections import collapse_transitive_map
+        # Handle None cases (None means "all columns, no renames")
+        if prev_projection_map is None:
+            return new_projection_map
+        elif new_projection_map is None:
+            return prev_projection_map
 
-        if not prev_column_rename_map:
-            combined = new_column_rename_map
-        elif not new_column_rename_map:
-            combined = prev_column_rename_map
-        else:
-            combined = prev_column_rename_map | new_column_rename_map
+        # Compose projections: for each original->intermediate mapping in prev,
+        # check if intermediate is selected by new projection
+        composed = {}
+        for orig_col, intermediate_name in prev_projection_map.items():
+            # If intermediate name is in new projection, follow the chain
+            if intermediate_name in new_projection_map:
+                final_name = new_projection_map[intermediate_name]
+                composed[orig_col] = final_name
 
-        return collapse_transitive_map(combined) if combined else None
+        # The composition already handles transitive chains correctly:
+        # prev {a: temp}, new {temp: final} -> composed {a: final}
+        # No need for collapse_transitive_map which would incorrectly remove
+        # identity mappings like {b: b}
+        return composed if composed else None
 
     def apply_projection(
         self,
-        columns: Optional[List[str]],
-        column_rename_map: Optional[Dict[str, str]],
+        projection_map: Optional[Dict[str, str]],
     ) -> "Datasource":
         """Apply a projection to this datasource.
 
         Args:
-            columns: List of columns to select, or None to select all columns.
-            column_rename_map: Dictionary mapping old column names to new names.
+            projection_map: Dict mapping original column names (in storage)
+                to final column names (after optional renames). Keys indicate
+                which columns to select. None means select all columns with no renames.
 
         Returns:
             A new datasource instance with the projection applied.
@@ -136,58 +112,15 @@ class _DatasourceProjectionPushdownMixin:
 
         clone = copy.copy(self)
 
-        # Process projection with existing renames
-        rebound_columns, filtered_rename_map = self._process_projection_with_renames(
-            columns, self._data_columns_rename_map
-        )
-
-        # Combine projections (now in original column space)
-        clone._data_columns = self._combine_projection(
-            self._data_columns, rebound_columns
-        )
-
-        # Combine rename maps
-        clone._data_columns_rename_map = self._combine_rename_map(
-            filtered_rename_map, column_rename_map
+        # Combine projections via transitive map composition
+        clone._projection_map = self._combine_projection_map(
+            self._projection_map, projection_map
         )
 
         # Hook for datasource-specific cleanup
         self._post_apply_projection(clone)
 
         return clone
-
-    @staticmethod
-    def _combine_projection(
-        prev_projected_cols: Optional[List[str]],
-        new_projected_cols: Optional[List[str]],
-    ) -> Optional[List[str]]:
-        """Combine two projections, validating that new projection is valid.
-
-        Args:
-            prev_projected_cols: Previous projection, or None for all columns
-            new_projected_cols: New projection, or None for all columns
-
-        Returns:
-            Combined projection, or None for all columns
-        """
-        # NOTE: None projection carries special meaning of all columns being selected
-        if prev_projected_cols is None:
-            return new_projected_cols
-        elif new_projected_cols is None:
-            # Retain original projection
-            return prev_projected_cols
-        else:
-            illegal_refs = [
-                col for col in new_projected_cols if col not in prev_projected_cols
-            ]
-
-            if illegal_refs:
-                raise ValueError(
-                    f"New projection {new_projected_cols} references non-existent columns "
-                    f"(existing projection {prev_projected_cols})"
-                )
-
-            return new_projected_cols
 
     def _post_apply_projection(self, clone: "Datasource") -> None:
         """Hook for datasource-specific cleanup after applying projection.
@@ -217,9 +150,7 @@ class _DatasourceProjectionPushdownMixin:
         if not column_rename_map:
             return table
 
-        new_names = _DatasourceProjectionPushdownMixin._apply_column_mapping(
-            table.schema.names, column_rename_map
-        )
+        new_names = [column_rename_map.get(col, col) for col in table.schema.names]
         return table.rename_columns(new_names)
 
     @staticmethod
