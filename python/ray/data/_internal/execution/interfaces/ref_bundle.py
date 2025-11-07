@@ -17,7 +17,7 @@ class BlockSlice:
     block_index: int
     start_offset: int
     end_offset: int
-    output_index: Optional[int] = None
+    output_index: int
 
 
 @dataclass
