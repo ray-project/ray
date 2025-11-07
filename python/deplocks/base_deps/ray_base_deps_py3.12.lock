@@ -1996,7 +1996,7 @@ pyyaml==6.0.1 \
     #   ray
     #   uvicorn
 .whl/ray-100.0.0.dev0-cp312-cp312-linux_x86_64.whl \
-    --hash=sha256:bb064ffb163601ddf82cbb7d80f6853ed0f79e1bdf77911a855720ae999bcaa5
+    --hash=sha256:53c7e878e3907b10efb570ca2a1630c0ac64b637049b99e3c04fb691156e6b92
     # via -r release/ray_release/byod/ray_dev_py3.12.in
 referencing==0.36.2 \
     --hash=sha256:df2e89862cd09deabbdba16944cc3f10feb6b3e6f18e902f7cc25609a34775aa \

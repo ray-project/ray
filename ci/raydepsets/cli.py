@@ -209,9 +209,6 @@ class DependencySetManager:
 
     def subgraph_config_nodes(self):
         # Get all nodes that have the target config name
-        for node in self.build_graph.nodes:
-            print(f"Node: {node}")
-            print(f"Config name: {self.build_graph.nodes[node]['config_name']}")
         config_nodes = [
             node
             for node in self.build_graph.nodes
