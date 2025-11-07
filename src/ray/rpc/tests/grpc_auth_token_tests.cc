@@ -42,11 +42,19 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
     // Set client token in environment for ClientCallManager to read from
     // AuthenticationTokenLoader
     if (!client_token.empty()) {
+#ifdef _WIN32
+      _putenv_s("RAY_AUTH_TOKEN", client_token.c_str());
+#else
       setenv("RAY_AUTH_TOKEN", client_token.c_str(), 1);
+#endif
     } else {
       RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
       AuthenticationTokenLoader::instance().ResetCache();
+#ifdef _WIN32
+      _putenv_s("RAY_AUTH_TOKEN", "");
+#else
       unsetenv("RAY_AUTH_TOKEN");
+#endif
     }
 
     // Start client thread FIRST
@@ -115,8 +123,13 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
     }
 
     // Clean up environment variables
+#ifdef _WIN32
+    _putenv_s("RAY_AUTH_TOKEN", "");
+    _putenv_s("RAY_AUTH_TOKEN_PATH", "");
+#else
     unsetenv("RAY_AUTH_TOKEN");
     unsetenv("RAY_AUTH_TOKEN_PATH");
+#endif
     // Reset the token loader for test isolation
     AuthenticationTokenLoader::instance().ResetCache();
   }
