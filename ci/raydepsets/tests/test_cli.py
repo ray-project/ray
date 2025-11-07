@@ -27,6 +27,7 @@ from ci.raydepsets.tests.utils import (
     replace_in_file,
     save_file_as,
     save_packages_to_file,
+    write_to_config_file,
 )
 from ci.raydepsets.workspace import (
     Depset,
@@ -37,16 +38,18 @@ _runfiles = runfiles.Create()
 
 
 def _create_test_manager(
-    tmpdir: str, config_path: Optional[str] = None, check: bool = False
+    tmpdir: str,
+    config_path: Optional[str] = "test.depsets.yaml",
+    check: bool = False,
+    build_all_configs: Optional[bool] = False,
 ) -> DependencySetManager:
-    if config_path is None:
-        config_path = "test.depsets.yaml"
     uv_cache_dir = Path(tmpdir) / "uv_cache"
     return DependencySetManager(
         config_path=config_path,
         workspace_dir=tmpdir,
         uv_cache_dir=uv_cache_dir.as_posix(),
         check=check,
+        build_all_configs=build_all_configs,
     )
 
 
@@ -67,20 +70,6 @@ def _invoke_build(tmpdir: str, config_path: str, name: Optional[str] = None):
     )
 
 
-def _write_to_config_file(tmpdir: str, depset: Depset, config_name: str):
-    with open(Path(tmpdir) / config_name, "w") as f:
-        f.write(
-            f"""
-depsets:
-    - name: {depset.name}
-      operation: {depset.operation}
-      {f"constraints: {depset.constraints}" if depset.constraints else ""}
-      {f"requirements: {depset.requirements}" if depset.requirements else ""}
-      output: {depset.output}
-                """
-        )
-
-
 class TestCli(unittest.TestCase):
     def test_cli_load_fail_no_config(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -98,13 +87,6 @@ class TestCli(unittest.TestCase):
             assert manager.workspace.dir == tmpdir
             assert len(manager.config.depsets) > 0
             assert len(manager.build_graph.nodes) > 0
-
-    def test_get_depset(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir)
-            manager = _create_test_manager(tmpdir)
-            with self.assertRaises(KeyError):
-                _get_depset(manager.config.depsets, "fake_depset")
 
     def test_uv_binary_exists(self):
         assert _uv_binary() is not None
@@ -248,7 +230,7 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_general.txt",
             )
 
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(RuntimeError) as e:
                 manager.subset(
                     source_depset="general_depset__py311_cpu",
                     requirements=["requirements_compiled_test.txt"],
@@ -256,6 +238,10 @@ class TestCli(unittest.TestCase):
                     name="subset_general_depset__py311_cpu",
                     output="requirements_compiled_subset_general.txt",
                 )
+            assert (
+                "Requirement requirements_compiled_test.txt is not a subset of general_depset__py311_cpu in config test.depsets.yaml"
+                in str(e.exception)
+            )
 
     def test_check_if_subset_exists(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -271,23 +257,28 @@ class TestCli(unittest.TestCase):
                 override_flags=[],
                 config_name="test.depsets.yaml",
             )
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(RuntimeError) as e:
                 manager.check_subset_exists(
                     source_depset=source_depset,
                     requirements=["requirements_3.txt"],
                 )
+            assert (
+                "Requirement requirements_3.txt is not a subset of general_depset__py311_cpu in config test.depsets.yaml"
+                in str(e.exception)
+            )
 
     def test_compile_bad_requirements(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(RuntimeError) as e:
                 manager.compile(
                     constraints=[],
                     requirements=["requirements_test_bad.txt"],
                     name="general_depset",
                     output="requirements_compiled_general.txt",
                 )
+            assert "File not found: `requirements_test_bad.txt" in str(e.exception)
 
     def test_get_path(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -436,9 +427,13 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_invalid_op.txt",
                 config_name="test.depsets.yaml",
             )
-            _write_to_config_file(tmpdir, depset, "test.depsets.yaml")
-            with self.assertRaises(ValueError):
+            write_to_config_file(tmpdir, depset, "test.depsets.yaml")
+            with self.assertRaises(ValueError) as e:
                 _create_test_manager(tmpdir)
+            assert (
+                "Invalid operation: invalid_op for depset invalid_op_depset in config test.depsets.yaml"
+                in str(e.exception)
+            )
 
     def test_execute(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -459,8 +454,9 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
-            with self.assertRaises(KeyError):
+            with self.assertRaises(KeyError) as e:
                 manager.execute(single_depset_name="fake_depset")
+            assert "Dependency set fake_depset not found" in str(e.exception)
 
     def test_expand(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -565,16 +561,6 @@ class TestCli(unittest.TestCase):
             depset = _get_depset(manager.config.depsets, "ray_base_test_depset")
             assert depset.name == "ray_base_test_depset"
 
-    def test_get_depset_with_build_arg_set_and_no_build_arg_set_provided(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir)
-            manager = DependencySetManager(
-                config_path="test.depsets.yaml",
-                workspace_dir=tmpdir,
-            )
-            with self.assertRaises(KeyError):
-                _get_depset(manager.config.depsets, "build_args_test_depset_py311")
-
     def test_execute_single_pre_hook(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
@@ -608,7 +594,7 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_test.txt",
                 config_name="test.depsets.yaml",
             )
-            _write_to_config_file(tmpdir, depset, "test.depsets.yaml")
+            write_to_config_file(tmpdir, depset, "test.depsets.yaml")
             save_file_as(
                 Path(tmpdir) / "requirements_compiled_test.txt",
                 Path(tmpdir) / "requirements_compiled.txt",
@@ -637,7 +623,7 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_test.txt",
                 config_name="test.depsets.yaml",
             )
-            _write_to_config_file(tmpdir, depset, "test.depsets.yaml")
+            write_to_config_file(tmpdir, depset, "test.depsets.yaml")
             manager = _create_test_manager(tmpdir, check=True)
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
@@ -655,7 +641,7 @@ class TestCli(unittest.TestCase):
             with self.assertRaises(RuntimeError) as e:
                 manager.diff_lock_files()
             assert (
-                "Lock files are not up to date. Please update lock files and push the changes."
+                "Lock files are not up to date for config: test.depsets.yaml. Please update lock files and push the changes."
                 in str(e.exception)
             )
             assert "+emoji==2.8.0" in str(e.exception)
@@ -672,7 +658,7 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_test.txt",
                 config_name="test.depsets.yaml",
             )
-            _write_to_config_file(tmpdir, depset, "test.depsets.yaml")
+            write_to_config_file(tmpdir, depset, "test.depsets.yaml")
             manager = _create_test_manager(tmpdir, check=True)
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
@@ -727,6 +713,66 @@ class TestCli(unittest.TestCase):
             assert output_text == output_text_valid
 
     @patch("sys.stdout", new_callable=io.StringIO)
+    def test_requirements_ordering(self, mock_stdout):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            save_packages_to_file(
+                Path(tmpdir) / "requirements_expanded.txt",
+                ["six"],
+            )
+            save_packages_to_file(
+                Path(tmpdir) / "requirements_compiled_test_expand.txt",
+                ["zipp"],
+            )
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=[
+                    "requirements_test.txt",
+                    "requirements_expanded.txt",
+                    "requirements_compiled_test_expand.txt",
+                ],
+                append_flags=["--no-annotate", "--no-header"],
+                name="requirements_ordering_test_depset",
+                output="requirements_compiled_requirements_ordering.txt",
+            )
+            stdout = mock_stdout.getvalue()
+            assert (
+                "requirements_compiled_test_expand.txt requirements_expanded.txt requirements_test.txt"
+                in stdout
+            )
+
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_constraints_ordering(self, mock_stdout):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            save_packages_to_file(
+                Path(tmpdir) / "requirements_expanded.txt",
+                ["six==1.17.0"],
+            )
+            save_packages_to_file(
+                Path(tmpdir) / "requirements_compiled_test_expand.txt",
+                ["zipp==3.19.2"],
+            )
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                requirements=["requirements_test.txt"],
+                constraints=[
+                    "requirement_constraints_test.txt",
+                    "requirements_expanded.txt",
+                    "requirements_compiled_test_expand.txt",
+                ],
+                append_flags=["--no-annotate", "--no-header"],
+                name="constraints_ordering_test_depset",
+                output="requirements_compiled_constraints_ordering.txt",
+            )
+            stdout = mock_stdout.getvalue()
+            assert (
+                "-c requirement_constraints_test.txt -c requirements_compiled_test_expand.txt -c requirements_expanded.txt"
+                in stdout
+            )
+
+    @patch("sys.stdout", new_callable=io.StringIO)
     def test_execute_pre_hook(self, mock_stdout):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
@@ -763,6 +809,16 @@ class TestCli(unittest.TestCase):
                     "requirements_test.txt",
                 ]
             )
+
+    def test_build_all_configs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(
+                tmpdir, config_path="*.depsets.yaml", build_all_configs=True
+            )
+            assert manager.build_graph is not None
+            assert len(manager.build_graph.nodes) == 12
+            assert len(manager.build_graph.edges) == 8
 
 
 if __name__ == "__main__":

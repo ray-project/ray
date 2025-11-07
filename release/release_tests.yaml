@@ -80,6 +80,7 @@
 # Baseline test
 #######################
 - name: hello_world
+  python: "3.10"
   team: reef
   group: hello_world
   frequency: nightly
@@ -91,6 +92,7 @@
 
   run:
     timeout: 1800
+    num_retries: 3
     script: python hello_world.py
 
   variations:
@@ -101,7 +103,6 @@
         cluster_compute: hello_world_compute_config_gce.yaml
     - __suffix__: azure
       env: azure
-      frequency: manual
       cluster:
         cluster_compute: hello_world_compute_config_azure.yaml
     - __suffix__: released
@@ -109,6 +110,7 @@
         ray_version: 2.50.0
 
 - name: hello_world_custom_byod
+  python: "3.10"
   team: reef
   group: hello_world
   frequency: nightly
@@ -135,6 +137,7 @@
         ray_version: 2.50.0
 
 - name: hello_world_custom_byod_depset_only
+  python: "3.10"
   team: reef
   group: hello_world
   frequency: nightly
@@ -158,6 +161,7 @@
 # Cluster scaling tests
 #######################
 - name: cluster_tune_scale_up_down
+  python: "3.10"
   group: Cluster tests
   working_dir: cluster_tests
 
@@ -200,9 +204,7 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
-  # Failing since Aug 2024
-  # https://github.com/ray-project/ray/issues/46687
-  frequency: manual
+  frequency: weekly
   team: ml
 
   cluster:
@@ -218,7 +220,7 @@
       num_nodes: 4
 
   smoke_test:
-    frequency: manual
+    frequency: weekly
 
     cluster:
       cluster_compute: compute_gpu_2x2_aws.yaml
@@ -278,7 +280,8 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/46687
+  frequency: manual
   team: ml
 
   stable: false
@@ -296,7 +299,7 @@
       num_nodes: 4
 
   smoke_test:
-    frequency: nightly
+    frequency: manual
 
     cluster:
       cluster_compute: compute_gpu_2x2_aws.yaml
@@ -333,7 +336,8 @@
 
   stable: false
 
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/49847
+  frequency: manual
   team: ml
 
   cluster:
@@ -355,7 +359,8 @@
 
   stable: false
 
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/49846
+  frequency: manual
   team: ml
 
   cluster:
@@ -406,7 +411,7 @@
   python: "3.10"
   group: AIR examples
   working_dir: air_examples/vicuna_13b_lightning_deepspeed_finetuning
-  frequency: weekly
+  frequency: manual
   team: ml
   cluster:
     byod:
@@ -422,6 +427,7 @@
 # Tune tests
 #######################
 - name: tune_with_frequent_pausing
+  python: "3.10"
   group: Tune tests
   working_dir: tune_tests
 
@@ -452,6 +458,7 @@
 
 
 - name: tune_rllib_connect_test
+  python: "3.10"
   group: Tune tests
   working_dir: ml_user_tests
 
@@ -484,6 +491,7 @@
   alert: default
 
 - name: tune_cloud_long_running_cloud_storage
+  python: "3.10"
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
   frequency: weekly
@@ -528,6 +536,7 @@
 ########################
 
 - name: tune_scalability_bookkeeping_overhead
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -558,6 +567,7 @@
         cluster_compute: kuberay.yaml
 
 - name: tune_scalability_durable_trainable
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -591,6 +601,7 @@
 
 
 - name: tune_scalability_durable_multifile_checkpoints
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -623,6 +634,7 @@
   alert: tune_tests
 
 - name: tune_scalability_long_running_large_checkpoints
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -657,6 +669,7 @@
         cluster_compute: tpl_gce_1x32_hd.yaml
 
 - name: tune_scalability_network_overhead
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -695,6 +708,7 @@
         cluster_compute: tpl_gce_100x2.yaml
 
 - name: tune_scalability_result_throughput_cluster
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -723,6 +737,7 @@
         cluster_compute: tpl_gce_16x64.yaml
 
 - name: tune_scalability_result_throughput_single_node
+  python: "3.10"
   group: Tune scalability tests
   working_dir: tune_tests/scalability_tests
 
@@ -752,6 +767,7 @@
 # Tune fault tolerance tests
 ############################
 - name: tune_worker_fault_tolerance
+  python: "3.10"
   group: Tune fault tolerance tests
   working_dir: tune_tests/fault_tolerance_tests
 
@@ -791,6 +807,7 @@
 #######################
 
 - name: long_running_actor_deaths
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -822,7 +839,6 @@
 
   variations:
     - __suffix__: aws
-      python: "3.10"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -832,6 +848,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_impala
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -873,6 +890,7 @@
         cluster_compute: tpl_cpu_1_large_gce.yaml
 
 - name: long_running_many_actor_tasks
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -903,7 +921,6 @@
 
   variations:
     - __suffix__: aws
-      python: "3.10"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -959,6 +976,7 @@
         cluster_compute: tpl_cpu_4_gce.yaml
 
 - name: long_running_many_ppo
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1005,6 +1023,7 @@
         cluster_compute: many_ppo_gce.yaml
 
 - name: long_running_many_tasks
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1035,7 +1054,6 @@
 
   variations:
     - __suffix__: aws
-      python: "3.10"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1047,6 +1065,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_tasks_serialized_ids
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1088,6 +1107,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_node_failures
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1118,7 +1138,6 @@
 
   variations:
     - __suffix__: aws
-      python: "3.10"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1130,6 +1149,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1171,6 +1191,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve_failure
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1214,6 +1235,7 @@
         cluster_compute: tpl_cpu_1_c5_gce.yaml
 
 - name: long_running_many_jobs
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1261,6 +1283,7 @@
 ########################
 
 - name: jobs_basic_local_working_dir
+  python: "3.10"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1290,6 +1313,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_basic_remote_working_dir
+  python: "3.10"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1319,6 +1343,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_remote_multi_node
+  python: "3.10"
   group: Jobs tests
   team: serve
   frequency: nightly
@@ -1343,6 +1368,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_check_cuda_available
+  python: "3.10"
   group: Jobs tests
   team: serve
 
@@ -1367,6 +1393,7 @@
         cluster_compute: compute_tpl_gce_gpu_node.yaml
 
 - name: jobs_specify_num_gpus
+  python: "3.10"
   group: Jobs tests
   team: serve
 
@@ -1422,7 +1449,7 @@
         cluster_compute: rte_gce_small.yaml
 
 
-- name: core_runtime_env_wheel_urls
+- name: runtime_env_wheel_urls
   python: "3.10"
   group: Runtime env tests
   working_dir: runtime_env_tests
@@ -1476,7 +1503,8 @@
 # Serve tests
 ########################
 
-- name: serve_scale_replicas
+- name: pytest_serve_scale_replicas
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1499,7 +1527,8 @@
   variations:
     - __suffix__: aws
 
-- name: serve_multi_deployment_1k_noop_replica
+- name: pytest_serve_multi_deployment_1k_noop_replica
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1529,7 +1558,8 @@
       cluster:
         cluster_compute: compute_tpl_32_cpu_gce.yaml
 
-- name: serve_autoscaling_load_test
+- name: pytest_serve_autoscaling_load_test
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1553,7 +1583,8 @@
   variations:
     - __suffix__: aws
 
-- name: serve_microbenchmarks
+- name: pytest_serve_microbenchmarks
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1581,7 +1612,8 @@
       cluster:
         cluster_compute: compute_tpl_single_node_gce.yaml
 
-- name: serve_throughput_optimized_microbenchmarks
+- name: pytest_serve_throughput_optimized_microbenchmarks
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1612,7 +1644,8 @@
       cluster:
         cluster_compute: compute_tpl_single_node_gce.yaml
 
-- name: serve_resnet_benchmark
+- name: pytest_serve_resnet_benchmark
+  python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1658,6 +1691,7 @@
       runtime_env:
         # Enable verbose stats for resource manager
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
@@ -1896,7 +1930,9 @@
   group: Train tests
   working_dir: train_tests/colocate_trainer
 
-  frequency: nightly
+  # Ray Train V2 doesn't support colocation.
+  # TODO: Decide whether to remove this test or re-enable it if we add support again.
+  frequency: manual
   team: ml
 
   cluster:
@@ -1956,6 +1992,7 @@
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_huggingface_transformers_test.sh
     cluster_compute: compute_aws.yaml
 
   run:
@@ -2020,6 +2057,7 @@
 # APPO
 # --------------------------
 - name: rllib_learning_tests_pong_appo_torch
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2053,6 +2091,7 @@
         cluster_compute: 2gpus_64cpus_gce.yaml
 
 - name: rllib_learning_tests_halfcheetah_appo_torch
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2087,6 +2126,7 @@
 # DreamerV3
 # --------------------------
 - name: rllib_learning_tests_pong_dreamerv3_torch
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2118,6 +2158,7 @@
         cluster_compute: 4gpus_64cpus_gce.yaml
 
 - name: rllib_learning_tests_pendulum_dreamerv3_torch
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2152,6 +2193,7 @@
 # IMPALA
 # --------------------------
 - name: rllib_learning_tests_pong_impala_torch
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2186,6 +2228,7 @@
 # PPO
 # --------------------------
 - name: rllib_learning_tests_pong_ppo_torch
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2221,6 +2264,7 @@
 # SAC
 # --------------------------
 - name: rllib_learning_tests_halfcheetah_sac_torch
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2401,6 +2445,7 @@
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py --experimental
 
 - name: compiled_graphs_GPU
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2416,6 +2461,7 @@
     script: python experimental/compiled_graph_gpu_microbenchmark.py
 
 - name: compiled_graphs_GPU_multinode
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2431,6 +2477,7 @@
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
 - name: gpu_object_GPU
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2446,6 +2493,7 @@
     script: python experimental/gpu_object_microbenchmark.py
 
 - name: gpu_object_GPU_multinode
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
@@ -2795,6 +2843,7 @@
         frequency: manual
 
 - name: single_node_oom
+  python: "3.10"
   group: core-daily-test
   working_dir: nightly_tests
 
@@ -2846,6 +2895,7 @@
 
 
 - name: many_nodes_actor_test_on_v2
+  python: "3.10"
   group: core-daily-test
   working_dir: benchmarks
 
@@ -2941,6 +2991,7 @@
 #########################
 
 - name: single_node
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -2949,7 +3000,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: single_node.yaml
@@ -2968,6 +3018,7 @@
         cluster_compute: single_node_gce.yaml
 
 - name: object_store
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -2976,7 +3027,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: object_store.yaml
@@ -2996,6 +3046,7 @@
         cluster_compute: object_store_gce.yaml
 
 - name: small_objects
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3004,7 +3055,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: object_store/small_objects.yaml
@@ -3019,6 +3069,7 @@
     - __suffix__: aws
 
 - name: large_objects
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3027,7 +3078,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: object_store/large_objects.yaml
@@ -3042,6 +3092,7 @@
     - __suffix__: aws
 
 - name: many_actors
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3050,7 +3101,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed.yaml
@@ -3070,6 +3120,7 @@
         cluster_compute: distributed_gce.yaml
 
 - name: many_actors_smoke_test
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3077,7 +3128,6 @@
   team: core
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed_smoke_test.yaml
@@ -3090,6 +3140,7 @@
 
 
 - name: many_tasks
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3098,7 +3149,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed.yaml
@@ -3118,6 +3168,7 @@
         cluster_compute: distributed_gce.yaml
 
 - name: many_pgs
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3126,7 +3177,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed.yaml
@@ -3147,6 +3197,7 @@
 
 
 - name: many_pgs_smoke_test
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3154,7 +3205,6 @@
   team: core
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: distributed_smoke_test.yaml
@@ -3167,6 +3217,7 @@
 
 
 - name: many_nodes
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3175,7 +3226,6 @@
   env: aws_perf
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: many_nodes.yaml
@@ -3195,6 +3245,7 @@
         cluster_compute: many_nodes_gce.yaml
 
 - name: scheduling_test_many_0s_tasks_many_nodes
+  python: "3.10"
   group: core-scalability-test
   working_dir: benchmarks
 
@@ -3202,7 +3253,6 @@
   team: core
   cluster:
     byod:
-      type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: scheduling.yaml
@@ -3364,6 +3414,7 @@
     - __suffix__: aws
 
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
+  python: "3.10"
   group: data-tests
   working_dir: nightly_tests
 
@@ -3394,6 +3445,7 @@
         cluster_compute: dask_on_ray/dask_on_ray_stress_compute_gce.yaml
 
 - name: chaos_dask_on_ray_large_scale_test_spilling
+  python: "3.10"
   group: data-tests
   working_dir: nightly_tests
 
@@ -3426,6 +3478,7 @@
 # Observability tests
 #####################
 - name: agent_stress_test
+  python: "3.10"
   group: core-observability-test
   working_dir: dashboard
 
@@ -3470,7 +3523,30 @@
     prepare: bash prepare.sh
     script: python run_gcs_ft_on_k8s.py
 
+- name: azure_cluster_launcher
+  python: "3.10"
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+  frequency: nightly
+  team: clusters
+  cluster:
+    byod:
+      post_build_script: byod_azure_cluster_launcher.sh
+    cluster_compute: azure/tests/azure_compute.yaml
+  run:
+    timeout: 2400
+    script: bash release/azure_docker_login.sh && python -I launch_and_verify_cluster.py azure/tests/azure-cluster.yaml --num-expected-nodes 3 --retries 10
+
+  variations:
+    - __suffix__: v1
+      run:
+        script: RAY_UP_enable_autoscaler_v2=0 python -I launch_and_verify_cluster.py azure/tests/azure-cluster.yaml --num-expected-nodes 3 --retries 10
+    - __suffix__: v2
+      run:
+        script: RAY_UP_enable_autoscaler_v2=1 python -I launch_and_verify_cluster.py azure/tests/azure-cluster.yaml --num-expected-nodes 3 --retries 10
+
 - name: aws_cluster_launcher
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3494,6 +3570,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
 
 - name: aws_cluster_launcher_nightly_image
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3516,6 +3593,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override nightly
 
 - name: aws_cluster_launcher_latest_image
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3538,6 +3616,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override latest
 
 - name: aws_cluster_launcher_release_image
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3561,6 +3640,7 @@
 
 
 - name: aws_cluster_launcher_minimal
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3583,6 +3663,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/example-minimal.yaml
 
 - name: aws_cluster_launcher_full
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3605,6 +3686,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
 
 - name: gcp_cluster_launcher_minimal
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3630,6 +3712,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
 
 - name: gcp_cluster_launcher_full
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3680,6 +3763,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
 
 - name: gcp_cluster_launcher_nightly_image
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3705,6 +3789,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
 
 - name: gcp_cluster_launcher_release_image
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3730,6 +3815,7 @@
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
 
 - name: gcp_cluster_launcher_gpu_docker
+  python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
@@ -3754,7 +3840,7 @@
       run:
         script: RAY_UP_enable_autoscaler_v2=1 python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
 
-- name: core_autoscaler_aws
+- name: autoscaler_aws
   python: "3.10"
   group: autoscaler-test
   working_dir: autoscaling_tests
@@ -4055,6 +4141,23 @@
     script: >
       pytest -sv test_batch_multi_node_vllm.py
 
+- name: llm_batch_single_node_baseline_benchmark
+  group: llm-batch
+  working_dir: llm_tests/batch
+  frequency: weekly
+  team: llm
+
+  cluster:
+    byod:
+      runtime_env:
+        - VLLM_DISABLE_COMPILE_CACHE=1
+      type: gpu
+    cluster_compute: llm_single_node_benchmark_l4.yaml
+
+  run:
+    timeout: 3600
+    script: pytest -v test_batch_single_node_vllm.py::test_single_node_baseline_benchmark
+
 
 - name: text_embeddings_benchmark_{{scaling}}
   frequency: nightly
@@ -4139,7 +4242,8 @@
 
 
 - name: entity_recognition_with_llms  # do not use dashes (regex sensitive)
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/57222
+  frequency: manual
   python: "3.11"
   group: ray-examples
   team: ml
@@ -4216,6 +4320,7 @@
 
 
 - name: distributing_pytorch  # do not use dashes (regex sensitive)
+  python: "3.10"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4240,6 +4345,7 @@
 
 
 - name: pytorch_fsdp  # do not use dashes (regex sensitive)
+  python: "3.10"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4264,6 +4370,7 @@
 
 
 - name: deepspeed_finetune  # do not use dashes (regex sensitive)
+  python: "3.10"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4288,6 +4395,7 @@
 
 
 - name: pytorch_profiling  # do not use dashes (regex sensitive)
+  python: "3.10"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4311,7 +4419,8 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: e2e_audio
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/57220
+  frequency: manual
   python: "3.11"
   group: ray-examples
   team: ml
@@ -4358,7 +4467,8 @@
     - __suffix__: aws
 
 - name: e2e_multimodal_ai_workloads  # do not use dashes (regex sensitive)
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/57219
+  frequency: manual
   python: "3.12"
   group: ray-examples
   team: ml
@@ -4383,7 +4493,8 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: object_detection  # do not use dashes (regex sensitive)
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/57228
+  frequency: manual
   python: "3.11"
   group: ray-examples
   team: ml
@@ -4408,7 +4519,8 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: e2e_rag  # do not use dashes (regex sensitive)
-  frequency: weekly
+  # https://github.com/ray-project/ray/issues/57224
+  frequency: manual
   python: "3.11"
   group: ray-examples
   team: ml
