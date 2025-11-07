@@ -119,7 +119,7 @@ class RichSubProgressBar(BaseProgressBar):
 class RichExecutionProgressManager(BaseExecutionProgressManager):
     """Execution progress display using rich."""
 
-    TOTAL_PROGRESS_REFRESH_RATE = 20
+    TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS = 20
 
     def __init__(self, dataset_id: str, topology: "Topology", show_op_progress: bool):
         self._dataset_id = dataset_id

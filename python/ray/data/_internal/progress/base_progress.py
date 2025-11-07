@@ -116,7 +116,7 @@ class BaseExecutionProgressManager(ABC):
 
     # Total progress refresh rate (update interval in scheduling step)
     # refer to `streaming_executor.py::StreamingExecutor::_scheduling_loop_step`
-    TOTAL_PROGRESS_REFRESH_RATE = 50
+    TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS = 50
 
     @abstractmethod
     def __init__(self, dataset_id: str, topology: "Topology", show_op_progress: bool):

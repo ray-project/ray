@@ -465,7 +465,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._resource_manager.update_usages()
 
             i += 1
-            if i % self._progress_manager.TOTAL_PROGRESS_REFRESH_RATE == 0:
+            if i % self._progress_manager.TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS == 0:
                 self._refresh_progress_manager(topology)
 
         # Trigger autoscaling
