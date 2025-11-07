@@ -47,7 +47,7 @@ class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
     def mark_execution_finished(self) -> None:
         """Mark execution as finished and clear internal queues.
 
-        This default implementation calls the parent's mark_execution_finished()
+        This default implementation calls the parent's mark_execution_finished()Fclass OneToOneOperator(P
         and then clears internal queues via clear_internal_queues().
         """
         super().mark_execution_finished()
@@ -154,18 +154,6 @@ class AllToAllOperator(
 
     def internal_output_queue_num_bytes(self) -> int:
         return sum(bundle.size_bytes() for bundle in self._output_buffer)
-
-    def clear_internal_queues(self) -> None:
-        """Clear all internal input and output queues."""
-        # Clear internal input queue
-        while self._input_buffer:
-            bundle = self._input_buffer.pop()
-            self._metrics.on_input_dequeued(bundle)
-
-        # Clear internal output queue
-        while self._output_buffer:
-            bundle = self._output_buffer.pop()
-            self._metrics.on_output_dequeued(bundle)
 
     def all_inputs_done(self) -> None:
         ctx = TaskContext(
