@@ -174,7 +174,9 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             )
         )
 
-        # Update EWMA state (level & dev) and compute effective cap
+        # Update EWMA state (level & dev) and compute effective cap. Note that
+        # we don't update the EWMA state if the objectstore budget (available) vs total usage (used)
+        # ratio is above threshold (10%), because the level and dev adjusts quickly.
         self._update_level_and_dev(op, current_queue_size_bytes)
         effective_cap = self._effective_cap(
             op, num_tasks_running, current_queue_size_bytes
