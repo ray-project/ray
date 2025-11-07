@@ -979,9 +979,6 @@ class Dataset:
     def drop_columns(
         self,
         cols: List[str],
-        *,
-        compute: Optional[str] = None,
-        concurrency: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Drop one or more columns from the dataset.
@@ -1011,8 +1008,6 @@ class Dataset:
         Args:
             cols: Names of the columns to drop. If any name does not exist,
                 an exception is raised. Column names must be unique.
-            compute: This argument is deprecated. Use ``concurrency`` argument.
-            concurrency: The maximum number of Ray workers to use concurrently.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -1021,17 +1016,22 @@ class Dataset:
         if len(cols) != len(set(cols)):
             raise ValueError(f"drop_columns expects unique column names, got: {cols}")
 
-        def drop_columns(batch):
-            return batch.drop(cols)
+        from ray.data._internal.compute import TaskPoolStrategy
+        from ray.data._internal.logical.operators.map_operator import Project
+        from ray.data.expressions import drop, star
 
-        return self.map_batches(
-            drop_columns,
-            batch_format="pyarrow",
-            zero_copy_batch=True,
+        compute = TaskPoolStrategy(size=None)
+
+        plan = self._plan.copy()
+        # Use star() to preserve all columns, then drop() to exclude specific ones
+        drop_op = Project(
+            self._logical_plan.dag,
+            exprs=[star(), drop(cols)],
             compute=compute,
-            concurrency=concurrency,
-            **ray_remote_args,
+            ray_remote_args=ray_remote_args,
         )
+        logical_plan = LogicalPlan(drop_op, self.context)
+        return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def select_columns(

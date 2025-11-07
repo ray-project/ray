@@ -83,6 +83,8 @@ class _ExprVisitor(ABC, Generic[T]):
             return self.visit_download(expr)
         elif isinstance(expr, StarExpr):
             return self.visit_star(expr)
+        elif isinstance(expr, DropExpr):
+            return self.visit_drop(expr)
         else:
             raise TypeError(f"Unsupported expression type for conversion: {type(expr)}")
 
@@ -116,6 +118,10 @@ class _ExprVisitor(ABC, Generic[T]):
 
     @abstractmethod
     def visit_download(self, expr: "DownloadExpr") -> T:
+        pass
+
+    @abstractmethod
+    def visit_drop(self, expr: "DropExpr") -> T:
         pass
 
 
@@ -186,6 +192,9 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
 
     def visit_star(self, expr: "StarExpr") -> "pyarrow.compute.Expression":
         raise TypeError("Star expressions cannot be converted to PyArrow expressions")
+
+    def visit_drop(self, expr: "DropExpr") -> "pyarrow.compute.Expression":
+        raise TypeError("Drop expressions cannot be converted to PyArrow expressions")
 
 
 @DeveloperAPI(stability="alpha")
@@ -765,6 +774,32 @@ class StarExpr(Expr):
         return isinstance(other, StarExpr)
 
 
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False, repr=False)
+class DropExpr(Expr):
+    """Expression that represents dropping specific columns from the input.
+
+    This is a special expression used in projections to indicate that
+    certain columns should be excluded from the output. It's typically
+    used internally by operations like drop_columns() to efficiently
+    remove columns without materializing all remaining columns explicitly.
+
+    Example:
+        When drop_columns(["col1", "col2"]) is called, it creates:
+        Project(exprs=[star(), drop(["col1", "col2"])])
+
+        This means: keep all existing columns, except col1 and col2
+    """
+
+    columns_to_drop: List[str]
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    def structurally_equals(self, other: Any) -> bool:
+        return isinstance(other, DropExpr) and set(self.columns_to_drop) == set(
+            other.columns_to_drop
+        )
+
+
 @PublicAPI(stability="beta")
 def col(name: str) -> ColumnExpr:
     """
@@ -843,6 +878,23 @@ def star() -> StarExpr:
     return StarExpr()
 
 
+@DeveloperAPI(stability="alpha")
+def drop(columns: List[str]) -> DropExpr:
+    """
+    Create an expression that drops the specified columns from the input.
+
+    This is a special expression used in projections to exclude certain
+    columns from the output. It's typically used internally by drop_columns().
+
+    Args:
+        columns: List of column names to drop from the dataset
+
+    Returns:
+        A DropExpr that represents dropping the specified columns.
+    """
+    return DropExpr(columns_to_drop=columns)
+
+
 @PublicAPI(stability="alpha")
 def download(uri_column_name: str) -> DownloadExpr:
     """
@@ -889,9 +941,11 @@ __all__ = [
     "DownloadExpr",
     "AliasExpr",
     "StarExpr",
+    "DropExpr",
     "udf",
     "col",
     "lit",
     "download",
     "star",
+    "drop",
 ]

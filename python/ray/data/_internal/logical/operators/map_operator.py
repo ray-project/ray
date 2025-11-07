@@ -7,7 +7,7 @@ from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
-from ray.data.expressions import Expr, StarExpr
+from ray.data.expressions import DropExpr, Expr, StarExpr
 from ray.data.preprocessor import Preprocessor
 
 logger = logging.getLogger(__name__)
@@ -300,10 +300,10 @@ class Project(AbstractMap):
         self._zero_copy_batch = True
 
         for expr in self._exprs:
-            if expr.name is None and not isinstance(expr, StarExpr):
+            if expr.name is None and not isinstance(expr, (StarExpr, DropExpr)):
                 raise TypeError(
                     "All Project expressions must be named (use .alias(name) or col(name)), "
-                    "or be a star() expression."
+                    "or be a star() or drop() expression."
                 )
 
     def has_star_expr(self) -> bool:

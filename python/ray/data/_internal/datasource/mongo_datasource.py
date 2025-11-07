@@ -130,6 +130,9 @@ class MongoDatasource(Datasource):
             )
             read_tasks.append(read_task)
 
+        # Clear the client to avoid serialization issues
+        self._client = None
+
         return read_tasks
 
 

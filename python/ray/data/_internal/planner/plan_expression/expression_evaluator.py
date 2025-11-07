@@ -20,6 +20,7 @@ from ray.data.expressions import (
     BinaryExpr,
     ColumnExpr,
     DownloadExpr,
+    DropExpr,
     Expr,
     LiteralExpr,
     Operation,
@@ -682,6 +683,21 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
             "DownloadExpr evaluation is not yet implemented in NativeExpressionEvaluator."
         )
 
+    def visit_drop(self, expr: "DropExpr") -> Union[BlockColumn, ScalarType]:
+        """Visit a drop expression.
+
+        Args:
+            expr: The drop expression.
+
+        Returns:
+            TypeError: DropExpr cannot be evaluated as a regular expression.
+        """
+        # drop() should not be evaluated directly - it's handled at Project level
+        raise TypeError(
+            "DropExpr cannot be evaluated as a regular expression. "
+            "It should only be used in Project operations."
+        )
+
 
 def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:
     """Evaluate an expression against a block using the visitor pattern.
@@ -704,11 +720,12 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
     Handles projection semantics including:
     - Empty projections
     - Star() expressions for preserving existing columns
+    - Drop() expressions for excluding specific columns (used with star())
     - Rename detection
     - Column ordering
 
     Args:
-        projection_exprs: List of expressions to evaluate (may include StarExpr)
+        projection_exprs: List of expressions to evaluate (may include StarExpr and/or DropExpr)
         block: The block to project
 
     Returns:
@@ -725,18 +742,49 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
         return block_accessor.select([])
 
     input_column_names = list(block_accessor.column_names())
+
     # Collect input column rename map from the projection list
     input_column_rename_map = _extract_input_columns_renaming_mapping(projection_exprs)
 
+    # Collect columns to drop from DropExpr (if any)
+    # After projection pushdown fusion, DropExprs will reference input column names directly
+    columns_to_drop = set()
+    for expr in projection_exprs:
+        if isinstance(expr, DropExpr):
+            columns_to_drop.update(expr.columns_to_drop)
+
+    # Validate that columns to drop exist in input
+    if columns_to_drop:
+        missing_cols = columns_to_drop - set(input_column_names)
+        if missing_cols:
+            raise KeyError(
+                f"Cannot drop non-existent columns: {sorted(missing_cols)}. "
+                f"Available columns: {sorted(input_column_names)}"
+            )
+
     # Expand star expr (if any)
-    if isinstance(projection_exprs[0], StarExpr):
-        # Cherry-pick input block's columns that aren't explicitly removed via
-        # renaming
+    if projection_exprs and isinstance(projection_exprs[0], StarExpr):
+        # Cherry-pick input block's columns that:
+        # 1. Aren't explicitly removed via renaming
+        # 2. Aren't in the drop list
         input_column_ref_exprs = [
-            col(c) for c in input_column_names if c not in input_column_rename_map
+            col(c)
+            for c in input_column_names
+            if c not in input_column_rename_map and c not in columns_to_drop
         ]
 
-        projection_exprs = input_column_ref_exprs + projection_exprs[1:]
+        # Filter out DropExpr from the projection list since we've already handled it
+        remaining_exprs = [
+            e for e in projection_exprs[1:] if not isinstance(e, DropExpr)
+        ]
+        projection_exprs = input_column_ref_exprs + remaining_exprs
+    else:
+        # If no star expr, just filter out any DropExpr (shouldn't happen in normal usage)
+        projection_exprs = [e for e in projection_exprs if not isinstance(e, DropExpr)]
+
+    # Handle edge case where all columns are dropped
+    if len(projection_exprs) == 0:
+        return block_accessor.select([])
 
     names, output_cols = zip(*[(e.name, eval_expr(e, block)) for e in projection_exprs])
 
