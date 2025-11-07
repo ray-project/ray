@@ -349,39 +349,28 @@ def test_repartition_guarantee_row_num_to_be_exact(
             for bundle in ds.iter_internal_ref_bundles()
             for metadata in bundle.metadata
         ]
-        # Assert that every block has exactly target_num_rows_per_block rows except the last block
-        # The last block may have fewer rows if the total doesn't divide evenly
-        expected_full_blocks = num_rows // target_num_rows_per_block
+        # Assert that every block has exactly target_num_rows_per_block rows except at most one
+        # block, which may have fewer rows if the total doesn't divide evenly. The smaller block
+        # may appear anywhere in the output order, therefore we cannot assume it is last.
         expected_remaining_rows = num_rows % target_num_rows_per_block
+        remaining_blocks = [
+            c for c in block_row_counts if c != target_num_rows_per_block
+        ]
 
-        # All blocks except possibly the last should have exactly target_num_rows_per_block rows
-        for i, count in enumerate(block_row_counts):
-            if i < expected_full_blocks:
-                # These should all be exactly target_num_rows_per_block
-                assert count == target_num_rows_per_block, (
-                    f"Block {i} should have exactly {target_num_rows_per_block} rows, got {count} rows. "
-                    f"Block counts: {block_row_counts}"
-                )
-            elif expected_remaining_rows > 0:
-                # The last block should have the remaining rows
-                assert count == expected_remaining_rows, (
-                    f"Last block should have {expected_remaining_rows} rows, got {count} rows. "
-                    f"Block counts: {block_row_counts}"
-                )
-                break
-            else:
-                # No remaining rows, all blocks should be exactly target_num_rows_per_block
-                assert count == target_num_rows_per_block, (
-                    f"All blocks should have exactly {target_num_rows_per_block} rows, but block {i} has {count} rows. "
-                    f"Block counts: {block_row_counts}"
-                )
-
-        # Assert that no block exceeds the target size
-        max_rows_in_block = max(block_row_counts) if block_row_counts else 0
-        assert max_rows_in_block <= target_num_rows_per_block, (
-            f"Expected no block to exceed {target_num_rows_per_block} rows, got max of {max_rows_in_block}. "
-            f"Block counts: {block_row_counts}"
+        assert len(remaining_blocks) <= (1 if expected_remaining_rows > 0 else 0), (
+            "Expected at most one block with a non-target row count when there is a remainder. "
+            f"Found counts {block_row_counts} with target {target_num_rows_per_block}."
         )
+
+        if expected_remaining_rows == 0:
+            assert (
+                not remaining_blocks
+            ), f"All blocks should have exactly {target_num_rows_per_block} rows, got {block_row_counts}."
+        elif remaining_blocks:
+            assert remaining_blocks[0] == expected_remaining_rows, (
+                f"Expected remainder block to have {expected_remaining_rows} rows, "
+                f"got {remaining_blocks[0]}. Block counts: {block_row_counts}"
+            )
 
 
 if __name__ == "__main__":
