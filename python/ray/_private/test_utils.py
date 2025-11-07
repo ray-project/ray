@@ -20,6 +20,7 @@ from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from urllib.parse import quote
 
 import requests
 import yaml
@@ -1082,6 +1083,29 @@ def raw_metric_timeseries(
     return fetch_prometheus_metric_timeseries([metrics_page], result)
 
 
+def get_system_metric_for_component(
+    system_metric: str, component: str, prometheus_server_address: str
+) -> List[float]:
+    """Get the system metric for a given component from a Prometheus server address.
+    Please note:
+    - This function requires the availability of the Prometheus server. Therefore, it
+    requires the server address.
+    - It assumes the system metric has a `Component` label and `pid` label. `pid` is the
+    process id, so it can be used to uniquely identify the process.
+    """
+    session_name = os.path.basename(
+        ray._private.worker._global_node.get_session_dir_path()
+    )
+    query = f"sum({system_metric}{{Component='{component}',SessionName='{session_name}'}}) by (pid)"
+    resp = requests.get(
+        f"{prometheus_server_address}/api/v1/query?query={quote(query)}"
+    )
+    if resp.status_code != 200:
+        raise Exception(f"Failed to query Prometheus: {resp.status_code}")
+    result = resp.json()
+    return [float(item["value"][1]) for item in result["data"]["result"]]
+
+
 def get_test_config_path(config_file_name):
     """Resolve the test config path from the config file dir"""
     here = os.path.realpath(__file__)
@@ -1824,14 +1848,6 @@ def job_hook(**kwargs):
     cmd = " ".join(kwargs["entrypoint"])
     print(f"hook intercepted: {cmd}")
     sys.exit(0)
-
-
-def find_free_port() -> int:
-    sock = socket.socket()
-    sock.bind(("", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return port
 
 
 def wandb_setup_api_key_hook():

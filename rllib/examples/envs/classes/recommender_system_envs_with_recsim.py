@@ -6,9 +6,9 @@ Source: https://github.com/google-research/recsim
 
 from recsim import choice_model
 from recsim.environments import (
-    long_term_satisfaction as lts,
     interest_evolution as iev,
     interest_exploration as iex,
+    long_term_satisfaction as lts,
 )
 
 from ray.rllib.env.wrappers.recsim import make_recsim_env
