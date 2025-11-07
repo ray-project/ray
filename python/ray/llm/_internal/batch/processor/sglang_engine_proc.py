@@ -24,6 +24,12 @@ from ray.llm._internal.batch.stages import (
     SGLangEngineStage,
     TokenizeStage,
 )
+from ray.llm._internal.batch.stages.configs import (
+    ChatTemplateStageConfig,
+    DetokenizeStageConfig,
+    TokenizerStageConfig,
+    resolve_stage_config,
+)
 from ray.llm._internal.batch.stages.sglang_engine_stage import SGLangTaskType
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 
@@ -85,34 +91,75 @@ def build_sglang_engine_processor(
 
     stages = []
 
-    if config.apply_chat_template:
+    # Prepare processor defaults for merging into stage configs
+    processor_defaults = {
+        "batch_size": config.batch_size,
+        "runtime_env": config.runtime_env,
+        "model_source": config.model_source,
+    }
+
+    # Resolve and build ChatTemplateStage if enabled
+    chat_template_stage_cfg = resolve_stage_config(
+        getattr(config, "chat_template_stage", config.apply_chat_template),
+        ChatTemplateStageConfig,
+        processor_defaults,
+    )
+    if chat_template_stage_cfg.enabled:
+        # Use stage-specific concurrency if set, otherwise processor default
+        stage_concurrency = (
+            chat_template_stage_cfg.concurrency
+            if chat_template_stage_cfg.concurrency is not None
+            else config.get_concurrency()
+        )
+        # Normalize concurrency to tuple if needed
+        if isinstance(stage_concurrency, int):
+            stage_concurrency = (stage_concurrency, stage_concurrency)
+
         stages.append(
             ChatTemplateStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model_source,
-                    chat_template=config.chat_template,
+                    model=chat_template_stage_cfg.model or config.model_source,
+                    chat_template=chat_template_stage_cfg.chat_template
+                    or config.chat_template,
                     chat_template_kwargs=chat_template_kwargs,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
-                    batch_size=config.batch_size,
-                    runtime_env=config.runtime_env,
+                    concurrency=stage_concurrency,
+                    batch_size=chat_template_stage_cfg.batch_size or config.batch_size,
+                    runtime_env=chat_template_stage_cfg.runtime_env
+                    or config.runtime_env,
                 ),
             )
         )
 
-    if config.tokenize:
+    # Resolve and build TokenizeStage if enabled
+    tokenize_stage_cfg = resolve_stage_config(
+        getattr(config, "tokenize_stage", config.tokenize),
+        TokenizerStageConfig,
+        processor_defaults,
+    )
+    if tokenize_stage_cfg.enabled:
+        # Use stage-specific concurrency if set, otherwise processor default
+        stage_concurrency = (
+            tokenize_stage_cfg.concurrency
+            if tokenize_stage_cfg.concurrency is not None
+            else config.get_concurrency()
+        )
+        # Normalize concurrency to tuple if needed
+        if isinstance(stage_concurrency, int):
+            stage_concurrency = (stage_concurrency, stage_concurrency)
+
         stages.append(
             TokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model_source,
+                    model=tokenize_stage_cfg.model or config.model_source,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
-                    batch_size=config.batch_size,
-                    runtime_env=config.runtime_env,
+                    concurrency=stage_concurrency,
+                    batch_size=tokenize_stage_cfg.batch_size or config.batch_size,
+                    runtime_env=tokenize_stage_cfg.runtime_env or config.runtime_env,
                 ),
             )
         )
@@ -149,17 +196,33 @@ def build_sglang_engine_processor(
         )
     )
 
-    if config.detokenize:
+    # Resolve and build DetokenizeStage if enabled
+    detokenize_stage_cfg = resolve_stage_config(
+        getattr(config, "detokenize_stage", config.detokenize),
+        DetokenizeStageConfig,
+        processor_defaults,
+    )
+    if detokenize_stage_cfg.enabled:
+        # Use stage-specific concurrency if set, otherwise processor default
+        stage_concurrency = (
+            detokenize_stage_cfg.concurrency
+            if detokenize_stage_cfg.concurrency is not None
+            else config.get_concurrency()
+        )
+        # Normalize concurrency to tuple if needed
+        if isinstance(stage_concurrency, int):
+            stage_concurrency = (stage_concurrency, stage_concurrency)
+
         stages.append(
             DetokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model_source,
+                    model=detokenize_stage_cfg.model or config.model_source,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
-                    batch_size=config.batch_size,
-                    runtime_env=config.runtime_env,
+                    concurrency=stage_concurrency,
+                    batch_size=detokenize_stage_cfg.batch_size or config.batch_size,
+                    runtime_env=detokenize_stage_cfg.runtime_env or config.runtime_env,
                 ),
             )
         )
