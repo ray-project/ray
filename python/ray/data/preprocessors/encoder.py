@@ -7,6 +7,7 @@ import pandas as pd
 import pandas.api.types
 
 from ray.air.util.data_batch_conversion import BatchFormat
+from ray.data.aggregate import Unique
 from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
 from ray.data.preprocessors.utils import make_post_processor
 from ray.util.annotations import PublicAPI
@@ -270,24 +271,48 @@ class OneHotEncoder(Preprocessor):
         )
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self.stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=self.columns,
-                encode_lists=False,
-                key_gen=key_gen,
-                max_categories=self.max_categories,
-            ),
-            post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: f"unique_values({col})",
-            columns=self.columns,
-        )
+        calculate_unique = []
+
+        for col in self.columns:
+            if col in self.max_categories:
+                pass
+            else:
+                calculate_unique.append(col)
+
+        def one_hot_unique_post_fn(values: List):
+            if any(pd.isnull(k) for k in values):
+                raise ValueError(
+                    "Unable to fit column because it contains null"
+                    " values. Consider imputing missing values first."
+                )
+            return {k: j for j, k in enumerate(sorted(values))}
+
+        if len(calculate_unique) > 0:
+            self.stat_computation_plan.add_aggregator(
+                aggregator_fn=lambda col: Unique(col, ignore_nulls=False),
+                post_process_fn=one_hot_unique_post_fn,
+                post_key_fn=lambda col: f"unique_values({col})",
+                columns=calculate_unique,
+            )
+
+        # self.stat_computation_plan.add_callable_stat(
+        #     stat_fn=lambda key_gen: compute_unique_value_indices(
+        #         dataset=dataset,
+        #         columns=self.columns,
+        #         encode_lists=False,
+        #         key_gen=key_gen,
+        #         max_categories=self.max_categories,
+        #     ),
+        #     post_process_fn=unique_post_fn(),
+        #     stat_key_fn=lambda col: f"unique({col})",
+        #     post_key_fn=lambda col: f"unique_values({col})",
+        #     columns=self.columns,
+        # )
         return self
 
     def safe_get(self, v: Any, stats: Dict[str, int]):
         if isinstance(v, (list, np.ndarray)):
-            v = tuple(v)
+            v = str(v)
         if isinstance(v, Hashable):
             return stats.get(v, -1)
         else:
