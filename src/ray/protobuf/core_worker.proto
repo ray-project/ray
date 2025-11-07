@@ -536,7 +536,8 @@ service CoreWorkerService {
 
   // Request from a worker to the owner worker to issue a cancellation.
   // Failure: Retries, it's idempotent.
-  rpc RequestOwnerToCancelTask(RequestOwnerToCancelTaskRequest) returns (RequestOwnerToCancelTaskReply);
+  rpc RequestOwnerToCancelTask(RequestOwnerToCancelTaskRequest)
+      returns (RequestOwnerToCancelTaskReply);
 
   // From raylet to get metrics from its workers.
   // Failure: Should not fail, always from local raylet.
