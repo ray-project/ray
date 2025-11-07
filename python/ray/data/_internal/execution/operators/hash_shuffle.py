@@ -3,6 +3,7 @@ import functools
 import itertools
 import logging
 import math
+import random
 import threading
 import time
 from collections import defaultdict, deque
@@ -16,6 +17,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -601,8 +603,10 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         # aggregators (keeps track which input sequences have already broadcasted
         # their schemas)
         self._has_schemas_broadcasted: DefaultDict[int, bool] = defaultdict(bool)
-        # Id of the last partition finalization of which had already been scheduled
-        self._last_finalized_partition_id: int = -1
+        # Set of partitions still pending finalization
+        self._pending_finalization_partition_ids: Set[int] = set(
+            range(target_num_partitions)
+        )
 
         self._output_queue: Deque[RefBundle] = deque()
 
@@ -823,11 +827,6 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         if not self._is_shuffling_done():
             return
 
-        logger.debug(
-            f"Scheduling next shuffling finalization batch (last finalized "
-            f"partition id is {self._last_finalized_partition_id})"
-        )
-
         def _on_bundle_ready(partition_id: int, bundle: RefBundle):
             # Add finalized block to the output queue
             self._output_queue.append(bundle)
@@ -872,10 +871,8 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             or self._aggregator_pool.num_aggregators
         )
 
-        num_remaining_partitions = (
-            self._num_partitions - 1 - self._last_finalized_partition_id
-        )
         num_running_finalizing_tasks = len(self._finalizing_tasks)
+        num_remaining_partitions = len(self._pending_finalization_partition_ids)
 
         # Finalization is executed in batches of no more than
         # `DataContext.max_hash_shuffle_finalization_batch_size` tasks at a time.
@@ -899,12 +896,21 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         if next_batch_size == 0:
             return
 
-        # Next partition to be scheduled for finalization is the one right
-        # after the last one scheduled
-        next_partition_id = self._last_finalized_partition_id + 1
-
-        target_partition_ids = list(
-            range(next_partition_id, next_partition_id + next_batch_size)
+        # We're sampling randomly next set of partitions to be finalized
+        # to distribute finalization window uniformly across the nodes of the cluster
+        # and avoid effect of "sliding lense" effect where we finalize the batch of
+        # N *adjacent* partitions that may be co-located on the same node:
+        #
+        #   - Adjacent partitions i and i+1 are handled by adjacent
+        #   aggregators (since membership is determined as i % num_aggregators)
+        #
+        #   - Adjacent aggregators have high likelihood of running on the
+        #   same node (when num aggregators > num nodes)
+        #
+        # NOTE: This doesn't affect determinism, since this only impacts order
+        #       of finalization (hence not required to be seeded)
+        target_partition_ids = random.sample(
+            list(self._pending_finalization_partition_ids), next_batch_size
         )
 
         logger.debug(
@@ -941,14 +947,14 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 ),
             )
 
+            # Pop partition id from remaining set
+            self._pending_finalization_partition_ids.remove(partition_id)
+
             # Update Finalize Metrics on task submission
             # NOTE: This is empty because the input is directly forwarded from the
             # output of the shuffling stage, which we don't return.
             empty_bundle = RefBundle([], schema=None, owns_blocks=False)
             self.reduce_metrics.on_task_submitted(partition_id, empty_bundle)
-
-        # Update last finalized partition id
-        self._last_finalized_partition_id = max(target_partition_ids)
 
     def _do_shutdown(self, force: bool = False) -> None:
         self._aggregator_pool.shutdown(force=True)
@@ -1021,7 +1027,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         return True
 
     def _is_finalized(self):
-        return self._last_finalized_partition_id == self._num_partitions - 1
+        return len(self._pending_finalization_partition_ids) == 0
 
     def _handle_shuffled_block_metadata(
         self,
