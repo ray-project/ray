@@ -27,8 +27,6 @@ ARG PYTHON_VERSION=3.9
 
 ARG PYTHON_DEPSET
 
-COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
-
 ARG RAY_UID=1000
 ARG RAY_GID=100
 
@@ -71,6 +69,7 @@ USER $RAY_UID
 ENV HOME=/home/ray
 
 COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
+COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 SHELL ["/bin/bash", "-c"]
 
@@ -114,7 +113,7 @@ export PATH=$HOME/anaconda3/bin:$PATH
 # to ensure that the best match is chosen from the available indices.
 uv pip install --system --no-cache-dir --index-strategy unsafe-best-match \
     -c $HOME/requirements_compiled.txt \
-    -r /home/ray/python_depset.lock
+    -r $HOME/python_depset.lock
 
 # We install cmake temporarily to get psutil
 sudo apt-get autoremove -y cmake zlib1g-dev
