@@ -48,7 +48,8 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     BACKOFF_FACTOR = env_float("RAY_DATA_CONCURRENCY_CAP_BACKOFF_FACTOR", 1)
     # Factor to ramp up when the queue is too small.
     RAMPUP_FACTOR = env_float("RAY_DATA_CONCURRENCY_CAP_RAMPUP_FACTOR", 1)
-    # Threshold for object store memory usage ratio to enable dynamic output queue size backpressure.
+    # Threshold for per-Op object store budget (available) vs total usage (used)
+    # (available / used) ratio to enable dynamic output queue size backpressure.
     OBJECT_STORE_USAGE_RATIO = env_float(
         "RAY_DATA_CONCURRENCY_CAP_OBJECT_STORE_USAGE_RATIO", 0.1
     )
@@ -146,7 +147,8 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         ):
             return num_tasks_running < self._concurrency_caps[op]
 
-        # If object store memory usage ratio is above threshold, skip dynamic output queue size backpressure.
+        # For this Op, if the objectstore budget (available) to total usage (used)
+        # ratio is below threshold (10%), skip dynamic output queue size backpressure.
         op_usage = self._resource_manager.get_op_usage(op)
         op_budget = self._resource_manager.get_budget(op)
         if (
@@ -159,6 +161,9 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
                 op_budget.object_store_memory / op_usage.object_store_memory
                 > self.OBJECT_STORE_USAGE_RATIO
             ):
+                # If the objectstore budget (available) to total usage (used)
+                # ratio is above threshold (10%), skip dynamic output queue size
+                # backpressure, but still enforce the configured cap.
                 return num_tasks_running < self._concurrency_caps[op]
 
         # Current total queued bytes (this op + downstream)
