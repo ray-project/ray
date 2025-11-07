@@ -204,15 +204,8 @@ Enter into the ``python/`` directory inside of the Ray project directory and ins
 
 .. code-block:: bash
 
-  # Install Ray.
-  cd python/
-  # Install required dependencies.
-  pip install -r requirements.txt
-  # You may need to set the following two env vars if you have a macOS ARM64(M1) platform.
-  # See https://github.com/grpc/grpc/issues/25082 for more details.
-  # export GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
-  # export GRPC_PYTHON_BUILD_SYSTEM_ZLIB=1
-  pip install -e . --verbose  # Add --user if you see a permission denied error.
+  # Build Ray wheels; install Ray and required dependencies in editable mode.
+  pip wheel -v -c python/requirements_compiled.txt -w .whl -e python
 
 The ``-e`` means "editable", so changes you make to files in the Ray
 directory will take effect without reinstalling the package.
