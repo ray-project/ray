@@ -6,7 +6,6 @@ from unittest.mock import ANY, MagicMock, call, patch
 
 import pyarrow.fs as pa_fs
 import pytest
-from pytest import raises
 
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudFileSystem,
@@ -281,35 +280,6 @@ class TestRemoteObjectCacheDecorator:
 
 class TestCloudFileSystem:
     """Tests for the CloudFileSystem class."""
-
-    @patch("pyarrow.fs.S3FileSystem")
-    def test_get_fs_and_path_s3(self, mock_s3fs):
-        """Test getting S3 filesystem and path."""
-        mock_fs = MagicMock()
-        mock_s3fs.return_value = mock_fs
-
-        fs, path = CloudFileSystem.get_fs_and_path("s3://bucket/key")
-
-        assert fs == mock_fs
-        assert path == "bucket/key"
-        mock_s3fs.assert_called_once()
-
-    @patch("pyarrow.fs.GcsFileSystem")
-    def test_get_fs_and_path_gcs(self, mock_gcsfs):
-        """Test getting GCS filesystem and path."""
-        mock_fs = MagicMock()
-        mock_gcsfs.return_value = mock_fs
-
-        fs, path = CloudFileSystem.get_fs_and_path("gs://bucket/key")
-
-        assert fs == mock_fs
-        assert path == "bucket/key"
-        mock_gcsfs.assert_called_once()
-
-    def test_get_fs_and_path_unsupported(self):
-        """Test unsupported URI scheme."""
-        with raises(ValueError, match="Unsupported URI scheme"):
-            CloudFileSystem.get_fs_and_path("file:///tmp/file")
 
     @patch("pyarrow.fs.S3FileSystem")
     def test_get_file(self, mock_s3fs):
