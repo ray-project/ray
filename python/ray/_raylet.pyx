@@ -670,12 +670,8 @@ cdef increase_recursion_limit():
     This results in the Python interpreter thinking there's a lot of recursion depth,
     so we need to increase the limit when we start getting close.
 
-    0x30E0000 is Python 3.14+
-        On 3.14+, when recursion depth increases, py_recursion_remaining will decrease
-        (renamed from c_recursion_remaining in 3.12-3.13).
-        Increasing it by 1000 when it drops below 1000 will keep us from raising the RecursionError.
-    0x30C0000 is Python 3.12-3.13
-        On 3.12-3.13, when recursion depth increases, c_recursion_remaining will decrease,
+    0x30C0000 is Python 3.12
+        On 3.12, when recursion depth increases, c_recursion_remaining will decrease,
         and that's what's actually compared to raise a RecursionError. So increasing
         it by 1000 when it drops below 1000 will keep us from raising the RecursionError.
         https://github.com/python/cpython/blob/bfb9e2f4a4e690099ec2ec53c08b90f4d64fde36/Python/pystate.c#L1353
@@ -690,17 +686,7 @@ cdef increase_recursion_limit():
     cdef:
         cdef extern from *:
             """
-#if PY_VERSION_HEX >= 0x30E0000
-    // Python 3.14+ renamed c_recursion_remaining to py_recursion_remaining
-    bool IncreaseRecursionLimitIfNeeded(PyThreadState *x) {
-        if (x->py_recursion_remaining < 1000) {
-            x->py_recursion_remaining += 1000;
-            return true;
-        }
-        return false;
-    }
-#elif PY_VERSION_HEX >= 0x30C0000
-    // Python 3.12-3.13 use c_recursion_remaining
+#if PY_VERSION_HEX >= 0x30C0000
     bool IncreaseRecursionLimitIfNeeded(PyThreadState *x) {
         if (x->c_recursion_remaining < 1000) {
             x->c_recursion_remaining += 1000;

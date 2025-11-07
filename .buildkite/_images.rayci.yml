@@ -12,7 +12,6 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
-      - "3.14"
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
@@ -25,7 +24,6 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
-      - "3.14"
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
@@ -45,7 +43,6 @@ steps:
           - "3.10"
           - "3.11"
           - "3.12"
-          - "3.14"
         cuda:
           - "11.7.1-cudnn8"
           - "11.8.0-cudnn8"
@@ -70,7 +67,6 @@ steps:
           - "3.10"
           - "3.11"
           - "3.12"
-          - "3.14"
         cuda:
           - "11.7.1-cudnn8"
           - "11.8.0-cudnn8"
@@ -196,7 +192,6 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
-      - "3.14"
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
@@ -215,7 +210,6 @@ steps:
           - "3.10"
           - "3.11"
           - "3.12"
-          - "3.14"
         cuda:
           - "11.7.1"
           - "11.8.0"
