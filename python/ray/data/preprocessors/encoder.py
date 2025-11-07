@@ -719,6 +719,15 @@ def fit_hot_encoders(
     Fits OneHotEncoders and MultiHotEncoders. Refer to argument descriptions for OneHot
     and MultiHot encoders.
     """
+
+    def make_aggregator_function(k: int):
+        return lambda col: ApproximateTopK(
+            col,
+            k=k,
+            log_capacity=log_capacity,
+            encode_lists=encode_lists,
+        )
+
     to_aggregate_unique = []
 
     for col in columns:
@@ -731,12 +740,7 @@ def fit_hot_encoders(
                     f"`log_capacity` to at least {math.ceil(math.log2(k))}."
                 )
             stat_computation_plan.add_aggregator(
-                aggregator_fn=lambda col: ApproximateTopK(
-                    col,
-                    k=k,
-                    log_capacity=log_capacity,
-                    encode_lists=encode_lists,
-                ),
+                aggregator_fn=make_aggregator_function(k),
                 post_process_fn=approx_top_k_post_fn(col),
                 post_key_fn=lambda col: f"unique_values({col})",
                 columns=[col],
