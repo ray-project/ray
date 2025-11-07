@@ -33,6 +33,15 @@ _global_client: ServeControllerClient = None
 
 @DeveloperAPI
 @dataclass
+class ReplicaRankInfo:
+    rank: int
+    world_size: int
+    local_rank: int
+    node_rank: int
+
+
+@DeveloperAPI
+@dataclass
 class ReplicaContext:
     """Stores runtime context info for replicas.
 
