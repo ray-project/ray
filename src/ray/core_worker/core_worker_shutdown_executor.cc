@@ -36,7 +36,6 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   RAY_LOG(DEBUG) << "Executing graceful shutdown: " << exit_type << " - " << detail
                  << " (timeout: " << timeout_ms.count() << "ms)";
 
-  // Lock the weak_ptr to get a shared_ptr. If CoreWorker is already destroyed, return.
   auto core_worker = core_worker_.lock();
   if (!core_worker) {
     RAY_LOG(WARNING)
@@ -44,21 +43,16 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     return;
   }
 
-  // Transition to SHUTTING_DOWN state
   core_worker->SetShutdownState(ShutdownState::kShuttingDown);
 
   if (core_worker->options_.worker_type == WorkerType::WORKER) {
     if (!core_worker->worker_context_->GetCurrentActorID().IsNil()) {
-      // Get a copy of the callback to avoid race conditions
       auto callback = core_worker->GetActorShutdownCallback();
       RAY_CHECK(callback) << "actor_shutdown_callback_ must be set for actor workers";
       RAY_LOG(DEBUG) << "Calling actor shutdown callback";
-      // Safe to call - we have our own copy
       callback();
     }
 
-    // Actor shutdown callback has run; stop task execution service next.
-    // Mark event loops as stopped before actually stopping them
     core_worker->SetEventLoopsStopped();
     core_worker->task_execution_service_.stop();
   }
@@ -66,7 +60,6 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   core_worker->task_event_buffer_->FlushEvents(/*forced=*/true);
   core_worker->task_event_buffer_->Stop();
 
-  // Mark event loops as stopped if not already done
   if (core_worker->options_.worker_type != WorkerType::WORKER) {
     core_worker->SetEventLoopsStopped();
   }
@@ -83,14 +76,10 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     }
   }
 
-  // Transition to DISCONNECTING state
   core_worker->SetShutdownState(ShutdownState::kDisconnecting);
-
-  // Shutdown gRPC server
   core_worker->core_worker_server_->Shutdown();
 
-  // Now that gcs_client is not used within io service, we can reset the pointer and clean
-  // it up.
+  // GCS client is safe to disconnect now that io_service has stopped.
   if (core_worker->gcs_client_) {
     RAY_LOG(INFO) << "Disconnecting a GCS client.";
     // TODO(55607): Move the Disconnect() logic to GcsClient destructor.
@@ -99,12 +88,8 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     core_worker->gcs_client_.reset();
   }
 
-  // Transition to SHUTDOWN state
   core_worker->SetShutdownState(ShutdownState::kShutdown);
-
   RAY_LOG(INFO) << "Core worker ready to be deallocated.";
-
-  // Notify that shutdown is complete
   core_worker->NotifyShutdownComplete();
 }
 
@@ -123,7 +108,6 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
   RAY_LOG(INFO) << "Executing worker exit: " << exit_type << " - " << detail
                 << " (timeout: " << timeout_ms.count() << "ms)";
 
-  // Lock the weak_ptr to get a shared_ptr. If CoreWorker is already destroyed, return.
   auto core_worker = core_worker_.lock();
   if (!core_worker) {
     RAY_LOG(WARNING) << "CoreWorker already destroyed, skipping worker exit operations";
@@ -136,7 +120,6 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
     core_worker->exiting_detail_ = std::optional<std::string>{detail};
   }
 
-  // Capture weak_ptr to avoid use-after-free in the callback
   std::weak_ptr<CoreWorker> weak_core_worker = core_worker_;
 
   auto shutdown_callback = [this,
@@ -144,15 +127,12 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
                             exit_type = std::string(exit_type),
                             detail = std::string(detail),
                             creation_task_exception_pb_bytes]() {
-    // To avoid problems, make sure shutdown is always called from the same
-    // event loop each time.
     auto worker = weak_core_worker.lock();
     if (!worker) {
       RAY_LOG(WARNING) << "CoreWorker destroyed during shutdown callback";
       return;
     }
 
-    // Check if event loops are still running before posting
     if (!worker->AreEventLoopsRunning()) {
       RAY_LOG(WARNING) << "Event loops already stopped, executing shutdown directly";
       rpc::DrainServerCallExecutor();
@@ -186,10 +166,8 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
       return;
     }
 
-    // Check if event loops are still running
     if (!worker->AreEventLoopsRunning()) {
       RAY_LOG(WARNING) << "Event loops already stopped, cannot drain references";
-      // Try to execute shutdown callback directly
       shutdown_callback();
       return;
     }
@@ -347,7 +325,6 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
 
   opencensus::stats::StatsExporter::ExportNow();
 
-  // Use thread-safe method to ensure only one thread disconnects
   if (core_worker->SetDisconnectedIfConnected()) {
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
     if (core_worker->raylet_ipc_client_) {

@@ -85,8 +85,7 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
   bool ShouldWorkerIdleExit() const override;
 
  private:
-  /// Weak reference to CoreWorker for safe access during shutdown operations
-  /// Using weak_ptr prevents use-after-free if CoreWorker is destroyed
+  // Weak pointer prevents use-after-free during async shutdown operations.
   std::weak_ptr<CoreWorker> core_worker_;
 
   void DisconnectServices(

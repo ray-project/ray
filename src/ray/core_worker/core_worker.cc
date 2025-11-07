@@ -371,7 +371,6 @@ CoreWorker::CoreWorker(
                               object_id]() { free_actor_object_callback(object_id); },
                              "CoreWorker.FreeActorObjectCallback");
           }) {
-  // Initialize shutdown synchronization
   shutdown_complete_future_ = shutdown_complete_promise_.get_future().share();
 
   // Initialize task receivers.
@@ -530,7 +529,6 @@ CoreWorker::CoreWorker(
 }
 
 CoreWorker::~CoreWorker() {
-  // Wait for shutdown to complete before destruction
   WaitForShutdownComplete();
   RAY_LOG(INFO) << "Core worker is destructed";
 }
@@ -538,7 +536,6 @@ CoreWorker::~CoreWorker() {
 void CoreWorker::InitializeShutdownExecutor(std::shared_ptr<CoreWorker> self) {
   RAY_CHECK(self.get() == this) << "Passed shared_ptr does not match this CoreWorker";
 
-  // Create concrete shutdown executor with the shared_ptr
   auto shutdown_executor = std::make_unique<CoreWorkerShutdownExecutor>(self);
   shutdown_coordinator_ = std::make_unique<ShutdownCoordinator>(
       std::move(shutdown_executor), options_.worker_type);
@@ -585,12 +582,11 @@ bool CoreWorker::IsConnected() const {
 bool CoreWorker::SetDisconnectedIfConnected() {
   absl::MutexLock lock(&connected_mutex_);
   if (!connected_internal_) {
-    return false;  // Already disconnected
+    return false;
   }
   connected_internal_ = false;
-  // Also update the old connected_ flag for backward compatibility
   connected_ = false;
-  return true;  // Successfully disconnected
+  return true;
 }
 
 ray::core::ShutdownState CoreWorker::GetShutdownState() const {
@@ -601,7 +597,6 @@ ray::core::ShutdownState CoreWorker::GetShutdownState() const {
 void CoreWorker::SetShutdownState(ray::core::ShutdownState state) {
   absl::MutexLock lock(&shutdown_state_mutex_);
 
-  // Only allow forward transitions
   if (state <= shutdown_state_) {
     RAY_LOG(WARNING) << "Ignoring backward/same shutdown state transition from "
                      << static_cast<int>(shutdown_state_) << " to "
@@ -902,22 +897,16 @@ void CoreWorker::InternalHeartbeat() {
 }
 
 void CoreWorker::RecordMetrics() {
-  // Skip metrics recording if we're shutting down to avoid accessing
-  // components that may be in inconsistent state
   if (GetShutdownState() != ray::core::ShutdownState::kRunning) {
     RAY_LOG(DEBUG) << "Skipping metrics recording during shutdown";
     return;
   }
 
-  // Wrap in try-catch to handle any exceptions during shutdown
   try {
-    // Record metrics for owned tasks.
     if (task_manager_) {
       task_manager_->RecordMetrics();
     }
-    // Record metrics for executed tasks.
     task_counter_.RecordMetrics();
-    // Record worker heap memory metrics.
     if (memory_store_) {
       memory_store_->RecordMetrics();
     }

@@ -244,8 +244,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                   const std::shared_ptr<LocalMemoryBuffer>
                       &creation_task_exception_pb_bytes = nullptr);
 
-  /// Initialize the shutdown executor after construction is complete
-  /// This must be called after the CoreWorker is created as a shared_ptr
+  /// Initialize the shutdown executor after construction is complete.
+  /// This must be called after the CoreWorker is created as a shared_ptr.
   void InitializeShutdownExecutor(std::shared_ptr<CoreWorker> self);
 
   /// Shut down the worker completely.
@@ -255,30 +255,26 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ///
   void Shutdown();
 
-  /// Wait for shutdown to complete before destruction
-  /// This method blocks until shutdown is complete or times out
-  /// \param timeout_ms Maximum time to wait in milliseconds (default: 30 seconds)
+  /// Wait for shutdown to complete before destruction.
+  /// This method blocks until shutdown is complete or times out.
+  /// \param timeout_ms Maximum time to wait in milliseconds (default: 30 seconds).
   void WaitForShutdownComplete(
       std::chrono::milliseconds timeout_ms = std::chrono::milliseconds(30000));
 
-  /// Notify that shutdown is complete
+  /// Notify that shutdown is complete.
   /// This method should be called by the shutdown executor when all shutdown
-  /// operations have finished
+  /// operations have finished.
   void NotifyShutdownComplete();
 
-  /// Thread-safe connection status methods
   bool IsConnected() const;
   bool SetDisconnectedIfConnected();
 
-  /// Thread-safe shutdown state methods
   ray::core::ShutdownState GetShutdownState() const;
   void SetShutdownState(ray::core::ShutdownState state);
 
-  /// Thread-safe event loop status
   bool AreEventLoopsRunning() const { return event_loops_running_.load(); }
   void SetEventLoopsStopped() { event_loops_running_.store(false); }
 
-  /// Thread-safe actor callback access
   std::function<void()> GetActorShutdownCallback() const;
 
   /// Start receiving and executing tasks.
@@ -1984,7 +1980,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Callback to free an RDT object when it is out of scope.
   std::function<void(const ObjectID &)> free_actor_object_callback_;
 
-  /// Thread-safety primitives for shutdown synchronization
+  // Shutdown synchronization primitives
   mutable absl::Mutex connected_mutex_;
   bool connected_internal_ ABSL_GUARDED_BY(connected_mutex_) = true;
 
@@ -1998,7 +1994,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   mutable absl::Mutex idle_check_mutex_;
   mutable std::atomic<uint64_t> idle_sequence_num_{0};
 
-  /// Shutdown synchronization - ensure shutdown completes before destruction
   std::promise<void> shutdown_complete_promise_;
   std::shared_future<void> shutdown_complete_future_;
 };
