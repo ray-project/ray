@@ -33,6 +33,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 
@@ -512,7 +513,8 @@ class NormalTaskSubmitterTest : public testing::Test {
         JobID::Nil(),
         rate_limiter,
         [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
-        boost::asio::steady_timer(io_context));
+        boost::asio::steady_timer(io_context),
+        fake_scheduler_placement_time_ms_histogram_);
   }
 
   NodeID local_node_id;
@@ -530,6 +532,7 @@ class NormalTaskSubmitterTest : public testing::Test {
   MockLeasePolicy *lease_policy_ptr = nullptr;
   std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
   instrumented_io_context io_context;
+  ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
 };
 
 TEST_F(NormalTaskSubmitterTest, TestLocalityAwareSubmitOneTask) {
@@ -1463,6 +1466,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
                        const TaskSpecification &same2,
                        const TaskSpecification &different) {
   rpc::Address address;
+  ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
   auto local_node_id = NodeID::FromRandom();
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
@@ -1492,7 +1496,8 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
       JobID::Nil(),
       std::make_shared<StaticLeaseRequestRateLimiter>(1),
       [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
-      boost::asio::steady_timer(io_context));
+      boost::asio::steady_timer(io_context),
+      fake_scheduler_placement_time_ms_histogram_);
 
   submitter.SubmitTask(same1);
   submitter.SubmitTask(same2);

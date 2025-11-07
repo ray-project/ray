@@ -406,6 +406,19 @@ message GetWorkerPIDsReply {
   repeated int32 pids = 1;
 }
 
+message KillLocalActorRequest {
+  // ID of the actor that is intended to be killed.
+  bytes intended_actor_id = 1;
+  // ID of the worker the actor is on
+  bytes worker_id = 2;
+  // Whether to force kill the actor.
+  bool force_kill = 3;
+  // The precise reason why this actor receives a kill request.
+  ActorDeathCause death_cause = 4;
+}
+
+message KillLocalActorReply {}
+
 message CancelLocalTaskRequest {
   // ID of task that should be killed.
   bytes intended_task_id = 1;
@@ -545,6 +558,10 @@ service NodeManagerService {
   // Failure: Will retry with the default timeout 1000ms. If fails, reply return an empty
   // list.
   rpc GetWorkerPIDs(GetWorkerPIDsRequest) returns (GetWorkerPIDsReply);
+  // Request from the GCS actor manager or actor scheduler that the worker shut down
+  // without completing outstanding work.
+  // Failure: Retries, it's idempotent.
+  rpc KillLocalActor(KillLocalActorRequest) returns (KillLocalActorReply);
   // Forwards the CancelTask request from the caller core worker to the executor
   // Failure: Retries, it's idempotent.
   rpc CancelLocalTask(CancelLocalTaskRequest) returns (CancelLocalTaskReply);

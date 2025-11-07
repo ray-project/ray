@@ -491,6 +491,18 @@ void RayletClient::GetWorkerPIDs(
                             timeout_ms);
 }
 
+void RayletClient::KillLocalActor(
+    const rpc::KillLocalActorRequest &request,
+    const rpc::ClientCallback<rpc::KillLocalActorReply> &callback) {
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            KillLocalActor,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
+}
+
 void RayletClient::CancelLocalTask(
     const rpc::CancelLocalTaskRequest &request,
     const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) {

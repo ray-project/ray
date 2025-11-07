@@ -1919,7 +1919,7 @@ class TestAppLevelAutoscalingPolicy:
         client.deploy_apps(
             ServeDeploySchema.parse_obj({"applications": [config_template]})
         )
-
+        wait_for_condition(check_running, timeout=15)
         wait_for_condition(check_num_replicas_eq, name="A", target=1)
         hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
         results = [hA.remote() for _ in range(120)]
