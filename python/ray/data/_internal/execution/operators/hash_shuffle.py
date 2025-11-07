@@ -903,6 +903,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         #
         #   - Adjacent aggregators have high likelihood of running on the
         #   same node (when num aggregators > num nodes)
+        #
+        # NOTE: This doesn't affect determinism, since this only impacts order
+        #       of finalization (hence not required to be seeded)
         target_partition_ids = random.sample(
             list(self._pending_finalization_partition_ids),
             next_batch_size
