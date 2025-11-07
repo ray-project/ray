@@ -108,7 +108,7 @@ class _DatasourceProjectionPushdownMixin:
         # prev {a: temp}, new {temp: final} -> composed {a: final}
         # No need for collapse_transitive_map which would incorrectly remove
         # identity mappings like {b: b}
-        return composed if composed else None
+        return composed
 
     def apply_projection(
         self,
