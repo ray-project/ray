@@ -79,14 +79,14 @@ class _DatasourceProjectionPushdownMixin:
             >>> prev = {"a": "a", "b": "b"}
             >>> # Select only 'a', rename to 'x'
             >>> new = {"a": "x"}
-            >>> _combine_projection_map(prev, new)
+            >>> _DatasourceProjectionPushdownMixin._combine_projection_map(prev, new)
             {'a': 'x'}
 
             >>> # First rename a->temp
             >>> prev = {"a": "temp"}
             >>> # Then rename temp->final
             >>> new = {"temp": "final"}
-            >>> _combine_projection_map(prev, new)
+            >>> _DatasourceProjectionPushdownMixin._combine_projection_map(prev, new)
             {'a': 'final'}
         """
         # Handle None cases (None means "all columns, no renames")
