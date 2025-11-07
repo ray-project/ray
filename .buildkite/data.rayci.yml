@@ -269,7 +269,7 @@ steps:
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... data
-        --build-name databuild-py3.10
+        --build-name datalbuild-py3.10
         --python-version 3.10
         --parallelism-per-worker 3
     depends_on: datalbuild-multipy
@@ -286,7 +286,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... data --run-flaky-tests
         --parallelism-per-worker 3
-        --build-name databuild-py3.10
+        --build-name datalbuild-py3.10
         --python-version 3.10
         --except-tags gpu_only,gpu
     depends_on: datalbuild-multipy
