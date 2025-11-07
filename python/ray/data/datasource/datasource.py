@@ -1,5 +1,4 @@
-from dataclasses import dataclass
-from typing import Callable, Dict, Iterable, List, Optional
+from typing import Callable, Dict, Generator, Iterable, List, Optional, Tuple
 
 import numpy as np
 
@@ -8,19 +7,6 @@ from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.datasource.util import _iter_sliced_blocks
 from ray.data.expressions import Expr
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
-
-
-@dataclass
-class _ProjectionProcessingResult:
-    """Result of processing a projection with existing column renames.
-
-    Attributes:
-        rebound_columns: Column names translated to original/storage space
-        filtered_rename_map: Rename map filtered to only selected columns
-    """
-
-    rebound_columns: Optional[List[str]]
-    filtered_rename_map: Optional[Dict[str, str]]
 
 
 class _DatasourceProjectionPushdownMixin:
@@ -68,7 +54,7 @@ class _DatasourceProjectionPushdownMixin:
     def _process_projection_with_renames(
         columns: Optional[List[str]],
         existing_rename_map: Optional[Dict[str, str]],
-    ) -> _ProjectionProcessingResult:
+    ) -> Tuple[List[str], Optional[Dict[str, str]]]:
         """Process column projection accounting for existing renames.
 
         When columns have been renamed, this handles:
@@ -86,10 +72,7 @@ class _DatasourceProjectionPushdownMixin:
         """
         if not existing_rename_map or columns is None:
             # No renames to process
-            return _ProjectionProcessingResult(
-                rebound_columns=columns,
-                filtered_rename_map=existing_rename_map,
-            )
+            return columns, existing_rename_map
 
         # Create reverse mapping: renamed -> original
         reverse_map = {
@@ -108,10 +91,7 @@ class _DatasourceProjectionPushdownMixin:
             if renamed in columns
         }
 
-        return _ProjectionProcessingResult(
-            rebound_columns=rebound_columns,
-            filtered_rename_map=filtered_rename_map or None,
-        )
+        return rebound_columns, filtered_rename_map or None
 
     @staticmethod
     def _combine_rename_map(
@@ -157,18 +137,18 @@ class _DatasourceProjectionPushdownMixin:
         clone = copy.copy(self)
 
         # Process projection with existing renames
-        result = self._process_projection_with_renames(
+        rebound_columns, filtered_rename_map = self._process_projection_with_renames(
             columns, self._data_columns_rename_map
         )
 
         # Combine projections (now in original column space)
         clone._data_columns = self._combine_projection(
-            self._data_columns, result.rebound_columns
+            self._data_columns, rebound_columns
         )
 
         # Combine rename maps
         clone._data_columns_rename_map = self._combine_rename_map(
-            result.filtered_rename_map, column_rename_map
+            filtered_rename_map, column_rename_map
         )
 
         # Hook for datasource-specific cleanup
@@ -241,6 +221,32 @@ class _DatasourceProjectionPushdownMixin:
             table.schema.names, column_rename_map
         )
         return table.rename_columns(new_names)
+
+    @staticmethod
+    def _apply_rename_to_tables(
+        tables: Iterable["Schema"],
+        column_rename_map: Optional[Dict[str, str]],
+    ) -> Generator["Schema", None, None]:
+        """Wrap a table generator to apply column renaming to each table.
+
+        This helper eliminates duplication across datasources that need to apply
+        column renames to tables yielded from generators.
+
+        Args:
+            tables: Iterator/generator yielding PyArrow tables
+            column_rename_map: Mapping from old column names to new names
+
+        Yields:
+            Schema: Tables with renamed columns
+        """
+        if not column_rename_map:
+            # No renaming needed, pass through
+            yield from tables
+        else:
+            for table in tables:
+                yield _DatasourceProjectionPushdownMixin._apply_rename(
+                    table, column_rename_map
+                )
 
 
 class _DatasourcePredicatePushdownMixin:

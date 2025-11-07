@@ -37,21 +37,9 @@ class CSVDatasource(FileBasedDatasource):
         self.parse_options = arrow_csv_args.pop("parse_options", csv.ParseOptions())
         self.arrow_csv_args = arrow_csv_args
 
-        # Initialize projection pushdown attributes
-        self._data_columns = None
-        self._data_columns_rename_map = None
-
-    def supports_predicate_pushdown(self) -> bool:
-        return True
-
-    def supports_projection_pushdown(self) -> bool:
-        return True
-
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         import pyarrow as pa
         from pyarrow import csv
-
-        from ray.data.datasource.datasource import _DatasourceProjectionPushdownMixin
 
         # Re-init invalid row handler: https://issues.apache.org/jira/browse/ARROW-17641
         if hasattr(self.parse_options, "invalid_row_handler"):
@@ -65,20 +53,12 @@ class CSVDatasource(FileBasedDatasource):
             else None
         )
 
-        # Set up column selection if projection pushdown is active
-        csv_args = dict(self.arrow_csv_args)
-        if self._data_columns is not None:
-            # Apply projection: only include specified columns
-            convert_options = csv_args.get("convert_options", csv.ConvertOptions())
-            convert_options.include_columns = self._data_columns
-            csv_args["convert_options"] = convert_options
-
         try:
             reader = csv.open_csv(
                 f,
                 read_options=self.read_options,
                 parse_options=self.parse_options,
-                **csv_args,
+                **self.arrow_csv_args,
             )
             schema = None
             while True:
@@ -89,11 +69,6 @@ class CSVDatasource(FileBasedDatasource):
                         schema = table.schema
                     if filter_expr is not None:
                         table = table.filter(filter_expr)
-
-                    # Apply column renames using shared helper
-                    table = _DatasourceProjectionPushdownMixin._apply_rename(
-                        table, self._data_columns_rename_map
-                    )
 
                     yield table
                 except StopIteration:

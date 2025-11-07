@@ -43,58 +43,52 @@ def _get_read_task(
 
     from ray.data.datasource.datasource import _DatasourceProjectionPushdownMixin
 
-    if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
-        # Modern implementation using ArrowScan (PyIceberg 0.9.0+)
-        from pyiceberg.io.pyarrow import ArrowScan
+    def _generate_tables():
+        """Inner generator that yields tables without renaming."""
+        if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
+            # Modern implementation using ArrowScan (PyIceberg 0.9.0+)
+            from pyiceberg.io.pyarrow import ArrowScan
 
-        # Initialize scanner with Iceberg metadata and query parameters
-        scanner = ArrowScan(
-            table_metadata=table_metadata,
-            io=table_io,
-            row_filter=row_filter,
-            projected_schema=schema,
-            case_sensitive=case_sensitive,
-            limit=limit,
-        )
-
-        # Convert scanned data to Arrow Table format
-        result_table = scanner.to_table(tasks=tasks)
-
-        # Stream results as RecordBatches for memory efficiency
-        for batch in result_table.to_batches():
-            table = pa.Table.from_batches([batch])
-
-            # Apply column renames using shared helper
-            table = _DatasourceProjectionPushdownMixin._apply_rename(
-                table, column_rename_map
+            # Initialize scanner with Iceberg metadata and query parameters
+            scanner = ArrowScan(
+                table_metadata=table_metadata,
+                io=table_io,
+                row_filter=row_filter,
+                projected_schema=schema,
+                case_sensitive=case_sensitive,
+                limit=limit,
             )
 
+            # Convert scanned data to Arrow Table format
+            result_table = scanner.to_table(tasks=tasks)
+
+            # Stream results as RecordBatches for memory efficiency
+            for batch in result_table.to_batches():
+                yield pa.Table.from_batches([batch])
+
+        else:
+            # Legacy implementation using project_table (PyIceberg <0.9.0)
+            from pyiceberg.io import pyarrow as pyi_pa_io
+
+            # Use the PyIceberg API to read only a single task (specifically, a
+            # FileScanTask) - note that this is not as simple as reading a single
+            # parquet file, as there might be delete files, etc. associated, so we
+            # must use the PyIceberg API for the projection.
+            table = pyi_pa_io.project_table(
+                tasks=tasks,
+                table_metadata=table_metadata,
+                io=table_io,
+                row_filter=row_filter,
+                projected_schema=schema,
+                case_sensitive=case_sensitive,
+                limit=limit,
+            )
             yield table
 
-    else:
-        # Legacy implementation using project_table (PyIceberg <0.9.0)
-        from pyiceberg.io import pyarrow as pyi_pa_io
-
-        # Use the PyIceberg API to read only a single task (specifically, a
-        # FileScanTask) - note that this is not as simple as reading a single
-        # parquet file, as there might be delete files, etc. associated, so we
-        # must use the PyIceberg API for the projection.
-        table = pyi_pa_io.project_table(
-            tasks=tasks,
-            table_metadata=table_metadata,
-            io=table_io,
-            row_filter=row_filter,
-            projected_schema=schema,
-            case_sensitive=case_sensitive,
-            limit=limit,
-        )
-
-        # Apply column renames using shared helper
-        table = _DatasourceProjectionPushdownMixin._apply_rename(
-            table, column_rename_map
-        )
-
-        yield table
+    # Apply renames to all tables from the generator
+    yield from _DatasourceProjectionPushdownMixin._apply_rename_to_tables(
+        _generate_tables(), column_rename_map
+    )
 
 
 @DeveloperAPI

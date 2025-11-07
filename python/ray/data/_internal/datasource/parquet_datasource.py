@@ -537,61 +537,66 @@ def _read_batches_from(
         fragment, partition_columns, partitioning
     )
 
-    try:
-        for batch in fragment.to_batches(
-            columns=data_columns,
-            filter=filter_expr,
-            schema=schema,
-            use_threads=use_threads,
-            **to_batches_kwargs,
-        ):
-            table = pa.Table.from_batches([batch])
+    def _generate_tables():
+        """Inner generator that yields tables without renaming."""
+        try:
+            for batch in fragment.to_batches(
+                columns=data_columns,
+                filter=filter_expr,
+                schema=schema,
+                use_threads=use_threads,
+                **to_batches_kwargs,
+            ):
+                table = pa.Table.from_batches([batch])
 
-            if include_path:
-                table = ArrowBlockAccessor.for_block(table).fill_column(
-                    "path", fragment.path
+                if include_path:
+                    table = ArrowBlockAccessor.for_block(table).fill_column(
+                        "path", fragment.path
+                    )
+
+                if partition_col_values:
+                    table = _add_partitions_to_table(partition_col_values, table)
+
+                # ``ParquetFileFragment.to_batches`` returns ``RecordBatch``,
+                # which could have empty projection (ie ``num_columns`` == 0)
+                # while having non-empty rows (ie ``num_rows`` > 0), which
+                # could occur when list of requested columns is empty.
+                #
+                # However, when ``RecordBatches`` are concatenated using
+                # ``pyarrow.concat_tables`` it will return a single ``Table``
+                # with 0 columns and therefore 0 rows (since ``Table``s number of
+                # rows is determined as the length of its columns).
+                #
+                # To avoid running into this pitfall, we introduce a stub column
+                # holding just nulls to maintain invariance of the number of rows.
+                #
+                # NOTE: There's no impact from this as the binary size of the
+                #       extra column is basically 0
+                if table.num_columns == 0 and table.num_rows > 0:
+                    table = table.append_column(
+                        _BATCH_SIZE_PRESERVING_STUB_COL_NAME, pa.nulls(table.num_rows)
+                    )
+
+                yield table
+
+        except pa.lib.ArrowInvalid as e:
+            error_message = str(e)
+            if (
+                "No match for FieldRef.Name" in error_message
+                and filter_expr is not None
+            ):
+                filename = os.path.basename(fragment.path)
+                file_columns = set(fragment.physical_schema.names)
+                raise RuntimeError(
+                    f"Filter expression: '{filter_expr}' failed on parquet "
+                    f"file: '{filename}' with columns: {file_columns}"
                 )
+            raise
 
-            if partition_col_values:
-                table = _add_partitions_to_table(partition_col_values, table)
-
-            # ``ParquetFileFragment.to_batches`` returns ``RecordBatch``,
-            # which could have empty projection (ie ``num_columns`` == 0)
-            # while having non-empty rows (ie ``num_rows`` > 0), which
-            # could occur when list of requested columns is empty.
-            #
-            # However, when ``RecordBatches`` are concatenated using
-            # ``pyarrow.concat_tables`` it will return a single ``Table``
-            # with 0 columns and therefore 0 rows (since ``Table``s number of
-            # rows is determined as the length of its columns).
-            #
-            # To avoid running into this pitfall, we introduce a stub column
-            # holding just nulls to maintain invariance of the number of rows.
-            #
-            # NOTE: There's no impact from this as the binary size of the
-            #       extra column is basically 0
-            if table.num_columns == 0 and table.num_rows > 0:
-                table = table.append_column(
-                    _BATCH_SIZE_PRESERVING_STUB_COL_NAME, pa.nulls(table.num_rows)
-                )
-
-            # Apply column renames using shared helper
-            table = _DatasourceProjectionPushdownMixin._apply_rename(
-                table, data_columns_rename_map
-            )
-
-            yield table
-
-    except pa.lib.ArrowInvalid as e:
-        error_message = str(e)
-        if "No match for FieldRef.Name" in error_message and filter_expr is not None:
-            filename = os.path.basename(fragment.path)
-            file_columns = set(fragment.physical_schema.names)
-            raise RuntimeError(
-                f"Filter expression: '{filter_expr}' failed on parquet "
-                f"file: '{filename}' with columns: {file_columns}"
-            )
-        raise
+    # Apply renames to all tables from the generator
+    yield from _DatasourceProjectionPushdownMixin._apply_rename_to_tables(
+        _generate_tables(), data_columns_rename_map
+    )
 
 
 def _parse_partition_column_values(
