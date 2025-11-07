@@ -210,7 +210,7 @@ steps:
         --except-tags gpu,post_wheel_build,doctest,dask
         --parallelism-per-worker 2
         --skip-ray-installation
-    depends_on: datalbuild-multipy
+    depends_on: databuild-multipy
 
   - label: ":database: data: dask doc tests"
     tags:
