@@ -697,11 +697,6 @@ def test_prefetch_count_reporting_streaming_split(
     # Get the coordinator actor
     coord_actor = iterators[0]._coord_actor
 
-    # Verify the coordinator has the methods
-    ray.get(coord_actor.update_prefetch_count.remote(5))
-    count = ray.get(coord_actor.get_prefetch_count.remote())
-    assert count >= 0
-
     # Consume from both iterators in parallel and verify prefetch counts during iteration
     @ray.remote
     def consume(iterator, coord_actor):
