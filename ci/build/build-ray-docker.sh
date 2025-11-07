@@ -7,6 +7,9 @@ CONSTRAINTS_FILE="$3"
 DEST_IMAGE="$4"
 PIP_FREEZE_FILE="$5"
 
+RAY_VERSION="$(python python/ray/_version.py | cut -d' ' -f1)"
+RAY_COMMIT="$(git rev-parse HEAD)"
+
 CPU_TMP="$(mktemp -d)"
 
 cp -r .whl "${CPU_TMP}/.whl"
@@ -20,6 +23,8 @@ tar --mtime="UTC 2020-01-01" -c -f - . \
         --build-arg FULL_BASE_IMAGE="$SOURCE_IMAGE" \
         --build-arg WHEEL_PATH=".whl/${WHEEL_NAME}" \
         --build-arg CONSTRAINTS_FILE="$CONSTRAINTS_FILE" \
+        --label "io.ray.ray-version=$RAY_VERSION" \
+        --label "io.ray.ray-commit=$RAY_COMMIT" \
         -t "$DEST_IMAGE" -f Dockerfile -
 
 # Copy the pip freeze file to the artifact mount.

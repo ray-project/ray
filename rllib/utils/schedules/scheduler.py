@@ -5,7 +5,6 @@ from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
 from ray.rllib.utils.typing import LearningRateOrSchedule, TensorType
 from ray.util.annotations import DeveloperAPI
 
-
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 

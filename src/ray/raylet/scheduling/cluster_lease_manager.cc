@@ -48,19 +48,14 @@ void ClusterLeaseManager::QueueAndScheduleLease(
     RayLease lease,
     bool grant_or_reject,
     bool is_selected_based_on_locality,
-    rpc::RequestWorkerLeaseReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+    std::vector<internal::ReplyCallback> reply_callbacks) {
   RAY_LOG(DEBUG) << "Queuing and scheduling lease "
                  << lease.GetLeaseSpecification().LeaseId();
   const auto scheduling_class = lease.GetLeaseSpecification().GetSchedulingClass();
-  auto work = std::make_shared<internal::Work>(
-      std::move(lease),
-      grant_or_reject,
-      is_selected_based_on_locality,
-      reply,
-      [send_reply_callback = std::move(send_reply_callback)] {
-        send_reply_callback(Status::OK(), nullptr, nullptr);
-      });
+  auto work = std::make_shared<internal::Work>(std::move(lease),
+                                               grant_or_reject,
+                                               is_selected_based_on_locality,
+                                               std::move(reply_callbacks));
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
   auto infeasible_leases_iter = infeasible_leases_.find(scheduling_class);
@@ -76,12 +71,13 @@ namespace {
 void ReplyCancelled(const internal::Work &work,
                     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
                     const std::string &scheduling_failure_message) {
-  auto reply = work.reply_;
-  auto callback = work.callback_;
-  reply->set_canceled(true);
-  reply->set_failure_type(failure_type);
-  reply->set_scheduling_failure_message(scheduling_failure_message);
-  callback();
+  for (const auto &reply_callback : work.reply_callbacks_) {
+    auto reply = reply_callback.reply_;
+    reply->set_canceled(true);
+    reply->set_failure_type(failure_type);
+    reply->set_scheduling_failure_message(scheduling_failure_message);
+    reply_callback.send_reply_callback_(Status::OK(), nullptr, nullptr);
+  }
 }
 }  // namespace
 
@@ -230,8 +226,11 @@ void ClusterLeaseManager::ScheduleAndGrantLeases() {
                        << lease.GetLeaseSpecification().LeaseId() << " is infeasible?"
                        << is_infeasible;
 
-        if (lease.GetLeaseSpecification().IsNodeAffinitySchedulingStrategy() &&
-            !lease.GetLeaseSpecification().GetNodeAffinitySchedulingStrategySoft()) {
+        auto affinity_values =
+            GetHardNodeAffinityValues(lease.GetLeaseSpecification().GetLabelSelector());
+        if ((lease.GetLeaseSpecification().IsNodeAffinitySchedulingStrategy() &&
+             !lease.GetLeaseSpecification().GetNodeAffinitySchedulingStrategySoft()) ||
+            (affinity_values.has_value() && !affinity_values->empty())) {
           // This can only happen if the target node doesn't exist or is infeasible.
           // The lease will never be schedulable in either case so we should fail it.
           if (cluster_resource_scheduler_.IsLocalNodeWithRaylet()) {
@@ -318,7 +317,7 @@ void ClusterLeaseManager::TryScheduleInfeasibleLease() {
         /*requires_object_store_memory*/ false,
         &is_infeasible);
 
-    // There is no node that has available resources to run the request.
+    // There is no node that has feasible resources to run the request.
     // Move on to the next shape.
     if (is_infeasible) {
       RAY_LOG(DEBUG) << "No feasible node found for lease "
@@ -426,11 +425,11 @@ void ClusterLeaseManager::ScheduleOnNode(const NodeID &spillback_to,
     return;
   }
 
-  auto send_reply_callback = work->callback_;
-
   if (work->grant_or_reject_) {
-    work->reply_->set_rejected(true);
-    send_reply_callback();
+    for (const auto &reply_callback : work->reply_callbacks_) {
+      reply_callback.reply_->set_rejected(true);
+      reply_callback.send_reply_callback_(Status::OK(), nullptr, nullptr);
+    }
     return;
   }
 
@@ -448,17 +447,16 @@ void ClusterLeaseManager::ScheduleOnNode(const NodeID &spillback_to,
                    << " on a remote node that are no longer available";
   }
 
-  auto node_info_ptr = get_node_info_(spillback_to);
-  RAY_CHECK(node_info_ptr)
-      << "Spilling back to a node manager, but no GCS info found for node "
-      << spillback_to;
-  auto reply = work->reply_;
-  reply->mutable_retry_at_raylet_address()->set_ip_address(
-      node_info_ptr->node_manager_address());
-  reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
-  reply->mutable_retry_at_raylet_address()->set_node_id(spillback_to.Binary());
-
-  send_reply_callback();
+  auto node_info = get_node_info_(spillback_to);
+  RAY_CHECK(node_info.has_value());
+  for (const auto &reply_callback : work->reply_callbacks_) {
+    auto reply = reply_callback.reply_;
+    reply->mutable_retry_at_raylet_address()->set_ip_address(
+        (*node_info).node_manager_address());
+    reply->mutable_retry_at_raylet_address()->set_port((*node_info).node_manager_port());
+    reply->mutable_retry_at_raylet_address()->set_node_id(spillback_to.Binary());
+    reply_callback.send_reply_callback_(Status::OK(), nullptr, nullptr);
+  }
 }
 
 ClusterResourceScheduler &ClusterLeaseManager::GetClusterResourceScheduler() const {
@@ -483,6 +481,52 @@ size_t ClusterLeaseManager::GetPendingQueueSize() const {
 
 void ClusterLeaseManager::FillPendingActorInfo(rpc::ResourcesData &data) const {
   scheduler_resource_reporter_.FillPendingActorCountByShape(data);
+}
+
+bool ClusterLeaseManager::IsLeaseQueued(const SchedulingClass &scheduling_class,
+                                        const LeaseID &lease_id) const {
+  auto it = leases_to_schedule_.find(scheduling_class);
+  if (it != leases_to_schedule_.end()) {
+    for (const auto &work : it->second) {
+      if (work->lease_.GetLeaseSpecification().LeaseId() == lease_id) {
+        return true;
+      }
+    }
+  }
+
+  auto infeasible_it = infeasible_leases_.find(scheduling_class);
+  if (infeasible_it != infeasible_leases_.end()) {
+    for (const auto &work : infeasible_it->second) {
+      if (work->lease_.GetLeaseSpecification().LeaseId() == lease_id) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+bool ClusterLeaseManager::AddReplyCallback(const SchedulingClass &scheduling_class,
+                                           const LeaseID &lease_id,
+                                           rpc::SendReplyCallback send_reply_callback,
+                                           rpc::RequestWorkerLeaseReply *reply) {
+  if (leases_to_schedule_.contains(scheduling_class)) {
+    for (const auto &work : leases_to_schedule_[scheduling_class]) {
+      if (work->lease_.GetLeaseSpecification().LeaseId() == lease_id) {
+        work->reply_callbacks_.emplace_back(std::move(send_reply_callback), reply);
+        return true;
+      }
+    }
+  }
+  if (infeasible_leases_.contains(scheduling_class)) {
+    for (const auto &work : infeasible_leases_[scheduling_class]) {
+      if (work->lease_.GetLeaseSpecification().LeaseId() == lease_id) {
+        work->reply_callbacks_.emplace_back(std::move(send_reply_callback), reply);
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 }  // namespace raylet

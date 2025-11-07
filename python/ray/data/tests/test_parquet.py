@@ -100,7 +100,7 @@ def test_write_parquet_partition_cols(
 def test_include_paths(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
-    path = os.path.join(tmp_path, "test.txt")
+    path = os.path.join(tmp_path, "test.parquet")
     table = pa.Table.from_pydict({"animals": ["cat", "dog"]})
     pq.write_table(table, path)
 
@@ -601,7 +601,50 @@ def test_parquet_read_partitioned_explicit(
     ]
 
 
-def test_proper_projection_for_partitioned_datasets(temp_dir):
+def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir):
+    path = "example://iris.parquet"
+
+    # Test projection from read_parquet
+    ds = ray.data.read_parquet(path, columns=["variety"])
+
+    schema = ds.schema()
+
+    assert ["variety"] == schema.base_schema.names
+    assert ds.count() == 150
+
+    # Test projection pushed down into read op
+    ds = ray.data.read_parquet(path).select_columns("variety")
+
+    assert ds._plan.explain().strip() == (
+        "-------- Logical Plan --------\n"
+        "Project[Project]\n"
+        "+- Read[ReadParquet]\n"
+        "\n-------- Logical Plan (Optimized) --------\n"
+        "Read[ReadParquet]\n"
+        "\n-------- Physical Plan --------\n"
+        "TaskPoolMapOperator[ReadParquet]\n"
+        "+- InputDataBuffer[Input]\n"
+        "\n-------- Physical Plan (Optimized) --------\n"
+        "TaskPoolMapOperator[ReadParquet]\n"
+        "+- InputDataBuffer[Input]"
+    )
+
+    # Assert schema being appropriately projected
+    schema = ds.schema()
+    assert ["variety"] == schema.base_schema.names
+
+    assert ds.count() == 150
+
+    # Assert empty projection is reading no data
+    ds = ray.data.read_parquet(path).select_columns([])
+
+    summary = ds.materialize()._plan.stats().to_summary()
+
+    assert "ReadParquet" in summary.base_name
+    assert summary.extra_metrics["bytes_task_outputs_generated"] == 0
+
+
+def test_projection_pushdown_partitioned(ray_start_regular_shared, temp_dir):
     ds = ray.data.read_parquet("example://iris.parquet").materialize()
 
     partitioned_ds_path = f"{temp_dir}/partitioned_iris"
@@ -625,6 +668,18 @@ def test_proper_projection_for_partitioned_datasets(temp_dir):
     assert ["variety"] == partitioned_ds.take_batch(batch_format="pyarrow").column_names
 
     assert ds.count() == partitioned_ds.count()
+
+
+def test_projection_pushdown_on_count(ray_start_regular_shared, temp_dir):
+    path = "example://iris.parquet"
+
+    # Test reading full dataset
+    # ds = ray.data.read_parquet(path).materialize()
+
+    # Test projection from read_parquet
+    num_rows = ray.data.read_parquet(path).count()
+
+    assert num_rows == 150
 
 
 def test_parquet_read_with_udf(
@@ -1406,8 +1461,12 @@ def test_read_null_data_in_first_file(
     # The `read_parquet` implementation might infer the schema from the first file.
     # This test ensures that implementation handles the case where the first file has no
     # data and the inferred type is `null`.
-    pq.write_table(pa.Table.from_pydict({"data": [None, None, None]}), tmp_path / "1")
-    pq.write_table(pa.Table.from_pydict({"data": ["spam", "ham"]}), tmp_path / "2")
+    pq.write_table(
+        pa.Table.from_pydict({"data": [None, None, None]}), tmp_path / "1.parquet"
+    )
+    pq.write_table(
+        pa.Table.from_pydict({"data": ["spam", "ham"]}), tmp_path / "2.parquet"
+    )
 
     ds = ray.data.read_parquet(tmp_path)
 
@@ -1419,16 +1478,6 @@ def test_read_null_data_in_first_file(
         {"data": "ham"},
         {"data": "spam"},
     ]
-
-
-def test_read_invalid_file_extensions_emits_warning(
-    tmp_path, ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    table = pa.Table.from_pydict({})
-    pq.write_table(table, tmp_path / "no_extension")
-
-    with pytest.warns(FutureWarning, match="file_extensions"):
-        ray.data.read_parquet(tmp_path)
 
 
 def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):

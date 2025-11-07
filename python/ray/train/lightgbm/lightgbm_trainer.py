@@ -11,12 +11,13 @@ from ray.train.lightgbm._lightgbm_utils import RayTrainReportCallback
 from ray.train.lightgbm.config import LightGBMConfig
 from ray.train.lightgbm.v2 import LightGBMTrainer as SimpleLightGBMTrainer
 from ray.train.trainer import GenDataset
+from ray.train.utils import _log_deprecation_warning
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
-LEGACY_LIGHTGBMGBM_TRAINER_DEPRECATION_MESSAGE = (
+LEGACY_LIGHTGBM_TRAINER_DEPRECATION_MESSAGE = (
     "Passing in `lightgbm.train` kwargs such as `params`, `num_boost_round`, "
     "`label_column`, etc. to `LightGBMTrainer` is deprecated "
     "in favor of the new API which accepts a `train_loop_per_worker` argument, "
@@ -92,6 +93,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
     -------
 
     .. testcode::
+        :skipif: True
 
         import lightgbm
 
@@ -147,11 +149,6 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
         )
         result = trainer.fit()
         booster = RayTrainReportCallback.get_model(result.checkpoint)
-
-    .. testoutput::
-        :hide:
-
-        ...
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
@@ -228,15 +225,14 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
                 datasets=datasets,
             )
             train_loop_config = params or {}
-        # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
-        # elif train_kwargs:
-        #     _log_deprecation_warning(
-        #         "Passing `lightgbm.train` kwargs to `LightGBMTrainer` is deprecated. "
-        #         f"Got kwargs: {train_kwargs.keys()}\n"
-        #         "Please pass in a `train_loop_per_worker` function instead, "
-        #         "which has full flexibility on the call to `lightgbm.train(**kwargs)`. "
-        #         f"{LEGACY_LIGHTGBMGBM_TRAINER_DEPRECATION_MESSAGE}"
-        #     )
+        elif train_kwargs:
+            _log_deprecation_warning(
+                "Passing `lightgbm.train` kwargs to `LightGBMTrainer` is deprecated. "
+                f"Got kwargs: {train_kwargs.keys()}\n"
+                "In your training function, you can call `lightgbm.train(**kwargs)` "
+                "with arbitrary arguments. "
+                f"{LEGACY_LIGHTGBM_TRAINER_DEPRECATION_MESSAGE}"
+            )
 
         super(LightGBMTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
@@ -278,8 +274,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
 
         num_boost_round = num_boost_round or 10
 
-        # TODO: [Deprecated] Legacy LightGBMTrainer API
-        # _log_deprecation_warning(LEGACY_LIGHTGBMGBM_TRAINER_DEPRECATION_MESSAGE)
+        _log_deprecation_warning(LEGACY_LIGHTGBM_TRAINER_DEPRECATION_MESSAGE)
 
         # Initialize a default Ray Train metrics/checkpoint reporting callback if needed
         callbacks = lightgbm_train_kwargs.get("callbacks", [])

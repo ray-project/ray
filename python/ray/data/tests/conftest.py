@@ -10,7 +10,6 @@ import pyarrow as pa
 import pytest
 
 import ray
-import ray.util.state
 from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
@@ -24,6 +23,7 @@ from ray.data.tests.mock_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import _ray_start
 from ray.util.debug import reset_log_once
+from ray.util.state import list_actors
 
 
 @pytest.fixture(scope="module")
@@ -405,26 +405,6 @@ def ds_numpy_list_of_ndarray_tensor_format(ray_start_regular_shared):
     yield ray.data.from_numpy([np.arange(4).reshape((1, 2, 2))] * 4)
 
 
-@pytest.fixture(params=["5.0.0"])
-def unsupported_pyarrow_version(request):
-    orig_version = pa.__version__
-    pa.__version__ = request.param
-    # Unset pyarrow version cache.
-    import ray._private.arrow_utils
-
-    ray._private.arrow_utils._PYARROW_INSTALLED = None
-    ray._private.arrow_utils._PYARROW_VERSION = None
-    yield request.param
-    pa.__version__ = orig_version
-
-
-@pytest.fixture
-def disable_pyarrow_version_check():
-    os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"] = "1"
-    yield
-    del os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"]
-
-
 # ===== Observability & Logging Fixtures =====
 @pytest.fixture
 def op_two_block():
@@ -586,7 +566,7 @@ class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
             ),
         }
 
-        self.actor_metrics = ray.util.state.list_actors(limit=10_000)
+        self.actor_metrics = list_actors(limit=10_000)
 
     def clear_task_count(self):
         self.task_metrics = []

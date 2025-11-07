@@ -1,5 +1,4 @@
 import asyncio
-import itertools
 import logging
 import math
 import os
@@ -14,32 +13,24 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
-import pyarrow.parquet as pq
 import pytest
-from pkg_resources import parse_version
 
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.test_utils import run_string_as_driver
-from ray.data import Dataset
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
-)
-from ray.data._internal.execution.interfaces.ref_bundle import (
-    _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_async_map,
     _MapActorContext,
 )
 from ray.data.context import DataContext
-from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
-from ray.data.expressions import col, lit, udf
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
-from ray.data.tests.util import column_udf, extract_values
+from ray.data.tests.util import extract_values
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
@@ -316,13 +307,6 @@ def test_concurrency(shutdown_only, target_max_block_size_infinite_or_default):
         with pytest.raises(ValueError, match=error_message):
             ds.map(UDFClass, concurrency=concurrency).take_all()
 
-    # Test concurrency not set.
-    result = ds.map(udf).take_all()
-    assert sorted(extract_values("id", result)) == list(range(10)), result
-    error_message = "``concurrency`` must be specified when using a callable class."
-    with pytest.raises(ValueError, match=error_message):
-        ds.map(UDFClass).take_all()
-
 
 @pytest.mark.parametrize("udf_kind", ["gen", "func"])
 def test_flat_map(
@@ -388,67 +372,6 @@ def process_timestamp_data_batch_pandas(batch: pd.DataFrame) -> pd.DataFrame:
     # Add 1ns to timestamp column
     batch["timestamp"] = batch["timestamp"] + pd.Timedelta(1, "ns")
     return batch
-
-
-@pytest.mark.parametrize(
-    "df, expected_df",
-    [
-        pytest.param(
-            pd.DataFrame(
-                {
-                    "id": [1, 2, 3],
-                    "timestamp": pd.to_datetime(
-                        [
-                            "2024-01-01 00:00:00.123456789",
-                            "2024-01-02 00:00:00.987654321",
-                            "2024-01-03 00:00:00.111222333",
-                        ]
-                    ),
-                    "value": [10.123456789, 20.987654321, 30.111222333],
-                }
-            ),
-            pd.DataFrame(
-                {
-                    "id": [1, 2, 3],
-                    "timestamp": pd.to_datetime(
-                        [
-                            "2024-01-01 00:00:00.123456790",
-                            "2024-01-02 00:00:00.987654322",
-                            "2024-01-03 00:00:00.111222334",
-                        ]
-                    ),
-                    "value": [10.123456789, 20.987654321, 30.111222333],
-                }
-            ),
-            id="nanoseconds_increment",
-        )
-    ],
-)
-def test_map_batches_timestamp_nanosecs(
-    df, expected_df, ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    """Verify handling timestamp with nanosecs in map_batches"""
-    ray_data = ray.data.from_pandas(df)
-
-    # Using pyarrow format
-    result_arrow = ray_data.map_batches(
-        process_timestamp_data_batch_arrow, batch_format="pyarrow"
-    )
-    processed_df_arrow = result_arrow.to_pandas()
-    processed_df_arrow["timestamp"] = processed_df_arrow["timestamp"].astype(
-        "datetime64[ns]"
-    )
-    pd.testing.assert_frame_equal(processed_df_arrow, expected_df)
-
-    # Using pandas format
-    result_pandas = ray_data.map_batches(
-        process_timestamp_data_batch_pandas, batch_format="pandas"
-    )
-    processed_df_pandas = result_pandas.to_pandas()
-    processed_df_pandas["timestamp"] = processed_df_pandas["timestamp"].astype(
-        "datetime64[ns]"
-    )
-    pd.testing.assert_frame_equal(processed_df_pandas, expected_df)
 
 
 @pytest.mark.parametrize(
@@ -689,119 +612,6 @@ def test_rename_columns_error_cases(
     assert str(exc_info.value) == expected_message
 
 
-def test_filter_mutex(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
-):
-    """Test filter op."""
-
-    # Generate sample data
-    data = {
-        "sepal.length": [4.8, 5.1, 5.7, 6.3, 7.0],
-        "sepal.width": [3.0, 3.3, 3.5, 3.2, 2.8],
-        "petal.length": [1.4, 1.7, 4.2, 5.4, 6.1],
-        "petal.width": [0.2, 0.4, 1.5, 2.1, 2.4],
-    }
-    df = pd.DataFrame(data)
-
-    # Define the path for the Parquet file in the tmp_path directory
-    parquet_file = tmp_path / "sample_data.parquet"
-
-    # Write DataFrame to a Parquet file
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, parquet_file)
-
-    # Load parquet dataset
-    parquet_ds = ray.data.read_parquet(str(parquet_file))
-
-    # Filter using lambda (UDF)
-    with pytest.raises(ValueError, match="Exactly one of 'fn' or 'expr'"):
-        parquet_ds.filter(
-            fn=lambda r: r["sepal.length"] > 5.0, expr="sepal.length > 5.0"
-        )
-
-    with pytest.raises(ValueError, match="must be a UserDefinedFunction"):
-        parquet_ds.filter(fn="sepal.length > 5.0")
-
-
-def test_filter_with_expressions(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
-):
-    """Test filtering with expressions."""
-
-    # Generate sample data
-    data = {
-        "sepal.length": [4.8, 5.1, 5.7, 6.3, 7.0],
-        "sepal.width": [3.0, 3.3, 3.5, 3.2, 2.8],
-        "petal.length": [1.4, 1.7, 4.2, 5.4, 6.1],
-        "petal.width": [0.2, 0.4, 1.5, 2.1, 2.4],
-    }
-    df = pd.DataFrame(data)
-
-    # Define the path for the Parquet file in the tmp_path directory
-    parquet_file = tmp_path / "sample_data.parquet"
-
-    # Write DataFrame to a Parquet file
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, parquet_file)
-
-    # Load parquet dataset
-    parquet_ds = ray.data.read_parquet(str(parquet_file))
-
-    # Filter using lambda (UDF)
-    filtered_udf_ds = parquet_ds.filter(lambda r: r["sepal.length"] > 5.0)
-    filtered_udf_data = filtered_udf_ds.to_pandas()
-
-    # Filter using expressions
-    filtered_expr_ds = parquet_ds.filter(expr="sepal.length > 5.0")
-    filtered_expr_data = filtered_expr_ds.to_pandas()
-
-    # Assert the filtered data is the same
-    assert set(filtered_udf_data["sepal.length"]) == set(
-        filtered_expr_data["sepal.length"]
-    )
-    assert len(filtered_udf_data) == len(filtered_expr_data)
-
-    # Verify correctness of filtered results: only rows with 'sepal.length' > 5.0
-    assert all(
-        filtered_expr_data["sepal.length"] > 5.0
-    ), "Filtered data contains rows with 'sepal.length' <= 5.0"
-    assert all(
-        filtered_udf_data["sepal.length"] > 5.0
-    ), "UDF-filtered data contains rows with 'sepal.length' <= 5.0"
-
-
-def test_filter_with_invalid_expression(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
-):
-    """Test filtering with invalid expressions."""
-
-    # Generate sample data
-    data = {
-        "sepal.length": [4.8, 5.1, 5.7, 6.3, 7.0],
-        "sepal.width": [3.0, 3.3, 3.5, 3.2, 2.8],
-        "petal.length": [1.4, 1.7, 4.2, 5.4, 6.1],
-        "petal.width": [0.2, 0.4, 1.5, 2.1, 2.4],
-    }
-    df = pd.DataFrame(data)
-
-    # Define the path for the Parquet file in the tmp_path directory
-    parquet_file = tmp_path / "sample_data.parquet"
-
-    # Write DataFrame to a Parquet file
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, parquet_file)
-
-    # Load parquet dataset
-    parquet_ds = ray.data.read_parquet(str(parquet_file))
-
-    with pytest.raises(ValueError, match="Invalid syntax in the expression"):
-        parquet_ds.filter(expr="fake_news super fake")
-
-    fake_column_ds = parquet_ds.filter(expr="sepal_length_123 > 1")
-    with pytest.raises(UserCodeException):
-        fake_column_ds.to_pandas()
-
-
 def test_drop_columns(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
@@ -880,7 +690,6 @@ def test_select_columns(
 @pytest.mark.parametrize(
     "cols, expected_exception, expected_error",
     [
-        ([], ValueError, "select_columns requires at least one column to select"),
         (
             None,
             TypeError,
@@ -912,643 +721,6 @@ def test_select_columns_validation(
         ds1.select_columns(cols=cols)
 
 
-def test_map_batches_basic(
-    ray_start_regular_shared,
-    tmp_path,
-    restore_data_context,
-    target_max_block_size_infinite_or_default,
-):
-    ctx = DataContext.get_current()
-    ctx.execution_options.preserve_order = True
-
-    # Test input validation
-    ds = ray.data.range(5)
-    with pytest.raises(ValueError):
-        ds.map_batches(
-            column_udf("id", lambda x: x + 1), batch_format="pyarrow", batch_size=-1
-        ).take()
-
-    # Set up.
-    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
-
-    # Test pandas
-    ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(lambda df: df + 1, batch_size=1, batch_format="pandas")
-    ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
-    assert values == [2, 3, 4]
-    values = [s["two"] for s in ds_list]
-    assert values == [3, 4, 5]
-
-    # Test Pyarrow
-    ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow")
-    ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
-    assert values == [1, 2, 3]
-    values = [s["two"] for s in ds_list]
-    assert values == [2, 3, 4]
-
-    # Test batch
-    size = 300
-    ds = ray.data.range(size)
-    ds2 = ds.map_batches(lambda df: df + 1, batch_size=17, batch_format="pandas")
-    ds_list = ds2.take_all()
-    for i in range(size):
-        # The pandas column is "value", and it originally has rows from 0~299.
-        # After the map batch, it should have 1~300.
-        row = ds_list[i]
-        assert row["id"] == i + 1
-    assert ds.count() == 300
-
-    # Test the lambda returns different types than the batch_format
-    # pandas => list block
-    ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(lambda df: {"id": np.array([1])}, batch_size=1)
-    ds_list = extract_values("id", ds2.take())
-    assert ds_list == [1, 1, 1]
-    assert ds.count() == 3
-
-    # pyarrow => list block
-    ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(
-        lambda df: {"id": np.array([1])}, batch_size=1, batch_format="pyarrow"
-    )
-    ds_list = extract_values("id", ds2.take())
-    assert ds_list == [1, 1, 1]
-    assert ds.count() == 3
-
-    # Test the wrong return value raises an exception.
-    ds = ray.data.read_parquet(str(tmp_path))
-    with pytest.raises(ValueError):
-        ds_list = ds.map_batches(
-            lambda df: 1, batch_size=2, batch_format="pyarrow"
-        ).take()
-
-
-def test_map_batches_extra_args(
-    shutdown_only, tmp_path, target_max_block_size_infinite_or_default
-):
-    ray.shutdown()
-    ray.init(num_cpus=3)
-
-    def put(x):
-        # We only support automatic deref in the legacy backend.
-        return x
-
-    # Test input validation
-    ds = ray.data.range(5)
-
-    class Foo:
-        def __call__(self, df):
-            return df
-
-    with pytest.raises(ValueError):
-        # fn_constructor_args and fn_constructor_kwargs only supported for actor
-        # compute strategy.
-        ds.map_batches(
-            lambda x: x,
-            fn_constructor_args=(1,),
-            fn_constructor_kwargs={"a": 1},
-        )
-
-    with pytest.raises(ValueError):
-        # fn_constructor_args and fn_constructor_kwargs only supported for callable
-        # class UDFs.
-        ds.map_batches(
-            lambda x: x,
-            fn_constructor_args=(1,),
-            fn_constructor_kwargs={"a": 1},
-        )
-
-    # Set up.
-    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
-
-    # Test extra UDF args.
-    # Test positional.
-    def udf(batch, a):
-        assert a == 1
-        return batch + a
-
-    ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(
-        udf,
-        batch_size=1,
-        batch_format="pandas",
-        fn_args=(put(1),),
-    )
-    ds_list = ds2.take()
-    values = sorted([s["one"] for s in ds_list])
-    assert values == [2, 3, 4]
-    values = sorted([s["two"] for s in ds_list])
-    assert values == [3, 4, 5]
-
-    # Test kwargs.
-    def udf(batch, b=None):
-        assert b == 2
-        return b * batch
-
-    ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(
-        udf,
-        batch_size=1,
-        batch_format="pandas",
-        fn_kwargs={"b": put(2)},
-    )
-    ds_list = ds2.take()
-    values = sorted([s["one"] for s in ds_list])
-    assert values == [2, 4, 6]
-    values = sorted([s["two"] for s in ds_list])
-    assert values == [4, 6, 8]
-
-    # Test both.
-    def udf(batch, a, b=None):
-        assert a == 1
-        assert b == 2
-        return b * batch + a
-
-    ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(
-        udf,
-        batch_size=1,
-        batch_format="pandas",
-        fn_args=(put(1),),
-        fn_kwargs={"b": put(2)},
-    )
-    ds_list = ds2.take()
-    values = sorted([s["one"] for s in ds_list])
-    assert values == [3, 5, 7]
-    values = sorted([s["two"] for s in ds_list])
-    assert values == [5, 7, 9]
-
-    # Test constructor UDF args.
-    # Test positional.
-    class CallableFn:
-        def __init__(self, a):
-            assert a == 1
-            self.a = a
-
-        def __call__(self, x):
-            return x + self.a
-
-    ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(
-        CallableFn,
-        concurrency=1,
-        batch_size=1,
-        batch_format="pandas",
-        fn_constructor_args=(put(1),),
-    )
-    ds_list = ds2.take()
-    values = sorted([s["one"] for s in ds_list])
-    assert values == [2, 3, 4]
-    values = sorted([s["two"] for s in ds_list])
-    assert values == [3, 4, 5]
-
-    # Test kwarg.
-    class CallableFn:
-        def __init__(self, b=None):
-            assert b == 2
-            self.b = b
-
-        def __call__(self, x):
-            return self.b * x
-
-    ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(
-        CallableFn,
-        concurrency=1,
-        batch_size=1,
-        batch_format="pandas",
-        fn_constructor_kwargs={"b": put(2)},
-    )
-    ds_list = ds2.take()
-    values = sorted([s["one"] for s in ds_list])
-    assert values == [2, 4, 6]
-    values = sorted([s["two"] for s in ds_list])
-    assert values == [4, 6, 8]
-
-    # Test both.
-    class CallableFn:
-        def __init__(self, a, b=None):
-            assert a == 1
-            assert b == 2
-            self.a = a
-            self.b = b
-
-        def __call__(self, x):
-            return self.b * x + self.a
-
-    ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(
-        CallableFn,
-        concurrency=1,
-        batch_size=1,
-        batch_format="pandas",
-        fn_constructor_args=(put(1),),
-        fn_constructor_kwargs={"b": put(2)},
-    )
-    ds_list = ds2.take()
-    values = sorted([s["one"] for s in ds_list])
-    assert values == [3, 5, 7]
-    values = sorted([s["two"] for s in ds_list])
-    assert values == [5, 7, 9]
-
-    # Test callable chain.
-    ds = ray.data.read_parquet(str(tmp_path))
-    fn_constructor_args = (put(1),)
-    fn_constructor_kwargs = {"b": put(2)}
-    ds2 = ds.map_batches(
-        CallableFn,
-        concurrency=1,
-        batch_size=1,
-        batch_format="pandas",
-        fn_constructor_args=fn_constructor_args,
-        fn_constructor_kwargs=fn_constructor_kwargs,
-    ).map_batches(
-        CallableFn,
-        concurrency=1,
-        batch_size=1,
-        batch_format="pandas",
-        fn_constructor_args=fn_constructor_args,
-        fn_constructor_kwargs=fn_constructor_kwargs,
-    )
-    ds_list = ds2.take()
-    values = sorted([s["one"] for s in ds_list])
-    assert values == [7, 11, 15]
-    values = sorted([s["two"] for s in ds_list])
-    assert values == [11, 15, 19]
-
-    # Test function + callable chain.
-    ds = ray.data.read_parquet(str(tmp_path))
-    fn_constructor_args = (put(1),)
-    fn_constructor_kwargs = {"b": put(2)}
-    ds2 = ds.map_batches(
-        lambda df, a, b=None: b * df + a,
-        batch_size=1,
-        batch_format="pandas",
-        fn_args=(put(1),),
-        fn_kwargs={"b": put(2)},
-    ).map_batches(
-        CallableFn,
-        concurrency=1,
-        batch_size=1,
-        batch_format="pandas",
-        fn_constructor_args=fn_constructor_args,
-        fn_constructor_kwargs=fn_constructor_kwargs,
-    )
-    ds_list = ds2.take()
-    values = sorted([s["one"] for s in ds_list])
-    assert values == [7, 11, 15]
-    values = sorted([s["two"] for s in ds_list])
-    assert values == [11, 15, 19]
-
-
-@pytest.mark.parametrize("method", [Dataset.map, Dataset.map_batches, Dataset.flat_map])
-def test_map_with_memory_resources(
-    method, shutdown_only, target_max_block_size_infinite_or_default
-):
-    """Test that we can use memory resource to limit the concurrency."""
-    num_blocks = 50
-    memory_per_task = 100 * 1024**2
-    max_concurrency = 5
-    ray.init(num_cpus=num_blocks, _memory=memory_per_task * max_concurrency)
-
-    concurrency_counter = ConcurrencyCounter.remote()
-
-    def map_fn(row_or_batch):
-        ray.get(concurrency_counter.inc.remote())
-        time.sleep(0.5)
-        ray.get(concurrency_counter.decr.remote())
-        if method is Dataset.flat_map:
-            return [row_or_batch]
-        else:
-            return row_or_batch
-
-    ds = ray.data.range(num_blocks, override_num_blocks=num_blocks)
-    if method is Dataset.map:
-        ds = ds.map(
-            map_fn,
-            num_cpus=1,
-            memory=memory_per_task,
-        )
-    elif method is Dataset.map_batches:
-        ds = ds.map_batches(
-            map_fn,
-            batch_size=None,
-            num_cpus=1,
-            memory=memory_per_task,
-        )
-    elif method is Dataset.flat_map:
-        ds = ds.flat_map(
-            map_fn,
-            num_cpus=1,
-            memory=memory_per_task,
-        )
-    assert len(ds.take(num_blocks)) == num_blocks
-
-    actual_max_concurrency = ray.get(concurrency_counter.get_max_concurrency.remote())
-    assert actual_max_concurrency <= max_concurrency
-
-
-def test_map_batches_generator(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
-):
-    # Set up.
-    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
-
-    def pandas_generator(batch: pd.DataFrame) -> Iterator[pd.DataFrame]:
-        for i in range(len(batch)):
-            yield batch.iloc[[i]] + 1
-
-    ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(pandas_generator, batch_size=1, batch_format="pandas")
-    ds_list = ds2.take()
-    values = sorted([s["one"] for s in ds_list])
-    assert values == [2, 3, 4]
-    values = sorted([s["two"] for s in ds_list])
-    assert values == [3, 4, 5]
-
-    def fail_generator(batch):
-        for i in range(len(batch)):
-            yield i
-
-    # Test the wrong return value raises an exception.
-    ds = ray.data.read_parquet(str(tmp_path))
-    with pytest.raises(ValueError):
-        ds_list = ds.map_batches(
-            fail_generator, batch_size=2, batch_format="pyarrow"
-        ).take()
-
-
-def test_map_batches_actors_preserves_order(
-    shutdown_only, target_max_block_size_infinite_or_default
-):
-    class UDFClass:
-        def __call__(self, x):
-            return x
-
-    ray.shutdown()
-    ray.init(num_cpus=2)
-    # Test that actor compute model preserves block order.
-    ds = ray.data.range(10, override_num_blocks=5)
-    assert extract_values("id", ds.map_batches(UDFClass, concurrency=1).take()) == list(
-        range(10)
-    )
-
-
-@pytest.mark.parametrize(
-    "num_rows,num_blocks,batch_size",
-    [
-        (10, 5, 2),
-        (10, 1, 10),
-        (12, 3, 2),
-    ],
-)
-def test_map_batches_batch_mutation(
-    ray_start_regular_shared,
-    num_rows,
-    num_blocks,
-    batch_size,
-    restore_data_context,
-    target_max_block_size_infinite_or_default,
-):
-    ctx = DataContext.get_current()
-    ctx.execution_options.preserve_order = True
-
-    # Test that batch mutation works without encountering a read-only error (e.g. if the
-    # batch is a zero-copy view on data in the object store).
-    def mutate(df):
-        df["id"] += 1
-        return df
-
-    ds = ray.data.range(num_rows, override_num_blocks=num_blocks).repartition(
-        num_blocks
-    )
-    # Convert to Pandas blocks.
-    ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
-
-    # Apply UDF that mutates the batches.
-    ds = ds.map_batches(mutate, batch_size=batch_size)
-    assert [row["id"] for row in ds.iter_rows()] == list(range(1, num_rows + 1))
-
-
-@pytest.mark.parametrize(
-    "num_rows,num_blocks,batch_size",
-    [
-        (10, 5, 2),
-        (10, 1, 10),
-        (12, 3, 2),
-    ],
-)
-def test_map_batches_batch_zero_copy(
-    ray_start_regular_shared,
-    num_rows,
-    num_blocks,
-    batch_size,
-    target_max_block_size_infinite_or_default,
-):
-    # Test that batches are zero-copy read-only views when zero_copy_batch=True.
-    def mutate(df):
-        # Check that batch is read-only.
-        assert not df.values.flags.writeable
-        df["id"] += 1
-        return df
-
-    ds = ray.data.range(num_rows, override_num_blocks=num_blocks).repartition(
-        num_blocks
-    )
-    # Convert to Pandas blocks.
-    ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
-    ds = ds.materialize()
-
-    # Apply UDF that mutates the batches, which should fail since the batch is
-    # read-only.
-    with pytest.raises(UserCodeException):
-        with pytest.raises(
-            ValueError, match="tried to mutate a zero-copy read-only batch"
-        ):
-            ds = ds.map_batches(
-                mutate,
-                batch_format="pandas",
-                batch_size=batch_size,
-                zero_copy_batch=True,
-            )
-            ds.materialize()
-
-
-BLOCK_BUNDLING_TEST_CASES = [
-    (block_size, batch_size)
-    for batch_size in range(1, 8)
-    for block_size in range(1, 2 * batch_size + 1)
-]
-
-
-@pytest.mark.parametrize("block_size,batch_size", BLOCK_BUNDLING_TEST_CASES)
-def test_map_batches_block_bundling_auto(
-    ray_start_regular_shared,
-    block_size,
-    batch_size,
-    target_max_block_size_infinite_or_default,
-):
-    # Ensure that we test at least 2 batches worth of blocks.
-    num_blocks = max(10, 2 * batch_size // block_size)
-    ds = ray.data.range(num_blocks * block_size, override_num_blocks=num_blocks)
-    # Confirm that we have the expected number of initial blocks.
-    assert ds._plan.initial_num_blocks() == num_blocks
-
-    # Blocks should be bundled up to the batch size.
-    ds1 = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
-
-    num_expected_blocks = math.ceil(
-        # If batch_size > block_size, then multiple blocks will be clumped
-        # together to make sure there are at least batch_size rows
-        num_blocks
-        / max(math.ceil(batch_size / block_size), 1)
-    )
-
-    assert ds1._plan.initial_num_blocks() == num_expected_blocks
-
-    # Blocks should not be bundled up when batch_size is not specified.
-    ds2 = ds.map_batches(lambda x: x).materialize()
-    assert ds2._plan.initial_num_blocks() == num_blocks
-
-
-@pytest.mark.parametrize(
-    "block_sizes,batch_size,expected_num_blocks",
-    [
-        ([1, 2], 3, 1),
-        ([2, 2, 1], 3, 2),
-        ([1, 2, 3, 4], 4, 2),
-        ([3, 1, 1, 3], 4, 2),
-        ([2, 4, 1, 8], 4, 2),
-        ([1, 1, 1, 1], 4, 1),
-        ([1, 0, 3, 2], 4, 2),
-        ([4, 4, 4, 4], 4, 4),
-    ],
-)
-def test_map_batches_block_bundling_skewed_manual(
-    ray_start_regular_shared,
-    block_sizes,
-    batch_size,
-    expected_num_blocks,
-    target_max_block_size_infinite_or_default,
-):
-    num_blocks = len(block_sizes)
-    ds = ray.data.from_blocks(
-        [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
-    )
-    # Confirm that we have the expected number of initial blocks.
-    assert ds._plan.initial_num_blocks() == num_blocks
-    ds = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
-
-    # Blocks should be bundled up to the batch size.
-    assert ds._plan.initial_num_blocks() == expected_num_blocks
-
-
-BLOCK_BUNDLING_SKEWED_TEST_CASES = [
-    (block_sizes, batch_size)
-    for batch_size in range(1, 4)
-    for num_blocks in range(1, batch_size + 1)
-    for block_sizes in itertools.product(
-        range(1, 2 * batch_size + 1), repeat=num_blocks
-    )
-]
-
-
-@pytest.mark.parametrize("block_sizes,batch_size", BLOCK_BUNDLING_SKEWED_TEST_CASES)
-def test_map_batches_block_bundling_skewed_auto(
-    ray_start_regular_shared,
-    block_sizes,
-    batch_size,
-    target_max_block_size_infinite_or_default,
-):
-    num_blocks = len(block_sizes)
-    ds = ray.data.from_blocks(
-        [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
-    )
-    # Confirm that we have the expected number of initial blocks.
-    assert ds._plan.initial_num_blocks() == num_blocks
-    ds = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
-
-    curr = 0
-    num_out_blocks = 0
-    for block_size in block_sizes:
-        if curr >= batch_size:
-            num_out_blocks += 1
-            curr = 0
-        curr += block_size
-    if curr > 0:
-        num_out_blocks += 1
-
-    # Blocks should be bundled up to the batch size.
-    assert ds._plan.initial_num_blocks() == num_out_blocks
-
-
-def test_map_batches_preserve_empty_blocks(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    ds = ray.data.range(10, override_num_blocks=10)
-    ds = ds.map_batches(lambda x: [])
-    ds = ds.map_batches(lambda x: x)
-    assert ds._plan.initial_num_blocks() == 10, ds
-
-
-def test_map_batches_combine_empty_blocks(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    xs = [x % 3 for x in list(range(100))]
-
-    # ds1 has 1 block which contains 100 rows.
-    ds1 = ray.data.from_items(xs).repartition(1).sort("item").map_batches(lambda x: x)
-    assert ds1._block_num_rows() == [100]
-
-    # ds2 has 30 blocks, but only 3 of them are non-empty
-    ds2 = (
-        ray.data.from_items(xs)
-        .repartition(30)
-        .sort("item")
-        .map_batches(lambda x: x, batch_size=1)
-    )
-    assert len(ds2._block_num_rows()) == 3
-    count = sum(1 for x in ds2._block_num_rows() if x > 0)
-    assert count == 3
-
-    # The number of partitions should not affect the map_batches() result.
-    assert ds1.take_all() == ds2.take_all()
-
-
-def test_map_batches_preserves_empty_block_format(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    """Tests that the block format for empty blocks are not modified."""
-
-    def empty_pandas(batch):
-        return pd.DataFrame({"x": []})
-
-    df = pd.DataFrame({"x": [1, 2, 3]})
-
-    # First map_batches creates the empty Pandas block.
-    # Applying subsequent map_batches should not change the type of the empty block.
-    ds = (
-        ray.data.from_pandas(df)
-        .map_batches(empty_pandas)
-        .map_batches(lambda x: x, batch_size=None)
-    )
-
-    bundles = ds.iter_internal_ref_bundles()
-    block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
-
-    assert len(block_refs) == 1
-    assert type(ray.get(block_refs[0])) is pd.DataFrame
-
-
 def test_map_with_objects_and_tensors(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -1570,8 +742,6 @@ def test_map_with_objects_and_tensors(
 def test_random_sample(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
-    import math
-
     def ensure_sample_size_close(dataset, sample_percent=0.5):
         r1 = dataset.random_sample(sample_percent)
         assert math.isclose(
@@ -1693,39 +863,6 @@ def test_random_sample_fixed_seed_0002(
     assert set(ds.to_pandas()["item"].to_list()) == set(expected.tolist())
 
 
-def test_actor_udf_cleanup(
-    ray_start_regular_shared,
-    tmp_path,
-    restore_data_context,
-    target_max_block_size_infinite_or_default,
-):
-    """Test that for the actor map operator, the UDF object is deleted properly."""
-    ctx = DataContext.get_current()
-    ctx._enable_actor_pool_on_exit_hook = True
-
-    test_file = tmp_path / "test.txt"
-
-    # Simulate the case that the UDF depends on some external resources that
-    # need to be cleaned up.
-    class StatefulUDF:
-        def __init__(self):
-            with open(test_file, "w") as f:
-                f.write("test")
-
-        def __call__(self, row):
-            return row
-
-        def __del__(self):
-            # Delete the file when the UDF is deleted.
-            os.remove(test_file)
-
-    ds = ray.data.range(10)
-    ds = ds.map(StatefulUDF, concurrency=1)
-    assert sorted(extract_values("id", ds.take_all())) == list(range(10))
-
-    wait_for_condition(lambda: not os.path.exists(test_file))
-
-
 def test_warn_large_udfs(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -1753,6 +890,41 @@ assert ds.take_all() == [{"id": 0}]
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
 # tests should only be carefully reordered to retain this invariant!
+def test_actor_udf_cleanup(
+    shutdown_only,
+    tmp_path,
+    restore_data_context,
+    target_max_block_size_infinite_or_default,
+):
+    """Test that for the actor map operator, the UDF object is deleted properly."""
+    ray.shutdown()
+    ray.init(num_cpus=2)
+    ctx = DataContext.get_current()
+    ctx._enable_actor_pool_on_exit_hook = True
+
+    test_file = tmp_path / "test.txt"
+
+    # Simulate the case that the UDF depends on some external resources that
+    # need to be cleaned up.
+    class StatefulUDF:
+        def __init__(self):
+            with open(test_file, "w") as f:
+                f.write("test")
+
+        def __call__(self, row):
+            return row
+
+        def __del__(self):
+            # Delete the file when the UDF is deleted.
+            os.remove(test_file)
+
+    ds = ray.data.range(10)
+    ds = ds.map(StatefulUDF, concurrency=1)
+    assert sorted(extract_values("id", ds.take_all())) == list(range(10))
+
+    wait_for_condition(lambda: not os.path.exists(test_file))
+
+
 def test_actor_pool_strategy_default_num_actors(
     shutdown_only, target_max_block_size_infinite_or_default
 ):
@@ -1889,70 +1061,6 @@ def test_async_flat_map(
     ds = ds.flat_map(AsyncActor, concurrency=1, max_concurrency=2)
     output = ds.take_all()
     assert sorted(extract_values("id", output)) == list(range(n))
-
-
-def test_map_batches_async_exception_propagation(shutdown_only):
-    ray.shutdown()
-    ray.init(num_cpus=2)
-
-    class MyUDF:
-        def __init__(self):
-            pass
-
-        async def __call__(self, batch):
-            # This will trigger an assertion error.
-            assert False
-            yield batch
-
-    ds = ray.data.range(20)
-    ds = ds.map_batches(MyUDF, concurrency=2)
-
-    with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
-        ds.materialize()
-
-    assert "AssertionError" in str(exc_info.value)
-    assert "assert False" in str(exc_info.value)
-
-
-def test_map_batches_async_generator_fast_yield(
-    shutdown_only, target_max_block_size_infinite_or_default
-):
-    # Tests the case where the async generator yields immediately,
-    # with a high number of tasks in flight, which results in
-    # the internal queue being almost instantaneously filled.
-    # This test ensures that the internal queue is completely drained in this scenario.
-
-    ray.shutdown()
-    ray.init(num_cpus=4)
-
-    async def task_yield(row):
-        return row
-
-    class AsyncActor:
-        def __init__(self):
-            pass
-
-        async def __call__(self, batch):
-            rows = [{"id": np.array([i])} for i in batch["id"]]
-            tasks = [asyncio.create_task(task_yield(row)) for row in rows]
-            for task in tasks:
-                yield await task
-
-    n = 8
-    ds = ray.data.range(n, override_num_blocks=n)
-    ds = ds.map_batches(
-        AsyncActor,
-        batch_size=n,
-        compute=ray.data.ActorPoolStrategy(size=1, max_tasks_in_flight_per_actor=n),
-        concurrency=1,
-        max_concurrency=n,
-    )
-
-    output = ds.take_all()
-    expected_output = [{"id": i} for i in range(n)]
-    # Because all tasks are submitted almost simultaneously,
-    # the output order may be different compared to the original input.
-    assert len(output) == len(expected_output), (len(output), len(expected_output))
 
 
 class TestGenerateTransformFnForAsyncMap:
@@ -2282,433 +1390,27 @@ def test_map_names(target_max_block_size_infinite_or_default):
     ds = ray.data.from_items(["a", "b", "c", "a", "b", "c"])
     enc = OneHotEncoder(columns=["item"])
     r = enc.fit_transform(ds).__repr__()
-    assert r.startswith("OneHotEncoder"), r
+    assert "OneHotEncoder" in r, r
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
-@pytest.mark.parametrize(
-    "column_name, expr, expected_value",
-    [
-        # Arithmetic operations
-        ("result", col("id") + 1, 1),  # 0 + 1 = 1
-        ("result", col("id") + 5, 5),  # 0 + 5 = 5
-        ("result", col("id") - 1, -1),  # 0 - 1 = -1
-        ("result", col("id") * 2, 0),  # 0 * 2 = 0
-        ("result", col("id") * 3, 0),  # 0 * 3 = 0
-        ("result", col("id") / 2, 0.0),  # 0 / 2 = 0.0
-        # More complex arithmetic
-        ("result", (col("id") + 1) * 2, 2),  # (0 + 1) * 2 = 2
-        ("result", (col("id") * 2) + 3, 3),  # 0 * 2 + 3 = 3
-        # Comparison operations
-        ("result", col("id") > 0, False),  # 0 > 0 = False
-        ("result", col("id") >= 0, True),  # 0 >= 0 = True
-        ("result", col("id") < 1, True),  # 0 < 1 = True
-        ("result", col("id") <= 0, True),  # 0 <= 0 = True
-        ("result", col("id") == 0, True),  # 0 == 0 = True
-        # Operations with literals
-        ("result", col("id") + lit(10), 10),  # 0 + 10 = 10
-        ("result", col("id") * lit(5), 0),  # 0 * 5 = 0
-        ("result", lit(2) + col("id"), 2),  # 2 + 0 = 2
-        ("result", lit(10) / (col("id") + 1), 10.0),  # 10 / (0 + 1) = 10.0
-    ],
-)
-def test_with_column(
-    ray_start_regular_shared,
-    column_name,
-    expr,
-    expected_value,
-    target_max_block_size_infinite_or_default,
-):
-    """Verify that `with_column` works with various operations."""
-    ds = ray.data.range(5).with_column(column_name, expr)
-    result = ds.take(1)[0]
-    assert result["id"] == 0
-    assert result[column_name] == expected_value
+def test_map_with_max_calls():
 
+    ds = ray.data.range(10)
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
-def test_with_column_nonexistent_column(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    """Verify that referencing a non-existent column with col() raises an exception."""
-    # Create a dataset with known column "id"
-    ds = ray.data.range(5)
+    # OK to set 'max_calls' as static option
+    ds = ds.map(lambda x: x, max_calls=1)
 
-    # Try to reference a non-existent column - this should raise an exception
-    with pytest.raises(UserCodeException):
-        ds.with_column("result", col("nonexistent_column") + 1).materialize()
+    assert ds.count() == 10
 
+    ds = ray.data.range(10)
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
-def test_with_column_multiple_expressions(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    """Verify that `with_column` correctly handles multiple expressions at once."""
-    ds = ray.data.range(5)
-
-    ds = ds.with_column("plus_one", col("id") + 1)
-    ds = ds.with_column("times_two", col("id") * 2)
-    ds = ds.with_column("ten_minus_id", 10 - col("id"))
-
-    first_row = ds.take(1)[0]
-    assert first_row["id"] == 0
-    assert first_row["plus_one"] == 1
-    assert first_row["times_two"] == 0
-    assert first_row["ten_minus_id"] == 10
-
-    # Ensure all new columns exist in the schema.
-    assert set(ds.schema().names) == {"id", "plus_one", "times_two", "ten_minus_id"}
-
-
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
-@pytest.mark.parametrize(
-    "udf_function, column_name, expected_result",
-    [
-        # Single column UDF - add one to each value
-        pytest.param(
-            lambda: udf(DataType.int64())(lambda x: pc.add(x, 1)),
-            "add_one",
-            1,  # 0 + 1 = 1
-            id="single_column_add_one",
-        ),
-        # Single column UDF - multiply by 2
-        pytest.param(
-            lambda: udf(DataType.int64())(lambda x: pc.multiply(x, 2)),
-            "times_two",
-            0,  # 0 * 2 = 0
-            id="single_column_multiply",
-        ),
-        # Single column UDF - square the value
-        pytest.param(
-            lambda: udf(DataType.int64())(lambda x: pc.multiply(x, x)),
-            "squared",
-            0,  # 0 * 0 = 0
-            id="single_column_square",
-        ),
-        # Single column UDF with string return type
-        pytest.param(
-            lambda: udf(DataType.string())(lambda x: pc.cast(x, pa.string())),
-            "id_str",
-            "0",  # Convert 0 to "0"
-            id="single_column_to_string",
-        ),
-        # Single column UDF with float return type
-        pytest.param(
-            lambda: udf(DataType.float64())(lambda x: pc.divide(x, 2.0)),
-            "half",
-            0.0,  # 0 / 2.0 = 0.0
-            id="single_column_divide_float",
-        ),
-    ],
-)
-def test_with_column_udf_single_column(
-    ray_start_regular_shared,
-    udf_function,
-    column_name,
-    expected_result,
-    target_max_block_size_infinite_or_default,
-):
-    """Test UDFExpr functionality with single column operations in with_column."""
-    ds = ray.data.range(5)
-    udf_fn = udf_function()
-
-    # Apply the UDF to the "id" column
-    ds_with_udf = ds.with_column(column_name, udf_fn(col("id")))
-
-    result = ds_with_udf.take(1)[0]
-    assert result["id"] == 0
-    assert result[column_name] == expected_result
-
-
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
-@pytest.mark.parametrize(
-    "test_scenario",
-    [
-        # Multi-column UDF - add two columns
-        pytest.param(
-            {
-                "data": [{"a": 1, "b": 2}, {"a": 3, "b": 4}],
-                "udf": lambda: udf(DataType.int64())(lambda x, y: pc.add(x, y)),
-                "column_name": "sum_ab",
-                "expected_first": 3,  # 1 + 2 = 3
-                "expected_second": 7,  # 3 + 4 = 7
-            },
-            id="multi_column_add",
-        ),
-        # Multi-column UDF - multiply two columns
-        pytest.param(
-            {
-                "data": [{"x": 2, "y": 3}, {"x": 4, "y": 5}],
-                "udf": lambda: udf(DataType.int64())(lambda x, y: pc.multiply(x, y)),
-                "column_name": "product_xy",
-                "expected_first": 6,  # 2 * 3 = 6
-                "expected_second": 20,  # 4 * 5 = 20
-            },
-            id="multi_column_multiply",
-        ),
-        # Multi-column UDF - string concatenation
-        pytest.param(
-            {
-                "data": [
-                    {"first": "John", "last": "Doe"},
-                    {"first": "Jane", "last": "Smith"},
-                ],
-                "udf": lambda: udf(DataType.string())(
-                    lambda first, last: pc.binary_join_element_wise(first, last, " ")
-                ),
-                "column_name": "full_name",
-                "expected_first": "John Doe",
-                "expected_second": "Jane Smith",
-            },
-            id="multi_column_string_concat",
-        ),
-    ],
-)
-def test_with_column_udf_multi_column(
-    ray_start_regular_shared,
-    test_scenario,
-    target_max_block_size_infinite_or_default,
-):
-    """Test UDFExpr functionality with multi-column operations in with_column."""
-    data = test_scenario["data"]
-    udf_fn = test_scenario["udf"]()
-    column_name = test_scenario["column_name"]
-    expected_first = test_scenario["expected_first"]
-    expected_second = test_scenario["expected_second"]
-
-    ds = ray.data.from_items(data)
-
-    # Apply UDF to multiple columns based on the scenario
-    if "a" in data[0] and "b" in data[0]:
-        ds_with_udf = ds.with_column(column_name, udf_fn(col("a"), col("b")))
-    elif "x" in data[0] and "y" in data[0]:
-        ds_with_udf = ds.with_column(column_name, udf_fn(col("x"), col("y")))
-    else:  # first/last name scenario
-        ds_with_udf = ds.with_column(column_name, udf_fn(col("first"), col("last")))
-
-    results = ds_with_udf.take(2)
-    assert results[0][column_name] == expected_first
-    assert results[1][column_name] == expected_second
-
-
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
-@pytest.mark.parametrize(
-    "expression_scenario",
-    [
-        # UDF in arithmetic expression
-        pytest.param(
-            {
-                "expression_factory": lambda add_one_udf: add_one_udf(col("id")) * 2,
-                "expected": 2,  # (0 + 1) * 2 = 2
-                "column_name": "udf_times_two",
-            },
-            id="udf_in_arithmetic",
-        ),
-        # UDF with literal addition
-        pytest.param(
-            {
-                "expression_factory": lambda add_one_udf: add_one_udf(col("id"))
-                + lit(10),
-                "expected": 11,  # (0 + 1) + 10 = 11
-                "column_name": "udf_plus_literal",
-            },
-            id="udf_plus_literal",
-        ),
-        # UDF in comparison
-        pytest.param(
-            {
-                "expression_factory": lambda add_one_udf: add_one_udf(col("id")) > 0,
-                "expected": True,  # (0 + 1) > 0 = True
-                "column_name": "udf_comparison",
-            },
-            id="udf_in_comparison",
-        ),
-        # Nested UDF operations (UDF + regular expression)
-        pytest.param(
-            {
-                "expression_factory": lambda add_one_udf: add_one_udf(col("id") + 5),
-                "expected": 6,  # add_one(0 + 5) = add_one(5) = 6
-                "column_name": "nested_udf",
-            },
-            id="nested_udf_expression",
-        ),
-    ],
-)
-def test_with_column_udf_in_complex_expressions(
-    ray_start_regular_shared,
-    expression_scenario,
-    target_max_block_size_infinite_or_default,
-):
-    """Test UDFExpr functionality in complex expressions with with_column."""
-    ds = ray.data.range(5)
-
-    # Create a simple add_one UDF for use in expressions
-    @udf(DataType.int64())
-    def add_one(x: pa.Array) -> pa.Array:
-        return pc.add(x, 1)
-
-    expression = expression_scenario["expression_factory"](add_one)
-    expected = expression_scenario["expected"]
-    column_name = expression_scenario["column_name"]
-
-    ds_with_expr = ds.with_column(column_name, expression)
-
-    result = ds_with_expr.take(1)[0]
-    assert result["id"] == 0
-    assert result[column_name] == expected
-
-
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
-def test_with_column_udf_multiple_udfs(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    """Test applying multiple UDFs in sequence with with_column."""
-    ds = ray.data.range(5)
-
-    # Define multiple UDFs
-    @udf(DataType.int64())
-    def add_one(x: pa.Array) -> pa.Array:
-        return pc.add(x, 1)
-
-    @udf(DataType.int64())
-    def multiply_by_two(x: pa.Array) -> pa.Array:
-        return pc.multiply(x, 2)
-
-    @udf(DataType.float64())
-    def divide_by_three(x: pa.Array) -> pa.Array:
-        return pc.divide(x, 3.0)
-
-    # Apply UDFs in sequence
-    ds = ds.with_column("plus_one", add_one(col("id")))
-    ds = ds.with_column("times_two", multiply_by_two(col("plus_one")))
-    ds = ds.with_column("div_three", divide_by_three(col("times_two")))
-
-    # Convert to pandas and compare with expected result
-    result_df = ds.to_pandas()
-
-    expected_df = pd.DataFrame(
-        {
-            "id": [0, 1, 2, 3, 4],
-            "plus_one": [1, 2, 3, 4, 5],  # id + 1
-            "times_two": [2, 4, 6, 8, 10],  # (id + 1) * 2
-            "div_three": [
-                2.0 / 3.0,
-                4.0 / 3.0,
-                2.0,
-                8.0 / 3.0,
-                10.0 / 3.0,
-            ],  # ((id + 1) * 2) / 3
-        }
-    )
-
-    pd.testing.assert_frame_equal(result_df, expected_df)
-
-
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
-def test_with_column_mixed_udf_and_regular_expressions(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    """Test mixing UDF expressions and regular expressions in with_column operations."""
-    ds = ray.data.range(5)
-
-    # Define a UDF for testing
-    @udf(DataType.int64())
-    def multiply_by_three(x: pa.Array) -> pa.Array:
-        return pc.multiply(x, 3)
-
-    # Mix regular expressions and UDF expressions
-    ds = ds.with_column("plus_ten", col("id") + 10)  # Regular expression
-    ds = ds.with_column("times_three", multiply_by_three(col("id")))  # UDF expression
-    ds = ds.with_column("minus_five", col("id") - 5)  # Regular expression
-    ds = ds.with_column(
-        "udf_plus_regular", multiply_by_three(col("id")) + col("plus_ten")
-    )  # Mixed: UDF + regular
-    ds = ds.with_column(
-        "comparison", col("times_three") > col("plus_ten")
-    )  # Regular expression using UDF result
-
-    # Convert to pandas and compare with expected result
-    result_df = ds.to_pandas()
-
-    expected_df = pd.DataFrame(
-        {
-            "id": [0, 1, 2, 3, 4],
-            "plus_ten": [10, 11, 12, 13, 14],  # id + 10
-            "times_three": [0, 3, 6, 9, 12],  # id * 3
-            "minus_five": [-5, -4, -3, -2, -1],  # id - 5
-            "udf_plus_regular": [10, 14, 18, 22, 26],  # (id * 3) + (id + 10)
-            "comparison": [False, False, False, False, False],  # times_three > plus_ten
-        }
-    )
-
-    pd.testing.assert_frame_equal(result_df, expected_df)
-
-
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="with_column requires PyArrow >= 20.0.0",
-)
-def test_with_column_udf_invalid_return_type_validation(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    """Test that UDFs returning invalid types raise TypeError with clear message."""
-    ds = ray.data.range(3)
-
-    # Test UDF returning invalid type (dict) - expecting string but returning dict
-    @udf(DataType.string())
-    def invalid_dict_return(x: pa.Array) -> dict:
-        return {"invalid": "return_type"}
-
-    # Test UDF returning invalid type (str) - expecting string but returning plain str
-    @udf(DataType.string())
-    def invalid_str_return(x: pa.Array) -> str:
-        return "invalid_string"
-
-    # Test UDF returning invalid type (int) - expecting int64 but returning plain int
-    @udf(DataType.int64())
-    def invalid_int_return(x: pa.Array) -> int:
-        return 42
-
-    # Test each invalid return type
-    test_cases = [
-        (invalid_dict_return, "dict"),
-        (invalid_str_return, "str"),
-        (invalid_int_return, "int"),
-    ]
-
-    for invalid_udf, expected_type_name in test_cases:
-        with pytest.raises((RayTaskError, UserCodeException)) as exc_info:
-            ds.with_column("invalid_col", invalid_udf(col("id"))).take(1)
-
-        # The actual TypeError gets wrapped, so we need to check the exception chain
-        error_message = str(exc_info.value)
-        assert f"returned invalid type {expected_type_name}" in error_message
-        assert "Expected type" in error_message
-        assert "pandas.Series" in error_message and "numpy.ndarray" in error_message
+    # Not OK to set 'max_calls' as dynamic option
+    with pytest.raises(ValueError):
+        ds = ds.map(
+            lambda x: x,
+            ray_remote_args_fn=lambda: {"max_calls": 1},
+        )
+        ds.take_all()
 
 
 if __name__ == "__main__":

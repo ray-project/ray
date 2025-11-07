@@ -21,7 +21,6 @@ import numpy as np
 import pyarrow as pa
 
 import ray
-from ray.air.util.tensor_extensions.arrow import ArrowConversionError
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
 from ray.util import log_once
@@ -72,6 +71,14 @@ class BlockType(Enum):
     PANDAS = "pandas"
 
 
+@DeveloperAPI
+class BatchFormat(str, Enum):
+    # NOTE: This is to maintain compatibility w/ existing APIs
+    ARROW = "pyarrow"
+    PANDAS = "pandas"
+    NUMPY = "numpy"
+
+
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
 DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
@@ -90,11 +97,11 @@ class _CallableClassProtocol(Protocol[T, U]):
         ...
 
 
-# A user defined function passed to map, map_batches, ec.
+# A user defined function passed to flat_map, map_batches, etc.
 UserDefinedFunction = Union[
     Callable[[T], U],
     Callable[[T], Iterator[U]],
-    "_CallableClassProtocol",
+    type["_CallableClassProtocol"],
 ]
 
 # A list of block references pending computation by a single task. For example,
@@ -335,6 +342,10 @@ class BlockAccessor:
         """
         raise NotImplementedError
 
+    def drop(self, columns: List[str]) -> Block:
+        """Return a new block with the list of provided columns dropped"""
+        raise NotImplementedError
+
     def select(self, columns: List[Optional[str]]) -> Block:
         """Return a new block containing the provided columns."""
         raise NotImplementedError
@@ -459,6 +470,8 @@ class BlockAccessor:
 
         elif isinstance(batch, collections.abc.Mapping):
             if block_type is None or block_type == BlockType.ARROW:
+                from ray.air.util.tensor_extensions.arrow import ArrowConversionError
+
                 try:
                     return cls.batch_to_arrow_block(batch)
                 except ArrowConversionError as e:
@@ -498,7 +511,7 @@ class BlockAccessor:
         import pandas
         import pyarrow
 
-        if isinstance(block, pyarrow.Table):
+        if isinstance(block, (pyarrow.Table, pyarrow.RecordBatch)):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor(block)
@@ -676,9 +689,42 @@ class BlockColumnAccessor:
         """Returns new column holding only distinct values of the current one"""
         raise NotImplementedError()
 
+    def value_counts(self) -> Dict[str, List]:
+        raise NotImplementedError()
+
+    def hash(self) -> BlockColumn:
+        """
+        Computes a 64-bit hash value for each row in the column.
+
+        Provides a unified hashing method across supported backends.
+        Handles complex types like lists or nested structures by producing a single hash per row.
+        These hashes are useful for downstream operations such as deduplication, grouping, or partitioning.
+
+        Internally, Polars is used to compute row-level hashes even when the original column
+        is backed by Pandas or PyArrow.
+
+        :return: A column of 64-bit integer hashes, returned in the same format as the underlying backend
+             (e.g., Pandas Series or PyArrow Array).
+        """
+        raise NotImplementedError()
+
     def flatten(self) -> BlockColumn:
         """Flattens nested lists merging them into top-level container"""
 
+        raise NotImplementedError()
+
+    def dropna(self) -> BlockColumn:
+        raise NotImplementedError()
+
+    def is_composed_of_lists(self, types: Optional[Tuple] = None) -> bool:
+        """
+        Checks whether the column is composed of list-like elements.
+
+        :param types: Optional tuple of backend-specific types to check against.
+                      If not provided, defaults to list-like types appropriate
+                      for the underlying backend (e.g., PyArrow list types).
+        :return: True if the column is made up of list-like values; False otherwise.
+        """
         raise NotImplementedError()
 
     def sum_of_squared_diffs_from_mean(

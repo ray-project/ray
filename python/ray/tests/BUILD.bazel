@@ -64,9 +64,11 @@ py_test_module_list(
         "test_multiprocessing_standalone.py",
         "test_node_label_scheduling_strategy.py",
         "test_object_spilling_2.py",
+        "test_ray_event_export_task_events.py",
         "test_reference_counting_2.py",
         "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
+        "test_runtime_env_agent_auth.py",
         "test_util_helpers.py",
     ],
     tags = [
@@ -88,6 +90,7 @@ py_test_module_list(
     files = [
         "test_metric_cardinality.py",
         "test_metrics_agent.py",
+        "test_task_metrics.py",
     ],
     name_suffix = "_otel",
     tags = [
@@ -146,6 +149,7 @@ py_test_module_list(
         "test_client_reconnect.py",
     ],
     tags = [
+        "custom_setup",
         "exclusive",
         "ray_client",
         "team:core",
@@ -166,6 +170,7 @@ py_test_module_list(
         "test_client_warnings.py",
     ],
     tags = [
+        "custom_setup",
         "exclusive",
         "ray_client",
         "team:core",
@@ -182,6 +187,7 @@ py_test_module_list(
         "test_client_init.py",
     ],
     tags = [
+        "custom_setup",
         "exclusive",
         "no_windows",
         "ray_client",
@@ -224,6 +230,7 @@ py_test_module_list(
     ],
     name_suffix = "_client_mode",
     tags = [
+        "custom_setup",
         "exclusive",
         "ray_client",
         "team:core",
@@ -250,6 +257,7 @@ py_test_module_list(
     ],
     name_suffix = "_client_mode",
     tags = [
+        "custom_setup",
         "exclusive",
         "ray_client",
         "team:core",
@@ -275,6 +283,7 @@ py_test_module_list(
     ],
     name_suffix = "_client_mode",
     tags = [
+        "custom_setup",
         "exclusive",
         "post_wheel_build",
         "ray_client",
@@ -360,6 +369,7 @@ py_test_module_list(
         "test_task_metrics.py",
         "test_tempdir.py",
         "test_tls_auth.py",
+        "test_token_auth_integration.py",
         "test_traceback.py",
         "test_worker_capping.py",
         "test_worker_state.py",
@@ -367,6 +377,24 @@ py_test_module_list(
     tags = [
         "exclusive",
         "medium_size_python_tests_k_to_z",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
+    files = [
+        "test_logging_java.py",
+    ],
+    tags = [
+        "custom_setup",
+        "exclusive",
+        "medium_size_python_tests_k_to_z",
+        "needs_java",
         "team:core",
     ],
     deps = [
@@ -534,7 +562,6 @@ py_test_module_list(
         "test_metrics_agent_2.py",
         "test_microbenchmarks.py",
         "test_mini.py",
-        "test_mpi.py",
         "test_multinode_failures_2.py",
         "test_node_death.py",
         "test_numba.py",
@@ -552,10 +579,12 @@ py_test_module_list(
         "test_runtime_env_py_executable.py",
         "test_state_api_summary.py",
         "test_streaming_generator_regression.py",
+        "test_submission_client_auth.py",
         "test_system_metrics.py",
         "test_task_events_3.py",
         "test_task_metrics_reconstruction.py",
         "test_top_level_api.py",
+        "test_tpu.py",
         "test_tqdm.py",
         "test_unhandled_error.py",
         "test_wait.py",
@@ -633,6 +662,7 @@ py_test_module_list(
         "gpu_objects/test_gpu_objects_nixl.py",
     ],
     tags = [
+        "custom_setup",
         "exclusive",
         "gpu_objects",
         "multi_gpu",
@@ -669,6 +699,7 @@ py_test_module_list(
         "test_gcs_ha_e2e_2.py",
     ],
     tags = [
+        "custom_setup",
         "exclusive",
         "ha_integration",
         "team:core",
@@ -685,6 +716,7 @@ py_test_module_list(
         "test_network_failure_e2e.py",
     ],
     tags = [
+        "custom_setup",
         "exclusive",
         "ha_integration",
         "no_windows",
@@ -700,6 +732,7 @@ py_test_module_list(
     size = "medium",
     files = ["test_memory_pressure.py"],
     tags = [
+        "custom_setup",
         "exclusive",
         "mem_pressure",
         "team:core",
@@ -748,8 +781,10 @@ py_test_module_list(
 py_test_module_list(
     size = "small",
     files = [
+        "test_autoscaler_azure.py",
         "test_autoscaler_gcp.py",
         "test_autoscaler_util.py",
+        "test_azure_ssh_config.py",
     ],
     tags = [
         "exclusive",
@@ -854,6 +889,7 @@ py_test_module_list(
         "test_dataclient_disconnect.py",
         "test_iter.py",
         "test_placement_group.py",
+        "test_ray_get.py",
         "test_state_api_2.py",
         "test_task_events.py",
         "test_unavailable_actors.py",
@@ -881,6 +917,7 @@ py_test_module_list(
         "test_failure_2.py",
         "test_generators.py",
         "test_multi_node.py",
+        "test_object_manager_fault_tolerance.py",
         "test_placement_group_3.py",
         "test_placement_group_5.py",
         "test_raylet_fault_tolerance.py",
@@ -945,6 +982,7 @@ py_test_module_list(
         "test_out_of_disk_space.py",
     ],
     tags = [
+        "custom_setup",
         "exclusive",
         "team:core",
         "tmpfs",
@@ -1062,23 +1100,9 @@ py_test_module_list(
         "test_runtime_env_uv_run.py",
     ],
     tags = [
+        "custom_setup",
         "exclusive",
         "post_wheel_build",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_resource_isolation_config",
-    size = "medium",
-    srcs = ["test_resource_isolation_config.py"],
-    tags = [
-        "exclusive",
-        "no_windows",
         "team:core",
     ],
     deps = [
@@ -1092,6 +1116,7 @@ py_test(
     size = "large",
     srcs = ["test_runtime_env_container.py"],
     tags = [
+        "custom_setup",
         "exclusive",
         "runtime_env_container",
         "team:core",
@@ -1302,6 +1327,7 @@ py_test_module_list(
     ],
     name_suffix = "_debug_mode",
     tags = [
+        "custom_setup",
         "debug_tests",
         "exclusive",
         "team:core",
@@ -1324,6 +1350,7 @@ py_test_module_list(
     name_suffix = "_asan",
     tags = [
         "asan_tests",
+        "custom_setup",
         "exclusive",
         "team:core",
     ],
@@ -1347,6 +1374,7 @@ py_test_module_list(
         "spark/test_utils.py",
     ],
     tags = [
+        "custom_setup",
         "exclusive",
         "spark_on_ray",
         "team:core",

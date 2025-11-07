@@ -13,7 +13,6 @@
 // limitations under the License.
 #pragma once
 
-#include <linux/magic.h>
 #include <mntent.h>
 
 #include <string>
@@ -23,12 +22,6 @@
 #include "ray/common/cgroup2/cgroup_driver_interface.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
-
-// Used to identify if a filesystem is mounted using cgroupv2.
-// See: https://docs.kernel.org/admin-guide/cgroup-v2.html#mounting
-#ifndef CGROUP2_SUPER_MAGIC
-#define CGROUP2_SUPER_MAGIC 0x63677270
-#endif
 
 namespace ray {
 
@@ -46,9 +39,6 @@ namespace ray {
 class SysFsCgroupDriver : public CgroupDriverInterface {
  public:
   /**
-   * MOUNTED is defined in mntent.h (and typically refers to /etc/mtab)
-   * @see https://www.gnu.org/software/libc/manual/2.24/html_node/Mount-Information.html
-   *
    * @param mount_file_path only used for testing.
    */
   explicit SysFsCgroupDriver(std::string mount_file_path = MOUNTED)
@@ -178,7 +168,7 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
 
   /**
     Reads the cgroup.procs of "from" and writes them out to the given file.
-    The cgroup.procs file is newline seperated. The current user must have
+    The cgroup.procs file is newline separated. The current user must have
     read-write permissions to both cgroup.procs file as well as the common ancestor
     of the source and destination cgroups.
 
@@ -246,7 +236,6 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
     Adds a constraint to the respective cgroup file.
 
     @param cgroup_path absolute path of the cgroup.
-    @param controller the name of the controller
     @param constraint the name of the cgroup file to add the constraint to e.g. cpu.weight
     @param constraint_value
 
@@ -254,13 +243,35 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
     @return Status::NotFound if the cgroup does not exist.
     @return Status::PermissionDenied if current user doesn't have read, write, and execute
     permissions.
-    @return Status::InvalidArgument if the cgroup is not using cgroupv2, controller is not
-    enabled, or cannot write to the constraint file.
+    @return Status::InvalidArgument if the cgroup is not using cgroupv2, or cannot write
+    to the constraint file.
    */
   Status AddConstraint(const std::string &cgroup,
-                       const std::string &controller,
                        const std::string &constraint,
                        const std::string &constraint_value) override;
+
+  /**
+    Attempts to write pid to the cgroup.procs file of the specified cgroup.
+
+    To write a pid to a cgroup.procs file, the process must have read, write, and execute
+    to the source, destination, and lowest-common ancestor of source and destination
+    cgroups.
+
+    For more details, see the documentation:
+    - @see https://docs.kernel.org/admin-guide/cgroup-v2.html#delegation-containment
+    - @see https://docs.kernel.org/admin-guide/cgroup-v2.html#core-interface-files
+
+    @param cgroup to move the process into.
+    @param pid pid of the process that will be moved.
+
+    @return Status::OK if the process was moved successfully into the cgroup.
+    @return Status::NotFound if the cgroup does not exist.
+    @return Status::PermissionDenied if current user doesn't have read, write, and execute
+    permissions for the cgroup.
+    @return Status::InvalidArgument if the pid is invalid, does not exist, or any other
+    error.
+   */
+  Status AddProcessToCgroup(const std::string &cgroup, const std::string &pid) override;
 
  private:
   /**
