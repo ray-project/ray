@@ -1,4 +1,5 @@
 - name: DEFAULTS
+
   group: multimodal-inference-benchmarks
   working_dir: nightly_tests/multimodal_inference_benchmarks
 
@@ -6,7 +7,6 @@
   team: data
 
 - name: image_classification
-
   cluster:
     cluster_compute: image_classification/compute.yaml
     byod:
@@ -64,7 +64,6 @@
 
 
 - name: audio_transcription
-  python: "3.10"
   cluster:
     cluster_compute: audio_transcription/compute.yaml
     byod:
