@@ -121,7 +121,6 @@ class Workspace:
         with open(os.path.join(self.dir, config_path), "r") as f:
             data = yaml.safe_load(f)
         config_name = os.path.basename(config_path)
-        print(f"Config name: {config_name}")
         config = Config.from_dict(data, config_name)
         return config
 
