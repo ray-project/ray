@@ -4036,6 +4036,22 @@ def read_iceberg(
 
     if is_cdf_read:
         # Handle incremental reads (CDF) - use internal function
+        # Warn about ignored parameters for CDF reads
+        if row_filter is not None:
+            logger.warning(
+                "row_filter is ignored for CDF (incremental) reads. "
+                "CDF reads return all rows from files added between snapshots."
+            )
+        if selected_fields != ("*",):
+            logger.warning(
+                "selected_fields is ignored for CDF (incremental) reads. "
+                "CDF reads return all columns from files added between snapshots."
+            )
+        if scan_kwargs is not None:
+            logger.warning(
+                "scan_kwargs is ignored for CDF (incremental) reads. "
+                "CDF reads use snapshot-based filtering instead."
+            )
         from ray.data._internal.datasource.iceberg.cdf_util import _read_iceberg_cdf
 
         return _read_iceberg_cdf(

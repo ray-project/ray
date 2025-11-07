@@ -71,7 +71,7 @@ def _deduplicate_batch(batch, join_columns: List[str], priority_col: str):
     return pa.Table.from_pandas(df, schema=batch.drop([priority_col]).schema)
 
 
-def upsert_to_iceberg(
+def _upsert_to_iceberg(
     dataset: "ray.data.Dataset",
     table_identifier: str,
     join_columns: List[str],

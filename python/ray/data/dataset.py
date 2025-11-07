@@ -4085,10 +4085,10 @@ class Dataset:
                 raise ValueError("merge_keys required for mode='cdf'")
 
             from ray.data._internal.datasource.iceberg.cdf_util import (
-                write_iceberg_cdf,
+                _write_iceberg_cdf,
             )
 
-            write_iceberg_cdf(
+            _write_iceberg_cdf(
                 dataset=self,
                 table_identifier=table_identifier,
                 merge_keys=merge_keys,
@@ -4108,9 +4108,9 @@ class Dataset:
                     "Specify at least one column to use as a key for matching rows."
                 )
 
-            from ray.data._internal.datasource.iceberg import upsert_to_iceberg
+            from ray.data._internal.datasource.iceberg.upsert_util import _upsert_to_iceberg
 
-            upsert_to_iceberg(
+            _upsert_to_iceberg(
                 dataset=self,
                 table_identifier=table_identifier,
                 join_columns=merge_keys,
