@@ -65,6 +65,8 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             topology,
             MagicMock(),
         )
+        # Disable dynamic output queue size backpressure for this basic test
+        policy.enable_dynamic_output_queue_size_backpressure = False
 
         self.assertEqual(policy._concurrency_caps[map_op], concurrency)
         self.assertTrue(math.isinf(policy._concurrency_caps[input_op]))
