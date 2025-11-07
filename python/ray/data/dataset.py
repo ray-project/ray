@@ -2701,8 +2701,8 @@ class Dataset:
                 "left_outer", "right_outer", "full_outer", "left_semi", "right_semi",
                 "left_anti", "right_anti"). Note that when using broadcast=True, only
                 these 3 join types are supported: "inner", "left_outer", and
-                "right_outer". The "full_outer" join type falls back to hash shuffle
-                join for correctness.
+                "right_outer". The "full_outer" join type is not supported for broadcast
+                joins and will raise a ValueError if specified with broadcast=True.
             num_partitions: Total number of "partitions" input sequences will be split
                 into with each partition being joined independently. Increasing number
                 of partitions allows to reduce individual partition size, hence reducing
@@ -2950,7 +2950,7 @@ class Dataset:
                 small_key_columns = right_on
                 datasets_swapped = False
             elif ds_count is not None and self_count is not None:
-                # For inner/full_outer: use counts to determine which to broadcast
+                # For inner joins: use counts to determine which to broadcast
                 if self_count >= ds_count:
                     # self (left) is larger, ds (right) is smaller
                     large_ds = self
@@ -2973,11 +2973,6 @@ class Dataset:
                 large_key_columns = on
                 small_key_columns = right_on
                 datasets_swapped = False
-
-            # Create the broadcast join function - PyArrow will handle the supported join types natively
-            # Note: left_suffix and right_suffix always refer to the original left and right datasets
-            # regardless of which one is larger/smaller
-            join_type_enum = JoinType(join_type)
 
             # Determine the correct suffixes based on which dataset is large/small
             if datasets_swapped:
