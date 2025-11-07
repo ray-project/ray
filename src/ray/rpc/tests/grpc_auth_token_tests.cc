@@ -23,6 +23,7 @@
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/tests/grpc_test_common.h"
+#include "ray/util/env.h"
 #include "src/ray/protobuf/test_service.grpc.pb.h"
 
 namespace ray {
@@ -42,19 +43,11 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
     // Set client token in environment for ClientCallManager to read from
     // AuthenticationTokenLoader
     if (!client_token.empty()) {
-#ifdef _WIN32
-      _putenv_s("RAY_AUTH_TOKEN", client_token.c_str());
-#else
-      setenv("RAY_AUTH_TOKEN", client_token.c_str(), 1);
-#endif
+      ray::SetEnv("RAY_AUTH_TOKEN", client_token);
     } else {
       RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
       AuthenticationTokenLoader::instance().ResetCache();
-#ifdef _WIN32
-      _putenv_s("RAY_AUTH_TOKEN", "");
-#else
-      unsetenv("RAY_AUTH_TOKEN");
-#endif
+      ray::UnsetEnv("RAY_AUTH_TOKEN");
     }
 
     // Start client thread FIRST
@@ -123,13 +116,8 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
     }
 
     // Clean up environment variables
-#ifdef _WIN32
-    _putenv_s("RAY_AUTH_TOKEN", "");
-    _putenv_s("RAY_AUTH_TOKEN_PATH", "");
-#else
-    unsetenv("RAY_AUTH_TOKEN");
-    unsetenv("RAY_AUTH_TOKEN_PATH");
-#endif
+    ray::UnsetEnv("RAY_AUTH_TOKEN");
+    ray::UnsetEnv("RAY_AUTH_TOKEN_PATH");
     // Reset the token loader for test isolation
     AuthenticationTokenLoader::instance().ResetCache();
   }
