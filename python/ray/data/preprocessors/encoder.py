@@ -788,10 +788,9 @@ def approx_top_k_post_fn(col: str):
     sorting the unique values produced during aggregation or stats computation,
     specifically for results from the ApproximateTopK aggregator.
 
-    :param drop_na_values: If True, NA/null values will be silently dropped from the encoding map.
-                           If False, raises an error if any NA/null values are present.
-    :return: A callable that takes a set of unique values and returns a dictionary
-             mapping each value to a unique integer index.
+    :return: A callable that takes a list of dictionaries (the output of
+        ApproximateTopK) and returns a dictionary mapping each value to a
+        unique integer index.
     """
 
     def gen_value_index(values: List[Dict[str, Any]]):
