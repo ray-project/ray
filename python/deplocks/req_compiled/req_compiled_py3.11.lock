@@ -1,6 +1,8 @@
+--index-url https://pypi.org/simple
+
 absl-py==1.4.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   array-record
     #   dm-control
     #   dm-env
@@ -16,59 +18,59 @@ absl-py==1.4.0
     #   tensorflow-probability
 accelerate==0.28.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/core-requirements.txt
 adagio==0.2.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   fugue
     #   qpd
 adal==1.2.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   msrestazure
 adlfs==2023.8.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
 aim==3.23.0 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
 aim-ui==3.23.0 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aim
 aimrecords==0.0.7 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aim
 aimrocks==0.5.2 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aim
 aioboto3==12.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-requirements.txt
 aiobotocore==2.8.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aioboto3
     #   s3fs
 aiofiles==22.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aim
     #   gradio
     #   ypy-websocket
 aiohappyeyeballs==2.6.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aiohttp
 aiohttp==3.11.16
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
@@ -83,131 +85,131 @@ aiohttp==3.11.16
     #   torch-geometric
 aiohttp-cors==0.7.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
 aioitertools==0.11.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aiobotocore
 aiorwlock==1.3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
 aiosignal==1.3.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aiohttp
 aiosqlite==0.19.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ypy-websocket
 alabaster==0.7.13
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   sphinx
 ale-py==0.10.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
 alembic==1.12.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aim
     #   mlflow
     #   optuna
 altair==5.1.2 ; sys_platform != 'win32'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gradio
 amqp==5.3.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   kombu
 annotated-types==0.6.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pydantic
 antlr4-python3-runtime==4.11.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   fugue-sql-antlr
     #   qpd
 anyio==3.7.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   httpx
     #   jupyter-server
     #   starlette
     #   watchfiles
 appdirs==1.4.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   fs
 applicationinsights==0.11.10
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   azure-cli-telemetry
 argcomplete==3.3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   azure-cli-core
     #   gsutil
     #   knack
     #   yq
 argon2-cffi==23.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-server
     #   nbclassic
     #   notebook
 argon2-cffi-bindings==21.2.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   argon2-cffi
 argparse==1.4.0 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   mosaicml
 array-record==0.5.1
     # via
-    #   -c python/requirements_compiled.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/dl-generic-requirements.txt
     #   tensorflow-datasets
 arrow==1.3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   isoduration
 asgiref==3.9.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   opentelemetry-instrumentation-asgi
 asn1crypto==1.5.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   snowflake-connector-python
 asttokens==2.4.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   stack-data
 astunparse==1.6.3 ; (python_full_version < '3.12' and platform_machine != 'arm64') or (python_full_version < '3.12' and sys_platform != 'darwin')
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   tensorflow
 async-exit-stack==1.0.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 async-generator==1.10
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 async-timeout==4.0.3 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   redis
 attrs==25.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   aiohttp
     #   glom
@@ -220,34 +222,34 @@ attrs==25.1.0
     #   semgrep
 aws-sam-translator==1.81.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   cfn-lint
 aws-xray-sdk==2.12.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   moto
 ax-platform==0.3.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-requirements.txt
 azure-cli-core==2.62.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 azure-cli-telemetry==1.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   azure-cli-core
 azure-common==1.1.28
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
     #   smart-open
 azure-core==1.29.5
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   adlfs
     #   azure-identity
     #   azure-mgmt-core
@@ -256,100 +258,100 @@ azure-core==1.29.5
     #   smart-open
 azure-datalake-store==0.0.53
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   adlfs
 azure-identity==1.17.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   adlfs
 azure-mgmt-compute==31.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 azure-mgmt-core==1.4.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   azure-cli-core
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
 azure-mgmt-network==25.4.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 azure-mgmt-resource==23.1.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 azure-storage-blob==12.22.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   adlfs
     #   smart-open
 babel==2.13.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyterlab-server
     #   sphinx
 backcall==0.2.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ipython
 backoff==1.10.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   segment-analytics-python
 base58==2.0.1 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aimrecords
 bayesian-optimization==1.4.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-requirements.txt
     #   nevergrad
 bcrypt==4.0.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   paramiko
 beautifulsoup4==4.11.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   nbconvert
 billiard==4.2.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   celery
 black==22.10.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/lint-requirements.txt
 bleach==6.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   nbconvert
 bokeh==2.4.3 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-requirements.txt
     #   dask
 boltons==21.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   face
     #   glom
     #   semgrep
 boto==2.49.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gcs-oauth2-boto-plugin
 boto3==1.29.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   aim
@@ -360,7 +362,7 @@ boto3==1.29.7
     #   snowflake-connector-python
 botocore==1.32.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   aiobotocore
     #   aws-xray-sdk
@@ -370,30 +372,30 @@ botocore==1.32.7
     #   snowflake-connector-python
 botorch==0.8.5
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ax-platform
 braceexpand==0.1.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   webdataset
 bracex==2.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   wcmatch
 cachetools==5.5.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aim
     #   google-auth
     #   mlflow-skinny
     #   pyiceberg
 celery==5.5.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
 certifi==2025.1.31
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/security-requirements.txt
     #   clickhouse-connect
@@ -406,7 +408,7 @@ certifi==2025.1.31
     #   snowflake-connector-python
 cffi==1.16.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   argon2-cffi-bindings
     #   azure-datalake-store
     #   cryptography
@@ -416,24 +418,24 @@ cffi==1.16.0
     #   soundfile
 cfgv==3.4.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pre-commit
 cfn-lint==0.83.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   moto
 charset-normalizer==3.3.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   requests
     #   snowflake-connector-python
 clang-format==12.0.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/lint-requirements.txt
 click==8.1.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
     #   aim
@@ -457,27 +459,27 @@ click==8.1.7
     #   wandb
 click-didyoumean==0.3.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   celery
 click-option-group==0.5.6
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   semgrep
 click-plugins==1.1.1.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   celery
 click-repl==0.3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   celery
 clickhouse-connect==0.8.10
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 cloudpickle==2.2.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   dask
     #   distributed
@@ -491,15 +493,15 @@ cloudpickle==2.2.0
     #   tensorflow-probability
 cma==3.2.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   nevergrad
 cmdstanpy==1.2.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   prophet
 colorama==0.4.6
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   bayesian-optimization
@@ -508,57 +510,57 @@ colorama==0.4.6
     #   semgrep
 coloredlogs==15.0.1 ; platform_machine != 'arm64' or sys_platform != 'darwin'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   onnxruntime
 colorful==0.5.5
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
 colorlog==6.7.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   optuna
 comet-ml==3.44.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/core-requirements.txt
 comm==0.2.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ipykernel
     #   ipywidgets
 configobj==5.0.8
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   everett
 configspace==0.7.1 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-requirements.txt
     #   hpbandster
 contextlib2==21.6.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ml-collections
 contourpy==1.1.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   matplotlib
 cramjam==2.8.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   python-snappy
 crc32c==2.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-requirements.txt
 crcmod==1.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gsutil
 cryptography==44.0.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   adal
     #   aim
@@ -576,100 +578,100 @@ cryptography==44.0.3
     #   trustme
 cupy-cuda12x==13.1.0 ; sys_platform != 'darwin'
     # via
-    #   -c python/requirements_compiled.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/dl-generic-requirements.txt
     #   -r python/requirements.txt
 cycler==0.12.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   matplotlib
 cython==0.29.37
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   gpy
 dask==2023.6.1 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-requirements.txt
     #   distributed
 databricks-sdk==0.52.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   mlflow-skinny
 datasets==3.6.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/train-requirements.txt
     #   evaluate
 datasketches==5.2.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 debugpy==1.8.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ipykernel
 decorator==5.1.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ipython
     #   moviepy
     #   paramz
     #   tensorflow-probability
 decord==0.6.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 deepspeed==0.12.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/train-requirements.txt
 defusedxml==0.7.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   nbconvert
     #   pymars
     #   semgrep
 delta-sharing==1.0.5
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 deltalake==0.9.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 dill==0.3.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   datasets
     #   evaluate
     #   multiprocess
 distlib==0.3.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   virtualenv
 distributed==2023.6.1 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-requirements.txt
     #   dask
 distro==1.9.0 ; sys_platform == 'linux'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   azure-cli-core
 dm-control==1.0.12 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
 dm-env==1.6 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   dm-control
 dm-tree==0.1.8
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
     #   dm-control
     #   dm-env
@@ -677,86 +679,86 @@ dm-tree==0.1.8
     #   tensorflow-probability
 dnspython==2.4.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pymongo
 docker==7.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   mlflow
     #   moto
     #   pytest-docker-tools
 docker-pycreds==0.4.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   wandb
 docstring-parser==0.15 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   yahp
 docutils==0.19
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/lint-requirements.txt
     #   myst-parser
     #   sphinx
 dulwich==0.21.6
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   comet-ml
 ecdsa==0.18.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   moto
     #   python-jose
     #   sshpubkeys
 entrypoints==0.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-client
     #   nbconvert
 et-xmlfile==1.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   openpyxl
 etils==1.5.2
     # via
-    #   -c python/requirements_compiled.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/dl-generic-requirements.txt
     #   array-record
     #   mujoco
     #   tensorflow-datasets
 evaluate==0.4.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/train-test-requirements.txt
 everett==3.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   comet-ml
 execnet==2.1.1 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pytest-shutil
 executing==2.0.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   stack-data
 face==22.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   glom
 fairscale==0.4.6
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
 farama-notifications==0.0.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gymnasium
 fastapi==0.115.12
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   aim
@@ -764,32 +766,32 @@ fastapi==0.115.12
     #   mlflow-skinny
 fastavro==1.9.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 fasteners==0.19
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   google-apitools
     #   gsutil
 fastjsonschema==2.19.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   nbformat
 fastrlock==0.8.2 ; sys_platform != 'darwin'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   cupy-cuda12x
 feather-format==0.4.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 ffmpy==0.3.1 ; sys_platform != 'win32'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gradio
 filelock==3.17.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   aim
@@ -799,48 +801,49 @@ filelock==3.17.0
     #   snowflake-connector-python
     #   torch
     #   transformers
+    #   triton
     #   virtualenv
 flask==2.1.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   flask-cors
     #   mlflow
     #   moto
 flask-cors==4.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-requirements.txt
     #   moto
 flatbuffers==23.5.26 ; platform_machine != 'arm64' or sys_platform != 'darwin'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   onnxruntime
     #   tensorflow
 fonttools==4.45.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   matplotlib
 fqdn==1.5.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jsonschema
 freezegun==1.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 frozenlist==1.4.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aiohttp
     #   aiosignal
 fs==2.4.16
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   triad
 fsspec==2023.12.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
     #   adlfs
     #   dask
@@ -860,51 +863,51 @@ fsspec==2023.12.1
     #   triad
 fugue==0.8.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   statsforecast
 fugue-sql-antlr==0.2.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   fugue
 future==1.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-requirements.txt
 gast==0.6.0 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   tensorflow
     #   tensorflow-probability
 gcs-oauth2-boto-plugin==3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gsutil
 getdaft==0.4.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-requirements.txt
 gitdb==4.0.11
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gitpython
 gitpython==3.1.44
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   mlflow-skinny
     #   wandb
 glfw==2.6.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   dm-control
     #   mujoco
 glom==22.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   semgrep
 google-api-core==2.24.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
     #   google-api-python-client
     #   google-cloud-bigquery
@@ -914,15 +917,15 @@ google-api-core==2.24.2
     #   opencensus
 google-api-python-client==2.111.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 google-apitools==0.5.32
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gsutil
 google-auth==2.23.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   databricks-sdk
     #   google-api-core
@@ -936,98 +939,98 @@ google-auth==2.23.4
     #   tensorboard
 google-auth-httplib2==0.1.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   google-api-python-client
 google-auth-oauthlib==1.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   tensorboard
 google-cloud-bigquery==3.13.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 google-cloud-bigquery-storage==2.24.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 google-cloud-core==2.4.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
     #   google-cloud-bigquery
     #   google-cloud-storage
 google-cloud-storage==2.14.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   smart-open
 google-crc32c==1.5.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   google-cloud-storage
     #   google-resumable-media
 google-pasta==0.2.0 ; (python_full_version < '3.12' and platform_machine != 'arm64') or (python_full_version < '3.12' and sys_platform != 'darwin')
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   tensorflow
 google-reauth==0.1.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gcs-oauth2-boto-plugin
     #   gsutil
 google-resumable-media==2.6.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   google-cloud-bigquery
     #   google-cloud-storage
 googleapis-common-protos==1.61.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   google-api-core
     #   grpcio-status
     #   tensorflow-metadata
 gpy==1.13.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
 gpytorch==1.10
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   botorch
 gradio==3.50.2 ; sys_platform != 'win32'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 gradio-client==0.6.1 ; sys_platform != 'win32'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gradio
 graphene==3.4.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   mlflow
 graphql-core==3.2.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   graphene
     #   graphql-relay
     #   moto
 graphql-relay==3.2.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   graphene
 graphviz==0.20.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 greenlet==3.0.1 ; (python_full_version < '3.13' and platform_machine == 'AMD64') or (python_full_version < '3.13' and platform_machine == 'WIN32') or (python_full_version < '3.13' and platform_machine == 'aarch64') or (python_full_version < '3.13' and platform_machine == 'amd64') or (python_full_version < '3.13' and platform_machine == 'ppc64le') or (python_full_version < '3.13' and platform_machine == 'win32') or (python_full_version < '3.13' and platform_machine == 'x86_64')
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   sqlalchemy
 grpcio==1.74.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
     #   google-api-core
@@ -1039,23 +1042,23 @@ grpcio==1.74.0
     #   tensorflow
 grpcio-status==1.62.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   google-api-core
 grpcio-tools==1.62.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
 gsutil==5.27
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0 ; sys_platform != 'win32'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   mlflow
 gymnasium==1.1.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
     #   minigrid
     #   pettingzoo
@@ -1063,40 +1066,40 @@ gymnasium==1.1.1
     #   supersuit
 h11==0.16.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   httpcore
     #   uvicorn
 h5py==3.10.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   tensorflow
 halo==0.0.31
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
 hjson==3.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   deepspeed
 holidays==0.39
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
     #   prophet
 hpbandster==0.7.4 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-requirements.txt
 httpcore==1.0.9
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   httpx
 httplib2==0.20.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gcs-oauth2-boto-plugin
     #   google-api-python-client
     #   google-apitools
@@ -1105,17 +1108,17 @@ httplib2==0.20.4
     #   oauth2client
 httpx==0.27.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   gradio
     #   gradio-client
 hudi==0.4.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 huggingface-hub==0.27.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/train-requirements.txt
     #   accelerate
     #   datasets
@@ -1127,24 +1130,24 @@ huggingface-hub==0.27.0
     #   transformers
 humanfriendly==10.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   azure-cli-core
     #   coloredlogs
 humanize==4.12.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
 hyperopt @ git+https://github.com/hyperopt/hyperopt.git@2504ee61419737e814e2dec2961b15d12775529c
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-requirements.txt
 identify==2.6.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pre-commit
 idna==3.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/security-requirements.txt
     #   anyio
     #   httpx
@@ -1155,21 +1158,21 @@ idna==3.7
     #   yarl
 imageio==2.34.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   moviepy
     #   scikit-image
 imageio-ffmpeg==0.4.5
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-requirements.txt
 imagesize==1.4.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   sphinx
 importlib-metadata==6.11.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   dask
     #   jupyter-cache
@@ -1180,23 +1183,23 @@ importlib-metadata==6.11.0
     #   tensordict
 importlib-resources==5.13.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   etils
     #   gradio
     #   prophet
 iniconfig==2.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pytest
 ipykernel==6.27.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   myst-nb
     #   nbclassic
     #   notebook
 ipython==8.12.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/docker/ray-docker-requirements.txt
     #   ipykernel
     #   ipywidgets
@@ -1204,19 +1207,19 @@ ipython==8.12.3
     #   myst-nb
 ipython-genutils==0.2.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   nbclassic
     #   notebook
 ipywidgets==8.1.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/docker/ray-docker-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   ax-platform
 isodate==0.6.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
@@ -1224,27 +1227,27 @@ isodate==0.6.1
     #   msrest
 isoduration==20.11.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jsonschema
 itsdangerous==2.1.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   flask
 jax==0.4.25
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/train-test-requirements.txt
 jaxlib==0.4.25
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/train-test-requirements.txt
 jedi==0.19.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ipython
 jinja2==3.1.6
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   aim
     #   altair
@@ -1271,46 +1274,46 @@ jinja2==3.1.6
     #   torch-geometric
 jmespath==1.0.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   azure-cli-core
     #   boto3
     #   botocore
     #   knack
 joblib==1.2.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   scikit-learn
 jschema-to-python==1.2.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   cfn-lint
 json5==0.9.14
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyterlab-server
 jsondiff==2.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   moto
 jsonpatch==1.32
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   cfn-lint
 jsonpickle==3.0.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jschema-to-python
 jsonpointer==2.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jsonpatch
     #   jsonschema
 jsonschema==4.23.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
@@ -1327,24 +1330,24 @@ jsonschema==4.23.0
     #   semgrep
 jsonschema-path==0.3.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   openapi-spec-validator
 jsonschema-specifications==2024.10.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jsonschema
     #   openapi-schema-validator
 junit-xml==1.9
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   cfn-lint
 jupyter-cache==0.6.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   myst-nb
 jupyter-client==7.3.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ipykernel
     #   jupyter-server
     #   nbclassic
@@ -1352,7 +1355,7 @@ jupyter-client==7.3.4
     #   notebook
 jupyter-core==5.5.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
@@ -1363,11 +1366,11 @@ jupyter-core==5.5.0
     #   notebook
 jupyter-events==0.6.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-server-fileid
 jupyter-server==1.24.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-server-fileid
     #   jupyterlab
     #   jupyterlab-server
@@ -1375,126 +1378,126 @@ jupyter-server==1.24.0
     #   notebook-shim
 jupyter-server-fileid==0.9.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-server-ydoc
 jupyter-server-ydoc==0.6.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyterlab
 jupyter-ydoc==0.2.5
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-server-ydoc
     #   jupyterlab
 jupyterlab==3.6.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
 jupyterlab-pygments==0.3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   nbconvert
 jupyterlab-server==2.24.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyterlab
 jupyterlab-widgets==3.0.11
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ipywidgets
 jupytext==1.16.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 keras==2.15.0 ; (python_full_version < '3.12' and platform_machine != 'arm64') or (python_full_version < '3.12' and sys_platform != 'darwin')
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   tensorflow
 kiwisolver==1.4.5
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   matplotlib
 knack==0.11.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   azure-cli-core
 kombu==5.5.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   celery
 kubernetes==24.2.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 labmaze==1.0.6 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   dm-control
 lazy-loader==0.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   scikit-image
 lazy-object-proxy==1.9.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   openapi-spec-validator
 libclang==18.1.1 ; (python_full_version < '3.12' and platform_machine != 'arm64') or (python_full_version < '3.12' and sys_platform != 'darwin')
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   tensorflow
 lightgbm==4.6.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/core-requirements.txt
 lightning-utilities==0.11.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pytorch-lightning
 linear-operator==0.4.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   botorch
     #   gpytorch
 llvmlite==0.42.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   numba
 locket==1.0.0 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   distributed
     #   partd
 log-symbols==0.0.14
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   halo
 lxml==4.9.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   dm-control
     #   nbconvert
     #   vsphere-automation-sdk
 lz4==4.3.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
     #   clickhouse-connect
     #   dask
 mako==1.3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   alembic
 markdown==3.5.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   mlflow
     #   tensorboard
 markdown-it-py==2.2.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   jupytext
     #   mdit-py-plugins
@@ -1502,7 +1505,7 @@ markdown-it-py==2.2.0
     #   rich
 markupsafe==2.1.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gradio
     #   jinja2
     #   mako
@@ -1510,7 +1513,7 @@ markupsafe==2.1.3
     #   werkzeug
 matplotlib==3.7.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
     #   gradio
     #   mlflow
@@ -1518,101 +1521,101 @@ matplotlib==3.7.4
     #   zoopt
 matplotlib-inline==0.1.6
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ipykernel
     #   ipython
 mdit-py-plugins==0.3.5
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupytext
     #   myst-parser
 mdurl==0.1.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   markdown-it-py
 memray==1.10.0 ; sys_platform != 'win32'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
 minigrid==2.3.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
 mistune==0.8.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   nbconvert
 ml-collections==0.1.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   open-spiel
 ml-dtypes==0.3.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jax
     #   jaxlib
     #   tensorflow
 mlagents-envs==0.28.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
 mlflow==2.22.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/core-requirements.txt
 mlflow-skinny==2.22.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   mlflow
 mmh3==4.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pyiceberg
 modin==0.22.2 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-requirements.txt
 monotonic==1.6
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gsutil
     #   segment-analytics-python
 more-itertools==10.7.0 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   configspace
 mosaicml==0.3.1 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/train-test-requirements.txt
 moto==4.2.12
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 moviepy==0.2.3.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
 mpmath==1.3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   sympy
 msal==1.28.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   azure-cli-core
     #   azure-datalake-store
     #   azure-identity
     #   msal-extensions
 msal-extensions==1.2.0b1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   azure-cli-core
     #   azure-identity
 msgpack==1.0.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-requirements.txt
     #   -r python/requirements.txt
     #   distributed
@@ -1620,76 +1623,76 @@ msgpack==1.0.7
     #   ray
 msgpack-numpy==0.4.8
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-requirements.txt
 msrest==0.7.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   msrestazure
 msrestazure==0.6.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   azure-cli-core
 mujoco==3.2.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   dm-control
 multidict==6.0.5
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aiohttp
     #   yarl
 multipledispatch==1.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   botorch
 multiprocess==0.70.15
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   datasets
     #   evaluate
 mypy==1.7.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/lint-requirements.txt
     #   -r python/requirements/test-requirements.txt
 mypy-extensions==1.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/lint-requirements.txt
     #   black
     #   mypy
 myst-nb==1.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 myst-parser==1.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   myst-nb
 nbclassic==1.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyterlab
     #   notebook
 nbclient==0.5.13
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-cache
     #   myst-nb
     #   nbconvert
 nbconvert==6.5.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-server
     #   nbclassic
     #   notebook
 nbformat==5.9.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-cache
     #   jupyter-server
     #   jupytext
@@ -1700,7 +1703,7 @@ nbformat==5.9.2
     #   notebook
 nest-asyncio==1.5.8
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ipykernel
     #   jupyter-client
     #   nbclassic
@@ -1708,35 +1711,35 @@ nest-asyncio==1.5.8
     #   notebook
 netifaces==0.11.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   hpbandster
     #   raydp
 networkx==3.2.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   cfn-lint
     #   hyperopt
     #   scikit-image
     #   torch
 nevergrad==0.4.3.post7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-requirements.txt
 ninja==1.11.1.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   deepspeed
 nodeenv==1.9.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pre-commit
 notebook==6.5.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyterlab
 notebook-shim==0.2.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   nbclassic
 nsx-policy-python-sdk @ file:///home/ubuntu/.cache/uv/git-v0/checkouts/3a7c78869eb8297a/8ec072f/lib/nsx-policy-python-sdk/nsx_policy_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
     # via vsphere-automation-sdk
@@ -1748,18 +1751,17 @@ nsx-vmc-policy-python-sdk @ file:///home/ubuntu/.cache/uv/git-v0/checkouts/3a7c7
     # via vsphere-automation-sdk
 numba==0.59.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   statsforecast
 numexpr==2.8.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   pymars
 numpy==1.26.4
     # via
-    #   -c python/requirements_compiled.txt
-    #   -r python/deplocks/req_compiled/requirements/requirements.in
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   accelerate
@@ -1847,60 +1849,90 @@ numpy==1.26.4
     #   webdataset
     #   xgboost
     #   zoopt
+nvidia-cublas-cu12==12.1.3.1 ; platform_machine == 'x86_64' and sys_platform == 'linux'
+    # via
+    #   nvidia-cudnn-cu12
+    #   nvidia-cusolver-cu12
+    #   torch
+nvidia-cuda-cupti-cu12==12.1.105 ; platform_machine == 'x86_64' and sys_platform == 'linux'
+    # via torch
+nvidia-cuda-nvrtc-cu12==12.1.105 ; platform_machine == 'x86_64' and sys_platform == 'linux'
+    # via torch
+nvidia-cuda-runtime-cu12==12.1.105 ; platform_machine == 'x86_64' and sys_platform == 'linux'
+    # via torch
+nvidia-cudnn-cu12==8.9.2.26 ; platform_machine == 'x86_64' and sys_platform == 'linux'
+    # via torch
+nvidia-cufft-cu12==11.0.2.54 ; platform_machine == 'x86_64' and sys_platform == 'linux'
+    # via torch
+nvidia-curand-cu12==10.3.2.106 ; platform_machine == 'x86_64' and sys_platform == 'linux'
+    # via torch
+nvidia-cusolver-cu12==11.4.5.107 ; platform_machine == 'x86_64' and sys_platform == 'linux'
+    # via torch
+nvidia-cusparse-cu12==12.1.0.106 ; platform_machine == 'x86_64' and sys_platform == 'linux'
+    # via
+    #   nvidia-cusolver-cu12
+    #   torch
 nvidia-nccl-cu12==2.20.5 ; platform_machine != 'aarch64' and sys_platform == 'linux'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   torch
     #   xgboost
+nvidia-nvjitlink-cu12==12.9.86 ; platform_machine == 'x86_64' and sys_platform == 'linux'
+    # via
+    #   nvidia-cusolver-cu12
+    #   nvidia-cusparse-cu12
+nvidia-nvtx-cu12==12.1.105 ; platform_machine == 'x86_64' and sys_platform == 'linux'
+    # via torch
 oauth2client==4.1.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   gcs-oauth2-boto-plugin
     #   google-apitools
 oauthlib==3.2.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   requests-oauthlib
 onnx==1.15.0 ; platform_machine != 'arm64' or sys_platform != 'darwin'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-requirements.txt
 onnxruntime==1.18.0 ; platform_machine != 'arm64' or sys_platform != 'darwin'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-requirements.txt
 open-spiel==1.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
 openapi-schema-validator==0.6.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   openapi-spec-validator
 openapi-spec-validator==0.7.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   moto
 opencensus==0.11.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
 opencensus-context==0.1.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   opencensus
 opencv-python-headless==4.9.0.80
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
 openpyxl==3.0.10
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 opentelemetry-api==1.34.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   mlflow-skinny
@@ -1912,66 +1944,66 @@ opentelemetry-api==1.34.1
     #   opentelemetry-semantic-conventions
 opentelemetry-exporter-prometheus==0.55b1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
 opentelemetry-instrumentation==0.55b1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-asgi==0.55b1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-fastapi==0.55b1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 opentelemetry-proto==1.27.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
 opentelemetry-sdk==1.34.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   mlflow-skinny
     #   opentelemetry-exporter-prometheus
 opentelemetry-semantic-conventions==0.55b1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
 opentelemetry-util-http==0.55b1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
 opt-einsum==3.3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jax
     #   pyro-ppl
     #   tensorflow
 optuna==4.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-requirements.txt
 orjson==3.9.15 ; python_full_version < '3.13' or sys_platform != 'win32'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gradio
     #   tensordict
 ormsgpack==1.7.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-requirements.txt
 packaging==23.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
     #   accelerate
@@ -2024,7 +2056,7 @@ packaging==23.0
     #   utilsforecast
 pandas==1.5.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-requirements.txt
     #   -r python/requirements.txt
     #   altair
@@ -2047,62 +2079,62 @@ pandas==1.5.3
     #   utilsforecast
 pandocfilters==1.5.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   nbconvert
 paramiko==2.12.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   azure-cli-core
 paramz==0.9.6
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gpy
 parso==0.8.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jedi
 partd==1.4.1 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   dask
 pathable==0.4.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jsonschema-path
 pathspec==0.11.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   black
 patsy==0.5.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   statsmodels
 pbr==6.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jschema-to-python
     #   sarif-om
 peewee==3.17.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   semgrep
 pettingzoo==1.24.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
 pexpect==4.8.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   ipython
 pickleshare==0.7.5
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ipython
 pillow==10.3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   aim
     #   bokeh
@@ -2114,11 +2146,11 @@ pillow==10.3.0
     #   torchvision
 pkginfo==1.9.6
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   azure-cli-core
 platformdirs==3.11.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   black
     #   jupyter-core
     #   snowflake-connector-python
@@ -2126,28 +2158,28 @@ platformdirs==3.11.0
     #   wandb
 plotly==5.23.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ax-platform
 pluggy==1.3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pytest
 polars==1.32.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 portalocker==2.8.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   azure-cli-telemetry
     #   msal-extensions
 pre-commit==3.5.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/lint-requirements.txt
 prometheus-client==0.19.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
     #   jupyter-server
     #   nbclassic
@@ -2155,31 +2187,31 @@ prometheus-client==0.19.0
     #   opentelemetry-exporter-prometheus
 promise==2.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   tensorflow-datasets
 prompt-toolkit==3.0.41
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   click-repl
     #   ipython
 propcache==0.3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aiohttp
     #   yarl
 prophet==1.1.5
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
 proto-plus==1.22.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   google-api-core
     #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
 protobuf==4.25.8
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   dm-control
@@ -2205,11 +2237,11 @@ protobuf==4.25.8
     #   wandb
 proxy-py==2.4.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 psutil==5.9.6
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   accelerate
     #   aim
     #   azure-cli-core
@@ -2225,36 +2257,36 @@ psutil==5.9.6
     #   wandb
 ptyprocess==0.7.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pexpect
     #   terminado
 pure-eval==0.2.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   stack-data
 py==1.11.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pytest-forked
 py-cpuinfo==9.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   deepspeed
 py-partiql-parser==0.5.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   moto
 py-spy==0.4.0 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
 py4j==0.10.9.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pyspark
 pyarrow==19.0.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
     #   dask
     #   datasets
@@ -2269,35 +2301,35 @@ pyarrow==19.0.1
     #   triad
 pyarrow-hotfix==0.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   hudi
 pyasn1==0.5.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   oauth2client
     #   pyasn1-modules
     #   python-jose
     #   rsa
 pyasn1-modules==0.3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   google-auth
     #   oauth2client
 pybase64==1.4.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 pycparser==2.21
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   cffi
 pycurl==7.45.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
 pydantic==2.11.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   aws-sam-translator
@@ -2308,28 +2340,28 @@ pydantic==2.11.7
     #   pyiceberg
 pydantic-core==2.33.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pydantic
 pydot==1.4.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 pydub==0.25.1 ; sys_platform != 'win32'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gradio
 pygame==2.5.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   minigrid
 pyglet==1.5.15
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-requirements.txt
 pygments==2.18.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   ipython
     #   knack
@@ -2338,47 +2370,47 @@ pygments==2.18.0
     #   sphinx
 pyiceberg==0.9.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 pyjwt==2.8.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   adal
     #   azure-cli-core
     #   msal
     #   snowflake-connector-python
 pylance==0.22.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 pymars==0.10.0 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-requirements.txt
 pymongo==4.3.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 pymunk==6.2.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
 pynacl==1.5.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   paramiko
 pynvml==11.5.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   deepspeed
 pyopengl==3.1.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   dm-control
     #   mujoco
 pyopenssl==25.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
@@ -2389,7 +2421,7 @@ pyopenssl==25.0.0
     #   vapi-runtime
 pyparsing==3.1.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   configspace
     #   dm-control
     #   httplib2
@@ -2400,28 +2432,28 @@ pyparsing==3.1.1
     #   torch-geometric
 pyro-api==0.1.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pyro-ppl
 pyro-ppl==1.9.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   botorch
 pyro4==4.82 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   hpbandster
 pysocks==1.7.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   requests
 pyspark==3.4.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   raydp
 pytest==7.4.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   pytest-aiohttp
     #   pytest-asyncio
@@ -2440,77 +2472,77 @@ pytest==7.4.4
     #   pytest-virtualenv
 pytest-aiohttp==1.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 pytest-asyncio==0.17.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   pytest-aiohttp
 pytest-docker-tools==3.1.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 pytest-fixture-config==1.8.0 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pytest-virtualenv
 pytest-forked==1.4.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 pytest-httpserver==1.1.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 pytest-lazy-fixtures==1.1.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 pytest-mock==3.14.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
 pytest-remotedata==0.3.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
 pytest-repeat==0.9.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 pytest-rerunfailures==11.1.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 pytest-shutil==1.8.1 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pytest-virtualenv
 pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx@c1ab2b33c784d04fa467211a15f89edf631107a1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 pytest-sugar==0.9.5
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 pytest-timeout==2.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 pytest-virtualenv==1.8.1 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 python-box==6.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   comet-ml
 python-dateutil==2.8.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   adal
     #   aim
@@ -2530,35 +2562,35 @@ python-dateutil==2.8.2
     #   strictyaml
 python-jose==3.3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   moto
 python-json-logger==2.0.7
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-events
 python-lsp-jsonrpc==1.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   semgrep
 python-multipart==0.0.6 ; sys_platform != 'win32'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gradio
 python-snappy==0.7.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 pytorch-lightning==1.8.6
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
 pytorch-ranger==0.1.1 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   torch-optimizer
 pytz==2022.7.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   aim
     #   clickhouse-connect
@@ -2566,15 +2598,15 @@ pytz==2022.7.1
     #   snowflake-connector-python
 pyu2f==0.1.5
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   google-reauth
 pyvmomi==8.0.3.0.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   vsphere-automation-sdk
 pyyaml==6.0.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
     #   accelerate
@@ -2611,7 +2643,7 @@ pyyaml==6.0.1
     #   yq
 pyzmq==26.0.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   ipykernel
     #   jupyter-client
@@ -2620,30 +2652,30 @@ pyzmq==26.0.3
     #   notebook
 qpd==0.4.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   fugue
 raydp==1.7.0b20250423.dev0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 redis==4.5.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 referencing==0.36.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jsonschema
     #   jsonschema-path
     #   jsonschema-specifications
 regex==2024.5.15
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   cfn-lint
     #   transformers
 requests==2.32.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
@@ -2693,42 +2725,42 @@ requests==2.32.3
     #   wandb
 requests-oauthlib==2.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   google-auth-oauthlib
     #   kubernetes
     #   msrest
 requests-toolbelt==1.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   comet-ml
 responses==0.13.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-requirements.txt
     #   moto
 restrictedpython==8.0 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aim
 retry-decorator==1.1.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gcs-oauth2-boto-plugin
     #   gsutil
 rfc3339-validator==0.1.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jsonschema
     #   jupyter-events
     #   openapi-schema-validator
 rfc3986-validator==0.1.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jsonschema
     #   jupyter-events
 rich==13.3.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/ml/rllib-requirements.txt
     #   -r python/requirements.txt
@@ -2739,58 +2771,58 @@ rich==13.3.2
     #   typer
 rpds-py==0.22.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jsonschema
     #   referencing
 rsa==4.7.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gcs-oauth2-boto-plugin
     #   google-auth
     #   oauth2client
     #   python-jose
 ruamel-yaml==0.17.40
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   semgrep
     #   yahp
 ruamel-yaml-clib==0.2.8 ; python_full_version < '3.13' and platform_python_implementation == 'CPython'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ruamel-yaml
 s3fs==2023.12.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/core-requirements.txt
 s3torchconnector==1.4.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/train-test-requirements.txt
 s3torchconnectorclient==1.4.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   s3torchconnector
 s3transfer==0.8.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   boto3
 safetensors==0.4.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   accelerate
     #   timm
     #   transformers
 sarif-om==1.0.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   cfn-lint
 scikit-image==0.24.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
 scikit-learn==1.3.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   ax-platform
     #   bayesian-optimization
@@ -2800,7 +2832,7 @@ scikit-learn==1.3.2
     #   torch-geometric
 scipy==1.11.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
     #   ax-platform
     #   bayesian-optimization
@@ -2828,64 +2860,64 @@ scipy==1.11.4
     #   xgboost
 segment-analytics-python==2.2.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 semantic-version==2.10.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   comet-ml
     #   gradio
 semgrep==1.32.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/lint-requirements.txt
 send2trash==1.8.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-server
     #   nbclassic
     #   notebook
 sentencepiece==0.1.96
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/train-test-requirements.txt
 sentry-sdk==2.10.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   comet-ml
     #   wandb
 serpent==1.41 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   hpbandster
     #   pyro4
 setproctitle==1.3.6
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   wandb
 shellcheck-py==0.7.1.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/lint-requirements.txt
 shellingham==1.5.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   typer
 shimmy==2.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
 shortuuid==1.0.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
 simplejson==3.19.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   comet-ml
 six==1.16.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   asttokens
     #   astunparse
@@ -2926,78 +2958,78 @@ six==1.16.0
     #   vapi-runtime
 smart-open==6.2.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
 smmap==5.0.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gitdb
 sniffio==1.3.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   anyio
     #   httpx
 snowballstemmer==2.2.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   sphinx
 snowflake-connector-python==3.15.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 sortedcontainers==2.4.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   distributed
     #   pyiceberg
     #   snowflake-connector-python
 soundfile==0.12.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 soupsieve==2.5
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   beautifulsoup4
 sphinx==6.2.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   myst-nb
     #   myst-parser
 sphinxcontrib-applehelp==1.0.8
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   sphinx
 sphinxcontrib-devhelp==1.0.6
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   sphinx
 sphinxcontrib-htmlhelp==2.0.6
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   sphinx
 sphinxcontrib-jsmath==1.0.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   sphinx
 sphinxcontrib-qthelp==1.0.8
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   sphinx
 sphinxcontrib-serializinghtml==1.1.10
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   sphinx
 spinners==0.0.24
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   halo
 sqlalchemy==2.0.32
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aim
     #   alembic
     #   jupyter-cache
@@ -3007,119 +3039,119 @@ sqlalchemy==2.0.32
     #   pymars
 sqlglot==25.6.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   fugue
 sqlparse==0.5.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   mlflow-skinny
 sshpubkeys==3.3.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   moto
 stack-data==0.6.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ipython
 stanio==0.3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   cmdstanpy
 starlette==0.46.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   fastapi
 statsforecast==1.7.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
 statsmodels==0.14.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   hpbandster
     #   statsforecast
 strictyaml==1.7.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pyiceberg
 supersuit==3.9.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
 sympy==1.13.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   cfn-lint
     #   onnxruntime
     #   torch
 tabulate==0.9.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   jupyter-cache
     #   knack
 tblib==3.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/docker/ray-docker-requirements.txt
     #   distributed
 tenacity==8.5.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   plotly
     #   pyiceberg
 tensorboard==2.15.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   tensorflow
 tensorboard-data-server==0.7.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   tensorboard
 tensorboardx==2.6.2.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   pytorch-lightning
 tensordict==0.8.3 ; sys_platform != 'darwin'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 tensorflow==2.15.1 ; (python_full_version < '3.12' and platform_machine != 'arm64') or (python_full_version < '3.12' and sys_platform != 'darwin')
     # via
-    #   -c python/requirements_compiled.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/dl-generic-requirements.txt
 tensorflow-datasets==4.9.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   -r python/requirements/ml/dl-generic-requirements.txt
 tensorflow-estimator==2.15.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   tensorflow
 tensorflow-io-gcs-filesystem==0.31.0 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/dl-generic-requirements.txt
     #   tensorflow
 tensorflow-metadata==1.13.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   tensorflow-datasets
 tensorflow-probability==0.23.0 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/dl-generic-requirements.txt
 termcolor==2.4.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   halo
     #   pytest-shutil
     #   pytest-sugar
@@ -3127,65 +3159,64 @@ termcolor==2.4.0
     #   tensorflow-datasets
 terminado==0.18.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-server
     #   nbclassic
     #   notebook
 testfixtures==7.0.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 threadpoolctl==3.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   scikit-learn
 tifffile==2024.7.21
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   scikit-image
 timm==0.9.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
 tinycss2==1.3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   nbconvert
 tinyscaler==1.2.8
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   supersuit
 tokenizers==0.15.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   transformers
 toml==0.10.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   tensorflow-datasets
 tomli==2.0.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   semgrep
 tomlkit==0.13.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   snowflake-connector-python
     #   yq
 toolz==0.12.1 ; python_full_version < '3.12' or sys_platform != 'win32'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   altair
     #   dask
     #   distributed
     #   partd
 torch==2.3.0
     # via
-    #   -c python/requirements_compiled.txt
-    #   -r python/deplocks/req_compiled/requirements/requirements.in
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/dl-generic-requirements.txt
     #   accelerate
     #   botorch
     #   deepspeed
@@ -3202,49 +3233,49 @@ torch==2.3.0
     #   torchmetrics
     #   torchtext
     #   torchvision
-torch-cluster==1.6.3+pt23cpu
+torch-cluster==1.6.3
     # via
-    #   -c python/requirements_compiled.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/dl-generic-requirements.txt
 torch-geometric==2.5.3
     # via
-    #   -c python/requirements_compiled.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/dl-generic-requirements.txt
 torch-optimizer==0.1.0 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   mosaicml
-torch-scatter==2.1.2+pt23cpu
+torch-scatter==2.1.2
     # via
-    #   -c python/requirements_compiled.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
-torch-sparse==0.6.18+pt23cpu
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/dl-generic-requirements.txt
+torch-sparse==0.6.18
     # via
-    #   -c python/requirements_compiled.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
-torch-spline-conv==1.2.2+pt23cpu
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/dl-generic-requirements.txt
+torch-spline-conv==1.2.2
     # via
-    #   -c python/requirements_compiled.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/dl-generic-requirements.txt
 torchmetrics==0.10.3
     # via
-    #   -c python/requirements_compiled.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/dl-generic-requirements.txt
     #   mosaicml
     #   pytorch-lightning
 torchtext==0.18.0
     # via
-    #   -c python/requirements_compiled.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/dl-generic-requirements.txt
 torchvision==0.18.0
     # via
-    #   -c python/requirements_compiled.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/ml/dl-generic-requirements.txt
     #   mosaicml
     #   timm
 tornado==6.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   bokeh
     #   distributed
@@ -3258,7 +3289,7 @@ tornado==6.1
     #   terminado
 tqdm==4.67.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   aim
@@ -3285,7 +3316,7 @@ tqdm==4.67.1
     #   transformers
 traitlets==5.14.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   comm
     #   ipykernel
     #   ipython
@@ -3302,50 +3333,52 @@ traitlets==5.14.3
     #   notebook
 transformers==4.36.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/core-requirements.txt
 triad==0.9.8
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   adagio
     #   fugue
     #   fugue-sql-antlr
     #   qpd
+triton==2.3.0 ; python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'linux'
+    # via torch
 trustme==0.9.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 typeguard==2.13.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ax-platform
 typer==0.12.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
 types-pycurl==7.45.3.20240421
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/lint-requirements.txt
 types-python-dateutil==2.9.0.20240316
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   arrow
 types-pyyaml==6.0.12.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/lint-requirements.txt
 types-requests==2.31.0.6
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/lint-requirements.txt
 types-urllib3==1.26.25.14
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   types-requests
 typing-extensions==4.12.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   alembic
     #   aws-sam-translator
@@ -3383,31 +3416,31 @@ typing-extensions==4.12.2
     #   typing-inspection
 typing-inspection==0.4.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pydantic
 tzdata==2025.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   kombu
 tzlocal==5.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
 ujson==5.10.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   python-lsp-jsonrpc
 uri-template==1.3.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jsonschema
 uritemplate==4.1.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   google-api-python-client
 urllib3==1.26.19
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   botocore
     #   clickhouse-connect
@@ -3422,15 +3455,15 @@ urllib3==1.26.19
     #   sentry-sdk
 utilsforecast==0.2.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   statsforecast
 uv==0.8.9
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 uvicorn==0.22.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   aim
@@ -3438,7 +3471,7 @@ uvicorn==0.22.0
     #   mlflow-skinny
 uvloop==0.21.0 ; python_full_version < '3.12' and sys_platform != 'win32'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pymars
 vapi-common-client @ file:///home/ubuntu/.cache/uv/git-v0/checkouts/3a7c78869eb8297a/8ec072f/lib/vapi-common-client/vapi_common_client-2.40.0-py2.py3-none-any.whl
     # via
@@ -3464,13 +3497,13 @@ vcenter-bindings @ file:///home/ubuntu/.cache/uv/git-v0/checkouts/3a7c78869eb829
     # via vsphere-automation-sdk
 vine==5.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   amqp
     #   celery
     #   kombu
 virtualenv==20.29.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   pre-commit
@@ -3481,53 +3514,53 @@ vmc-draas-client-bindings @ file:///home/ubuntu/.cache/uv/git-v0/checkouts/3a7c7
     # via vsphere-automation-sdk
 vsphere-automation-sdk @ git+https://github.com/vmware/vsphere-automation-sdk-python.git@8ec072f7434d94f75fa5abfdcb0f2c740ff298a6
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 wandb==0.17.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/core-requirements.txt
 watchfiles==0.19.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
 wcmatch==8.5.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   semgrep
 wcwidth==0.2.13
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   prompt-toolkit
 webcolors==24.6.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jsonschema
 webdataset==0.2.86
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/data-test-requirements.txt
 webencodings==0.5.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   bleach
     #   tinycss2
 websocket-client==1.8.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-server
     #   kubernetes
 websockets==11.0.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   aim
     #   gradio
     #   gradio-client
 werkzeug==2.3.8
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   flask
     #   moto
@@ -3535,16 +3568,16 @@ werkzeug==2.3.8
     #   tensorboard
 wheel==0.45.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
     #   astunparse
 widgetsnbextension==4.0.11
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ipywidgets
 wrapt==1.14.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   aiobotocore
     #   aws-xray-sdk
@@ -3554,65 +3587,65 @@ wrapt==1.14.1
     #   tensorflow-datasets
 wurlitzer==3.1.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   comet-ml
 xgboost==2.1.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/core-requirements.txt
 xlrd==2.0.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/test-requirements.txt
 xmltodict==0.13.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   moto
     #   yq
 xxhash==3.4.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   datasets
     #   evaluate
 y-py==0.6.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-ydoc
     #   ypy-websocket
 yahp==0.1.1 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   mosaicml
 yarl==1.18.3
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aiohttp
     #   delta-sharing
 ypy-websocket==0.8.4
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-server-ydoc
 yq==3.2.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/lint-requirements.txt
     #   -r python/requirements/test-requirements.txt
 zict==3.0.0 ; python_full_version < '3.12'
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   distributed
 zipp==3.19.2
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   etils
     #   importlib-metadata
 zoopt==0.4.1
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
 zstandard==0.23.0
     # via
-    #   -c python/requirements_compiled.txt
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   clickhouse-connect
 
 # The following packages were excluded from the output:

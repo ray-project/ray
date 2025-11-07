@@ -22,7 +22,7 @@ depsets:
       - python/requirements/ml/core-requirements.txt
       - python/requirements/ml/data-requirements.txt
       - python/requirements/ml/data-test-requirements.txt
-      - python/requirements/ml/dl-cpu-requirements.txt
+      - python/requirements/ml/dl-generic-requirements.txt
       - python/requirements/ml/rllib-requirements.txt
       - python/requirements/ml/rllib-test-requirements.txt
       - python/requirements/ml/train-requirements.txt
@@ -30,6 +30,8 @@ depsets:
       - python/requirements/ml/tune-requirements.txt
       - python/requirements/ml/tune-test-requirements.txt
       - python/requirements/security-requirements.txt
+    constraints:
+      - /tmp/ray-deps/requirements_compiled.txt
     output: python/deplocks/req_compiled/req_compiled_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
