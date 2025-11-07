@@ -243,7 +243,7 @@ class OneHotEncoder(Preprocessor):
         output_columns: The names of the transformed columns. If None, the transformed
             columns will be the same as the input columns. If not None, the length of
             ``output_columns`` must match the length of ``columns``, othwerwise an error
-            will be raised.'
+            will be raised.
         log_capacity: Base 2 logarithm of the maximum size of the internal hash map for
             top-K calculation. Higher values increase accuracy but use more memory.
             Defaults to 11 (2048 categories).
