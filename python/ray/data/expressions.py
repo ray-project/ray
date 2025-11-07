@@ -4,7 +4,7 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, Generic, List, TypeVar, Union
+from typing import Any, Callable, Dict, Generic, List, Literal, TypeVar, Union
 
 import pyarrow
 
@@ -405,8 +405,780 @@ class Expr(ABC):
             data_type=self.data_type, expr=self, _name=name, _is_rename=False
         )
 
+    @property
+    def list(self) -> "_ListNamespace":
+        """Access list operations for this expression.
+
+        Returns:
+            A _ListNamespace that provides list-specific operations.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> import ray
+            >>> ds = ray.data.from_items([
+            ...     {"items": [1, 2, 3]},
+            ...     {"items": [4, 5]}
+            ... ])
+            >>> ds = ds.with_column("num_items", col("items").list.len())
+            >>> ds = ds.with_column("first_item", col("items").list[0])
+            >>> ds = ds.with_column("slice", col("items").list[1:3])
+        """
+        return _ListNamespace(self)
+
+    @property
+    def str(self) -> "_StringNamespace":
+        """Access string operations for this expression.
+
+        Returns:
+            A _StringNamespace that provides string-specific operations.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> import ray
+            >>> ds = ray.data.from_items([
+            ...     {"name": "Alice"},
+            ...     {"name": "Bob"}
+            ... ])
+            >>> ds = ds.with_column("upper_name", col("name").str.upper())
+            >>> ds = ds.with_column("name_len", col("name").str.len())
+            >>> ds = ds.with_column("starts_a", col("name").str.starts_with("A"))
+        """
+        return _StringNamespace(self)
+
+    @property
+    def struct(self) -> "_StructNamespace":
+        """Access struct operations for this expression.
+
+        Returns:
+            A _StructNamespace that provides struct-specific operations.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> import ray
+            >>> import pyarrow as pa
+            >>> ds = ray.data.from_pyarrow(pa.table({
+            ...     "user": pa.array([
+            ...         {"name": "Alice", "age": 30}
+            ...     ], type=pa.struct([
+            ...         pa.field("name", pa.string()),
+            ...         pa.field("age", pa.int32())
+            ...     ]))
+            ... }))
+            >>> ds = ds.with_column("age", col("user").struct["age"])
+        """
+        return _StructNamespace(self)
+
     def _unalias(self) -> "Expr":
         return self
+
+
+@dataclass(frozen=True)
+class _PyArrowMethodConfig:
+    """Configuration for an auto-generated namespace method.
+
+    Args:
+        pc_func_name: Name of the PyArrow compute function to call
+        return_dtype: Return data type for the method
+        params: List of parameter names (None for unary functions)
+        docstring: Optional docstring for the method
+    """
+
+    pc_func_name: str
+    return_dtype: DataType
+    params: List[str] = field(default=None)
+    docstring: str = field(default=None)
+
+
+def _make_namespace_method(config: _PyArrowMethodConfig) -> Callable:
+    """Generate a namespace method that wraps a PyArrow compute function.
+
+    Args:
+        config: MethodConfig containing the function name, return type, params, and docstring
+
+    Returns:
+        A method that creates a UDFExpr wrapping the PyArrow compute function.
+    """
+    if config.params is None:
+        # Simple unary function
+        def method(self) -> "UDFExpr":
+            import pyarrow.compute as pc
+
+            func = getattr(pc, config.pc_func_name)
+
+            @udf(return_dtype=config.return_dtype)
+            def _wrapper(arr):
+                return func(arr)
+
+            return _wrapper(self._expr)
+
+    else:
+        # Function with parameters - capture them in closure
+        def method(self, *args, **kwargs) -> "UDFExpr":
+            import pyarrow.compute as pc
+
+            func = getattr(pc, config.pc_func_name)
+
+            @udf(return_dtype=config.return_dtype)
+            def _wrapper(arr):
+                return func(arr, *args, **kwargs)
+
+            return _wrapper(self._expr)
+
+    if config.docstring:
+        method.__doc__ = config.docstring
+
+    return method
+
+
+def _add_methods_from_config(
+    cls: type, methods_config: Dict[str, _PyArrowMethodConfig]
+) -> None:
+    """Add methods to a class based on a configuration dictionary.
+
+    Args:
+        cls: The class to add methods to
+        methods_config: Dict mapping method_name -> MethodConfig
+    """
+    for method_name, config in methods_config.items():
+        method = _make_namespace_method(config)
+        setattr(cls, method_name, method)
+
+
+# Configuration dictionaries for auto-generated methods
+_LIST_METHODS = {
+    "len": _PyArrowMethodConfig(
+        "list_value_length", DataType.int32(), docstring="Get the length of each list."
+    ),
+    # Note: sort is manually defined below to use Literal type for order parameter
+    "flatten": _PyArrowMethodConfig(
+        "list_flatten", DataType(object), docstring="Flatten nested lists."
+    ),
+}
+
+_STRING_METHODS = {
+    # Length
+    "len": _PyArrowMethodConfig(
+        "utf8_length",
+        DataType.int32(),
+        docstring="Get the length of each string in characters.",
+    ),
+    "byte_len": _PyArrowMethodConfig(
+        "binary_length",
+        DataType.int32(),
+        docstring="Get the length of each string in bytes.",
+    ),
+    # Case
+    "upper": _PyArrowMethodConfig(
+        "utf8_upper", DataType.string(), docstring="Convert strings to uppercase."
+    ),
+    "lower": _PyArrowMethodConfig(
+        "utf8_lower", DataType.string(), docstring="Convert strings to lowercase."
+    ),
+    "capitalize": _PyArrowMethodConfig(
+        "utf8_capitalize",
+        DataType.string(),
+        docstring="Capitalize the first character of each string.",
+    ),
+    "title": _PyArrowMethodConfig(
+        "utf8_title", DataType.string(), docstring="Convert strings to title case."
+    ),
+    "swapcase": _PyArrowMethodConfig(
+        "utf8_swapcase", DataType.string(), docstring="Swap the case of each character."
+    ),
+    # Predicates
+    "is_alpha": _PyArrowMethodConfig(
+        "utf8_is_alpha",
+        DataType.bool(),
+        docstring="Check if strings contain only alphabetic characters.",
+    ),
+    "is_alnum": _PyArrowMethodConfig(
+        "utf8_is_alnum",
+        DataType.bool(),
+        docstring="Check if strings contain only alphanumeric characters.",
+    ),
+    "is_digit": _PyArrowMethodConfig(
+        "utf8_is_digit",
+        DataType.bool(),
+        docstring="Check if strings contain only digits.",
+    ),
+    "is_decimal": _PyArrowMethodConfig(
+        "utf8_is_decimal",
+        DataType.bool(),
+        docstring="Check if strings contain only decimal characters.",
+    ),
+    "is_numeric": _PyArrowMethodConfig(
+        "utf8_is_numeric",
+        DataType.bool(),
+        docstring="Check if strings contain only numeric characters.",
+    ),
+    "is_space": _PyArrowMethodConfig(
+        "utf8_is_space",
+        DataType.bool(),
+        docstring="Check if strings contain only whitespace.",
+    ),
+    "is_lower": _PyArrowMethodConfig(
+        "utf8_is_lower", DataType.bool(), docstring="Check if strings are lowercase."
+    ),
+    "is_upper": _PyArrowMethodConfig(
+        "utf8_is_upper", DataType.bool(), docstring="Check if strings are uppercase."
+    ),
+    "is_title": _PyArrowMethodConfig(
+        "utf8_is_title", DataType.bool(), docstring="Check if strings are title-cased."
+    ),
+    "is_printable": _PyArrowMethodConfig(
+        "utf8_is_printable",
+        DataType.bool(),
+        docstring="Check if strings contain only printable characters.",
+    ),
+    # Searching (parameterized)
+    "starts_with": _PyArrowMethodConfig(
+        "starts_with",
+        DataType.bool(),
+        params=["pattern", "ignore_case"],
+        docstring="Check if strings start with a pattern.",
+    ),
+    "ends_with": _PyArrowMethodConfig(
+        "ends_with",
+        DataType.bool(),
+        params=["pattern", "ignore_case"],
+        docstring="Check if strings end with a pattern.",
+    ),
+    "contains": _PyArrowMethodConfig(
+        "match_substring",
+        DataType.bool(),
+        params=["pattern", "ignore_case"],
+        docstring="Check if strings contain a substring.",
+    ),
+    "match": _PyArrowMethodConfig(
+        "match_like",
+        DataType.bool(),
+        params=["pattern", "ignore_case"],
+        docstring="Match strings against a SQL LIKE pattern.",
+    ),
+    "find": _PyArrowMethodConfig(
+        "find_substring",
+        DataType.int32(),
+        params=["pattern", "ignore_case"],
+        docstring="Find the first occurrence of a substring.",
+    ),
+    "count": _PyArrowMethodConfig(
+        "count_substring",
+        DataType.int32(),
+        params=["pattern", "ignore_case"],
+        docstring="Count occurrences of a substring.",
+    ),
+    # Transformations
+    "reverse": _PyArrowMethodConfig(
+        "utf8_reverse", DataType.string(), docstring="Reverse each string."
+    ),
+}
+
+
+@dataclass
+class _ListNamespace:
+    """Namespace for list operations on expression columns.
+
+    This namespace provides methods for operating on list-typed columns using
+    PyArrow compute functions.
+
+    Example:
+        >>> from ray.data.expressions import col
+        >>> # Get length of list column
+        >>> expr = col("items").list.len()
+        >>> # Get first item using method
+        >>> expr = col("items").list.get(0)
+        >>> # Get first item using indexing
+        >>> expr = col("items").list[0]
+        >>> # Slice list
+        >>> expr = col("items").list[1:3]
+    """
+
+    _expr: Expr
+
+    def __getitem__(self, key: Union[int, slice]) -> "UDFExpr":
+        """Get element or slice using bracket notation.
+
+        Args:
+            key: An integer for element access or slice for list slicing.
+
+        Returns:
+            UDFExpr that extracts the element or slice.
+
+        Example:
+            >>> col("items").list[0]      # Get first item
+            >>> col("items").list[1:3]    # Get slice [1, 3)
+            >>> col("items").list[-1]     # Get last item
+        """
+        if isinstance(key, int):
+            return self.get(key)
+        elif isinstance(key, slice):
+            return self.slice(key.start, key.stop, key.step)
+        else:
+            raise TypeError(
+                f"List indices must be integers or slices, not {type(key).__name__}"
+            )
+
+    def get(self, index: int) -> "UDFExpr":
+        """Get element at the specified index from each list.
+
+        Args:
+            index: The index of the element to retrieve. Negative indices are supported.
+
+        Returns:
+            UDFExpr that extracts the element at the given index.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType(object))
+        def _list_get(arr):
+            return pc.list_element(arr, index)
+
+        return _list_get(self._expr)
+
+    def slice(self, start: int = None, stop: int = None, step: int = None) -> "UDFExpr":
+        """Slice each list.
+
+        Args:
+            start: Start index (inclusive). Defaults to 0.
+            stop: Stop index (exclusive). Defaults to list length.
+            step: Step size. Defaults to 1.
+
+        Returns:
+            UDFExpr that extracts a slice from each list.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType(object))
+        def _list_slice(arr):
+            return pc.list_slice(arr, start=start or 0, stop=stop, step=step or 1)
+
+        return _list_slice(self._expr)
+
+    def sort(
+        self, order: Literal["ascending", "descending"] = "ascending"
+    ) -> "UDFExpr":
+        """Sort each list.
+
+        Args:
+            order: Sort order, either "ascending" or "descending".
+
+        Returns:
+            UDFExpr that sorts each list in the column.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType(object))
+        def _list_sort(arr):
+            return pc.list_sort(arr, order=order)
+
+        return _list_sort(self._expr)
+
+
+@dataclass
+class _StringNamespace:
+    """Namespace for string operations on expression columns.
+
+    This namespace provides methods for operating on string-typed columns using
+    PyArrow compute functions.
+
+    Example:
+        >>> from ray.data.expressions import col
+        >>> # Convert to uppercase
+        >>> expr = col("name").str.upper()
+        >>> # Get string length
+        >>> expr = col("name").str.len()
+        >>> # Check if string starts with a prefix
+        >>> expr = col("name").str.starts_with("A")
+    """
+
+    _expr: Expr
+
+    # Custom methods that need special logic beyond simple PyArrow function calls
+    def strip(self, characters: str = None) -> "UDFExpr":
+        """Remove leading and trailing whitespace or specified characters.
+
+        Args:
+            characters: Characters to remove. If None, removes whitespace.
+
+        Returns:
+            UDFExpr that strips characters from both ends.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType.string())
+        def _str_strip(arr):
+            if characters is None:
+                return pc.utf8_trim_whitespace(arr)
+            else:
+                return pc.utf8_trim(arr, characters=characters)
+
+        return _str_strip(self._expr)
+
+    def lstrip(self, characters: str = None) -> "UDFExpr":
+        """Remove leading whitespace or specified characters.
+
+        Args:
+            characters: Characters to remove. If None, removes whitespace.
+
+        Returns:
+            UDFExpr that strips characters from the left.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType.string())
+        def _str_lstrip(arr):
+            if characters is None:
+                return pc.utf8_ltrim_whitespace(arr)
+            else:
+                return pc.utf8_ltrim(arr, characters=characters)
+
+        return _str_lstrip(self._expr)
+
+    def rstrip(self, characters: str = None) -> "UDFExpr":
+        """Remove trailing whitespace or specified characters.
+
+        Args:
+            characters: Characters to remove. If None, removes whitespace.
+
+        Returns:
+            UDFExpr that strips characters from the right.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType.string())
+        def _str_rstrip(arr):
+            if characters is None:
+                return pc.utf8_rtrim_whitespace(arr)
+            else:
+                return pc.utf8_rtrim(arr, characters=characters)
+
+        return _str_rstrip(self._expr)
+
+    # Padding
+    def pad(
+        self,
+        width: int,
+        fillchar: str = " ",
+        side: Literal["left", "right", "both"] = "right",
+    ) -> "UDFExpr":
+        """Pad strings to a specified width.
+
+        Args:
+            width: Target width.
+            fillchar: Character to use for padding.
+            side: "left", "right", or "both" for padding side.
+
+        Returns:
+            UDFExpr that pads strings.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType.string())
+        def _str_pad(arr):
+            if side == "right":
+                return pc.utf8_rpad(arr, width=width, padding=fillchar)
+            elif side == "left":
+                return pc.utf8_lpad(arr, width=width, padding=fillchar)
+            elif side == "both":
+                return pc.utf8_center(arr, width=width, padding=fillchar)
+            else:
+                raise ValueError("side must be 'left', 'right', or 'both'")
+
+        return _str_pad(self._expr)
+
+    def center(self, width: int, fillchar: str = " ") -> "UDFExpr":
+        """Center strings in a field of given width.
+
+        Args:
+            width: Target width.
+            fillchar: Character to use for padding.
+
+        Returns:
+            UDFExpr that centers strings.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType.string())
+        def _str_center(arr):
+            return pc.utf8_center(arr, width=width, padding=fillchar)
+
+        return _str_center(self._expr)
+
+    def slice(self, start: int, stop: int = None, step: int = 1) -> "UDFExpr":
+        """Slice strings by codeunit indices.
+
+        Args:
+            start: Start position.
+            stop: Stop position (exclusive). If None, slices to the end.
+            step: Step size.
+
+        Returns:
+            UDFExpr that slices each string.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType.string())
+        def _str_slice(arr):
+            if stop is None:
+                return pc.utf8_slice_codeunits(arr, start=start, step=step)
+            else:
+                return pc.utf8_slice_codeunits(arr, start=start, stop=stop, step=step)
+
+        return _str_slice(self._expr)
+
+    # Replacement
+    def replace(
+        self, pattern: str, replacement: str, max_replacements: int = None
+    ) -> "UDFExpr":
+        """Replace occurrences of a substring.
+
+        Args:
+            pattern: The substring to replace.
+            replacement: The replacement string.
+            max_replacements: Maximum number of replacements. None means replace all.
+
+        Returns:
+            UDFExpr that replaces substrings.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType.string())
+        def _str_replace(arr):
+            if max_replacements is None:
+                return pc.replace_substring(
+                    arr, pattern=pattern, replacement=replacement
+                )
+            else:
+                return pc.replace_substring(
+                    arr,
+                    pattern=pattern,
+                    replacement=replacement,
+                    max_replacements=max_replacements,
+                )
+
+        return _str_replace(self._expr)
+
+    def replace_regex(
+        self, pattern: str, replacement: str, max_replacements: int = None
+    ) -> "UDFExpr":
+        """Replace occurrences matching a regex pattern.
+
+        Args:
+            pattern: The regex pattern to match.
+            replacement: The replacement string.
+            max_replacements: Maximum number of replacements. None means replace all.
+
+        Returns:
+            UDFExpr that replaces matching substrings.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType.string())
+        def _str_replace_regex(arr):
+            if max_replacements is None:
+                return pc.replace_substring_regex(
+                    arr, pattern=pattern, replacement=replacement
+                )
+            else:
+                return pc.replace_substring_regex(
+                    arr,
+                    pattern=pattern,
+                    replacement=replacement,
+                    max_replacements=max_replacements,
+                )
+
+        return _str_replace_regex(self._expr)
+
+    def replace_slice(self, start: int, stop: int, replacement: str) -> "UDFExpr":
+        """Replace a slice with a string.
+
+        Args:
+            start: Start position of slice.
+            stop: Stop position of slice.
+            replacement: The replacement string.
+
+        Returns:
+            UDFExpr that replaces the slice.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType.string())
+        def _str_replace_slice(arr):
+            return pc.binary_replace_slice(
+                arr, start=start, stop=stop, replacement=replacement
+            )
+
+        return _str_replace_slice(self._expr)
+
+    # Splitting and joining
+    def split(
+        self, pattern: str, max_splits: int = None, reverse: bool = False
+    ) -> "UDFExpr":
+        """Split strings by a pattern.
+
+        Args:
+            pattern: The pattern to split on.
+            max_splits: Maximum number of splits. None means split all.
+            reverse: Whether to split from the right.
+
+        Returns:
+            UDFExpr that returns lists of split strings.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType(object))
+        def _str_split(arr):
+            if max_splits is None:
+                return pc.split_pattern(arr, pattern=pattern, reverse=reverse)
+            else:
+                return pc.split_pattern(
+                    arr, pattern=pattern, max_splits=max_splits, reverse=reverse
+                )
+
+        return _str_split(self._expr)
+
+    def split_regex(
+        self, pattern: str, max_splits: int = None, reverse: bool = False
+    ) -> "UDFExpr":
+        """Split strings by a regex pattern.
+
+        Args:
+            pattern: The regex pattern to split on.
+            max_splits: Maximum number of splits. None means split all.
+            reverse: Whether to split from the right.
+
+        Returns:
+            UDFExpr that returns lists of split strings.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType(object))
+        def _str_split_regex(arr):
+            if max_splits is None:
+                return pc.split_pattern_regex(arr, pattern=pattern, reverse=reverse)
+            else:
+                return pc.split_pattern_regex(
+                    arr, pattern=pattern, max_splits=max_splits, reverse=reverse
+                )
+
+        return _str_split_regex(self._expr)
+
+    def split_whitespace(
+        self, max_splits: int = None, reverse: bool = False
+    ) -> "UDFExpr":
+        """Split strings on whitespace.
+
+        Args:
+            max_splits: Maximum number of splits. None means split all.
+            reverse: Whether to split from the right.
+
+        Returns:
+            UDFExpr that returns lists of split strings.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType(object))
+        def _str_split_whitespace(arr):
+            if max_splits is None:
+                return pc.utf8_split_whitespace(arr, reverse=reverse)
+            else:
+                return pc.utf8_split_whitespace(
+                    arr, max_splits=max_splits, reverse=reverse
+                )
+
+        return _str_split_whitespace(self._expr)
+
+    # Regex extraction
+    def extract(self, pattern: str) -> "UDFExpr":
+        """Extract a substring matching a regex pattern.
+
+        Args:
+            pattern: The regex pattern to extract.
+
+        Returns:
+            UDFExpr that returns the first matching substring.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType.string())
+        def _str_extract(arr):
+            return pc.extract_regex(arr, pattern=pattern)
+
+        return _str_extract(self._expr)
+
+    def repeat(self, n: int) -> "UDFExpr":
+        """Repeat each string n times.
+
+        Args:
+            n: Number of repetitions.
+
+        Returns:
+            UDFExpr that repeats strings.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType.string())
+        def _str_repeat(arr):
+            return pc.binary_repeat(arr, n)
+
+        return _str_repeat(self._expr)
+
+
+@dataclass
+class _StructNamespace:
+    """Namespace for struct operations on expression columns.
+
+    This namespace provides methods for operating on struct-typed columns using
+    PyArrow compute functions.
+
+    Example:
+        >>> from ray.data.expressions import col
+        >>> # Access a field using method
+        >>> expr = col("user_record").struct.field("age")
+        >>> # Access a field using bracket notation
+        >>> expr = col("user_record").struct["age"]
+        >>> # Access nested field
+        >>> expr = col("user_record").struct["address"].struct["city"]
+    """
+
+    _expr: Expr
+
+    def __getitem__(self, field_name: str) -> "UDFExpr":
+        """Extract a field using bracket notation.
+
+        Args:
+            field_name: The name of the field to extract.
+
+        Returns:
+            UDFExpr that extracts the specified field from each struct.
+
+        Example:
+            >>> col("user").struct["age"]  # Get age field
+            >>> col("user").struct["address"].struct["city"]  # Get nested city field
+        """
+        return self.field(field_name)
+
+    def field(self, field_name: str) -> "UDFExpr":
+        """Extract a field from a struct.
+
+        Args:
+            field_name: The name of the field to extract.
+
+        Returns:
+            UDFExpr that extracts the specified field from each struct.
+        """
+        import pyarrow.compute as pc
+
+        @udf(return_dtype=DataType(object))
+        def _struct_field(arr):
+            return pc.struct_field(arr, field_name)
+
+        return _struct_field(self._expr)
+
+
+# Auto-generate methods from configuration
+_add_methods_from_config(_ListNamespace, _LIST_METHODS)
+_add_methods_from_config(_StringNamespace, _STRING_METHODS)
 
 
 @DeveloperAPI(stability="alpha")
