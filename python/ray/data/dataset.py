@@ -6515,11 +6515,7 @@ class Dataset:
 
     def _execute_to_iterator(
         self,
-    ) -> Tuple[
-        Iterator[RefBundle],
-        DatasetStats,
-        Optional["PhysicalOperator"],
-    ]:
+    ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["PhysicalOperator"]]:
         bundle_iter, stats, executor, last_operator = self._plan.execute_to_iterator()
         # Capture current executor to be able to clean it up properly, once
         # dataset is garbage-collected
