@@ -343,7 +343,7 @@ class Algorithm(Checkpointable, Trainable):
                 new="Algorithm.from_checkpoint(path=...)",
                 error=True,
             )
-        checkpoint_info = get_checkpoint_info(path)
+        checkpoint_info = get_checkpoint_info(path, filesystem)
 
         # New API stack -> Use Checkpointable's default implementation.
         if checkpoint_info["checkpoint_version"] >= version.Version("2.0"):
