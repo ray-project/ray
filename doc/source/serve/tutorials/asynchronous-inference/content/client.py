@@ -33,8 +33,7 @@ class AsyncPDFClient:
                 "max_summary_paragraphs": max_summary_paragraphs,
             },
         )
-        response.raise_for_status()
-        return response.json()["task_id"]["id"]
+        return response.json()["task_id"]
 
     def get_task_status(self, task_id: str) -> Dict[str, Any]:
         """

@@ -30,8 +30,8 @@ logger = logging.getLogger("ray.serve")
 TASK_PROCESSOR_CONFIG = TaskProcessorConfig(
     queue_name="pdf_processing_queue",
     adapter_config=CeleryAdapterConfig(
-        broker_url="redis://127.0.0.1:6379/0",
-        backend_url="redis://127.0.0.1:6379/0",
+        broker_url="redis://127.0.0.1:6399/0",
+        backend_url="redis://127.0.0.1:6399/0",
     ),
     max_retries=3,
     failed_task_queue_name="failed_pdfs",

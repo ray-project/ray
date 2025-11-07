@@ -35,6 +35,7 @@ steps:
       - export RAY_COMMIT="$RAY_COMMIT"
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
     matrix:
+      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -57,6 +58,7 @@ steps:
       - export RAY_COMMIT="$RAY_COMMIT"
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
     matrix:
+      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
