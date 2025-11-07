@@ -89,12 +89,9 @@ def _estimate_dataset_size_bytes(dataset: Dataset) -> Optional[int]:
     Returns:
         Estimated size in bytes, or None if unable to estimate.
     """
-    try:
-        stats = dataset.stats()
-        if hasattr(stats, "dataset_bytes_spilled"):
-            return getattr(stats, "dataset_bytes_spilled", None)
-    except Exception:
-        pass
+    stats = dataset.stats()
+    if hasattr(stats, "dataset_bytes_spilled"):
+        return getattr(stats, "dataset_bytes_spilled", None)
     return None
 
 
@@ -228,12 +225,9 @@ class BroadcastJoinFunction:
             import pyarrow as pa
 
             self._small_table_schema = pa.schema([])
-            self._is_small_table_empty = True
         else:
             # Get schema from the dataset metadata to avoid driver materialization
             self._small_table_schema = coalesced_ds.schema()
-            # We can't easily determine if empty without materializing, so we'll check in workers
-            self._is_small_table_empty = None  # Will be determined lazily
 
         # No cached table - everything will be materialized in workers
         self._cached_small_table = None
@@ -304,36 +298,19 @@ class BroadcastJoinFunction:
         Raises:
             ValueError: If the join operation cannot be performed due to incompatible schemas.
         """
-        try:
-            # Convert batch to PyArrow table if needed
-            if isinstance(batch, dict):
-                import pyarrow as pa
+        # Convert batch to PyArrow table if needed
+        if isinstance(batch, dict):
+            import pyarrow as pa
 
-                batch = pa.table(batch)
+            batch = pa.table(batch)
 
-            # Validate batch is not None
-            if batch is None:
-                raise ValueError(
-                    "Received None as batch input to broadcast join. "
-                    "This may indicate an issue with the upstream dataset."
-                )
+        # Handle empty batch case
+        if batch.num_rows == 0:
+            return self._create_empty_result_table(batch)
 
-            # Handle empty batch case
-            if batch.num_rows == 0:
-                return self._create_empty_result_table(batch)
-
-            # Handle empty small table case
-            if self.small_table.num_rows == 0:
-                return self._handle_empty_small_table(batch)
-        except ValueError:
-            # Re-raise ValueError as-is
-            raise
-        except Exception as e:
-            raise ValueError(
-                f"Error preparing data for broadcast join: {e}. "
-                f"Batch type: {type(batch).__name__}, "
-                f"Join type: {self.join_type.value if hasattr(self.join_type, 'value') else self.join_type}"
-            ) from e
+        # Handle empty small table case
+        if self.small_table.num_rows == 0:
+            return self._handle_empty_small_table(batch)
 
         # Get the appropriate PyArrow join type
         arrow_join_type = JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self.join_type]
@@ -350,66 +327,43 @@ class BroadcastJoinFunction:
             self.small_table, self.small_table_key_columns
         )
 
-        try:
-            # Perform the PyArrow join
-            # The join parameters depend on whether datasets were swapped for optimization
-            if self.datasets_swapped:
-                # When datasets are swapped, small_table becomes the left table in the join
-                # We need to adjust the join type to preserve original left/right semantics
-                swapped_join_type = self._get_swapped_join_type(arrow_join_type)
+        # Perform the PyArrow join
+        # The join parameters depend on whether datasets were swapped for optimization
+        if self.datasets_swapped:
+            # When datasets are swapped, small_table becomes the left table in the join
+            # We need to adjust the join type to preserve original left/right semantics
+            swapped_join_type = self._get_swapped_join_type(arrow_join_type)
 
-                joined_table = small_table.join(
-                    batch,
-                    join_type=swapped_join_type,
-                    keys=list(self.small_table_key_columns),
-                    right_keys=(
-                        list(self.large_table_key_columns)
-                        if self.small_table_key_columns != self.large_table_key_columns
-                        else None
-                    ),
-                    left_suffix=self.small_table_columns_suffix,
-                    right_suffix=self.large_table_columns_suffix,
-                    coalesce_keys=coalesce_keys,
-                )
-            else:
-                # Normal case: large batch joins with small table
-                joined_table = batch.join(
-                    small_table,
-                    join_type=arrow_join_type,
-                    keys=list(self.large_table_key_columns),
-                    right_keys=(
-                        list(self.small_table_key_columns)
-                        if self.large_table_key_columns != self.small_table_key_columns
-                        else None
-                    ),
-                    left_suffix=self.large_table_columns_suffix,
-                    right_suffix=self.small_table_columns_suffix,
-                    coalesce_keys=coalesce_keys,
-                )
-
-            return joined_table
-        except Exception as e:
-            # Provide actionable error message
-            error_msg = (
-                f"PyArrow join operation failed: {e}. "
-                f"Join type: {arrow_join_type}, "
-                f"Large table keys: {list(self.large_table_key_columns)}, "
-                f"Small table keys: {list(self.small_table_key_columns)}. "
+            joined_table = small_table.join(
+                batch,
+                join_type=swapped_join_type,
+                keys=list(self.small_table_key_columns),
+                right_keys=(
+                    list(self.large_table_key_columns)
+                    if self.small_table_key_columns != self.large_table_key_columns
+                    else None
+                ),
+                left_suffix=self.small_table_columns_suffix,
+                right_suffix=self.large_table_columns_suffix,
+                coalesce_keys=coalesce_keys,
+            )
+        else:
+            # Normal case: large batch joins with small table
+            joined_table = batch.join(
+                small_table,
+                join_type=arrow_join_type,
+                keys=list(self.large_table_key_columns),
+                right_keys=(
+                    list(self.small_table_key_columns)
+                    if self.large_table_key_columns != self.small_table_key_columns
+                    else None
+                ),
+                left_suffix=self.large_table_columns_suffix,
+                right_suffix=self.small_table_columns_suffix,
+                coalesce_keys=coalesce_keys,
             )
 
-            # Add specific guidance for common errors
-            if "No match" in str(e) or "key" in str(e).lower():
-                error_msg += (
-                    "This may indicate a key column mismatch. "
-                    "Ensure join key columns exist in both datasets and have compatible types."
-                )
-            elif "type" in str(e).lower() or "schema" in str(e).lower():
-                error_msg += (
-                    "This may indicate a schema or type incompatibility. "
-                    "Ensure join key columns have the same data types in both datasets."
-                )
-
-            raise ValueError(error_msg) from e
+        return joined_table
 
     def _fix_null_types(
         self, table: "pa.Table", key_columns: Tuple[str, ...]
@@ -533,8 +487,7 @@ class BroadcastJoinFunction:
                 return self._create_empty_result_table(batch)
             elif self.join_type in [JoinType.RIGHT_OUTER, JoinType.FULL_OUTER]:
                 # Right and full outer joins return the right side when left side is empty
-                # Add null columns for the missing left side
-                return self._add_null_columns_for_missing_left(batch)
+                return self._add_null_columns(batch, self.small_table_columns_suffix)
             else:
                 return self._create_empty_result_table(batch)
         else:
@@ -544,21 +497,22 @@ class BroadcastJoinFunction:
                 return self._create_empty_result_table(batch)
             elif self.join_type in [JoinType.LEFT_OUTER, JoinType.FULL_OUTER]:
                 # Left and full outer joins return the left side when right side is empty
-                # Add null columns for the missing right side
-                return self._add_null_columns_for_missing_right(batch)
+                return self._add_null_columns(batch, self.small_table_columns_suffix)
             else:
                 return self._create_empty_result_table(batch)
 
-    def _add_null_columns_for_missing_right(self, batch: "pa.Table") -> "pa.Table":
-        """Add null columns for missing right side in outer joins.
+    def _add_null_columns(self, batch: "pa.Table", suffix: Optional[str]) -> "pa.Table":
+        """Add null columns for missing side in outer joins.
 
         Args:
             batch: The batch from the large dataset.
+            suffix: Suffix to append to column names if there's a conflict.
 
         Returns:
-            The batch with null columns added for the missing right side.
+            The batch with null columns added for the missing side.
         """
         result_table = batch
+        import pyarrow as pa
 
         # Add null columns for each column in the small table
         for col_name in self.small_table_column_names:
@@ -567,48 +521,12 @@ class BroadcastJoinFunction:
                 and col_name not in batch.column_names
             ):
                 # Add null column with appropriate name and type
-                if col_name in batch.column_names and self.small_table_columns_suffix:
-                    new_col_name = f"{col_name}{self.small_table_columns_suffix}"
+                if col_name in batch.column_names and suffix:
+                    new_col_name = f"{col_name}{suffix}"
                 else:
                     new_col_name = col_name
 
                 col_type = self.small_table_schema_field(col_name).type
-                import pyarrow as pa
-
-                null_array = pa.array([None] * batch.num_rows, type=col_type)
-                result_table = result_table.append_column(new_col_name, null_array)
-
-        return result_table
-
-    def _add_null_columns_for_missing_left(self, batch: "pa.Table") -> "pa.Table":
-        """Add null columns for missing left side in outer joins when datasets are swapped.
-
-        This method handles the case where the original left dataset (small table) is empty
-        and we need to add null columns for the missing left side columns.
-
-        Args:
-            batch: The batch from the large dataset (original right side).
-
-        Returns:
-            The batch with null columns added for the missing left side.
-        """
-        result_table = batch
-
-        # Add null columns for each column in the small table (original left side)
-        for col_name in self.small_table_column_names:
-            if (
-                col_name not in self.small_table_key_columns
-                and col_name not in batch.column_names
-            ):
-                # Add null column with appropriate name and type
-                if col_name in batch.column_names and self.small_table_columns_suffix:
-                    new_col_name = f"{col_name}{self.small_table_columns_suffix}"
-                else:
-                    new_col_name = col_name
-
-                col_type = self.small_table_schema_field(col_name).type
-                import pyarrow as pa
-
                 null_array = pa.array([None] * batch.num_rows, type=col_type)
                 result_table = result_table.append_column(new_col_name, null_array)
 
