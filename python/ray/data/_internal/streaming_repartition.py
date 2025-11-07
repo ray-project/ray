@@ -1,9 +1,9 @@
-import math
 from collections import deque
 from dataclasses import dataclass
 from typing import Deque, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import BlockSlice, RefBundle
+from ray.data._internal.execution.interfaces.ref_bundle import _slice_block_metadata
 from ray.data._internal.execution.operators.map_operator import BaseRefBundler
 from ray.data.block import BlockMetadata, Schema
 from ray.types import ObjectRef
@@ -53,9 +53,7 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
         self._target_num_rows = target_num_rows_per_block
         self._pending_blocks: Deque[_PendingBlock] = deque()
         self._bundle_remaining_blocks: Dict[RefBundle, int] = {}
-        self._ready_bundles: Deque[
-            Tuple[List[RefBundle], RefBundle, Optional[List[BlockSlice]]]
-        ] = deque()
+        self._ready_bundles: Deque[Tuple[List[RefBundle], RefBundle]] = deque()
         self._total_pending_rows = 0
         self._next_output_index = 0
 
@@ -86,7 +84,7 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
 
     def get_next_bundle(
         self,
-    ) -> Tuple[List[RefBundle], RefBundle, Optional[List[BlockSlice]]]:
+    ) -> Tuple[List[RefBundle], RefBundle]:
         return self._ready_bundles.popleft()
 
     def done_adding_bundles(self):
@@ -99,9 +97,7 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
         return 0  # TODO: implement
 
     def _drain_ready_tasks(self, flush_remaining: bool = False):
-        task_inputs: List[
-            Tuple[List[RefBundle], RefBundle, Optional[List[BlockSlice]]]
-        ] = []
+        task_inputs: List[Tuple[List[RefBundle], RefBundle]] = []
         while self._total_pending_rows >= self._target_num_rows or (
             flush_remaining and self._total_pending_rows > 0
         ):
@@ -128,9 +124,7 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
             task_inputs.append(self._build_task([rows_needed]))
         self._ready_bundles.extend(task_inputs)
 
-    def _build_task(
-        self, output_rows: List[int]
-    ) -> Tuple[List[RefBundle], RefBundle, Optional[List[BlockSlice]]]:
+    def _build_task(self, output_rows: List[int]) -> Tuple[List[RefBundle], RefBundle]:
         total_rows_needed = sum(output_rows)
         assert (
             total_rows_needed <= self._total_pending_rows
@@ -203,24 +197,7 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
             blocks=tuple(bundle_blocks),
             schema=bundle_schema,
             owns_blocks=False,
+            slices=block_slices,
         )
 
-        return fully_consumed_refs, ref_bundle, block_slices
-
-
-def _slice_block_metadata(
-    metadata: BlockMetadata, num_rows_in_slice: int
-) -> BlockMetadata:
-    assert (
-        num_rows_in_slice > 0
-    ), "num_rows_in_slice must be positive for streaming repartition."
-    size_bytes = metadata.size_bytes
-    if metadata.size_bytes is not None and metadata.num_rows:
-        per_row = metadata.size_bytes / metadata.num_rows
-        size_bytes = max(1, int(math.ceil(per_row * num_rows_in_slice)))
-    return BlockMetadata(
-        num_rows=num_rows_in_slice if metadata.num_rows is not None else None,
-        size_bytes=size_bytes,
-        exec_stats=None,
-        input_files=list(metadata.input_files),
-    )
+        return fully_consumed_refs, ref_bundle

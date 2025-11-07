@@ -122,7 +122,7 @@ class TaskPoolMapOperator(MapOperator):
             data_context,
             ctx,
             *bundle.block_refs,
-            slices=slices,
+            slices=bundle.slices,
             **self.get_map_task_kwargs(),
         )
         self._submit_data_task(gen, bundle)

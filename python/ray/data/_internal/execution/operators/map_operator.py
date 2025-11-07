@@ -93,7 +93,7 @@ class BaseRefBundler(ABC):
     @abstractmethod
     def get_next_bundle(
         self,
-    ) -> Tuple[List[RefBundle], RefBundle, Optional[List[BlockSlice]]]:
+    ) -> Tuple[List[RefBundle], RefBundle]:
         """Pop and return the next bundled input ready for task submission."""
         pass
 
@@ -388,17 +388,13 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
             # The ref bundler combines one or more RefBundles into a new larger
             # RefBundle. Rather than dequeuing the new RefBundle, which was never
             # enqueued in the first place, we dequeue the original RefBundles.
-            (
-                input_refs,
-                bundled_input,
-                block_slices,
-            ) = self._block_ref_bundler.get_next_bundle()
+            (input_refs, bundled_input) = self._block_ref_bundler.get_next_bundle()
             for bundle in input_refs:
                 self._metrics.on_input_dequeued(bundle)
 
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue
-            self._add_bundled_input(bundled_input, block_slices)
+            self._add_bundled_input(bundled_input)
 
     def _get_dynamic_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
@@ -437,9 +433,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         return ray_remote_args
 
     @abstractmethod
-    def _add_bundled_input(
-        self, refs: RefBundle, slices: Optional[List[BlockSlice]] = None
-    ):
+    def _add_bundled_input(self, refs: RefBundle):
         """Add a pre-bundled upstream output to this operator.
 
         Unlike the add_input() arg, this RefBundle has already been further bundled by
@@ -450,7 +444,6 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
         Args:
             refs: The fully-bundled ref bundle that should be added as input.
-            slices: List of block slices for the bundle.
         """
         raise NotImplementedError
 
@@ -534,9 +527,8 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
             (
                 _,
                 bundled_input,
-                block_slices,
             ) = self._block_ref_bundler.get_next_bundle()
-            self._add_bundled_input(bundled_input, block_slices)
+            self._add_bundled_input(bundled_input)
         super().all_inputs_done()
 
     def has_next(self) -> bool:
@@ -730,7 +722,7 @@ class BlockRefBundler(BaseRefBundler):
 
     def get_next_bundle(
         self,
-    ) -> Tuple[List[RefBundle], RefBundle, Optional[List[BlockSlice]]]:
+    ) -> Tuple[List[RefBundle], RefBundle]:
         """Gets the next bundle.
 
         Returns:
@@ -746,7 +738,7 @@ class BlockRefBundler(BaseRefBundler):
             self._bundle_buffer = []
             self._bundle_buffer_size = 0
             self._bundle_buffer_size_bytes = 0
-            return [bundle], bundle, None
+            return [bundle], bundle
 
         remainder = []
         output_buffer = []
@@ -775,7 +767,7 @@ class BlockRefBundler(BaseRefBundler):
             bundle.size_bytes() for bundle in remainder
         )
 
-        return list(output_buffer), _merge_ref_bundles(*output_buffer), None
+        return list(output_buffer), _merge_ref_bundles(*output_buffer)
 
     def done_adding_bundles(self):
         """Indicate that no more RefBundles will be added to this bundler."""

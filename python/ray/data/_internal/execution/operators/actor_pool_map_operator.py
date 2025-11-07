@@ -340,7 +340,7 @@ class ActorPoolMapOperator(MapOperator):
                 self.data_context,
                 ctx,
                 *input_blocks,
-                slices=slices,
+                slices=bundle.slices,
                 **self.get_map_task_kwargs(),
             )
 

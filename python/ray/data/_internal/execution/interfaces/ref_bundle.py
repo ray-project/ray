@@ -1,3 +1,4 @@
+import math
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, Iterator, List, Optional, Tuple
@@ -51,6 +52,10 @@ class RefBundle:
 
     # Whether we own the blocks (can safely destroy them).
     owns_blocks: bool
+
+    # The slices of the blocks in this bundle. This is optional, and may be None
+    # if the blocks are not sliced.
+    slices: Optional[List[BlockSlice]] = None
 
     # This attribute is used by the split() operator to assign bundles to logical
     # output splits. It is otherwise None.
@@ -184,3 +189,21 @@ def _ref_bundles_iterator_to_block_refs_list(
     return [
         block_ref for ref_bundle in ref_bundles for block_ref in ref_bundle.block_refs
     ]
+
+
+def _slice_block_metadata(
+    metadata: BlockMetadata, num_rows_in_slice: int
+) -> BlockMetadata:
+    assert (
+        num_rows_in_slice > 0
+    ), "num_rows_in_slice must be positive for slicing block metadata."
+    size_bytes = metadata.size_bytes
+    if metadata.size_bytes is not None and metadata.num_rows:
+        per_row = metadata.size_bytes / metadata.num_rows
+        size_bytes = max(1, int(math.ceil(per_row * num_rows_in_slice)))
+    return BlockMetadata(
+        num_rows=num_rows_in_slice if metadata.num_rows is not None else None,
+        size_bytes=size_bytes,
+        exec_stats=None,
+        input_files=list(metadata.input_files),
+    )
