@@ -947,7 +947,7 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
                 col = pc.list_flatten(col)
             else:
                 py_list = col.to_pylist()
-                str_list = [str(v) for v in py_list]
+                str_list = [None if v is None else str(v) for v in py_list]
                 col = pyarrow.array(str_list, type=pyarrow.string())
         return pc.unique(col).to_pylist()
 
