@@ -133,21 +133,7 @@ class _DatasourceProjectionPushdownMixin:
             self._projection_map, projection_map
         )
 
-        # Hook for datasource-specific cleanup
-        self._post_apply_projection(clone)
-
         return clone
-
-    def _post_apply_projection(self, clone: "Datasource") -> None:
-        """Hook for datasource-specific cleanup after applying projection.
-
-        Override in subclasses for cleanup like invalidating caches.
-        Default implementation does nothing.
-
-        Args:
-            clone: The cloned datasource instance with projection already applied
-        """
-        pass
 
     @staticmethod
     def _apply_rename(
@@ -233,21 +219,7 @@ class _DatasourcePredicatePushdownMixin:
             else clone._predicate_expr & predicate_expr
         )
 
-        # Hook for datasource-specific cleanup
-        self._post_apply_predicate(clone)
-
         return clone
-
-    def _post_apply_predicate(self, clone: "Datasource") -> None:
-        """Hook for datasource-specific cleanup after applying predicate.
-
-        Override in subclasses for cleanup like invalidating caches.
-        Default implementation does nothing.
-
-        Args:
-            clone: The cloned datasource instance with predicate already applied
-        """
-        pass
 
 
 @PublicAPI

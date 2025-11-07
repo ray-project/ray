@@ -234,16 +234,6 @@ class IcebergDatasource(Datasource):
         """Returns True to indicate this datasource supports projection pushdown."""
         return True
 
-    def _post_apply_predicate(self, clone: "IcebergDatasource") -> None:
-        """Invalidate cached plan_files and table after predicate changes."""
-        clone._plan_files = None
-        clone._table = None
-
-    def _post_apply_projection(self, clone: "IcebergDatasource") -> None:
-        """Invalidate cached plan_files and table after projection changes."""
-        clone._plan_files = None
-        clone._table = None
-
     @staticmethod
     def _distribute_tasks_into_equal_chunks(
         plan_files: Iterable["FileScanTask"], n_chunks: int
