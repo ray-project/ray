@@ -189,8 +189,11 @@ def download_bytes_threaded(
         def load_uri_bytes(uri_path_iterator):
             """Function that takes an iterator of URI paths and yields downloaded bytes for each."""
             for uri_path in uri_path_iterator:
-                with fs.open_input_file(uri_path) as f:
-                    yield f.read()
+                try:
+                    with fs.open_input_file(uri_path) as f:
+                        yield f.read()
+                except OSError as _:
+                    yield None
 
         # Use make_async_gen to download URI bytes concurrently
         # This preserves the order of results to match the input URIs
