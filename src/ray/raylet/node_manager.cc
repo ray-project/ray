@@ -3472,9 +3472,11 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
         });
     return;
   }
+  std::shared_ptr<bool> replied = std::make_shared<bool>(false);
+
   auto timer = execute_after(
       io_service_,
-      [this, reply, send_reply_callback, worker_id]() {
+      [this, reply, send_reply_callback, worker_id, replied]() {
         auto current_worker = worker_pool_.GetRegisteredWorker(worker_id);
         if (current_worker) {
           // If the worker is still alive, force kill it
@@ -3487,6 +3489,8 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
                         "Force-killed by ray.cancel(force=True)",
                         /*force=*/true);
         }
+
+        *replied = true;
         reply->set_attempt_succeeded(true);
         reply->set_requested_task_running(false);
         send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -3496,7 +3500,7 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
 
   worker->rpc_client()->CancelTask(
       cancel_task_request,
-      [task_id = request.intended_task_id(), timer, reply, send_reply_callback](
+      [task_id = request.intended_task_id(), timer, reply, send_reply_callback, replied](
           const ray::Status &status, const rpc::CancelTaskReply &cancel_task_reply) {
         if (!status.ok()) {
           RAY_LOG(DEBUG) << "CancelTask RPC failed for task " << task_id << ": "
@@ -3505,10 +3509,12 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
           // timer above
           return;
         }
-        reply->set_attempt_succeeded(cancel_task_reply.attempt_succeeded());
-        reply->set_requested_task_running(cancel_task_reply.requested_task_running());
-        send_reply_callback(Status::OK(), nullptr, nullptr);
-        timer->cancel();
+        if (!*replied) {
+          reply->set_attempt_succeeded(cancel_task_reply.attempt_succeeded());
+          reply->set_requested_task_running(cancel_task_reply.requested_task_running());
+          send_reply_callback(Status::OK(), nullptr, nullptr);
+          timer->cancel();
+        }
       });
 }
 

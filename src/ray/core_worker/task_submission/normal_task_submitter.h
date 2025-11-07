@@ -133,10 +133,10 @@ class NormalTaskSubmitter {
   /// It is used when a object ID is not owned by the current process.
   /// We cannot cancel the task in this case because we don't have enough
   /// information to cancel a task.
-  void CancelRemoteTask(const ObjectID &object_id,
-                        const rpc::Address &worker_addr,
-                        bool force_kill,
-                        bool recursive);
+  void RequestOwnerToCancelTask(const ObjectID &object_id,
+                                const rpc::Address &worker_addr,
+                                bool force_kill,
+                                bool recursive);
 
   /// Queue the streaming generator up for resubmission.
   /// \return true if the task is still executing and the submitter agrees to resubmit

@@ -809,18 +809,18 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   do_cancel_local_task(*node_info);
 }
 
-void NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
-                                           const rpc::Address &worker_addr,
-                                           bool force_kill,
-                                           bool recursive) {
+void NormalTaskSubmitter::RequestOwnerToCancelTask(const ObjectID &object_id,
+                                                   const rpc::Address &worker_addr,
+                                                   bool force_kill,
+                                                   bool recursive) {
   auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
-  auto request = rpc::CancelRemoteTaskRequest();
+  auto request = rpc::RequestOwnerToCancelTaskRequest();
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);
   request.set_remote_object_id(object_id.Binary());
-  client->CancelRemoteTask(
+  client->RequestOwnerToCancelTask(
       std::move(request),
-      [](const Status &status, const rpc::CancelRemoteTaskReply &reply) {
+      [](const Status &status, const rpc::RequestOwnerToCancelTaskReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to cancel remote task: " << status.ToString();
         }

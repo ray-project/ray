@@ -293,7 +293,7 @@ message CancelTaskReply {
   bool attempt_succeeded = 2;
 }
 
-message CancelRemoteTaskRequest {
+message RequestOwnerToCancelTaskRequest {
   // Object ID of the remote task that should be killed.
   bytes remote_object_id = 1;
   // Whether to kill the worker.
@@ -302,7 +302,7 @@ message CancelRemoteTaskRequest {
   bool recursive = 3;
 }
 
-message CancelRemoteTaskReply {}
+message RequestOwnerToCancelTaskReply {}
 
 message GetCoreWorkerStatsRequest {
   // The ID of the worker this message is intended for.
@@ -536,7 +536,7 @@ service CoreWorkerService {
 
   // Request from a worker to the owner worker to issue a cancellation.
   // Failure: Retries, it's idempotent.
-  rpc CancelRemoteTask(CancelRemoteTaskRequest) returns (CancelRemoteTaskReply);
+  rpc RequestOwnerToCancelTask(RequestOwnerToCancelTaskRequest) returns (RequestOwnerToCancelTaskReply);
 
   // From raylet to get metrics from its workers.
   // Failure: Should not fail, always from local raylet.

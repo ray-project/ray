@@ -2439,12 +2439,13 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
   }
 
   if (obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
-    // We don't have CancelRemoteTask for actor_task_submitter_
+    // We don't have RequestOwnerToCancelTask for actor_task_submitter_
     // because it requires the same implementation.
     RAY_LOG(DEBUG).WithField(object_id)
         << "Request to cancel a task of object to an owner "
         << obj_addr.SerializeAsString();
-    normal_task_submitter_->CancelRemoteTask(object_id, obj_addr, force_kill, recursive);
+    normal_task_submitter_->RequestOwnerToCancelTask(
+        object_id, obj_addr, force_kill, recursive);
     return Status::OK();
   }
 
@@ -3878,9 +3879,10 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
   reference_counter_->SubscribeRefRemoved(object_id, contained_in_id, owner_address);
 }
 
-void CoreWorker::HandleCancelRemoteTask(rpc::CancelRemoteTaskRequest request,
-                                        rpc::CancelRemoteTaskReply *reply,
-                                        rpc::SendReplyCallback send_reply_callback) {
+void CoreWorker::HandleRequestOwnerToCancelTask(
+    rpc::RequestOwnerToCancelTaskRequest request,
+    rpc::RequestOwnerToCancelTaskReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   auto status = CancelTask(ObjectID::FromBinary(request.remote_object_id()),
                            request.force_kill(),
                            request.recursive());

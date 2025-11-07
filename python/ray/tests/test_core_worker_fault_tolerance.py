@@ -170,7 +170,7 @@ def inject_cancel_remote_task_rpc_failure(monkeypatch, request):
     deterministic_failure = request.param
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "CoreWorkerService.grpc_client.CancelRemoteTask=1:"
+        "CoreWorkerService.grpc_client.RequestOwnerToCancelTask=1:"
         + ("100:0" if deterministic_failure == "request" else "0:100"),
     )
 
