@@ -137,7 +137,6 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
-    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.grouped_data import GroupedData
 
 from ray.data.expressions import Expr, StarExpr, col
@@ -5112,7 +5111,7 @@ class Dataset:
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
 
-            iter_, stats = self._write_ds._execute_to_iterator()
+            iter_, stats, _ = self._write_ds._execute_to_iterator()
             write_results = []
 
             for bundle in iter_:
@@ -6519,7 +6518,6 @@ class Dataset:
     ) -> Tuple[
         Iterator[RefBundle],
         DatasetStats,
-        Optional["StreamingExecutor"],
         Optional["PhysicalOperator"],
     ]:
         bundle_iter, stats, executor, last_operator = self._plan.execute_to_iterator()
@@ -6527,7 +6525,7 @@ class Dataset:
         # dataset is garbage-collected
         self._current_executor = executor
 
-        return bundle_iter, stats, executor, last_operator
+        return bundle_iter, stats, last_operator
 
     def __getstate__(self):
         # Note: excludes _current_executor which is not serializable.

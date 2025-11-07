@@ -414,7 +414,7 @@ class ExecutionPlan:
                 # For consistency with the previous implementation, we fetch the schema if
                 # the plan is read-only even if `fetch_if_missing` is False.
 
-                iter_ref_bundles, _, executor = self.execute_to_iterator()
+                iter_ref_bundles, _, executor, _ = self.execute_to_iterator()
                 # Make sure executor is fully shutdown upon exiting
                 with executor:
                     schema = _take_first_non_empty_schema(
