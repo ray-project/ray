@@ -192,7 +192,7 @@ class CoreWorkerProcessImpl {
   std::unique_ptr<ray::stats::Gauge> task_by_state_gauge_;
   std::unique_ptr<ray::stats::Gauge> actor_by_state_gauge_;
   std::unique_ptr<ray::stats::Gauge> total_lineage_bytes_gauge_;
-  std::unique_ptr<ray::stats::Histogram> scheduler_placement_time_s_histogram_;
+  std::unique_ptr<ray::stats::Histogram> scheduler_placement_time_ms_histogram_;
 };
 }  // namespace core
 }  // namespace ray
