@@ -170,6 +170,18 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     def internal_output_queue_num_bytes(self) -> int:
         return sum(b.size_bytes() for b in self._output_queue)
 
+    def clear_internal_queues(self) -> None:
+        """Clear all internal input and output queues."""
+        # Clear internal input queue
+        while self._buffer:
+            bundle = self._buffer.pop()
+            self._metrics.on_input_dequeued(bundle)
+
+        # Clear internal output queue
+        while self._output_queue:
+            bundle = self._output_queue.popleft()
+            self._metrics.on_output_dequeued(bundle)
+
     def progress_str(self) -> str:
         if self._locality_hints:
             return locality_string(self._locality_hits, self._locality_misses)

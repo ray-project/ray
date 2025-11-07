@@ -65,7 +65,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(__name__)
 
 
-class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
+class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
 
     This operator implements the distributed map operation, supporting both task
@@ -164,6 +164,18 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
     def internal_output_queue_num_bytes(self) -> int:
         return self._output_queue.size_bytes()
+
+    def clear_internal_queues(self) -> None:
+        """Clear all internal input and output queues."""
+        # Clear internal input queue (block ref bundler)
+        while self._block_ref_bundler.has_bundle():
+            (_, bundle) = self._block_ref_bundler.get_next_bundle()
+            self._metrics.on_input_dequeued(bundle)
+
+        # Clear internal output queue
+        while self._output_queue.has_next():
+            bundle = self._output_queue.get_next()
+            self._metrics.on_output_dequeued(bundle)
 
     @property
     def name(self) -> str:
