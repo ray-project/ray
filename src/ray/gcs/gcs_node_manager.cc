@@ -693,7 +693,9 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
       raylet_client->NotifyGCSRestart(
           [](const Status &status, const rpc::NotifyGCSRestartReply &reply) {
             if (!status.ok()) {
-              RAY_LOG(ERROR) << "NotifyGCSRestart failed: " << status;
+              RAY_LOG(WARNING) << "NotifyGCSRestart failed. This is expected if the "
+                                  "target node has died. Status: "
+                               << status;
             }
           });
     } else if (node_info.state() == rpc::GcsNodeInfo::DEAD) {
