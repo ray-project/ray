@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 import ray
 from ray._common.retry import call_with_retry
-from ray.data._internal.util import _check_import
 
 if TYPE_CHECKING:
     import pyarrow.fs
@@ -38,8 +37,19 @@ def _validate_port(port: int) -> None:
         )
 
 
-def _validate_host(host: str) -> None:
-    """Validate host format."""
+def _validate_host(host: str) -> str:
+    """Validate host format and return normalized value.
+
+    Args:
+        host: Host string to validate
+
+    Returns:
+        Normalized host string (stripped of whitespace)
+
+    Raises:
+        TypeError: If host is not a string
+        ValueError: If host is invalid
+    """
     if not isinstance(host, str):
         raise TypeError(f"Host must be a string, got {type(host).__name__}")
     host = host.strip()
@@ -56,10 +66,23 @@ def _validate_host(host: str) -> None:
             "Host should not include protocol (http:// or https://). "
             "Extract the hostname from the URL."
         )
+    return host
 
 
-def _validate_identifier(name: str, identifier_type: str) -> None:
-    """Validate database or table identifier."""
+def _validate_identifier(name: str, identifier_type: str) -> str:
+    """Validate database or table identifier and return normalized value.
+
+    Args:
+        name: Identifier string to validate
+        identifier_type: Type of identifier (e.g., "Database", "Table") for error messages
+
+    Returns:
+        Normalized identifier string (stripped of whitespace)
+
+    Raises:
+        TypeError: If name is not a string
+        ValueError: If identifier is invalid
+    """
     if not isinstance(name, str):
         raise TypeError(
             f"{identifier_type} must be a string, got {type(name).__name__}"
@@ -79,6 +102,7 @@ def _validate_identifier(name: str, identifier_type: str) -> None:
             raise ValueError(
                 f"{identifier_type} contains invalid character sequence: {char!r}"
             )
+    return name
 
 
 def _escape_identifier(identifier: str) -> str:
@@ -116,8 +140,19 @@ def _validate_auth_params(
             )
 
 
-def _validate_kerberos_service_name(service_name: str) -> None:
-    """Validate Kerberos service name format."""
+def _validate_kerberos_service_name(service_name: str) -> str:
+    """Validate Kerberos service name format and return normalized value.
+
+    Args:
+        service_name: Kerberos service name to validate
+
+    Returns:
+        Normalized service name string (stripped of whitespace)
+
+    Raises:
+        TypeError: If service_name is not a string
+        ValueError: If service name is invalid
+    """
     if not isinstance(service_name, str):
         raise TypeError(
             f"Kerberos service name must be a string, got {type(service_name).__name__}"
@@ -132,6 +167,7 @@ def _validate_kerberos_service_name(service_name: str) -> None:
             "Kerberos service name contains invalid characters. "
             "Only alphanumeric, dots, hyphens, and underscores are allowed."
         )
+    return service_name
 
 
 def _validate_configuration(configuration: Optional[dict]) -> None:
@@ -258,10 +294,10 @@ def _connect_to_hive(
     # Import here to avoid requiring pyhive at module import time
     from pyhive import hive
 
-    # Validate inputs
-    _validate_host(host)
+    # Validate and normalize inputs
+    host = _validate_host(host)
     _validate_port(port)
-    _validate_kerberos_service_name(kerberos_service_name)
+    kerberos_service_name = _validate_kerberos_service_name(kerberos_service_name)
     _validate_configuration(configuration)
 
     def _connect():
@@ -393,15 +429,14 @@ def _parse_describe_formatted_output(
             f"Using first: {location}"
         )
 
-    # Handle file format detection
+    # Validate file format detection
     if not file_format:
-        # Default to parquet if we can't determine format
-        logger.warning(
+        raise ValueError(
             f"Could not determine file format for table {database}.{table} "
-            f"from DESCRIBE FORMATTED output. Defaulting to parquet. "
-            f"This may cause errors if the table is not in Parquet format."
+            f"from DESCRIBE FORMATTED output. "
+            f"Found {len(input_formats_found)} input format(s): {input_formats_found if input_formats_found else 'none'}. "
+            f"Ensure the table has a recognized InputFormat (ParquetInputFormat, AvroInputFormat, TextInputFormat, etc.)."
         )
-        file_format = "parquet"
     elif len(input_formats_found) > 1:
         logger.warning(
             f"Multiple input formats detected for table {database}.{table}. "
@@ -491,13 +526,13 @@ def _get_table_location_and_format(
         - PyHive: https://github.com/dropbox/PyHive
         - Hive Metastore: https://cwiki.apache.org/confluence/display/Hive/LanguageManual+DDL
     """
-    # Validate all inputs
-    _validate_host(host)
+    # Validate and normalize all inputs
+    host = _validate_host(host)
     _validate_port(port)
-    _validate_identifier(database, "Database")
-    _validate_identifier(table, "Table")
+    database = _validate_identifier(database, "Database")
+    table = _validate_identifier(table, "Table")
     _validate_auth_params(auth, username, password)
-    _validate_kerberos_service_name(kerberos_service_name)
+    kerberos_service_name = _validate_kerberos_service_name(kerberos_service_name)
     _validate_configuration(configuration)
 
     # Normalize auth parameter (PyHive requires uppercase)
@@ -671,15 +706,25 @@ def read_hive_table(
         - Hive Metastore: https://cwiki.apache.org/confluence/display/Hive/LanguageManual+DDL
         - Ray Data Parquet Reader: https://docs.ray.io/en/latest/data/api/doc/ray.data.read_parquet.html
     """
-    _check_import(None, module="pyhive", package="hive")
+    # Check for required dependency (following pattern from read_delta)
+    # _check_import expects an object with __class__, so we implement our own check
+    import importlib
 
-    # Validate inputs (additional validation happens in _get_table_location_and_format)
-    _validate_host(host)
+    try:
+        importlib.import_module("pyhive")
+    except ImportError:
+        raise ImportError(
+            "`ray.data.read_hive` depends on 'pyhive', but 'pyhive' "
+            "couldn't be imported. You can install 'pyhive' by running `pip install pyhive`."
+        )
+
+    # Validate and normalize inputs (additional validation happens in _get_table_location_and_format)
+    host = _validate_host(host)
     _validate_port(port)
-    _validate_identifier(table, "Table")
-    _validate_identifier(database, "Database")
+    table = _validate_identifier(table, "Table")
+    database = _validate_identifier(database, "Database")
     _validate_auth_params(auth, username, password)
-    _validate_kerberos_service_name(kerberos_service_name)
+    kerberos_service_name = _validate_kerberos_service_name(kerberos_service_name)
     _validate_configuration(configuration)
 
     # Sanitize log message to avoid credential exposure
