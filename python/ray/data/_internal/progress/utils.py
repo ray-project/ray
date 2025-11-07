@@ -71,17 +71,18 @@ def get_progress_manager(
                 "enable_progress_bars = True`."
             )
         return NoopExecutionProgressManager(dataset_id, topology, show_op_progress)
-    if ctx.enable_rich_progress_bars:
-        try:
-            from ray.data._internal.progress.rich_progress import (
-                RichExecutionProgressManager,
-            )
 
-            return RichExecutionProgressManager(dataset_id, topology, show_op_progress)
-        except ImportError:
-            print("[dataset]: Run `pip install rich` to enable progress reporting.")
-            return NoopExecutionProgressManager(dataset_id, topology, show_op_progress)
-    else:
+    rich_enabled = ctx.enable_rich_progress_bars
+    use_ray_tqdm = ctx.use_ray_tqdm
+
+    if not rich_enabled or use_ray_tqdm:
+        if log_once("ray_data_rich_progress_disabled"):
+            logger.info(
+                "[dataset]: A new progress UI is available. To enable, "
+                "set `ray.data.DataContext.get_current()."
+                "enable_rich_progress_bars = True` and `ray.data."
+                "DataContext.get_current().use_ray_tqdm = False`."
+            )
         from ray.data._internal.progress.tqdm_progress import (
             TqdmExecutionProgressManager,
         )
@@ -93,3 +94,13 @@ def get_progress_manager(
                 "enable_rich_progress_bars = True`."
             )
         return TqdmExecutionProgressManager(dataset_id, topology, show_op_progress)
+    else:
+        try:
+            from ray.data._internal.progress.rich_progress import (
+                RichExecutionProgressManager,
+            )
+
+            return RichExecutionProgressManager(dataset_id, topology, show_op_progress)
+        except ImportError:
+            print("[dataset]: Run `pip install rich` to enable progress reporting.")
+            return NoopExecutionProgressManager(dataset_id, topology, show_op_progress)

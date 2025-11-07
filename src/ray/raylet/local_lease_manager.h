@@ -189,6 +189,14 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
     return num_unschedulable_lease_spilled_;
   }
 
+  bool IsLeaseQueued(const SchedulingClass &scheduling_class,
+                     const LeaseID &lease_id) const override;
+
+  bool AddReplyCallback(const SchedulingClass &scheduling_class,
+                        const LeaseID &lease_id,
+                        rpc::SendReplyCallback send_reply_callback,
+                        rpc::RequestWorkerLeaseReply *reply) override;
+
  private:
   struct SchedulingClassInfo;
 
@@ -248,8 +256,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
       absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers_,
       const std::shared_ptr<TaskResourceInstances> &allocated_instances,
       const RayLease &lease,
-      rpc::RequestWorkerLeaseReply *reply,
-      rpc::SendReplyCallback send_reply_callback);
+      const std::vector<internal::ReplyCallback> &reply_callbacks);
 
   void Spillback(const NodeID &spillback_to, const std::shared_ptr<internal::Work> &work);
 
