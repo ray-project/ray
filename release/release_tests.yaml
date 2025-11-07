@@ -807,6 +807,7 @@
 #######################
 
 - name: long_running_actor_deaths
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -838,7 +839,6 @@
 
   variations:
     - __suffix__: aws
-      python: "3.10"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -848,6 +848,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_impala
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -889,6 +890,7 @@
         cluster_compute: tpl_cpu_1_large_gce.yaml
 
 - name: long_running_many_actor_tasks
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -919,7 +921,6 @@
 
   variations:
     - __suffix__: aws
-      python: "3.10"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -975,6 +976,7 @@
         cluster_compute: tpl_cpu_4_gce.yaml
 
 - name: long_running_many_ppo
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1021,6 +1023,7 @@
         cluster_compute: many_ppo_gce.yaml
 
 - name: long_running_many_tasks
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1051,7 +1054,6 @@
 
   variations:
     - __suffix__: aws
-      python: "3.10"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1063,6 +1065,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_tasks_serialized_ids
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1104,6 +1107,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_node_failures
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1134,7 +1138,6 @@
 
   variations:
     - __suffix__: aws
-      python: "3.10"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1146,6 +1149,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1187,6 +1191,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve_failure
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1230,6 +1235,7 @@
         cluster_compute: tpl_cpu_1_c5_gce.yaml
 
 - name: long_running_many_jobs
+  python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
 
