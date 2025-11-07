@@ -1,11 +1,11 @@
 import math
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque, Dict, Iterable, List, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Tuple
 
-from ray.data._internal.execution.interfaces import BlockSlice, RefBundle, TaskContext
+from ray.data._internal.execution.interfaces import BlockSlice, RefBundle
 from ray.data._internal.execution.operators.map_operator import BaseRefBundler
-from ray.data.block import Block, BlockMetadata, Schema
+from ray.data.block import BlockMetadata, Schema
 from ray.types import ObjectRef
 
 """Streaming repartition builds fixed-size outputs from a stream of inputs.
@@ -206,14 +206,6 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
         )
 
         return fully_consumed_refs, ref_bundle, block_slices
-
-
-def streaming_repartition_block_fn(
-    blocks: Iterable[Block],
-    ctx: TaskContext,
-) -> Iterable[Block]:
-    # iter sliced blocks are handled in the _map_task
-    return blocks
 
 
 def _slice_block_metadata(

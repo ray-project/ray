@@ -48,10 +48,7 @@ from ray.data._internal.logical.operators.map_operator import (
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.streaming_repartition import (
-    StreamingRepartitionRefBundler,
-    streaming_repartition_block_fn,
-)
+from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
@@ -155,7 +152,7 @@ def plan_streaming_repartition_op(
     input_physical_dag = physical_children[0]
     compute = get_compute(op._compute)
     transform_fn = BlockMapTransformFn(
-        streaming_repartition_block_fn,
+        lambda blocks, ctx: blocks,
         disable_block_shaping=True,
     )
     map_transformer = MapTransformer([transform_fn])
