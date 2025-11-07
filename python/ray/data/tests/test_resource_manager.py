@@ -15,7 +15,9 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
-from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_operator import (
+    MapOperator,
+)
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
     ReservationOpResourceAllocator,
@@ -44,7 +46,7 @@ def mock_map_op(
         compute_strategy=compute_strategy,
         name=name,
     )
-    op.start = MagicMock(side_effect=lambda _: None)
+    op.start(ExecutionOptions())
     if incremental_resource_usage is not None:
         op.incremental_resource_usage = MagicMock(
             return_value=incremental_resource_usage
