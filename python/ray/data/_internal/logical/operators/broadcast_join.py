@@ -343,6 +343,13 @@ class BroadcastJoinFunction:
             self.small_table_key_columns
         )
 
+        # Fix null types in non-key columns before joining
+        # PyArrow join doesn't support null types in non-key fields
+        batch = self._fix_null_types(batch, self.large_table_key_columns)
+        small_table = self._fix_null_types(
+            self.small_table, self.small_table_key_columns
+        )
+
         try:
             # Perform the PyArrow join
             # The join parameters depend on whether datasets were swapped for optimization
@@ -351,7 +358,7 @@ class BroadcastJoinFunction:
                 # We need to adjust the join type to preserve original left/right semantics
                 swapped_join_type = self._get_swapped_join_type(arrow_join_type)
 
-                joined_table = self.small_table.join(
+                joined_table = small_table.join(
                     batch,
                     join_type=swapped_join_type,
                     keys=list(self.small_table_key_columns),
@@ -367,7 +374,7 @@ class BroadcastJoinFunction:
             else:
                 # Normal case: large batch joins with small table
                 joined_table = batch.join(
-                    self.small_table,
+                    small_table,
                     join_type=arrow_join_type,
                     keys=list(self.large_table_key_columns),
                     right_keys=(
@@ -403,6 +410,49 @@ class BroadcastJoinFunction:
                 )
 
             raise ValueError(error_msg) from e
+
+    def _fix_null_types(
+        self, table: "pa.Table", key_columns: Tuple[str, ...]
+    ) -> "pa.Table":
+        """Cast null types to nullable string types in non-key columns.
+
+        PyArrow's join operation doesn't support null types in non-key fields.
+        This function fixes null types by casting them to nullable string types.
+
+        Args:
+            table: The PyArrow table to fix.
+            key_columns: Tuple of key column names that should not be modified.
+
+        Returns:
+            A new table with null types cast to nullable string types.
+        """
+        import pyarrow as pa
+
+        # Check if any non-key columns have null types
+        columns_to_fix = {}
+        for col_name in table.column_names:
+            if col_name not in key_columns:
+                col_type = table.schema.field(col_name).type
+                if pa.types.is_null(col_type):
+                    # Cast null type to nullable string type
+                    # Use string type as default since we can't infer the actual type
+                    columns_to_fix[col_name] = pa.string()
+
+        if not columns_to_fix:
+            return table
+
+        # Build new schema with fixed types
+        new_fields = []
+        for field in table.schema:
+            if field.name in columns_to_fix:
+                new_fields.append(
+                    pa.field(field.name, columns_to_fix[field.name], nullable=True)
+                )
+            else:
+                new_fields.append(field)
+
+        # Cast the table to the new schema
+        return table.cast(pa.schema(new_fields))
 
     def _get_swapped_join_type(self, original_join_type: str) -> str:
         """Get the appropriate join type when datasets are swapped.
