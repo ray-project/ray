@@ -453,6 +453,9 @@ class UseCase(ExampleEnum):
     COMPUTER_VISION = "Computer Vision"
     NATURAL_LANGUAGE_PROCESSING = "Natural Language Processing"
     ETL = "ETL"
+    DATA_INGESTION = "Data Ingestion"
+    DATA_WAREHOUSING = "Data Warehousing"
+    DOCUMENT_PROCESSING = "Document Processing"
 
     @classmethod
     def formatted_name(cls):
@@ -494,8 +497,9 @@ class Framework(ExampleEnum):
     HUGGINGFACE = "Hugging Face"
     DATAJUICER = "Data-Juicer"
     VLLM = "vLLM"
-    PANDAS = "pandas"
+    PANDAS = "Pandas"
     ANY = "Any"
+    UNSTRUCTURED = "Unstructured"
 
     @classmethod
     def formatted_name(cls):
