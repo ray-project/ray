@@ -84,7 +84,8 @@ def test_hang_without_timeout():
         )
 
     # Just check for a short timeout to ensure the test doesn't error out.
-    ray.wait(remote_tasks, num_returns=9, timeout=2)
+    done, _ = ray.wait(remote_tasks, num_returns=len(remote_tasks), timeout=2)
+    assert not done, "All tasks should be hanging, but some are done."
 
     # Finish up once the last worker joins.
     remote_tasks.append(
