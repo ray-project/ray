@@ -25,8 +25,8 @@ class S3FileSystem(BaseCloudFileSystem):
     """
 
     @staticmethod
-    def _run_aws_command(cmd: List[str]) -> subprocess.CompletedProcess:
-        """Run an AWS CLI command and handle errors.
+    def _run_command(cmd: List[str]) -> subprocess.CompletedProcess:
+        """Run a command and handle errors.
 
         Args:
             cmd: List of command arguments (e.g., ['aws', 's3', 'cp', ...])
@@ -36,7 +36,7 @@ class S3FileSystem(BaseCloudFileSystem):
 
         Raises:
             subprocess.CalledProcessError: If the command fails
-            FileNotFoundError: If AWS CLI is not installed
+            FileNotFoundError: If the command is not installed
         """
         try:
             result = subprocess.run(
@@ -47,12 +47,11 @@ class S3FileSystem(BaseCloudFileSystem):
             )
             return result
         except FileNotFoundError:
-            raise FileNotFoundError(
-                "AWS CLI is not installed. Please install it using: "
-                "pip install awscli. For more info visit https://aws.amazon.com/cli/"
-            )
+            raise FileNotFoundError(f"Command '{cmd[0]}' is not installed.")
         except subprocess.CalledProcessError as e:
-            logger.error(f"AWS CLI command failed: {' '.join(cmd)}")
+            print(f"Command failed: {' '.join(cmd)}")
+            print(f"Error: {e.stderr}")
+            logger.error(f"Command failed: {' '.join(cmd)}")
             logger.error(f"Error output: {e.stderr}")
             raise
 
@@ -80,7 +79,7 @@ class S3FileSystem(BaseCloudFileSystem):
             try:
                 # Download file using AWS CLI
                 cmd = ["aws", "s3", "cp", object_uri, tmp_path]
-                S3FileSystem._run_aws_command(cmd)
+                S3FileSystem._run_command(cmd)
 
                 # Read the file
                 mode = "r" if decode_as_utf_8 else "rb"
@@ -123,7 +122,7 @@ class S3FileSystem(BaseCloudFileSystem):
         try:
             # Use AWS CLI to list objects with common prefix
             cmd = ["aws", "s3", "ls", folder_uri]
-            result = S3FileSystem._run_aws_command(cmd)
+            result = S3FileSystem._run_command(cmd)
 
             subfolders = []
             for line in result.stdout.strip().split("\n"):
@@ -198,7 +197,7 @@ class S3FileSystem(BaseCloudFileSystem):
                     cmd.extend(["--exclude", pattern])
 
             # Run the download command
-            S3FileSystem._run_aws_command(cmd)
+            S3FileSystem._run_command(cmd)
 
         except Exception as e:
             logger.exception(f"Error downloading files from {bucket_uri}: {e}")
@@ -226,7 +225,7 @@ class S3FileSystem(BaseCloudFileSystem):
             cmd = ["aws", "s3", "cp", local_path, dest_uri, "--recursive"]
 
             # Run the upload command
-            S3FileSystem._run_aws_command(cmd)
+            S3FileSystem._run_command(cmd)
 
         except Exception as e:
             logger.exception(f"Error uploading files to {bucket_uri}: {e}")
