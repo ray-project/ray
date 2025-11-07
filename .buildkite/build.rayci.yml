@@ -9,6 +9,7 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
+      - "3.14"
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
@@ -47,6 +48,7 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
+      - "3.14"
     depends_on:
       - manylinux
       - forge
@@ -100,6 +102,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.14"
 
   - label: ":tapioca: build: ray-extra py{{matrix}} docker (x86_64)"
     key: ray_extra_images
@@ -125,6 +128,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.14"
 
   - label: ":tapioca: build: ray-llm py{{matrix}} docker (x86_64)"
     tags:
