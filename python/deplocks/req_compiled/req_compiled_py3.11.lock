@@ -1,8 +1,3 @@
---index-url https://pypi.org/simple
---extra-index-url https://download.pytorch.org/whl/cpu
---find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
---find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
-
 absl-py==1.4.0
     # via
     #   -c python/requirements_compiled.txt
@@ -3186,7 +3181,7 @@ toolz==0.12.1 ; python_full_version < '3.12' or sys_platform != 'win32'
     #   dask
     #   distributed
     #   partd
-torch==2.3.0+cpu
+torch==2.3.0
     # via
     #   -c python/requirements_compiled.txt
     #   -r python/deplocks/req_compiled/requirements/requirements.in
@@ -3237,11 +3232,11 @@ torchmetrics==0.10.3
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   mosaicml
     #   pytorch-lightning
-torchtext==0.18.0+cpu
+torchtext==0.18.0
     # via
     #   -c python/requirements_compiled.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
-torchvision==0.18.0+cpu
+torchvision==0.18.0
     # via
     #   -c python/requirements_compiled.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
