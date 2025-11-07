@@ -29,7 +29,9 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/authentication_token.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/metrics.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "ray/stats/metric.h"
@@ -342,23 +344,42 @@ class ServerCallImpl : public ServerCall {
   /// Returns true if authentication succeeds or is not required.
   /// Returns false if authentication is required but fails.
   bool ValidateAuthenticationToken() {
-    if (!auth_token_.has_value() || auth_token_->empty()) {
-      return true;  // No auth required
-    }
+    AuthenticationMode auth_mode = GetAuthenticationMode();
 
     const auto &metadata = context_.client_metadata();
     auto it = metadata.find(kAuthTokenKey);
-    if (it == metadata.end()) {
-      RAY_LOG(WARNING) << "Missing authorization header in request!";
-      return false;
+
+    if (auth_mode == AuthenticationMode::TOKEN) {
+      if (!auth_token_.has_value() || auth_token_->empty()) {
+        return true;  // No auth required on server side
+      }
+      if (it == metadata.end()) {
+        RAY_LOG(WARNING)
+            << "Missing authorization header in request for token auth mode!";
+        return false;
+      }
+      const std::string_view header(it->second.data(), it->second.length());
+      AuthenticationToken provided_token = AuthenticationToken::FromMetadata(header);
+      if (!auth_token_->Equals(provided_token)) {
+        RAY_LOG(WARNING) << "Invalid bearer token in request!";
+        return false;
+      }
+      return true;
     }
 
-    const std::string_view header(it->second.data(), it->second.length());
-    AuthenticationToken provided_token = AuthenticationToken::FromMetadata(header);
-
-    if (!auth_token_->Equals(provided_token)) {
-      RAY_LOG(WARNING) << "Invalid bearer token in request!";
-      return false;
+    if (auth_mode == AuthenticationMode::K8S) {
+      if (it == metadata.end()) {
+        RAY_LOG(WARNING) << "Missing authorization header in request for k8s auth mode!";
+        return false;
+      }
+      const std::string_view header(it->second.data(), it->second.length());
+      AuthenticationToken provided_token = AuthenticationToken::FromMetadata(header);
+      if (provided_token.empty()) {
+        RAY_LOG(WARNING) << "Empty bearer token in request for k8s auth mode!";
+        return false;
+      }
+      return ray::rpc::AuthenticationTokenLoader::instance().ValidateToken(
+          provided_token);
     }
 
     return true;

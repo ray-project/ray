@@ -7,6 +7,7 @@ cdef extern from "ray/rpc/authentication/authentication_mode.h" namespace "ray::
     cdef enum CAuthenticationMode "ray::rpc::AuthenticationMode":
         DISABLED "ray::rpc::AuthenticationMode::DISABLED"
         TOKEN "ray::rpc::AuthenticationMode::TOKEN"
+        K8S "ray::rpc::AuthenticationMode::K8S"
 
     CAuthenticationMode GetAuthenticationMode()
 
@@ -26,5 +27,6 @@ cdef extern from "ray/rpc/authentication/authentication_token_loader.h" namespac
         @staticmethod
         CAuthenticationTokenLoader& instance()
         c_bool HasToken()
+        c_bool ValidateToken(const CAuthenticationToken& token)
         void ResetCache()
         optional[CAuthenticationToken] GetToken()

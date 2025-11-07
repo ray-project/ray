@@ -14,12 +14,15 @@
 
 #pragma once
 
+#include <chrono>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 #include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/authentication_token.h"
+#include "ray/rpc/authentication/k8s_util.h"
 
 namespace ray {
 namespace rpc {
@@ -44,6 +47,14 @@ class AuthenticationTokenLoader {
   /// Caches the token if it loads it afresh.
   /// \return true if a token exists, false otherwise.
   bool HasToken();
+
+  /// Validate the provided authentication token.
+  /// For TOKEN mode, it compares with the loaded token.
+  /// For K8S mode, it uses Kubernetes TokenReview and SubjectAccessReview APIs.
+  /// The results for K8S mode are cached.
+  /// \param provided_token The token to validate.
+  /// \return true if the token is valid, false otherwise.
+  bool ValidateToken(const AuthenticationToken &provided_token);
 
   void ResetCache() {
     std::lock_guard<std::mutex> lock(token_mutex_);
@@ -71,6 +82,14 @@ class AuthenticationTokenLoader {
 
   std::mutex token_mutex_;
   std::optional<AuthenticationToken> cached_token_;
+
+  // Cache for K8s tokens.
+  struct K8sCacheEntry {
+    bool allowed;
+    std::chrono::steady_clock::time_point expiration;
+  };
+  std::mutex k8s_token_cache_mutex_;
+  std::unordered_map<std::string, K8sCacheEntry> k8s_token_cache_;
 };
 
 }  // namespace rpc

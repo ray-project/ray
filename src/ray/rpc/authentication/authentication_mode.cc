@@ -28,9 +28,16 @@ AuthenticationMode GetAuthenticationMode() {
 
   if (auth_mode_lower == "token") {
     return AuthenticationMode::TOKEN;
+  } else if (auth_mode_lower == "k8s") {
+    return AuthenticationMode::K8S;
   } else {
     return AuthenticationMode::DISABLED;
   }
+}
+
+bool RequiresTokenAuthentication() {
+  std::string auth_mode_lower = absl::AsciiStrToLower(RayConfig::instance().auth_mode());
+  return (auth_mode_lower == "token" || auth_mode_lower == "k8s");
 }
 
 }  // namespace rpc

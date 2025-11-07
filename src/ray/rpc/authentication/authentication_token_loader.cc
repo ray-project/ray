@@ -14,10 +14,14 @@
 
 #include "ray/rpc/authentication/authentication_token_loader.h"
 
+#include <sys/stat.h>
+
 #include <fstream>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <utility>
 
+#include "ray/rpc/authentication/k8s_util.h"
 #include "ray/util/logging.h"
 
 #ifdef _WIN32
@@ -34,9 +38,61 @@
 namespace ray {
 namespace rpc {
 
+namespace {
+const std::chrono::minutes kCacheTTL(5);
+}  // namespace
+
 AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
   static AuthenticationTokenLoader instance;
   return instance;
+}
+
+bool AuthenticationTokenLoader::ValidateToken(const AuthenticationToken &provided_token) {
+  if (GetAuthenticationMode() == AuthenticationMode::TOKEN) {
+    auto expected_token = GetToken();
+    if (!expected_token.has_value()) {
+      return false;
+    }
+    return expected_token->Equals(provided_token);
+  } else if (GetAuthenticationMode() == AuthenticationMode::K8S) {
+    std::call_once(k8s::k8s_client_config_flag, k8s::InitK8sClientConfig);
+    if (!k8s::k8s_client_initialized) {
+      return false;
+    }
+
+    const std::string token_str = provided_token.ToRawValue();
+
+    // Check cache first.
+    {
+      std::lock_guard<std::mutex> lock(k8s_token_cache_mutex_);
+      auto it = k8s_token_cache_.find(token_str);
+      if (it != k8s_token_cache_.end()) {
+        if (std::chrono::steady_clock::now() < it->second.expiration) {
+          return it->second.allowed;
+        } else {
+          k8s_token_cache_.erase(it);
+        }
+      }
+    }
+
+    bool is_allowed = false;
+    is_allowed = k8s::ValidateToken(token_str);
+
+    // Only cache validated tokens for now. We don't want to invalidate a token
+    // due to unrelated errors from Kubernetes API server. This has the downside of
+    // causing more load if an unauthenticated client continues to make calls.
+    // TODO(andrewsykim): cache invalid tokens once k8s::ValidateToken can distinguish
+    // between invalid token errors and server errors.
+    if (is_allowed) {
+      std::lock_guard<std::mutex> lock(k8s_token_cache_mutex_);
+      k8s_token_cache_[token_str] = {is_allowed,
+                                     std::chrono::steady_clock::now() + kCacheTTL};
+    }
+
+    return is_allowed;
+  }
+
+  return false;
 }
 
 std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken() {
@@ -47,8 +103,8 @@ std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken() {
     return cached_token_;
   }
 
-  // If token auth is not enabled, return std::nullopt
-  if (GetAuthenticationMode() != AuthenticationMode::TOKEN) {
+  // If token or k8s auth is not enabled, return std::nullopt
+  if (!RequiresTokenAuthentication()) {
     cached_token_ = std::nullopt;
     return std::nullopt;
   }
@@ -77,8 +133,8 @@ bool AuthenticationTokenLoader::HasToken() {
     return !cached_token_->empty();
   }
 
-  // If token auth is not enabled, no token needed
-  if (GetAuthenticationMode() != AuthenticationMode::TOKEN) {
+  // If token or k8s auth is not enabled, no token needed
+  if (!RequiresTokenAuthentication()) {
     cached_token_ = std::nullopt;
     return false;
   }
@@ -109,6 +165,11 @@ std::string AuthenticationTokenLoader::ReadTokenFromFile(const std::string &file
   return token;
 }
 
+bool FileExists(const std::string &path) {
+  struct stat buffer;
+  return (stat(path.c_str(), &buffer) == 0);
+}
+
 AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
   // Precedence 1: RAY_AUTH_TOKEN environment variable
   const char *env_token = std::getenv("RAY_AUTH_TOKEN");
@@ -135,7 +196,25 @@ AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
     }
   }
 
-  // Precedence 3: Default token path ~/.ray/auth_token
+  // Precedence 3 (auth_mode=k8s only): Load Kubernetes service account token
+  if (GetAuthenticationMode() == AuthenticationMode::K8S) {
+    std::string k8s_service_account_token_path =
+        "/var/run/secrets/kubernetes.io/serviceaccount/token";
+    if (FileExists(k8s_service_account_token_path)) {
+      std::string token_str =
+          TrimWhitespace(ReadTokenFromFile(k8s_service_account_token_path));
+      if (!token_str.empty()) {
+        RAY_LOG(DEBUG)
+            << "Loaded authentication token from Kubernetes service account path: "
+            << k8s_service_account_token_path;
+        return AuthenticationToken(token_str);
+      }
+    }
+    RAY_LOG(DEBUG) << "Kubernetes service account token not found or empty at: "
+                   << k8s_service_account_token_path;
+  }
+
+  // Precedence 4: Default token path ~/.ray/auth_token
   std::string default_path = GetDefaultTokenPath();
   std::string token_str = TrimWhitespace(ReadTokenFromFile(default_path));
   if (!token_str.empty()) {
