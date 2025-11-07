@@ -1691,7 +1691,6 @@ class Dataset:
             op = StreamingRepartition(
                 self._logical_plan.dag,
                 target_num_rows_per_block=target_num_rows_per_block,
-                enforce_target_num_rows_per_block=True,
             )
         else:
             op = Repartition(

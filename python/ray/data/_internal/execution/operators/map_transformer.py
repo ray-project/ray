@@ -4,7 +4,6 @@ from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
 
 from ray.data._internal.block_batching.block_batching import batch_blocks
-from ray.data._internal.execution.interfaces import BlockSlice
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data.block import BatchFormat, Block, BlockAccessor, DataBatch
@@ -53,10 +52,7 @@ class MapTransformFn(ABC):
 
     @abstractmethod
     def _apply_transform(
-        self,
-        ctx: TaskContext,
-        inputs: Iterable[MapTransformFnData],
-        slices: Optional[List[BlockSlice]] = None,
+        self, ctx: TaskContext, inputs: Iterable[MapTransformFnData]
     ) -> Iterable[MapTransformFnData]:
         pass
 
@@ -100,11 +96,10 @@ class MapTransformFn(ABC):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-        slices: Optional[List[BlockSlice]] = None,
     ) -> Iterable[Block]:
         batches = self._pre_process(blocks)
-        batches = self._apply_transform(ctx, batches, slices)
-        yield from self._post_process(batches)
+        results = self._apply_transform(ctx, batches)
+        yield from self._post_process(results)
 
     @abstractmethod
     def _can_skip_block_sizing(self):
@@ -213,7 +208,6 @@ class MapTransformer:
         self,
         input_blocks: Iterable[Block],
         ctx: TaskContext,
-        slices: Optional[List[BlockSlice]] = None,
     ) -> Iterable[Block]:
         """Apply the transform functions to the input blocks."""
 
@@ -228,9 +222,8 @@ class MapTransformer:
 
         iter = input_blocks
         # Apply the transform functions sequentially to the input iterable.
-        for idx, transform_fn in enumerate(self._transform_fns):
-            current_slices = slices if idx == 0 else None
-            iter = transform_fn(iter, ctx, current_slices)
+        for transform_fn in self._transform_fns:
+            iter = transform_fn(iter, ctx)
             if transform_fn._is_udf:
                 iter = self._udf_timed_iter(iter)
 
@@ -310,10 +303,7 @@ class RowMapTransformFn(MapTransformFn):
                 yield row
 
     def _apply_transform(
-        self,
-        ctx: TaskContext,
-        inputs: Iterable[MapTransformFnData],
-        slices: Optional[List[BlockSlice]] = None,
+        self, ctx: TaskContext, inputs: Iterable[MapTransformFnData]
     ) -> Iterable[MapTransformFnData]:
         yield from self._row_fn(inputs, ctx)
 
@@ -366,10 +356,7 @@ class BatchMapTransformFn(MapTransformFn):
         )
 
     def _apply_transform(
-        self,
-        ctx: TaskContext,
-        batches: Iterable[MapTransformFnData],
-        slices: Optional[List[BlockSlice]] = None,
+        self, ctx: TaskContext, batches: Iterable[MapTransformFnData]
     ) -> Iterable[MapTransformFnData]:
         yield from self._batch_fn(batches, ctx)
 
@@ -420,15 +407,9 @@ class BlockMapTransformFn(MapTransformFn):
         self._disable_block_shaping = disable_block_shaping
 
     def _apply_transform(
-        self,
-        ctx: TaskContext,
-        blocks: Iterable[Block],
-        slices: Optional[List[BlockSlice]] = None,
+        self, ctx: TaskContext, blocks: Iterable[Block]
     ) -> Iterable[Block]:
-        if slices is not None:
-            yield from self._block_fn(blocks, slices, ctx)
-        else:
-            yield from self._block_fn(blocks, ctx)
+        yield from self._block_fn(blocks, ctx)
 
     def _post_process(self, results: Iterable[MapTransformFnData]) -> Iterable[Block]:
         # Short-circuit for block transformations for which no

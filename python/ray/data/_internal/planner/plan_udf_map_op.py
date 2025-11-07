@@ -154,23 +154,11 @@ def plan_streaming_repartition_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
     compute = get_compute(op._compute)
-
-    if op.enforce_target_num_rows_per_block:
-        transform_fn = BlockMapTransformFn(
-            streaming_repartition_block_fn,
-            disable_block_shaping=True,
-        )
-        map_transformer = MapTransformer([transform_fn])
-    else:
-        # Create a no-op transform that is just coalescing/slicing the incoming
-        # blocks
-        transform_fn = BlockMapTransformFn(
-            lambda blocks, ctx: blocks,
-            output_block_size_option=OutputBlockSizeOption.of(
-                target_num_rows_per_block=op.target_num_rows_per_block
-            ),
-        )
-        map_transformer = MapTransformer([transform_fn])
+    transform_fn = BlockMapTransformFn(
+        streaming_repartition_block_fn,
+        disable_block_shaping=True,
+    )
+    map_transformer = MapTransformer([transform_fn])
 
     # Disable fusion for streaming repartition with the downstream op.
     operator = MapOperator.create(

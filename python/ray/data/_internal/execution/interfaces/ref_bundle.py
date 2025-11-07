@@ -14,9 +14,13 @@ from ray.types import ObjectRef
 class BlockSlice:
     """A slice of a block."""
 
+    # Index of the block within the task input bundle.
     block_index: int
+    # Starting row offset (inclusive) within the block.
     start_offset: int
+    # Ending row offset (exclusive) within the block.
     end_offset: int
+    # Target output block index this slice contributes to.
     output_index: int
 
 

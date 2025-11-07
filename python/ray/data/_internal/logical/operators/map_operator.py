@@ -362,26 +362,19 @@ class StreamingRepartition(AbstractMap):
     Args:
         target_num_rows_per_block: The target number of rows per block granularity for
            streaming repartition.
-        enforce_target_num_rows_per_block: Whether to enforce the target number of rows per block. Default to False.
     """
 
     def __init__(
         self,
         input_op: LogicalOperator,
         target_num_rows_per_block: int,
-        enforce_target_num_rows_per_block: bool = False,
     ):
         super().__init__("StreamingRepartition", input_op)
         self._target_num_rows_per_block = target_num_rows_per_block
-        self._enforce_target_num_rows_per_block = enforce_target_num_rows_per_block
 
     @property
     def target_num_rows_per_block(self) -> int:
         return self._target_num_rows_per_block
-
-    @property
-    def enforce_target_num_rows_per_block(self) -> bool:
-        return self._enforce_target_num_rows_per_block
 
     def can_modify_num_rows(self) -> bool:
         return False

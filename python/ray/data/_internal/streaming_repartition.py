@@ -3,10 +3,9 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Deque, Dict, Iterable, List, Optional, Tuple
 
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import BlockSlice, RefBundle, TaskContext
 from ray.data._internal.execution.operators.map_operator import BaseRefBundler
-from ray.data.block import Block, BlockAccessor, BlockMetadata, Schema
+from ray.data.block import Block, BlockMetadata, Schema
 from ray.types import ObjectRef
 
 """Streaming repartition builds fixed-size outputs from a stream of inputs.
@@ -211,37 +210,10 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
 
 def streaming_repartition_block_fn(
     blocks: Iterable[Block],
-    slices: List[BlockSlice],
     ctx: TaskContext,
 ) -> Iterable[Block]:
-    # Materialize input blocks to allow arbitrary contributor ordering.
-    blocks_list = list(blocks)
-    builder: Optional[DelegatingBlockBuilder] = None
-    current_output_index: Optional[int] = None
-
-    for block_slice in slices:
-        if block_slice.output_index != current_output_index:
-            if builder is not None:
-                yield builder.build()
-            builder = DelegatingBlockBuilder()
-            current_output_index = block_slice.output_index
-
-        assert (
-            0 <= block_slice.block_index < len(blocks_list)
-        ), "Repartition spec refers to a block index outside the task input."
-        block = blocks_list[block_slice.block_index]
-
-        accessor = BlockAccessor.for_block(block)
-        start = block_slice.start_offset
-        end = block_slice.end_offset
-
-        if start == 0 and end >= accessor.num_rows():
-            builder.add_block(block)
-        else:
-            builder.add_block(accessor.slice(start, end, copy=False))
-
-    if builder is not None:
-        yield builder.build()
+    # iter sliced blocks are handled in the _map_task
+    return blocks
 
 
 def _slice_block_metadata(

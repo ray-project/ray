@@ -26,6 +26,7 @@ from ray.data._internal.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
 )
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import (
     BlockSlice,
     ExecutionOptions,
@@ -621,8 +622,14 @@ def _map_task(
     TaskContext.set_current(ctx)
     stats = BlockExecStats.builder()
     map_transformer.override_target_max_block_size(ctx.target_max_block_size_override)
+    block_iter: Iterable[Block]
+    if slices:
+        block_iter = _iter_sliced_blocks(blocks, slices)
+    else:
+        block_iter = iter(blocks)
+
     with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
-        for b_out in map_transformer.apply_transform(iter(blocks), ctx, slices):
+        for b_out in map_transformer.apply_transform(block_iter, ctx):
             # TODO(Clark): Add input file propagation from input blocks.
             m_out = BlockAccessor.for_block(b_out).get_metadata()
             s_out = BlockAccessor.for_block(b_out).schema()
@@ -637,6 +644,39 @@ def _map_task(
             profiler.reset()
 
     TaskContext.reset_current()
+
+
+def _iter_sliced_blocks(
+    blocks: Iterable[Block],
+    slices: List[BlockSlice],
+) -> Iterator[Block]:
+    blocks_list = list(blocks)
+    builder: Optional[DelegatingBlockBuilder] = None
+    current_output_index: Optional[int] = None
+
+    for block_slice in slices:
+        if builder is None or block_slice.output_index != current_output_index:
+            if builder is not None:
+                yield builder.build()
+            builder = DelegatingBlockBuilder()
+            current_output_index = block_slice.output_index
+
+        assert (
+            0 <= block_slice.block_index < len(blocks_list)
+        ), "Repartition spec refers to a block index outside the task input."
+        block = blocks_list[block_slice.block_index]
+
+        accessor = BlockAccessor.for_block(block)
+        start = block_slice.start_offset
+        end = block_slice.end_offset
+
+        if start == 0 and end >= accessor.num_rows():
+            builder.add_block(block)
+        else:
+            builder.add_block(accessor.slice(start, end, copy=False))
+
+    if builder is not None:
+        yield builder.build()
 
 
 class BlockRefBundler(BaseRefBundler):
