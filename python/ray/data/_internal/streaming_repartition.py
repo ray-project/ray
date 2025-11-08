@@ -135,7 +135,7 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
         block_slices: List[BlockSlice] = []
         fully_consumed_refs: List[RefBundle] = []
 
-        for output_index, num_rows in enumerate(output_rows):
+        for num_rows in output_rows:
             remaining = num_rows
 
             while remaining > 0:
