@@ -1,6 +1,8 @@
+import copy
 from typing import Callable, Dict, Generator, Iterable, List, Optional
 
 import numpy as np
+import pyarrow as pa
 
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata, Schema
@@ -124,8 +126,6 @@ class _DatasourceProjectionPushdownMixin:
         Returns:
             A new datasource instance with the projection applied.
         """
-        import copy
-
         clone = copy.copy(self)
 
         # Combine projections via transitive map composition
@@ -137,9 +137,9 @@ class _DatasourceProjectionPushdownMixin:
 
     @staticmethod
     def _apply_rename(
-        table: "Schema",
+        table: "pa.Table",
         column_rename_map: Optional[Dict[str, str]],
-    ) -> "Schema":
+    ) -> "pa.Table":
         """Apply column renaming to a PyArrow table.
 
         Args:
@@ -157,9 +157,9 @@ class _DatasourceProjectionPushdownMixin:
 
     @staticmethod
     def _apply_rename_to_tables(
-        tables: Iterable["Schema"],
+        tables: Iterable["pa.Table"],
         column_rename_map: Optional[Dict[str, str]],
-    ) -> Generator["Schema", None, None]:
+    ) -> Generator["pa.Table", None, None]:
         """Wrap a table generator to apply column renaming to each table.
 
         This helper eliminates duplication across datasources that need to apply
@@ -170,16 +170,12 @@ class _DatasourceProjectionPushdownMixin:
             column_rename_map: Mapping from old column names to new names
 
         Yields:
-            Schema: Tables with renamed columns
+            pa.Table: Tables with renamed columns
         """
-        if not column_rename_map:
-            # No renaming needed, pass through
-            yield from tables
-        else:
-            for table in tables:
-                yield _DatasourceProjectionPushdownMixin._apply_rename(
-                    table, column_rename_map
-                )
+        for table in tables:
+            yield _DatasourceProjectionPushdownMixin._apply_rename(
+                table, column_rename_map
+            )
 
 
 class _DatasourcePredicatePushdownMixin:

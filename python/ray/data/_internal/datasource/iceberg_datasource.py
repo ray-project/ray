@@ -11,10 +11,62 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tupl
 import pyarrow as pa
 from packaging import version
 
+from ray.data._internal.planner.plan_expression.expression_visitors import _ExprVisitor
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
+from ray.data.expressions import (
+    AliasExpr,
+    BinaryExpr,
+    ColumnExpr,
+    DownloadExpr,
+    LiteralExpr,
+    Operation,
+    StarExpr,
+    UDFExpr,
+    UnaryExpr,
+)
+from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
+
+try:
+    from pyiceberg.expressions import (
+        And,
+        EqualTo,
+        GreaterThan,
+        GreaterThanOrEqual,
+        In,
+        IsNull,
+        LessThan,
+        LessThanOrEqual,
+        Literal,
+        Not,
+        NotEqualTo,
+        NotIn,
+        NotNull,
+        Or,
+        Reference,
+        UnboundTerm,
+        literal,
+    )
+
+    RAY_DATA_OPERATION_TO_ICEBERG = {
+        Operation.EQ: EqualTo,
+        Operation.NE: NotEqualTo,
+        Operation.GT: GreaterThan,
+        Operation.GE: GreaterThanOrEqual,
+        Operation.LT: LessThan,
+        Operation.LE: LessThanOrEqual,
+        Operation.AND: And,
+        Operation.OR: Or,
+        Operation.IN: In,
+        Operation.NOT_IN: NotIn,
+        Operation.IS_NULL: IsNull,
+        Operation.IS_NOT_NULL: NotNull,
+        Operation.NOT: Not,
+    }
+except ImportError:
+    log_once("pyiceberg.expressions not found. Please install pyiceberg >= 0.9.0")
 
 if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
@@ -26,6 +78,101 @@ if TYPE_CHECKING:
     from pyiceberg.table.metadata import TableMetadata
 
 logger = logging.getLogger(__name__)
+
+
+class _IcebergExpressionVisitor(
+    _ExprVisitor["BooleanExpression | UnboundTerm[Any] | Literal[Any]"]
+):
+    """
+    Visitor that converts Ray Data expressions to PyIceberg expressions.
+
+    This enables Ray Data users to write filters using the familiar col() syntax
+    while leveraging Iceberg's native filtering capabilities.
+
+    Example:
+        >>> from ray.data.expressions import col
+        >>> ray_expr = (col("date") >= "2024-01-01") & (col("status") == "active")
+        >>> iceberg_expr = _IcebergExpressionVisitor().visit(ray_expr)
+        >>> # iceberg_expr can now be used with PyIceberg's filter APIs
+    """
+
+    def visit_column(self, expr: "ColumnExpr") -> "UnboundTerm[Any]":
+        """Convert a column reference to an Iceberg reference."""
+        return Reference(expr.name)
+
+    def visit_literal(self, expr: "LiteralExpr") -> "Literal[Any]":
+        """Convert a literal value to an Iceberg literal."""
+        return literal(expr.value)
+
+    def visit_binary(self, expr: "BinaryExpr") -> "BooleanExpression":
+        """Convert a binary operation to an Iceberg expression."""
+        # Handle IN/NOT_IN specially since they don't visit the right operand
+        # (the right operand is a list literal that can't be converted)
+        if expr.op in (Operation.IN, Operation.NOT_IN):
+            left = self.visit(expr.left)
+            if not isinstance(expr.right, LiteralExpr):
+                raise ValueError(
+                    f"{expr.op.name} operation requires right operand to be a literal list, "
+                    f"got {type(expr.right).__name__}"
+                )
+            return RAY_DATA_OPERATION_TO_ICEBERG[expr.op](left, expr.right.value)
+
+        # For all other operations, visit both operands
+        left = self.visit(expr.left)
+        right = self.visit(expr.right)
+
+        if expr.op in RAY_DATA_OPERATION_TO_ICEBERG:
+            return RAY_DATA_OPERATION_TO_ICEBERG[expr.op](left, right)
+        else:
+            # Arithmetic operations are not supported in filter expressions
+            raise ValueError(
+                f"Unsupported binary operation for Iceberg filters: {expr.op}. "
+                f"Iceberg filters support: {RAY_DATA_OPERATION_TO_ICEBERG.keys()}. "
+                f"Arithmetic operations (ADD, SUB, MUL, DIV) cannot be used in filters."
+            )
+
+    def visit_unary(self, expr: "UnaryExpr") -> "BooleanExpression":
+        """Convert a unary operation to an Iceberg expression."""
+        operand = self.visit(expr.operand)
+
+        if expr.op in RAY_DATA_OPERATION_TO_ICEBERG:
+            return RAY_DATA_OPERATION_TO_ICEBERG[expr.op](operand)
+        else:
+            raise ValueError(
+                f"Unsupported unary operation for Iceberg: {expr.op}. "
+                f"Supported operations: {RAY_DATA_OPERATION_TO_ICEBERG.keys()}"
+            )
+
+    def visit_alias(
+        self, expr: "AliasExpr"
+    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+        """Convert an aliased expression (just unwrap the alias)."""
+        return self.visit(expr.expr)
+
+    def visit_udf(
+        self, expr: "UDFExpr"
+    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+        """UDF expressions cannot be converted to Iceberg expressions."""
+        raise TypeError(
+            "UDF expressions cannot be converted to Iceberg expressions. "
+            "Iceberg filters must use simple column comparisons and boolean operations."
+        )
+
+    def visit_download(
+        self, expr: "DownloadExpr"
+    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+        """Download expressions cannot be converted to Iceberg expressions."""
+        raise TypeError(
+            "Download expressions cannot be converted to Iceberg expressions."
+        )
+
+    def visit_star(
+        self, expr: "StarExpr"
+    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+        """Star expressions cannot be converted to Iceberg expressions."""
+        raise TypeError(
+            "Star expressions cannot be converted to Iceberg filter expressions."
+        )
 
 
 def _get_read_task(
@@ -43,7 +190,7 @@ def _get_read_task(
 
     from ray.data.datasource.datasource import _DatasourceProjectionPushdownMixin
 
-    def _generate_tables():
+    def _generate_tables() -> Iterable[pa.Table]:
         """Inner generator that yields tables without renaming."""
         if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
             # Modern implementation using ArrowScan (PyIceberg 0.9.0+)
@@ -187,10 +334,6 @@ class IcebergDatasource(Datasource):
 
         if self._predicate_expr is not None:
             # Convert Ray Data expression to PyIceberg expression using internal visitor
-            from ray.data._internal.planner.plan_expression.expression_visitors import (
-                _IcebergExpressionVisitor,
-            )
-
             visitor = _IcebergExpressionVisitor()
             iceberg_filter = visitor.visit(self._predicate_expr)
 

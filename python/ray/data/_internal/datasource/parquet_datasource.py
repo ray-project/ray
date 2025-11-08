@@ -542,7 +542,7 @@ def _read_batches_from(
         fragment, partition_columns, partitioning
     )
 
-    def _generate_tables():
+    def _generate_tables() -> "pa.Table":
         """Inner generator that yields tables without renaming."""
         try:
             for batch in fragment.to_batches(

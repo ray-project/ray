@@ -1,6 +1,8 @@
 import os
 import random
 
+import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pytest
 from pkg_resources import parse_version
@@ -10,6 +12,7 @@ from pyiceberg import (
     schema as pyi_schema,
     types as pyi_types,
 )
+from pyiceberg.catalog.sql import SqlCatalog
 from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.transforms import IdentityTransform
 
@@ -17,6 +20,10 @@ import ray
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import read_iceberg
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.map_operator import Filter, Project
+from ray.data._internal.logical.optimizers import LogicalOptimizer
+from ray.data._internal.util import rows_same
 from ray.data.expressions import col
 
 _CATALOG_NAME = "ray_catalog"
@@ -40,6 +47,14 @@ _SCHEMA = pa.schema(
 )
 
 
+def _get_operator_types(plan: "LogicalPlan") -> list:
+    return [type(op).__name__ for op in plan.dag.post_order_iter()]
+
+
+def _has_operator_type(plan: "LogicalPlan", operator_class: type) -> bool:
+    return any(isinstance(op, operator_class) for op in plan.dag.post_order_iter())
+
+
 def create_pa_table():
     return pa.Table.from_pydict(
         mapping={
@@ -53,8 +68,6 @@ def create_pa_table():
 
 @pytest.fixture(autouse=True, scope="function")
 def pyiceberg_table():
-    from pyiceberg.catalog.sql import SqlCatalog
-
     if not os.path.exists(_WAREHOUSE_PATH):
         os.makedirs(_WAREHOUSE_PATH)
     dummy_catalog = SqlCatalog(
@@ -177,8 +190,6 @@ def test_get_read_tasks():
 )
 def test_filtered_read():
 
-    from pyiceberg import expressions as pyi_expr
-
     iceberg_ds = IcebergDatasource(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
         row_filter=pyi_expr.In("col_c", {1, 2, 3, 4}),
@@ -265,9 +276,6 @@ def test_write_basic():
 )
 def test_write_concurrency():
 
-    import numpy as np
-    import pandas as pd
-
     sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
     table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
     table.delete()
@@ -300,11 +308,6 @@ def test_write_concurrency():
 )
 def test_predicate_pushdown():
     """Test that predicate pushdown works correctly with Iceberg datasource."""
-    import pandas as pd
-
-    from ray.data._internal.logical.optimizers import LogicalOptimizer
-    from ray.data.expressions import col
-
     # Read the table and apply filters using Ray Data expressions
     ds = ray.data.read_iceberg(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -318,16 +321,12 @@ def test_predicate_pushdown():
     # by checking the optimized logical plan
     logical_plan = filtered_ds._plan._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
-    actual_plan = optimized_plan.dag.dag_str
 
     # The plan should only contain the Read operator, with no Filter operator
     # This indicates the filter was pushed down to the datasource
-    assert (
-        "Filter[Filter" not in actual_plan
-    ), f"Filter should be pushed down to read, got plan: {actual_plan}"
-    assert (
-        "Read[ReadIceberg]" in actual_plan
-    ), f"Expected ReadIceberg in plan, got: {actual_plan}"
+    assert not _has_operator_type(
+        optimized_plan, Filter
+    ), f"Filter should be pushed down to read, got operators: {_get_operator_types(optimized_plan)}"
 
     # Verify the results are correct
     result = filtered_ds.to_pandas()
@@ -340,14 +339,9 @@ def test_predicate_pushdown():
         sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
         .scan(row_filter=pyi_expr.GreaterThanOrEqual("col_c", 5))
         .to_pandas()
-        .sort_values(["col_a", "col_b", "col_c"])
-        .reset_index(drop=True)
     )
 
-    result_sorted = result.sort_values(["col_a", "col_b", "col_c"]).reset_index(
-        drop=True
-    )
-    pd.testing.assert_frame_equal(result_sorted, expected_table)
+    assert rows_same(result, expected_table)
 
 
 @pytest.mark.skipif(
@@ -356,11 +350,6 @@ def test_predicate_pushdown():
 )
 def test_predicate_pushdown_with_initial_filter():
     """Test that predicate pushdown works when combined with initial row_filter."""
-    import pandas as pd
-
-    from ray.data._internal.logical.optimizers import LogicalOptimizer
-    from ray.data.expressions import col
-
     # Read with an initial PyIceberg filter
     initial_filter = pyi_expr.LessThan("col_a", 50)
 
@@ -378,12 +367,11 @@ def test_predicate_pushdown_with_initial_filter():
     # Verify both filters are pushed down
     logical_plan = filtered_ds._plan._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
-    actual_plan = optimized_plan.dag.dag_str
 
     # No Filter operator should remain in the plan
-    assert (
-        "Filter[Filter" not in actual_plan
-    ), f"Filters should be pushed down to read, got plan: {actual_plan}"
+    assert not _has_operator_type(
+        optimized_plan, Filter
+    ), f"Filters should be pushed down to read, got operators: {_get_operator_types(optimized_plan)}"
 
     # Verify the results satisfy both conditions
     result = filtered_ds.to_pandas()
@@ -400,14 +388,9 @@ def test_predicate_pushdown_with_initial_filter():
         sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
         .scan(row_filter=combined_filter)
         .to_pandas()
-        .sort_values(["col_a", "col_b", "col_c"])
-        .reset_index(drop=True)
     )
 
-    result_sorted = result.sort_values(["col_a", "col_b", "col_c"]).reset_index(
-        drop=True
-    )
-    pd.testing.assert_frame_equal(result_sorted, expected_table)
+    assert rows_same(result, expected_table)
 
 
 @pytest.mark.skipif(
@@ -416,10 +399,6 @@ def test_predicate_pushdown_with_initial_filter():
 )
 def test_projection_pushdown():
     """Test that projection pushdown works correctly with Iceberg datasource."""
-    import pandas as pd
-
-    from ray.data._internal.logical.optimizers import LogicalOptimizer
-
     # Read the table and apply projection using select
     ds = ray.data.read_iceberg(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -432,13 +411,12 @@ def test_projection_pushdown():
     # Verify the projection is pushed down to the read operation
     logical_plan = projected_ds._plan._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
-    actual_plan = optimized_plan.dag.dag_str
 
     # The plan should only contain the Read operator, with no Project operator
     # This indicates the projection was pushed down to the datasource
-    assert (
-        "Project[Project" not in actual_plan
-    ), f"Projection should be pushed down to read, got plan: {actual_plan}"
+    assert not _has_operator_type(
+        optimized_plan, Project
+    ), f"Projection should be pushed down to read, got operators: {_get_operator_types(optimized_plan)}"
 
     # Verify the results only contain the selected columns
     result = projected_ds.to_pandas()
@@ -454,12 +432,9 @@ def test_projection_pushdown():
         sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
         .scan(selected_fields=("col_a", "col_c"))
         .to_pandas()
-        .sort_values(["col_a", "col_c"])
-        .reset_index(drop=True)
     )
 
-    result_sorted = result.sort_values(["col_a", "col_c"]).reset_index(drop=True)
-    pd.testing.assert_frame_equal(result_sorted, expected_table)
+    assert rows_same(result, expected_table)
 
 
 @pytest.mark.skipif(
@@ -501,10 +476,6 @@ def test_projection_and_predicate_pushdown(
     selected_cols, filter_expr, pyi_filter, expected_cols
 ):
     """Test that both projection and predicate pushdown work together."""
-    import pandas as pd
-
-    from ray.data._internal.logical.optimizers import LogicalOptimizer
-
     # Read the table
     ds = ray.data.read_iceberg(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -523,15 +494,14 @@ def test_projection_and_predicate_pushdown(
     # Verify both optimizations are applied
     logical_plan = filtered_ds._plan._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
-    actual_plan = optimized_plan.dag.dag_str
 
     # Both Filter and Project should be pushed down
-    assert (
-        "Filter[Filter" not in actual_plan
-    ), f"Filter should be pushed down, got plan: {actual_plan}"
-    assert (
-        "Project[Project" not in actual_plan
-    ), f"Projection should be pushed down, got plan: {actual_plan}"
+    assert not _has_operator_type(
+        optimized_plan, Filter
+    ), f"Filter should be pushed down, got operators: {_get_operator_types(optimized_plan)}"
+    assert not _has_operator_type(
+        optimized_plan, Project
+    ), f"Projection should be pushed down, got operators: {_get_operator_types(optimized_plan)}"
 
     # Verify the results
     result = filtered_ds.to_pandas()
@@ -544,22 +514,13 @@ def test_projection_and_predicate_pushdown(
     table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
 
     if pyi_filter is not None:
-        expected_table = (
-            table.scan(row_filter=pyi_filter, selected_fields=tuple(selected_cols))
-            .to_pandas()
-            .sort_values(selected_cols)
-            .reset_index(drop=True)
-        )
+        expected_table = table.scan(
+            row_filter=pyi_filter, selected_fields=tuple(selected_cols)
+        ).to_pandas()
     else:
-        expected_table = (
-            table.scan(selected_fields=tuple(selected_cols))
-            .to_pandas()
-            .sort_values(selected_cols)
-            .reset_index(drop=True)
-        )
+        expected_table = table.scan(selected_fields=tuple(selected_cols)).to_pandas()
 
-    result_sorted = result.sort_values(selected_cols).reset_index(drop=True)
-    pd.testing.assert_frame_equal(result_sorted, expected_table)
+    assert rows_same(result, expected_table)
 
 
 @pytest.mark.skipif(
@@ -650,10 +611,6 @@ def test_rename_select_filter_combinations(
     rename_map, select_cols, filter_expr, pyi_filter, expected_cols
 ):
     """Test all combinations of rename_columns, select_columns, and filter operations."""
-    import pandas as pd
-
-    from ray.data._internal.logical.optimizers import LogicalOptimizer
-
     # Read the table
     ds = ray.data.read_iceberg(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -675,17 +632,16 @@ def test_rename_select_filter_combinations(
     # Verify optimizations are applied
     logical_plan = ds._plan._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
-    actual_plan = optimized_plan.dag.dag_str
 
     # Both Filter and Project should be pushed down (when applicable)
     if filter_expr is not None:
-        assert (
-            "Filter[Filter" not in actual_plan
-        ), f"Filter should be pushed down, got plan: {actual_plan}"
+        assert not _has_operator_type(
+            optimized_plan, Filter
+        ), f"Filter should be pushed down, got operators: {_get_operator_types(optimized_plan)}"
     if select_cols is not None or rename_map is not None:
-        assert (
-            "Project[Project" not in actual_plan
-        ), f"Projection should be pushed down, got plan: {actual_plan}"
+        assert not _has_operator_type(
+            optimized_plan, Project
+        ), f"Projection should be pushed down, got operators: {_get_operator_types(optimized_plan)}"
 
     # Verify the results
     result = ds.to_pandas()
@@ -729,12 +685,7 @@ def test_rename_select_filter_combinations(
         }
         expected_table = expected_table.rename(columns=cols_to_rename)
 
-    # Sort and compare
-    sort_cols = sorted(expected_cols)
-    result_sorted = result.sort_values(sort_cols).reset_index(drop=True)
-    expected_sorted = expected_table.sort_values(sort_cols).reset_index(drop=True)
-
-    pd.testing.assert_frame_equal(result_sorted, expected_sorted)
+    assert rows_same(result, expected_table)
 
 
 @pytest.mark.skipif(
@@ -743,10 +694,6 @@ def test_rename_select_filter_combinations(
 )
 def test_predicate_pushdown_complex_expression():
     """Test predicate pushdown with complex expressions."""
-    import pandas as pd
-
-    from ray.data.expressions import col
-
     # Apply a complex filter expression
     ds = ray.data.read_iceberg(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -762,12 +709,18 @@ def test_predicate_pushdown_complex_expression():
 
     # Verify the results
     result = filtered_ds.to_pandas()
-    assert (
-        "Filter[Filter" not in filtered_ds._plan._logical_plan.dag.dag_str
-    ), "Filter should be pushed down"
-    assert (
-        "Project[Project" not in filtered_ds._plan._logical_plan.dag.dag_str
-    ), "Projection should be pushed down"
+
+    # Verify optimizations are applied
+    logical_plan = filtered_ds._plan._logical_plan
+    optimized_plan = LogicalOptimizer().optimize(logical_plan)
+
+    assert not _has_operator_type(
+        optimized_plan, Filter
+    ), f"Filter should be pushed down, got operators: {_get_operator_types(optimized_plan)}"
+    assert not _has_operator_type(
+        optimized_plan, Project
+    ), f"Projection should be pushed down, got operators: {_get_operator_types(optimized_plan)}"
+
     assert all(result["col_c"] >= 3), "All rows should have col_c >= 3"
     assert all(result["col_c"] <= 7), "All rows should have col_c <= 7"
     assert all(result["col_a"] <= 50), "All rows should have col_a <= 50"
@@ -786,14 +739,9 @@ def test_predicate_pushdown_complex_expression():
         sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
         .scan(row_filter=combined_filter)
         .to_pandas()
-        .sort_values(["col_a", "col_b", "col_c"])
-        .reset_index(drop=True)
     )
 
-    result_sorted = result.sort_values(["col_a", "col_b", "col_c"]).reset_index(
-        drop=True
-    )
-    pd.testing.assert_frame_equal(result_sorted, expected_table)
+    assert rows_same(result, expected_table)
 
 
 if __name__ == "__main__":

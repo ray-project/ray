@@ -8,51 +8,11 @@ from ray.data.expressions import (
     DownloadExpr,
     Expr,
     LiteralExpr,
-    Operation,
     StarExpr,
     UDFExpr,
     UnaryExpr,
     _ExprVisitor,
 )
-from ray.util import log_once
-
-try:
-    from pyiceberg.expressions import (
-        And,
-        BooleanExpression,
-        EqualTo,
-        GreaterThan,
-        GreaterThanOrEqual,
-        In,
-        IsNull,
-        LessThan,
-        LessThanOrEqual,
-        Not,
-        NotEqualTo,
-        NotIn,
-        NotNull,
-        Or,
-    )
-
-    # Map Ray Data operations to Iceberg operations
-    RAY_DATA_OPERATION_TO_ICEBERG = {
-        Operation.EQ: EqualTo,
-        Operation.NE: NotEqualTo,
-        Operation.GT: GreaterThan,
-        Operation.GE: GreaterThanOrEqual,
-        Operation.LT: LessThan,
-        Operation.LE: LessThanOrEqual,
-        Operation.AND: And,
-        Operation.OR: Or,
-        Operation.IN: In,
-        Operation.NOT_IN: NotIn,
-        Operation.IS_NULL: IsNull,
-        Operation.IS_NOT_NULL: NotNull,
-        Operation.NOT: Not,
-    }
-except ImportError:
-    log_once("pyiceberg is not installed, some expression visitors will be unavailable")
-
 
 T = TypeVar("T")
 
@@ -387,92 +347,3 @@ class _TreeReprVisitor(_ExprVisitor[str]):
 
     def visit_star(self, expr: "StarExpr") -> str:
         return self._make_tree_lines("COL(*)", expr=expr)
-
-
-class _IcebergExpressionVisitor(_ExprVisitor["BooleanExpression"]):
-    """
-    Visitor that converts Ray Data expressions to PyIceberg expressions.
-
-    This enables Ray Data users to write filters using the familiar col() syntax
-    while leveraging Iceberg's native filtering capabilities.
-
-    Example:
-        >>> from ray.data.expressions import col
-        >>> ray_expr = (col("date") >= "2024-01-01") & (col("status") == "active")
-        >>> iceberg_expr = _IcebergExpressionVisitor().visit(ray_expr)
-        >>> # iceberg_expr can now be used with PyIceberg's filter APIs
-    """
-
-    def visit_column(self, expr: "ColumnExpr") -> "BooleanExpression":
-        """Convert a column reference to an Iceberg reference."""
-        from pyiceberg.expressions import Reference
-
-        return Reference(expr.name)
-
-    def visit_literal(self, expr: "LiteralExpr") -> "BooleanExpression":
-        """Convert a literal value to an Iceberg literal."""
-        from pyiceberg.expressions import literal
-
-        return literal(expr.value)
-
-    def visit_binary(self, expr: "BinaryExpr") -> "BooleanExpression":
-        """Convert a binary operation to an Iceberg expression."""
-        # Handle IN/NOT_IN specially since they don't visit the right operand
-        # (the right operand is a list literal that can't be converted)
-        if expr.op in (Operation.IN, Operation.NOT_IN):
-            left = self.visit(expr.left)
-            if not isinstance(expr.right, LiteralExpr):
-                raise ValueError(
-                    f"{expr.op.name} operation requires right operand to be a literal list, "
-                    f"got {type(expr.right).__name__}"
-                )
-            return RAY_DATA_OPERATION_TO_ICEBERG[expr.op](left, expr.right.value)
-
-        # For all other operations, visit both operands
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
-
-        if expr.op in RAY_DATA_OPERATION_TO_ICEBERG:
-            return RAY_DATA_OPERATION_TO_ICEBERG[expr.op](left, right)
-        else:
-            # Arithmetic operations are not supported in filter expressions
-            raise ValueError(
-                f"Unsupported binary operation for Iceberg filters: {expr.op}. "
-                f"Iceberg filters support: {RAY_DATA_OPERATION_TO_ICEBERG.keys()}. "
-                f"Arithmetic operations (ADD, SUB, MUL, DIV) cannot be used in filters."
-            )
-
-    def visit_unary(self, expr: "UnaryExpr") -> "BooleanExpression":
-        """Convert a unary operation to an Iceberg expression."""
-        operand = self.visit(expr.operand)
-
-        if expr.op in RAY_DATA_OPERATION_TO_ICEBERG:
-            return RAY_DATA_OPERATION_TO_ICEBERG[expr.op](operand)
-        else:
-            raise ValueError(
-                f"Unsupported unary operation for Iceberg: {expr.op}. "
-                f"Supported operations: {RAY_DATA_OPERATION_TO_ICEBERG.keys()}"
-            )
-
-    def visit_alias(self, expr: "AliasExpr") -> "BooleanExpression":
-        """Convert an aliased expression (just unwrap the alias)."""
-        return self.visit(expr.expr)
-
-    def visit_udf(self, expr: "UDFExpr") -> "BooleanExpression":
-        """UDF expressions cannot be converted to Iceberg expressions."""
-        raise TypeError(
-            "UDF expressions cannot be converted to Iceberg expressions. "
-            "Iceberg filters must use simple column comparisons and boolean operations."
-        )
-
-    def visit_download(self, expr: "DownloadExpr") -> "BooleanExpression":
-        """Download expressions cannot be converted to Iceberg expressions."""
-        raise TypeError(
-            "Download expressions cannot be converted to Iceberg expressions."
-        )
-
-    def visit_star(self, expr: "StarExpr") -> "BooleanExpression":
-        """Star expressions cannot be converted to Iceberg expressions."""
-        raise TypeError(
-            "Star expressions cannot be converted to Iceberg filter expressions."
-        )

@@ -19,13 +19,18 @@ from pyiceberg.expressions import (
     literal,
 )
 
+from ray.data._internal.datasource.iceberg_datasource import _IcebergExpressionVisitor
+from ray.data.datatype import DataType
 from ray.data.expressions import (
     BinaryExpr,
     Expr,
     Operation,
+    UDFExpr,
     UnaryExpr,
     col,
+    download,
     lit,
+    star,
 )
 
 # Tuples of (expr1, expr2, expected_result)
@@ -585,9 +590,6 @@ class TestIcebergExpressionVisitor:
         This test documents the expected PyIceberg expression for each Ray Data expression
         and verifies the conversion produces the correct type.
         """
-        from ray.data._internal.planner.plan_expression.expression_visitors import (
-            _IcebergExpressionVisitor,
-        )
 
         # Convert Ray expression to Iceberg using internal visitor
         visitor = _IcebergExpressionVisitor()
@@ -602,9 +604,6 @@ class TestIcebergExpressionVisitor:
 
     def test_iceberg_visitor_unsupported_arithmetic(self):
         """Test that arithmetic operations raise appropriate errors."""
-        from ray.data._internal.planner.plan_expression.expression_visitors import (
-            _IcebergExpressionVisitor,
-        )
 
         visitor = _IcebergExpressionVisitor()
 
@@ -635,13 +634,6 @@ class TestIcebergExpressionVisitor:
             visitor.visit(col("items") // 5)
 
     def test_iceberg_visitor_unsupported_expressions(self):
-        """Test that unsupported expression types raise appropriate errors."""
-        from ray.data._internal.planner.plan_expression.expression_visitors import (
-            _IcebergExpressionVisitor,
-        )
-        from ray.data.datatype import DataType
-        from ray.data.expressions import UDFExpr, download, star
-
         visitor = _IcebergExpressionVisitor()
 
         # UDF expressions
@@ -674,10 +666,6 @@ class TestIcebergExpressionVisitor:
 
     def test_iceberg_visitor_in_requires_literal_list(self):
         """Test that IN/NOT_IN operations require literal lists."""
-        from ray.data._internal.planner.plan_expression.expression_visitors import (
-            _IcebergExpressionVisitor,
-        )
-
         visitor = _IcebergExpressionVisitor()
 
         # This should work - literal list
