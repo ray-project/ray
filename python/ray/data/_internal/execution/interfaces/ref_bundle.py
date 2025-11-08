@@ -247,7 +247,7 @@ def _iter_sliced_blocks(
     yield builder.build()
 
 
-def slice_ref_bundle(
+def _slice_ref_bundle(
     ref_bundle: RefBundle, needed_rows: int
 ) -> Tuple[RefBundle, RefBundle]:
     """Split a RefBundle into a prefix of `needed_rows` and the remaining suffix.
@@ -322,8 +322,7 @@ def slice_ref_bundle(
 
             rows_to_take = 0
 
-    if rows_to_take != 0:
-        raise ValueError("Slice exceeds the available rows in the RefBundle.")
+    assert rows_to_take == 0, "Slice exceeds the available rows in the RefBundle."
 
     consumed_bundle = RefBundle(
         blocks=tuple(consumed_blocks),
@@ -342,7 +341,7 @@ def slice_ref_bundle(
     return consumed_bundle, remaining_bundle
 
 
-def merge_ref_bundles(bundles: List[RefBundle]) -> RefBundle:
+def _merge_ref_bundles(bundles: List[RefBundle]) -> RefBundle:
     merged_blocks = list(itertools.chain(*[bundle.blocks for bundle in bundles]))
     merged_slices = list(itertools.chain(*[bundle.slices for bundle in bundles]))
     merged_bundle = RefBundle(

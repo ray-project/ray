@@ -1,15 +1,12 @@
 from collections import deque
-from dataclasses import dataclass
-from typing import Deque, List, Optional, Tuple
+from typing import Deque, List, Tuple
 
 from ray.data._internal.execution.interfaces import BlockSlice, RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
-    merge_ref_bundles,
-    slice_ref_bundle,
+    _merge_ref_bundles,
+    _slice_ref_bundle,
 )
 from ray.data._internal.execution.operators.map_operator import BaseRefBundler
-from ray.data.block import BlockMetadata, Schema
-from ray.types import ObjectRef
 
 """Streaming repartition builds fixed-size outputs from a stream of inputs.
 
@@ -18,27 +15,6 @@ from ray.types import ObjectRef
     target num rows (except during the final flush, which may emit a smaller tail block). This allows us to create
     target-sized batches without materializing entire large blocks on the driver.
 """
-
-
-@dataclass
-class _PendingBlock:
-    """Input block plus consumption state while queued for repartitioning.
-
-    - block_ref/metadata/schema: Upstream block handle and metadata.
-    - start_offset: Number of rows already consumed from this block.
-    """
-
-    block_ref: ObjectRef
-    metadata: BlockMetadata
-    schema: Optional["Schema"]
-    parent_bundle: RefBundle
-    start_offset: int = 0
-
-    @property
-    def remaining_rows(self) -> int:
-        """Number of rows left to consume from this block."""
-        assert self.metadata.num_rows is not None
-        return self.metadata.num_rows - self.start_offset
 
 
 class StreamingRepartitionRefBundler(BaseRefBundler):
@@ -67,10 +43,10 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
             )
             if rows_needed_from_last_bundle > 0:
                 last_bundle = self._pending_bundles.pop()
-                to_consume, remaining = slice_ref_bundle(
+                to_consume, remaining = _slice_ref_bundle(
                     last_bundle, rows_needed_from_last_bundle
                 )
-                merged_bundle = merge_ref_bundles(
+                merged_bundle = _merge_ref_bundles(
                     list(self._pending_bundles) + [to_consume]
                 )
                 self._ready_bundles.append(merged_bundle)
@@ -81,7 +57,7 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
                     self._total_pending_rows += remaining.num_rows()
             else:
                 self._ready_bundles.append(
-                    merge_ref_bundles(list(self._pending_bundles))
+                    _merge_ref_bundles(list(self._pending_bundles))
                 )
                 self._pending_bundles.clear()
                 self._total_pending_rows = 0

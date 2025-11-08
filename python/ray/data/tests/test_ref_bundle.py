@@ -5,8 +5,8 @@ import pytest
 from ray import ObjectRef
 from ray.data._internal.execution.interfaces import BlockSlice, RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
-    merge_ref_bundles,
-    slice_ref_bundle,
+    _merge_ref_bundles,
+    _slice_ref_bundle,
 )
 from ray.data.block import BlockMetadata
 
@@ -137,7 +137,7 @@ def test_slice_ref_bundle_basic():
         schema="schema",
     )
 
-    consumed, remaining = slice_ref_bundle(bundle, 8)
+    consumed, remaining = _slice_ref_bundle(bundle, 8)
 
     assert consumed.num_rows() == 8
     assert remaining.num_rows() == 2
@@ -176,7 +176,7 @@ def test_slice_ref_bundle_with_existing_slices():
         ],
     )
 
-    consumed, remaining = slice_ref_bundle(bundle, 7)
+    consumed, remaining = _slice_ref_bundle(bundle, 7)
 
     assert consumed.num_rows() == 7
     assert consumed.slices == [
@@ -203,10 +203,10 @@ def test_slice_ref_bundle_invalid_rows():
     )
 
     with pytest.raises(AssertionError):
-        slice_ref_bundle(bundle, 0)
+        _slice_ref_bundle(bundle, 0)
 
     with pytest.raises(AssertionError):
-        slice_ref_bundle(bundle, 6)
+        _slice_ref_bundle(bundle, 6)
 
 
 def test_merge_ref_bundles():
@@ -240,7 +240,7 @@ def test_merge_ref_bundles():
         ],
     )
 
-    merged = merge_ref_bundles([bundle_one, bundle_two])
+    merged = _merge_ref_bundles([bundle_one, bundle_two])
 
     assert merged.schema == "schema"
     assert merged.owns_blocks is False
