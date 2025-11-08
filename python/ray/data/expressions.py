@@ -4,7 +4,7 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, Generic, List, Literal, TypeVar, Union
+from typing import Any, Callable, Dict, Generic, List, Literal, Optional, TypeVar, Union
 
 import pyarrow
 import pyarrow.compute as pc
@@ -483,8 +483,8 @@ class _PyArrowMethodConfig:
 
     pc_func_name: str
     return_dtype: DataType
-    params: List[str] = field(default=None)
-    docstring: str = field(default=None)
+    params: Optional[List[str]] = field(default=None)
+    docstring: Optional[str] = field(default=None)
 
 
 def _make_namespace_method(config: _PyArrowMethodConfig) -> Callable:
