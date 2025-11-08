@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -17,13 +16,12 @@ from typing import (
     Union,
 )
 
+import pyarrow
+import pyarrow.compute as pc
+
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
-
-if TYPE_CHECKING:
-    import pyarrow
-    import pyarrow.compute as pc
 
 T = TypeVar("T")
 
@@ -508,27 +506,18 @@ def _make_namespace_method(config: _PyArrowMethodConfig) -> Callable:
     Returns:
         A method that creates a UDFExpr wrapping the PyArrow compute function.
     """
-    if config.params is None:
-        # Simple unary function
-        def method(self) -> "UDFExpr":
-            func = getattr(pc, config.pc_func_name)
+    # Capture config values in closure
+    pc_func_name = config.pc_func_name
+    return_dtype = config.return_dtype
 
-            @udf(return_dtype=config.return_dtype)
-            def _wrapper(arr):
-                return func(arr)
+    def method(self, *args, **kwargs) -> "UDFExpr":
+        func = getattr(pc, pc_func_name)
 
-            return _wrapper(self._expr)
+        @udf(return_dtype=return_dtype)
+        def _wrapper(arr):
+            return func(arr, *args, **kwargs)
 
-    else:
-        # Function with parameters - capture them in closure
-        def method(self, *args, **kwargs) -> "UDFExpr":
-            func = getattr(pc, config.pc_func_name)
-
-            @udf(return_dtype=config.return_dtype)
-            def _wrapper(arr):
-                return func(arr, *args, **kwargs)
-
-            return _wrapper(self._expr)
+        return _wrapper(self._expr)
 
     if config.docstring:
         method.__doc__ = config.docstring
@@ -536,18 +525,23 @@ def _make_namespace_method(config: _PyArrowMethodConfig) -> Callable:
     return method
 
 
-def _add_methods_from_config(
-    cls: type, methods_config: Dict[str, _PyArrowMethodConfig]
-) -> None:
-    """Add methods to a class based on a configuration dictionary.
+def _add_pyarrow_methods(methods_config: Dict[str, _PyArrowMethodConfig]):
+    """Class decorator to add methods based on a configuration dictionary.
 
     Args:
-        cls: The class to add methods to
         methods_config: Dict mapping method_name -> MethodConfig
+
+    Returns:
+        A class decorator function
     """
-    for method_name, config in methods_config.items():
-        method = _make_namespace_method(config)
-        setattr(cls, method_name, method)
+
+    def decorator(cls: type) -> type:
+        for method_name, config in methods_config.items():
+            method = _make_namespace_method(config)
+            setattr(cls, method_name, method)
+        return cls
+
+    return decorator
 
 
 # Configuration dictionaries for auto-generated methods
@@ -759,6 +753,7 @@ _STRING_METHODS = {
 }
 
 
+@_add_pyarrow_methods(_LIST_METHODS)
 @dataclass
 class _ListNamespace:
     """Namespace for list operations on expression columns.
@@ -838,6 +833,7 @@ class _ListNamespace:
         return _list_slice(self._expr)
 
 
+@_add_pyarrow_methods(_STRING_METHODS)
 @dataclass
 class _StringNamespace:
     """Namespace for string operations on expression columns.
@@ -996,11 +992,6 @@ class _StructNamespace:
             return pc.struct_field(arr, field_name)
 
         return _struct_field(self._expr)
-
-
-# Auto-generate methods from configuration
-_add_methods_from_config(_ListNamespace, _LIST_METHODS)
-_add_methods_from_config(_StringNamespace, _STRING_METHODS)
 
 
 @DeveloperAPI(stability="alpha")
