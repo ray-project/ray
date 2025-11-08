@@ -252,7 +252,10 @@ class ActorReplicaWrapper:
         self._docs_path: Optional[str] = None
         self._route_patterns: Optional[List[str]] = None
         # Rank assigned to the replica.
-        self._rank: Optional[int] = None
+        self._assign_rank_callback: Callable[[str, str], Tuple[int, int, int]] = None
+        self._global_rank: Optional[int] = None
+        self._node_rank: Optional[int] = None
+        self._local_rank: Optional[int] = None
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
         self._placement_group: PlacementGroup = None
@@ -289,7 +292,15 @@ class ActorReplicaWrapper:
 
     @property
     def rank(self) -> Optional[int]:
-        return self._rank
+        return self._global_rank
+
+    @property
+    def node_rank(self) -> Optional[int]:
+        return self._node_rank
+
+    @property
+    def local_rank(self) -> Optional[int]:
+        return self._local_rank
 
     @property
     def app_name(self) -> str:
@@ -451,6 +462,7 @@ class ActorReplicaWrapper:
         """
         self._actor_resources = deployment_info.replica_config.resource_dict
         self._ingress = deployment_info.ingress
+        self._assign_rank_callback = assign_rank_callback
         # it is currently not possible to create a placement group
         # with no resources (https://github.com/ray-project/ray/issues/20401)
         self._deployment_is_cross_language = (
@@ -586,17 +598,27 @@ class ActorReplicaWrapper:
             )
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            replica_ready_check_func = self._actor_handle.initialize_and_get_metadata
-            self._ready_obj_ref = replica_ready_check_func.remote(
-                deployment_config,
-                # Ensure that `is_allocated` will execute
-                # before `initialize_and_get_metadata`,
-                # because `initialize_and_get_metadata` runs
-                # user code that could block the replica
-                # asyncio loop. If that happens before `is_allocated` is executed,
-                # the `is_allocated` call won't be able to run.
-                self._allocated_obj_ref,
-            )
+
+            def on_completed(args):
+                _, _, _, node_id, _, _, _ = args
+                global_rank, node_rank, local_rank = self._assign_rank_callback(
+                    self._replica_id.unique_id, node_id
+                )
+                self._global_rank = global_rank
+                self._node_rank = node_rank
+                self._local_rank = local_rank
+
+                replica_ready_check_func = (
+                    self._actor_handle.initialize_and_get_metadata
+                )
+                self._ready_obj_ref = replica_ready_check_func.remote(
+                    deployment_config,
+                    global_rank,
+                    node_rank,
+                    local_rank,
+                )
+
+            self._allocated_obj_ref._on_completed(on_completed)
 
     def _format_user_config(self, user_config: Any):
         temp = copy(user_config)
@@ -611,6 +633,8 @@ class ActorReplicaWrapper:
         self,
         version: DeploymentVersion,
         rank: int,
+        node_rank: int,
+        local_rank: int,
     ) -> bool:
         """
         Update replica version. Also, updates the deployment config on the actor
@@ -623,9 +647,15 @@ class ActorReplicaWrapper:
         # Determine if we need heavyweight reconfiguration
         # vs lightweight updates
         needs_actor_reconfigure = self._version.requires_actor_reconfigure(version)
-        has_rank_changes = self._rank != rank
-
-        if needs_actor_reconfigure or has_rank_changes:
+        has_rank_changes = self._global_rank != rank
+        has_node_rank_changes = self._node_rank != node_rank
+        has_local_rank_changes = self._local_rank != local_rank
+        if (
+            needs_actor_reconfigure
+            or has_rank_changes
+            or has_node_rank_changes
+            or has_local_rank_changes
+        ):
             # Call into replica actor reconfigure() with updated user config and
             # graceful_shutdown_wait_loop_s
             # Setting updating=True because we want to transition to UPDATING state
@@ -638,11 +668,15 @@ class ActorReplicaWrapper:
             self._ready_obj_ref = self._actor_handle.reconfigure.remote(
                 deployment_config,
                 rank,
+                node_rank,
+                local_rank,
                 version.route_prefix,
             )
 
         self._version = version
-        self._rank = rank
+        self._global_rank = rank
+        self._node_rank = node_rank
+        self._local_rank = local_rank
         return updating
 
     def recover(self) -> bool:
@@ -744,6 +778,8 @@ class ActorReplicaWrapper:
                 )
                 logger.exception(msg)
                 return ReplicaStartupStatus.FAILED, msg
+        if self._ready_obj_ref is None:
+            return ReplicaStartupStatus.PENDING_INITIALIZATION, None
 
         # Check whether replica initialization has completed.
         replica_ready = check_obj_ref_ready_nowait(self._ready_obj_ref)
@@ -771,7 +807,9 @@ class ActorReplicaWrapper:
                         self._docs_path,
                         self._http_port,
                         self._grpc_port,
-                        self._rank,
+                        self._global_rank,
+                        self._node_rank,
+                        self._local_rank,
                         self._route_patterns,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
@@ -1187,6 +1225,8 @@ class DeploymentReplica:
         self,
         version: DeploymentVersion,
         rank: int,
+        node_rank: int,
+        local_rank: int,
     ) -> bool:
         """
         Update replica version. Also, updates the deployment config on the actor
@@ -1194,7 +1234,9 @@ class DeploymentReplica:
 
         Returns: whether the actor is being updated.
         """
-        return self._actor.reconfigure(version, rank=rank)
+        return self._actor.reconfigure(
+            version, rank=rank, node_rank=node_rank, local_rank=local_rank
+        )
 
     def recover(self) -> bool:
         """
@@ -1216,6 +1258,16 @@ class DeploymentReplica:
     def rank(self) -> Optional[int]:
         """Get the rank assigned to the replica."""
         return self._actor.rank
+
+    @property
+    def node_rank(self) -> Optional[int]:
+        """Get the node rank assigned to the replica."""
+        return self._actor.node_rank
+
+    @property
+    def local_rank(self) -> Optional[int]:
+        """Get the local rank assigned to the replica."""
+        return self._actor.local_rank
 
     def check_started(
         self,
@@ -1710,22 +1762,20 @@ class DeploymentRankManager:
 
         return (global_rank, node_rank, local_rank)
 
-    def release_rank(self, replica_id: str, node_id: str) -> None:
-        """Release ranks for a replica from a specific node.
+    def release_rank(self, replica_id: str) -> None:
+        """Release ranks for a replica.
 
         Args:
             replica_id: ID of the replica
-            node_id: ID of the node where replica is placed
 
         Raises:
-            RuntimeError: If replica doesn't have ranks or node_id doesn't match
+            RuntimeError: If replica doesn't have ranks
         """
         if not self.has_replica_rank(replica_id):
             raise RuntimeError(f"Rank for {replica_id} not assigned")
 
-        # Validate that replica is on the specified node
-        if self._replica_to_node[replica_id] != node_id:
-            raise RuntimeError(f"Replica {replica_id} not assigned to node {node_id}")
+        # Get the node_id from the replica mapping
+        node_id = self._replica_to_node[replica_id]
 
         # Release global rank
         self._replica_rank_manager.release_rank(replica_id)
@@ -1901,6 +1951,9 @@ class DeploymentRankManager:
         self._node_rank_manager.clear()
         self._local_rank_managers.clear()
         self._replica_to_node.clear()
+
+    def get_replica_ranks_mapping(self) -> Dict[str, int]:
+        return self._replica_rank_manager.get_ranks_mapping()
 
 
 class DeploymentState:
@@ -2476,11 +2529,16 @@ class DeploymentState:
                 ):
                     replicas_changed = True
                 # Get current rank for the replica
-                current_rank, _, _ = self._rank_manager.get_replica_rank(
-                    replica.replica_id.unique_id
-                )
+                (
+                    current_rank,
+                    current_node_rank,
+                    current_local_rank,
+                ) = self._rank_manager.get_replica_rank(replica.replica_id.unique_id)
                 actor_updating = replica.reconfigure(
-                    self._target_state.version, rank=current_rank
+                    self._target_state.version,
+                    rank=current_rank,
+                    node_rank=current_node_rank,
+                    local_rank=current_local_rank,
                 )
                 if actor_updating:
                     self._replicas.add(ReplicaState.UPDATING, replica)
@@ -2725,7 +2783,15 @@ class DeploymentState:
                     # Recover rank from the replica actor during controller restart
                     replica_id = replica.replica_id.unique_id
                     recovered_rank = replica.rank
-                    self._rank_manager.recover_rank(replica_id, recovered_rank)
+                    recovered_node_rank = replica.node_rank
+                    recovered_local_rank = replica.local_rank
+                    self._rank_manager.recover_rank(
+                        replica_id,
+                        node_id=replica.actor_node_id,
+                        global_rank=recovered_rank,
+                        node_rank=recovered_node_rank,
+                        local_rank=recovered_local_rank,
+                    )
                 # This replica should be now be added to handle's replica
                 # set.
                 self._replicas.add(ReplicaState.RUNNING, replica)
@@ -3002,13 +3068,19 @@ class DeploymentState:
         updated_count = 0
         for replica in replicas_to_reconfigure:
             replica_id = replica.replica_id.unique_id
-            new_rank = self._rank_manager.get_replica_rank(replica_id)
+            (
+                new_rank,
+                new_node_rank,
+                new_local_rank,
+            ) = self._rank_manager.get_replica_rank(replica_id)
 
             # Use reconfigure() to update rank
             # World size is calculated automatically from deployment config
             _ = replica.reconfigure(
                 self._target_state.version,
                 rank=new_rank,
+                node_rank=new_node_rank,
+                local_rank=new_local_rank,
             )
             updated_count += 1
 

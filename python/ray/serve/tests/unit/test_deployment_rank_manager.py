@@ -422,7 +422,7 @@ class TestDeploymentRankManagerBasic:
         deployment_rank_manager.assign_rank("replica_1", "node_1")
         deployment_rank_manager.assign_rank("replica_2", "node_1")
 
-        deployment_rank_manager.release_rank("replica_1", "node_1")
+        deployment_rank_manager.release_rank("replica_1")
 
         # Verify replica_1 is no longer tracked
         assert not deployment_rank_manager.has_replica_rank("replica_1")
@@ -434,7 +434,7 @@ class TestDeploymentRankManagerBasic:
         deployment_rank_manager.assign_rank("replica_2", "node_2")
 
         # Release the only replica on node_1
-        deployment_rank_manager.release_rank("replica_1", "node_1")
+        deployment_rank_manager.release_rank("replica_1")
 
         # Node 1 should no longer have a rank manager
         assert "node_1" not in deployment_rank_manager._local_rank_managers
@@ -449,14 +449,7 @@ class TestDeploymentRankManagerBasic:
     def test_release_rank_nonexistent_replica_fails(self, deployment_rank_manager):
         """Test releasing rank for non-existent replica fails."""
         with pytest.raises(RuntimeError, match="Rank for .* not assigned"):
-            deployment_rank_manager.release_rank("nonexistent", "node_1")
-
-    def test_release_rank_wrong_node_fails(self, deployment_rank_manager):
-        """Test releasing rank with wrong node ID fails."""
-        deployment_rank_manager.assign_rank("replica_1", "node_1")
-
-        with pytest.raises(RuntimeError, match="Replica .* not assigned to node"):
-            deployment_rank_manager.release_rank("replica_1", "node_2")
+            deployment_rank_manager.release_rank("nonexistent")
 
     def test_recover_rank_single_replica(self, deployment_rank_manager):
         """Test basic rank recovery for a single replica."""
@@ -522,7 +515,7 @@ class TestDeploymentRankManagerBasic:
         deployment_rank_manager.assign_rank("replica_1", "node_1")
         assert deployment_rank_manager.has_replica_rank("replica_1")
 
-        deployment_rank_manager.release_rank("replica_1", "node_1")
+        deployment_rank_manager.release_rank("replica_1")
         assert not deployment_rank_manager.has_replica_rank("replica_1")
 
     def test_get_replica_rank_nonexistent_fails(self, deployment_rank_manager):
@@ -563,7 +556,7 @@ class TestDeploymentRankManagerRankReuse:
         deployment_rank_manager.assign_rank("replica_3", "node_1")
 
         # Release replica with global rank 1
-        deployment_rank_manager.release_rank("replica_2", "node_1")
+        deployment_rank_manager.release_rank("replica_2")
 
         # Next replica should get global rank 1
         global_rank4, _, _ = deployment_rank_manager.assign_rank("replica_4", "node_1")
@@ -576,7 +569,7 @@ class TestDeploymentRankManagerRankReuse:
         deployment_rank_manager.assign_rank("replica_3", "node_1")
 
         # Release replica with local rank 1
-        deployment_rank_manager.release_rank("replica_2", "node_1")
+        deployment_rank_manager.release_rank("replica_2")
 
         # Next replica on same node should get local rank 1
         _, _, local_rank4 = deployment_rank_manager.assign_rank("replica_4", "node_1")
@@ -589,7 +582,7 @@ class TestDeploymentRankManagerRankReuse:
         deployment_rank_manager.assign_rank("replica_3", "node_3")
 
         # Release all replicas on node_2
-        deployment_rank_manager.release_rank("replica_2", "node_2")
+        deployment_rank_manager.release_rank("replica_2")
 
         # New node should get the released node rank
         _, node_rank4, _ = deployment_rank_manager.assign_rank("replica_4", "node_4")
@@ -646,7 +639,7 @@ class TestDeploymentRankManagerConsistency:
         deployment_rank_manager.assign_rank("replica_temp", "node_1")  # global=1
         deployment_rank_manager.assign_rank("replica_2", "node_1")  # global=2
         deployment_rank_manager.assign_rank("replica_3", "node_1")  # global=3
-        deployment_rank_manager.release_rank("replica_temp", "node_1")  # Gap at 1
+        deployment_rank_manager.release_rank("replica_temp")  # Gap at 1
 
         result = deployment_rank_manager.check_rank_consistency_and_reassign_minimally(
             [replica1, replica2, replica3]
@@ -678,7 +671,7 @@ class TestDeploymentRankManagerConsistency:
         deployment_rank_manager.assign_rank("replica_temp", "node_1")  # local=1
         deployment_rank_manager.assign_rank("replica_2", "node_1")  # local=2
         deployment_rank_manager.assign_rank("replica_3", "node_1")  # local=3
-        deployment_rank_manager.release_rank("replica_temp", "node_1")  # Gap at local=1
+        deployment_rank_manager.release_rank("replica_temp")  # Gap at local=1
 
         result = deployment_rank_manager.check_rank_consistency_and_reassign_minimally(
             [replica1, replica2, replica3]
@@ -708,9 +701,7 @@ class TestDeploymentRankManagerConsistency:
         deployment_rank_manager.assign_rank("replica_temp", "node_2")  # node_rank=1
         deployment_rank_manager.assign_rank("replica_2", "node_3")  # node_rank=2
         deployment_rank_manager.assign_rank("replica_3", "node_4")  # node_rank=3
-        deployment_rank_manager.release_rank(
-            "replica_temp", "node_2"
-        )  # Gap at node_rank=1
+        deployment_rank_manager.release_rank("replica_temp")  # Gap at node_rank=1
 
         result = deployment_rank_manager.check_rank_consistency_and_reassign_minimally(
             [replica1, replica2, replica3]
@@ -820,8 +811,8 @@ class TestDeploymentRankManagerEdgeCases:
         deployment_rank_manager.assign_rank("replica_3", "node_2")
 
         # Release both replicas on node_1
-        deployment_rank_manager.release_rank("replica_1", "node_1")
-        deployment_rank_manager.release_rank("replica_2", "node_1")
+        deployment_rank_manager.release_rank("replica_1")
+        deployment_rank_manager.release_rank("replica_2")
 
         # Node rank for node_1 should be released
         assert "node_1" not in deployment_rank_manager._local_rank_managers
@@ -839,7 +830,7 @@ class TestDeploymentRankManagerEdgeCases:
         deployment_rank_manager.assign_rank("replica_3", "node_2")
 
         # Release one replica
-        deployment_rank_manager.release_rank("replica_2", "node_1")
+        deployment_rank_manager.release_rank("replica_2")
 
         # Recover a different replica with specific ranks
         deployment_rank_manager.recover_rank("replica_4", "node_3", 10, 5, 2)
@@ -884,7 +875,7 @@ class TestDeploymentRankManagerEdgeCases:
         node_to_remove = "node_5"
         for local_idx in range(replicas_per_node):
             replica_id = f"replica_{5 * replicas_per_node + local_idx}"
-            deployment_rank_manager.release_rank(replica_id, node_to_remove)
+            deployment_rank_manager.release_rank(replica_id)
 
         # Verify node was removed
         assert node_to_remove not in deployment_rank_manager._local_rank_managers
@@ -921,7 +912,7 @@ class TestDeploymentRankManagerEdgeCases:
         assert deployment_rank_manager._node_rank_manager.has_rank("node_2")
 
         # Release one replica
-        deployment_rank_manager.release_rank("replica_2", "node_2")
+        deployment_rank_manager.release_rank("replica_2")
 
         # Verify consistency after release
         assert len(deployment_rank_manager._replica_to_node) == 2
@@ -967,8 +958,8 @@ class TestDeploymentRankManagerComplexScenarios:
         deployment_rank_manager.assign_rank("replica_4", "node_2")
 
         # Scale down: remove 2 replicas
-        deployment_rank_manager.release_rank("replica_2", "node_1")
-        deployment_rank_manager.release_rank("replica_4", "node_2")
+        deployment_rank_manager.release_rank("replica_2")
+        deployment_rank_manager.release_rank("replica_4")
 
         # Remaining replicas should still have correct ranks
         assert deployment_rank_manager.get_replica_rank("replica_1") == (0, 0, 0)
@@ -982,7 +973,7 @@ class TestDeploymentRankManagerComplexScenarios:
         deployment_rank_manager.assign_rank("replica_3", "node_3")
 
         # Replace replica_2 (stop old, start new)
-        deployment_rank_manager.release_rank("replica_2", "node_2")
+        deployment_rank_manager.release_rank("replica_2")
         global_rank, node_rank, local_rank = deployment_rank_manager.assign_rank(
             "replica_2_new", "node_2"
         )
@@ -1003,8 +994,8 @@ class TestDeploymentRankManagerComplexScenarios:
         deployment_rank_manager.assign_rank("replica_4", "node_2")
 
         # Node 2 fails, remove all its replicas
-        deployment_rank_manager.release_rank("replica_3", "node_2")
-        deployment_rank_manager.release_rank("replica_4", "node_2")
+        deployment_rank_manager.release_rank("replica_3")
+        deployment_rank_manager.release_rank("replica_4")
 
         # Node 2's node rank should be released
         assert not deployment_rank_manager._node_rank_manager.has_rank("node_2")

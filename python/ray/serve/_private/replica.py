@@ -127,6 +127,8 @@ ReplicaMetadata = Tuple[
     int,
     int,
     int,  # rank
+    int,  # node_rank
+    int,  # local_rank
     Optional[List[str]],  # route_patterns
 ]
 
@@ -507,7 +509,6 @@ class ReplicaBase(ABC):
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
-        rank: int,
     ):
         self._version = version
         self._replica_id = replica_id
@@ -555,7 +556,7 @@ class ReplicaBase(ABC):
 
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
-        self._set_internal_replica_context(servable_object=None, rank=rank)
+        self._set_internal_replica_context(servable_object=None)
 
         self._metrics_manager = create_replica_metrics_manager(
             replica_id=replica_id,
@@ -569,8 +570,6 @@ class ReplicaBase(ABC):
         self._http_port: Optional[int] = None
         self._grpc_port: Optional[int] = None
 
-        self._rank = rank
-
     @property
     def max_ongoing_requests(self) -> int:
         return self._deployment_config.max_ongoing_requests
@@ -579,7 +578,10 @@ class ReplicaBase(ABC):
         return self._metrics_manager.get_num_ongoing_requests()
 
     def get_metadata(self) -> ReplicaMetadata:
-        current_rank = ray.serve.context._get_internal_replica_context().rank
+        context = ray.serve.context._get_internal_replica_context()
+        current_rank = context.rank
+        current_node_rank = context.node_rank
+        current_local_rank = context.local_rank
         # Extract route patterns from ASGI app if available
         route_patterns = None
         if self._user_callable_asgi_app is not None:
@@ -597,11 +599,18 @@ class ReplicaBase(ABC):
             self._http_port,
             self._grpc_port,
             current_rank,
+            current_node_rank,
+            current_local_rank,
             route_patterns,
         )
 
     def _set_internal_replica_context(
-        self, *, servable_object: Callable = None, rank: int = None
+        self,
+        *,
+        servable_object: Callable = None,
+        global_rank: int = None,
+        node_rank: int = None,
+        local_rank: int = None,
     ):
         # Calculate world_size from deployment config instead of storing it
         world_size = self._deployment_config.num_replicas
@@ -609,7 +618,9 @@ class ReplicaBase(ABC):
             replica_id=self._replica_id,
             servable_object=servable_object,
             _deployment_config=self._deployment_config,
-            rank=rank,
+            rank=global_rank,
+            node_rank=node_rank,
+            local_rank=local_rank,
             world_size=world_size,
         )
 
@@ -895,7 +906,23 @@ class ReplicaBase(ABC):
     async def _on_initialized(self):
         raise NotImplementedError
 
-    async def initialize(self, deployment_config: DeploymentConfig):
+    async def initialize(
+        self,
+        deployment_config: Optional[DeploymentConfig],
+        global_rank: Optional[int],
+        node_rank: Optional[int],
+        local_rank: Optional[int],
+    ):
+        if global_rank is not None:
+            self._global_rank = global_rank
+            self._node_rank = node_rank
+            self._local_rank = local_rank
+            self._set_internal_replica_context(
+                servable_object=self._user_callable_wrapper.user_callable,
+                global_rank=global_rank,
+                node_rank=node_rank,
+                local_rank=local_rank,
+            )
         try:
             # Ensure that initialization is only performed once.
             # When controller restarts, it will call this method again.
@@ -930,10 +957,15 @@ class ReplicaBase(ABC):
                     await self._user_callable_wrapper.set_sync_method_threadpool_limit(
                         deployment_config.max_ongoing_requests
                     )
-                    rank = ray.serve.context._get_internal_replica_context().rank
+                    context = ray.serve.context._get_internal_replica_context()
+                    global_rank = context.rank
+                    node_rank = context.node_rank
+                    local_rank = context.local_rank
                     await self._user_callable_wrapper.call_reconfigure(
                         deployment_config.user_config,
-                        rank=rank,
+                        global_rank=global_rank,
+                        node_rank=node_rank,
+                        local_rank=local_rank,
                     )
 
             # A new replica should not be considered healthy until it passes
@@ -946,15 +978,23 @@ class ReplicaBase(ABC):
     async def reconfigure(
         self,
         deployment_config: DeploymentConfig,
-        rank: int,
+        global_rank: int,
+        node_rank: int,
+        local_rank: int,
         route_prefix: Optional[str] = None,
     ):
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
             )
-            rank_changed = rank != self._rank
-            self._rank = rank
+            rank_changed = (
+                global_rank != self._global_rank
+                or node_rank != self._node_rank
+                or local_rank != self._local_rank
+            )
+            self._global_rank = global_rank
+            self._node_rank = node_rank
+            self._local_rank = local_rank
             logging_config_changed = (
                 deployment_config.logging_config
                 != self._deployment_config.logging_config
@@ -976,14 +1016,18 @@ class ReplicaBase(ABC):
             if user_config_changed or rank_changed:
                 await self._user_callable_wrapper.call_reconfigure(
                     deployment_config.user_config,
-                    rank=rank,
+                    global_rank=global_rank,
+                    node_rank=node_rank,
+                    local_rank=local_rank,
                 )
 
             # We need to update internal replica context to reflect the new
             # deployment_config and rank.
             self._set_internal_replica_context(
                 servable_object=self._user_callable_wrapper.user_callable,
-                rank=rank,
+                global_rank=global_rank,
+                node_rank=node_rank,
+                local_rank=local_rank,
             )
 
             self._route_prefix = self._version.route_prefix
@@ -1094,10 +1138,15 @@ class ReplicaBase(ABC):
 class Replica(ReplicaBase):
     async def _on_initialized(self):
         # Get current rank from replica context during initialization
-        current_rank = ray.serve.context._get_internal_replica_context().rank
+        context = ray.serve.context._get_internal_replica_context()
+        current_rank = context.rank
+        current_node_rank = context.node_rank
+        current_local_rank = context.local_rank
         self._set_internal_replica_context(
             servable_object=self._user_callable_wrapper.user_callable,
-            rank=current_rank,
+            global_rank=current_rank,
+            node_rank=current_node_rank,
+            local_rank=current_local_rank,
         )
 
         # Save the initialization latency if the replica is initializing
@@ -1171,7 +1220,6 @@ class ReplicaActor:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
-        rank: int,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -1188,7 +1236,6 @@ class ReplicaActor:
             version=version,
             ingress=ingress,
             route_prefix=route_prefix,
-            rank=rank,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
@@ -1228,7 +1275,11 @@ class ReplicaActor:
         )
 
     async def initialize_and_get_metadata(
-        self, deployment_config: DeploymentConfig = None, _after: Optional[Any] = None
+        self,
+        deployment_config: DeploymentConfig = None,
+        global_rank: int = None,
+        node_rank: int = None,
+        local_rank: int = None,
     ) -> ReplicaMetadata:
         """Handles initializing the replica.
 
@@ -1241,7 +1292,9 @@ class ReplicaActor:
         """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
-        await self._replica_impl.initialize(deployment_config)
+        await self._replica_impl.initialize(
+            deployment_config, global_rank, node_rank, local_rank
+        )
         return self._replica_impl.get_metadata()
 
     async def check_health(self):
@@ -1251,9 +1304,20 @@ class ReplicaActor:
         return await self._replica_impl.record_routing_stats()
 
     async def reconfigure(
-        self, deployment_config, rank: int, route_prefix: Optional[str] = None
+        self,
+        deployment_config,
+        rank: int,
+        node_rank: int,
+        local_rank: int,
+        route_prefix: Optional[str] = None,
     ) -> ReplicaMetadata:
-        await self._replica_impl.reconfigure(deployment_config, rank, route_prefix)
+        await self._replica_impl.reconfigure(
+            deployment_config,
+            global_rank=rank,
+            node_rank=node_rank,
+            local_rank=local_rank,
+            route_prefix=route_prefix,
+        )
         return self._replica_impl.get_metadata()
 
     def _preprocess_request_args(
@@ -1748,7 +1812,13 @@ class UserCallableWrapper:
         return result
 
     @_run_user_code
-    async def call_reconfigure(self, user_config: Optional[Any], rank: int):
+    async def call_reconfigure(
+        self,
+        user_config: Optional[Any],
+        global_rank: int,
+        node_rank: int,
+        local_rank: int,
+    ):
         self._raise_if_not_initialized("call_reconfigure")
 
         # NOTE(edoakes): there is the possibility of a race condition in user code if
@@ -1779,7 +1849,7 @@ class UserCallableWrapper:
             kwargs = {}
             if user_subscribed_to_rank:
                 # For backwards compatibility, only pass rank if it is an argument to the reconfigure method.
-                kwargs["rank"] = rank
+                kwargs["rank"] = global_rank
             await self._call_func_or_gen(
                 getattr(self._callable, RECONFIGURE_METHOD),
                 args=(user_config,),

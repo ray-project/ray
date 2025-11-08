@@ -58,6 +58,8 @@ class ReplicaContext:
     servable_object: Callable
     _deployment_config: DeploymentConfig
     rank: int
+    node_rank: int
+    local_rank: int
     world_size: int
 
     @property
@@ -122,6 +124,8 @@ def _set_internal_replica_context(
     servable_object: Callable,
     _deployment_config: DeploymentConfig,
     rank: int,
+    node_rank: int,
+    local_rank: int,
     world_size: int,
 ):
     global _INTERNAL_REPLICA_CONTEXT
@@ -130,6 +134,8 @@ def _set_internal_replica_context(
         servable_object=servable_object,
         _deployment_config=_deployment_config,
         rank=rank,
+        node_rank=node_rank,
+        local_rank=local_rank,
         world_size=world_size,
     )
 
