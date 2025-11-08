@@ -1130,6 +1130,20 @@ class ServeController:
             for app, config in config_checkpoints_dict.items()
         }
 
+    def get_external_scaler_enabled(self, app_name: str) -> bool:
+        """Get the external_scaler_enabled flag value for an application.
+
+        This is a helper method specifically for Java tests to verify the flag
+        is correctly set, since Java cannot deserialize Python Pydantic objects.
+
+        Args:
+            app_name: Name of the application.
+
+        Returns:
+            True if external_scaler_enabled is set for the application, False otherwise.
+        """
+        return self.application_state_manager.is_external_scaler_enabled(app_name)
+
     def get_all_deployment_statuses(self) -> List[bytes]:
         """Gets deployment status bytes for all live deployments."""
         statuses = self.deployment_state_manager.get_deployment_statuses()
