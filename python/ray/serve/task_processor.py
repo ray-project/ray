@@ -135,14 +135,13 @@ class FlowerQueueMonitor:
             self._executor.shutdown(wait=True)
 
             logger.info("Queue monitor stopped successfully")
-
+            self._should_stop.clear()
         except Exception as e:
             logger.error(f"Error stopping queue monitor: {e}")
         finally:
             self._loop = None
             self._loop_thread = None
             self._loop_ready.clear()
-            self._should_stop.clear()
 
     def get_queue_lengths(
         self, queue_names: List[str], timeout: float = 5.0
