@@ -22,6 +22,7 @@ from typing import (
     Generator,
     List,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -37,6 +38,7 @@ from ray import cloudpickle
 from ray._common.filters import CoreContextFilter
 from ray._common.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
+from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.common import (
@@ -113,6 +115,7 @@ from ray.serve.exceptions import (
     DeploymentUnavailableError,
     RayServeException,
 )
+from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -542,6 +545,9 @@ class ReplicaBase(ABC):
         self._user_callable_initialized_lock = asyncio.Lock()
         self._initialization_latency: Optional[float] = None
 
+        # Track deployment handles created dynamically via get_deployment_handle()
+        self._dynamically_created_handles: Set[DeploymentID] = set()
+
         # Flipped to `True` when health checks pass and `False` when they fail. May be
         # used by replica subclass implementations.
         self._healthy = False
@@ -600,17 +606,26 @@ class ReplicaBase(ABC):
             route_patterns,
         )
 
+    def get_dynamically_created_handles(self) -> Set[DeploymentID]:
+        return self._dynamically_created_handles
+
     def _set_internal_replica_context(
         self, *, servable_object: Callable = None, rank: int = None
     ):
         # Calculate world_size from deployment config instead of storing it
         world_size = self._deployment_config.num_replicas
+
+        # Create callback for registering dynamically created handles
+        def register_handle_callback(deployment_id: DeploymentID) -> None:
+            self._dynamically_created_handles.add(deployment_id)
+
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
             servable_object=servable_object,
             _deployment_config=self._deployment_config,
             rank=rank,
             world_size=world_size,
+            handle_registration_callback=register_handle_callback,
         )
 
     def _configure_logger_and_profilers(
@@ -1203,6 +1218,45 @@ class ReplicaActor:
         not be blocked by user code.
         """
         return self._replica_impl.get_num_ongoing_requests()
+
+    def list_outbound_deployments(self) -> List[DeploymentID]:
+        """List all outbound deployment IDs this replica calls into.
+
+        This includes:
+        - Handles created via get_deployment_handle()
+        - Handles passed as init args/kwargs to the deployment constructor
+
+        This is used to determine which deployments are reachable from this replica.
+        The list of DeploymentIDs can change over time as new handles can be created at runtime.
+        Also its not guaranteed that the list of DeploymentIDs are identical across replicas
+        because it depends on user code.
+
+        Returns:
+            A list of DeploymentIDs that this replica calls into.
+        """
+        seen_deployment_ids: Set[DeploymentID] = set()
+
+        # First, collect dynamically created handles
+        for deployment_id in self._replica_impl.get_dynamically_created_handles():
+            seen_deployment_ids.add(deployment_id)
+
+        # Get the init args/kwargs
+        init_args = self._replica_impl._user_callable_wrapper._init_args
+        init_kwargs = self._replica_impl._user_callable_wrapper._init_kwargs
+
+        # Use _PyObjScanner to find all DeploymentHandle objects in:
+        # The init_args and init_kwargs (handles might be passed as init args)
+        scanner = _PyObjScanner(source_type=DeploymentHandle)
+        try:
+            handles = scanner.find_nodes((init_args, init_kwargs))
+
+            for handle in handles:
+                deployment_id = handle.deployment_id
+                seen_deployment_ids.add(deployment_id)
+        finally:
+            scanner.clear()
+
+        return list(seen_deployment_ids)
 
     async def is_allocated(self) -> str:
         """poke the replica to check whether it's alive.
