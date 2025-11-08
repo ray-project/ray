@@ -543,9 +543,6 @@ _LIST_METHODS = {
     "len": _PyArrowMethodConfig(
         "list_value_length", DataType.int32(), docstring="Get the length of each list."
     ),
-    "flatten": _PyArrowMethodConfig(
-        "list_flatten", DataType(object), docstring="Flatten nested lists."
-    ),
 }
 
 _STRING_METHODS = {
@@ -686,6 +683,66 @@ _STRING_METHODS = {
     # Transformations
     "reverse": _PyArrowMethodConfig(
         "utf8_reverse", DataType.string(), docstring="Reverse each string."
+    ),
+    "slice": _PyArrowMethodConfig(
+        "utf8_slice_codeunits",
+        DataType.string(),
+        params=["start", "stop", "step"],
+        docstring="Slice strings by codeunit indices.",
+    ),
+    "replace": _PyArrowMethodConfig(
+        "replace_substring",
+        DataType.string(),
+        params=["pattern", "replacement", "max_replacements"],
+        docstring="Replace occurrences of a substring.",
+    ),
+    "replace_regex": _PyArrowMethodConfig(
+        "replace_substring_regex",
+        DataType.string(),
+        params=["pattern", "replacement", "max_replacements"],
+        docstring="Replace occurrences matching a regex pattern.",
+    ),
+    "replace_slice": _PyArrowMethodConfig(
+        "binary_replace_slice",
+        DataType.string(),
+        params=["start", "stop", "replacement"],
+        docstring="Replace a slice with a string.",
+    ),
+    "split": _PyArrowMethodConfig(
+        "split_pattern",
+        DataType(object),
+        params=["pattern", "max_splits", "reverse"],
+        docstring="Split strings by a pattern.",
+    ),
+    "split_regex": _PyArrowMethodConfig(
+        "split_pattern_regex",
+        DataType(object),
+        params=["pattern", "max_splits", "reverse"],
+        docstring="Split strings by a regex pattern.",
+    ),
+    "split_whitespace": _PyArrowMethodConfig(
+        "utf8_split_whitespace",
+        DataType(object),
+        params=["max_splits", "reverse"],
+        docstring="Split strings on whitespace.",
+    ),
+    "extract": _PyArrowMethodConfig(
+        "extract_regex",
+        DataType.string(),
+        params=["pattern"],
+        docstring="Extract a substring matching a regex pattern.",
+    ),
+    "repeat": _PyArrowMethodConfig(
+        "binary_repeat",
+        DataType.string(),
+        params=["n"],
+        docstring="Repeat each string n times.",
+    ),
+    "center": _PyArrowMethodConfig(
+        "utf8_center",
+        DataType.string(),
+        params=["width", "padding"],
+        docstring="Center strings in a field of given width.",
     ),
 }
 
@@ -876,233 +933,6 @@ class _StringNamespace:
                 raise ValueError("side must be 'left', 'right', or 'both'")
 
         return _str_pad(self._expr)
-
-    def center(self, width: int, fillchar: str = " ") -> "UDFExpr":
-        """Center strings in a field of given width.
-
-        Args:
-            width: Target width.
-            fillchar: Character to use for padding.
-
-        Returns:
-            UDFExpr that centers strings.
-        """
-
-        @udf(return_dtype=DataType.string())
-        def _str_center(arr):
-            return pc.utf8_center(arr, width=width, padding=fillchar)
-
-        return _str_center(self._expr)
-
-    def slice(self, start: int, stop: int = None, step: int = 1) -> "UDFExpr":
-        """Slice strings by codeunit indices.
-
-        Args:
-            start: Start position.
-            stop: Stop position (exclusive). If None, slices to the end.
-            step: Step size.
-
-        Returns:
-            UDFExpr that slices each string.
-        """
-
-        @udf(return_dtype=DataType.string())
-        def _str_slice(arr):
-            if stop is None:
-                return pc.utf8_slice_codeunits(arr, start=start, step=step)
-            else:
-                return pc.utf8_slice_codeunits(arr, start=start, stop=stop, step=step)
-
-        return _str_slice(self._expr)
-
-    # Replacement
-    def replace(
-        self, pattern: str, replacement: str, max_replacements: int = None
-    ) -> "UDFExpr":
-        """Replace occurrences of a substring.
-
-        Args:
-            pattern: The substring to replace.
-            replacement: The replacement string.
-            max_replacements: Maximum number of replacements. None means replace all.
-
-        Returns:
-            UDFExpr that replaces substrings.
-        """
-
-        @udf(return_dtype=DataType.string())
-        def _str_replace(arr):
-            if max_replacements is None:
-                return pc.replace_substring(
-                    arr, pattern=pattern, replacement=replacement
-                )
-            else:
-                return pc.replace_substring(
-                    arr,
-                    pattern=pattern,
-                    replacement=replacement,
-                    max_replacements=max_replacements,
-                )
-
-        return _str_replace(self._expr)
-
-    def replace_regex(
-        self, pattern: str, replacement: str, max_replacements: int = None
-    ) -> "UDFExpr":
-        """Replace occurrences matching a regex pattern.
-
-        Args:
-            pattern: The regex pattern to match.
-            replacement: The replacement string.
-            max_replacements: Maximum number of replacements. None means replace all.
-
-        Returns:
-            UDFExpr that replaces matching substrings.
-        """
-
-        @udf(return_dtype=DataType.string())
-        def _str_replace_regex(arr):
-            if max_replacements is None:
-                return pc.replace_substring_regex(
-                    arr, pattern=pattern, replacement=replacement
-                )
-            else:
-                return pc.replace_substring_regex(
-                    arr,
-                    pattern=pattern,
-                    replacement=replacement,
-                    max_replacements=max_replacements,
-                )
-
-        return _str_replace_regex(self._expr)
-
-    def replace_slice(self, start: int, stop: int, replacement: str) -> "UDFExpr":
-        """Replace a slice with a string.
-
-        Args:
-            start: Start position of slice.
-            stop: Stop position of slice.
-            replacement: The replacement string.
-
-        Returns:
-            UDFExpr that replaces the slice.
-        """
-
-        @udf(return_dtype=DataType.string())
-        def _str_replace_slice(arr):
-            return pc.binary_replace_slice(
-                arr, start=start, stop=stop, replacement=replacement
-            )
-
-        return _str_replace_slice(self._expr)
-
-    # Splitting and joining
-    def split(
-        self, pattern: str, max_splits: int = None, reverse: bool = False
-    ) -> "UDFExpr":
-        """Split strings by a pattern.
-
-        Args:
-            pattern: The pattern to split on.
-            max_splits: Maximum number of splits. None means split all.
-            reverse: Whether to split from the right.
-
-        Returns:
-            UDFExpr that returns lists of split strings.
-        """
-
-        @udf(return_dtype=DataType(object))
-        def _str_split(arr):
-            if max_splits is None:
-                return pc.split_pattern(arr, pattern=pattern, reverse=reverse)
-            else:
-                return pc.split_pattern(
-                    arr, pattern=pattern, max_splits=max_splits, reverse=reverse
-                )
-
-        return _str_split(self._expr)
-
-    def split_regex(
-        self, pattern: str, max_splits: int = None, reverse: bool = False
-    ) -> "UDFExpr":
-        """Split strings by a regex pattern.
-
-        Args:
-            pattern: The regex pattern to split on.
-            max_splits: Maximum number of splits. None means split all.
-            reverse: Whether to split from the right.
-
-        Returns:
-            UDFExpr that returns lists of split strings.
-        """
-
-        @udf(return_dtype=DataType(object))
-        def _str_split_regex(arr):
-            if max_splits is None:
-                return pc.split_pattern_regex(arr, pattern=pattern, reverse=reverse)
-            else:
-                return pc.split_pattern_regex(
-                    arr, pattern=pattern, max_splits=max_splits, reverse=reverse
-                )
-
-        return _str_split_regex(self._expr)
-
-    def split_whitespace(
-        self, max_splits: int = None, reverse: bool = False
-    ) -> "UDFExpr":
-        """Split strings on whitespace.
-
-        Args:
-            max_splits: Maximum number of splits. None means split all.
-            reverse: Whether to split from the right.
-
-        Returns:
-            UDFExpr that returns lists of split strings.
-        """
-
-        @udf(return_dtype=DataType(object))
-        def _str_split_whitespace(arr):
-            if max_splits is None:
-                return pc.utf8_split_whitespace(arr, reverse=reverse)
-            else:
-                return pc.utf8_split_whitespace(
-                    arr, max_splits=max_splits, reverse=reverse
-                )
-
-        return _str_split_whitespace(self._expr)
-
-    # Regex extraction
-    def extract(self, pattern: str) -> "UDFExpr":
-        """Extract a substring matching a regex pattern.
-
-        Args:
-            pattern: The regex pattern to extract.
-
-        Returns:
-            UDFExpr that returns the first matching substring.
-        """
-
-        @udf(return_dtype=DataType.string())
-        def _str_extract(arr):
-            return pc.extract_regex(arr, pattern=pattern)
-
-        return _str_extract(self._expr)
-
-    def repeat(self, n: int) -> "UDFExpr":
-        """Repeat each string n times.
-
-        Args:
-            n: Number of repetitions.
-
-        Returns:
-            UDFExpr that repeats strings.
-        """
-
-        @udf(return_dtype=DataType.string())
-        def _str_repeat(arr):
-            return pc.binary_repeat(arr, n)
-
-        return _str_repeat(self._expr)
 
 
 @dataclass

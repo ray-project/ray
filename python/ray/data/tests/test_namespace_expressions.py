@@ -75,13 +75,6 @@ class TestListNamespace:
         )
         assert_df_equal(result, expected)
 
-    @pytest.mark.skip(reason="list_flatten changes row structure in complex ways")
-    def test_list_flatten(self):
-        """Test list.flatten() flattens one level of nested lists."""
-        # Note: list_flatten is available but changes row count, making it
-        # incompatible with with_column() which expects same row count
-        pass
-
 
 # ──────────────────────────────────────
 # String Namespace Tests

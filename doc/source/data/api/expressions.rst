@@ -40,3 +40,21 @@ instantiate them directly, but you may encounter them when working with expressi
     UnaryExpr
     UDFExpr
     StarExpr
+
+Namespace Classes
+-----------------
+
+These classes provide specialized operations for list, string, and struct columns.
+You access them through properties on expressions: ``.list``, ``.str``, and ``.struct``.
+
+.. autoclass:: _ListNamespace
+    :members:
+    :exclude-members: _expr
+
+.. autoclass:: _StringNamespace
+    :members:
+    :exclude-members: _expr
+
+.. autoclass:: _StructNamespace
+    :members:
+    :exclude-members: _expr
