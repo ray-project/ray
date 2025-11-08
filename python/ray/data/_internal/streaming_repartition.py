@@ -3,7 +3,10 @@ from dataclasses import dataclass
 from typing import Deque, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import BlockSlice, RefBundle
-from ray.data._internal.execution.interfaces.ref_bundle import _slice_block_metadata
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    merge_ref_bundles,
+    slice_ref_bundle,
+)
 from ray.data._internal.execution.operators.map_operator import BaseRefBundler
 from ray.data.block import BlockMetadata, Schema
 from ray.types import ObjectRef
@@ -51,35 +54,61 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
             target_num_rows_per_block > 0
         ), "target_num_rows_per_block must be positive for streaming repartition."
         self._target_num_rows = target_num_rows_per_block
-        self._pending_blocks: Deque[_PendingBlock] = deque()
+        self._pending_bundles: Deque[RefBundle] = deque()
         self._bundle_remaining_blocks: Dict[RefBundle, int] = {}
         self._ready_bundles: Deque[Tuple[List[RefBundle], RefBundle]] = deque()
         self._total_pending_rows = 0
         self._next_output_index = 0
 
+    def _try_build_ready_bundle(self, flush_remaining: bool = False):
+        if self._total_pending_rows >= self._target_num_rows or flush_remaining:
+            rows_needed_from_last_bundle = (
+                self._total_pending_rows % self._target_num_rows
+            )
+            if rows_needed_from_last_bundle > 0:
+                last_bundle = self._pending_bundles.pop()
+                to_consume, remaining = slice_ref_bundle(
+                    last_bundle, rows_needed_from_last_bundle
+                )
+                merged_bundle = merge_ref_bundles(
+                    list(self._pending_bundles) + [to_consume]
+                )
+                self._ready_bundles.append(([], merged_bundle))
+                self._pending_bundles = deque([])
+                self._total_pending_rows = 0
+                if remaining.num_rows() > 0:
+                    self._pending_bundles.append(remaining)
+                    self._total_pending_rows += remaining.num_rows()
+            else:
+                self._ready_bundles.append(
+                    ([], merge_ref_bundles(list(self._pending_bundles)))
+                )
+                self._pending_bundles = deque([])
+                self._total_pending_rows = 0
+
     def add_bundle(self, ref_bundle: RefBundle):
         schema = ref_bundle.schema
         block_count = 0
-        for block_ref, metadata in ref_bundle.blocks:
-            if metadata.num_rows <= 0:  # skip empty blocks
-                continue
-            self._pending_blocks.append(
-                _PendingBlock(
-                    block_ref=block_ref,
-                    metadata=metadata,
-                    schema=schema,
-                    parent_bundle=ref_bundle,
-                    start_offset=0,
-                )
+
+        self._total_pending_rows += ref_bundle.num_rows()
+        self._pending_bundles.append(
+            RefBundle(
+                blocks=tuple(ref_bundle.blocks),
+                slices=[
+                    BlockSlice(start_offset=0, end_offset=metadata.num_rows)
+                    for metadata in ref_bundle.metadata
+                ],
+                schema=schema,
+                owns_blocks=False,
             )
-            self._total_pending_rows += metadata.num_rows
-            block_count += 1
+        )
+
+        self._try_build_ready_bundle()
 
         if block_count > 0:
             self._bundle_remaining_blocks[ref_bundle] = block_count
 
     def has_bundle(self) -> bool:
-        self._drain_ready_tasks()
         return len(self._ready_bundles) > 0
 
     def get_next_bundle(
@@ -88,127 +117,15 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
         return self._ready_bundles.popleft()
 
     def done_adding_bundles(self):
-        self._drain_ready_tasks(flush_remaining=True)
+        if len(self._pending_bundles) > 0:
+            self._try_build_ready_bundle(flush_remaining=True)
 
     def num_blocks(self):
-        ready_blocks = sum(
-            len(ref_bundle.blocks) for _, ref_bundle in self._ready_bundles
+        return sum(len(bundle.blocks) for bundle in self._pending_bundles) + sum(
+            len(bundle.blocks) for bundle in self._ready_bundles
         )
-        return len(self._pending_blocks) + ready_blocks
 
     def size_bytes(self) -> int:
-        total = 0
-        for _, ref_bundle in self._ready_bundles:
-            total += ref_bundle.size_bytes()
-
-        for block in self._pending_blocks:
-            remaining_rows = block.remaining_rows
-            if remaining_rows <= 0:
-                continue
-            total += _slice_block_metadata(block.metadata, remaining_rows).size_bytes
-
-        return total
-
-    def _drain_ready_tasks(self, flush_remaining: bool = False):
-        task_inputs: List[Tuple[List[RefBundle], RefBundle]] = []
-        while self._total_pending_rows >= self._target_num_rows or (
-            flush_remaining and self._total_pending_rows > 0
-        ):
-            # If the first pending block alone has at least one full block,
-            # issue a single task for as many full target-sized outputs as it contains.
-            if (
-                self._pending_blocks
-                and self._pending_blocks[0].remaining_rows >= self._target_num_rows
-            ):
-                first = self._pending_blocks[0]
-                full_blocks = first.remaining_rows // self._target_num_rows
-                if full_blocks > 0:
-                    task_inputs.append(
-                        self._build_task([self._target_num_rows * full_blocks])
-                    )
-                    continue
-
-            # Otherwise, build a single-output task that may draw from multiple blocks.
-            rows_needed = (
-                self._target_num_rows
-                if self._total_pending_rows >= self._target_num_rows
-                else self._total_pending_rows
-            )
-            task_inputs.append(self._build_task([rows_needed]))
-        self._ready_bundles.extend(task_inputs)
-
-    def _build_task(self, output_rows: List[int]) -> Tuple[List[RefBundle], RefBundle]:
-        total_rows_needed = sum(output_rows)
-        assert (
-            total_rows_needed <= self._total_pending_rows
-        ), "Requested more rows than are pending in the repartition builder."
-        used_blocks: List[_PendingBlock] = []
-        rows_by_block: List[int] = []
-        bundle_schema = None
-        block_slices: List[BlockSlice] = []
-        fully_consumed_refs: List[RefBundle] = []
-
-        for num_rows in output_rows:
-            remaining = num_rows
-
-            while remaining > 0:
-                assert (
-                    self._pending_blocks
-                ), "No pending blocks available to build task."
-
-                block = self._pending_blocks[0]
-                if not used_blocks or used_blocks[-1] is not block:
-                    used_blocks.append(block)
-                    rows_by_block.append(0)
-                    bundle_schema = bundle_schema or block.schema
-
-                block_index = len(used_blocks) - 1
-                available = block.remaining_rows
-                take = min(available, remaining)
-
-                start_offset = block.start_offset
-                end_offset = start_offset + take
-
-                block_slices.append(
-                    BlockSlice(
-                        start_offset=start_offset,
-                        end_offset=end_offset,
-                    )
-                )
-
-                block.start_offset += take
-                rows_by_block[block_index] += take
-                self._total_pending_rows -= take
-                remaining -= take
-
-                assert block.start_offset <= block.metadata.num_rows
-
-                if block.start_offset == block.metadata.num_rows:
-                    self._pending_blocks.popleft()
-                    parent_bundle = block.parent_bundle
-                    remaining_blocks = self._bundle_remaining_blocks.get(parent_bundle)
-                    if remaining_blocks is not None:
-                        if remaining_blocks == 1:
-                            self._bundle_remaining_blocks.pop(parent_bundle, None)
-                            fully_consumed_refs.append(parent_bundle)
-                        else:
-                            self._bundle_remaining_blocks[parent_bundle] = (
-                                remaining_blocks - 1
-                            )
-
-        bundle_blocks = [
-            (
-                block.block_ref,
-                _slice_block_metadata(block.metadata, consumed_rows),
-            )
-            for block, consumed_rows in zip(used_blocks, rows_by_block)
-        ]
-
-        ref_bundle = RefBundle(
-            blocks=tuple(bundle_blocks),
-            schema=bundle_schema,
-            owns_blocks=False,
-            slices=block_slices,
+        return sum(bundle.size_bytes() for bundle in self._pending_bundles) + sum(
+            bundle.size_bytes() for bundle in self._ready_bundles
         )
-
-        return fully_consumed_refs, ref_bundle
