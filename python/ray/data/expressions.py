@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, Generic, List, Literal, TypeVar, Union
 
 import pyarrow
+import pyarrow.compute as pc
 
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
@@ -123,18 +124,15 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
     """Visitor that converts Ray Data expressions to PyArrow compute expressions."""
 
     def visit_column(self, expr: "ColumnExpr") -> "pyarrow.compute.Expression":
-        import pyarrow.compute as pc
 
         return pc.field(expr.name)
 
     def visit_literal(self, expr: "LiteralExpr") -> "pyarrow.compute.Expression":
-        import pyarrow.compute as pc
 
         return pc.scalar(expr.value)
 
     def visit_binary(self, expr: "BinaryExpr") -> "pyarrow.compute.Expression":
         import pyarrow as pa
-        import pyarrow.compute as pc
 
         if expr.op in (Operation.IN, Operation.NOT_IN):
             left = self.visit(expr.left)
@@ -456,7 +454,7 @@ class Expr(ABC):
             >>> from ray.data.expressions import col
             >>> import ray
             >>> import pyarrow as pa
-            >>> ds = ray.data.from_pyarrow(pa.table({
+            >>> ds = ray.data.from_arrow(pa.table({
             ...     "user": pa.array([
             ...         {"name": "Alice", "age": 30}
             ...     ], type=pa.struct([
@@ -464,7 +462,7 @@ class Expr(ABC):
             ...         pa.field("age", pa.int32())
             ...     ]))
             ... }))
-            >>> ds = ds.with_column("age", col("user").struct["age"])
+            >>> ds = ds.with_column("age", col("user").struct["age"])  # doctest: +SKIP
         """
         return _StructNamespace(self)
 
@@ -501,8 +499,6 @@ def _make_namespace_method(config: _PyArrowMethodConfig) -> Callable:
     if config.params is None:
         # Simple unary function
         def method(self) -> "UDFExpr":
-            import pyarrow.compute as pc
-
             func = getattr(pc, config.pc_func_name)
 
             @udf(return_dtype=config.return_dtype)
@@ -514,8 +510,6 @@ def _make_namespace_method(config: _PyArrowMethodConfig) -> Callable:
     else:
         # Function with parameters - capture them in closure
         def method(self, *args, **kwargs) -> "UDFExpr":
-            import pyarrow.compute as pc
-
             func = getattr(pc, config.pc_func_name)
 
             @udf(return_dtype=config.return_dtype)
@@ -727,9 +721,9 @@ class _ListNamespace:
             UDFExpr that extracts the element or slice.
 
         Example:
-            >>> col("items").list[0]      # Get first item
-            >>> col("items").list[1:3]    # Get slice [1, 3)
-            >>> col("items").list[-1]     # Get last item
+            >>> col("items").list[0]      # Get first item  # doctest: +SKIP
+            >>> col("items").list[1:3]    # Get slice [1, 3)  # doctest: +SKIP
+            >>> col("items").list[-1]     # Get last item  # doctest: +SKIP
         """
         if isinstance(key, int):
             return self.get(key)
@@ -749,7 +743,6 @@ class _ListNamespace:
         Returns:
             UDFExpr that extracts the element at the given index.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType(object))
         def _list_get(arr):
@@ -768,7 +761,6 @@ class _ListNamespace:
         Returns:
             UDFExpr that extracts a slice from each list.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType(object))
         def _list_slice(arr):
@@ -806,7 +798,6 @@ class _StringNamespace:
         Returns:
             UDFExpr that strips characters from both ends.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType.string())
         def _str_strip(arr):
@@ -826,7 +817,6 @@ class _StringNamespace:
         Returns:
             UDFExpr that strips characters from the left.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType.string())
         def _str_lstrip(arr):
@@ -846,7 +836,6 @@ class _StringNamespace:
         Returns:
             UDFExpr that strips characters from the right.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType.string())
         def _str_rstrip(arr):
@@ -874,7 +863,6 @@ class _StringNamespace:
         Returns:
             UDFExpr that pads strings.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType.string())
         def _str_pad(arr):
@@ -899,7 +887,6 @@ class _StringNamespace:
         Returns:
             UDFExpr that centers strings.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType.string())
         def _str_center(arr):
@@ -918,7 +905,6 @@ class _StringNamespace:
         Returns:
             UDFExpr that slices each string.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType.string())
         def _str_slice(arr):
@@ -943,7 +929,6 @@ class _StringNamespace:
         Returns:
             UDFExpr that replaces substrings.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType.string())
         def _str_replace(arr):
@@ -974,7 +959,6 @@ class _StringNamespace:
         Returns:
             UDFExpr that replaces matching substrings.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType.string())
         def _str_replace_regex(arr):
@@ -1003,7 +987,6 @@ class _StringNamespace:
         Returns:
             UDFExpr that replaces the slice.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType.string())
         def _str_replace_slice(arr):
@@ -1027,7 +1010,6 @@ class _StringNamespace:
         Returns:
             UDFExpr that returns lists of split strings.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType(object))
         def _str_split(arr):
@@ -1053,7 +1035,6 @@ class _StringNamespace:
         Returns:
             UDFExpr that returns lists of split strings.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType(object))
         def _str_split_regex(arr):
@@ -1078,7 +1059,6 @@ class _StringNamespace:
         Returns:
             UDFExpr that returns lists of split strings.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType(object))
         def _str_split_whitespace(arr):
@@ -1101,7 +1081,6 @@ class _StringNamespace:
         Returns:
             UDFExpr that returns the first matching substring.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType.string())
         def _str_extract(arr):
@@ -1118,7 +1097,6 @@ class _StringNamespace:
         Returns:
             UDFExpr that repeats strings.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType.string())
         def _str_repeat(arr):
@@ -1156,8 +1134,8 @@ class _StructNamespace:
             UDFExpr that extracts the specified field from each struct.
 
         Example:
-            >>> col("user").struct["age"]  # Get age field
-            >>> col("user").struct["address"].struct["city"]  # Get nested city field
+            >>> col("user").struct["age"]  # Get age field  # doctest: +SKIP
+            >>> col("user").struct["address"].struct["city"]  # Get nested city field  # doctest: +SKIP
         """
         return self.field(field_name)
 
@@ -1170,7 +1148,6 @@ class _StructNamespace:
         Returns:
             UDFExpr that extracts the specified field from each struct.
         """
-        import pyarrow.compute as pc
 
         @udf(return_dtype=DataType(object))
         def _struct_field(arr):

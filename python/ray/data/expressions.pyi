@@ -131,6 +131,10 @@ class AliasExpr(Expr):
 class StarExpr(Expr):
     def structurally_equals(self, other: Any) -> bool: ...
 
+# ──────────────────────────────────────
+# Namespace Classes with Full Method Signatures
+# ──────────────────────────────────────
+
 class _ListNamespace:
     """Namespace for list operations."""
     _expr: Expr
