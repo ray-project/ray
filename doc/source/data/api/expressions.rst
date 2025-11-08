@@ -41,7 +41,7 @@ instantiate them directly, but you may encounter them when working with expressi
     UDFExpr
     StarExpr
 
-Namespace Classes
+Namespace classes
 -----------------
 
 These classes provide specialized operations for list, string, and struct columns.
