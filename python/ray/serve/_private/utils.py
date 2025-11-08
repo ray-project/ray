@@ -190,7 +190,9 @@ def copy_class_metadata(wrapper_cls, target_cls) -> None:
         if attr == "__annotations__":
             target_annotations = getattr(target_cls, "__annotations__", None)
             if target_annotations:
-                merged_annotations = dict(getattr(wrapper_cls, "__annotations__", {}))
+                merged_annotations = dict(
+                    wrapper_cls.__dict__.get("__annotations__", {})
+                )
                 for key, value in target_annotations.items():
                     merged_annotations.setdefault(key, value)
                 wrapper_cls.__annotations__ = merged_annotations
