@@ -111,7 +111,7 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
                 full_blocks = first.remaining_rows // self._target_num_rows
                 if full_blocks > 0:
                     task_inputs.append(
-                        self._build_task([self._target_num_rows] * full_blocks)
+                        self._build_task([self._target_num_rows * full_blocks])
                     )
                     continue
 
@@ -158,10 +158,8 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
 
                 block_slices.append(
                     BlockSlice(
-                        block_index=block_index,
                         start_offset=start_offset,
                         end_offset=end_offset,
-                        output_index=output_index,
                     )
                 )
 

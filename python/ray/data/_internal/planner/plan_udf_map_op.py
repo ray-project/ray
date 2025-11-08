@@ -153,7 +153,9 @@ def plan_streaming_repartition_op(
     compute = get_compute(op._compute)
     transform_fn = BlockMapTransformFn(
         lambda blocks, ctx: blocks,
-        disable_block_shaping=True,
+        output_block_size_option=OutputBlockSizeOption.of(
+            target_num_rows_per_block=op.target_num_rows_per_block,  # To split n*target_max_block_size row into n blocks
+        ),
     )
     map_transformer = MapTransformer([transform_fn])
 

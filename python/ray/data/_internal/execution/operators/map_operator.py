@@ -651,21 +651,8 @@ def _iter_sliced_blocks(
     slices: List[BlockSlice],
 ) -> Iterator[Block]:
     blocks_list = list(blocks)
-    builder: Optional[DelegatingBlockBuilder] = None
-    current_output_index: Optional[int] = None
-
-    for block_slice in slices:
-        if builder is None or block_slice.output_index != current_output_index:
-            if builder is not None:
-                yield builder.build()
-            builder = DelegatingBlockBuilder()
-            current_output_index = block_slice.output_index
-
-        assert (
-            0 <= block_slice.block_index < len(blocks_list)
-        ), "Repartition spec refers to a block index outside the task input."
-        block = blocks_list[block_slice.block_index]
-
+    builder = DelegatingBlockBuilder()
+    for block, block_slice in zip(blocks_list, slices):
         accessor = BlockAccessor.for_block(block)
         start = block_slice.start_offset
         end = block_slice.end_offset
