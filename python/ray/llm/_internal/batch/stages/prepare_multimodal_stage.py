@@ -15,6 +15,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
         data_column: str,
         expected_input_keys: List[str],
         model: str,
+        chat_template_content_format: str = "string",
     ):
         """
         Initialize the PrepareMultimodalUDF.
@@ -26,6 +27,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
         """
         super().__init__(data_column, expected_input_keys)
         self.model_config = ModelConfig(model=model)
+        self.chat_template_content_format = chat_template_content_format
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -43,7 +45,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
                 row["messages"],
                 self.model_config,
                 None,  # Tokenizer is not used in vLLM's parse_chat_messages_futures
-                content_format="string",
+                content_format=self.chat_template_content_format,
             )
             conversations.append(conversation)
             futures.append(mm_data_future)

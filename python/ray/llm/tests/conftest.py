@@ -153,6 +153,14 @@ def model_llama_3_2_1B_instruct():
 
 
 @pytest.fixture(scope="session")
+def model_qwen_2_5_vl_3b_instruct():
+    yield "Qwen/Qwen2.5-VL-3B-Instruct"
+
+@pytest.fixture(scope="session")
+def model_qwen_2_5_omni_3b():
+    yield "Qwen/Qwen2.5-Omni-3B"
+
+@pytest.fixture(scope="session")
 def gpu_type():
     """Get the GPU type used for testing."""
 

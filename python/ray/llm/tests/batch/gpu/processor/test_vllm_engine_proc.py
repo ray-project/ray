@@ -4,7 +4,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import ray
-from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
+from ray.data.llm import (
+    MultimodalProcessorConfig,
+    build_llm_processor,
+    vLLMEngineProcessorConfig,
+)
 from ray.llm._internal.batch.processor import ProcessorBuilder
 
 
@@ -26,11 +30,9 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         apply_chat_template=True,
         tokenize=True,
         detokenize=True,
-        has_image=True,
     )
     processor = ProcessorBuilder.build(config)
     assert processor.list_stage_names() == [
-        "PrepareImageStage",
         "ChatTemplateStage",
         "TokenizeStage",
         "vLLMEngineStage",
@@ -209,32 +211,12 @@ def test_embedding_model(gpu_type, model_smolvlm_256m):
 
 
 def test_vision_model(gpu_type, model_smolvlm_256m):
-    processor_config = vLLMEngineProcessorConfig(
-        model_source=model_smolvlm_256m,
-        task_type="generate",
-        engine_kwargs=dict(
-            # Skip CUDA graph capturing to reduce startup time.
-            enforce_eager=True,
-            # CI uses T4 GPU which does not support bfloat16.
-            dtype="half",
-        ),
-        # CI uses T4 GPU which is not supported by vLLM v1 FlashAttn.
-        # runtime_env=dict(
-        #     env_vars=dict(
-        #         VLLM_USE_V1="0",
-        #     ),
-        # ),
-        apply_chat_template=True,
-        has_image=True,
-        tokenize=False,
-        detokenize=False,
-        batch_size=16,
-        accelerator_type=gpu_type,
+    multimodal_processor_config = MultimodalProcessorConfig(
+        model=model_smolvlm_256m,
         concurrency=1,
     )
-
-    processor = build_llm_processor(
-        processor_config,
+    multimodal_processor = build_llm_processor(
+        multimodal_processor_config,
         preprocess=lambda row: dict(
             messages=[
                 {"role": "system", "content": "You are an assistant"},
@@ -243,15 +225,45 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
                     "content": [
                         {
                             "type": "text",
-                            "text": f"Say {row['id']} words about this image.",
+                            "text": f"Say {row['val']} words about this image.",
                         },
                         {
-                            "type": "image",
-                            "image": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg",
+                            "type": "image_url",
+                            "image_url": {"url": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg"},
                         },
                     ],
                 },
             ],
+        ),
+    )
+
+    llm_processor_config = vLLMEngineProcessorConfig(
+        model_source=model_smolvlm_256m,
+        task_type="generate",
+        engine_kwargs=dict(
+            # Skip CUDA graph capturing to reduce startup time.
+            enforce_eager=True,
+            # CI uses T4 GPU which does not support bfloat16.
+            dtype="half",
+            limit_mm_per_prompt={"image": 1},
+        ),
+        # CI uses T4 GPU which is not supported by vLLM v1 FlashAttn.
+        runtime_env=dict(
+            env_vars=dict(
+                VLLM_USE_V1="0",
+            ),
+        ),
+        apply_chat_template=True,
+        tokenize=False,
+        detokenize=False,
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+    )
+
+    llm_processor = build_llm_processor(
+        llm_processor_config,
+        preprocess=lambda row: dict(
             sampling_params=dict(
                 temperature=0.3,
                 max_tokens=50,
@@ -264,12 +276,138 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
 
     ds = ray.data.range(60)
     ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
-    ds = processor(ds)
+    ds = llm_processor(multimodal_processor(ds))
     ds = ds.materialize()
     outs = ds.take_all()
     assert len(outs) == 60
     assert all("resp" in out for out in outs)
 
+def test_video_model(gpu_type, model_qwen_2_5_vl_3b_instruct):
+    multimodal_processor_config = MultimodalProcessorConfig(
+        model=model_qwen_2_5_vl_3b_instruct,
+        concurrency=1,
+    )
+    multimodal_processor = build_llm_processor(
+        multimodal_processor_config,
+        preprocess=lambda row: dict(
+            messages=[
+                {"role": "system", "content": "You are an assistant"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Describe this video in {row['val']} words.",
+                        },
+                        {
+                            "type": "video_url",
+                            "video_url": {"url": "https://content.pexels.com/videos/free-videos.mp4"},
+                        },
+                    ],
+                },
+            ],
+        ),
+    )
+
+    llm_processor_config = vLLMEngineProcessorConfig(
+        model_source=model_qwen_2_5_vl_3b_instruct,
+        task_type="generate",
+        engine_kwargs=dict(
+            enforce_eager=True,
+            # At most 1 video can be provided per prompt to prevent memory issues
+            limit_mm_per_prompt={"video": 1},
+        ),
+        apply_chat_template=True,
+        tokenize=False,
+        detokenize=False,
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+    )
+
+    llm_processor = build_llm_processor(
+        llm_processor_config,
+        preprocess=lambda row: dict(
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = llm_processor(multimodal_processor(ds))
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("resp" in out for out in outs)
+
+def test_audio_model(gpu_type, model_qwen_2_5_omni_3b):
+    multimodal_processor_config = MultimodalProcessorConfig(
+        model=model_qwen_2_5_omni_3b,
+        concurrency=1,
+    )
+    multimodal_processor = build_llm_processor(
+        multimodal_processor_config,
+        preprocess=lambda row: dict(
+            messages=[
+                {"role": "system", "content": "You are an assistant"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Describe this audio in {row['val']} words.",
+                        },
+                        {
+                            "type": "audio_url",
+                            "audio_url": {"url": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/multimodal_asset/winning_call.ogg"},
+                        },
+                    ],
+                },
+            ],
+        ),
+    )
+
+    llm_processor_config = vLLMEngineProcessorConfig(
+        model_source=model_qwen_2_5_omni_3b,
+        task_type="generate",
+        engine_kwargs=dict(
+            enforce_eager=True,
+            limit_mm_per_prompt={"audio": 1},
+        ),
+        apply_chat_template=True,
+        tokenize=False,
+        detokenize=False,
+        batch_size=1,
+        accelerator_type=gpu_type,
+        concurrency=1,
+    )
+
+    llm_processor = build_llm_processor(
+        llm_processor_config,
+        preprocess=lambda row: dict(
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(1)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = llm_processor(multimodal_processor(ds))
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 1
+    assert all("resp" in out for out in outs)
 
 class TestVLLMEngineProcessorConfig:
     @pytest.mark.parametrize(

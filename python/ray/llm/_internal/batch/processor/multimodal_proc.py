@@ -24,6 +24,12 @@ class MultimodalProcessorConfig(ProcessorConfig):
         description="Name or path of the Hugging Face model to use for the multimodal processor. "
         "This is required to process multimodal data according to a specific model.",
     )
+    chat_template_content_format: str = Field(
+        default="string",
+        choices=["string", "openai"],
+        description="The content format to use for the chat template. "
+        "This is used to format the chat template content according to a specific model.",
+    )
 
 
 def build_multimodal_processor(
@@ -48,6 +54,7 @@ def build_multimodal_processor(
         PrepareMultimodalStage(
             fn_constructor_kwargs=dict(
                 model=config.model,
+                chat_template_content_format=config.chat_template_content_format,
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
