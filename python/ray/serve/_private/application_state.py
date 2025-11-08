@@ -1190,9 +1190,7 @@ class ApplicationStateManager:
             deployment_args_list: arguments for deploying a list of deployments.
             application_args: application arguments.
         """
-        self.deploy_apps(
-            {name: deployment_args}, {name: application_args.to_proto_bytes()}
-        )
+        self.deploy_apps({name: deployment_args}, {name: application_args})
 
     def apply_app_configs(
         self,
