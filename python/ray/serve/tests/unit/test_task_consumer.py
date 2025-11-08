@@ -312,7 +312,11 @@ def test_task_consumer_preserves_metadata(config):
     assert wrapped_cls.__qualname__ == OriginalConsumer.__qualname__
     assert wrapped_cls.__module__ == OriginalConsumer.__module__
     assert wrapped_cls.__doc__ == OriginalConsumer.__doc__
-    assert wrapped_cls.__annotations__ == OriginalConsumer.__annotations__
+    assert (
+        wrapped_cls.__annotations__["value"]
+        == OriginalConsumer.__annotations__["value"]
+    )
+    assert wrapped_cls.__annotations__["_adapter"] is TaskProcessorAdapter
     assert getattr(wrapped_cls, "__wrapped__", None) is OriginalConsumer
 
 
