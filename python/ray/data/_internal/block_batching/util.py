@@ -54,16 +54,34 @@ def resolve_block_refs(
     misses = 0
     unknowns = 0
 
-    for block_ref in block_ref_iter:
-        current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
+    ctx = ray.data.context.DataContext.get_current()
+    batch_size = max(1, ctx.iter_get_block_batch_size)
+    pending: List[ObjectRef[Block]] = []
+
+    def _resolve_pending() -> List[Block]:
+        nonlocal hits, misses, unknowns, pending
+        if not pending:
+            return []
+
+        current_hit, current_miss, current_unknown = _calculate_ref_hits(pending)
         hits += current_hit
         misses += current_miss
         unknowns += current_unknown
 
-        # TODO(amogkam): Optimized further by batching multiple references in a single
-        # `ray.get()` call.
         with stats.iter_get_s.timer() if stats else nullcontext():
-            block = ray.get(block_ref)
+            blocks = ray.get(pending)
+
+        pending.clear()
+
+        return blocks
+
+    for block_ref in block_ref_iter:
+        pending.append(block_ref)
+        if len(pending) >= batch_size:
+            for block in _resolve_pending():
+                yield block
+
+    for block in _resolve_pending():
         yield block
 
     if stats:

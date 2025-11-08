@@ -78,6 +78,10 @@ DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
+DEFAULT_ITER_GET_BLOCK_BATCH_SIZE = env_integer(
+    "RAY_DATA_ITER_GET_BLOCK_BATCH_SIZE", 32
+)
+
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATA_PUSH_BASED_SHUFFLE", None)
 )
@@ -212,9 +216,7 @@ DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
     "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", -1
 )
 
-DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR = env_integer(
-    "RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR", 4
-)
+DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR = 4
 
 # Enable per node metrics reporting for Ray Data, disabled by default.
 DEFAULT_ENABLE_PER_NODE_METRICS = bool(
@@ -341,6 +343,8 @@ class DataContext:
             remote storage.
         enable_pandas_block: Whether pandas block format is enabled.
         actor_prefetcher_enabled: Whether to use actor based block prefetcher.
+        iter_get_block_batch_size: Maximum number of block object references to resolve
+            in a single ``ray.get()`` call when iterating over datasets.
         autoscaling_config: Autoscaling configuration.
         use_push_based_shuffle: Whether to use push-based shuffle.
         pipeline_push_based_shuffle_reduce_tasks:
@@ -473,6 +477,7 @@ class DataContext:
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
     actor_prefetcher_enabled: bool = DEFAULT_ACTOR_PREFETCHER_ENABLED
+    iter_get_block_batch_size: int = DEFAULT_ITER_GET_BLOCK_BATCH_SIZE
 
     autoscaling_config: AutoscalingConfig = field(default_factory=AutoscalingConfig)
 
@@ -578,8 +583,7 @@ class DataContext:
     # Setting non-positive value here (ie <= 0) disables this functionality
     # (defaults to -1).
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
-    # This setting serves as a global override
-    max_tasks_in_flight_per_actor: Optional[int] = None
+    max_tasks_in_flight_per_actor: Optional[int] = DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
