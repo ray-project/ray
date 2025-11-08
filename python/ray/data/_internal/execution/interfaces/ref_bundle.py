@@ -1,12 +1,13 @@
 import math
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 
 import ray
 from .common import NodeIdStr
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data.block import Block, BlockMetadata, Schema
+from ray.data.block import Block, BlockAccessor, BlockMetadata, Schema
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
@@ -19,6 +20,10 @@ class BlockSlice:
     start_offset: int
     # Ending row offset (exclusive) within the block.
     end_offset: int
+
+    @property
+    def num_rows(self) -> int:
+        return self.end_offset - self.start_offset
 
 
 @dataclass
@@ -68,6 +73,10 @@ class RefBundle:
     def __post_init__(self):
         if not isinstance(self.blocks, tuple):
             object.__setattr__(self, "blocks", tuple(self.blocks))
+        if self.slices is not None:
+            assert len(self.blocks) == len(
+                self.slices
+            ), "Number of blocks and slices must match"
         for b in self.blocks:
             assert isinstance(b, tuple), b
             assert len(b) == 2, b
@@ -95,16 +104,29 @@ class RefBundle:
 
     def num_rows(self) -> Optional[int]:
         """Number of rows present in this bundle, if known."""
+        slice_total: Optional[int] = None
+        if self.slices is not None:
+            slice_total = sum(block_slice.num_rows for block_slice in self.slices)
+            return slice_total
+
         total = 0
         for m in self.metadata:
             if m.num_rows is None:
                 return None
-            else:
-                total += m.num_rows
+            total += m.num_rows
         return total
 
     def size_bytes(self) -> int:
         """Size of the blocks of this bundle in bytes."""
+        if self.slices is not None:
+            total = 0
+            for (_, metadata), block_slice in zip(self.blocks, self.slices):
+                if metadata.num_rows and metadata.num_rows != block_slice.num_rows:
+                    per_row = metadata.size_bytes / metadata.num_rows
+                    total += max(1, int(math.ceil(per_row * block_slice.num_rows)))
+                else:
+                    total += metadata.size_bytes
+            return total
         return sum(m.size_bytes for m in self.metadata)
 
     def destroy_if_owned(self) -> int:
@@ -203,3 +225,23 @@ def _slice_block_metadata(
         exec_stats=None,
         input_files=list(metadata.input_files),
     )
+
+
+def _iter_sliced_blocks(
+    blocks: Iterable[Block],
+    slices: List[BlockSlice],
+) -> Iterator[Block]:
+    blocks_list = list(blocks)
+    builder = DelegatingBlockBuilder()
+    for block, block_slice in zip(blocks_list, slices):
+        accessor = BlockAccessor.for_block(block)
+        start = block_slice.start_offset
+        end = block_slice.end_offset
+
+        if start == 0 and end >= accessor.num_rows():
+            builder.add_block(block)
+        else:
+            builder.add_block(accessor.slice(start, end, copy=False))
+
+    if builder is not None:
+        yield builder.build()

@@ -26,7 +26,6 @@ from ray.data._internal.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
 )
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import (
     BlockSlice,
     ExecutionOptions,
@@ -40,6 +39,9 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
     OpTask,
     estimate_total_num_of_blocks,
+)
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _iter_sliced_blocks,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -644,26 +646,6 @@ def _map_task(
             profiler.reset()
 
     TaskContext.reset_current()
-
-
-def _iter_sliced_blocks(
-    blocks: Iterable[Block],
-    slices: List[BlockSlice],
-) -> Iterator[Block]:
-    blocks_list = list(blocks)
-    builder = DelegatingBlockBuilder()
-    for block, block_slice in zip(blocks_list, slices):
-        accessor = BlockAccessor.for_block(block)
-        start = block_slice.start_offset
-        end = block_slice.end_offset
-
-        if start == 0 and end >= accessor.num_rows():
-            builder.add_block(block)
-        else:
-            builder.add_block(accessor.slice(start, end, copy=False))
-
-    if builder is not None:
-        yield builder.build()
 
 
 class BlockRefBundler(BaseRefBundler):
