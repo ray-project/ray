@@ -1,3 +1,4 @@
+import itertools
 import math
 from collections import defaultdict
 from dataclasses import dataclass
@@ -244,3 +245,110 @@ def _iter_sliced_blocks(
             builder.add_block(accessor.slice(start, end, copy=False))
 
     yield builder.build()
+
+
+def slice_ref_bundle(
+    ref_bundle: RefBundle, needed_rows: int
+) -> Tuple[RefBundle, RefBundle]:
+    """Split a RefBundle into a prefix of `needed_rows` and the remaining suffix.
+
+    Args:
+        ref_bundle: The bundle to split. Must have a known row count.
+        needed_rows: Number of rows to take from the head of the bundle.
+
+    Returns:
+        A tuple of (consumed_bundle, remaining_bundle). The remaining bundle may be
+        empty (i.e. contain zero blocks) if all rows were consumed.
+    """
+    assert needed_rows > 0, "needed_rows must be positive."
+    assert (
+        ref_bundle.num_rows() is not None
+    ), "Cannot slice a RefBundle with unknown number of rows."
+    assert (
+        needed_rows <= ref_bundle.num_rows()
+    ), f"Requested {needed_rows} rows but bundle only has {ref_bundle.num_rows()} rows."
+
+    if ref_bundle.slices is not None:
+        block_slices = list(ref_bundle.slices)
+    else:
+        block_slices = []
+        for metadata in ref_bundle.metadata:
+            assert (
+                metadata.num_rows is not None
+            ), "Cannot derive block slice for a RefBundle with unknown block row counts."
+            block_slices.append(
+                BlockSlice(start_offset=0, end_offset=metadata.num_rows)
+            )
+
+    consumed_blocks: List[Tuple[ObjectRef[Block], BlockMetadata]] = []
+    consumed_slices: List[BlockSlice] = []
+    remaining_blocks: List[Tuple[ObjectRef[Block], BlockMetadata]] = []
+    remaining_slices: List[BlockSlice] = []
+
+    rows_to_take = needed_rows
+
+    for (block_ref, metadata), block_slice in zip(ref_bundle.blocks, block_slices):
+        block_rows = block_slice.num_rows
+        if rows_to_take >= block_rows:
+            consumed_blocks.append(
+                (block_ref, _slice_block_metadata(metadata, block_rows))
+            )
+            consumed_slices.append(block_slice)
+            rows_to_take -= block_rows
+        else:
+            if rows_to_take == 0:
+                remaining_blocks.append((block_ref, metadata))
+                remaining_slices.append(block_slice)
+                continue
+            consume_slice = BlockSlice(
+                start_offset=block_slice.start_offset,
+                end_offset=block_slice.start_offset + rows_to_take,
+            )
+            consumed_blocks.append(
+                (block_ref, _slice_block_metadata(metadata, rows_to_take))
+            )
+            consumed_slices.append(consume_slice)
+
+            leftover_rows = block_rows - rows_to_take
+            if leftover_rows > 0:
+                remainder_slice = BlockSlice(
+                    start_offset=consume_slice.end_offset,
+                    end_offset=block_slice.end_offset,
+                )
+                remaining_blocks.append(
+                    (block_ref, _slice_block_metadata(metadata, leftover_rows))
+                )
+                remaining_slices.append(remainder_slice)
+
+            rows_to_take = 0
+
+    if rows_to_take != 0:
+        raise ValueError("Slice exceeds the available rows in the RefBundle.")
+
+    consumed_bundle = RefBundle(
+        blocks=tuple(consumed_blocks),
+        schema=ref_bundle.schema,
+        owns_blocks=False,
+        slices=consumed_slices if consumed_slices else None,
+    )
+
+    remaining_bundle = RefBundle(
+        blocks=tuple(remaining_blocks),
+        schema=ref_bundle.schema,
+        owns_blocks=False,
+        slices=remaining_slices if remaining_slices else None,
+    )
+
+    return consumed_bundle, remaining_bundle
+
+
+def merge_ref_bundles(bundles: List[RefBundle]) -> RefBundle:
+    merged_blocks = list(itertools.chain(*[bundle.blocks for bundle in bundles]))
+    merged_slices = list(itertools.chain(*[bundle.slices for bundle in bundles]))
+    merged_bundle = RefBundle(
+        blocks=tuple(merged_blocks),
+        schema=bundles[0].schema,
+        owns_blocks=False,
+        slices=merged_slices,
+    )
+    return merged_bundle
