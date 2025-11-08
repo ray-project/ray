@@ -175,6 +175,23 @@ def format_actor_name(actor_name, *modifiers):
     return name
 
 
+CLASS_WRAPPER_METADATA_ATTRS = (
+    "__name__",
+    "__qualname__",
+    "__module__",
+    "__doc__",
+    "__annotations__",
+)
+
+
+def copy_class_metadata(wrapper_cls, target_cls) -> None:
+    """Copy common class-level metadata onto a wrapper class."""
+    for attr in CLASS_WRAPPER_METADATA_ATTRS:
+        if hasattr(target_cls, attr):
+            setattr(wrapper_cls, attr, getattr(target_cls, attr))
+    wrapper_cls.__wrapped__ = target_cls
+
+
 def ensure_serialization_context():
     """Ensure the serialization addons on registered, even when Ray has not
     been started."""
