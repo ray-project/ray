@@ -1,6 +1,6 @@
 import sys
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from unittest.mock import Mock, patch
 
 import pytest
@@ -108,6 +108,7 @@ class MockReplicaActorWrapper:
         self._initialization_latency_s = -1
         self._docs_path = None
         self._rank = replica_rank_context.get(replica_id.unique_id, None)
+        self._assign_rank_callback = None
 
     @property
     def is_cross_language(self) -> bool:
@@ -226,10 +227,15 @@ class MockReplicaActorWrapper:
     def set_actor_id(self, actor_id: str):
         self._actor_id = actor_id
 
-    def start(self, deployment_info: DeploymentInfo, rank: ReplicaRank):
+    def start(
+        self,
+        deployment_info: DeploymentInfo,
+        assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
+    ):
         self.started = True
-        self._rank = rank
-        replica_rank_context[self._replica_id.unique_id] = rank
+        self._assign_rank_callback = assign_rank_callback
+        self._rank = assign_rank_callback(self._replica_id.unique_id)
+        replica_rank_context[self._replica_id.unique_id] = self._rank
 
         def _on_scheduled_stub(*args, **kwargs):
             pass
@@ -2682,7 +2688,9 @@ class TestActorReplicaWrapper:
         )
         max_ongoing_requests = DEFAULT_MAX_CONCURRENCY_ASYNC + 1
         d_info, _ = deployment_info(max_ongoing_requests=max_ongoing_requests)
-        replica_scheduling_request = actor_replica.start(d_info, rank=0)
+        replica_scheduling_request = actor_replica.start(
+            d_info, assign_rank_callback=lambda x: 0
+        )
         assert (
             "max_concurrency" in replica_scheduling_request.actor_options
             and replica_scheduling_request.actor_options["max_concurrency"]

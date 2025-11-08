@@ -507,7 +507,6 @@ class ReplicaBase(ABC):
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
-        rank: ReplicaRank,
     ):
         self._version = version
         self._replica_id = replica_id
@@ -555,7 +554,7 @@ class ReplicaBase(ABC):
 
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
-        self._set_internal_replica_context(servable_object=None, rank=rank)
+        self._set_internal_replica_context(servable_object=None, rank=None)
 
         self._metrics_manager = create_replica_metrics_manager(
             replica_id=replica_id,
@@ -569,7 +568,7 @@ class ReplicaBase(ABC):
         self._http_port: Optional[int] = None
         self._grpc_port: Optional[int] = None
 
-        self._rank = rank
+        self._rank: Optional[ReplicaRank] = None
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -895,7 +894,12 @@ class ReplicaBase(ABC):
     async def _on_initialized(self):
         raise NotImplementedError
 
-    async def initialize(self, deployment_config: DeploymentConfig):
+    async def initialize(self, deployment_config: DeploymentConfig, rank: ReplicaRank):
+        if rank is not None:
+            self._rank = rank
+            self._set_internal_replica_context(
+                servable_object=self._user_callable_wrapper.user_callable, rank=rank
+            )
         try:
             # Ensure that initialization is only performed once.
             # When controller restarts, it will call this method again.
@@ -1171,7 +1175,6 @@ class ReplicaActor:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
-        rank: ReplicaRank,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -1188,7 +1191,6 @@ class ReplicaActor:
             version=version,
             ingress=ingress,
             route_prefix=route_prefix,
-            rank=rank,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
@@ -1228,7 +1230,7 @@ class ReplicaActor:
         )
 
     async def initialize_and_get_metadata(
-        self, deployment_config: DeploymentConfig = None, _after: Optional[Any] = None
+        self, deployment_config: DeploymentConfig = None, rank: ReplicaRank = None
     ) -> ReplicaMetadata:
         """Handles initializing the replica.
 
@@ -1241,7 +1243,7 @@ class ReplicaActor:
         """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
-        await self._replica_impl.initialize(deployment_config)
+        await self._replica_impl.initialize(deployment_config, rank)
         return self._replica_impl.get_metadata()
 
     async def check_health(self):
