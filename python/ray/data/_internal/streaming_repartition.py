@@ -1,6 +1,6 @@
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque, Dict, List, Optional, Tuple
+from typing import Deque, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import BlockSlice, RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -55,8 +55,8 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
         ), "target_num_rows_per_block must be positive for streaming repartition."
         self._target_num_rows = target_num_rows_per_block
         self._pending_bundles: Deque[RefBundle] = deque()
-        self._bundle_remaining_blocks: Dict[RefBundle, int] = {}
-        self._ready_bundles: Deque[Tuple[List[RefBundle], RefBundle]] = deque()
+        self._consumed_input_bundles: List[RefBundle] = []
+        self._ready_bundles: Deque[RefBundle] = deque()
         self._total_pending_rows = 0
         self._next_output_index = 0
 
@@ -73,17 +73,17 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
                 merged_bundle = merge_ref_bundles(
                     list(self._pending_bundles) + [to_consume]
                 )
-                self._ready_bundles.append(([], merged_bundle))
-                self._pending_bundles = deque([])
+                self._ready_bundles.append(merged_bundle)
+                self._pending_bundles.clear()
                 self._total_pending_rows = 0
                 if remaining.num_rows() > 0:
                     self._pending_bundles.append(remaining)
                     self._total_pending_rows += remaining.num_rows()
             else:
                 self._ready_bundles.append(
-                    ([], merge_ref_bundles(list(self._pending_bundles)))
+                    merge_ref_bundles(list(self._pending_bundles))
                 )
-                self._pending_bundles = deque([])
+                self._pending_bundles.clear()
                 self._total_pending_rows = 0
 
     def add_bundle(self, ref_bundle: RefBundle):
@@ -102,8 +102,8 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
                 owns_blocks=False,
             )
         )
-
         self._try_build_ready_bundle()
+        self._consumed_input_bundles.append(ref_bundle)
 
         if block_count > 0:
             self._bundle_remaining_blocks[ref_bundle] = block_count
@@ -114,7 +114,9 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
     def get_next_bundle(
         self,
     ) -> Tuple[List[RefBundle], RefBundle]:
-        return self._ready_bundles.popleft()
+        consumed_input_bundles = self._consumed_input_bundles
+        self._consumed_input_bundles = []
+        return consumed_input_bundles, self._ready_bundles.popleft()
 
     def done_adding_bundles(self):
         if len(self._pending_bundles) > 0:
