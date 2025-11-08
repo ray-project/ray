@@ -27,7 +27,6 @@ llm_config = LLMConfig(
     accelerator_type="L4",
     engine_kwargs=dict(
         tensor_parallel_size=2,
-        distributed_executor_backend="ray",
         max_model_len=8192,
     ),
 )
@@ -57,7 +56,6 @@ llm_config = LLMConfig(
     accelerator_type="L4",
     engine_kwargs=dict(
         pipeline_parallel_size=2,
-        distributed_executor_backend="ray",
         max_model_len=8192,
     ),
 )
@@ -88,7 +86,6 @@ llm_config = LLMConfig(
     engine_kwargs=dict(
         tensor_parallel_size=2,
         pipeline_parallel_size=2,
-        distributed_executor_backend="ray",
         max_model_len=8192,
         enable_chunked_prefill=True,
         max_num_batched_tokens=4096,
@@ -120,7 +117,6 @@ llm_config = LLMConfig(
     accelerator_type="L4",
     engine_kwargs=dict(
         tensor_parallel_size=2,
-        distributed_executor_backend="ray",
         max_model_len=8192,
     ),
     placement_group_config=dict(
@@ -154,7 +150,6 @@ llm_config = LLMConfig(
     accelerator_type="L4",
     engine_kwargs=dict(
         tensor_parallel_size=4,
-        distributed_executor_backend="ray",
         max_model_len=8192,
     ),
     placement_group_config=dict(
@@ -188,7 +183,6 @@ llm_config = LLMConfig(
     accelerator_type="A100",
     engine_kwargs=dict(
         tensor_parallel_size=2,
-        distributed_executor_backend="ray",
         max_model_len=8192,
     ),
     placement_group_config=dict(
