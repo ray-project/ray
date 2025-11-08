@@ -78,11 +78,9 @@ def resolve_block_refs(
     for block_ref in block_ref_iter:
         pending.append(block_ref)
         if len(pending) >= batch_size:
-            for block in _resolve_pending():
-                yield block
+            yield from _resolve_pending()
 
-    for block in _resolve_pending():
-        yield block
+    yield from _resolve_pending()
 
     if stats:
         stats.iter_blocks_local = hits
