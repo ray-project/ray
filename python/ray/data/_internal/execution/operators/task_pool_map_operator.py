@@ -1,8 +1,7 @@
 import warnings
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 from ray.data._internal.execution.interfaces import (
-    BlockSlice,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
@@ -91,9 +90,7 @@ class TaskPoolMapOperator(MapOperator):
 
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
 
-    def _add_bundled_input(
-        self, bundle: RefBundle, slices: Optional[List[BlockSlice]] = None
-    ):
+    def _add_bundled_input(self, bundle: RefBundle):
         # Submit the task as a normal Ray task.
         ctx = TaskContext(
             task_idx=self._next_data_task_idx,

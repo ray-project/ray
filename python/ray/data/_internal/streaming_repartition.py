@@ -91,10 +91,23 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
         self._drain_ready_tasks(flush_remaining=True)
 
     def num_blocks(self):
-        return 0  # TODO: implement
+        ready_blocks = sum(
+            len(ref_bundle.blocks) for _, ref_bundle in self._ready_bundles
+        )
+        return len(self._pending_blocks) + ready_blocks
 
     def size_bytes(self) -> int:
-        return 0  # TODO: implement
+        total = 0
+        for _, ref_bundle in self._ready_bundles:
+            total += ref_bundle.size_bytes()
+
+        for block in self._pending_blocks:
+            remaining_rows = block.remaining_rows
+            if remaining_rows <= 0:
+                continue
+            total += _slice_block_metadata(block.metadata, remaining_rows).size_bytes
+
+        return total
 
     def _drain_ready_tasks(self, flush_remaining: bool = False):
         task_inputs: List[Tuple[List[RefBundle], RefBundle]] = []

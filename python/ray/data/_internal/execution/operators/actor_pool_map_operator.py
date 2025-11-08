@@ -304,15 +304,13 @@ class ActorPoolMapOperator(MapOperator):
         )
         return actor, res_ref
 
-    def _add_bundled_input(
-        self, bundle: RefBundle, slices: Optional[List[BlockSlice]] = None
-    ):
+    def _add_bundled_input(self, bundle: RefBundle):
         self._bundle_queue.add(bundle)
         self._metrics.on_input_queued(bundle)
         # Try to dispatch all bundles in the queue, including this new bundle.
-        self._dispatch_tasks(slices)
+        self._dispatch_tasks()
 
-    def _dispatch_tasks(self, slices: Optional[List[BlockSlice]] = None):
+    def _dispatch_tasks(self):
         """Try to dispatch tasks from the bundle buffer to the actor pool.
 
         This is called when:

@@ -243,5 +243,4 @@ def _iter_sliced_blocks(
         else:
             builder.add_block(accessor.slice(start, end, copy=False))
 
-    if builder is not None:
-        yield builder.build()
+    yield builder.build()
