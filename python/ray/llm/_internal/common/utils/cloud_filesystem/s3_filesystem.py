@@ -126,13 +126,14 @@ class S3FileSystem(BaseCloudFileSystem):
 
             subfolders = []
             for line in result.stdout.strip().split("\n"):
-                if not line.strip():
+                stripped_line = line.strip()
+                if not stripped_line:
                     continue
                 # AWS CLI ls output format: "PRE folder_name/" or "timestamp size key"
-                # We're looking for lines starting with "PRE" (prefixes/directories)
-                if line.startswith("PRE"):
+                # We're looking for lines containing "PRE" (prefixes/directories)
+                if stripped_line.startswith("PRE"):
                     # Extract folder name: "PRE folder_name/" -> "folder_name"
-                    folder_name = line.split()[-1].rstrip("/")
+                    folder_name = stripped_line.split()[-1].rstrip("/")
                     subfolders.append(folder_name)
 
             return subfolders
