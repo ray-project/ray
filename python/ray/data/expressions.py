@@ -4,14 +4,26 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, Generic, List, Literal, Optional, TypeVar, Union
-
-import pyarrow
-import pyarrow.compute as pc
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    List,
+    Literal,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+if TYPE_CHECKING:
+    import pyarrow
+    import pyarrow.compute as pc
 
 T = TypeVar("T")
 

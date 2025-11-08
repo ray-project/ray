@@ -41,10 +41,10 @@ instantiate them directly, but you may encounter them when working with expressi
     UDFExpr
     StarExpr
 
-Namespace classes
------------------
+Expression namespaces
+------------------------------------
 
-These classes provide specialized operations for list, string, and struct columns.
+These namespace classes provide specialized operations for list, string, and struct columns.
 You access them through properties on expressions: ``.list``, ``.str``, and ``.struct``.
 
 .. autoclass:: _ListNamespace
