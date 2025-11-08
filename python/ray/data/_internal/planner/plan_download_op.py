@@ -281,6 +281,7 @@ class PartitionActor:
         ]
 
         target_nbytes_per_partition = self._data_context.target_max_block_size
+ 
         avg_nbytes_per_row = sum(row_sizes) / len(row_sizes)
         if avg_nbytes_per_row == 0:
             logger.warning(
@@ -325,9 +326,9 @@ class PartitionActor:
             for future in as_completed(futures):
                 try:
                     size = future.result()
-                    if size is not None:
-                        file_sizes.append(size)
+                    file_sizes.append(size if size is not None else 0)
                 except Exception as e:
                     logger.warning(f"Error fetching file size for download: {e}")
+                    file_sizes.append(0)
 
         return file_sizes
