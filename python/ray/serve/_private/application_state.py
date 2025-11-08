@@ -579,7 +579,7 @@ class ApplicationState:
     def deploy_app(
         self,
         deployment_infos: Dict[str, DeploymentInfo],
-        external_scaler_enabled: bool = False,
+        external_scaler_enabled: bool,
     ):
         """(Re-)deploy the application from list of deployment infos.
 
@@ -1150,9 +1150,7 @@ class ApplicationStateManager:
                 # against during this batch operation.
                 live_route_prefixes[deploy_app_prefix] = name
 
-            application_args = name_to_application_args.get(
-                name, ApplicationArgsProto(external_scaler_enabled=False)
-            )
+            application_args = name_to_application_args.get(name)
             external_scaler_enabled = application_args.external_scaler_enabled
 
             if name not in self._application_states:
@@ -1176,7 +1174,12 @@ class ApplicationStateManager:
                 deployment_infos, external_scaler_enabled
             )
 
-    def deploy_app(self, name: str, deployment_args: List[Dict]) -> None:
+    def deploy_app(
+        self,
+        name: str,
+        deployment_args: List[Dict],
+        application_args: ApplicationArgsProto,
+    ) -> None:
         """Deploy the specified app to the list of deployment arguments.
 
         This function should only be called if the app is being deployed
@@ -1185,12 +1188,11 @@ class ApplicationStateManager:
         Args:
             name: application name
             deployment_args_list: arguments for deploying a list of deployments.
-
-        Raises:
-            RayServeException: If the list of deployments is trying to
-                use a route prefix that is already used by another application
+            application_args: application arguments.
         """
-        self.deploy_apps({name: deployment_args}, {})
+        self.deploy_apps(
+            {name: deployment_args}, {name: application_args.to_proto_bytes()}
+        )
 
     def apply_app_configs(
         self,

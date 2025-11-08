@@ -814,7 +814,7 @@ class ServeController:
         self,
         name: str,
         deployment_args_list: List[bytes],
-        application_args: bytes = b"",
+        application_args: bytes,
     ) -> None:
         """
         Deploy a single application
@@ -826,7 +826,7 @@ class ServeController:
         """
         self.deploy_applications(
             {name: deployment_args_list},
-            {name: application_args} if application_args else {},
+            {name: application_args},
         )
 
     def apply_config(

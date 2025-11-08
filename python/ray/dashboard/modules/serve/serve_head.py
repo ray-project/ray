@@ -253,13 +253,14 @@ class ServeHead(SubprocessModule):
                 200,
             )
         except Exception as e:
-            if isinstance(
-                e.cause, (ExternalScalerNotEnabledError, DeploymentIsBeingDeletedError)
-            ):
+            if isinstance(e, DeploymentIsBeingDeletedError):
+                # From customer's viewpoint, the deployment is deleted instead of being deleted
+                # as they must have already executed the delete command
                 return self._create_json_response(
-                    {"error": str(e)},
-                    412,
+                    {"error": "Deployment is deleted"}, 412
                 )
+            elif isinstance(e, ExternalScalerNotEnabledError):
+                return self._create_json_response({"error": str(e.cause)}, 412)
             if isinstance(e, ValueError) and "not found" in str(e):
                 return self._create_json_response(
                     {"error": "Application or Deployment not found"}, 400

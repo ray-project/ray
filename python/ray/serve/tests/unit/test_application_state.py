@@ -36,6 +36,7 @@ from ray.serve._private.utils import get_random_string
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
+    ApplicationArgs as ApplicationArgsProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
     StatusOverview as StatusOverviewProto,
 )
@@ -561,7 +562,8 @@ def test_deploy_and_delete_app(mocked_application_state):
         {
             "d1": deployment_info("d1", "/hi"),
             "d2": deployment_info("d2"),
-        }
+        },
+        ApplicationArgsProto(external_scaler_enabled=False),
     )
     assert app_state.route_prefix == "/hi"
 
@@ -614,7 +616,10 @@ def test_app_deploy_failed_and_redeploy(mocked_application_state):
     app_state, deployment_state_manager = mocked_application_state
     d1_id = DeploymentID(name="d1", app_name="test_app")
     d2_id = DeploymentID(name="d2", app_name="test_app")
-    app_state.deploy_app({"d1": deployment_info("d1")})
+    app_state.deploy_app(
+        {"d1": deployment_info("d1")},
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Before status of deployment changes, app should still be DEPLOYING
@@ -633,7 +638,10 @@ def test_app_deploy_failed_and_redeploy(mocked_application_state):
     assert app_state.status == ApplicationStatus.DEPLOY_FAILED
     assert app_state._status_msg == deploy_failed_msg
 
-    app_state.deploy_app({"d1": deployment_info("d1"), "d2": deployment_info("d2")})
+    app_state.deploy_app(
+        {"d1": deployment_info("d1"), "d2": deployment_info("d2")},
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     assert app_state.status == ApplicationStatus.DEPLOYING
     assert app_state._status_msg != deploy_failed_msg
 
@@ -665,7 +673,10 @@ def test_app_deploy_failed_and_recover(mocked_application_state):
     """
     app_state, deployment_state_manager = mocked_application_state
     deployment_id = DeploymentID(name="d1", app_name="test_app")
-    app_state.deploy_app({"d1": deployment_info("d1")})
+    app_state.deploy_app(
+        {"d1": deployment_info("d1")},
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Before status of deployment changes, app should still be DEPLOYING
@@ -697,7 +708,10 @@ def test_app_unhealthy(mocked_application_state):
     id_a, id_b = DeploymentID(name="a", app_name="test_app"), DeploymentID(
         name="b", app_name="test_app"
     )
-    app_state.deploy_app({"a": deployment_info("a"), "b": deployment_info("b")})
+    app_state.deploy_app(
+        {"a": deployment_info("a"), "b": deployment_info("b")},
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     assert app_state.status == ApplicationStatus.DEPLOYING
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
@@ -838,7 +852,11 @@ def test_apply_app_configs_deletes_existing(check_obj_ref_ready_nowait):
 
     # Deploy an app via `deploy_app` - should not be affected.
     a_id = DeploymentID(name="a", app_name="imperative_app")
-    app_state_manager.deploy_app("imperative_app", [deployment_params("a", "/hi")])
+    app_state_manager.deploy_app(
+        "imperative_app",
+        [deployment_params("a", "/hi")],
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     imperative_app_state = app_state_manager._application_states["imperative_app"]
     assert imperative_app_state.api_type == APIType.IMPERATIVE
     assert imperative_app_state.status == ApplicationStatus.DEPLOYING
@@ -886,7 +904,10 @@ def test_redeploy_same_app(mocked_application_state):
     a_id = DeploymentID(name="a", app_name="test_app")
     b_id = DeploymentID(name="b", app_name="test_app")
     c_id = DeploymentID(name="c", app_name="test_app")
-    app_state.deploy_app({"a": deployment_info("a"), "b": deployment_info("b")})
+    app_state.deploy_app(
+        {"a": deployment_info("a"), "b": deployment_info("b")},
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Update
@@ -903,7 +924,10 @@ def test_redeploy_same_app(mocked_application_state):
     assert app_state.status == ApplicationStatus.RUNNING
 
     # Deploy the same app with different deployments
-    app_state.deploy_app({"b": deployment_info("b"), "c": deployment_info("c")})
+    app_state.deploy_app(
+        {"b": deployment_info("b"), "c": deployment_info("c")},
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     assert app_state.status == ApplicationStatus.DEPLOYING
     # Target state should be updated immediately
     assert "a" not in app_state.target_deployments
@@ -927,9 +951,17 @@ def test_deploy_with_route_prefix_conflict(mocked_application_state_manager):
     """Test that an application with a route prefix conflict fails to deploy"""
     app_state_manager, _, _ = mocked_application_state_manager
 
-    app_state_manager.deploy_app("app1", [deployment_params("a", "/hi")])
+    app_state_manager.deploy_app(
+        "app1",
+        [deployment_params("a", "/hi")],
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     with pytest.raises(RayServeException):
-        app_state_manager.deploy_app("app2", [deployment_params("b", "/hi")])
+        app_state_manager.deploy_app(
+            "app2",
+            [deployment_params("b", "/hi")],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
 
 
 def test_deploy_with_renamed_app(mocked_application_state_manager):
@@ -943,7 +975,11 @@ def test_deploy_with_renamed_app(mocked_application_state_manager):
     )
 
     # deploy app1
-    app_state_manager.deploy_app("app1", [deployment_params("a", "/url1")])
+    app_state_manager.deploy_app(
+        "app1",
+        [deployment_params("a", "/url1")],
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     app_state = app_state_manager._application_states["app1"]
     assert app_state_manager.get_app_status("app1") == ApplicationStatus.DEPLOYING
 
@@ -963,7 +999,11 @@ def test_deploy_with_renamed_app(mocked_application_state_manager):
     app_state_manager.update()
 
     # deploy app2
-    app_state_manager.deploy_app("app2", [deployment_params("b", "/url1")])
+    app_state_manager.deploy_app(
+        "app2",
+        [deployment_params("b", "/url1")],
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
     assert app_state_manager.get_app_status("app2") == ApplicationStatus.DEPLOYING
     app_state_manager.update()
 
@@ -992,7 +1032,9 @@ def test_application_state_recovery(mocked_application_state_manager):
 
     # DEPLOY application with deployments {d1, d2}
     params = deployment_params("d1")
-    app_state_manager.deploy_app(app_name, [params])
+    app_state_manager.deploy_app(
+        app_name, [params], ApplicationArgsProto(external_scaler_enabled=False)
+    )
     app_state = app_state_manager._application_states[app_name]
     assert app_state.status == ApplicationStatus.DEPLOYING
 
@@ -1048,7 +1090,9 @@ def test_recover_during_update(mocked_application_state_manager):
 
     # DEPLOY application with deployment "d1"
     params = deployment_params("d1")
-    app_state_manager.deploy_app(app_name, [params])
+    app_state_manager.deploy_app(
+        app_name, [params], ApplicationArgsProto(external_scaler_enabled=False)
+    )
     app_state = app_state_manager._application_states[app_name]
     assert app_state.status == ApplicationStatus.DEPLOYING
 
@@ -1061,7 +1105,9 @@ def test_recover_during_update(mocked_application_state_manager):
 
     # Deploy new version of "d1" (this auto generates new random version)
     params2 = deployment_params("d1")
-    app_state_manager.deploy_app(app_name, [params2])
+    app_state_manager.deploy_app(
+        app_name, [params2], ApplicationArgsProto(external_scaler_enabled=False)
+    )
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # In real code this checkpoint would be done by the caller of the deploys
@@ -1119,7 +1165,9 @@ def test_is_ready_for_shutdown(mocked_application_state_manager):
 
     # DEPLOY application with deployment "d1"
     params = deployment_params(deployment_name)
-    app_state_manager.deploy_app(app_name, [params])
+    app_state_manager.deploy_app(
+        app_name, [params], ApplicationArgsProto(external_scaler_enabled=False)
+    )
     app_state = app_state_manager._application_states[app_name]
     assert app_state.status == ApplicationStatus.DEPLOYING
 
@@ -1459,7 +1507,9 @@ class TestAutoscale:
         d1_id = DeploymentID(name="d1", app_name="test_app")
         d1_params = deployment_params("d1", "/hi")  # No autoscaling config
 
-        app_state_manager.deploy_app("test_app", [d1_params])
+        app_state_manager.deploy_app(
+            "test_app", [d1_params], ApplicationArgsProto(external_scaler_enabled=False)
+        )
         app_state_manager.update()
         deployment_state_manager.set_deployment_healthy(d1_id)
         app_state_manager.update()
@@ -1683,7 +1733,11 @@ class TestAutoscale:
         )
         d2_params = deployment_params("d2")  # No autoscaling config
 
-        app_state_manager.deploy_app("test_app", [d1_params, d2_params])
+        app_state_manager.deploy_app(
+            "test_app",
+            [d1_params, d2_params],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
         app_state_manager.update()
 
         deployment_state_manager.set_deployment_healthy(d1_id)
@@ -1783,7 +1837,11 @@ class TestAutoscale:
         )
         app1_d2_params = deployment_params("d2", autoscaling_config=autoscaling_config)
 
-        app_state_manager.deploy_app("app1", [app1_d1_params, app1_d2_params])
+        app_state_manager.deploy_app(
+            "app1",
+            [app1_d1_params, app1_d2_params],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
         app_state_manager.update()
         deployment_state_manager.set_deployment_healthy(app1_d1_id)
         deployment_state_manager.set_deployment_healthy(app1_d2_id)
@@ -1797,7 +1855,11 @@ class TestAutoscale:
         )
         app2_d2_params = deployment_params("d2", autoscaling_config=autoscaling_config)
 
-        app_state_manager.deploy_app("app2", [app2_d1_params, app2_d2_params])
+        app_state_manager.deploy_app(
+            "app2",
+            [app2_d1_params, app2_d2_params],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
         app_state_manager.update()
         deployment_state_manager.set_deployment_healthy(app2_d1_id)
         deployment_state_manager.set_deployment_healthy(app2_d2_id)
@@ -1986,7 +2048,9 @@ class TestAutoscale:
             "d1", "/hi", autoscaling_config=autoscaling_config
         )
 
-        app_state_manager.deploy_app("test_app", [d1_params])
+        app_state_manager.deploy_app(
+            "test_app", [d1_params], ApplicationArgsProto(external_scaler_enabled=False)
+        )
         app_state_manager.update()
         deployment_state_manager.set_deployment_healthy(d1_id)
         app_state_manager.update()
@@ -2105,7 +2169,11 @@ class TestAutoscale:
                 deployment_params(f"d{i}", autoscaling_config=autoscaling_config)
             )
 
-        app_state_manager.deploy_app("test_app", deployment_params_list)
+        app_state_manager.deploy_app(
+            "test_app",
+            deployment_params_list,
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
         app_state_manager.update()
 
         # Mark all as healthy
@@ -2184,7 +2252,9 @@ class TestAutoscale:
             "d1", "/hi", autoscaling_config=autoscaling_config
         )
 
-        app_state_manager.deploy_app("test_app", [d1_params])
+        app_state_manager.deploy_app(
+            "test_app", [d1_params], ApplicationArgsProto(external_scaler_enabled=False)
+        )
         app_state_manager.update()
         deployment_state_manager.set_deployment_healthy(d1_id)
         app_state_manager.update()
@@ -2281,7 +2351,11 @@ class TestAutoscale:
         )
         d2_params = deployment_params("d2", autoscaling_config=autoscaling_config)
 
-        app_state_manager.deploy_app("test_app", [d1_params, d2_params])
+        app_state_manager.deploy_app(
+            "test_app",
+            [d1_params, d2_params],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
         app_state_manager.update()
 
         deployment_state_manager.set_deployment_healthy(d1_id)
