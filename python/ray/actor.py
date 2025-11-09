@@ -302,13 +302,6 @@ class _RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, 
 
 @overload
 def method(
-    __method: Callable[[Any], _Ret],
-) -> _RemoteMethodNoArgs[_Ret]:
-    ...
-
-
-@overload
-def method(
     __method: Callable[[Any, _T0], _Ret],
 ) -> _RemoteMethod0[_Ret, _T0]:
     ...
@@ -374,6 +367,13 @@ def method(
 def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9], _Ret],
 ) -> _RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any], _Ret],
+) -> _RemoteMethodNoArgs[_Ret]:
     ...
 
 
