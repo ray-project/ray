@@ -60,6 +60,19 @@ from ray.includes.unique_ids import (
 )
 
 __all__ = [
+    # ray.includes.libcoreworker
+    "ProfileEvent",
+
+    # ray.includes.serialization
+    "SerializedObject",
+
+    # ray.includes.function_descriptor
+    "FunctionDescriptor",
+    "PythonFunctionDescriptor",
+
+    # ray.includes.common
+    "GcsClientOptions",
+
     # ray.includes.unique_ids
     "ActorClassID",
     "ActorID",
@@ -78,6 +91,10 @@ __all__ = [
     # ray.includes.object_ref
     "_set_future_helper",
     "ObjectRef",
+
+    # ray.includes.buffer
+    "Buffer",
+
 ]
 
 _R = TypeVar("_R") # for ObjectRefs
