@@ -584,9 +584,14 @@ class ActorReplicaWrapper:
         if self._is_cross_language:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = self._actor_handle.is_initialized.remote(
-                deployment_config.to_proto_bytes()
-            )
+
+            def on_completed(args):
+                self._rank = self._assign_rank_callback(self._replica_id.unique_id)
+                self._ready_obj_ref = self._actor_handle.is_initialized.remote(
+                    deployment_config.to_proto_bytes()
+                )
+
+            self._allocated_obj_ref._on_completed(on_completed)
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
 
