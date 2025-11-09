@@ -1,8 +1,8 @@
 from typing import Dict
 
 class AuthenticationMode:
-    DISABLED:int
-    TOKEN:int
+    DISABLED: int
+    TOKEN: int
 
 def get_authentication_mode() -> int:
     """Get the current authentication mode.

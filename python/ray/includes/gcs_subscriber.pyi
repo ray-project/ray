@@ -1,23 +1,23 @@
 from typing import Optional, Tuple, TypedDict, Union
 
 class GcsErrorPollDict(TypedDict):
-    job_id:bytes
-    type:str
-    error_message:str
-    timestamp:float
+    job_id: bytes
+    type: str
+    error_message: str
+    timestamp: float
 
 class GcsLogPollDict(TypedDict):
-    ip:str
-    pid:str
-    job:str
-    is_err:bool
-    lines:list[str]
-    actor_name:str
-    task_name:str
+    ip: str
+    pid: str
+    job: str
+    is_err: bool
+    lines: list[str]
+    actor_name: str
+    task_name: str
 
 class _GcsSubscriber:
     """Cython wrapper class of C++ `ray::pubsub::PythonGcsSubscriber`."""
-    def _construct(self, address:str, channel:int, worker_id:Union[str,bytes]): ...
+    def _construct(self, address: str, channel: int, worker_id: Union[str,bytes]): ...
 
     def subscribe(self):
         """Registers a subscription for the subscriber's channel type.
@@ -54,9 +54,9 @@ class GcsErrorSubscriber(_GcsSubscriber):
         subscriber.close()
     """
 
-    def __init__(self, address:str, worker_id:Optional[Union[str,bytes]]=None): ...
+    def __init__(self, address: str, worker_id: Optional[Union[str,bytes]]=None): ...
 
-    def poll(self, timeout:Optional[float]=None) -> Union[Tuple[None,None],Tuple[bytes,GcsErrorPollDict]]:
+    def poll(self, timeout: Optional[float]=None) -> Union[Tuple[None,None],Tuple[bytes,GcsErrorPollDict]]:
         """Polls for new error messages.
 
         Returns:
@@ -81,9 +81,9 @@ class GcsLogSubscriber(_GcsSubscriber):
         subscriber.close()
     """
 
-    def __init__(self, address:str, worker_id:Optional[Union[str,bytes]]=None): ...
+    def __init__(self, address: str, worker_id: Optional[Union[str,bytes]]=None): ...
 
-    def poll(self, timeout:Optional[float]=None) -> GcsLogPollDict:
+    def poll(self, timeout: Optional[float]=None) -> GcsLogPollDict:
         """Polls for new log messages.
 
         Returns:

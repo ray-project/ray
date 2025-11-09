@@ -12,55 +12,55 @@ class _Initializable(Protocol,Generic[_FDArgs]):
 
 _FDReturn = TypeVar("_FDReturn")
 class FunctionDescriptor(Generic[_FDArgs,_FDReturn]): # TODO: FUNCTION DESCRIPTOR FOR GENERATOR/STREAMING TYPES?
-    def __cinit__(self, *args, **kwargs)->None: ...
+    def __cinit__(self, *args, **kwargs) -> None: ...
 
-    def __hash__(self)->int: ...
+    def __hash__(self) -> int: ...
 
-    def __eq__(self, other)->bool: ...
+    def __eq__(self, other) -> bool: ...
 
-    def __repr__(self)->str: ...
+    def __repr__(self) -> str: ...
 
-    def to_dict(self)->dict: ...
+    def to_dict(self) -> dict: ...
 
     @property
-    def repr(self)->str: ...
+    def repr(self) -> str: ...
 
 class EmptyFunctionDescriptor(FunctionDescriptor[Any,None]):
 
-    def __reduce__(self)->tuple[type[EmptyFunctionDescriptor],tuple[()]]: ...
+    def __reduce__(self) -> tuple[type[EmptyFunctionDescriptor],tuple[()]]: ...
 
 class JavaFunctionDescriptor(FunctionDescriptor[_FDArgs,_FDReturn]):
 
     def __cinit__(self,
-                  class_name:str,
-                  function_name:str,
-                  signature:str)->None: ...
+                  class_name: str,
+                  function_name: str,
+                  signature: str) -> None: ...
 
-    def __reduce__(self)->tuple[type[JavaFunctionDescriptor[_FDArgs,_FDReturn]],tuple[str,str,str]]: ...
-
-    @property
-    def class_name(self)->str: ...
+    def __reduce__(self) -> tuple[type[JavaFunctionDescriptor[_FDArgs,_FDReturn]],tuple[str,str,str]]: ...
 
     @property
-    def function_name(self)->str: ...
+    def class_name(self) -> str: ...
 
     @property
-    def signature(self)->str: ...
+    def function_name(self) -> str: ...
+
+    @property
+    def signature(self) -> str: ...
 
 
 class PythonFunctionDescriptor(FunctionDescriptor[_FDArgs,_FDReturn]):
 
     def __init__(self, # originally __cinit__
-                  module_name:str,
-                  function_name:str,
-                  class_name:str="",
-                  function_source_hash:str=""): ...
+                  module_name: str,
+                  function_name: str,
+                  class_name: str="",
+                  function_source_hash: str=""): ...
 
-    def __reduce__(self)->tuple[type[PythonFunctionDescriptor[_FDArgs,_FDReturn]],tuple[str,str,str,str]]: ...
+    def __reduce__(self) -> tuple[type[PythonFunctionDescriptor[_FDArgs,_FDReturn]],tuple[str,str,str,str]]: ...
 
 
     @classmethod
-    def from_function(cls:type[PythonFunctionDescriptor], function:Callable[_FDArgs,_FDReturn], function_uuid:UUID)->PythonFunctionDescriptor[_FDArgs,_FDReturn]:
+    def from_function(cls: type[PythonFunctionDescriptor], function: Callable[_FDArgs,_FDReturn], function_uuid: UUID) -> PythonFunctionDescriptor[_FDArgs,_FDReturn]:
         """Create a FunctionDescriptor from a function instance.
 
         This function is used to create the function descriptor from
@@ -82,7 +82,7 @@ class PythonFunctionDescriptor(FunctionDescriptor[_FDArgs,_FDReturn]):
         ...
 
     @classmethod
-    def from_class(cls:type[PythonFunctionDescriptor], target_class:type[_Initializable[_FDArgs]])->PythonFunctionDescriptor[_FDArgs,None]:
+    def from_class(cls: type[PythonFunctionDescriptor], target_class: type[_Initializable[_FDArgs]]) -> PythonFunctionDescriptor[_FDArgs,None]:
         """Create a FunctionDescriptor from a class.
 
         Args:
@@ -96,7 +96,7 @@ class PythonFunctionDescriptor(FunctionDescriptor[_FDArgs,_FDReturn]):
         ...
 
     @property
-    def module_name(self)->str:
+    def module_name(self) -> str:
         """Get the module name of current function descriptor.
 
         Returns:
@@ -105,7 +105,7 @@ class PythonFunctionDescriptor(FunctionDescriptor[_FDArgs,_FDReturn]):
         ...
 
     @property
-    def class_name(self)->str:
+    def class_name(self) -> str:
         """Get the class name of current function descriptor.
 
         Returns:
@@ -115,7 +115,7 @@ class PythonFunctionDescriptor(FunctionDescriptor[_FDArgs,_FDReturn]):
         ...
 
     @property
-    def function_name(self)->str:
+    def function_name(self) -> str:
         """Get the function name of current function descriptor.
 
         Returns:
@@ -124,7 +124,7 @@ class PythonFunctionDescriptor(FunctionDescriptor[_FDArgs,_FDReturn]):
         ...
 
     @property
-    def function_hash(self)->str:
+    def function_hash(self) -> str:
         """Get the hash string of the function source code.
 
         Returns:
@@ -134,7 +134,7 @@ class PythonFunctionDescriptor(FunctionDescriptor[_FDArgs,_FDReturn]):
         ...
 
     @property
-    def function_id(self)->FunctionID:
+    def function_id(self) -> FunctionID:
         """Get the function id calculated from this descriptor.
 
         Returns:
@@ -143,7 +143,7 @@ class PythonFunctionDescriptor(FunctionDescriptor[_FDArgs,_FDReturn]):
         ...
 
     @property
-    def repr(self)->str:
+    def repr(self) -> str:
         """Get the module_name.Optional[class_name].function_name
             of the descriptor.
 
@@ -152,7 +152,7 @@ class PythonFunctionDescriptor(FunctionDescriptor[_FDArgs,_FDReturn]):
         """
         ...
 
-    def _get_function_id(self)->FunctionID:
+    def _get_function_id(self) -> FunctionID:
         """Calculate the function id of current function descriptor.
 
         This function id is calculated from all the fields of function
@@ -164,7 +164,7 @@ class PythonFunctionDescriptor(FunctionDescriptor[_FDArgs,_FDReturn]):
         ...
 
     @staticmethod
-    def _get_module_name(object)->str:
+    def _get_module_name(object) -> str:
         """Get the module name from object. If the module is __main__,
         get the module name from file.
 
@@ -173,7 +173,7 @@ class PythonFunctionDescriptor(FunctionDescriptor[_FDArgs,_FDReturn]):
         """
         ...
 
-    def is_actor_method(self)->bool:
+    def is_actor_method(self) -> bool:
         """Wether this function descriptor is an actor method.
 
         Returns:
@@ -184,13 +184,13 @@ class PythonFunctionDescriptor(FunctionDescriptor[_FDArgs,_FDReturn]):
 
 class CppFunctionDescriptor(FunctionDescriptor):
     def __init__(self, # originally __cinit__
-                  function_name:str, caller:str, class_name:str=""): ...
+                  function_name: str, caller: str, class_name: str=""): ...
 
-    def __reduce__(self)->tuple[type[CppFunctionDescriptor],tuple[str,str,str]]: ...
+    def __reduce__(self) -> tuple[type[CppFunctionDescriptor],tuple[str,str,str]]: ...
 
 
     @property
-    def function_name(self)->str:
+    def function_name(self) -> str:
         """Get the function name of current function descriptor.
 
         Returns:
@@ -199,7 +199,7 @@ class CppFunctionDescriptor(FunctionDescriptor):
         ...
 
     @property
-    def caller(self)->str:
+    def caller(self) -> str:
         """Get the caller of current function descriptor.
 
         Returns:
@@ -208,7 +208,7 @@ class CppFunctionDescriptor(FunctionDescriptor):
         ...
 
     @property
-    def class_name(self)->str:
+    def class_name(self) -> str:
         """Get the class name of current function descriptor,
         when it is empty, it is a non-member function.
 
@@ -218,5 +218,5 @@ class CppFunctionDescriptor(FunctionDescriptor):
         ...
 
     @property
-    def repr(self)->str:
+    def repr(self) -> str:
         ...

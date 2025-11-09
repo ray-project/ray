@@ -291,16 +291,16 @@ current_task_id_lock: threading.Lock
 job_config_initialized: bool
 job_config_initialization_lock: threading.Lock
 
-async_task_id:contextvars.ContextVar[TaskID|None]
-async_task_name:contextvars.ContextVar[str|None]
-async_task_function_name:contextvars.ContextVar[str|None]
+async_task_id: contextvars.ContextVar[TaskID|None]
+async_task_name: contextvars.ContextVar[str|None]
+async_task_function_name: contextvars.ContextVar[str|None]
 
 class NumReturnsWarning(UserWarning):
     """Warning when num_returns=0 but the task returns a non-None value."""
     pass
 
 class HasReadInto(Protocol):
-    def readinto(self,b:bytearray|memoryview,/)->None: ...
+    def readinto(self,b: bytearray|memoryview,/) -> None: ...
 
 _R = TypeVar("_R") # for ObjectRefs
 _R2 = TypeVar("_R2")
@@ -324,13 +324,13 @@ class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGen
     >>> await gen.__anext__()
     """
 
-    _generator_ref:ObjectRef
-    _generator_task_exception:Exception|None
-    worker:Worker
+    _generator_ref: ObjectRef
+    _generator_task_exception: Exception|None
+    worker: Worker
 
 
 
-    def __init__(self, generator_ref: ObjectRef[None], worker: "Worker")->None: ...
+    def __init__(self, generator_ref: ObjectRef[None], worker: "Worker") -> None: ...
 
     # Public APIs
 
@@ -349,21 +349,21 @@ class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGen
         """
         ...
 
-    def send(self, value)->NoReturn: ...
+    def send(self, value) -> NoReturn: ...
 
-    def throw(self, value, val=None, tb=None)->NoReturn: ...
+    def throw(self, value, val=None, tb=None) -> NoReturn: ...
 
-    def close(self)->NoReturn: ...
+    def close(self) -> NoReturn: ...
 
     def __aiter__(self:_ORG) -> _ORG: ...
 
-    async def __anext__(self)->ObjectRef[_R]: ...
+    async def __anext__(self) -> ObjectRef[_R]: ...
 
-    async def asend(self, value)->NoReturn: ...
+    async def asend(self, value) -> NoReturn: ...
 
-    async def athrow(self, value, val=None, tb=None)->NoReturn: ...
+    async def athrow(self, value, val=None, tb=None) -> NoReturn: ...
 
-    async def aclose(self)->NoReturn: ...
+    async def aclose(self) -> NoReturn: ...
 
     def completed(self) -> ObjectRef[None]:
         """Returns an object ref that is ready when
@@ -444,11 +444,11 @@ class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGen
     async def _next_async(
             self,
             timeout_s: Optional[int | float] = None
-    )->ObjectRef[_R]: # ObjectRef could be nil
+    ) -> ObjectRef[_R]: # ObjectRef could be nil
         """Same API as _next_sync, but it is for async context."""
         ...
 
-    def __del__(self)->None: ...
+    def __del__(self) -> None: ...
         # if hasattr(self.worker, "core_worker"):
         #     # The stream is created when a task is first submitted.
         #     # NOTE: This can be called multiple times
@@ -456,7 +456,7 @@ class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGen
         #     # only once.
         #     self.worker.core_worker.async_delete_object_ref_stream(self._generator_ref)
 
-    def __getstate__(self)->NoReturn: ...
+    def __getstate__(self) -> NoReturn: ...
         # raise TypeError(
         #     "You cannot return or pass a generator to other task. "
         #     "Serializing a ObjectRefGenerator is not allowed.")
@@ -500,24 +500,24 @@ class EmptyProfileEvent:
 
 class EventLoopDict:
 
-    thread:threading.Thread
+    thread: threading.Thread
 
 class CoreWorker:
 
-    def __init__(self, worker_type:int, store_socket:str, raylet_socket:str,
-                  job_id:JobID, gcs_options:GcsClientOptions, log_dir:str,
-                  node_ip_address:str, node_manager_port:int,
-                  local_mode:bool, driver_name:str,
-                  serialized_job_config:str, metrics_agent_port:int, runtime_env_hash:int,
-                  startup_token:int, session_name:str, cluster_id:str, entrypoint:str,
-                  worker_launch_time_ms:int, worker_launched_time_ms:int, debug_source:str):
+    def __init__(self, worker_type: int, store_socket: str, raylet_socket: str,
+                  job_id: JobID, gcs_options: GcsClientOptions, log_dir: str,
+                  node_ip_address: str, node_manager_port: int,
+                  local_mode: bool, driver_name: str,
+                  serialized_job_config: str, metrics_agent_port: int, runtime_env_hash: int,
+                  startup_token: int, session_name: str, cluster_id: str, entrypoint: str,
+                  worker_launch_time_ms: int, worker_launched_time_ms: int, debug_source: str):
         ...
 
-    def shutdown_driver(self)->None: ...
+    def shutdown_driver(self) -> None: ...
 
-    def run_task_loop(self)->None: ...
+    def run_task_loop(self) -> None: ...
 
-    def drain_and_exit_worker(self, exit_type: str, detail:Union[str,bytes])->None:
+    def drain_and_exit_worker(self, exit_type: str, detail: Union[str,bytes]) -> None:
         """
         Exit the current worker process. This API should only be used by
         a worker. If this API is called, the worker will wait to finish
@@ -563,41 +563,41 @@ class CoreWorker:
         """
         ...
 
-    def get_current_task_attempt_number(self)->int: ...
+    def get_current_task_attempt_number(self) -> int: ...
 
-    def get_task_depth(self)->int: ...
+    def get_task_depth(self) -> int: ...
 
-    def get_current_job_id(self)->JobID: ...
+    def get_current_job_id(self) -> JobID: ...
 
-    def get_current_node_id(self)->NodeID: ...
+    def get_current_node_id(self) -> NodeID: ...
 
-    def get_actor_id(self)->ActorID: ...
+    def get_actor_id(self) -> ActorID: ...
 
-    def get_actor_name(self)->bytes: ...
+    def get_actor_name(self) -> bytes: ...
 
-    def get_placement_group_id(self)->PlacementGroupID: ...
+    def get_placement_group_id(self) -> PlacementGroupID: ...
 
-    def get_worker_id(self)->WorkerID: ...
+    def get_worker_id(self) -> WorkerID: ...
 
-    def should_capture_child_tasks_in_placement_group(self)->bool: ...
+    def should_capture_child_tasks_in_placement_group(self) -> bool: ...
 
-    def update_task_is_debugger_paused(self, task_id:TaskID, is_debugger_paused:bool)->None: ...
+    def update_task_is_debugger_paused(self, task_id: TaskID, is_debugger_paused: bool) -> None: ...
 
-    def set_webui_display(self, key:Union[str,bytes], message:Union[str,bytes])->bool: ...
+    def set_webui_display(self, key: Union[str,bytes], message: Union[str,bytes]) -> bool: ...
 
-    def set_actor_repr_name(self, repr_name:Union[str,bytes])->None: ...
+    def set_actor_repr_name(self, repr_name: Union[str,bytes]) -> None: ...
 
-    def get_objects(self, object_refs:Iterable[ObjectRef], timeout_ms:int=-1)->list[SerializedRayObject]: ...
+    def get_objects(self, object_refs: Iterable[ObjectRef], timeout_ms: int=-1) -> list[SerializedRayObject]: ...
 
-    def get_if_local(self, object_refs:Iterable[ObjectRef], timeout_ms:int=-1)->list[SerializedRayObject]:
+    def get_if_local(self, object_refs: Iterable[ObjectRef], timeout_ms: int=-1) -> list[SerializedRayObject]:
         """Get objects from local plasma store directly
         without a fetch request to raylet."""
         ...
 
-    def object_exists(self, object_ref:ObjectRef, memory_store_only:bool=False)->bool: ...
+    def object_exists(self, object_ref: ObjectRef, memory_store_only: bool=False) -> bool: ...
 
     def put_file_like_object(
-            self, metadata:bytes, data_size:int, file_like:HasReadInto, object_ref:ObjectRef,
+            self, metadata: bytes, data_size: int, file_like: HasReadInto, object_ref: ObjectRef,
             owner_address):
         """Directly create a new Plasma Store object from a file like
         object. This avoids extra memory copy.
@@ -613,165 +613,165 @@ class CoreWorker:
         ...
 
 
-    def experimental_channel_put_serialized(self, serialized_object:SerializedObject,
-                                            object_ref:ObjectRef, num_readers:int,
-                                            timeout_ms:int)->None: ...
+    def experimental_channel_put_serialized(self, serialized_object: SerializedObject,
+                                            object_ref: ObjectRef, num_readers: int,
+                                            timeout_ms: int) -> None: ...
 
 
-    def experimental_channel_set_error(self, object_ref:ObjectRef)->None: ...
+    def experimental_channel_set_error(self, object_ref: ObjectRef) -> None: ...
 
 
     def experimental_channel_register_writer(self,
-                                             writer_ref:ObjectRef,
-                                             remote_reader_ref_info:dict[str,ReaderRefInfo])->None: ...
+                                             writer_ref: ObjectRef,
+                                             remote_reader_ref_info: dict[str,ReaderRefInfo]) -> None: ...
 
-    def experimental_channel_register_reader(self, object_ref:ObjectRef): ...
+    def experimental_channel_register_reader(self, object_ref: ObjectRef): ...
 
     def put_object(
             self,
-            serialized_object:SerializedObject,
+            serialized_object: SerializedObject,
             *,
-            pin_object:bool=True,
-            owner_address:Optional[str]=None,
-            inline_small_object:bool=True,
-            _is_experimental_channel:bool=False,
-            tensor_transport_val:int=0,
-    )->ObjectRef:
+            pin_object: bool=True,
+            owner_address: Optional[str]=None,
+            inline_small_object: bool=True,
+            _is_experimental_channel: bool=False,
+            tensor_transport_val: int=0,
+    ) -> ObjectRef:
         """Create an object reference with the current worker as the owner."""
 
     def put_serialized_object_and_increment_local_ref(
             self,
-            serialized_object:SerializedObject,
-            pin_object:bool=True,
-            owner_address:Optional[str]=None,
-            inline_small_object:bool=True,
-            _is_experimental_channel:bool=False,
-            tensor_transport_val:int=0,
-            )->bytes: ...
+            serialized_object: SerializedObject,
+            pin_object: bool=True,
+            owner_address: Optional[str]=None,
+            inline_small_object: bool=True,
+            _is_experimental_channel: bool=False,
+            tensor_transport_val: int=0,
+            ) -> bytes: ...
 
 
     def wait(self,  # TODO: possible to type-check the generics here properly? At least overloads
-             object_refs_or_generators:Iterable[Union[ObjectRef[_R],ObjectRefGenerator[_R2]]],
-             num_returns:int,
-             timeout_ms:int,
-             fetch_local:bool)->tuple[list[Union[ObjectRef[_R],ObjectRefGenerator[_R2]]],list[Union[ObjectRef[_R],ObjectRefGenerator[_R2]]]]:
+             object_refs_or_generators: Iterable[Union[ObjectRef[_R],ObjectRefGenerator[_R2]]],
+             num_returns: int,
+             timeout_ms: int,
+             fetch_local: bool) -> tuple[list[Union[ObjectRef[_R],ObjectRefGenerator[_R2]]],list[Union[ObjectRef[_R],ObjectRefGenerator[_R2]]]]:
         ...
 
-    def free_objects(self, object_refs:Iterable[ObjectRef], local_only:bool)->None: ...
+    def free_objects(self, object_refs: Iterable[ObjectRef], local_only: bool) -> None: ...
 
-    def get_local_ongoing_lineage_reconstruction_tasks(self)->list[tuple[LineageReconstructionTask,int]]: ...
+    def get_local_ongoing_lineage_reconstruction_tasks(self) -> list[tuple[LineageReconstructionTask,int]]: ...
 
 
-    def get_local_object_locations(self, object_refs:Iterable[ObjectRef[_R]])->dict[ObjectRef[_R],LocationPtrDict]: ...
+    def get_local_object_locations(self, object_refs: Iterable[ObjectRef[_R]]) -> dict[ObjectRef[_R],LocationPtrDict]: ...
 
-    def get_object_locations(self, object_refs:Iterable[ObjectRef[_R]], timeout_ms:int)->dict[ObjectRef[_R],LocationPtrDict]: ...
+    def get_object_locations(self, object_refs: Iterable[ObjectRef[_R]], timeout_ms: int) -> dict[ObjectRef[_R],LocationPtrDict]: ...
 
-    def global_gc(self)->None: ...
+    def global_gc(self) -> None: ...
 
-    def log_plasma_usage(self)->None: ...
+    def log_plasma_usage(self) -> None: ...
 
-    def get_memory_store_size(self)->int: ...
+    def get_memory_store_size(self) -> int: ...
 
     def submit_task(self,
-                    language:Language,
-                    function_descriptor:FunctionDescriptor[_FDArgs,_FDReturn],
-                    args:Iterable[ObjectRef|Any],
-                    name:str|bytes,
-                    num_returns:int,
-                    resources:dict[str,int|float],
-                    max_retries:int,
-                    retry_exceptions:bool,
-                    retry_exception_allowlist:tuple[type[Exception],...]|None,
-                    scheduling_strategy:str,
-                    debugger_breakpoint:str|bytes,
-                    serialized_runtime_env_info:str|bytes,
-                    generator_backpressure_num_objects:int,
-                    enable_task_events:bool,
-                    labels:dict[str,str],
-                    label_selector:dict[str,str],
-                    fallback_strategy:Optional[List[FallbackStrategyDict]])->list[ObjectRef[_FDReturn]]: ...
+                    language: Language,
+                    function_descriptor: FunctionDescriptor[_FDArgs,_FDReturn],
+                    args: Iterable[ObjectRef|Any],
+                    name: str|bytes,
+                    num_returns: int,
+                    resources: dict[str,int|float],
+                    max_retries: int,
+                    retry_exceptions: bool,
+                    retry_exception_allowlist: tuple[type[Exception],...]|None,
+                    scheduling_strategy: str,
+                    debugger_breakpoint: str|bytes,
+                    serialized_runtime_env_info: str|bytes,
+                    generator_backpressure_num_objects: int,
+                    enable_task_events: bool,
+                    labels: dict[str,str],
+                    label_selector: dict[str,str],
+                    fallback_strategy: Optional[List[FallbackStrategyDict]]) -> list[ObjectRef[_FDReturn]]: ...
 
     def create_actor(self,
-                     language:Language,
-                     function_descriptor:FunctionDescriptor,
-                     args:Iterable[ObjectRef|Any],
-                     max_restarts:int,
-                     max_task_retries:int,
-                     resources:dict[str,int|float],
-                     placement_resources:dict[str,int|float],
-                     max_concurrency:int,
-                     is_detached:Any|None,
-                     name:str|bytes,
-                     ray_namespace:str|bytes,
-                     is_asyncio:bool,
-                     extension_data:str|bytes,
-                     serialized_runtime_env_info:str|bytes,
-                     concurrency_groups_dict:dict[str,Any],
-                     max_pending_calls:int,
-                     scheduling_strategy:str,
-                     enable_task_events:bool,
-                     labels:dict[str,str],
-                     label_selector:dict[str,str],
+                     language: Language,
+                     function_descriptor: FunctionDescriptor,
+                     args: Iterable[ObjectRef|Any],
+                     max_restarts: int,
+                     max_task_retries: int,
+                     resources: dict[str,int|float],
+                     placement_resources: dict[str,int|float],
+                     max_concurrency: int,
+                     is_detached: Any|None,
+                     name: str|bytes,
+                     ray_namespace: str|bytes,
+                     is_asyncio: bool,
+                     extension_data: str|bytes,
+                     serialized_runtime_env_info: str|bytes,
+                     concurrency_groups_dict: dict[str,Any],
+                     max_pending_calls: int,
+                     scheduling_strategy: str,
+                     enable_task_events: bool,
+                     labels: dict[str,str],
+                     label_selector: dict[str,str],
                      allow_out_of_order_execution: bool,
                      enable_tensor_transport: bool,
-                     fallback_strategy:Optional[List[FallbackStrategyDict]],
-                     )->ActorID: ...
+                     fallback_strategy: Optional[List[FallbackStrategyDict]],
+                     ) -> ActorID: ...
 
     def create_placement_group(
                             self,
-                            name:str|bytes,
-                            bundles:list[dict[str|bytes, float]],
-                            strategy:str|bytes,
-                            is_detached:bool,
-                            soft_target_node_id:str|bytes|None,
-                            bundle_label_selector:list[dict[str|bytes, str|bytes]])->PlacementGroupID: ...
+                            name: str|bytes,
+                            bundles: list[dict[str|bytes, float]],
+                            strategy: str|bytes,
+                            is_detached: bool,
+                            soft_target_node_id: str|bytes|None,
+                            bundle_label_selector: list[dict[str|bytes, str|bytes]]) -> PlacementGroupID: ...
 
-    def remove_placement_group(self, placement_group_id:PlacementGroupID): ...
+    def remove_placement_group(self, placement_group_id: PlacementGroupID): ...
 
     def wait_placement_group_ready(self,
-                                   placement_group_id:PlacementGroupID,
-                                   timeout_seconds:int)->bool: ...
+                                   placement_group_id: PlacementGroupID,
+                                   timeout_seconds: int) -> bool: ...
 
     def submit_actor_task(self,
-                          language:Language,
-                          actor_id:ActorID,
-                          function_descriptor:FunctionDescriptor[_FDArgs,_FDReturn],
-                          args:Iterable[ObjectRef|Any],
-                          name:str|bytes,
-                          num_returns:int,
-                          max_retries:int,
-                          retry_exceptions:bool,
-                          retry_exception_allowlist:tuple[type[Exception],...]|None,
-                          num_method_cpus:float,
-                          concurrency_group_name:str|bytes,
-                          generator_backpressure_num_objects:int,
-                          enable_task_events:bool,
-                          py_tensor_transport:int)->list[ObjectRef[_FDReturn]]: ...
+                          language: Language,
+                          actor_id: ActorID,
+                          function_descriptor: FunctionDescriptor[_FDArgs,_FDReturn],
+                          args: Iterable[ObjectRef|Any],
+                          name: str|bytes,
+                          num_returns: int,
+                          max_retries: int,
+                          retry_exceptions: bool,
+                          retry_exception_allowlist: tuple[type[Exception],...]|None,
+                          num_method_cpus: float,
+                          concurrency_group_name: str|bytes,
+                          generator_backpressure_num_objects: int,
+                          enable_task_events: bool,
+                          py_tensor_transport: int) -> list[ObjectRef[_FDReturn]]: ...
 
 
-    def kill_actor(self, actor_id:ActorID, no_restart:bool)->None: ...
+    def kill_actor(self, actor_id: ActorID, no_restart: bool) -> None: ...
 
-    def cancel_task(self, object_ref:ObjectRef, force_kill:bool,
-                    recursive:bool)->None: ...
+    def cancel_task(self, object_ref: ObjectRef, force_kill: bool,
+                    recursive: bool) -> None: ...
 
-    def resource_ids(self)->dict[str,list[tuple[int,float]]]: ...
+    def resource_ids(self) -> dict[str,list[tuple[int,float]]]: ...
 
-    def profile_event(self, event_type:str|bytes, extra_data=None)->ProfileEvent|EmptyProfileEvent: ...
+    def profile_event(self, event_type: str|bytes, extra_data=None) -> ProfileEvent|EmptyProfileEvent: ...
 
-    def remove_actor_handle_reference(self, actor_id:ActorID)->None: ...
+    def remove_actor_handle_reference(self, actor_id: ActorID) -> None: ...
 
-    def get_local_actor_state(self, actor_id:ActorID)->int|None: ...
+    def get_local_actor_state(self, actor_id: ActorID) -> int|None: ...
 
-    def deserialize_and_register_actor_handle(self, bytes:bytes,
-                                              outer_object_ref:ObjectRef[ActorHandle[_R]],
-                                              weak_ref:bool)->ActorHandle[_R]: ...
+    def deserialize_and_register_actor_handle(self, bytes: bytes,
+                                              outer_object_ref: ObjectRef[ActorHandle[_R]],
+                                              weak_ref: bool) -> ActorHandle[_R]: ...
 
-    def get_named_actor_handle(self, name:bytes,
-                               ray_namespace:bytes)->ActorHandle: ...
+    def get_named_actor_handle(self, name: bytes,
+                               ray_namespace: bytes) -> ActorHandle: ...
 
-    def get_actor_handle(self, actor_id:ActorID)->ActorHandle: ...
+    def get_actor_handle(self, actor_id: ActorID) -> ActorHandle: ...
 
-    def list_named_actors(self, all_namespaces:bool)->list[tuple[str,str]]:
+    def list_named_actors(self, all_namespaces: bool) -> list[tuple[str,str]]:
         """Returns (namespace, name) for named actors in the system.
 
         If all_namespaces is True, returns all actors in all namespaces,
@@ -779,28 +779,28 @@ class CoreWorker:
         """
         ...
 
-    def serialize_actor_handle(self, actor_id:ActorID)->tuple[bytes,ObjectRef[ActorHandle]]: ... # TODO: generic ActorID?
+    def serialize_actor_handle(self, actor_id: ActorID) -> tuple[bytes,ObjectRef[ActorHandle]]: ... # TODO: generic ActorID?
 
-    def add_object_ref_reference(self, object_ref:ObjectRef)->None: ...
+    def add_object_ref_reference(self, object_ref: ObjectRef) -> None: ...
 
-    def remove_object_ref_reference(self, object_ref:ObjectRef)->None: ...
+    def remove_object_ref_reference(self, object_ref: ObjectRef) -> None: ...
 
-    def get_owner_address(self, object_ref:ObjectRef)->bytes: ...
+    def get_owner_address(self, object_ref: ObjectRef) -> bytes: ...
 
-    def serialize_object_ref(self, object_ref:ObjectRef[_R])->tuple[ObjectRef[_R],bytes,bytes]: ...
+    def serialize_object_ref(self, object_ref: ObjectRef[_R]) -> tuple[ObjectRef[_R],bytes,bytes]: ...
 
     def deserialize_and_register_object_ref(
-            self, object_ref_binary:bytes,
-            outer_object_ref:ObjectRef,
-            serialized_owner_address:bytes,
-            serialized_object_status:bytes,
-    )->None: ...
+            self, object_ref_binary: bytes,
+            outer_object_ref: ObjectRef,
+            serialized_owner_address: bytes,
+            serialized_object_status: bytes,
+    ) -> None: ...
 
     def get_event_loop_executor(self) -> concurrent.futures.ThreadPoolExecutor: ...
 
-    def reset_event_loop_executor(self, executor: concurrent.futures.ThreadPoolExecutor)->None: ...
+    def reset_event_loop_executor(self, executor: concurrent.futures.ThreadPoolExecutor) -> None: ...
 
-    def get_event_loop(self, function_descriptor:PythonFunctionDescriptor, specified_cgname:str)->tuple[asyncio.AbstractEventLoop|None,threading.Thread]: ...
+    def get_event_loop(self, function_descriptor: PythonFunctionDescriptor, specified_cgname: str) -> tuple[asyncio.AbstractEventLoop|None,threading.Thread]: ...
 
     def run_async_func_or_coro_in_event_loop(
           self,
@@ -812,7 +812,7 @@ class CoreWorker:
           task_name: Optional[str] = None,
           func_args: Optional[Tuple] = None,
           func_kwargs: Optional[Dict] = None,
-    )->_R:
+    ) -> _R:
         """Run the async function or coroutine to the event loop.
 
         The event loop is running in a separate thread.
@@ -834,15 +834,15 @@ class CoreWorker:
         """
         ...
 
-    def stop_and_join_asyncio_threads_if_exist(self)->None: ...
+    def stop_and_join_asyncio_threads_if_exist(self) -> None: ...
 
-    def current_actor_is_asyncio(self)->bool: ...
+    def current_actor_is_asyncio(self) -> bool: ...
 
-    def set_current_actor_should_exit(self)->None: ...
+    def set_current_actor_should_exit(self) -> None: ...
 
-    def get_current_actor_should_exit(self)->bool: ...
+    def get_current_actor_should_exit(self) -> bool: ...
 
-    def current_actor_max_concurrency(self)->int: ...
+    def current_actor_max_concurrency(self) -> int: ...
 
     def get_current_root_detached_actor_id(self) -> ActorID: ...
 
@@ -857,68 +857,68 @@ class CoreWorker:
 
     def trigger_gc(self): ...
 
-    def get_pending_children_task_ids(self, parent_task_id: TaskID)->list[TaskID]: ...
+    def get_pending_children_task_ids(self, parent_task_id: TaskID) -> list[TaskID]: ...
 
-    def get_all_reference_counts(self)->dict[ObjectRef,RefCountDict]: ...
+    def get_all_reference_counts(self) -> dict[ObjectRef,RefCountDict]: ...
 
-    def set_get_async_callback(self, object_ref:ObjectRef[_R], user_callback: Callable[[_R],Any])->None: ...
+    def set_get_async_callback(self, object_ref: ObjectRef[_R], user_callback: Callable[[_R],Any]) -> None: ...
 
-    def push_error(self, job_id:JobID, error_type:str, error_message:str,
-                   timestamp:float)->None: ...
+    def push_error(self, job_id: JobID, error_type: str, error_message: str,
+                   timestamp: float) -> None: ...
 
-    def get_job_config(self)->JobConfig: ...
+    def get_job_config(self) -> JobConfig: ...
 
-    def get_task_submission_stats(self)->tuple[int,int]: ...
+    def get_task_submission_stats(self) -> tuple[int,int]: ...
 
-    def get_local_memory_store_bytes_used(self)->int: ...
+    def get_local_memory_store_bytes_used(self) -> int: ...
 
     def record_task_log_start(
-            self, task_id: TaskID, attempt_number:int,
-            stdout_path:str, stderr_path:str,
-            out_start_offset:int, err_start_offset:int)->None: ...
+            self, task_id: TaskID, attempt_number: int,
+            stdout_path: str, stderr_path: str,
+            out_start_offset: int, err_start_offset: int) -> None: ...
 
     def record_task_log_end(
-            self, task_id: TaskID, attempt_number:int,
-            out_end_offset:int, err_end_offset:int)->None: ...
+            self, task_id: TaskID, attempt_number: int,
+            out_end_offset: int, err_end_offset: int) -> None: ...
 
-    def async_delete_object_ref_stream(self, generator_id:ObjectRef[None])->None: ...
+    def async_delete_object_ref_stream(self, generator_id: ObjectRef[None]) -> None: ...
 
     # unfortunately the generator type information is in the ObjectRefGenerator, not the underlying reference,
     # so this function can't be properly typed. oh well
-    def try_read_next_object_ref_stream(self, generator_id:ObjectRef[None])->ObjectRef: ...
+    def try_read_next_object_ref_stream(self, generator_id: ObjectRef[None]) -> ObjectRef: ...
 
-    def is_object_ref_stream_finished(self, generator_id:ObjectRef[None])->bool: ...
+    def is_object_ref_stream_finished(self, generator_id: ObjectRef[None]) -> bool: ...
 
     # like try_read_next_object_ref_stream, can't be properly typed
-    def peek_object_ref_stream(self, generator_id:ObjectRef[None])->tuple[ObjectRef,bool]: ...
+    def peek_object_ref_stream(self, generator_id: ObjectRef[None]) -> tuple[ObjectRef,bool]: ...
 
-def _call_actor_shutdown()->None:
+def _call_actor_shutdown() -> None:
     """Internal function that calls actor's __ray_shutdown__ method."""
     ...
 
 class StreamRedirector:
     @staticmethod
-    def redirect_stdout(file_path:Union[str,bytes], rotation_max_size:int, rotation_max_file_count:int, tee_to_stdout:bool, tee_to_stderr:bool)->None: ...
+    def redirect_stdout(file_path: Union[str,bytes], rotation_max_size: int, rotation_max_file_count: int, tee_to_stdout: bool, tee_to_stderr: bool) -> None: ...
 
     @staticmethod
-    def redirect_stderr(file_path:Union[str,bytes], rotation_max_size:int, rotation_max_file_count:int, tee_to_stdout:bool, tee_to_stderr:bool)->None: ...
+    def redirect_stderr(file_path: Union[str,bytes], rotation_max_size: int, rotation_max_file_count: int, tee_to_stdout: bool, tee_to_stderr: bool) -> None: ...
 
 _L = TypeVar("_L",bound=Language)
 class Language:
 
-    def __init__(self, lang:int)->None: ... # from __cinit__
+    def __init__(self, lang: int) -> None: ... # from __cinit__
 
-    def value(self)->int: ...
+    def value(self) -> int: ...
 
-    def __eq__(self, other:object)->bool: ...
+    def __eq__(self, other: object) -> bool: ...
 
-    def __repr__(self)->str: ...
+    def __repr__(self) -> str: ...
 
-    def __reduce__(self:_L)->tuple[type[_L],tuple[int]]: ...
+    def __reduce__(self:_L) -> tuple[type[_L],tuple[int]]: ...
 
-    PYTHON:Language
-    CPP:Language
-    JAVA:Language
+    PYTHON: Language
+    CPP: Language
+    JAVA: Language
 
 
 class GcsClient:
@@ -929,21 +929,21 @@ class GcsClient:
     """
 
     def __init__(self, address: str, # from __cinit__
-                  cluster_id: Optional[str] = None)->None: ...
+                  cluster_id: Optional[str] = None) -> None: ...
         # For timeout (DEADLINE_EXCEEDED): retries once with timeout_ms.
         #
         # For other RpcError (UNAVAILABLE, UNKNOWN): retries indefinitely until it
         # thinks GCS is down and kills the whole process.
 
-    def __getattr__(self, name:str)->Any: ...
+    def __getattr__(self, name: str) -> Any: ...
         # We collect the frequency of each method call.
 
 
 # Note this deletes keys with prefix `RAY{key_prefix}@`
 # Example: with key_prefix = `default`, we remove all `RAYdefault@...` keys.
-def del_key_prefix_from_storage(host:Union[str,bytes], port:int, username:Union[str,bytes], password:Union[str,bytes], use_ssl:bool, key_prefix:Union[str,bytes])->bool: ...
+def del_key_prefix_from_storage(host: Union[str,bytes], port: int, username: Union[str,bytes], password: Union[str,bytes], use_ssl: bool, key_prefix: Union[str,bytes]) -> bool: ...
 
-def get_session_key_from_storage(host:Union[str,bytes], port:int, username:Union[str,bytes], password:Union[str,bytes], use_ssl:bool, config:Union[str,bytes], key:Union[str,bytes])->bool:
+def get_session_key_from_storage(host: Union[str,bytes], port: int, username: Union[str,bytes], password: Union[str,bytes], use_ssl: bool, config: Union[str,bytes], key: Union[str,bytes]) -> bool:
     """
     Get the session key from the storage.
     Intended to be used for session_name only.
@@ -1021,16 +1021,16 @@ class StreamingGeneratorExecutionContext:
     """
     # TODO: can the context's various cdef'd attributes actually be accessed outside of Cpython?
 
-    def initialize(self, generator: Union[Generator, AsyncGenerator])->None: ...
+    def initialize(self, generator: Union[Generator, AsyncGenerator]) -> None: ...
 
-    def is_initialized(self)->bool: ...
+    def is_initialized(self) -> bool: ...
 
-def _get_actor_serialized_owner_address_or_none(actor_table_data: bytes)->bytes|None: ...
+def _get_actor_serialized_owner_address_or_none(actor_table_data: bytes) -> bytes|None: ...
 
-def compute_task_id(object_ref:ObjectRef)->TaskID: ...
+def compute_task_id(object_ref: ObjectRef) -> TaskID: ...
 
 async def execute_streaming_generator_async(
-        context: StreamingGeneratorExecutionContext)->None:
+        context: StreamingGeneratorExecutionContext) -> None:
     """Execute a given generator and report the
         result to the given caller_address in a streaming (ie as
         soon as become available) fashion.
@@ -1054,6 +1054,6 @@ async def execute_streaming_generator_async(
     ...
 
 
-def maybe_initialize_job_config()->None: ...
+def maybe_initialize_job_config() -> None: ...
 
-def serialize_retry_exception_allowlist(retry_exception_allowlist:tuple[type[Exception],...], function_descriptor:FunctionDescriptor)->bytes: ...
+def serialize_retry_exception_allowlist(retry_exception_allowlist: tuple[type[Exception],...], function_descriptor: FunctionDescriptor) -> bytes: ...

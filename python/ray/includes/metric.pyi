@@ -3,17 +3,17 @@ from typing import Iterable, Optional
 
 class TagKey:
     """Cython wrapper class of C++ `opencensus::stats::TagKey`."""
-    def __init__(self,name:str)->None: ...
-    def name(self)->bytes: ...
+    def __init__(self,name: str) -> None: ...
+    def name(self) -> bytes: ...
 
 class Metric:
     """Cython wrapper class of C++ `ray::stats::Metric`.
 
         It's an abstract class of all metric types.
     """
-    def __init__(self, tag_keys:Iterable[str])->None: ...
+    def __init__(self, tag_keys: Iterable[str]) -> None: ...
 
-    def record(self, value:float, tags:Optional[dict[str,str]]=None):
+    def record(self, value: float, tags: Optional[dict[str,str]]=None):
         """Record a measurement of metric.
 
            Flush a metric raw point to stats module with a key-value dict tags.
@@ -23,7 +23,7 @@ class Metric:
         """
         ...
 
-    def get_name(self)->bytes: ...
+    def get_name(self) -> bytes: ...
 
 class Gauge(Metric):
     """Cython wrapper class of C++ `ray::stats::Gauge`.
@@ -41,7 +41,7 @@ class Gauge(Metric):
             key2 = "key2"
             gauge.record(value, {"tagk1": key1, "tagk2": key2})
     """
-    def __init__(self, name:str, description:str, tag_keys:Iterable[str]):
+    def __init__(self, name: str, description: str, tag_keys: Iterable[str]):
         """Create a gauge metric
 
         Args:
@@ -68,7 +68,7 @@ class Count(Metric):
 
        Count: The count of the number of metric points.
     """
-    def __init__(self, name:str, description:str, tag_keys:Iterable[str]):
+    def __init__(self, name: str, description: str, tag_keys: Iterable[str]):
         """Create a count metric
 
         Args:
@@ -96,7 +96,7 @@ class Sum(Metric):
 
        Sum: A sum up of the metric points.
     """
-    def __init__(self, name:str, description:str, tag_keys:Iterable[str]):
+    def __init__(self, name: str, description: str, tag_keys: Iterable[str]):
         """Create a sum metric
 
         Args:
@@ -124,7 +124,7 @@ class Histogram(Metric):
 
        Histogram: Histogram distribution of metric points.
     """
-    def __init__(self, name:str, description:str, boundaries:Iterable[float], tag_keys:Iterable[str]):
+    def __init__(self, name: str, description: str, boundaries: Iterable[float], tag_keys: Iterable[str]):
         """Create a sum metric
 
         Args:
