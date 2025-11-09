@@ -424,8 +424,8 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
     def __init__(
         self,
         node_id: str,
-        uri: str or list,
-        override_transport_params: dict = None,
+        uri: Union[str, list],
+        override_transport_params: Optional[dict] = None,
         buffer_size=1024 * 1024,  # For remote spilling, at least 1MB is recommended.
     ):
         super().__init__()
