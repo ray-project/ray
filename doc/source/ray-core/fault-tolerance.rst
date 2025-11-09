@@ -69,7 +69,7 @@ It allows you to specify the affinity as a soft constraint so even if the target
 
 .. literalinclude:: doc_code/fault_tolerance_tips.py
     :language: python
-    :start-after: _node_affinity_scheduling_strategy_start__
+    :start-after: __node_affinity_scheduling_strategy_start__
     :end-before: __node_affinity_scheduling_strategy_end__
 
 

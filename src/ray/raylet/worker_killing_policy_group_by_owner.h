@@ -21,11 +21,10 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "ray/common/memory_monitor.h"
-#include "ray/raylet/worker.h"
+#include "ray/raylet/worker_interface.h"
 #include "ray/raylet/worker_killing_policy.h"
 
 namespace ray {
@@ -88,7 +87,7 @@ struct Group {
 class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicy {
  public:
   GroupByOwnerIdWorkerKillingPolicy();
-  const std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
+  std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const MemorySnapshot &system_memory) const;
 

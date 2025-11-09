@@ -17,6 +17,7 @@ Public API
     :nosignatures:
     :toctree: doc/
 
+    star
     col
     lit
     udf
@@ -36,3 +37,6 @@ instantiate them directly, but you may encounter them when working with expressi
     ColumnExpr
     LiteralExpr
     BinaryExpr
+    UnaryExpr
+    UDFExpr
+    StarExpr

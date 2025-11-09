@@ -35,7 +35,7 @@ def _set_future_helper(
 
 
 cdef class ObjectRef(BaseID):
-    __class_getitem__ = classmethod(GenericAlias) #should match how typing.Generic works
+    __class_getitem__ = classmethod(GenericAlias) # should match how typing.Generic works
 
     def __cinit__(self):
         self.in_core_worker = False

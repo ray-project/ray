@@ -71,7 +71,7 @@ Complete Examples
 -----------------
 
 Below are complete examples of ZeRO-3 training with DeepSpeed. Each example shows a full implementation of fine-tuning
- a Bidirectional Encoder Representations from Transformers (BERT) model on the Microsoft Research Paraphrase Corpus (MRPC) dataset.
+a Bidirectional Encoder Representations from Transformers (BERT) model on the Microsoft Research Paraphrase Corpus (MRPC) dataset.
 
 Install the requirements:
 
@@ -106,6 +106,13 @@ Install the requirements:
     keep using `deepspeed.initialize() <https://deepspeed.readthedocs.io/en/latest/initialize.html>`_ as usual to prepare everything
     for distributed training.
 
+
+Fine-tune LLMs with DeepSpeed
+-----------------------------
+
+See this step-by-step guide for how to fine-tune large language models (LLMs) with Ray Train and DeepSpeed: :doc:`Fine-tune an LLM with Ray Train and DeepSpeed <examples/pytorch/deepspeed_finetune/README>`.
+
+
 Run DeepSpeed with Other Frameworks
 -----------------------------------
 
@@ -119,7 +126,7 @@ Check the below examples for more details:
    * - Framework
      - Example
    * - Accelerate (:ref:`User Guide <train-hf-accelerate>`)
-     - `Fine-tune Llama-2 series models with Deepspeed, Accelerate, and Ray Train. <https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed>`_
+     - `Fine-tune Llama-2 series models with DeepSpeed, Accelerate, and Ray Train. <https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed>`_
    * - Transformers (:ref:`User Guide <train-pytorch-transformers>`)
      - :doc:`Fine-tune GPT-J-6b with DeepSpeed and Hugging Face Transformers <examples/deepspeed/gptj_deepspeed_fine_tuning>`
    * - Lightning (:ref:`User Guide <train-pytorch-lightning>`)

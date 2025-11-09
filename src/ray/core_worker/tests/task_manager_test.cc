@@ -20,17 +20,19 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/pubsub/subscriber.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
-#include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
+#include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_subscriber.h"
 
 namespace ray {
 namespace core {
@@ -162,11 +164,9 @@ class TaskManagerTest : public ::testing::Test {
               stored_in_plasma.insert(object_id);
               return Status::OK();
             },
-            [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+            [this](TaskSpecification &spec, uint32_t delay_ms) {
               num_retries_++;
               last_delay_ms_ = delay_ms;
-              last_object_recovery_ = object_recovery;
-              return Status::OK();
             },
             [this](const TaskSpecification &spec) {
               return this->did_queue_generator_resubmit_;
@@ -181,7 +181,10 @@ class TaskManagerTest : public ::testing::Test {
                 -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
               return nullptr;
             },
-            mock_gcs_client_) {}
+            mock_gcs_client_,
+            fake_task_by_state_counter_,
+            fake_total_lineage_bytes_gauge_,
+            /*free_actor_object_callback=*/[](const ObjectID &object_id) {}) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 
@@ -219,21 +222,35 @@ class TaskManagerTest : public ::testing::Test {
   std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
   std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
   std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
-  std::shared_ptr<ReferenceCounter> reference_counter_;
+  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool node_died_ = false;
   TaskManager manager_;
   int num_retries_ = 0;
   uint32_t last_delay_ms_ = 0;
-  bool last_object_recovery_ = false;
   std::unordered_set<ObjectID> stored_in_plasma;
+  ray::observability::FakeGauge fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
 };
 
 class TaskManagerLineageTest : public TaskManagerTest {
  public:
   TaskManagerLineageTest() : TaskManagerTest(true, /*max_lineage_bytes=*/10000) {}
 };
+
+TEST_F(TaskManagerTest, TestRecordMetrics) {
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  manager_.AddPendingTask(caller_address, spec, "");
+  manager_.RecordMetrics();
+  auto tag_to_value = fake_task_by_state_counter_.GetTagToValue();
+  ASSERT_EQ(tag_to_value.size(), 1);  // one task state data point
+  ASSERT_EQ(tag_to_value.begin()->first.at("State"),
+            rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_AVAIL));
+  ASSERT_EQ(tag_to_value.begin()->second, 1);  // one task in the PENDING_ARGS_AVAIL state
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
+}
 
 TEST_F(TaskManagerTest, TestTaskSuccess) {
   rpc::Address caller_address;
@@ -430,7 +447,6 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
     ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
     ASSERT_EQ(num_retries_, i + 1);
     ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
-    ASSERT_EQ(last_object_recovery_, false);
   }
 
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
@@ -565,13 +581,11 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_oom_retry_delay_base_ms());
-  ASSERT_EQ(last_object_recovery_, false);
 
   error = rpc::ErrorType::WORKER_DIED;
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_EQ(num_retries_, 2);
   ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
-  ASSERT_EQ(last_object_recovery_, false);
 
   error = rpc::ErrorType::WORKER_DIED;
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
@@ -1073,7 +1087,6 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_EQ(resubmitted_task_deps, spec.GetDependencyIds());
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
-  ASSERT_EQ(last_object_recovery_, true);
   resubmitted_task_deps.clear();
 
   // The return ID goes out of scope.
@@ -1137,7 +1150,6 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
-  ASSERT_EQ(last_object_recovery_, true);
 
   // The re-executed task completes again. One of the return objects is now
   // returned directly.
@@ -1202,7 +1214,6 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskFails) {
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
-  ASSERT_EQ(last_object_recovery_, true);
 
   // The re-executed task fails due to worker crashed.
   {
@@ -1323,7 +1334,6 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
   ASSERT_EQ(num_retries_, 1);
   ASSERT_EQ(last_delay_ms_, 0);
-  ASSERT_EQ(last_object_recovery_, true);
 
   // Dereference the generator to a list of its internal ObjectRefs.
   for (const auto &dynamic_return_id : dynamic_return_ids) {
@@ -1379,11 +1389,9 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       [](const RayObject &, const ObjectID &) {
         return Status::ObjectStoreFull("simulated");
       },
-      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
         num_retries_++;
         last_delay_ms_ = delay_ms;
-        last_object_recovery_ = object_recovery;
-        return Status::OK();
       },
       [this](const TaskSpecification &spec) {
         return this->did_queue_generator_resubmit_;
@@ -1396,7 +1404,10 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
-      mock_gcs_client_);
+      mock_gcs_client_,
+      fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   rpc::Address caller_address;
   auto spec = CreateTaskHelper(1, {});
@@ -1442,11 +1453,9 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
         }
         return Status::OK();
       },
-      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
         num_retries_++;
         last_delay_ms_ = delay_ms;
-        last_object_recovery_ = object_recovery;
-        return Status::OK();
       },
       [this](const TaskSpecification &spec) {
         return this->did_queue_generator_resubmit_;
@@ -1459,7 +1468,10 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
-      mock_gcs_client_);
+      mock_gcs_client_,
+      fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   rpc::Address caller_address;
   auto spec = CreateTaskHelper(1, {});
@@ -1503,11 +1515,9 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
         }
         return Status::OK();
       },
-      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
         num_retries_++;
         last_delay_ms_ = delay_ms;
-        last_object_recovery_ = object_recovery;
-        return Status::OK();
       },
       [this](const TaskSpecification &spec) {
         return this->did_queue_generator_resubmit_;
@@ -1520,7 +1530,10 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
-      mock_gcs_client_);
+      mock_gcs_client_,
+      fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
   dyn_mgr.AddPendingTask(addr_, spec, "", /*num_retries=*/0);
@@ -2866,11 +2879,12 @@ TEST_F(TaskManagerTest, TestTaskRetriedOnNodePreemption) {
   manager_.MarkTaskWaitingForExecution(spec.TaskId(), node_id, worker_id);
 
   // Mock the GCS client to return the preempted node info
-  rpc::GcsNodeInfo node_info;
+  rpc::GcsNodeAddressAndLiveness node_info;
   node_info.set_node_id(node_id.Binary());
   node_info.mutable_death_info()->set_reason(
       rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, Get(node_id, false))
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              GetNodeAddressAndLiveness(node_id, false))
       .WillOnce(::testing::Return(&node_info));
 
   // Task should be retried because the node was preempted, even with 0 retries left
@@ -2959,6 +2973,175 @@ TEST_F(PlasmaShutdownRaceTest, PlasmaCallbackHandlesShutdownRaceCondition) {
   }
   ASSERT_EQ(tolerated_operations_.count(object_id4), 1);
 }
+
+// Test that error message is sent to push_error_callback when task fails and will be
+// retried
+TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
+  std::string captured_error_message;
+  std::string captured_error_type;
+
+  // Create a TaskManager with a custom push_error_callback that captures the message
+  auto capturing_push_error_callback = [&captured_error_message, &captured_error_type](
+                                           const JobID &job_id,
+                                           const std::string &type,
+                                           const std::string &error_message,
+                                           double timestamp) {
+    captured_error_type = type;
+    captured_error_message = error_message;
+    return Status::OK();
+  };
+
+  auto local_reference_counter = std::make_shared<ReferenceCounter>(
+      addr_,
+      publisher_.get(),
+      subscriber_.get(),
+      /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      false);
+  auto local_store = std::make_shared<CoreWorkerMemoryStore>(
+      io_context_.GetIoService(), local_reference_counter.get());
+
+  TaskManager test_manager(
+      *local_store,
+      *local_reference_counter,
+      [this](const RayObject &object, const ObjectID &object_id) {
+        stored_in_plasma.insert(object_id);
+        return Status::OK();
+      },
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
+        num_retries_++;
+        last_delay_ms_ = delay_ms;
+      },
+      [this](const TaskSpecification &spec) {
+        return this->did_queue_generator_resubmit_;
+      },
+      capturing_push_error_callback,  // This will capture the error message
+      1024 * 1024 * 1024,
+      *task_event_buffer_mock_.get(),
+      [](const ActorID &actor_id)
+          -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
+      mock_gcs_client_,
+      fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
+
+  // Create a task with retries enabled
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  spec.GetMutableMessage().set_max_retries(2);  // Allow 2 retries
+  int num_retries = 2;
+
+  test_manager.AddPendingTask(caller_address, spec, "", num_retries);
+  ASSERT_TRUE(test_manager.IsTaskPending(spec.TaskId()));
+
+  NodeID node_id = NodeID::FromRandom();
+  WorkerID worker_id = WorkerID::FromRandom();
+  test_manager.MarkDependenciesResolved(spec.TaskId());
+  test_manager.MarkTaskWaitingForExecution(spec.TaskId(), node_id, worker_id);
+
+  // Fail the task which should trigger a retry
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
+  error_info.set_error_message("Worker crashed during task execution");
+
+  bool will_retry = test_manager.RetryTaskIfPossible(spec.TaskId(), error_info);
+  ASSERT_TRUE(will_retry);  // Should retry
+
+  // Verify that the expected retry message was sent to the callback
+  EXPECT_THAT(captured_error_message,
+              testing::HasSubstr(
+                  "There are 1 retries remaining, so the task will be retried. Error:"));
+  EXPECT_THAT(captured_error_message,
+              testing::HasSubstr("Worker crashed during task execution"));
+  EXPECT_EQ(captured_error_type, "WORKER_DIED");
+
+  // Cleanup
+  test_manager.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
+}
+
+#if GTEST_HAS_STREAM_REDIRECTION
+// Test that error log is printed when push_error_callback fails
+TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
+  using testing::internal::CaptureStderr;
+  using testing::internal::GetCapturedStderr;
+
+  // Create a TaskManager with a failing push_error_callback
+  auto failing_push_error_callback = [](const JobID &job_id,
+                                        const std::string &type,
+                                        const std::string &error_message,
+                                        double timestamp) {
+    return Status::IOError("Failed to push error to driver");
+  };
+
+  auto local_reference_counter = std::make_shared<ReferenceCounter>(
+      addr_,
+      publisher_.get(),
+      subscriber_.get(),
+      /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      false);
+  auto local_store = std::make_shared<CoreWorkerMemoryStore>(
+      io_context_.GetIoService(), local_reference_counter.get());
+
+  TaskManager test_manager(
+      *local_store,
+      *local_reference_counter,
+      [this](const RayObject &object, const ObjectID &object_id) {
+        stored_in_plasma.insert(object_id);
+        return Status::OK();
+      },
+      [this](TaskSpecification &spec, uint32_t delay_ms) {
+        num_retries_++;
+        last_delay_ms_ = delay_ms;
+      },
+      [this](const TaskSpecification &spec) {
+        return this->did_queue_generator_resubmit_;
+      },
+      failing_push_error_callback,  // This will fail
+      1024 * 1024 * 1024,
+      *task_event_buffer_mock_.get(),
+      [](const ActorID &actor_id)
+          -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
+      mock_gcs_client_,
+      fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
+
+  // Create a task that will be retried
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  spec.GetMutableMessage().set_max_retries(1);
+  int num_retries = 1;
+
+  test_manager.AddPendingTask(caller_address, spec, "", num_retries);
+  ASSERT_TRUE(test_manager.IsTaskPending(spec.TaskId()));
+
+  NodeID node_id = NodeID::FromRandom();
+  WorkerID worker_id = WorkerID::FromRandom();
+  test_manager.MarkDependenciesResolved(spec.TaskId());
+  test_manager.MarkTaskWaitingForExecution(spec.TaskId(), node_id, worker_id);
+
+  // Capture stderr to check for error log
+  CaptureStderr();
+
+  // Fail the task which should trigger a retry and call push_error_callback
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
+  error_info.set_error_message("Worker crashed during task execution");
+
+  bool will_retry = test_manager.RetryTaskIfPossible(spec.TaskId(), error_info);
+  ASSERT_TRUE(will_retry);  // Should retry
+
+  // Get the captured stderr output
+  std::string stderr_output = GetCapturedStderr();
+
+  // Verify that the expected error log message is present
+  std::string expected_log_message =
+      "Failed to push error to driver for task " + spec.TaskId().Hex();
+  EXPECT_THAT(stderr_output, testing::HasSubstr(expected_log_message));
+
+  // Cleanup
+  test_manager.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
+}
+#endif  // GTEST_HAS_STREAM_REDIRECTION
 
 }  // namespace core
 }  // namespace ray

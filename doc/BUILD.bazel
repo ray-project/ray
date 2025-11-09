@@ -108,12 +108,28 @@ py_test(
 )
 
 py_test(
+    name = "map_reduce",
+    size = "medium",
+    srcs = ["test_myst_doc.py"],
+    args = [
+        "--path",
+        "doc/source/ray-core/examples/map_reduce.ipynb",
+    ],
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    main = "test_myst_doc.py",
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+)
+
+py_test(
     name = "web_crawler",
     size = "medium",
     srcs = ["test_myst_doc.py"],
     args = [
         "--path",
-        "doc/source/ray-core/examples/web-crawler.ipynb",
+        "doc/source/ray-core/examples/web_crawler.ipynb",
     ],
     data = ["//doc/source/ray-core/examples:core_examples"],
     main = "test_myst_doc.py",
@@ -150,6 +166,7 @@ py_test(
     tags = [
         "exclusive",
         "post_wheel_build",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -162,6 +179,7 @@ py_test(
     tags = [
         "exclusive",
         "mem_pressure",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -174,6 +192,7 @@ py_test(
     tags = [
         "exclusive",
         "multi_gpu",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -186,6 +205,7 @@ py_test(
     tags = [
         "exclusive",
         "multi_gpu",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -198,6 +218,44 @@ py_test(
     tags = [
         "exclusive",
         "multi_gpu",
+        "custom_setup",
+        "team:core",
+    ],
+)
+
+py_test(
+    name = "doc_code_direct_transport_gloo",
+    size = "small",
+    srcs = ["source/ray-core/doc_code/direct_transport_gloo.py"],
+    main = "source/ray-core/doc_code/direct_transport_gloo.py",
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+)
+
+py_test(
+    name = "doc_code_direct_transport_nccl",
+    size = "small",
+    srcs = ["source/ray-core/doc_code/direct_transport_nccl.py"],
+    main = "source/ray-core/doc_code/direct_transport_nccl.py",
+    tags = [
+        "exclusive",
+        "multi_gpu",
+        "custom_setup",
+        "team:core",
+    ],
+)
+
+py_test(
+    name = "doc_code_direct_transport_nixl",
+    size = "small",
+    srcs = ["source/ray-core/doc_code/direct_transport_nixl.py"],
+    main = "source/ray-core/doc_code/direct_transport_nixl.py",
+    tags = [
+        "exclusive",
+        "multi_gpu",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -214,6 +272,8 @@ py_test_run_all_subdirectory(
         "source/ray-core/doc_code/cgraph_overlap.py",
         # not testing this as it purposefully segfaults
         "source/ray-core/doc_code/cgraph_troubleshooting.py",
+        "source/ray-core/doc_code/direct_transport_nccl.py",
+        "source/ray-core/doc_code/direct_transport_nixl.py",
     ],
     extra_srcs = [],
     tags = [
@@ -282,17 +342,54 @@ filegroup(
     visibility = ["//doc:__subpackages__"],
 )
 
-# GPU Tests
+# GPU Tests (standard GPU tests)
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/llm/doc_code/serve/**/*.py"],
-    exclude = [],
+    exclude = ["source/llm/doc_code/serve/multi_gpu/**/*.py"],
     extra_srcs = [],
     data = ["source/llm/doc_code/serve/qwen/llm_config_example.yaml"],
     tags = [
         "exclusive",
         "gpu",
         "team:llm",
+    ],
+)
+
+# Multi-GPU Tests (4+ GPUs)
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/llm/doc_code/serve/multi_gpu/**/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = [
+        "exclusive",
+        "gpu",
+        "multi_gpu_4",
+        "team:llm",
+    ],
+)
+
+# --------------------------------------------------------------------
+# Test all doc/source/data/doc_code/working-with-llms code included in rst/md files.
+# --------------------------------------------------------------------
+
+filegroup(
+    name = "data_llm_examples",
+    srcs = glob(["source/data/doc_code/working-with-llms/**/*.py"]),
+    visibility = ["//doc:__subpackages__"],
+)
+
+# GPU Tests
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/data/doc_code/working-with-llms/**/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:llm"
     ],
 )
 
@@ -309,6 +406,7 @@ py_test_run_all_subdirectory(
         "exclusive",
         "team:ml",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
 
 # --------------------------------------------------------------------
@@ -332,6 +430,7 @@ py_test_run_all_subdirectory(
 
 py_test_run_all_subdirectory(
     size = "large",
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     include = ["source/train/doc_code/*.py"],
     exclude = [
         "source/train/doc_code/hvd_trainer.py",  # CI do not have Horovod
@@ -369,6 +468,7 @@ py_test_run_all_subdirectory(
     extra_srcs = [],
     tags = [
         "dask",
+        "custom_setup",
         "exclusive",
         "team:data",
     ],
@@ -400,17 +500,17 @@ py_test(
 # Test all doc/external code
 # --------------------------------------------------------------------
 
-py_test_run_all_subdirectory(
-    size = "enormous",
-    include = ["external/*.py"],
-    exclude = ["external/test_hashes.py"],
-    extra_srcs = [],
-    tags = [
-        "exclusive",
-        "external",
-        "team:ml",
-    ],
-)
+# py_test_run_all_subdirectory(
+#     size = "enormous",
+#     include = ["external/*.py"],
+#     exclude = ["external/test_hashes.py"],
+#     extra_srcs = [],
+#     tags = [
+#         "exclusive",
+#         "external",
+#         "team:ml",
+#     ],
+# )
 
 py_test(
     name = "test_external_hashes",
@@ -467,6 +567,7 @@ doctest(
 
 doctest(
     name = "doctest[core]",
+    size = "large",
     files = glob(
         include = [
             "source/ray-core/**/*.md",
@@ -474,6 +575,7 @@ doctest(
         ],
         exclude = [
             "source/ray-core/handling-dependencies.rst",
+            # The `doc_code/` snippet for `nested-tasks.rst` is tested.
             "source/ray-core/tasks/nested-tasks.rst",
         ],
     ),
@@ -490,8 +592,6 @@ doctest_each(
             # These tests run on GPU (see below).
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
-            # These tests are currently failing.
-            "source/data/working-with-llms.rst",
             # These don't contain code snippets.
             "source/data/api/**/*.rst",
         ],
@@ -558,6 +658,8 @@ doctest(
 
 doctest(
     name = "doctest[train]",
+    # TODO: [V2] Migrate
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     files = glob(
         include = [
             "source/train/**/*.md",
@@ -580,6 +682,8 @@ doctest(
         "source/train/user-guides/data-loading-preprocessing.rst",
         "source/train/user-guides/using-gpus.rst",
     ],
+    # TODO: [V2] Migrate
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = ["team:ml"],
     gpu = True,
 )
@@ -592,6 +696,7 @@ doctest(
         "source/tune/**/*.rst",
     ],
     tags = ["team:ml"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
 
 filegroup(

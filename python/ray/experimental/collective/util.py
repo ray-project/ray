@@ -1,15 +1,14 @@
-from typing import Tuple, TYPE_CHECKING
-from contextlib import closing
 import socket
+from typing import TYPE_CHECKING, Tuple
 
 import ray
-
-from ray.util.collective.types import Backend
-from ray.experimental.collective.tensor_transport_manager import TensorTransportManager
-from ray.experimental.collective.nixl_tensor_transport import NixlTensorTransport
+from ray._common.network_utils import find_free_port, is_ipv6
 from ray.experimental.collective.collective_tensor_transport import (
     CollectiveTensorTransport,
 )
+from ray.experimental.collective.nixl_tensor_transport import NixlTensorTransport
+from ray.experimental.collective.tensor_transport_manager import TensorTransportManager
+from ray.util.collective.types import Backend
 
 if TYPE_CHECKING:
     import torch
@@ -62,16 +61,8 @@ def device_match_transport(device: "torch.device", tensor_transport: Backend) ->
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
 
 
-def find_free_port() -> int:
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(("", 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
-
-
 def get_address_and_port() -> Tuple[str, int]:
     """Returns the IP address and a free port on this node."""
     addr = ray.util.get_node_ip_address()
-    port = find_free_port()
-
+    port = find_free_port(socket.AF_INET6 if is_ipv6(addr) else socket.AF_INET)
     return addr, port

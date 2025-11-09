@@ -72,6 +72,7 @@ cdef extern from "Python.h":
     ctypedef struct CPyThreadState "PyThreadState":
         int recursion_limit
         int recursion_remaining
+        int c_recursion_remaining
 
     # From Include/ceveal.h#67
     int Py_GetRecursionLimit()
@@ -140,6 +141,7 @@ cdef class CoreWorker:
         object _task_id_to_future_lock
         dict _task_id_to_future
         object event_loop_executor
+        object _gc_thread
 
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef store_task_output(

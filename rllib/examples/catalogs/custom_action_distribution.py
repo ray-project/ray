@@ -6,14 +6,14 @@ This example shows two modifications:
 2. How to inject a custom action distribution into a Catalog
 """
 # __sphinx_doc_begin__
-import torch
 import gymnasium as gym
+import torch
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.distribution.distribution import Distribution
 from ray.rllib.core.distribution.torch.torch_distribution import TorchDeterministic
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
 
 # Define a simple categorical distribution that can be used for PPO

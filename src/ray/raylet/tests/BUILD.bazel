@@ -6,7 +6,7 @@ ray_cc_library(
     # NOTE(edoakes): scheduling/ tests use this; the dependency should be broken.
     visibility = ["//visibility:public"],
     deps = [
-        "//src/ray/raylet:worker",
+        "//src/ray/raylet:worker_interface",
     ],
 )
 
@@ -31,6 +31,8 @@ ray_cc_test(
     ],
     deps = [
         "//:ray_mock",
+        "//src/ray/core_worker_rpc_client:fake_core_worker_client",
+        "//src/ray/raylet:worker",
         "//src/ray/raylet:worker_pool",
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",
@@ -50,13 +52,14 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/common:asio",
         "//src/ray/common:id",
-        "//src/ray/gcs/gcs_client:gcs_client_lib",
+        "//src/ray/core_worker_rpc_client:core_worker_client_pool",
+        "//src/ray/core_worker_rpc_client:fake_core_worker_client",
+        "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/object_manager:ownership_object_directory",
         "//src/ray/protobuf:core_worker_cc_grpc",
         "//src/ray/pubsub:subscriber",
         "//src/ray/raylet:local_object_manager",
         "//src/ray/raylet:worker_pool",
-        "//src/ray/rpc:core_worker_client",
         "//src/ray/rpc:grpc_client",
         "@com_google_googletest//:gtest_main",
     ],
@@ -70,6 +73,8 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:id",
+        "//src/ray/common/scheduling:placement_group_util",
+        "//src/ray/observability:fake_metric",
         "//src/ray/raylet:placement_group_resource_manager",
         "@com_google_googletest//:gtest_main",
     ],
@@ -86,6 +91,7 @@ ray_cc_test(
         "//src/ray/common:id",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/raylet:runtime_env_agent_client",
+        "//src/ray/util:env",
         "@boost//:asio",
         "@boost//:beast",
         "@boost//:thread",
@@ -100,8 +106,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:lease",
         "//src/ray/common:test_utils",
+        "//src/ray/observability:fake_metric",
         "//src/ray/raylet:lease_dependency_manager",
         "@com_google_googletest//:gtest_main",
     ],
@@ -119,6 +125,7 @@ ray_cc_test(
         "//src/ray/common:lease",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
+        "//src/ray/observability:fake_metric",
         "//src/ray/raylet:local_lease_manager",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "@com_google_googletest//:gtest_main",
@@ -141,52 +148,29 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "worker_killing_policy_group_by_owner_test",
-    size = "small",
-    srcs = [
-        "worker_killing_policy_group_by_owner_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":util",
-        "//src/ray/common:lease",
-        "//src/ray/raylet:worker_killing_policy",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "worker_killing_policy_retriable_fifo_test",
-    size = "small",
-    srcs = [
-        "worker_killing_policy_retriable_fifo_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":util",
-        "//src/ray/common:lease",
-        "//src/ray/raylet:worker_killing_policy",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
     name = "node_manager_test",
     size = "small",
     srcs = ["node_manager_test.cc"],
     tags = ["team:core"],
     deps = [
         ":util",
-        "//:ray_fakes",
         "//:ray_mock",
-        "//src/fakes/ray/rpc/raylet:fake_raylet_client",
         "//src/ray/common:lease",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
+        "//src/ray/common/cgroup2:cgroup_manager_interface",
+        "//src/ray/core_worker_rpc_client:core_worker_client_pool",
+        "//src/ray/core_worker_rpc_client:fake_core_worker_client",
+        "//src/ray/object_manager/plasma:fake_plasma_client",
         "//src/ray/object_manager/plasma:plasma_client",
+        "//src/ray/observability:fake_metric",
+        "//src/ray/pubsub:fake_subscriber",
+        "//src/ray/raylet:fake_worker",
         "//src/ray/raylet:local_object_manager_interface",
-        "//src/ray/raylet:node_manager",
+        "//src/ray/raylet:raylet_lib",
         "//src/ray/raylet/scheduling:cluster_lease_manager",
+        "//src/ray/raylet_rpc_client:fake_raylet_client",
+        "//src/ray/rpc:utils",
         "//src/ray/util:macros",
         "@com_google_googletest//:gtest_main",
     ],

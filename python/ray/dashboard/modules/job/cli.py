@@ -8,10 +8,10 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import click
 
-from ray._common.utils import load_class
 import ray._private.ray_constants as ray_constants
 from ray._common.utils import (
     get_or_create_event_loop,
+    load_class,
 )
 from ray._private.utils import (
     parse_metadata_json,

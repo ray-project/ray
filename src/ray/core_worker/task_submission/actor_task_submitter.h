@@ -15,11 +15,8 @@
 #pragma once
 
 #include <deque>
-#include <list>
 #include <memory>
 #include <optional>
-#include <queue>
-#include <set>
 #include <string>
 #include <utility>
 
@@ -27,7 +24,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -35,7 +31,8 @@
 #include "ray/core_worker/task_submission/dependency_resolver.h"
 #include "ray/core_worker/task_submission/out_of_order_actor_submit_queue.h"
 #include "ray/core_worker/task_submission/sequential_actor_submit_queue.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/rpc/rpc_callback_types.h"
 
 namespace ray {
 namespace core {
@@ -63,7 +60,7 @@ class ActorTaskSubmitterInterface {
   /// If called, preempted = true will be set in the death cause upon actor death.
   virtual void SetPreempted(const ActorID &actor_id) = 0;
 
-  virtual ~ActorTaskSubmitterInterface() {}
+  virtual ~ActorTaskSubmitterInterface() = default;
 };
 
 // This class is thread-safe.
@@ -74,21 +71,21 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                      TaskManagerInterface &task_manager,
                      ActorCreatorInterface &actor_creator,
                      const TensorTransportGetter &tensor_transport_getter,
-                     std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
+                     std::function<void(const ActorID &, const std::string &, int64_t)>
+                         on_excess_queueing,
                      instrumented_io_context &io_service,
                      std::shared_ptr<ReferenceCounterInterface> reference_counter)
       : core_worker_client_pool_(core_worker_client_pool),
         actor_creator_(actor_creator),
         resolver_(store, task_manager, actor_creator, tensor_transport_getter),
         task_manager_(task_manager),
-        warn_excess_queueing_(warn_excess_queueing),
+        on_excess_queueing_(std::move(on_excess_queueing)),
+        next_queueing_warn_threshold_(
+            ::RayConfig::instance().actor_excess_queueing_warn_threshold()),
         io_service_(io_service),
-        reference_counter_(reference_counter) {
-    next_queueing_warn_threshold_ =
-        ::RayConfig::instance().actor_excess_queueing_warn_threshold();
-  }
+        reference_counter_(std::move(reference_counter)) {}
 
-  void SetPreempted(const ActorID &actor_id) {
+  void SetPreempted(const ActorID &actor_id) override {
     absl::MutexLock lock(&mu_);
     if (auto iter = client_queues_.find(actor_id); iter != client_queues_.end()) {
       iter->second.preempted_ = true;
@@ -110,7 +107,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                                 int32_t max_pending_calls,
                                 bool allow_out_of_order_execution,
                                 bool fail_if_actor_unreachable,
-                                bool owned);
+                                bool owned) override;
 
   /// Submit a task to an actor for execution.
   void SubmitTask(TaskSpecification task_spec);
@@ -127,7 +124,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// ignore the command to connect.
   void ConnectActor(const ActorID &actor_id,
                     const rpc::Address &address,
-                    int64_t num_restarts);
+                    int64_t num_restarts) override;
 
   /// Disconnect from a failed actor.
   ///
@@ -143,13 +140,13 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                        int64_t num_restarts,
                        bool dead,
                        const rpc::ActorDeathCause &death_cause,
-                       bool is_restartable);
+                       bool is_restartable) override;
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
 
   /// Check timeout tasks that are waiting for Death info.
-  void CheckTimeoutTasks();
+  void CheckTimeoutTasks() override;
 
   /// If the number of tasks in requests is greater than or equal to
   /// max_pending_calls.
@@ -259,14 +256,18 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
           status_(std::move(status)),
           timeout_error_info_(std::move(timeout_error_info)) {}
   };
-  /// A helper function to get task manager without holding mu_
-  /// We should use this function when access
-  /// - FailOrRetryPendingTask
-  /// - FailPendingTask
-  TaskManagerInterface &GetTaskManagerWithoutMu() {
-    mu_.AssertNotHeld();
-    return task_manager_;
-  }
+
+  /// Handle a task that was cancelled before it could execute.
+  /// This method determines whether the cancellation was due to:
+  /// 1. Actor shutdown (worker exiting): If so, raise RayActorError.
+  /// 2. Explicit user cancellation: If so, raise TaskCancelledError.
+  ///
+  /// \param status The RPC status from PushTask.
+  /// \param reply The PushTaskReply message containing cancellation details.
+  /// \param task_spec The specification of the task that was cancelled.
+  void HandleTaskCancelledBeforeExecution(const Status &status,
+                                          const rpc::PushTaskReply &reply,
+                                          const TaskSpecification &task_spec);
 
   struct ClientQueue {
     ClientQueue(bool allow_out_of_order_execution,
@@ -299,11 +300,10 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     int64_t num_restarts_due_to_lineage_reconstructions_ = 0;
     /// Whether this actor exits by spot preemption.
     bool preempted_ = false;
-    /// The RPC client. We use shared_ptr to enable shared_from_this for
-    /// pending client callbacks.
-    std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_ = nullptr;
+    /// The RPC client address.
+    std::optional<rpc::Address> client_address_;
     /// The intended worker ID of the actor.
-    std::string worker_id_ = "";
+    std::string worker_id_;
     /// The actor is out of scope but the death info is not published
     /// to this worker yet.
     bool pending_out_of_scope_death_ = false;
@@ -359,6 +359,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
       return stream.str();
     }
   };
+
+  void CancelDependencyResolution(const TaskID &task_id)
+      ABSL_LOCKS_EXCLUDED(resolver_mu_);
 
   /// Fail the task with the timeout error, or the preempted error.
   void FailTaskWithError(const PendingTaskWaitingForDeathInfo &task);
@@ -418,6 +421,13 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   // Generators that are currently running and need to be resubmitted.
   absl::flat_hash_set<TaskID> generators_to_resubmit_ ABSL_GUARDED_BY(mu_);
 
+  // For when kicking off dependency resolution is still queued on the io_context.
+  // We need an extra mutex because the ResolveDependencies callback could be called
+  // immediately and it acquires mu_ and needs to call GetTaskManagerWithoutMu.
+  absl::Mutex resolver_mu_ ABSL_ACQUIRED_BEFORE(mu_);
+  absl::flat_hash_set<TaskID> pending_dependency_resolution_
+      ABSL_GUARDED_BY(resolver_mu_);
+
   /// Resolve object dependencies.
   LocalDependencyResolver resolver_;
 
@@ -425,7 +435,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   TaskManagerInterface &task_manager_;
 
   /// Used to warn of excessive queueing.
-  std::function<void(const ActorID &, uint64_t num_queued)> warn_excess_queueing_;
+  std::function<void(const ActorID &, const std::string &, uint64_t num_queued)>
+      on_excess_queueing_;
 
   /// Warn the next time the number of queued task submissions to an actor
   /// exceeds this quantity. This threshold is doubled each time it is hit.
@@ -435,8 +446,6 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   instrumented_io_context &io_service_;
 
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
-
-  friend class CoreWorkerTest;
 };
 
 }  // namespace core

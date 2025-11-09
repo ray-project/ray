@@ -325,12 +325,17 @@ def test_num_replicas_auto_api(serve_instance, use_options):
         "upscale_delay_s": 30.0,
         "look_back_period_s": 30.0,
         "downscale_delay_s": 600.0,
+        "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "aggregation_function": "mean",
+        "policy": {
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+        },
     }
 
 
@@ -347,13 +352,21 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
     if use_options:
         A = serve.deployment(A).options(
             num_replicas="auto",
-            autoscaling_config={"metrics_interval_s": 1, "upscale_delay_s": 1},
+            autoscaling_config={
+                "metrics_interval_s": 1,
+                "upscale_delay_s": 1,
+                "look_back_period_s": 1,
+            },
             graceful_shutdown_timeout_s=1,
         )
     else:
         A = serve.deployment(
             num_replicas="auto",
-            autoscaling_config={"metrics_interval_s": 1, "upscale_delay_s": 1},
+            autoscaling_config={
+                "metrics_interval_s": 1,
+                "upscale_delay_s": 1,
+                "look_back_period_s": 1,
+            },
             graceful_shutdown_timeout_s=1,
         )(A)
 
@@ -376,14 +389,19 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         "metrics_interval_s": 1.0,
         "upscale_delay_s": 1.0,
         # Untouched defaults
-        "look_back_period_s": 30.0,
+        "look_back_period_s": 1.0,
         "downscale_delay_s": 600.0,
+        "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "aggregation_function": "mean",
+        "policy": {
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+        },
     }
 
     for i in range(3):

@@ -121,7 +121,7 @@ Here's an example where we manually specify ``override_num_blocks=1``, but the o
     MaterializedDataset(
        num_blocks=3,
        num_rows=5000,
-       schema={data: numpy.ndarray(shape=(10000,), dtype=int64)}
+       schema={data: ArrowTensorTypeV2(shape=(10000,), dtype=int64)}
     )
 
 
@@ -425,7 +425,7 @@ You can configure execution options with the global DataContext. The options are
     )
 
 .. note::
-    It's **not** recommended to modify the Ray Core object store memory limit, as this can reduce available memory for task execution. The one exception to this is if you are using machines with a very large amount of RAM (1 TB or more each); then it's recommended to set the object store to ~30-40%.
+    Be mindful that by default Ray reserves only 30% of the memory for its Object Store. This is recommended to be set at least to ***50%*** for all Ray Data workloads.
 
 Locality with output (ML ingest use case)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

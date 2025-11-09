@@ -70,6 +70,7 @@ def test_build_anyscale_custom_byod_image() -> None:
             test.get_anyscale_byod_image(),
             test.get_anyscale_base_byod_image(),
             test.get_byod_post_build_script(),
+            test.get_byod_python_depset(),
         )
         assert "docker build --build-arg BASE_IMAGE=029272617770.dkr.ecr.us-west-2."
         "amazonaws.com/anyscale/ray:a1b2c3d4-py37 -t 029272617770.dkr.ecr.us-west-2."
@@ -100,6 +101,7 @@ def test_build_anyscale_base_byod_images() -> None:
                 python="3.9",
                 cluster={"byod": {"type": "cpu"}},
             ),
+            Test(name="aws", env="aws", python="3.10", cluster={"byod": {}}),
             Test(name="aws", env="aws", cluster={"byod": {"type": "cu121"}}),
             Test(
                 name="aws", env="aws", python="3.9", cluster={"byod": {"type": "cu116"}}
@@ -123,6 +125,7 @@ def test_build_anyscale_base_byod_images() -> None:
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py311-cu118",
             f"{aws_cr}/anyscale/ray-ml:a1b2c3d4-py39-gpu",
             f"{gcp_cr}/anyscale/ray:a1b2c3d4-py39-cpu",
+            f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cpu",
         }
 
 

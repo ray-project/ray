@@ -187,9 +187,7 @@ steps:
       - docker
       - skip-on-release-tests
     wanda: docker/base-slim/cpu.wanda.yaml
-    depends_on: raycpubase
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -204,11 +202,9 @@ steps:
       - docker
       - skip-on-release-tests
     wanda: docker/base-slim/cuda.wanda.yaml
-    depends_on: raycudabase
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
