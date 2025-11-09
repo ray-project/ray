@@ -163,6 +163,7 @@ class InnerGcsClient:
     def request_cluster_resource_constraint(
             self,
             bundles: List[Dict[bytes, float]],
+            label_selectors: List[Dict[str, str]],
             count_array: List[int],
             timeout_s:Optional[int | float]=None)->None: ...
 

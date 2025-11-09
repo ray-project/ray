@@ -12,6 +12,7 @@ from typing import (
     Generator,
     Generic,
     Iterable,
+    List,
     NamedTuple,
     NoReturn,
     Optional,
@@ -23,10 +24,8 @@ from typing import (
 )
 
 # for FunctionDescriptor matching
-from typing_extensions import ParamSpec
+from typing_extensions import NotRequired, ParamSpec
 
-import ray._private.memory_monitor as memory_monitor
-import ray._private.profiling as profiling
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 import ray.core.generated.common_pb2 as common_pb2
@@ -51,7 +50,6 @@ from ray.core.generated.common_pb2 import (
     JobConfig,
     LineageReconstructionTask,
 )
-from ray.core.generated.gcs_pb2 import GcsNodeInfo, JobTableData
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray.experimental.channel.shared_memory_channel import (
     ReaderRefInfo,  # circular reference - .pyi only
@@ -76,11 +74,23 @@ from ray.includes.function_descriptor import (
     PythonFunctionDescriptor,
 )
 from ray.includes.gcs_client import InnerGcsClient
+from ray.includes.gcs_subscriber import (
+    GcsErrorSubscriber,
+    GcsLogSubscriber,
+    _GcsSubscriber,
+)
 from ray.includes.global_state_accessor import GlobalStateAccessor
 from ray.includes.libcoreworker import ProfileEvent
 from ray.includes.metric import Count, Gauge, Histogram, Metric, Sum, TagKey
 from ray.includes.object_ref import ObjectRef, _set_future_helper
 from ray.includes.ray_config import Config
+from ray.includes.raylet_client import RayletClient
+from ray.includes.rpc_token_authentication import (
+    AuthenticationMode,
+    AuthenticationTokenLoader,
+    get_authentication_mode,
+    validate_authentication_token,
+)
 from ray.includes.serialization import (
     MessagePackSerializedObject,
     MessagePackSerializer,
@@ -198,6 +208,20 @@ __all__ = [
     # ray.includes.buffer
     "Buffer",
 
+    # ray.includes.raylet_client
+    "RayletClient",
+
+    # ray.includes.gcs_subscriber
+    "_GcsSubscriber",
+    "GcsErrorSubscriber",
+    "GcsLogSubscriber",
+
+    # ray.includes.rpc_token_authentication
+    "AuthenticationMode",
+    "get_authentication_mode",
+    "validate_authentication_token",
+    "AuthenticationTokenLoader",
+
     # raylet constants
     "GRPC_STATUS_CODE_DEADLINE_EXCEEDED",
     "GRPC_STATUS_CODE_RESOURCE_EXHAUSTED",
@@ -217,14 +241,11 @@ __all__ = [
     "CoreWorker",
     "EmptyProfileEvent",
     "GcsClient",
-    "GcsErrorSubscriber",
-    "GcsLogSubscriber",
     "Language",
     "ObjectRefGenerator",
     "StreamRedirector",
     "StreamingGeneratorExecutionContext",
     "StreamingObjectRefGenerator",
-    "_GcsSubscriber",
     "_call_actor_shutdown",
     "_get_actor_serialized_owner_address_or_none",
     "compute_task_id",
@@ -237,9 +258,7 @@ __all__ = [
 
     # protobuf imports
     "ActorDiedErrorContext",
-    "GcsNodeInfo",
     "GetAllResourceUsageReply",
-    "JobTableData",
     "common_pb2",
 
     # other ray imports
@@ -252,8 +271,6 @@ __all__ = [
     "get_new_event_loop",
     "has_async_methods",
     "is_async_func",
-    "memory_monitor",
-    "profiling",
     "ray_constants",
     "ray_pickle",
     "sync_to_async",
@@ -278,6 +295,9 @@ async_task_id:contextvars.ContextVar[TaskID|None]
 async_task_name:contextvars.ContextVar[str|None]
 async_task_function_name:contextvars.ContextVar[str|None]
 
+class NumReturnsWarning(UserWarning):
+    """Warning when num_returns=0 but the task returns a non-None value."""
+    pass
 
 class HasReadInto(Protocol):
     def readinto(self,b:bytearray|memoryview,/)->None: ...
@@ -312,9 +332,7 @@ class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGen
 
     def __init__(self, generator_ref: ObjectRef[None], worker: "Worker")->None: ...
 
-    """
-    Public APIs
-    """
+    # Public APIs
 
     def __iter__(self:_ORG) -> _ORG: ...
 
@@ -383,9 +401,7 @@ class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGen
         """
         ...
 
-    """
-    Private APIs
-    """
+    # Private APIs
 
     def _get_next_ref(self) -> ObjectRef[_R]:
         """Return the next reference from a generator.
@@ -458,7 +474,6 @@ class SerializedRayObject(NamedTuple):
     # either inlined in `data` or found in the plasma object store.
     tensor_transport: Optional[TensorTransportEnum]
 
-
 class LocationPtrDict(TypedDict):
     node_ids: list[str]
     object_size: int
@@ -468,20 +483,8 @@ class RefCountDict(TypedDict):
     local: int
     submitted: int
 
-class GcsErrorPollDict(TypedDict):
-    job_id:bytes
-    type:str
-    error_message:str
-    timestamp:float
-
-class GcsLogPollDict(TypedDict):
-    ip:str
-    pid:str
-    job:str
-    is_err:bool
-    lines:list[str]
-    actor_name:str
-    task_name:str
+class FallbackStrategyDict(TypedDict):
+    label_selector: NotRequired[Dict[str,str]]
 
 
 
@@ -507,7 +510,7 @@ class CoreWorker:
                   local_mode:bool, driver_name:str,
                   serialized_job_config:str, metrics_agent_port:int, runtime_env_hash:int,
                   startup_token:int, session_name:str, cluster_id:str, entrypoint:str,
-                  worker_launch_time_ms:int, worker_launched_time_ms:int, debug_source:str, enable_resource_isolation:bool):
+                  worker_launch_time_ms:int, worker_launched_time_ms:int, debug_source:str):
         ...
 
     def shutdown_driver(self)->None: ...
@@ -632,6 +635,7 @@ class CoreWorker:
             owner_address:Optional[str]=None,
             inline_small_object:bool=True,
             _is_experimental_channel:bool=False,
+            tensor_transport_val:int=0,
     )->ObjectRef:
         """Create an object reference with the current worker as the owner."""
 
@@ -642,6 +646,7 @@ class CoreWorker:
             owner_address:Optional[str]=None,
             inline_small_object:bool=True,
             _is_experimental_channel:bool=False,
+            tensor_transport_val:int=0,
             )->bytes: ...
 
 
@@ -683,7 +688,8 @@ class CoreWorker:
                     generator_backpressure_num_objects:int,
                     enable_task_events:bool,
                     labels:dict[str,str],
-                    label_selector:dict[str,str])->list[ObjectRef[_FDReturn]]: ...
+                    label_selector:dict[str,str],
+                    fallback_strategy:Optional[List[FallbackStrategyDict]])->list[ObjectRef[_FDReturn]]: ...
 
     def create_actor(self,
                      language:Language,
@@ -706,7 +712,9 @@ class CoreWorker:
                      enable_task_events:bool,
                      labels:dict[str,str],
                      label_selector:dict[str,str],
-                     allow_out_of_order_execution: bool
+                     allow_out_of_order_execution: bool,
+                     enable_tensor_transport: bool,
+                     fallback_strategy:Optional[List[FallbackStrategyDict]],
                      )->ActorID: ...
 
     def create_placement_group(
@@ -847,6 +855,8 @@ class CoreWorker:
 
     def get_current_runtime_env(self) -> str: ...
 
+    def trigger_gc(self): ...
+
     def get_pending_children_task_ids(self, parent_task_id: TaskID)->list[TaskID]: ...
 
     def get_all_reference_counts(self)->dict[ObjectRef,RefCountDict]: ...
@@ -967,87 +977,6 @@ def raise_sys_exit_with_custom_error_message(
     """
     ...
 
-
-class _GcsSubscriber:
-    """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
-
-    def _construct(self, address:str, channel:int, worker_id:Optional[str|bytes])->None: ...
-
-    def subscribe(self)->None:
-        """Registers a subscription for the subscriber's channel type.
-
-        Before the registration, published messages in the channel will not be
-        saved for the subscriber.
-        """
-        ...
-
-    @property
-    def last_batch_size(self)->int:
-        """Batch size of the result from last poll.
-
-        Used to indicate whether the subscriber can keep up.
-        """
-        ...
-
-    def close(self)->None:
-        """Closes the subscriber and its active subscription."""
-        ...
-
-
-
-class GcsErrorSubscriber(_GcsSubscriber):
-    """Subscriber to error info. Thread safe.
-
-    Usage example:
-        subscriber = GcsErrorSubscriber()
-        # Subscribe to the error channel.
-        subscriber.subscribe()
-        ...
-        while running:
-            error_id, error_data = subscriber.poll()
-            ......
-        # Unsubscribe from the error channels.
-        subscriber.close()
-    """
-
-    def __init__(self, address:str, worker_id:Optional[str|bytes]=None): ...
-
-    def poll(self, timeout:Optional[int | float]=None)->tuple[None,None]|tuple[bytes,GcsErrorPollDict]:
-        """Polls for new error messages.
-
-        Returns:
-            A tuple of error message ID and dict describing the error,
-            or None, None if polling times out or subscriber closed.
-        """
-        ...
-
-
-
-
-class GcsLogSubscriber(_GcsSubscriber):
-    """Subscriber to logs. Thread safe.
-
-    Usage example:
-        subscriber = GcsLogSubscriber()
-        # Subscribe to the log channel.
-        subscriber.subscribe()
-        ...
-        while running:
-            log = subscriber.poll()
-            ......
-        # Unsubscribe from the log channel.
-        subscriber.close()
-    """
-
-    def __init__(self, address:str, worker_id:Optional[str|bytes]=None)->None: ...
-
-    def poll(self, timeout:Optional[int | float]=None)->GcsLogPollDict:
-        """Polls for new log messages.
-
-        Returns:
-            A dict containing a batch of log lines and their metadata.
-        """
-        ...
 
 class StreamingGeneratorExecutionContext:
     """The context to run a streaming generator function.

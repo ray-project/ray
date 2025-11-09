@@ -1,5 +1,5 @@
 # source: metric.pxi
-from typing import Iterable
+from typing import Iterable, Optional
 
 class TagKey:
     """Cython wrapper class of C++ `opencensus::stats::TagKey`."""
@@ -13,7 +13,7 @@ class Metric:
     """
     def __init__(self, tag_keys:Iterable[str])->None: ...
 
-    def record(self, value:float, tags:dict[str,str]|None=None):
+    def record(self, value:float, tags:Optional[dict[str,str]]=None):
         """Record a measurement of metric.
 
            Flush a metric raw point to stats module with a key-value dict tags.
