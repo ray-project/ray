@@ -327,6 +327,8 @@ class ObjectRefGenerator:
     >>> next(gen)
     >>> await gen.__anext__()
     """
+    __class_getitem__ = classmethod(GenericAlias) # Allow type-subscriptions, e.g. ObjectRefGenerator[int] (instance of Generator[int,None,None] by duck typing)
+
     def __init__(self, generator_ref: ObjectRef, worker: "Worker"):
         # The reference to a generator task.
         self._generator_ref = generator_ref
