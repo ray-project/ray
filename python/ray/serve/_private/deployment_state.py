@@ -585,7 +585,9 @@ class ActorReplicaWrapper:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
 
-            def on_completed(args):
+            def on_completed(result: Any):
+                if isinstance(result, Exception):
+                    return
                 # TODO: passing node_id=-1 is a temporary solution, replica ranks and anyway not reliable for Java yet.
                 # In order to pass correct node_id, Java actor should return node_id from is_allocated().
                 self._rank = self._assign_rank_callback(
@@ -599,8 +601,10 @@ class ActorReplicaWrapper:
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
 
-            def on_completed(args):
-                _, _, _, node_id, _, _, _ = args
+            def on_completed(result: Any):
+                if isinstance(result, Exception):
+                    return
+                _, _, _, node_id, _, _, _ = result
                 self._rank = self._assign_rank_callback(
                     self._replica_id.unique_id, node_id
                 )
@@ -2973,10 +2977,13 @@ class DeploymentState:
                 # Release rank only after replica is successfully stopped
                 # This ensures rank is available during draining/graceful shutdown
                 replica_id = replica.replica_id.unique_id
-                self._rank_manager.release_rank(replica_id)
-                logger.debug(
-                    f"Released rank from replica {replica_id} in deployment {self._id}"
-                )
+                if self._rank_manager.has_replica_rank(replica_id):
+                    # Only release rank if assigned. Replicas that failed allocation
+                    # or never reached RUNNING state won't have ranks.
+                    self._rank_manager.release_rank(replica_id)
+                    logger.debug(
+                        f"Released rank from replica {replica_id} in deployment {self._id}"
+                    )
                 self._autoscaling_state_manager.on_replica_stopped(replica.replica_id)
 
         # After replica state updates, check rank consistency and perform minimal reassignment if needed
