@@ -64,13 +64,12 @@ class ClusterLeaseManager : public ClusterLeaseManagerInterface {
   /// \param grant_or_reject: True if we we should either grant or reject the request
   ///                         but no spillback.
   /// \param is_selected_based_on_locality : should schedule on local node if possible.
-  /// \param reply: The reply of the lease request.
-  /// \param send_reply_callback: The function used during dispatching.
-  void QueueAndScheduleLease(RayLease lease,
-                             bool grant_or_reject,
-                             bool is_selected_based_on_locality,
-                             rpc::RequestWorkerLeaseReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
+  /// \param reply_callbacks: The reply callbacks of the lease request.
+  void QueueAndScheduleLease(
+      RayLease lease,
+      bool grant_or_reject,
+      bool is_selected_based_on_locality,
+      std::vector<internal::ReplyCallback> reply_callbacks) override;
 
   /// Attempt to cancel an already queued lease.
   ///
@@ -160,6 +159,20 @@ class ClusterLeaseManager : public ClusterLeaseManagerInterface {
   /// \param[out] data: Output parameter. `resource_load_by_shape` is the only field
   /// filled.
   void FillPendingActorInfo(rpc::ResourcesData &data) const;
+
+  /// Check if a lease is queued.
+  ///
+  /// \param scheduling_class: The scheduling class of the lease.
+  /// \param lease_id: The lease id of the lease.
+  ///
+  /// \return True if the lease is queued in leases_to_schedule_ or infeasible_leases_.
+  bool IsLeaseQueued(const SchedulingClass &scheduling_class,
+                     const LeaseID &lease_id) const override;
+
+  bool AddReplyCallback(const SchedulingClass &scheduling_class,
+                        const LeaseID &lease_id,
+                        rpc::SendReplyCallback send_reply_callback,
+                        rpc::RequestWorkerLeaseReply *reply) override;
 
  private:
   void TryScheduleInfeasibleLease();

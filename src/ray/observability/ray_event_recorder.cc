@@ -56,9 +56,23 @@ void RayEventRecorder::ExportEvents() {
   }
   rpc::events::AddEventsRequest request;
   rpc::events::RayEventsData ray_event_data;
-  // TODO(#56391): To further optimize the performance, we can merge multiple
-  // events with the same resource ID into a single event.
+  // group the event in the buffer_ by their entity id and type; then for each group,
+  // merge the events into a single event. maintain the order of the events in the buffer.
+  std::list<std::unique_ptr<RayEventInterface>> grouped_events;
+  absl::flat_hash_map<RayEventKey,
+                      std::list<std::unique_ptr<RayEventInterface>>::iterator>
+      event_key_to_iterator;
   for (auto &event : buffer_) {
+    auto key = std::make_pair(event->GetEntityId(), event->GetEventType());
+    auto [it, inserted] = event_key_to_iterator.try_emplace(key);
+    if (inserted) {
+      grouped_events.push_back(std::move(event));
+      event_key_to_iterator[key] = std::prev(grouped_events.end());
+    } else {
+      (*it->second)->Merge(std::move(*event));
+    }
+  }
+  for (auto &event : grouped_events) {
     rpc::events::RayEvent ray_event = std::move(*event).Serialize();
     *ray_event_data.mutable_events()->Add() = std::move(ray_event);
   }
