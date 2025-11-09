@@ -24,9 +24,10 @@ from ray._private.runtime_env.packaging import (
     Protocol,
     _dir_travel,
     _get_excludes,
-    _get_gitignore,
+    _get_ignore_file,
     _store_package_in_gcs,
     download_and_unpack_package,
+    get_excludes_from_ignore_files,
     get_local_dir_from_uri,
     get_top_level_dir_from_compressed_package,
     get_uri_for_directory,
@@ -904,8 +905,53 @@ class TestDownloadAndUnpackPackage:
 def test_get_gitignore(tmp_path):
     gitignore_path = tmp_path / ".gitignore"
     gitignore_path.write_text("*.pyc")
-    assert _get_gitignore(tmp_path)(Path(tmp_path / "foo.pyc")) is True
-    assert _get_gitignore(tmp_path)(Path(tmp_path / "foo.py")) is False
+    gitignore_func = _get_ignore_file(tmp_path, ".gitignore")
+    assert gitignore_func(Path(tmp_path / "foo.pyc")) is True
+    assert gitignore_func(Path(tmp_path / "foo.py")) is False
+
+
+@pytest.mark.parametrize(
+    "ignore_gitignore,expected_excludes",
+    [
+        # Default: both .gitignore and .rayignore are used
+        ("0", ["gitignore", "rayignore"]),
+        # Only .rayignore is used, no inheritance
+        ("1", ["rayignore"]),
+    ],
+)
+def test_ray_ignore_and_git_ignore_together(
+    tmp_path, ignore_gitignore, expected_excludes, monkeypatch
+):
+    """Test get_excludes_from_ignore_files with different environment variable combinations."""
+    # Set up environment variables
+    monkeypatch.setenv(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, ignore_gitignore)
+
+    # Create test ignore files
+    gitignore_path = tmp_path / ".gitignore"
+    gitignore_path.write_text("*.pyc")
+    git_ignore_file = tmp_path / "test.pyc"
+
+    rayignore_path = tmp_path / ".rayignore"
+    rayignore_path.write_text("*.cache")
+    ray_ignore_file = tmp_path / "test.cache"
+
+    # Get exclusion functions
+    exclude_funcs = get_excludes_from_ignore_files(tmp_path)
+
+    # Check the number of exclusion functions returned
+    assert len(exclude_funcs) == len(
+        expected_excludes
+    ), f"Should have {expected_excludes}"
+
+    # Check if files are excluded based on expected_excludes
+    gitignore_active = "gitignore" in expected_excludes
+    rayignore_active = "rayignore" in expected_excludes
+
+    # .gitignore patterns
+    assert any(f(git_ignore_file) for f in exclude_funcs) == gitignore_active
+
+    # .rayignore patterns
+    assert any(f(ray_ignore_file) for f in exclude_funcs) == rayignore_active
 
 
 @pytest.mark.parametrize("ignore_gitignore", [True, False])

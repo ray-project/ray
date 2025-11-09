@@ -92,10 +92,9 @@ def _dir_travel(
 
     Respects excludes, which will be called to check if this path is skipped.
     """
-    e = _get_gitignore(path)
 
-    if e is not None:
-        excludes.append(e)
+    new_excludes = get_excludes_from_ignore_files(path, logger=logger)
+    excludes.extend(new_excludes)
 
     skip = any(e(path) for e in excludes)
     if not skip:
@@ -108,7 +107,7 @@ def _dir_travel(
             for sub_path in path.iterdir():
                 _dir_travel(sub_path, excludes, handler, logger=logger)
 
-    if e is not None:
+    for _ in range(len(new_excludes)):
         excludes.pop()
 
 
@@ -280,24 +279,22 @@ def _get_excludes(path: Path, excludes: List[str]) -> Callable:
     return match
 
 
-def _get_gitignore(path: Path) -> Optional[Callable]:
+def _get_ignore_file(path: Path, ignore_file: str) -> Optional[Callable]:
     """Returns a function that returns True if the path should be excluded.
 
-    Returns None if there is no .gitignore file in the path, or if the
-    RAY_RUNTIME_ENV_IGNORE_GITIGNORE environment variable is set to 1.
+    Returns None if there is no .gitignore file in the path.
 
     Args:
-        path: The path to the directory to check for a .gitignore file.
+        path: The path to the directory to check for a .rayignore file.
+        ignore_file: The name of the ignore file. Combined with path will
+        give the absolute path to the ignore_file.
 
     Returns:
         A function that returns True if the path should be excluded.
     """
-    ignore_gitignore = os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") == "1"
-    if ignore_gitignore:
-        return None
 
     path = path.absolute()
-    ignore_file = path / ".gitignore"
+    ignore_file = path / ignore_file
     if ignore_file.is_file():
         with ignore_file.open("r") as f:
             pathspec = PathSpec.from_lines("gitwildmatch", f.readlines())
@@ -309,6 +306,37 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
         return match
     else:
         return None
+
+
+def get_excludes_from_ignore_files(
+    path: Path, logger: Optional[logging.Logger] = default_logger
+) -> List[Callable]:
+    """Get exclusion functions from .gitignore and .rayignore files in the current path.
+
+    Environment Variables:
+        RAY_RUNTIME_ENV_IGNORE_GITIGNORE: If set to "1", .gitignore files
+            won't be parsed. Default is "0" (parse .gitignore).
+
+    Returns:
+        List[Callable]: List of exclusion functions. Each function takes a Path
+            and returns True if the path should be excluded based on the ignore
+            patterns in the respective ignore file.
+    """
+    ignore_gitignore = os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") == "1"
+
+    to_ignore: List[Optional[Callable]] = []
+    if not ignore_gitignore:
+        # Default behavior: use both .gitignore and .rayignore
+        # .gitignore is parsed, and .rayignore inherits from it
+        g = _get_ignore_file(path, ignore_file=".gitignore")
+        to_ignore.append(g)
+        logger.info(
+            "Ignoring files found in .rayignore (if exists) and .gitginore (if exists)"
+        )
+
+    r = _get_ignore_file(path, ignore_file=".rayignore")
+    to_ignore.append(r)
+    return [ignore for ignore in to_ignore if ignore is not None]
 
 
 def pin_runtime_env_uri(uri: str, *, expiration_s: Optional[int] = None) -> None:
