@@ -64,7 +64,6 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
 
     def add_bundle(self, ref_bundle: RefBundle):
         schema = ref_bundle.schema
-        block_count = 0
 
         self._total_pending_rows += ref_bundle.num_rows()
         self._pending_bundles.append(
@@ -80,9 +79,6 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
         )
         self._try_build_ready_bundle()
         self._consumed_input_bundles.append(ref_bundle)
-
-        if block_count > 0:
-            self._bundle_remaining_blocks[ref_bundle] = block_count
 
     def has_bundle(self) -> bool:
         return len(self._ready_bundles) > 0

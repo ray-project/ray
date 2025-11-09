@@ -342,6 +342,9 @@ def _slice_ref_bundle(
 
 
 def _merge_ref_bundles(bundles: List[RefBundle]) -> RefBundle:
+    assert all(
+        bundle.slices is not None for bundle in bundles
+    ), "All bundles must have slices."
     merged_blocks = list(itertools.chain(*[bundle.blocks for bundle in bundles]))
     merged_slices = list(itertools.chain(*[bundle.slices for bundle in bundles]))
     merged_bundle = RefBundle(
