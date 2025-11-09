@@ -234,7 +234,7 @@ class MockReplicaActorWrapper:
     ):
         self.started = True
         self._assign_rank_callback = assign_rank_callback
-        self._rank = assign_rank_callback(self._replica_id.unique_id)
+        self._rank = assign_rank_callback(self._replica_id.unique_id, node_id=-1)
         replica_rank_context[self._replica_id.unique_id] = self._rank
 
         def _on_scheduled_stub(*args, **kwargs):
@@ -5301,7 +5301,7 @@ class TestDeploymentRankManagerIntegrationE2E:
 
         # Check initial ranks are 0, 1, 2
         ranks_mapping = ds._get_replica_ranks_mapping()
-        ranks = sorted(ranks_mapping.values())
+        ranks = sorted([r.rank for r in ranks_mapping.values()])
         assert ranks == [0, 1, 2], f"Expected ranks [0, 1, 2], got {ranks}"
 
         # Scale down to 2 replicas - this should trigger rank reassignment
@@ -5327,7 +5327,7 @@ class TestDeploymentRankManagerIntegrationE2E:
 
         # After scaling down and reaching healthy status, ranks should be contiguous [0, 1]
         ranks_mapping = ds._get_replica_ranks_mapping()
-        ranks = sorted(ranks_mapping.values())
+        ranks = sorted([r.rank for r in ranks_mapping.values()])
         assert ranks == [0, 1], f"Expected ranks [0, 1] after scale down, got {ranks}"
 
         # Scale back up to 3 replicas - new replica should reuse available rank
@@ -5353,7 +5353,7 @@ class TestDeploymentRankManagerIntegrationE2E:
 
         # Final ranks should be contiguous [0, 1, 2]
         ranks_mapping = ds._get_replica_ranks_mapping()
-        ranks = sorted(ranks_mapping.values())
+        ranks = sorted([r.rank for r in ranks_mapping.values()])
         assert ranks == [0, 1, 2], f"Expected final ranks [0, 1, 2], got {ranks}"
 
     def test_controller_recovery_with_scattered_ranks(
@@ -5399,7 +5399,7 @@ class TestDeploymentRankManagerIntegrationE2E:
 
         # At this point ranks should be scattered but all values [0, 1, 2] should be present
         ranks_mapping = new_ds._get_replica_ranks_mapping()
-        ranks = sorted(ranks_mapping.values())
+        ranks = sorted([r.rank for r in ranks_mapping.values()])
         assert ranks == [0, 1, 2], "Should have recovered scattered ranks"
 
         # Trigger rank consistency check with one more update - this should reorder if needed
@@ -5407,7 +5407,7 @@ class TestDeploymentRankManagerIntegrationE2E:
 
         # After rank consistency check, ranks should still be [0, 1, 2]
         final_ranks_mapping = new_ds._get_replica_ranks_mapping()
-        final_ranks = sorted(final_ranks_mapping.values())
+        final_ranks = sorted([r.rank for r in final_ranks_mapping.values()])
         assert final_ranks == [
             0,
             1,
@@ -5444,16 +5444,16 @@ class TestDeploymentRankManagerIntegrationE2E:
         global replica_rank_context
         replica_rank_context.clear()
         replica_rank_context[replica_ids[0].unique_id] = ReplicaRank(
-            rank=0, node_rank=-1, local_rank=-1
+            rank=0, node_rank=0, local_rank=0
         )
         replica_rank_context[replica_ids[1].unique_id] = ReplicaRank(
-            rank=3, node_rank=-1, local_rank=-1
+            rank=3, node_rank=0, local_rank=1
         )
         replica_rank_context[replica_ids[2].unique_id] = ReplicaRank(
-            rank=7, node_rank=-1, local_rank=-1
+            rank=7, node_rank=0, local_rank=2
         )
         replica_rank_context[replica_ids[3].unique_id] = ReplicaRank(
-            rank=10, node_rank=-1, local_rank=-1
+            rank=10, node_rank=0, local_rank=3
         )
 
         # Simulate controller crashed! Create a new deployment state manager
@@ -5477,7 +5477,7 @@ class TestDeploymentRankManagerIntegrationE2E:
 
         # After reassignment, ranks should be contiguous [0, 1, 2, 3]
         ranks_mapping = new_ds._get_replica_ranks_mapping()
-        ranks = sorted(ranks_mapping.values())
+        ranks = sorted([r.rank for r in ranks_mapping.values()])
         assert ranks == [
             0,
             1,
@@ -5507,7 +5507,7 @@ class TestDeploymentRankManagerIntegrationE2E:
 
         # Verify initial ranks are contiguous
         ranks_mapping = ds._get_replica_ranks_mapping()
-        initial_ranks = sorted(ranks_mapping.values())
+        initial_ranks = sorted([r.rank for r in ranks_mapping.values()])
         assert initial_ranks == [0, 1, 2]
 
         # Deploy version 2 - this should trigger rolling update
@@ -5544,7 +5544,7 @@ class TestDeploymentRankManagerIntegrationE2E:
 
         # After rolling update, verify ranks are still contiguous
         final_ranks_mapping = ds._get_replica_ranks_mapping()
-        final_ranks = sorted(final_ranks_mapping.values())
+        final_ranks = sorted([r.rank for r in final_ranks_mapping.values()])
         assert final_ranks == [
             0,
             1,
@@ -5604,7 +5604,7 @@ class TestDeploymentRankManagerIntegrationE2E:
             replica.replica_id.unique_id for replica in running_replicas
         ]
         running_replica_ranks = [
-            ranks_mapping[replica_id]
+            ranks_mapping[replica_id].rank
             for replica_id in running_replica_ids
             if replica_id in ranks_mapping
         ]
@@ -5614,7 +5614,7 @@ class TestDeploymentRankManagerIntegrationE2E:
             0,
             1,
             2,
-        }, f"Expected ranks [0, 1, 2], got {ranks_mapping.values()}"
+        }, f"Expected ranks [0, 1, 2], got {[r.rank for r in ranks_mapping.values()]}"
 
 
 if __name__ == "__main__":
