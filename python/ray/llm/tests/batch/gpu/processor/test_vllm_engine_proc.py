@@ -233,11 +233,13 @@ def test_vision_model(gpu_type, model_smolvlm_256m, image_asset, input_raw_image
                         {
                             "type": "image_url",
                             "image_url": {"url": image_url},
+                            "uuid": "image-1-id",  # UUID will not be included in the output as it's only used for internal caching
                         }
                         if input_raw_image_data
                         else {
                             "type": "image_pil",
                             "image_pil": image_pil,
+                            "uuid": "image-2-id",
                         },
                     ],
                 },
@@ -327,10 +329,6 @@ def test_video_model(gpu_type, model_qwen_2_5_vl_3b_instruct):
             enforce_eager=True,
             # Limit the number of videos that can be provided per prompt to prevent memory issues
             limit_mm_per_prompt={"video": 1},
-            # TODO: Timing out on CI, so commenting out for now.
-            # mm_processor_kwargs=dict(
-            #     max_pixels=768 * 768,
-            # ),
         ),
         apply_chat_template=True,
         tokenize=False,
@@ -346,6 +344,11 @@ def test_video_model(gpu_type, model_qwen_2_5_vl_3b_instruct):
             sampling_params=dict(
                 temperature=0.3,
                 max_tokens=50,
+            ),
+            mm_processor_kwargs=dict(
+                min_pixels=28 * 28,
+                max_pixels=1280 * 28 * 28,
+                fps=1,
             ),
         ),
         postprocess=lambda row: {
@@ -366,7 +369,6 @@ def test_video_model(gpu_type, model_qwen_2_5_vl_3b_instruct):
 def test_audio_model(
     gpu_type, model_qwen_2_5_omni_3b, audio_asset, input_raw_audio_data
 ):
-    # ImportError: Please install vllm[audio] for audio support
     audio_url, audio_data = audio_asset
     multimodal_processor_config = MultimodalProcessorConfig(
         model=model_qwen_2_5_omni_3b,

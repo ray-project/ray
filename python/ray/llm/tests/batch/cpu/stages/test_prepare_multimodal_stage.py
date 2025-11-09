@@ -13,6 +13,7 @@ async def test_prepare_multimodal_udf_image_url():
         data_column="__data",
         expected_input_keys=["messages"],
         model="Qwen/Qwen2.5-VL-3B-Instruct",
+        chat_template_content_format="string",
     )
 
     batch = {
@@ -32,54 +33,14 @@ async def test_prepare_multimodal_udf_image_url():
                                 "image_url": {
                                     "url": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg"
                                 },
-                            },
-                        ],
-                    },
-                ]
-            }
-        ]
-    }
-
-    results = []
-    async for result in udf(batch):
-        results.append(result["__data"][0])
-
-    assert len(results) == 1
-    assert "multimodal_data" in results[0]
-    assert "messages" in results[0]
-
-
-@pytest.mark.asyncio
-async def test_prepare_multimodal_udf_multiple_image_urls():
-    udf = PrepareMultimodalUDF(
-        data_column="__data",
-        expected_input_keys=["messages"],
-        model="Qwen/Qwen2.5-VL-3B-Instruct",
-    )
-
-    batch = {
-        "__data": [
-            {
-                "messages": [
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": "Describe these images in 10 words.",
+                                "uuid": "image-1-id",
                             },
                             {
                                 "type": "image_url",
                                 "image_url": {
                                     "url": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg"
                                 },
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg"
-                                },
+                                "uuid": "image-2-id",
                             },
                         ],
                     },
@@ -95,6 +56,8 @@ async def test_prepare_multimodal_udf_multiple_image_urls():
     assert len(results) == 1
     assert "multimodal_data" in results[0]
     assert len(results[0]["multimodal_data"]["image"]) == 2
+    assert "multimodal_uuids" in results[0]
+    assert results[0]["multimodal_uuids"] == {"image": ["image-1-id", "image-2-id"]}
     assert "messages" in results[0]
 
 
@@ -106,6 +69,7 @@ async def test_prepare_multimodal_udf_pil_image(image_asset):
         data_column="__data",
         expected_input_keys=["messages"],
         model="Qwen/Qwen2.5-VL-3B-Instruct",
+        chat_template_content_format="string",
     )
 
     batch = {
@@ -142,10 +106,14 @@ async def test_prepare_multimodal_udf_pil_image(image_asset):
 
 @pytest.mark.asyncio
 async def test_prepare_multimodal_udf_no_multimodal_content():
+    """
+    Multimodal stage should proceed as normal if there is no multimodal content provided in messages.
+    """
     udf = PrepareMultimodalUDF(
         data_column="__data",
         expected_input_keys=["messages"],
         model="Qwen/Qwen2.5-VL-3B-Instruct",
+        chat_template_content_format="string",
     )
 
     batch = {
@@ -165,7 +133,7 @@ async def test_prepare_multimodal_udf_no_multimodal_content():
 
     assert len(results) == 1
     assert "multimodal_data" in results[0]
-    assert results[0]["multimodal_data"] == {}
+    assert results[0]["multimodal_data"] is None
     assert "messages" in results[0]
 
 
@@ -174,6 +142,7 @@ def test_prepare_multimodal_udf_expected_keys():
         data_column="__data",
         expected_input_keys=["messages"],
         model="Qwen/Qwen2.5-VL-3B-Instruct",
+        chat_template_content_format="string",
     )
     assert udf.expected_input_keys == {"messages"}
 

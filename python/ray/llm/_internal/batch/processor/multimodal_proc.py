@@ -24,6 +24,11 @@ class MultimodalProcessorConfig(ProcessorConfig):
         description="Name or path of the Hugging Face model to use for the multimodal processor. "
         "This is required to process multimodal data according to a specific model.",
     )
+    # The format to render message content.
+    #   - "string" will render the content as a string.
+    #     Example: `"Who are you?"`
+    #   - "openai" will render the content as a list of dictionaries, similar to OpenAI schema.
+    #     Example: `[{"type": "text", "text": "Who are you?"}]`
     chat_template_content_format: str = Field(
         default="string",
         choices=["string", "openai"],

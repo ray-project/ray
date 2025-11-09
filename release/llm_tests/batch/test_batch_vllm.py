@@ -269,14 +269,8 @@ def test_vllm_llama_lora():
         # LLaVA model with TP=1, PP=1, concurrency=1
         ("llava-hf/llava-1.5-7b-hf", 1, 1, 1, 60, "openai"),
         # Pixtral model with TP=2, PP=1, concurrency=2
-        (
-            "mistral-community/pixtral-12b",
-            2,
-            1,
-            2,
-            60,
-            "string",
-        ),  # TODO (jeffreywang): Run this test
+        # TODO (jeffreywang): Run this test
+        ("mistral-community/pixtral-12b", 2, 1, 2, 60, "openai"),
     ],
 )
 def test_vllm_vision_language_models(

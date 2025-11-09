@@ -15,7 +15,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
         data_column: str,
         expected_input_keys: List[str],
         model: str,
-        chat_template_content_format: str = "string",
+        chat_template_content_format: str,
     ):
         """
         Initialize the PrepareMultimodalUDF.
@@ -24,7 +24,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
             data_column: The data column name.
             expected_input_keys: The expected input keys of the stage.
             model: The model to use for the multimodal processor.
-            chat_template_content_format: The content format of the chat template.
+            chat_template_content_format: The format to render message content.
         """
         super().__init__(data_column, expected_input_keys)
         self.model_config = ModelConfig(model=model)
@@ -41,10 +41,11 @@ class PrepareMultimodalUDF(StatefulStageUDF):
             Dict[str, Any]: A dictionary containing the multimodal data
             along with processing metadata.
         """
-        conversations, futures = [], []
+        conversations, futures, uuids = [], [], []
         for row in batch:
-            # TODO (jeffreywang): Add UUID
-            conversation, mm_data_future, _ = parse_chat_messages_futures(
+            # Users can provide stable IDs for each multimodal item from messages to
+            # enable engine to cache and reuse work across requests.
+            conversation, mm_data_future, mm_uuids = parse_chat_messages_futures(
                 row["messages"],
                 self.model_config,
                 None,  # Tokenizer is not used in vLLM's parse_chat_messages_futures
@@ -52,6 +53,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
             )
             conversations.append(conversation)
             futures.append(mm_data_future)
+            uuids.append(mm_uuids)
 
         async def _get_mm_with_idx(idx: int, fut):
             multimodal_data = await fut
@@ -67,9 +69,10 @@ class PrepareMultimodalUDF(StatefulStageUDF):
 
             yield {
                 self.IDX_IN_BATCH_COLUMN: idx,
-                "multimodal_data": multimodal_data or {},
+                "multimodal_data": multimodal_data,
                 # Use the parsed conversation which has placeholders embedded instead of the original messages
                 "messages": conversations[idx],
+                "multimodal_uuids": uuids[idx],
             }
 
 
