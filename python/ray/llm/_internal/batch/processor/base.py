@@ -443,7 +443,7 @@ class ProcessorBuilder:
             if conflicting_keys:
                 raise ValueError(
                     f"builder_kwargs cannot contain {conflicting_keys} as these are "
-                    "passed as explicit arguments to build_llm_processor. "
+                    "passed as explicit arguments to build_processor. "
                     "Please pass these directly instead of in builder_kwargs."
                 )
 

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import ray
-from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
+from ray.data.llm import build_processor, vLLMEngineProcessorConfig
 from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig,
@@ -143,7 +143,7 @@ def test_generation_model(gpu_type, model_opt_125m, backend):
         detokenize=True,
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[
@@ -190,7 +190,7 @@ def test_embedding_model(gpu_type, model_smolvlm_256m):
         detokenize=False,
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[
@@ -239,7 +239,7 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
         concurrency=1,
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[

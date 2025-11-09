@@ -13,7 +13,7 @@ subprocess.check_call([sys.executable, "-m", "pip", "install", "numpy==1.26.4"])
 def run_embedding_example():
     # __embedding_example_start__
     import ray
-    from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+    from ray.data.llm import vLLMEngineProcessorConfig, build_processor
 
     embedding_config = vLLMEngineProcessorConfig(
         model_source="sentence-transformers/all-MiniLM-L6-v2",
@@ -30,7 +30,7 @@ def run_embedding_example():
         detokenize=False,
     )
 
-    embedding_processor = build_llm_processor(
+    embedding_processor = build_processor(
         embedding_config,
         preprocess=lambda row: dict(prompt=row["text"]),
         postprocess=lambda row: {
