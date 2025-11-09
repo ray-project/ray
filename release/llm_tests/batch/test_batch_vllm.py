@@ -5,7 +5,7 @@ import time
 import pytest
 
 import ray
-from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
+from ray.data.llm import build_processor, vLLMEngineProcessorConfig
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ def test_chat_template_with_vllm():
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[
@@ -119,7 +119,7 @@ def test_vllm_llama_parallel(tp_size, pp_size, concurrency):
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[
@@ -172,7 +172,7 @@ def test_vllm_llama_lora():
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             # For even ids, use the base model, for odd ids, use the LoRA adapter
@@ -243,7 +243,7 @@ def test_vllm_vision_language_models(
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             model=model_source,
@@ -304,7 +304,7 @@ def test_async_udf_queue_capped(concurrency):
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             # 1M emoji (4 bytes), should not leak to memory heap.
@@ -390,7 +390,7 @@ def test_vllm_placement_group(backend, placement_group_config):
         placement_group_config=placement_group_config,
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         config,
         preprocess=lambda row: dict(
             prompt=f"You are a calculator. {row['id']} ** 3 = ?",
