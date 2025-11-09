@@ -5,7 +5,11 @@ import time
 import pytest
 
 import ray
-from ray.data.llm import build_llm_processor, MultimodalProcessorConfig, vLLMEngineProcessorConfig
+from ray.data.llm import (
+    build_llm_processor,
+    MultimodalProcessorConfig,
+    vLLMEngineProcessorConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +78,7 @@ async def test_vllm_multimodal_utils():
             trust_remote_code=True,
             limit_mm_per_prompt={"image": 2},
         ),
-        None, # Tokenizer is not used in vLLM's parse_chat_messages_futures
+        None,  # Tokenizer is not used in vLLM's parse_chat_messages_futures
         content_format="string",
     )
 
@@ -265,7 +269,14 @@ def test_vllm_llama_lora():
         # LLaVA model with TP=1, PP=1, concurrency=1
         ("llava-hf/llava-1.5-7b-hf", 1, 1, 1, 60, "openai"),
         # Pixtral model with TP=2, PP=1, concurrency=2
-        ("mistral-community/pixtral-12b", 2, 1, 2, 60, "string"), # TODO (ycwwang): Run this test
+        (
+            "mistral-community/pixtral-12b",
+            2,
+            1,
+            2,
+            60,
+            "string",
+        ),  # TODO (jeffreywang): Run this test
     ],
 )
 def test_vllm_vision_language_models(
@@ -303,7 +314,9 @@ def test_vllm_vision_language_models(
                         },
                         {
                             "type": "image_url",
-                            "image_url": {"url": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg"},
+                            "image_url": {
+                                "url": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg"
+                            },
                         },
                     ],
                 },
@@ -352,7 +365,9 @@ def test_vllm_vision_language_models(
     [
         {
             "type": "image_url",
-            "image_url": {"url": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg"},
+            "image_url": {
+                "url": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg"
+            },
         },
         {
             "type": "video_url",
@@ -381,7 +396,6 @@ def test_vllm_qwen_vl_multimodal(multimodal_content):
                             "type": "text",
                             "text": f"Describe this asset in {row['id']} sentences.",
                         },
-
                     ],
                 },
             ],
@@ -422,6 +436,7 @@ def test_vllm_qwen_vl_multimodal(multimodal_content):
     outs = ds.take_all()
     assert len(outs) == 60
     assert all("resp" in out for out in outs)
+
 
 @pytest.mark.parametrize("concurrency", [1, 4])
 def test_async_udf_queue_capped(concurrency):

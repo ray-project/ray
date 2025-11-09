@@ -1,6 +1,6 @@
 """The multimodal processor."""
 
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from pydantic import Field
 
@@ -36,6 +36,8 @@ def build_multimodal_processor(
     config: MultimodalProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
+    preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+    postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Processor:
     """Construct a Processor and configure stages.
 
@@ -46,6 +48,10 @@ def build_multimodal_processor(
             required fields for the following processing stages.
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict).
+        preprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            preprocess stage (e.g., num_cpus, memory, concurrency).
+        postprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            postprocess stage (e.g., num_cpus, memory, concurrency).
 
     Returns:
         The constructed processor.
@@ -75,6 +81,8 @@ def build_multimodal_processor(
         stages,
         preprocess=preprocess,
         postprocess=postprocess,
+        preprocess_map_kwargs=preprocess_map_kwargs,
+        postprocess_map_kwargs=postprocess_map_kwargs,
     )
     return processor
 

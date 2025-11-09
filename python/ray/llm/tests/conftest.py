@@ -1,7 +1,10 @@
+import base64
+import io
 import os
 import tempfile
 from typing import Generator, List
 
+import PIL.Image
 import pytest
 import requests
 
@@ -156,9 +159,11 @@ def model_llama_3_2_1B_instruct():
 def model_qwen_2_5_vl_3b_instruct():
     yield "Qwen/Qwen2.5-VL-3B-Instruct"
 
+
 @pytest.fixture(scope="session")
 def model_qwen_2_5_omni_3b():
     yield "Qwen/Qwen2.5-Omni-3B"
+
 
 @pytest.fixture(scope="session")
 def gpu_type():
@@ -241,3 +246,21 @@ def create_model_opt_125m_deployment(gpu_type, model_opt_125m, serve_cleanup):
     )
     serve.run(llm_app, name=app_name)
     yield deployment_name, app_name
+
+
+@pytest.fixture
+def image_asset():
+    image_url = "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg"
+    with requests.get(image_url) as response:
+        response.raise_for_status()
+        image_pil = PIL.Image.open(io.BytesIO(response.content))
+        yield image_url, image_pil
+
+
+@pytest.fixture
+def audio_asset():
+    audio_url = "https://vllm-public-assets.s3.us-west-2.amazonaws.com/multimodal_asset/winning_call.ogg"
+    with requests.get(audio_url) as response:
+        response.raise_for_status()
+        audio_data = base64.b64encode(response.content).decode("utf-8")
+        yield audio_url, audio_data

@@ -210,9 +210,12 @@ def test_embedding_model(gpu_type, model_smolvlm_256m):
     assert all("prompt" in out for out in outs)
 
 
-def test_vision_model(gpu_type, model_smolvlm_256m):
+@pytest.mark.parametrize("input_raw_image_data", [True, False])
+def test_vision_model(gpu_type, model_smolvlm_256m, image_asset, input_raw_image_data):
+    image_url, image_pil = image_asset
     multimodal_processor_config = MultimodalProcessorConfig(
         model=model_smolvlm_256m,
+        chat_template_content_format="openai",
         concurrency=1,
     )
     multimodal_processor = build_llm_processor(
@@ -229,7 +232,12 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
                         },
                         {
                             "type": "image_url",
-                            "image_url": {"url": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg"},
+                            "image_url": {"url": image_url},
+                        }
+                        if input_raw_image_data
+                        else {
+                            "type": "image_pil",
+                            "image_pil": image_pil,
                         },
                     ],
                 },
@@ -282,6 +290,7 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
     assert len(outs) == 60
     assert all("resp" in out for out in outs)
 
+
 def test_video_model(gpu_type, model_qwen_2_5_vl_3b_instruct):
     multimodal_processor_config = MultimodalProcessorConfig(
         model=model_qwen_2_5_vl_3b_instruct,
@@ -301,7 +310,9 @@ def test_video_model(gpu_type, model_qwen_2_5_vl_3b_instruct):
                         },
                         {
                             "type": "video_url",
-                            "video_url": {"url": "https://content.pexels.com/videos/free-videos.mp4"},
+                            "video_url": {
+                                "url": "https://content.pexels.com/videos/free-videos.mp4"
+                            },
                         },
                     ],
                 },
@@ -314,8 +325,87 @@ def test_video_model(gpu_type, model_qwen_2_5_vl_3b_instruct):
         task_type="generate",
         engine_kwargs=dict(
             enforce_eager=True,
-            # At most 1 video can be provided per prompt to prevent memory issues
+            # Limit the number of videos that can be provided per prompt to prevent memory issues
             limit_mm_per_prompt={"video": 1},
+            # TODO: Timing out on CI, so commenting out for now.
+            # mm_processor_kwargs=dict(
+            #     max_pixels=768 * 768,
+            # ),
+        ),
+        apply_chat_template=True,
+        tokenize=False,
+        detokenize=False,
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+    )
+
+    llm_processor = build_llm_processor(
+        llm_processor_config,
+        preprocess=lambda row: dict(
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(5)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = llm_processor(multimodal_processor(ds))
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 5
+    assert all("resp" in out for out in outs)
+
+
+@pytest.mark.parametrize("input_raw_audio_data", [True, False])
+def test_audio_model(
+    gpu_type, model_qwen_2_5_omni_3b, audio_asset, input_raw_audio_data
+):
+    # ImportError: Please install vllm[audio] for audio support
+    audio_url, audio_data = audio_asset
+    multimodal_processor_config = MultimodalProcessorConfig(
+        model=model_qwen_2_5_omni_3b,
+        chat_template_content_format="openai",
+        concurrency=1,
+    )
+    multimodal_processor = build_llm_processor(
+        multimodal_processor_config,
+        preprocess=lambda row: dict(
+            messages=[
+                {"role": "system", "content": "You are an assistant"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Describe this audio in {row['val']} words.",
+                        },
+                        {
+                            "type": "input_audio",
+                            "input_audio": {"data": audio_data, "format": "wav"},
+                        }
+                        if input_raw_audio_data
+                        else {
+                            "type": "audio_url",
+                            "audio_url": {"url": audio_url},
+                        },
+                    ],
+                },
+            ],
+        ),
+    )
+
+    llm_processor_config = vLLMEngineProcessorConfig(
+        model_source=model_qwen_2_5_omni_3b,
+        task_type="generate",
+        engine_kwargs=dict(
+            enforce_eager=True,
+            limit_mm_per_prompt={"audio": 1},
         ),
         apply_chat_template=True,
         tokenize=False,
@@ -346,68 +436,6 @@ def test_video_model(gpu_type, model_qwen_2_5_vl_3b_instruct):
     assert len(outs) == 60
     assert all("resp" in out for out in outs)
 
-def test_audio_model(gpu_type, model_qwen_2_5_omni_3b):
-    multimodal_processor_config = MultimodalProcessorConfig(
-        model=model_qwen_2_5_omni_3b,
-        concurrency=1,
-    )
-    multimodal_processor = build_llm_processor(
-        multimodal_processor_config,
-        preprocess=lambda row: dict(
-            messages=[
-                {"role": "system", "content": "You are an assistant"},
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"Describe this audio in {row['val']} words.",
-                        },
-                        {
-                            "type": "audio_url",
-                            "audio_url": {"url": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/multimodal_asset/winning_call.ogg"},
-                        },
-                    ],
-                },
-            ],
-        ),
-    )
-
-    llm_processor_config = vLLMEngineProcessorConfig(
-        model_source=model_qwen_2_5_omni_3b,
-        task_type="generate",
-        engine_kwargs=dict(
-            enforce_eager=True,
-            limit_mm_per_prompt={"audio": 1},
-        ),
-        apply_chat_template=True,
-        tokenize=False,
-        detokenize=False,
-        batch_size=1,
-        accelerator_type=gpu_type,
-        concurrency=1,
-    )
-
-    llm_processor = build_llm_processor(
-        llm_processor_config,
-        preprocess=lambda row: dict(
-            sampling_params=dict(
-                temperature=0.3,
-                max_tokens=50,
-            ),
-        ),
-        postprocess=lambda row: {
-            "resp": row["generated_text"],
-        },
-    )
-
-    ds = ray.data.range(1)
-    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
-    ds = llm_processor(multimodal_processor(ds))
-    ds = ds.materialize()
-    outs = ds.take_all()
-    assert len(outs) == 1
-    assert all("resp" in out for out in outs)
 
 class TestVLLMEngineProcessorConfig:
     @pytest.mark.parametrize(

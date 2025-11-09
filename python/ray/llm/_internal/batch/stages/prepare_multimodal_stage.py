@@ -24,6 +24,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
             data_column: The data column name.
             expected_input_keys: The expected input keys of the stage.
             model: The model to use for the multimodal processor.
+            chat_template_content_format: The content format of the chat template.
         """
         super().__init__(data_column, expected_input_keys)
         self.model_config = ModelConfig(model=model)
@@ -36,11 +37,13 @@ class PrepareMultimodalUDF(StatefulStageUDF):
         Args:
             batch: A list of rows to process.
 
-        Returns:
-            A generator of rows with the processed multimodal data.
+        Yields:
+            Dict[str, Any]: A dictionary containing the multimodal data
+            along with processing metadata.
         """
         conversations, futures = [], []
         for row in batch:
+            # TODO (jeffreywang): Add UUID
             conversation, mm_data_future, _ = parse_chat_messages_futures(
                 row["messages"],
                 self.model_config,

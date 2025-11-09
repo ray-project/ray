@@ -37,6 +37,7 @@ DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 
 logger = logging.getLogger(__name__)
 
+
 class BundleSchema(BaseModelExtended):
     model_config = ConfigDict(extra="allow")
     CPU: Optional[int] = Field(default=1, description="The number of CPUs per bundle.")
