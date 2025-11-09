@@ -27,6 +27,7 @@ from typing import (
     Callable,
     Dict,
     Generator,
+    GenericAlias,
     Optional,
     Tuple,
     Union,
