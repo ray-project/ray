@@ -1,4 +1,12 @@
-from typing import AsyncGenerator, Generator, Generic, NoReturn, Optional, TypeVar
+from typing import (
+    AsyncGenerator,
+    Generator,
+    Generic,
+    NoReturn,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 from ray._private.worker import Worker
 from ray.includes.object_ref import ObjectRef, _set_future_helper
@@ -37,12 +45,13 @@ __all__ = [
     # ray.includes.object_ref
     "_set_future_helper",
     "ObjectRef",
+
+    # raylet classes/functions
+    "ObjectRefGenerator",
 ]
 
 
 _R = TypeVar("_R") # for ObjectRefs
-_R2 = TypeVar("_R2")
-
 
 _ORG = TypeVar("_ORG",bound=ObjectRefGenerator)
 class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGenerator[ObjectRef[_R],None]):
@@ -62,8 +71,8 @@ class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGen
     >>> await gen.__anext__()
     """
 
-    _generator_ref: ObjectRef
-    _generator_task_exception: Exception|None
+    _generator_ref: ObjectRef[None]
+    _generator_task_exception: Optional[Exception]
     worker: Worker
 
 
@@ -152,7 +161,7 @@ class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGen
 
     def _next_sync(
         self,
-        timeout_s: Optional[int | float] = None
+        timeout_s: Optional[Union[int, float]] = None
     ) -> ObjectRef[_R]: # ObjectRef could be nil
         """Waits for timeout_s and returns the object ref if available.
 
@@ -181,7 +190,7 @@ class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGen
 
     async def _next_async(
             self,
-            timeout_s: Optional[int | float] = None
+            timeout_s: Optional[Union[int, float]] = None
     ) -> ObjectRef[_R]: # ObjectRef could be nil
         """Same API as _next_sync, but it is for async context."""
         ...
