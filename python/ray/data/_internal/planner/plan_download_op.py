@@ -192,7 +192,10 @@ def download_bytes_threaded(
                 try:
                     with fs.open_input_file(uri_path) as f:
                         yield f.read()
-                except OSError as _:
+                except OSError as e:
+                    logger.debug(
+                        f"Failed to download URI '{uri_path}' from column '{uri_column_name}' with error: {e}"
+                    )
                     yield None
 
         # Use make_async_gen to download URI bytes concurrently
@@ -281,7 +284,6 @@ class PartitionActor:
         ]
 
         target_nbytes_per_partition = self._data_context.target_max_block_size
- 
         avg_nbytes_per_row = sum(row_sizes) / len(row_sizes)
         if avg_nbytes_per_row == 0:
             logger.warning(
