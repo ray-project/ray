@@ -35,6 +35,8 @@ from typing import (
     TypedDict
 )
 
+from typing_extensions import NotRequired
+
 import contextvars
 import concurrent.futures
 import collections
@@ -295,20 +297,8 @@ class RefCountDict(TypedDict):
     local: int
     submitted: int
 
-class GcsErrorPollDict(TypedDict):
-    job_id:bytes
-    type:str
-    error_message:str
-    timestamp:float
-
-class GcsLogPollDict(TypedDict):
-    ip:str
-    pid:str
-    job:str
-    is_err:bool
-    lines:list[str]
-    actor_name:str
-    task_name:str
+class FallbackStrategyDict(TypedDict):
+    label_selector: NotRequired[Dict[str,str]]
 
 
 @PublicAPI
