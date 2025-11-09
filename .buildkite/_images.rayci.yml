@@ -28,6 +28,7 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: ""
+      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix}}.lock"
     depends_on: raycpubase
 
   - name: raycudabase
@@ -142,6 +143,7 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray-ml"
       ARCH_SUFFIX: ""
+      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix}}.lock"
     depends_on: ray-mlcpubase
 
   - name: ray-mlcudabase
