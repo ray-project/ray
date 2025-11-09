@@ -125,9 +125,6 @@ from ray.includes.unique_ids import (
     check_id,
 )
 
-_FDArgs = ParamSpec("_FDArgs")
-_FDReturn = TypeVar("_FDReturn")
-
 __all__ = [
     # ray.includes.libcoreworker
     "ProfileEvent",
@@ -285,22 +282,22 @@ GRPC_STATUS_CODE_DEADLINE_EXCEEDED: int
 GRPC_STATUS_CODE_RESOURCE_EXHAUSTED: int
 GRPC_STATUS_CODE_UNIMPLEMENTED: int
 
-current_task_id: TaskID|None
+current_task_id: Union[TaskID, None]
 current_task_id_lock: threading.Lock
 
 job_config_initialized: bool
 job_config_initialization_lock: threading.Lock
 
-async_task_id: contextvars.ContextVar[TaskID|None]
-async_task_name: contextvars.ContextVar[str|None]
-async_task_function_name: contextvars.ContextVar[str|None]
+async_task_id: contextvars.ContextVar[Union[TaskID, None] ]
+async_task_name: contextvars.ContextVar[Union[str, None] ]
+async_task_function_name: contextvars.ContextVar[Union[str, None] ]
 
 class NumReturnsWarning(UserWarning):
     """Warning when num_returns=0 but the task returns a non-None value."""
     pass
 
 class HasReadInto(Protocol):
-    def readinto(self,b: bytearray|memoryview,/) -> None: ...
+    def readinto(self,b: Union[bytearray, memoryview] ,/) -> None: ...
 
 _R = TypeVar("_R") # for ObjectRefs
 _R2 = TypeVar("_R2")
@@ -325,7 +322,7 @@ class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGen
     """
 
     _generator_ref: ObjectRef
-    _generator_task_exception: Exception|None
+    _generator_task_exception: Union[Exception, None]
     worker: Worker
 
 
@@ -414,7 +411,7 @@ class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGen
 
     def _next_sync(
         self,
-        timeout_s: Optional[int | float] = None
+        timeout_s: Optional[Union[int, float] ] = None
     ) -> ObjectRef[_R]: # ObjectRef could be nil
         """Waits for timeout_s and returns the object ref if available.
 
@@ -443,7 +440,7 @@ class ObjectRefGenerator(Generic[_R],Generator[ObjectRef[_R],None,None],AsyncGen
 
     async def _next_async(
             self,
-            timeout_s: Optional[int | float] = None
+            timeout_s: Optional[Union[int, float] ] = None
     ) -> ObjectRef[_R]: # ObjectRef could be nil
         """Same API as _next_sync, but it is for async context."""
         ...
@@ -501,6 +498,9 @@ class EmptyProfileEvent:
 class EventLoopDict:
 
     thread: threading.Thread
+
+_FDArgs = ParamSpec("_FDArgs")
+_FDReturn = TypeVar("_FDReturn")
 
 class CoreWorker:
 
@@ -675,16 +675,16 @@ class CoreWorker:
     def submit_task(self,
                     language: Language,
                     function_descriptor: FunctionDescriptor[_FDArgs,_FDReturn],
-                    args: Iterable[ObjectRef|Any],
-                    name: str|bytes,
+                    args: Iterable[Union[ObjectRef, Any] ],
+                    name: Union[str, bytes] ,
                     num_returns: int,
-                    resources: dict[str,int|float],
+                    resources: dict[str,Union[int, float] ],
                     max_retries: int,
                     retry_exceptions: bool,
                     retry_exception_allowlist: tuple[type[Exception],...]|None,
                     scheduling_strategy: str,
-                    debugger_breakpoint: str|bytes,
-                    serialized_runtime_env_info: str|bytes,
+                    debugger_breakpoint: Union[str, bytes] ,
+                    serialized_runtime_env_info: Union[str, bytes] ,
                     generator_backpressure_num_objects: int,
                     enable_task_events: bool,
                     labels: dict[str,str],
@@ -694,18 +694,18 @@ class CoreWorker:
     def create_actor(self,
                      language: Language,
                      function_descriptor: FunctionDescriptor,
-                     args: Iterable[ObjectRef|Any],
+                     args: Iterable[Union[ObjectRef, Any] ],
                      max_restarts: int,
                      max_task_retries: int,
-                     resources: dict[str,int|float],
-                     placement_resources: dict[str,int|float],
+                     resources: dict[str,Union[int, float] ],
+                     placement_resources: dict[str,Union[int, float] ],
                      max_concurrency: int,
-                     is_detached: Any|None,
-                     name: str|bytes,
-                     ray_namespace: str|bytes,
+                     is_detached: Union[Any, None] ,
+                     name: Union[str, bytes] ,
+                     ray_namespace: Union[str, bytes] ,
                      is_asyncio: bool,
-                     extension_data: str|bytes,
-                     serialized_runtime_env_info: str|bytes,
+                     extension_data: Union[str, bytes] ,
+                     serialized_runtime_env_info: Union[str, bytes] ,
                      concurrency_groups_dict: dict[str,Any],
                      max_pending_calls: int,
                      scheduling_strategy: str,
@@ -719,12 +719,12 @@ class CoreWorker:
 
     def create_placement_group(
                             self,
-                            name: str|bytes,
-                            bundles: list[dict[str|bytes, float]],
-                            strategy: str|bytes,
+                            name: Union[str, bytes] ,
+                            bundles: list[dict[Union[str, bytes] , float]],
+                            strategy: Union[str, bytes] ,
                             is_detached: bool,
-                            soft_target_node_id: str|bytes|None,
-                            bundle_label_selector: list[dict[str|bytes, str|bytes]]) -> PlacementGroupID: ...
+                            soft_target_node_id: Union[str, bytes] |None,
+                            bundle_label_selector: list[dict[Union[str, bytes] , Union[str, bytes] ]]) -> PlacementGroupID: ...
 
     def remove_placement_group(self, placement_group_id: PlacementGroupID): ...
 
@@ -736,14 +736,14 @@ class CoreWorker:
                           language: Language,
                           actor_id: ActorID,
                           function_descriptor: FunctionDescriptor[_FDArgs,_FDReturn],
-                          args: Iterable[ObjectRef|Any],
-                          name: str|bytes,
+                          args: Iterable[Union[ObjectRef, Any] ],
+                          name: Union[str, bytes] ,
                           num_returns: int,
                           max_retries: int,
                           retry_exceptions: bool,
                           retry_exception_allowlist: tuple[type[Exception],...]|None,
                           num_method_cpus: float,
-                          concurrency_group_name: str|bytes,
+                          concurrency_group_name: Union[str, bytes] ,
                           generator_backpressure_num_objects: int,
                           enable_task_events: bool,
                           py_tensor_transport: int) -> list[ObjectRef[_FDReturn]]: ...
@@ -756,11 +756,11 @@ class CoreWorker:
 
     def resource_ids(self) -> dict[str,list[tuple[int,float]]]: ...
 
-    def profile_event(self, event_type: str|bytes, extra_data=None) -> ProfileEvent|EmptyProfileEvent: ...
+    def profile_event(self, event_type: Union[str, bytes] , extra_data=None) -> Union[ProfileEvent, EmptyProfileEvent] : ...
 
     def remove_actor_handle_reference(self, actor_id: ActorID) -> None: ...
 
-    def get_local_actor_state(self, actor_id: ActorID) -> int|None: ...
+    def get_local_actor_state(self, actor_id: ActorID) -> Union[int, None] : ...
 
     def deserialize_and_register_actor_handle(self, bytes: bytes,
                                               outer_object_ref: ObjectRef[ActorHandle[_R]],
@@ -800,7 +800,7 @@ class CoreWorker:
 
     def reset_event_loop_executor(self, executor: concurrent.futures.ThreadPoolExecutor) -> None: ...
 
-    def get_event_loop(self, function_descriptor: PythonFunctionDescriptor, specified_cgname: str) -> tuple[asyncio.AbstractEventLoop|None,threading.Thread]: ...
+    def get_event_loop(self, function_descriptor: PythonFunctionDescriptor, specified_cgname: str) -> tuple[Union[asyncio.AbstractEventLoop, None] ,threading.Thread]: ...
 
     def run_async_func_or_coro_in_event_loop(
           self,
@@ -1025,7 +1025,7 @@ class StreamingGeneratorExecutionContext:
 
     def is_initialized(self) -> bool: ...
 
-def _get_actor_serialized_owner_address_or_none(actor_table_data: bytes) -> bytes|None: ...
+def _get_actor_serialized_owner_address_or_none(actor_table_data: bytes) -> Union[bytes, None] : ...
 
 def compute_task_id(object_ref: ObjectRef) -> TaskID: ...
 

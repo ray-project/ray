@@ -1,6 +1,6 @@
 # source: gcs_client.pyi
 from asyncio import Future
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Union
 
 import ray
 from ray.core.generated import autoscaler_pb2, gcs_pb2
@@ -24,90 +24,90 @@ class InnerGcsClient:
     # Internal KV sync methods
     #############################################################
     def internal_kv_get(
-        self, key: bytes, namespace: Optional[bytes]=None, timeout: Optional[int | float]=None
+        self, key: bytes, namespace: Optional[bytes]=None, timeout: Optional[Union[int, float] ]=None
     ) -> Optional[bytes]: ...
 
     def internal_kv_multi_get(
-        self, keys: List[bytes], namespace: Optional[bytes]=None, timeout: Optional[int | float]=None
+        self, keys: List[bytes], namespace: Optional[bytes]=None, timeout: Optional[Union[int, float] ]=None
     ) -> Dict[bytes, bytes]: ...
 
     def internal_kv_put(self, key: bytes, value: bytes, overwrite: bool=False,
-                        namespace: Optional[bytes]=None, timeout: Optional[int | float]=None) -> int:
+                        namespace: Optional[bytes]=None, timeout: Optional[Union[int, float] ]=None) -> int:
         """
         Returns 1 if the key is newly added, 0 if the key is overwritten.
         """
         ...
 
     def internal_kv_del(self, key: bytes, del_by_prefix: bool,
-                        namespace: Optional[bytes]=None, timeout: Optional[int | float]=None) -> int:
+                        namespace: Optional[bytes]=None, timeout: Optional[Union[int, float] ]=None) -> int:
         """
         Returns number of keys deleted.
         """
         ...
 
     def internal_kv_keys(
-        self, prefix: bytes, namespace: Optional[bytes]=None, timeout: Optional[int | float]=None
+        self, prefix: bytes, namespace: Optional[bytes]=None, timeout: Optional[Union[int, float] ]=None
     ) -> List[bytes]: ...
 
-    def internal_kv_exists(self, key: bytes, namespace: Optional[bytes]=None, timeout: Optional[int | float]=None) -> bool: ...
+    def internal_kv_exists(self, key: bytes, namespace: Optional[bytes]=None, timeout: Optional[Union[int, float] ]=None) -> bool: ...
 
     #############################################################
     # Internal KV async methods
     #############################################################
 
     def async_internal_kv_get(
-        self, key: bytes, namespace: Optional[bytes]=None, timeout: Optional[int | float]=None
+        self, key: bytes, namespace: Optional[bytes]=None, timeout: Optional[Union[int, float] ]=None
     ) -> Future[Optional[bytes]]: ...
 
     def async_internal_kv_multi_get(
-        self, keys: List[bytes], namespace: Optional[bytes]=None, timeout: Optional[int | float]=None
+        self, keys: List[bytes], namespace: Optional[bytes]=None, timeout: Optional[Union[int, float] ]=None
     ) -> Future[Dict[bytes, bytes]]: ...
 
     def async_internal_kv_put(
         self, key: bytes, value: bytes, overwrite: bool=False, namespace: Optional[bytes]=None,
-        timeout: Optional[int | float]=None
+        timeout: Optional[Union[int, float] ]=None
     ) -> Future[bool]: ...
 
     def async_internal_kv_del(self, key: bytes, del_by_prefix: bool,
-                              namespace: Optional[bytes]=None, timeout: Optional[int | float]=None) -> Future[int]: ...
+                              namespace: Optional[bytes]=None, timeout: Optional[Union[int, float] ]=None) -> Future[int]: ...
 
-    def async_internal_kv_keys(self, prefix: bytes, namespace: Optional[bytes]=None, timeout: Optional[int | float]=None
+    def async_internal_kv_keys(self, prefix: bytes, namespace: Optional[bytes]=None, timeout: Optional[Union[int, float] ]=None
                                ) -> Future[List[bytes]]: ...
 
-    def async_internal_kv_exists(self, key: bytes, namespace: Optional[bytes]=None, timeout: Optional[int | float]=None
+    def async_internal_kv_exists(self, key: bytes, namespace: Optional[bytes]=None, timeout: Optional[Union[int, float] ]=None
                                  ) -> Future[bool]: ...
 
     #############################################################
     # NodeInfo methods
     #############################################################
     def check_alive(
-        self, node_ids: List[NodeID], timeout: Optional[int | float] = None
+        self, node_ids: List[NodeID], timeout: Optional[Union[int, float] ] = None
     ) -> List[bool]: ...
 
     def async_check_alive(
-        self, node_ids: List[NodeID], timeout: Optional[int | float] = None
+        self, node_ids: List[NodeID], timeout: Optional[Union[int, float] ] = None
     ) -> Future[List[bool]]: ...
 
     def drain_nodes(
-        self, node_ids: Sequence[bytes], timeout: Optional[int | float] = None
+        self, node_ids: Sequence[bytes], timeout: Optional[Union[int, float] ] = None
     ) -> List[bytes]:
         """returns a list of node_ids that are successfully drained."""
         ...
 
     def get_all_node_info(
-        self, timeout: Optional[int | float] = None,
+        self, timeout: Optional[Union[int, float] ] = None,
         state_filter: Optional[int] = None,
     ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]: ...
 
     def async_get_all_node_info(
-        self, node_id: Optional[NodeID] = None, timeout: Optional[int | float] = None
+        self, node_id: Optional[NodeID] = None, timeout: Optional[Union[int, float] ] = None
     ) -> Future[Dict[NodeID, gcs_pb2.GcsNodeInfo]]: ...
 
     #############################################################
     # NodeResources methods
     #############################################################
     def get_all_resource_usage(
-        self, timeout: Optional[int | float] = None
+        self, timeout: Optional[Union[int, float] ] = None
     ) -> GetAllResourceUsageReply: ...
 
     #############################################################
@@ -119,13 +119,13 @@ class InnerGcsClient:
         actor_id: Optional[ActorID] = None,
         job_id: Optional[JobID] = None,
         actor_state_name: Optional[str] = None,
-        timeout: Optional[int | float] = None
+        timeout: Optional[Union[int, float] ] = None
     ) -> Future[Dict[ActorID, gcs_pb2.ActorTableData]]: ...
 
 
     def async_kill_actor(
         self, actor_id: ActorID, force_kill: bool, no_restart: bool,
-        timeout: Optional[int | float] = None
+        timeout: Optional[Union[int, float] ] = None
     ) -> Future[None]:
         """
         On success: returns None.
@@ -141,21 +141,21 @@ class InnerGcsClient:
         self, *, job_or_submission_id: Optional[str] = None,
         skip_submission_job_info_field: bool = False,
         skip_is_running_tasks_field: bool = False,
-        timeout: Optional[int | float] = None
+        timeout: Optional[Union[int, float] ] = None
     ) -> Dict[JobID, gcs_pb2.JobTableData]: ...
 
     def async_get_all_job_info(
         self, *, job_or_submission_id: Optional[str] = None,
         skip_submission_job_info_field: bool = False,
         skip_is_running_tasks_field: bool = False,
-        timeout: Optional[int | float] = None
+        timeout: Optional[Union[int, float] ] = None
     ) -> Future[Dict[JobID, gcs_pb2.JobTableData]]: ...
 
 
     #############################################################
     # Runtime Env methods
     #############################################################
-    def pin_runtime_env_uri(self, uri: str, expiration_s: int, timeout: Optional[int | float]=None) -> None: ...
+    def pin_runtime_env_uri(self, uri: str, expiration_s: int, timeout: Optional[Union[int, float] ]=None) -> None: ...
 
     #############################################################
     # Autoscaler methods
@@ -165,25 +165,25 @@ class InnerGcsClient:
             bundles: List[Dict[bytes, float]],
             label_selectors: List[Dict[str, str]],
             count_array: List[int],
-            timeout_s: Optional[int | float]=None) -> None: ...
+            timeout_s: Optional[Union[int, float] ]=None) -> None: ...
 
     def get_cluster_resource_state(
             self,
-            timeout_s: Optional[int | float]=None) -> bytes: ...
+            timeout_s: Optional[Union[int, float] ]=None) -> bytes: ...
 
     def get_cluster_status(
             self,
-            timeout_s: Optional[int | float]=None) -> bytes: ...
+            timeout_s: Optional[Union[int, float] ]=None) -> bytes: ...
 
     def async_get_cluster_status(
         self,
-        timeout_s: Optional[int | float]=None
+        timeout_s: Optional[Union[int, float] ]=None
     ) -> Future[autoscaler_pb2.GetClusterStatusReply]: ...
 
     def report_autoscaling_state(
         self,
         serialzied_state: bytes,
-        timeout_s: Optional[int | float]=None
+        timeout_s: Optional[Union[int, float] ]=None
     ) -> None:
         """Report autoscaling state to GCS"""
         ...
@@ -206,9 +206,9 @@ class InnerGcsClient:
     #############################################################
 
     def publish_error(self, key_id: bytes, error_type: str, message: str,
-                      job_id: Optional[JobID] = None, timeout: Optional[int|float] = None) -> None: ...
+                      job_id: Optional[JobID] = None, timeout: Optional[Union[int, float] ] = None) -> None: ...
 
-    def publish_logs(self, log_json: dict, timeout: Optional[int|float] = None) -> None: ...
+    def publish_logs(self, log_json: dict, timeout: Optional[Union[int, float] ] = None) -> None: ...
 
     def async_publish_node_resource_usage(
             self, key_id: str, node_resource_usage_json: str) -> Future[None]: ...
