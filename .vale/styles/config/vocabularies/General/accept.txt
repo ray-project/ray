@@ -63,6 +63,7 @@ GPU(s)?
 hostfile
 http
 HTTP
+Karpenter
 KServe
 KTO
 kubectl

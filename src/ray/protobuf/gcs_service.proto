@@ -151,7 +151,7 @@ message GetAllActorInfoReply {
 
 // `KillActorViaGcsRequest` is sent to GCS Service to ask to kill an actor.
 // `KillActorViaGcsRequest` is different from `KillActorRequest`.
-// `KillActorRequest` is send to core worker to ask to kill an actor.
+// `KillLocalActorRequest` is sent to raylet to ask to kill a local actor.
 message KillActorViaGcsRequest {
   // ID of this actor.
   bytes actor_id = 1;

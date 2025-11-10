@@ -204,9 +204,9 @@ def enable_open_telemetry(request):
     Fixture to enable OpenTelemetry for the test.
     """
     if request.param:
-        os.environ["RAY_enable_open_telemetry"] = "1"
+        os.environ["RAY_enable_open_telemetry"] = "true"
     else:
-        os.environ["RAY_enable_open_telemetry"] = "0"
+        os.environ["RAY_enable_open_telemetry"] = "false"
     yield
     os.environ.pop("RAY_enable_open_telemetry", None)
 

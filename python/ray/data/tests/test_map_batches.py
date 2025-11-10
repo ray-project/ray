@@ -480,7 +480,7 @@ def test_map_batches_batch_mutation(
     ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
 
     # Apply UDF that mutates the batches.
-    ds = ds.map_batches(mutate, batch_size=batch_size)
+    ds = ds.map_batches(mutate, batch_size=batch_size, zero_copy_batch=False)
     assert [row["id"] for row in ds.iter_rows()] == list(range(1, num_rows + 1))
 
 

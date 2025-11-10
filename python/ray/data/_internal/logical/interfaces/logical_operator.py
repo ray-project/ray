@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
 from .operator import Operator
 from ray.data.block import BlockMetadata
+from ray.data.expressions import Expr
 
 if TYPE_CHECKING:
     from ray.data.block import Schema
@@ -104,3 +105,28 @@ class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
         column_rename_map: Optional[Dict[str, str]],
     ) -> LogicalOperator:
         return self
+
+
+class LogicalOperatorSupportsPredicatePushdown(LogicalOperator):
+    """Mixin for reading operators supporting predicate pushdown"""
+
+    def supports_predicate_pushdown(self) -> bool:
+        return False
+
+    def get_current_predicate(self) -> Optional[Expr]:
+        return None
+
+    def apply_predicate(
+        self,
+        predicate_expr: Expr,
+    ) -> LogicalOperator:
+        return self
+
+    def get_column_renames(self) -> Optional[Dict[str, str]]:
+        """Return the column renames applied by projection pushdown, if any.
+
+        Returns:
+            A dictionary mapping old column names to new column names,
+            or None if no renaming has been applied.
+        """
+        return None

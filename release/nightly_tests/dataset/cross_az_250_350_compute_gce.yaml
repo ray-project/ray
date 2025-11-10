@@ -1,0 +1,19 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west1
+
+head_node_type:
+  name: head
+  instance_type: n2-standard-8
+  resources:
+    CPU: 0
+    GPU: 0
+
+worker_node_types:
+  - name: worker
+    instance_type: n2-standard-8
+    min_workers: 250
+    max_workers: 350
+
+flags:
+  enable_multi_az_serve: true
+  allow-cross-zone-autoscaling: true
