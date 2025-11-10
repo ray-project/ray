@@ -454,6 +454,7 @@ celery==5.5.3 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
     #   -r python/requirements.txt
+    #   flower
 certifi==2025.1.31 \
     --hash=sha256:3d5da6925056f6f18f119200434a4780a94263f10d1c21d032a6f6b2baa20651 \
     --hash=sha256:ca78db4565a652026a4db2bcdf68f2fb589ea80d0be70e03929ed730746b84fe
@@ -991,6 +992,10 @@ filelock==3.17.0 \
     #   transformers
     #   virtualenv
     #   vllm
+flower==2.0.1 \
+    --hash=sha256:5ab717b979530770c16afb48b50d2a98d23c3e9fe39851dcf6bc4d01845a02a0 \
+    --hash=sha256:9db2c621eeefbc844c8dd88be64aef61e84e2deb29b271e02ab2b5b9f01068e2
+    # via -r python/requirements.txt
 fqdn==1.5.1 \
     --hash=sha256:105ed3677e767fb5ca086a0c1f4bb66ebc3c100be518f0e0d755d9eae164d89f \
     --hash=sha256:3a179af3761e4df6eb2e026ff9e1a3033d3587bf980a0b1b2e1e5d08d7358014
@@ -1499,6 +1504,7 @@ humanize==4.12.1 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
     #   -r python/requirements/cloud-requirements.txt
+    #   flower
 idna==3.7 \
     --hash=sha256:028ff3aadf0609c1fd278d8ea3089299412a7a8b9bd005dd08b9f8285bcb5cfc \
     --hash=sha256:82fee1fc78add43492d3a1898bfa6d8a904cc97d8427f683ed8e798d07761aa0
@@ -2895,6 +2901,7 @@ prometheus-client==0.19.0 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
     #   -r python/requirements.txt
+    #   flower
     #   jupyter-server
     #   nbclassic
     #   notebook
@@ -3561,6 +3568,7 @@ pytz==2022.7.1 \
     --hash=sha256:78f4f37d8198e0627c5f1143240bb0206b8691d8d7ac6d78fee88b78733f8c4a
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
+    #   flower
     #   pandas
 pyyaml==6.0.1 \
     --hash=sha256:04ac92ad1925b2cff1db0cfebffb6ffc43457495c9b3c39d3fcae417d7125dc5 \
@@ -4588,6 +4596,7 @@ tornado==6.1 \
     --hash=sha256:fba85b6cd9c39be262fcd23865652920832b61583de2a2ca907dbd8e8a8c81e5
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
+    #   flower
     #   ipykernel
     #   jupyter-client
     #   jupyter-server

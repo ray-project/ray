@@ -265,7 +265,9 @@ cachetools==5.5.2
     #   mlflow-skinny
     #   pyiceberg
 celery==5.5.3
-    # via -r python/requirements.txt
+    # via
+    #   -r python/requirements.txt
+    #   flower
 certifi==2025.1.31
     # via
     #   -r python/requirements/cloud-requirements.txt
@@ -565,6 +567,8 @@ flatbuffers==23.5.26
     # via
     #   onnxruntime
     #   tensorflow
+flower==2.0.1
+    # via -r python/requirements.txt
 fonttools==4.45.1
     # via matplotlib
 fqdn==1.5.1
@@ -787,7 +791,9 @@ humanfriendly==10.0
     #   azure-cli-core
     #   coloredlogs
 humanize==4.12.1
-    # via -r python/requirements/cloud-requirements.txt
+    # via
+    #   -r python/requirements/cloud-requirements.txt
+    #   flower
 hyperopt @ git+https://github.com/hyperopt/hyperopt.git@2504ee61419737e814e2dec2961b15d12775529c
     # via -r python/requirements/ml/tune-requirements.txt
 identify==2.6.1
@@ -1543,6 +1549,7 @@ pre-commit==3.5.0
 prometheus-client==0.19.0
     # via
     #   -r python/requirements.txt
+    #   flower
     #   jupyter-server
     #   nbclassic
     #   notebook
@@ -1834,6 +1841,7 @@ pytz==2022.7.1
     #   -r python/requirements/test-requirements.txt
     #   aim
     #   clickhouse-connect
+    #   flower
     #   pandas
     #   snowflake-connector-python
 pyu2f==0.1.5
@@ -2348,6 +2356,7 @@ tornado==6.1 ; python_version < "3.12"
     #   -r python/requirements/test-requirements.txt
     #   bokeh
     #   distributed
+    #   flower
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
