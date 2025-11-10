@@ -1573,6 +1573,8 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Iterate through each node and modify the node's available resources
         # if the requests are schedulable.
         for idx, node in enumerate(nodes_copy):
+            logger.warning(f"_sched_best_node: {node.ray_node_id}, {node.node_type}, {node.status}")
+
             remaining, score = node.try_schedule(requests, resource_request_source)
 
             if len(remaining) == len(requests):
