@@ -1,10 +1,10 @@
 build_arg_sets:
   py39:
-    PYTHON_VERSION: '3.9'
-    PYTHON_SHORT: '39'
+    PYTHON_VERSION: "3.9"
+    PYTHON_SHORT: "39"
   py310:
-    PYTHON_VERSION: '3.10'
-    PYTHON_SHORT: '310'
+    PYTHON_VERSION: "3.10"
+    PYTHON_SHORT: "310"
 
 depsets:
   - name: audio_transcription_py${PYTHON_SHORT}
