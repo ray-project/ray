@@ -18,6 +18,7 @@ from ray._private.telemetry.metric_cardinality import (
     TASK_OR_ACTOR_NAME_TAG_KEY,
 )
 
+from ray._private.ray_constants import RAY_ENABLE_OPEN_TELEMETRY
 
 try:
     import prometheus_client
@@ -41,7 +42,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
             "metrics_report_interval_ms": 1000,
             "enable_metrics_collection": True,
             "metric_cardinality_level": core_metric_cardinality_level,
-            "enable_open_telemetry": os.getenv("RAY_enable_open_telemetry") == "1",
+            "enable_open_telemetry": RAY_ENABLE_OPEN_TELEMETRY,
         }
     )
     cluster.wait_for_nodes()
@@ -151,7 +152,7 @@ def test_cardinality_recommended_and_legacy_levels(
 # implementation doesn't support low cardinality.
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
 @pytest.mark.skipif(
-    os.getenv("RAY_enable_open_telemetry") != "1",
+    not RAY_ENABLE_OPEN_TELEMETRY,
     reason="OpenTelemetry is not enabled",
 )
 @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
+import uuid
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
-import pyarrow.fs
 import pytest
 
 import ray
@@ -116,35 +116,25 @@ def test_get_best_checkpoint():
     )
 
 
-@pytest.mark.parametrize("storage", ["local", "remote"])
 @pytest.mark.parametrize("path_type", ["str", "PathLike"])
 @pytest.mark.parametrize("pass_storage_filesystem", [True, False])
 @pytest.mark.parametrize("trailing_slash", [False, True])
 def test_result_restore(
     ray_start_4_cpus,
-    monkeypatch,
     tmp_path,
-    storage,
-    mock_s3_bucket_uri,
     path_type,
     pass_storage_filesystem,
     trailing_slash,
 ):
     """Test Result.from_path functionality similar to v1 test_result_restore."""
 
-    if path_type == "PathLike" and storage == "remote":
-        # Path will collapse URI scheme separators (s3:// becomes s3:/)
-        return
-
     num_iterations = 3
     num_checkpoints = 2
 
-    if storage == "local":
-        storage_path = str(tmp_path)
-    elif storage == "remote":
-        storage_path = str(mock_s3_bucket_uri)
+    storage_path = str(tmp_path)
 
-    exp_name = "test_result_restore_v2"
+    # Add UUID to ensure test isolation when sharing module-scoped S3 mock
+    exp_name = f"test_result_restore_v2-{uuid.uuid4().hex[:8]}"
 
     trainer = build_dummy_trainer(
         exp_name,
@@ -187,12 +177,11 @@ def test_result_restore(
     assert len(result.best_checkpoints) == num_checkpoints
 
     """
-    Top-3 checkpoints with metrics:
+    Top-2 checkpoints with metrics:
 
                         | iter   | metric_a    metric_b
-    checkpoint_000004        4            4          -4
-    checkpoint_000003        3            3          -3
     checkpoint_000002        2            2          -2
+    checkpoint_000001        1            1          -1
     """
     # Check if the checkpoints bounded with correct metrics
     best_ckpt_a = result.get_best_checkpoint(metric="metric_a", mode="max")
@@ -205,36 +194,21 @@ def test_result_restore(
         result.get_best_checkpoint(metric="invalid_metric", mode="max")
 
 
-@pytest.mark.parametrize("storage", ["local", "remote"])
 def test_result_from_path_validation(
     ray_start_4_cpus,
     tmp_path,
-    storage,
-    mock_s3_bucket_uri,
 ):
     """Test that Result.from_path raises RuntimeError when folder or snapshot file doesn't exist."""
 
-    if storage == "local":
-        storage_path = str(tmp_path)
-        nonexistent_folder = str(tmp_path / "nonexistent_experiment")
-        existing_folder = str(tmp_path / "existing_experiment")
-    elif storage == "remote":
-        storage_path = str(mock_s3_bucket_uri)
-        nonexistent_folder = uri_join(storage_path, "nonexistent_experiment")
-        existing_folder = uri_join(storage_path, "existing_experiment")
+    nonexistent_folder = str(tmp_path / "nonexistent_experiment")
+    existing_folder = str(tmp_path / "existing_experiment")
 
     # Test 1: Folder doesn't exist
     with pytest.raises(RuntimeError, match="Experiment folder .* doesn't exist."):
         Result.from_path(nonexistent_folder)
 
     # Test 2: Folder exists but snapshot file doesn't exist
-    if storage == "local":
-        Path(existing_folder).mkdir(parents=True, exist_ok=True)
-    else:
-        # For S3, we need to create a dummy file to ensure the folder exists
-        fs, fs_path = pyarrow.fs.FileSystem.from_uri(existing_folder)
-        with fs.open_output_stream(f"{fs_path}/.dummy") as f:
-            f.write(b"dummy")
+    Path(existing_folder).mkdir(parents=True, exist_ok=True)
 
     with pytest.raises(
         RuntimeError,

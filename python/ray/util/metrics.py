@@ -1,9 +1,9 @@
 import logging
-import os
 import re
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from ray._private.ray_constants import env_bool
 from ray._raylet import (
     Count as CythonCount,
     Gauge as CythonGauge,
@@ -198,7 +198,7 @@ class Counter(Metric):
         if self._discard_metric:
             self._metric = None
         else:
-            if os.environ.get("RAY_enable_open_telemetry") == "1":
+            if env_bool("RAY_enable_open_telemetry", False):
                 """
                 For the new opentelemetry implementation, we'll correctly use Counter
                 rather than Sum.

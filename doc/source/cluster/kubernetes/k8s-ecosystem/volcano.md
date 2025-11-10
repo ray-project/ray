@@ -35,7 +35,7 @@ batchScheduler:
 * Pass the `--set batchScheduler.name=volcano` flag when running on the command line:
 ```shell
 # Install the Helm chart with the --batch-scheduler=volcano flag
-helm install kuberay-operator kuberay/kuberay-operator --version 1.4.2 --set batchScheduler.name=volcano
+helm install kuberay-operator kuberay/kuberay-operator --version 1.5.0 --set batchScheduler.name=volcano
 ```
 
 ### Step 4: Install a RayCluster with the Volcano scheduler
@@ -45,7 +45,7 @@ The RayCluster custom resource must include the `ray.io/scheduler-name: volcano`
 ```shell
 # Path: kuberay/ray-operator/config/samples
 # Includes label `ray.io/scheduler-name: volcano` in the metadata.labels
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.4.2/ray-operator/config/samples/ray-cluster.volcano-scheduler.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.5.0/ray-operator/config/samples/ray-cluster.volcano-scheduler.yaml
 kubectl apply -f ray-cluster.volcano-scheduler.yaml
 
 # Check the RayCluster
@@ -113,7 +113,7 @@ Next, create a RayCluster with a head node (1 CPU + 2Gi of RAM) and two workers 
 ```shell
 # Path: kuberay/ray-operator/config/samples
 # Includes  the `ray.io/scheduler-name: volcano` and `volcano.sh/queue-name: kuberay-test-queue` labels in the metadata.labels
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.4.2/ray-operator/config/samples/ray-cluster.volcano-scheduler-queue.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.5.0/ray-operator/config/samples/ray-cluster.volcano-scheduler-queue.yaml
 kubectl apply -f ray-cluster.volcano-scheduler-queue.yaml
 ```
 
@@ -332,7 +332,7 @@ Starting with KubeRay 1.5.0, KubeRay supports gang scheduling for RayJob custom 
 First, create a queue with a capacity of 4 CPUs and 6Gi of RAM and RayJob a with a head node (1 CPU + 2Gi of RAM), two workers (1 CPU + 1Gi of RAM each) and a submitter pod (0.5 CPU + 200Mi of RAM), for a total of 3500m CPU and 4296Mi of RAM
 
 ```shell
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/refs/tags/v1.5.0-rc.0/ray-operator/config/samples/ray-job.volcano-scheduler-queue.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.5.0/ray-operator/config/samples/ray-job.volcano-scheduler-queue.yaml
 kubectl apply -f ray-job.volcano-scheduler-queue.yaml
 ```
 

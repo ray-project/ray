@@ -20,7 +20,10 @@ from ray import ray_constants
 from ray._common.network_utils import build_address, parse_address
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._common.utils import get_or_create_event_loop
-from ray.dashboard import authentication_utils as auth_utils
+from ray._private.authentication.http_token_authentication import (
+    get_token_auth_middleware,
+)
+from ray._raylet import AuthenticationMode, get_authentication_mode
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 from ray.dashboard.head import DashboardHeadModule
 
@@ -160,33 +163,25 @@ class HttpServerDashboardHead:
                 status=500, text="Internal Server Error:" + str(e)
             )
 
+    @routes.get("/api/authentication_mode")
+    async def get_authentication_mode(self, req) -> aiohttp.web.Response:
+        try:
+            mode = get_authentication_mode()
+            if mode == AuthenticationMode.TOKEN:
+                mode_str = "token"
+            else:
+                mode_str = "disabled"
+
+            return aiohttp.web.json_response({"authentication_mode": mode_str})
+        except Exception as e:
+            logger.error(f"Error getting authentication mode: {e}")
+            return aiohttp.web.Response(
+                status=500, text="Internal Server Error: " + str(e)
+            )
+
     def get_address(self):
         assert self.http_host and self.http_port
         return self.http_host, self.http_port
-
-    @aiohttp.web.middleware
-    async def auth_middleware(self, request, handler):
-        """Authenticate requests when token auth is enabled."""
-
-        # Skip if auth not enabled
-        if not auth_utils.is_token_auth_enabled():
-            return await handler(request)
-
-        # Extract and validate token
-        auth_header = request.headers.get("Authorization", "")
-
-        if not auth_header:
-            return aiohttp.web.Response(
-                status=401, text="Unauthorized: Missing authentication token"
-            )
-
-        # Validate token
-        if not auth_utils.validate_request_token(auth_header):
-            return aiohttp.web.Response(
-                status=403, text="Forbidden: Invalid authentication token"
-            )
-
-        return await handler(request)
 
     @aiohttp.web.middleware
     async def path_clean_middleware(self, request, handler):
@@ -271,13 +266,25 @@ class HttpServerDashboardHead:
         for h in subprocess_module_handles:
             SubprocessRouteTable.bind(h)
 
+        # Public endpoints that don't require authentication.
+        # These are needed for the dashboard to load and request an auth token.
+        public_exact_paths = {
+            "/",  # Root index.html
+            "/favicon.ico",
+            "/api/authentication_mode",
+        }
+        public_path_prefixes = ("/static/",)  # Static assets (JS, CSS, images)
+
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
+
         app = aiohttp.web.Application(
             client_max_size=ray_constants.DASHBOARD_CLIENT_MAX_SIZE,
             middlewares=[
                 self.metrics_middleware,
-                self.auth_middleware,
+                get_token_auth_middleware(
+                    aiohttp, public_exact_paths, public_path_prefixes
+                ),
                 self.path_clean_middleware,
                 self.browsers_no_post_put_middleware,
                 self.cache_control_static_middleware,

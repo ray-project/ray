@@ -1,0 +1,73 @@
+group: doc
+steps:
+  - name: docbuild
+    label: "wanda: docbuild-py{{matrix}}"
+    wanda: ci/docker/doc.build.wanda.yaml
+    depends_on:
+      - oss-ci-base_build-multipy
+      - ray-core-build
+      - ray-dashboard-build
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.12"
+    env:
+      PYTHON: "{{matrix}}"
+      REQUIREMENTS_FILE: "python/deplocks/docs/docbuild_depset_py{{matrix}}.lock"
+    tags: cibase
+
+  - name: docgpubuild
+    label: "wanda: docgpubuild-py3.10"
+    wanda: ci/docker/docgpu.build.wanda.yaml
+    depends_on: oss-ci-base_gpu-multipy
+    env:
+      PYTHON: "3.10"
+    tags: cibase
+
+  - label: ":book: doc: build"
+    key: doc_build
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci/doc:cmd_build
+    depends_on: docbuild
+    job_env: docbuild-py3.12
+    tags:
+      - oss
+      - doc
+      - skip-on-premerge
+
+  - label: ":book: doc: check python API: {{matrix}}"
+    tags:
+      - oss
+      - python
+      - dashboard
+      - ray_client
+      - data
+      - serve
+      - ml
+      - tune
+      - train
+      - llm
+      - rllib
+      - rllib_gpu
+      - doc
+    key: lint-medium
+    instance_type: medium
+    depends_on: docbuild
+    job_env: docbuild-py3.9
+    commands:
+      - ./ci/lint/lint.sh {{matrix}}
+    matrix:
+      - api_annotations
+      - api_policy_check
+
+  - label: ":book: doc: linkcheck"
+    instance_type: medium
+    commands:
+      - make -C doc/ linkcheck_all
+    depends_on: docbuild
+    job_env: docbuild-py3.10
+    tags:
+      - oss
+      - skip-on-premerge
+    soft_fail: true

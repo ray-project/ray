@@ -83,8 +83,8 @@ In a cluster without the Ray Operator Addon enabled, KubeRay can be manually ins
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 
-# Install both CRDs and KubeRay operator v1.4.2.
-helm install kuberay-operator kuberay/kuberay-operator --version 1.4.2
+# Install both CRDs and KubeRay operator v1.5.0.
+helm install kuberay-operator kuberay/kuberay-operator --version 1.5.0
 ```
 
 GKE provides a [validating and mutating webhook](https://github.com/ai-on-gke/kuberay-tpu-webhook) to handle TPU Pod scheduling and bootstrap certain environment variables used for [JAX](https://github.com/google/jax) initialization. The Ray TPU webhook requires a KubeRay operator version of at least v1.1.0. GKE automatically installs the Ray TPU webhook through the [Ray Operator Addon](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke) with GKE versions 1.30.0-gke.1747000 or later.

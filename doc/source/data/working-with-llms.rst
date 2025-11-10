@@ -7,10 +7,46 @@ The :ref:`ray.data.llm <llm-ref>` module integrates with key large language mode
 
 This guide shows you how to use :ref:`ray.data.llm <llm-ref>` to:
 
+* :ref:`Quickstart: vLLM batch inference <vllm_quickstart>`
 * :ref:`Perform batch inference with LLMs <batch_inference_llm>`
 * :ref:`Configure vLLM for LLM inference <vllm_llm>`
 * :ref:`Batch inference with embedding models <embedding_models>`
 * :ref:`Query deployed models with an OpenAI compatible API endpoint <openai_compatible_api_endpoint>`
+
+.. _vllm_quickstart:
+
+Quickstart: vLLM batch inference
+---------------------------------
+
+Get started with vLLM batch inference in just a few steps. This example shows the minimal setup needed to run batch inference on a dataset.
+
+.. note::
+    This quickstart requires a GPU as vLLM is GPU-accelerated.
+
+First, install Ray Data with LLM support:
+
+.. code-block:: bash
+
+    pip install -U "ray[data, llm]>=2.49.1"
+
+Here's a complete minimal example that runs batch inference:
+
+.. literalinclude:: doc_code/working-with-llms/minimal_quickstart.py
+    :language: python
+    :start-after: __minimal_vllm_quickstart_start__
+    :end-before: __minimal_vllm_quickstart_end__
+
+This example:
+
+1. Creates a simple dataset with prompts
+2. Configures a vLLM processor with minimal settings
+3. Builds a processor that handles preprocessing (converting prompts to OpenAI chat format) and postprocessing (extracting generated text)
+4. Runs inference on the dataset
+5. Iterates through results
+
+The processor expects input rows with a ``prompt`` field and outputs rows with both ``prompt`` and ``response`` fields. You can consume results using ``iter_rows()``, ``take()``, ``show()``, or save to files with ``write_parquet()``.
+
+For more configuration options and advanced features, see the sections below.
 
 .. _batch_inference_llm:
 
@@ -22,15 +58,6 @@ logic for performing batch inference with LLMs on a Ray Data dataset.
 
 You can use the :func:`build_llm_processor <ray.data.llm.build_llm_processor>` API to construct a processor.
 The following example uses the :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` to construct a processor for the `unsloth/Llama-3.1-8B-Instruct` model.
-
-To start, install Ray Data + LLMs. This also installs vLLM, which is a popular and optimized LLM inference engine.
-
-.. code-block:: bash
-
-    pip install -U "ray[data, llm]>=2.49.1"
-
-The :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` is a configuration object for the vLLM engine.
-It contains the model name, the number of GPUs to use, and the number of shards to use, along with other vLLM engine configurations.
 Upon execution, the Processor object instantiates replicas of the vLLM engine (using :meth:`map_batches <ray.data.Dataset.map_batches>` under the hood).
 
 .. .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
@@ -52,14 +79,7 @@ The configuration includes detailed comments explaining:
 - **`max_num_batched_tokens`**: Maximum tokens processed simultaneously (reduce if CUDA OOM occurs)
 - **`accelerator_type`**: Specify GPU type for optimal resource allocation
 
-Each processor requires specific input columns based on the model and configuration. The vLLM processor expects input in OpenAI chat format with a 'messages' column.
-
-This basic configuration pattern is used throughout this guide and includes helpful comments explaining key parameters.
-
-This configuration creates a processor that expects:
-
-- **Input**: Dataset with 'messages' column (OpenAI chat format)
-- **Output**: Dataset with 'generated_text' column containing model responses
+The vLLM processor expects input in OpenAI chat format with a 'messages' column and outputs a 'generated_text' column containing model responses.
 
 Some models may require a Hugging Face token to be specified. You can specify the token in the `runtime_env` argument.
 
