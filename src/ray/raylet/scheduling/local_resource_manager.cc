@@ -364,7 +364,7 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   }
 }
 
-std::optional<syncer::InnerRaySyncMessage> LocalResourceManager::CreateInnerSyncMessage(
+std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
     int64_t after_version, syncer::MessageType message_type) const {
   RAY_CHECK_EQ(message_type, syncer::MessageType::RESOURCE_VIEW);
   // We check the memory inside version, so version is not a const function.
@@ -376,18 +376,18 @@ std::optional<syncer::InnerRaySyncMessage> LocalResourceManager::CreateInnerSync
     return std::nullopt;
   }
 
-  syncer::InnerRaySyncMessage inner_msg;
+  syncer::RaySyncMessage msg;
   syncer::ResourceViewSyncMessage resource_view_sync_message;
   PopulateResourceViewSyncMessage(resource_view_sync_message);
 
-  inner_msg.set_node_id(local_node_id_.Binary());
-  inner_msg.set_version(version_);
-  inner_msg.set_message_type(message_type);
+  msg.set_node_id(local_node_id_.Binary());
+  msg.set_version(version_);
+  msg.set_message_type(message_type);
   std::string serialized_msg;
   RAY_CHECK(resource_view_sync_message.SerializeToString(&serialized_msg));
-  inner_msg.set_sync_message(std::move(serialized_msg));
+  msg.set_sync_message(std::move(serialized_msg));
 
-  return std::make_optional(std::move(inner_msg));
+  return std::make_optional(std::move(msg));
 }
 
 void LocalResourceManager::OnResourceOrStateChanged() {

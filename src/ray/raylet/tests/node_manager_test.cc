@@ -688,7 +688,7 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
   EXPECT_FALSE(failed_pin_reply.successes(0));
 }
 
-TEST_F(NodeManagerTest, TestConsumeInnerSyncMessage) {
+TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
   // Create and wrap a mock resource view sync message.
   syncer::ResourceViewSyncMessage payload;
   payload.mutable_resources_total()->insert({"CPU", kTestTotalCpuResource});
@@ -699,13 +699,12 @@ TEST_F(NodeManagerTest, TestConsumeInnerSyncMessage) {
   ASSERT_TRUE(payload.SerializeToString(&serialized));
 
   auto node_id = NodeID::FromRandom();
-  syncer::InnerRaySyncMessage inner_msg;
-  inner_msg.set_node_id(node_id.Binary());
-  inner_msg.set_message_type(syncer::MessageType::RESOURCE_VIEW);
-  inner_msg.set_sync_message(serialized);
+  syncer::RaySyncMessage msg;
+  msg.set_node_id(node_id.Binary());
+  msg.set_message_type(syncer::MessageType::RESOURCE_VIEW);
+  msg.set_sync_message(serialized);
 
-  node_manager_->ConsumeInnerSyncMessage(
-      std::make_shared<syncer::InnerRaySyncMessage>(inner_msg));
+  node_manager_->ConsumeSyncMessage(std::make_shared<syncer::RaySyncMessage>(msg));
 
   // Verify node resources and labels were updated.
   const auto &node_resources =

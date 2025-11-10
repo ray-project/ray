@@ -36,8 +36,8 @@ GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
       local_node_id_(std::move(local_node_id)),
       cluster_lease_manager_(cluster_lease_manager) {}
 
-void GcsResourceManager::ConsumeInnerSyncMessage(
-    std::shared_ptr<const syncer::InnerRaySyncMessage> message) {
+void GcsResourceManager::ConsumeSyncMessage(
+    std::shared_ptr<const syncer::RaySyncMessage> message) {
   // ConsumeSyncMessage is called by ray_syncer which might not run
   // in a dedicated thread for performance.
   // GcsResourceManager is a module always run in the main thread, so we just

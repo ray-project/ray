@@ -26,12 +26,21 @@ RayClientBidiReactor::RayClientBidiReactor(
     const std::string &remote_node_id,
     const std::string &local_node_id,
     instrumented_io_context &io_context,
-    std::function<void(std::shared_ptr<const InnerRaySyncMessage>)> message_processor,
+    std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
     std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
     std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub,
     bool batching_enabled)
     : RaySyncerBidiReactorBase<ClientBidiReactor>(
-          io_context, remote_node_id, std::move(message_processor), batching_enabled),
+          io_context,
+          remote_node_id,
+          std::move(message_processor),
+          /* batch_size */
+          batching_enabled ? RayConfig::instance().gcs_resource_broadcast_max_batch_size()
+                           : 1,
+          /* batch_delay_ms */
+          batching_enabled
+              ? RayConfig::instance().gcs_resource_broadcast_max_batch_delay_ms()
+              : 0),
       cleanup_cb_(std::move(cleanup_cb)),
       stub_(std::move(stub)) {
   client_context_.AddMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());

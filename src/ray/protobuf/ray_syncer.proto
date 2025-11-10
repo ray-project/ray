@@ -68,5 +68,5 @@ message RaySyncMessageBatch {
 }
 
 service RaySyncer {
-  rpc StartSync(stream RaySyncMessage) returns (stream RaySyncMessage);
+  rpc StartSync(stream RaySyncMessageBatch) returns (stream RaySyncMessageBatch);
 }

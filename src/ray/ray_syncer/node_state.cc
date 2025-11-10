@@ -39,31 +39,29 @@ bool NodeState::SetComponent(MessageType message_type,
   return false;
 }
 
-std::optional<InnerRaySyncMessage> NodeState::CreateInnerSyncMessage(
-    MessageType message_type) {
+std::optional<RaySyncMessage> NodeState::CreateSyncMessage(MessageType message_type) {
   if (reporters_[message_type] == nullptr) {
     return std::nullopt;
   }
-  auto inner_message = reporters_[message_type]->CreateInnerSyncMessage(
+  auto message = reporters_[message_type]->CreateSyncMessage(
       sync_message_versions_taken_[message_type], message_type);
-  if (inner_message != std::nullopt) {
-    sync_message_versions_taken_[message_type] = inner_message->version();
+  if (message != std::nullopt) {
+    sync_message_versions_taken_[message_type] = message->version();
     RAY_LOG(DEBUG) << "Sync message taken: message_type:" << message_type
-                   << ", version:" << inner_message->version()
-                   << ", node:" << NodeID::FromBinary(inner_message->node_id());
+                   << ", version:" << message->version()
+                   << ", node:" << NodeID::FromBinary(message->node_id());
   }
-  return inner_message;
+  return message;
 }
 
 bool NodeState::RemoveNode(const std::string &node_id) {
   return cluster_view_.erase(node_id) != 0;
 }
 
-bool NodeState::ConsumeInnerSyncMessage(
-    std::shared_ptr<const InnerRaySyncMessage> message) {
+bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message) {
   auto &current = cluster_view_[message->node_id()][message->message_type()];
 
-  RAY_LOG(DEBUG) << "ConsumeInnerSyncMessage: local_version="
+  RAY_LOG(DEBUG) << "ConsumeSyncMessage: local_version="
                  << (current ? current->version() : -1)
                  << " message_version=" << message->version()
                  << ", message_from=" << NodeID::FromBinary(message->node_id());
@@ -77,7 +75,7 @@ bool NodeState::ConsumeInnerSyncMessage(
   if (receiver != nullptr) {
     RAY_LOG(DEBUG).WithField(NodeID::FromBinary(message->node_id()))
         << "Consume message from node";
-    receiver->ConsumeInnerSyncMessage(message);
+    receiver->ConsumeSyncMessage(message);
   }
   return true;
 }

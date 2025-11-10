@@ -26,9 +26,9 @@
 namespace ray::syncer {
 
 using ray::rpc::syncer::CommandsSyncMessage;
-using ray::rpc::syncer::InnerRaySyncMessage;
 using ray::rpc::syncer::MessageType;
 using ray::rpc::syncer::RaySyncMessage;
+using ray::rpc::syncer::RaySyncMessageBatch;
 using ray::rpc::syncer::ResourceViewSyncMessage;
 
 /// This is the base class for the bidi-streaming call and defined the method
@@ -82,7 +82,7 @@ class RaySyncerBidiReactor {
   /// \param message The message to be sent.
   ///
   /// \return true if push to queue successfully.
-  virtual bool PushToSendingQueue(std::shared_ptr<const InnerRaySyncMessage> message) = 0;
+  virtual bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message) = 0;
 
   /// Return the remote node id of this connection.
   const std::string &GetRemoteNodeID() const { return remote_node_id_; }

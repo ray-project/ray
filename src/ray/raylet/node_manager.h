@@ -202,10 +202,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
-  void ConsumeInnerSyncMessage(
-      std::shared_ptr<const syncer::InnerRaySyncMessage> message) override;
+  void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
 
-  std::optional<syncer::InnerRaySyncMessage> CreateInnerSyncMessage(
+  std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
 
   /// Trigger global GC across the cluster to free up references to actors or
