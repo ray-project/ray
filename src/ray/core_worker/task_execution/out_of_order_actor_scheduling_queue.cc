@@ -26,7 +26,7 @@ namespace core {
 
 OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
     instrumented_io_context &task_execution_service,
-    DependencyWaiter &waiter,
+    ActorTaskExecutionArgWaiter &waiter,
     worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
     std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
@@ -188,7 +188,7 @@ void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
         /* include_task_info */ false));
     // Make a copy since request is going to be moved.
     auto dependencies = request.PendingDependencies();
-    waiter_.Wait(dependencies, [this, request = std::move(request)]() mutable {
+    waiter_.AsyncWait(dependencies, [this, request = std::move(request)]() mutable {
       RAY_CHECK_EQ(std::this_thread::get_id(), main_thread_id_);
 
       const TaskSpecification &task = request.TaskSpec();

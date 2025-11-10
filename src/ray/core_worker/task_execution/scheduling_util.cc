@@ -68,22 +68,21 @@ void InboundRequest::MarkDependenciesResolved() { pending_dependencies_.clear();
 
 const TaskSpecification &InboundRequest::TaskSpec() const { return task_spec_; }
 
-DependencyWaiterImpl::DependencyWaiterImpl(WaitForActorCallArgs wait_for_actor_call_args)
-    : wait_for_actor_call_args_(wait_for_actor_call_args) {}
+ActorTaskExecutionArgWaiter::ActorTaskExecutionArgWaiter(AsyncWaitForArgs async_wait_for_args)
+    : async_wait_for_args_(async_wait_for_args) {}
 
-void DependencyWaiterImpl::Wait(const std::vector<rpc::ObjectReference> &dependencies,
-                                std::function<void()> on_dependencies_available) {
-  auto tag = next_request_id_++;
-  requests_[tag] = on_dependencies_available;
-  RAY_CHECK_OK(wait_for_actor_call_args_(dependencies, tag));
+void ActorTaskExecutionArgWaiter::AsyncWait(const std::vector<rpc::ObjectReference> &args,
+                                std::function<void()> on_args_ready) {
+  auto tag = next_tag_++;
+  in_flight_waits_[tag] = on_args_ready;
+  RAY_CHECK_OK(async_wait_for_args_(args, tag));
 }
 
-/// Fulfills the callback stored by Wait().
-void DependencyWaiterImpl::OnWaitComplete(int64_t tag) {
-  auto it = requests_.find(tag);
-  RAY_CHECK(it != requests_.end());
+void ActorTaskExecutionArgWaiter::MarkReady(int64_t tag) {
+  auto it = in_flight_waits_.find(tag);
+  RAY_CHECK(it != in_flight_waits_.end());
   it->second();
-  requests_.erase(it);
+  in_flight_waits_.erase(it);
 }
 }  // namespace core
 }  // namespace ray

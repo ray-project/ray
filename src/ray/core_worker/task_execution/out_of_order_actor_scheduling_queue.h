@@ -40,7 +40,7 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
  public:
   OutOfOrderActorSchedulingQueue(
       instrumented_io_context &task_execution_service,
-      DependencyWaiter &waiter,
+      ActorTaskExecutionArgWaiter &waiter,
       worker::TaskEventBuffer &task_event_buffer,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
       std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
@@ -90,7 +90,7 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   /// The id of the thread that constructed this scheduling queue.
   std::thread::id main_thread_id_;
   /// Reference to the waiter owned by the task receiver.
-  DependencyWaiter &waiter_;
+  ActorTaskExecutionArgWaiter &waiter_;
   worker::TaskEventBuffer &task_event_buffer_;
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;

@@ -384,15 +384,15 @@ CoreWorker::CoreWorker(
                                   std::placeholders::_6,
                                   std::placeholders::_7,
                                   std::placeholders::_8);
-    task_argument_waiter_ = std::make_unique<DependencyWaiterImpl>(
-        [this](const std::vector<rpc::ObjectReference> &dependencies, int64_t tag) {
-          return raylet_ipc_client_->WaitForActorCallArgs(dependencies, tag);
+    actor_task_execution_arg_waiter_ = std::make_unique<ActorTaskExecutionArgWaiter>(
+        [this](const std::vector<rpc::ObjectReference> &args, int64_t tag) {
+          return raylet_ipc_client_->WaitForActorCallArgs(args, tag);
         });
     task_receiver_ = std::make_unique<TaskReceiver>(
         task_execution_service_,
         *task_event_buffer_,
         execute_task,
-        *task_argument_waiter_,
+        *actor_task_execution_arg_waiter_,
         options_.initialize_thread_callback,
         [this] { return raylet_ipc_client_->ActorCreationTaskDone(); });
   }
@@ -3413,13 +3413,13 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                           << " won't be executed because the worker already exited.";
             return;
           }
-          task_receiver_->HandleTask(std::move(request), reply, send_reply_callback);
+          task_receiver_->EnqueueTask(std::move(request), reply, send_reply_callback);
         },
         "CoreWorker.HandlePushTaskActor");
   } else {
     // Normal tasks are enqueued here, and we post a RunNormalTasksFromQueue instance to
     // the task execution service.
-    task_receiver_->HandleTask(std::move(request), reply, send_reply_callback);
+    task_receiver_->EnqueueTask(std::move(request), reply, send_reply_callback);
     task_execution_service_.post(
         [this, func_name] {
           // We have posted an exit task onto the main event loop,
@@ -3447,11 +3447,11 @@ void CoreWorker::HandleActorCallArgWaitComplete(
   // Post on the task execution event loop since this may trigger the
   // execution of a task that is now ready to run.
   task_execution_service_.post(
-      [this, request = std::move(request)] {
-        RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
-        task_argument_waiter_->OnWaitComplete(request.tag());
+      [this, tag = request.tag()] {
+        RAY_LOG(DEBUG) << "Actor task args are ready for tag: " << tag;
+        actor_task_execution_arg_waiter_->MarkArgsReady(tag);
       },
-      "CoreWorker.ArgWaitComplete");
+      "CoreWorker.MarkActorTaskArgsReady");
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

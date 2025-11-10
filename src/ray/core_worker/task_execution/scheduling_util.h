@@ -58,33 +58,36 @@ class InboundRequest {
   std::vector<rpc::ObjectReference> pending_dependencies_;
 };
 
-/// Waits for an object dependency to become available. Abstract for testing.
-class DependencyWaiter {
+class ActorTaskExecutionArgWaiterInterface {
  public:
-  /// Calls `callback` once the specified objects become available.
-  virtual void Wait(const std::vector<rpc::ObjectReference> &dependencies,
-                    std::function<void()> on_dependencies_available) = 0;
+  virtual ~ActorTaskExecutionArgWaiterInterface() = default;
 
-  virtual ~DependencyWaiter(){};
+  /// Asynchronously wait for the specified arguments and call `on_args_ready` when they are ready.
+  /// Trigger an async wait for the specified arguments.
+  ///
+  /// \param[in] on_args_ready The callback to call when arguments are ready.
+  virtual void AsyncWait(const std::vector<rpc::ObjectReference> &args,
+                    std::function<void()> on_args_ready) = 0;
 };
 
-class DependencyWaiterImpl : public DependencyWaiter {
+class ActorTaskExecutionArgWaiter : public ActorTaskExecutionArgWaiterInterface {
  public:
-  using WaitForActorCallArgs = std::function<Status(
-      const std::vector<rpc::ObjectReference> &dependencies, int64_t tag)>;
+  // Callback to trigger the asynchronous wait.
+  // The caller is expected to call `MarkReady` with the provided tag when the associated arguments are ready.
+  using AsyncWaitForArgs = std::function<Status(
+      const std::vector<rpc::ObjectReference> &args, int64_t tag)>;
 
-  explicit DependencyWaiterImpl(WaitForActorCallArgs wait_for_actor_call_args);
+  explicit ActorTaskExecutionArgWaiter(AsyncWaitForArgs async_wait_for_args);
 
-  void Wait(const std::vector<rpc::ObjectReference> &dependencies,
-            std::function<void()> on_dependencies_available) override;
+  void AsyncWait(const std::vector<rpc::ObjectReference> &args,
+            std::function<void()> on_args_ready) override;
 
-  /// Fulfills the callback stored by Wait().
-  void OnWaitComplete(int64_t tag);
+  void MarkReady(int64_t tag);
 
  private:
-  int64_t next_request_id_ = 0;
-  absl::flat_hash_map<int64_t, std::function<void()>> requests_;
-  WaitForActorCallArgs wait_for_actor_call_args_;
+  uint64_t next_tag_ = 0;
+  absl::flat_hash_map<int64_t, std::function<void()>> in_flight_waits_;
+  AsyncWaitForArgs async_wait_for_args_;
 };
 
 }  // namespace core

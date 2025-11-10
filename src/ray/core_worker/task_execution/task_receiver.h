@@ -59,26 +59,28 @@ class TaskReceiver {
   TaskReceiver(instrumented_io_context &task_execution_service,
                worker::TaskEventBuffer &task_event_buffer,
                TaskHandler task_handler,
-               DependencyWaiter &dependency_waiter,
+               ActorTaskExecutionArgWaiter &actor_task_execution_arg_waiter,
                std::function<std::function<void()>()> initialize_thread_callback,
                OnActorCreationTaskDone actor_creation_task_done)
       : task_handler_(std::move(task_handler)),
         task_execution_service_(task_execution_service),
         task_event_buffer_(task_event_buffer),
-        waiter_(dependency_waiter),
+        waiter_(actor_task_execution_arg_waiter),
         initialize_thread_callback_(std::move(initialize_thread_callback)),
         actor_creation_task_done_(std::move(actor_creation_task_done)),
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
         fiber_state_manager_(nullptr) {}
 
-  /// Handle a `PushTask` request. If it's an actor request, this function will enqueue
-  /// the task and then start scheduling the requests to begin the execution. If it's a
-  /// non-actor request, this function will just enqueue the task.
+  /// Enqueue a task for execution that was received via `PushTask`.
+  ///
+  /// For actor tasks: the task will be enqueued and requests will be scheduled to begin execution if possible.
+  ///
+  /// For normal tasks: the task will only be enqueued and the caller must call `RunNormalTasksFromQueue` separately.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
-  /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandleTask(rpc::PushTaskRequest request,
+  /// \param[in] send_reply_callback The reply callback.
+  void EnqueueTask(rpc::PushTaskRequest request,
                   rpc::PushTaskReply *reply,
                   rpc::SendReplyCallback send_reply_callback);
 
@@ -106,6 +108,7 @@ class TaskReceiver {
  private:
   // True once shutdown begins. Requests to execute new tasks will be rejected.
   std::atomic<bool> stopping_ = false;
+
   /// Set up the configs for an actor.
   /// This should be called once for the actor creation task.
   void SetupActor(bool is_asyncio,
@@ -121,7 +124,7 @@ class TaskReceiver {
   worker::TaskEventBuffer &task_event_buffer_;
 
   /// Shared waiter for dependencies required by incoming tasks.
-  DependencyWaiter &waiter_;
+  ActorTaskExecutionArgWaiter &waiter_;
 
   /// The language-specific callback function that initializes threads.
   std::function<std::function<void()>()> initialize_thread_callback_;

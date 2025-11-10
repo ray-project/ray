@@ -24,10 +24,9 @@
 namespace ray {
 namespace core {
 
-void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
+void TaskReceiver::EnqueueTask(rpc::PushTaskRequest request,
                               rpc::PushTaskReply *reply,
                               rpc::SendReplyCallback send_reply_callback) {
-  TaskSpecification task_spec;
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
   // assigned at initial actor creation time.
   std::optional<ResourceMappingType> resource_ids;
@@ -38,8 +37,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     return [this, reply, resource_ids = resource_ids](
                const TaskSpecification &accepted_task_spec,
                const rpc::SendReplyCallback &accepted_send_reply_callback) mutable {
-      auto num_returns = accepted_task_spec.NumReturns();
-      RAY_CHECK(num_returns >= 0);
+      uint64_t num_returns = accepted_task_spec.NumReturns();
 
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
@@ -187,7 +185,7 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     }
   };
 
-  task_spec = TaskSpecification(std::move(*request.mutable_task_spec()));
+  auto task_spec = TaskSpecification(std::move(*request.mutable_task_spec()));
   if (stopping_) {
     reply->set_was_cancelled_before_running(true);
     if (task_spec.IsActorTask()) {

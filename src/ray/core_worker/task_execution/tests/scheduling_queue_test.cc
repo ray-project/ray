@@ -34,7 +34,7 @@ using std::chrono_literals::operator""s;
 namespace ray {
 namespace core {
 
-class MockWaiter : public DependencyWaiter {
+class MockWaiter : public ActorTaskExecutionArgWaiter {
  public:
   MockWaiter() {}
 
