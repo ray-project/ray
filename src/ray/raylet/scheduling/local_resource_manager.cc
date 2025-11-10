@@ -386,7 +386,6 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
   std::string serialized_msg;
   RAY_CHECK(resource_view_sync_message.SerializeToString(&serialized_msg));
   msg.set_sync_message(std::move(serialized_msg));
-
   return std::make_optional(std::move(msg));
 }
 

@@ -58,7 +58,7 @@ class LocalNode : public ray::syncer::ReporterInterface {
       return std::nullopt;
     }
     ray::rpc::syncer::RaySyncMessage msg;
-    msg.set_message_type(MessageType::RESOURCE_VIEW);
+    msg.set_message_type(ray::rpc::syncer::MessageType::RESOURCE_VIEW);
     msg.set_version(version_);
     msg.set_sync_message(
         std::string(reinterpret_cast<const char *>(&state_), sizeof(state_)));
@@ -73,7 +73,7 @@ class LocalNode : public ray::syncer::ReporterInterface {
   std::shared_ptr<PeriodicalRunner> timer_;
 };
 
-class RemoteNodes : public ReceiverInterface {
+class RemoteNodes : public ray::syncer::ReceiverInterface {
  public:
   RemoteNodes() {}
   void ConsumeSyncMessage(
