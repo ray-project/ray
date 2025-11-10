@@ -122,8 +122,6 @@ depsets:
     requirements:
       - docker/base-deps/requirements.in
       - docker/base-extra/requirements.in
-    constraints:
-      - /tmp/ray-deps/requirements_compiled.txt
     output: python/deplocks/base_extra/ray_base_extra_py${PYTHON_VERSION}.lock
     append_flags:
       - --unsafe-package ray
