@@ -64,7 +64,7 @@ class CloudResourceMonitor(InstanceUpdatedSubscriber):
         for instance in instances.values():
             last_status = InstanceUtil.get_last_status_transition(instance)
             if last_status:
-                last_unavailability_timestamp = int(last_status.timestamp_ns / 1e9)
+                last_unavailability_timestamp=(last_status.timestamp_ns) / 1000
             else:
                 last_unavailability_timestamp = time.time()
             self._resource_availabilities[instance.instance_type] = (
