@@ -652,65 +652,113 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
             {'col1': 1, 'col2': '1'}
             {'col1': 2, 'col2': '2'}
 
+.. _loading_huggingface_datasets:
+
+Loading Hugging Face datasets
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To read datasets from the Hugging Face Hub, use :func:`~ray.data.read_parquet` (or other
+read functions) with the ``HfFileSystem`` filesystem. This approach provides better
+performance and scalability than loading datasets into memory first.
+
+First, install the required dependencies:
+
+.. code-block:: console
+
+    pip install huggingface_hub
+
+Then, authenticate using your Hugging Face token:
+
+.. code-block:: console
+
+    export HF_TOKEN=<YOUR HUGGING FACE TOKEN>
+
+For most Hugging Face datasets, the data is stored in Parquet files. You can directly
+read from the dataset path:
+
+.. testcode::
+    :skipif: True
+
+    import os
+    import ray
+    from huggingface_hub import HfFileSystem
+
+    ds = ray.data.read_parquet(
+        "hf://datasets/wikimedia/wikipedia",
+        file_extensions=["parquet"],
+        filesystem=HfFileSystem(token=os.environ["HF_TOKEN"]),
+    )
+
+    print(f"Dataset count: {ds.count()}")
+    print(ds.schema())
+
+.. testoutput::
+    :options: +MOCK
+
+    Dataset count: 61614907
+    Column  Type
+    ------  ----
+    id      string
+    url     string
+    title   string
+    text    string
+
+If you need to filter by split (train, test, validation, etc.) or parse filenames,
+you can use the ``datasets`` library to discover files:
+
+.. testcode::
+    :skipif: True
+
+    import os
+    import ray
+    import datasets
+    from huggingface_hub import HfFileSystem
+
+    # Specify the dataset and the split name.
+    dataset_name = "wikimedia/wikipedia"
+    split = "train"
+
+    # Fetch the dataset files.
+    base_path = f"hf://datasets/{dataset_name}"
+    patterns = datasets.data_files.get_data_patterns(base_path)
+    data_files_with_splits = datasets.data_files.DataFilesDict.from_patterns(
+        patterns,
+        base_path=base_path,
+        allowed_extensions=datasets.load.ALL_ALLOWED_EXTENSIONS,
+    )
+    data_files = data_files_with_splits["train"]
+
+    # Read those files into Ray Data.
+    ds = ray.data.read_parquet(
+        data_files,
+        file_extensions=["parquet"],
+        filesystem=HfFileSystem(token=os.environ["HF_TOKEN"]),
+    )
+
+    print(f"Dataset count: {ds.count()}")
+
+.. testoutput::
+    :options: +MOCK
+
+    Dataset count: 61614907
+
+.. tip::
+
+    For datasets that aren't in Parquet format, use the appropriate read function:
+    :func:`~ray.data.read_json` for JSON files, or :func:`~ray.data.read_binary_files`
+    for binary files like audio archives.
+
+For a complete example script that loads many different Hugging Face datasets, see
+:download:`load_data_from_hf.py <doc_code/load_data_from_hf.py>`.
+
 .. _loading_datasets_from_ml_libraries:
 
 Loading data from ML libraries
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data interoperates with HuggingFace, PyTorch, and TensorFlow datasets.
+Ray Data interoperates with PyTorch and TensorFlow datasets.
 
 .. tab-set::
-
-    .. tab-item:: HuggingFace
-
-        To read datasets from the Hugging Face Hub, use :func:`~ray.data.read_parquet` (or other
-        read functions) with the ``HfFileSystem`` filesystem. This approach provides better
-        performance and scalability than loading datasets into memory first.
-
-        First, install the required dependencies:
-
-        .. code-block:: console
-
-            pip install datasets huggingface_hub
-
-        Then, authenticate using your Hugging Face token:
-
-        .. code-block:: console
-
-            export HF_TOKEN=<YOUR HUGGING FACE TOKEN>
-
-        For most Hugging Face datasets, the data is stored in Parquet files. You can directly
-        read from the dataset path:
-
-        .. testcode::
-            :skipif: True
-
-            import os
-            import ray
-            from huggingface_hub import HfFileSystem
-
-            ds = ray.data.read_parquet(
-                "hf://datasets/wikimedia/wikipedia",
-                file_extensions=["parquet"],
-                filesystem=HfFileSystem(token=os.environ["HF_TOKEN"]),
-            )
-
-            print(f"Dataset count: {ds.count()}")
-            print(ds.schema())
-
-        .. testoutput::
-            :options: +MOCK
-
-            Dataset count: 61614907
-            Column  Type
-            ------  ----
-            id      string
-            url     string
-            title   string
-            text    string
-
-        .. tip::
-
 
     .. tab-item:: PyTorch
 
