@@ -3,11 +3,11 @@ import pytest
 import ray
 from ray import serve
 from ray.serve.llm import (
+    build_dp_deployment,
+    build_openai_app,
     LLMConfig,
     LLMServingArgs,
     ModelLoadingConfig,
-    build_openai_app,
-    build_dp_deployment,
 )
 
 
