@@ -1,4 +1,5 @@
 import time
+from typing import Optional
 
 import ray
 from ray.actor import ActorHandle
@@ -20,6 +21,7 @@ class PlacementGroupReaper:
     def stop(self):
         """Request the reaper to stop."""
         self._stopped = True
+        
 
     def run(self, controller: ActorHandle, placement_group: PlacementGroup) -> bool:
         """Monitor controller; remove PG when controller is gone.
@@ -41,4 +43,12 @@ class PlacementGroupReaper:
         except Exception:
             # Best-effort cleanup — ignore errors (already removed, etc.)
             pass
+        # Exit the actor so it doesn't linger after cleanup.
+        try:
+            ray.actor.exit_actor()
+        except Exception:
+            # If exit fails for any reason, just return.
+            pass
         return True
+
+
