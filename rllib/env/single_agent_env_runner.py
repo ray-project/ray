@@ -92,7 +92,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         )
 
         # Create the vectorized gymnasium env.
-        self.env: Optional[gym.vector.VectorEnvWrapper] = None
+        self.env: Optional[gym.vector.VectorEnv] = None
         self.num_envs: int = 0
         if (
             self.worker_index is None
@@ -380,6 +380,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # forward pass only in the next `while`-iteration.
             if self.module is not None:
                 self._cached_to_module = self._env_to_module(
+                    batch={},
                     episodes=episodes,
                     explore=explore,
                     rl_module=self.module,

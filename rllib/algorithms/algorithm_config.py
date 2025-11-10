@@ -1045,6 +1045,8 @@ class AlgorithmConfig(_Config):
                             "`device` is a (torch) device.\n"
                         )
                     val_ = self._env_to_module_connector(env)
+                else:
+                    raise e
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):

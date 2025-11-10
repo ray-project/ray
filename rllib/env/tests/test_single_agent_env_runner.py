@@ -249,7 +249,8 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
     def test_vector_env(self, num_envs_per_env_runner=5, rollout_fragment_length=10):
         """Tests, whether SingleAgentEnvRunner can run various vectorized envs."""
 
-        for env in ["CartPole-v1", SimpleCorridor, "tune-registered", "ALE/Pong-v5"]:
+        # "ALE/Pong-v5" - works but ale-py is not installed on microcheck
+        for env in ["CartPole-v1", SimpleCorridor, "tune-registered"]:
             config = (
                 AlgorithmConfig()
                 .environment(env)
