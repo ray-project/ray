@@ -23,6 +23,7 @@ from ray.serve._private.metrics_utils import (
     aggregate_timeseries,
     merge_instantaneous_total,
 )
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 from ray.serve.config import AutoscalingContext, AutoscalingPolicy
 
@@ -80,6 +81,15 @@ class DeploymentAutoscalingState:
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
+
+        # Log when custom autoscaling policy is used for deployment
+        if not self._config.policy.is_default_policy_function():
+            logger.info(
+                f"Using custom autoscaling policy '{self._config.policy.policy_function}' "
+                f"for deployment '{self._deployment_id}'."
+            )
+            # Record telemetry for custom autoscaling policy usage
+            ServeUsageTag.CUSTOM_AUTOSCALING_POLICY_USED.record("1")
 
         return self.apply_bounds(target_num_replicas)
 
@@ -671,6 +681,15 @@ class ApplicationAutoscalingState:
         """
         self._policy = autoscaling_policy.get_policy()
         self._policy_state = {}
+
+        # Log when custom autoscaling policy is used for application
+        if not autoscaling_policy.is_default_policy_function():
+            logger.info(
+                f"Using custom autoscaling policy '{autoscaling_policy.policy_function}' "
+                f"for application '{self._app_name}'."
+            )
+            # Record telemetry for custom autoscaling policy usage
+            ServeUsageTag.CUSTOM_AUTOSCALING_POLICY_USED.record("1")
 
     def has_policy(self) -> bool:
         return self._policy is not None

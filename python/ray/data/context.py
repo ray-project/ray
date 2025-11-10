@@ -212,7 +212,9 @@ DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
     "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", -1
 )
 
-DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR = 4
+DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR = env_integer(
+    "RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR", 4
+)
 
 # Enable per node metrics reporting for Ray Data, disabled by default.
 DEFAULT_ENABLE_PER_NODE_METRICS = bool(
@@ -236,6 +238,11 @@ DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD: float = env_float(
 DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
     "RAY_DATA_DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD",
     0.5,
+)
+
+
+DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
+    "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", False
 )
 
 
@@ -453,6 +460,8 @@ class DataContext:
             later. If `None`, this type of backpressure is disabled.
         downstream_capacity_backpressure_max_queued_bundles: Maximum number of queued
             bundles before applying backpressure. If `None`, no limit is applied.
+        enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
+        of an operator based on it's and downstream's queue size.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
@@ -569,7 +578,8 @@ class DataContext:
     # Setting non-positive value here (ie <= 0) disables this functionality
     # (defaults to -1).
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
-    max_tasks_in_flight_per_actor: Optional[int] = DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR
+    # This setting serves as a global override
+    max_tasks_in_flight_per_actor: Optional[int] = None
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
@@ -590,6 +600,10 @@ class DataContext:
 
     downstream_capacity_backpressure_ratio: float = None
     downstream_capacity_backpressure_max_queued_bundles: int = None
+
+    enable_dynamic_output_queue_size_backpressure: bool = (
+        DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
+    )
 
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 

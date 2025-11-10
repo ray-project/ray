@@ -43,14 +43,14 @@ To upgrade the KubeRay version, follow these steps in order:
 
 The following is an example of upgrading KubeRay from v1.3.X to v1.4.0:
 ```
-# Upgrade the CRD to v1.4.2.
+# Upgrade the CRD to v1.5.0.
 # Note: This example uses kubectl because Helm doesn't support lifecycle management of CRDs.
 # See the Helm documentation for more details: https://helm.sh/docs/chart_best_practices/custom_resource_definitions/#some-caveats-and-explanations
-$ kubectl replace -k "github.com/ray-project/kuberay/ray-operator/config/crd?ref=v1.4.2"
+$ kubectl replace -k "github.com/ray-project/kuberay/ray-operator/config/crd?ref=v1.5.0"
 
-# Upgrade kuberay-operator to v1.4.2. This step doesn't upgrade the CRDs.
-$ helm upgrade kuberay-operator kuberay/kuberay-operator --version v1.4.2
+# Upgrade kuberay-operator to v1.5.0. This step doesn't upgrade the CRDs.
+$ helm upgrade kuberay-operator kuberay/kuberay-operator --version v1.5.0
 
-# Install a RayCluster using the v1.4.2 helm chart to verify the success of the upgrade.
-$ helm install raycluster kuberay/ray-cluster --version 1.4.2
+# Install a RayCluster using the v1.5.0 helm chart to verify the success of the upgrade.
+$ helm install raycluster kuberay/ray-cluster --version 1.5.0
 ```

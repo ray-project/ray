@@ -1,6 +1,6 @@
 import abc
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Union
 
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -86,8 +86,8 @@ class Runner(FaultAwareApply, metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def _device(self) -> DeviceType:
-        """Returns the device of this `Runner`."""
+    def _device(self) -> Union[DeviceType, None]:
+        """Returns the device of this `Runner`. None if framework is not supported."""
         pass
 
     @abc.abstractmethod
