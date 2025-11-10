@@ -19,7 +19,6 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --unsafe-package ray
       - --python-platform=linux
-      - --generate-hashes
     build_arg_sets:
       - py39
       - py310

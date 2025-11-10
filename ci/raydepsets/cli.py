@@ -16,6 +16,7 @@ from networkx import DiGraph, ancestors as networkx_ancestors, topological_sort
 from ci.raydepsets.workspace import Depset, Workspace
 
 DEFAULT_UV_FLAGS = """
+    --generate-hashes
     --unsafe-package setuptools
     --index-url https://pypi.org/simple
     --index-strategy unsafe-best-match

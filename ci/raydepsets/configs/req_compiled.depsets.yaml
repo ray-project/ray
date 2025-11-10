@@ -37,6 +37,7 @@ depsets:
       - --unsafe-package ray
       - --unsafe-package pip
       - --no-header
+      - --no-build-isolation
     build_arg_sets:
       - py311
       - py312
