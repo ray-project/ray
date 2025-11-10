@@ -82,11 +82,12 @@ steps:
       - bash ci/lint/lint.sh api_policy_check
 
   - label: ":book: doc: linkcheck"
+    key: doc_linkcheck
     instance_type: medium
     commands:
       - make -C doc/ linkcheck_all
     depends_on: docbuild
-    job_env: docbuild-py3.10
+    job_env: docbuild-py3.12
     tags:
       - oss
       - skip-on-premerge
