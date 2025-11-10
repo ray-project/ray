@@ -91,6 +91,7 @@ ray_cc_test(
         "//src/ray/common:id",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/raylet:runtime_env_agent_client",
+        "//src/ray/util:env",
         "@boost//:asio",
         "@boost//:beast",
         "@boost//:thread",

@@ -476,10 +476,8 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
               AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
       .Times(1);
   EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
-              AsyncSubscribeToWorkerFailures(_, _))
-      .WillOnce(Return(Status::OK()));
-  EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _))
-      .WillOnce(Return(Status::OK()));
+              AsyncSubscribeToWorkerFailures(_, _));
+  EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
@@ -506,8 +504,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
               AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
       .Times(1);
-  EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _))
-      .WillOnce(Return(Status::OK()));
+  EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
@@ -582,10 +579,8 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   EXPECT_CALL(*mock_object_directory_, HandleNodeRemoved(_)).Times(1);
   EXPECT_CALL(*mock_object_manager_, HandleNodeRemoved(_)).Times(1);
   EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
-              AsyncSubscribeToWorkerFailures(_, _))
-      .WillOnce(Return(Status::OK()));
-  EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _))
-      .WillOnce(Return(Status::OK()));
+              AsyncSubscribeToWorkerFailures(_, _));
+  EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))

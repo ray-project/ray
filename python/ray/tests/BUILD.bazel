@@ -85,7 +85,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     env = {
-        "RAY_enable_open_telemetry": "1",
+        "RAY_enable_open_telemetry": "true",
     },
     files = [
         "test_metric_cardinality.py",
