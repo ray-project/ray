@@ -453,8 +453,8 @@ class AutoscalingConfig(BaseModel):
     @validator("aggregation_function", always=True)
     def aggregation_function_valid(cls, v: Union[str, AggregationFunction]):
         if isinstance(v, AggregationFunction):
-            return v
-        return AggregationFunction(str(v).lower())
+            return v.value
+        return AggregationFunction(str(v).lower()).value
 
     @classmethod
     def default(cls):
