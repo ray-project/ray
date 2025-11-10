@@ -237,7 +237,6 @@ import ray.core.generated.common_pb2 as common_pb2
 from ray._common.utils import decode
 from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import ObjectRefGenerator, DynamicObjectRefGenerator
-from ray.util.annotations import PublicAPI
 from ray._private.custom_types import TensorTransportEnum
 from ray._private.gc_collect_manager import PythonGCThread
 
