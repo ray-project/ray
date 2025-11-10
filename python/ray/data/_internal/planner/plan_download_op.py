@@ -339,4 +339,7 @@ class PartitionActor:
         assert len(file_sizes) == len(
             paths
         ), f"Expected {len(paths)} sampled file sizes, got {len(file_sizes)}"
+        assert all(
+            fs is not None for fs in file_sizes
+        ), "File size sampling did not complete for all paths"
         return file_sizes
