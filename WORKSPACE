@@ -66,6 +66,12 @@ python_register_toolchains(
     register_toolchains = False,
 )
 
+python_register_toolchains(
+    name = "python3_10",
+    python_version = "3.10",
+    register_toolchains = False,
+)
+
 load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
 
