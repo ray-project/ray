@@ -73,32 +73,36 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     }
 
     auto &node_versions = GetNodeComponentVersions(message->node_id());
-    if (node_versions[message->message_type()] < message->version()) {
-      node_versions[message->message_type()] = message->version();
-      sending_buffer_[std::make_pair(message->node_id(), message->message_type())] =
-          std::move(message);
-      // In single-threaded io_context, buffer size can only reach batch_size_ exactly.
-      if (sending_buffer_.size() == batch_size_ || batch_delay_ms_.count() == 0) {
-        // Send immediately if batch size limit is reached or delay is 0
-        StartSend();
-      } else {
-        // Start or restart the batch timer
-        if (!batch_timer_active_) {
-          batch_timer_active_ = true;
-          batch_timer_.expires_after(batch_delay_ms_);
-          batch_timer_.async_wait([this](const boost::system::error_code &ec) {
-            if (!ec && !*IsDisconnected()) {
-              batch_timer_active_ = false;
-              StartSend();
-            } else if (ec != boost::asio::error::operation_aborted) {
-              RAY_LOG(ERROR) << "Batch timer error: " << ec.message();
-            }
-          });
-        }
-      }
-      return true;
+    if (node_versions[message->message_type()] >= message->version()) {
+      RAY_LOG(INFO) << "Dropping sync message with stale version. latest version: "
+                    << node_versions[message->message_type()]
+                    << ", dropped message version: " << message->version();
+      return false;
     }
-    return false;
+
+    node_versions[message->message_type()] = message->version();
+    sending_buffer_[std::make_pair(message->node_id(), message->message_type())] =
+        std::move(message);
+    // In single-threaded io_context, buffer size can only reach batch_size_ exactly.
+    if (sending_buffer_.size() == batch_size_ || batch_delay_ms_.count() == 0) {
+      // Send immediately if batch size limit is reached or delay is 0
+      StartSend();
+    } else {
+      // Start or restart the batch timer
+      if (!batch_timer_active_) {
+        batch_timer_active_ = true;
+        batch_timer_.expires_after(batch_delay_ms_);
+        batch_timer_.async_wait([this](const boost::system::error_code &ec) {
+          if (!ec && !*IsDisconnected()) {
+            batch_timer_active_ = false;
+            StartSend();
+          } else if (ec != boost::asio::error::operation_aborted) {
+            RAY_LOG(ERROR) << "Batch timer error: " << ec.message();
+          }
+        });
+      }
+    }
+    return true;
   }
 
   virtual ~RaySyncerBidiReactorBase() = default;
@@ -123,40 +127,24 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     RAY_LOG(DEBUG) << "Receive message batch with messages_size="
                    << message_batch->messages_size();
 
-    // Direct update message as no other reactors use this message
-    // Filter out outdated messages in-place using map structure
-    auto *mutable_messages = message_batch->mutable_messages();
-
-    for (auto it = mutable_messages->begin(); it != mutable_messages->end();) {
-      const auto &message = it->second;
-      RAY_CHECK(!message.node_id().empty());
+    for (const auto &[key, message] : message_batch->messages()) {
       auto &node_versions = GetNodeComponentVersions(message.node_id());
-
+      RAY_LOG(DEBUG) << "Receive update: "
+                     << " message_type=" << message.message_type()
+                     << ", message_version=" << message.version()
+                     << ", local_message_version="
+                     << node_versions[message.message_type()];
       if (node_versions[message.message_type()] < message.version()) {
-        RAY_LOG(DEBUG) << "Receive message from: "
-                       << NodeID::FromBinary(message.node_id())
-                       << ", message_type=" << message.message_type()
-                       << ", message_version=" << message.version()
-                       << ", local_version=" << node_versions[message.message_type()];
         node_versions[message.message_type()] = message.version();
         message_processor_(std::make_shared<RaySyncMessage>(message));
-        ++it;
       } else {
         RAY_LOG_EVERY_MS(WARNING, 1000)
             << "Drop message received from " << NodeID::FromBinary(message.node_id())
             << " because the message version " << message.version()
             << " is older than the local version "
             << node_versions[message.message_type()]
-            << ", message_type=" << message.message_type();
-        it = mutable_messages->erase(it);
+            << ". Message type: " << message.message_type();
       }
-    }
-
-    if (message_batch->messages_size() == 0) {
-      RAY_LOG_EVERY_MS(WARNING, 1000)
-          << "Drop the whole message batch received because all "
-             "messages are filtered out";
-      return;
     }
   }
 

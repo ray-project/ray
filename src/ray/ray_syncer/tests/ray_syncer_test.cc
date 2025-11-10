@@ -39,6 +39,7 @@
 #include "ray/ray_syncer/ray_syncer_server.h"
 #include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/grpc_server.h"
+#include "ray/util/env.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
@@ -1054,13 +1055,13 @@ class SyncerAuthenticationTest : public ::testing::Test {
  protected:
   void SetUp() override {
     // Clear any existing environment variables and reset state
-    unsetenv("RAY_AUTH_TOKEN");
+    ray::UnsetEnv("RAY_AUTH_TOKEN");
     ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
     RayConfig::instance().auth_mode() = "disabled";
   }
 
   void TearDown() override {
-    unsetenv("RAY_AUTH_TOKEN");
+    ray::UnsetEnv("RAY_AUTH_TOKEN");
     ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
     RayConfig::instance().auth_mode() = "disabled";
   }
@@ -1144,7 +1145,7 @@ TEST_F(SyncerAuthenticationTest, MatchingTokens) {
   const std::string test_token = "matching-test-token-12345";
 
   // Set client token via environment variable
-  setenv("RAY_AUTH_TOKEN", test_token.c_str(), 1);
+  ray::SetEnv("RAY_AUTH_TOKEN", test_token);
   // Enable token authentication
   RayConfig::instance().auth_mode() = "token";
   ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
@@ -1171,7 +1172,7 @@ TEST_F(SyncerAuthenticationTest, MismatchedTokens) {
   const std::string client_token = "different-client-token";
 
   // Set client token via environment variable
-  setenv("RAY_AUTH_TOKEN", client_token.c_str(), 1);
+  ray::SetEnv("RAY_AUTH_TOKEN", client_token);
   // Enable token authentication
   RayConfig::instance().auth_mode() = "token";
   ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
@@ -1197,7 +1198,7 @@ TEST_F(SyncerAuthenticationTest, ServerHasTokenClientDoesNot) {
   const std::string server_token = "server-token-12345";
 
   // Client has no token - auth mode is disabled (default from SetUp)
-  unsetenv("RAY_AUTH_TOKEN");
+  ray::UnsetEnv("RAY_AUTH_TOKEN");
   ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
 
   // Create authenticated server
@@ -1222,7 +1223,7 @@ TEST_F(SyncerAuthenticationTest, ClientHasTokenServerDoesNotRequire) {
   const std::string client_token = "different-client-token";
 
   // Set client token
-  setenv("RAY_AUTH_TOKEN", client_token.c_str(), 1);
+  ray::SetEnv("RAY_AUTH_TOKEN", client_token);
   // Enable token authentication
   RayConfig::instance().auth_mode() = "token";
   ray::rpc::AuthenticationTokenLoader::instance().ResetCache();

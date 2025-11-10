@@ -33,6 +33,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
+#include "ray/util/env.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 
 namespace ray {
@@ -194,7 +195,7 @@ auto dummy_shutdown_raylet_gracefully = [](const rpc::NodeDeathInfo &) {};
 
 TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
   RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
-  unsetenv("RAY_AUTH_TOKEN");
+  ray::UnsetEnv("RAY_AUTH_TOKEN");
   rpc::AuthenticationTokenLoader::instance().ResetCache();
 
   int port = GetFreePort();
@@ -366,7 +367,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
 
 TEST(RuntimeEnvAgentClientTest, AttachesAuthHeaderWhenEnabled) {
   RayConfig::instance().initialize(R"({"auth_mode": "token"})");
-  setenv("RAY_AUTH_TOKEN", "header_token", 1);
+  ray::SetEnv("RAY_AUTH_TOKEN", "header_token");
   rpc::AuthenticationTokenLoader::instance().ResetCache();
 
   int port = GetFreePort();
@@ -428,7 +429,7 @@ TEST(RuntimeEnvAgentClientTest, AttachesAuthHeaderWhenEnabled) {
   ASSERT_EQ(observed_auth_header, "Bearer header_token");
 
   RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
-  unsetenv("RAY_AUTH_TOKEN");
+  ray::UnsetEnv("RAY_AUTH_TOKEN");
   rpc::AuthenticationTokenLoader::instance().ResetCache();
 }
 
