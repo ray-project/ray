@@ -304,34 +304,32 @@ class TestDownloadExpressionErrors:
         valid_file = tmp_path / "valid.txt"
         valid_file.write_bytes(b"valid content")
 
-        # Create URIs: one valid, one non-existent file, one invalid path
+        # Create URIs: one valid and one non-existent file.
         ds = ray.data.from_items(
             [
-                {"uri": f"local://{valid_file}", "id": 0},
-                {"uri": "local:///nonexistent.txt", "id": 1},
-                {"uri": "local:///this/path/does/not/exist/file.txt", "id": 2},
+                {"uri": str(valid_file), "id": 0},
+                {"uri": str(tmp_path / "nonexistent.txt"), "id": 1},
             ]
         )
         ds_with_downloads = ds.with_column("bytes", download("uri"))
 
         # Should not crash - failed downloads return None
         results = sorted(ds_with_downloads.take_all(), key=lambda row: row["id"])
-        assert len(results) == 3
+        assert len(results) == 2
 
         # First URI should succeed
         assert results[0]["bytes"] == b"valid content"
 
-        # Second and third URIs should fail gracefully (return None)
+        # Second URI should fail gracefully (return None)
         assert results[1]["bytes"] is None
-        assert results[2]["bytes"] is None
 
-    def test_download_expression_all_size_estimations_fail(self):
+    def test_download_expression_all_size_estimations_fail(self, tmp_path):
         """Test download expression when all URI size estimations fail.
 
         This tests the failed download does not cause division by zero error.
         """
         # Create URIs that will fail size estimation (non-existent files).
-        ds = ray.data.from_items([{"uri": "local:///nonexistent.txt"}])
+        ds = ray.data.from_items([{"uri": str(tmp_path / "nonexistent.txt")}])
         ds_with_downloads = ds.with_column("bytes", download("uri"))
 
         # Should not crash with divide-by-zero error
