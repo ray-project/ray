@@ -194,7 +194,8 @@ def download_bytes_threaded(
                         yield f.read()
                 except OSError as e:
                     logger.debug(
-                        f"Failed to download URI '{uri_path}' from column '{uri_column_name}' with error: {e}"
+                        f"Failed to download URI '{uri_path}' from column "
+                        f"'{uri_column_name}' with error: {e}"
                     )
                     yield None
 
@@ -317,20 +318,25 @@ class PartitionActor:
         )
 
         # Use ThreadPoolExecutor for concurrent size fetching
-        file_sizes = []
+        file_sizes = [None] * len(paths)
         with ThreadPoolExecutor(max_workers=URI_DOWNLOAD_MAX_WORKERS) as executor:
             # Submit all size fetch tasks
-            futures = [
-                executor.submit(get_file_size, uri_path, fs) for uri_path in paths
-            ]
+            future_to_file_index = {
+                executor.submit(get_file_size, uri_path, fs): file_index
+                for file_index, uri_path in enumerate(paths)
+            }
 
             # Collect results as they complete (order doesn't matter)
-            for future in as_completed(futures):
+            for future in as_completed(future_to_file_index):
+                file_index = future_to_file_index[future]
                 try:
                     size = future.result()
-                    file_sizes.append(size if size is not None else 0)
+                    file_sizes[file_index] = size if size is not None else 0
                 except Exception as e:
                     logger.warning(f"Error fetching file size for download: {e}")
-                    file_sizes.append(0)
+                    file_sizes[file_index] = 0
 
+        assert len(file_sizes) == len(
+            paths
+        ), f"Expected {len(paths)} sampled file sizes, got {len(file_sizes)}"
         return file_sizes
