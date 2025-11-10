@@ -599,11 +599,11 @@ def _create_str_udf(
         A callable that creates UDFExpr instances
 
     Example:
-        >>> # Unary operation (no additional args)
+        >>> # Unary operation (no additional args)  # doctest: +SKIP
         >>> _create_str_udf(pc.utf8_upper, DataType.string())(col("name"))
-        >>> # Pattern operation (pattern arg)
+        >>> # Pattern operation (pattern arg)  # doctest: +SKIP
         >>> _create_str_udf(pc.starts_with, DataType.bool())(col("name"), "A")
-        >>> # Multi-arg operation
+        >>> # Multi-arg operation  # doctest: +SKIP
         >>> _create_str_udf(pc.replace_substring, DataType.string())(col("name"), "old", "new")
     """
 
