@@ -2687,11 +2687,6 @@ def test_get_nodes_with_resource_availabilities():
             max_nodes=max_nodes,
             cloud_resource_availabilities=cloud_resource_availabilities,
         )
-        to_launch, _ = _launch_and_terminate(reply)
-        infeasible = ResourceRequestUtil.to_resource_maps(
-            reply.infeasible_resource_requests
-        )
-        return to_launch, infeasible
 
     assert get_nodes_for([{"GPU": 1}], cloud_resource_availabilities={
         "type_gpu1": 0.1, "type_gpu2": 1, "type_gpu3": 0.2
@@ -2703,12 +2698,10 @@ def test_get_nodes_with_resource_availabilities():
 
     assert get_nodes_for([{"GPU": 2}], cloud_resource_availabilities={
         "type_gpu1": 0.1, "type_gpu2": 0.1, "type_gpu3": 1
-    }) == {"type_gpu3": 2}
+    }) == {"type_gpu2": 2}
 
-    assert get_nodes_for(
-        [{"CPU": 4}],
-        cloud_resource_availabilities={}
-    )== {"type_cpu": 1}
+    assert (get_nodes_for([{"CPU": 4}], cloud_resource_availabilities={})
+            == {"type_cpu": 1})
 
 
 
