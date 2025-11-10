@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -373,6 +374,26 @@ def test_ray_timeline(shutdown_only):
         # TODO(swang): Check actual content. It doesn't seem to match the
         # return value of chrome_tracing_dump in above tests?
         assert len(dumped) > 0
+
+
+def test_state_init_multiple_threads(shutdown_only):
+    ray.init()
+    global_state = ray._private.state.state
+    global_state._check_connected()
+    gcs_options = global_state.gcs_options
+    global_state.disconnect()
+    global_state._initialize_global_state(gcs_options)
+
+    def get_nodes_from_state_api():
+        return len(global_state.node_table()) == 1
+
+    with ThreadPoolExecutor(max_workers=50) as executor:
+        futures = [executor.submit(get_nodes_from_state_api) for _ in range(50)]
+        results = [future.result() for future in futures]
+
+    # Assert that all calls returned True
+    assert all(results)
+    assert len(results) == 50
 
 
 if __name__ == "__main__":

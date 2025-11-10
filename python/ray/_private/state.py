@@ -33,35 +33,38 @@ class GlobalState:
         # Args used for lazy init of this object.
         self.gcs_options = None
         self.global_state_accessor = None
-        self._lock = Lock()
-        self._is_connected = False
+        self._init_lock = Lock()
 
     def _check_connected(self):
         """Ensure that the object has been initialized before it is used.
 
         This lazily initializes clients needed for state accessors.
 
+        Returns:
+            Nothing.
         Raises:
             RuntimeError: An exception is raised if ray.init() has not been
                 called yet.
         """
-        if self.gcs_options is None:
-            raise ray.exceptions.RaySystemError(
-                "Trying to use state API before ray.init() has been called."
-            )
-        with self._lock:
-            if self._is_connected:
+        with self._init_lock:
+            if self.global_state_accessor is not None:
                 return
+
+            if self.gcs_options is None:
+                raise ray.exceptions.RaySystemError(
+                    "Trying to use state API before ray.init() has been called."
+                )
+
             self.global_state_accessor = GlobalStateAccessor(self.gcs_options)
             self.global_state_accessor.connect()
-            self._is_connected = True
 
     def disconnect(self):
         """Disconnect global state from GCS."""
-        self.gcs_options = None
-        if self.global_state_accessor is not None:
-            self.global_state_accessor.disconnect()
-            self.global_state_accessor = None
+        with self._init_lock:
+            self.gcs_options = None
+            if self.global_state_accessor is not None:
+                self.global_state_accessor.disconnect()
+                self.global_state_accessor = None
 
     def _initialize_global_state(self, gcs_options):
         """Set args for lazily initialization of the GlobalState object.
@@ -76,7 +79,8 @@ class GlobalState:
 
         # Save args for lazy init of global state. This avoids opening extra
         # gcs connections from each worker until needed.
-        self.gcs_options = gcs_options
+        with self._init_lock:
+            self.gcs_options = gcs_options
 
     def actor_table(
         self,
