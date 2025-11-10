@@ -267,7 +267,10 @@ GcsActorManager::GcsActorManager(
 GcsActorManager::~GcsActorManager() {
   is_shutdown_.store(true, std::memory_order_release);
 
-  // Cancel all pending graceful shutdown timers
+  // Cancel all pending graceful shutdown timers.
+  // Note: This destructor runs after io_context_.stop() is called (see GcsServer::Stop),
+  // which ensures no new handlers are posted. Cancelled handlers will receive
+  // operation_aborted and exit early after checking is_shutdown_.
   for (auto &entry : graceful_shutdown_timers_) {
     entry.second->cancel();
   }
@@ -1033,6 +1036,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         created_actors_.erase(node_it);
       }
 
+      // Create timer only if one doesn't already exist.
+      // Duplicate graceful shutdown calls skip this and keep the original timer running.
       if (!force_kill && graceful_shutdown_timeout_ms > 0 &&
           graceful_shutdown_timers_.find(worker_id) == graceful_shutdown_timers_.end()) {
         auto timer = std::make_unique<boost::asio::deadline_timer>(io_context_);

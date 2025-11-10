@@ -519,7 +519,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   ThreadChecker thread_checker_;
 
   /// Fallback timers for graceful actor shutdowns, keyed by WorkerID.
-  /// Canceled when actors exit or restart to prevent force-killing wrong instances.
+  /// Canceled on actor restart to avoid redundant kill requests for old instances.
   absl::flat_hash_map<WorkerID, std::unique_ptr<boost::asio::deadline_timer>>
       graceful_shutdown_timers_;
 
