@@ -30,6 +30,7 @@ from ray.rllib.connectors.common import AddStatesFromEpisodesToBatch
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.env import INPUT_ENV_SINGLE_SPACES
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
@@ -601,13 +602,13 @@ class DreamerV3(Algorithm):
                 replayed_steps = self.config.batch_size_B * self.config.batch_length_T
                 replayed_steps_this_iter += replayed_steps
 
-                if isinstance(
-                    self.env_runner.env.single_action_space, gym.spaces.Discrete
-                ):
+                # Get single action space from self.spaces (works with distributed env runners).
+                single_action_space = self.spaces[INPUT_ENV_SINGLE_SPACES][1]
+                if isinstance(single_action_space, gym.spaces.Discrete):
                     sample["actions_ints"] = sample[Columns.ACTIONS]
                     sample[Columns.ACTIONS] = one_hot(
                         sample["actions_ints"],
-                        depth=self.env_runner.env.single_action_space.n,
+                        depth=single_action_space.n,
                     )
 
                 # Perform the actual update via our learner group.
@@ -633,6 +634,8 @@ class DreamerV3(Algorithm):
         # from the posterior states.
         # Only every n iterations and only for the first sampled batch row
         # (videos are `config.batch_length_T` frames long).
+        # Get observation space from self.spaces (works with distributed env runners).
+        single_observation_space = self.spaces[INPUT_ENV_SINGLE_SPACES][0]
         report_predicted_vs_sampled_obs(
             # TODO (sven): DreamerV3 is single-agent only.
             metrics=self.metrics,
@@ -640,7 +643,7 @@ class DreamerV3(Algorithm):
             batch_size_B=self.config.batch_size_B,
             batch_length_T=self.config.batch_length_T,
             symlog_obs=do_symlog_obs(
-                self.env_runner.env.single_observation_space,
+                single_observation_space,
                 self.config.symlog_obs,
             ),
             do_report=(
@@ -661,7 +664,7 @@ class DreamerV3(Algorithm):
             dreamed_T=self.config.horizon_H + 1,
             dreamer_model=self.env_runner.module.dreamer_model,
             symlog_obs=do_symlog_obs(
-                self.env_runner.env.single_observation_space,
+                single_observation_space,
                 self.config.symlog_obs,
             ),
             do_report=(
