@@ -63,6 +63,45 @@ def test_dashboard_auth_disabled(setup_cluster_without_token_auth):
     assert response.status_code == 200
 
 
+def test_authentication_mode_endpoint_with_token_auth(setup_cluster_with_token_auth):
+    """Test authentication_mode endpoint returns 'token' when auth is enabled."""
+
+    cluster_info = setup_cluster_with_token_auth
+
+    # This endpoint should be accessible WITHOUT authentication
+    response = requests.get(f"{cluster_info['dashboard_url']}/api/authentication_mode")
+
+    assert response.status_code == 200
+    assert response.json() == {"authentication_mode": "token"}
+
+
+def test_authentication_mode_endpoint_without_auth(setup_cluster_without_token_auth):
+    """Test authentication_mode endpoint returns 'disabled' when auth is off."""
+
+    cluster_info = setup_cluster_without_token_auth
+
+    response = requests.get(f"{cluster_info['dashboard_url']}/api/authentication_mode")
+
+    assert response.status_code == 200
+    assert response.json() == {"authentication_mode": "disabled"}
+
+
+def test_authentication_mode_endpoint_is_public(setup_cluster_with_token_auth):
+    """Test authentication_mode endpoint works without Authorization header."""
+
+    cluster_info = setup_cluster_with_token_auth
+
+    # Call WITHOUT any authorization header - should still succeed
+    response = requests.get(
+        f"{cluster_info['dashboard_url']}/api/authentication_mode",
+        headers={},  # Explicitly no auth
+    )
+
+    # Should succeed even with token auth enabled
+    assert response.status_code == 200
+    assert response.json() == {"authentication_mode": "token"}
+
+
 if __name__ == "__main__":
 
     sys.exit(pytest.main(["-vv", __file__]))
