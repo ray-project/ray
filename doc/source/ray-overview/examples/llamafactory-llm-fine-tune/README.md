@@ -23,6 +23,11 @@ Preference alignment on pairwise data with **DPO** and **QLoRA** for memory-effi
 ### [KTO with LoRA](./notebooks/kto_lora.ipynb)
 Single-signal feedback alignment with **KTO** and **LoRA** for lightweight, scalable preference tuning.
 
+---
+
+### [CPT with DeepSpeed](./notebooks/cpt_deepspeed.ipynb)
+Continued pre-training on raw text with **full fine-tuning** and **DeepSpeed ZeRO** for efficient, reproducible multi-GPU training.
+
 ## Repository layout
 
 - **`notebooks/`**: End-to-end executable templates for SFT, DPO, and KTO.
