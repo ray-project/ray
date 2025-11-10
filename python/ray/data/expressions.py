@@ -541,14 +541,26 @@ class _ListNamespace:
         Returns:
             UDFExpr that extracts the element at the given index.
         """
+        # Infer return type from the list's value type
+        return_dtype = DataType(object)  # fallback
+        if self._expr.data_type.is_arrow_type():
+            arrow_type = self._expr.data_type.to_arrow_dtype()
+            if pyarrow.types.is_list(arrow_type) or pyarrow.types.is_large_list(
+                arrow_type
+            ):
+                return_dtype = DataType.from_arrow(arrow_type.value_type)
+            elif pyarrow.types.is_fixed_size_list(arrow_type):
+                return_dtype = DataType.from_arrow(arrow_type.value_type)
 
-        @pyarrow_udf(return_dtype=DataType(object))
+        @pyarrow_udf(return_dtype=return_dtype)
         def _list_get(arr: pyarrow.Array) -> pyarrow.Array:
             return pc.list_element(arr, index)
 
         return _list_get(self._expr)
 
-    def slice(self, start: int = None, stop: int = None, step: int = None) -> "UDFExpr":
+    def slice(
+        self, start: int | None = None, stop: int | None = None, step: int | None = None
+    ) -> "UDFExpr":
         """Slice each list.
 
         Args:
@@ -559,12 +571,50 @@ class _ListNamespace:
         Returns:
             UDFExpr that extracts a slice from each list.
         """
+        # Return type is the same as the input list type
+        return_dtype = self._expr.data_type
 
-        @pyarrow_udf(return_dtype=DataType(object))
+        @pyarrow_udf(return_dtype=return_dtype)
         def _list_slice(arr: pyarrow.Array) -> pyarrow.Array:
             return pc.list_slice(arr, start=start or 0, stop=stop, step=step or 1)
 
         return _list_slice(self._expr)
+
+
+def _create_str_udf(
+    pc_func: Callable[..., pyarrow.Array], return_dtype: DataType
+) -> Callable[..., "UDFExpr"]:
+    """Helper to create a string UDF that wraps a PyArrow compute function.
+
+    This helper handles all types of PyArrow compute operations:
+    - Unary operations (no args): upper(), lower(), reverse()
+    - Pattern operations (pattern + args): starts_with(), contains()
+    - Multi-argument operations: replace(), replace_slice()
+
+    Args:
+        pc_func: PyArrow compute function that takes (array, *positional, **kwargs)
+        return_dtype: The return data type
+
+    Returns:
+        A callable that creates UDFExpr instances
+
+    Example:
+        >>> # Unary operation (no additional args)
+        >>> _create_str_udf(pc.utf8_upper, DataType.string())(col("name"))
+        >>> # Pattern operation (pattern arg)
+        >>> _create_str_udf(pc.starts_with, DataType.bool())(col("name"), "A")
+        >>> # Multi-arg operation
+        >>> _create_str_udf(pc.replace_substring, DataType.string())(col("name"), "old", "new")
+    """
+
+    def wrapper(expr: Expr, *positional: Any, **kwargs: Any) -> "UDFExpr":
+        @pyarrow_udf(return_dtype=return_dtype)
+        def udf(arr: pyarrow.Array) -> pyarrow.Array:
+            return pc_func(arr, *positional, **kwargs)
+
+        return udf(expr)
+
+    return wrapper
 
 
 @dataclass
@@ -589,356 +639,208 @@ class _StringNamespace:
     # Length methods
     def len(self) -> "UDFExpr":
         """Get the length of each string in characters."""
-
-        @pyarrow_udf(return_dtype=DataType.int32())
-        def _str_len(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_length(arr)
-
-        return _str_len(self._expr)
+        return _create_str_udf(pc.utf8_length, DataType.int32())(self._expr)
 
     def byte_len(self) -> "UDFExpr":
         """Get the length of each string in bytes."""
-
-        @pyarrow_udf(return_dtype=DataType.int32())
-        def _str_byte_len(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.binary_length(arr)
-
-        return _str_byte_len(self._expr)
+        return _create_str_udf(pc.binary_length, DataType.int32())(self._expr)
 
     # Case methods
     def upper(self) -> "UDFExpr":
         """Convert strings to uppercase."""
-
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_upper(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_upper(arr)
-
-        return _str_upper(self._expr)
+        return _create_str_udf(pc.utf8_upper, DataType.string())(self._expr)
 
     def lower(self) -> "UDFExpr":
         """Convert strings to lowercase."""
-
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_lower(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_lower(arr)
-
-        return _str_lower(self._expr)
+        return _create_str_udf(pc.utf8_lower, DataType.string())(self._expr)
 
     def capitalize(self) -> "UDFExpr":
         """Capitalize the first character of each string."""
-
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_capitalize(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_capitalize(arr)
-
-        return _str_capitalize(self._expr)
+        return _create_str_udf(pc.utf8_capitalize, DataType.string())(self._expr)
 
     def title(self) -> "UDFExpr":
         """Convert strings to title case."""
-
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_title(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_title(arr)
-
-        return _str_title(self._expr)
+        return _create_str_udf(pc.utf8_title, DataType.string())(self._expr)
 
     def swapcase(self) -> "UDFExpr":
         """Swap the case of each character."""
-
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_swapcase(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_swapcase(arr)
-
-        return _str_swapcase(self._expr)
+        return _create_str_udf(pc.utf8_swapcase, DataType.string())(self._expr)
 
     # Predicate methods
     def is_alpha(self) -> "UDFExpr":
         """Check if strings contain only alphabetic characters."""
-
-        @pyarrow_udf(return_dtype=DataType.bool())
-        def _str_is_alpha(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_is_alpha(arr)
-
-        return _str_is_alpha(self._expr)
+        return _create_str_udf(pc.utf8_is_alpha, DataType.bool())(self._expr)
 
     def is_alnum(self) -> "UDFExpr":
         """Check if strings contain only alphanumeric characters."""
-
-        @pyarrow_udf(return_dtype=DataType.bool())
-        def _str_is_alnum(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_is_alnum(arr)
-
-        return _str_is_alnum(self._expr)
+        return _create_str_udf(pc.utf8_is_alnum, DataType.bool())(self._expr)
 
     def is_digit(self) -> "UDFExpr":
         """Check if strings contain only digits."""
-
-        @pyarrow_udf(return_dtype=DataType.bool())
-        def _str_is_digit(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_is_digit(arr)
-
-        return _str_is_digit(self._expr)
+        return _create_str_udf(pc.utf8_is_digit, DataType.bool())(self._expr)
 
     def is_decimal(self) -> "UDFExpr":
         """Check if strings contain only decimal characters."""
-
-        @pyarrow_udf(return_dtype=DataType.bool())
-        def _str_is_decimal(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_is_decimal(arr)
-
-        return _str_is_decimal(self._expr)
+        return _create_str_udf(pc.utf8_is_decimal, DataType.bool())(self._expr)
 
     def is_numeric(self) -> "UDFExpr":
         """Check if strings contain only numeric characters."""
-
-        @pyarrow_udf(return_dtype=DataType.bool())
-        def _str_is_numeric(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_is_numeric(arr)
-
-        return _str_is_numeric(self._expr)
+        return _create_str_udf(pc.utf8_is_numeric, DataType.bool())(self._expr)
 
     def is_space(self) -> "UDFExpr":
         """Check if strings contain only whitespace."""
-
-        @pyarrow_udf(return_dtype=DataType.bool())
-        def _str_is_space(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_is_space(arr)
-
-        return _str_is_space(self._expr)
+        return _create_str_udf(pc.utf8_is_space, DataType.bool())(self._expr)
 
     def is_lower(self) -> "UDFExpr":
         """Check if strings are lowercase."""
-
-        @pyarrow_udf(return_dtype=DataType.bool())
-        def _str_is_lower(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_is_lower(arr)
-
-        return _str_is_lower(self._expr)
+        return _create_str_udf(pc.utf8_is_lower, DataType.bool())(self._expr)
 
     def is_upper(self) -> "UDFExpr":
         """Check if strings are uppercase."""
-
-        @pyarrow_udf(return_dtype=DataType.bool())
-        def _str_is_upper(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_is_upper(arr)
-
-        return _str_is_upper(self._expr)
+        return _create_str_udf(pc.utf8_is_upper, DataType.bool())(self._expr)
 
     def is_title(self) -> "UDFExpr":
         """Check if strings are title-cased."""
-
-        @pyarrow_udf(return_dtype=DataType.bool())
-        def _str_is_title(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_is_title(arr)
-
-        return _str_is_title(self._expr)
+        return _create_str_udf(pc.utf8_is_title, DataType.bool())(self._expr)
 
     def is_printable(self) -> "UDFExpr":
         """Check if strings contain only printable characters."""
-
-        @pyarrow_udf(return_dtype=DataType.bool())
-        def _str_is_printable(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_is_printable(arr)
-
-        return _str_is_printable(self._expr)
+        return _create_str_udf(pc.utf8_is_printable, DataType.bool())(self._expr)
 
     def is_ascii(self) -> "UDFExpr":
         """Check if strings contain only ASCII characters."""
-
-        @pyarrow_udf(return_dtype=DataType.bool())
-        def _str_is_ascii(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.string_is_ascii(arr)
-
-        return _str_is_ascii(self._expr)
+        return _create_str_udf(pc.string_is_ascii, DataType.bool())(self._expr)
 
     # Searching methods
-    def starts_with(self, pattern, *args, **kwargs) -> "UDFExpr":
+    def starts_with(self, pattern: str, *args: Any, **kwargs: Any) -> "UDFExpr":
         """Check if strings start with a pattern."""
+        return _create_str_udf(pc.starts_with, DataType.bool())(
+            self._expr, pattern, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType.bool())
-        def _str_starts_with(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.starts_with(arr, pattern, *args, **kwargs)
-
-        return _str_starts_with(self._expr)
-
-    def ends_with(self, pattern, *args, **kwargs) -> "UDFExpr":
+    def ends_with(self, pattern: str, *args: Any, **kwargs: Any) -> "UDFExpr":
         """Check if strings end with a pattern."""
+        return _create_str_udf(pc.ends_with, DataType.bool())(
+            self._expr, pattern, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType.bool())
-        def _str_ends_with(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.ends_with(arr, pattern, *args, **kwargs)
-
-        return _str_ends_with(self._expr)
-
-    def contains(self, pattern, *args, **kwargs) -> "UDFExpr":
+    def contains(self, pattern: str, *args: Any, **kwargs: Any) -> "UDFExpr":
         """Check if strings contain a substring."""
+        return _create_str_udf(pc.match_substring, DataType.bool())(
+            self._expr, pattern, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType.bool())
-        def _str_contains(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.match_substring(arr, pattern, *args, **kwargs)
-
-        return _str_contains(self._expr)
-
-    def match(self, pattern, *args, **kwargs) -> "UDFExpr":
+    def match(self, pattern: str, *args: Any, **kwargs: Any) -> "UDFExpr":
         """Match strings against a SQL LIKE pattern."""
+        return _create_str_udf(pc.match_like, DataType.bool())(
+            self._expr, pattern, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType.bool())
-        def _str_match(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.match_like(arr, pattern, *args, **kwargs)
-
-        return _str_match(self._expr)
-
-    def find(self, pattern, *args, **kwargs) -> "UDFExpr":
+    def find(self, pattern: str, *args: Any, **kwargs: Any) -> "UDFExpr":
         """Find the first occurrence of a substring."""
+        return _create_str_udf(pc.find_substring, DataType.int32())(
+            self._expr, pattern, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType.int32())
-        def _str_find(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.find_substring(arr, pattern, *args, **kwargs)
-
-        return _str_find(self._expr)
-
-    def count(self, pattern, *args, **kwargs) -> "UDFExpr":
+    def count(self, pattern: str, *args: Any, **kwargs: Any) -> "UDFExpr":
         """Count occurrences of a substring."""
+        return _create_str_udf(pc.count_substring, DataType.int32())(
+            self._expr, pattern, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType.int32())
-        def _str_count(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.count_substring(arr, pattern, *args, **kwargs)
-
-        return _str_count(self._expr)
-
-    def find_regex(self, pattern, *args, **kwargs) -> "UDFExpr":
+    def find_regex(self, pattern: str, *args: Any, **kwargs: Any) -> "UDFExpr":
         """Find the first occurrence matching a regex pattern."""
+        return _create_str_udf(pc.find_substring_regex, DataType.int32())(
+            self._expr, pattern, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType.int32())
-        def _str_find_regex(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.find_substring_regex(arr, pattern, *args, **kwargs)
-
-        return _str_find_regex(self._expr)
-
-    def count_regex(self, pattern, *args, **kwargs) -> "UDFExpr":
+    def count_regex(self, pattern: str, *args: Any, **kwargs: Any) -> "UDFExpr":
         """Count occurrences matching a regex pattern."""
+        return _create_str_udf(pc.count_substring_regex, DataType.int32())(
+            self._expr, pattern, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType.int32())
-        def _str_count_regex(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.count_substring_regex(arr, pattern, *args, **kwargs)
-
-        return _str_count_regex(self._expr)
-
-    def match_regex(self, pattern, *args, **kwargs) -> "UDFExpr":
+    def match_regex(self, pattern: str, *args: Any, **kwargs: Any) -> "UDFExpr":
         """Check if strings match a regex pattern."""
-
-        @pyarrow_udf(return_dtype=DataType.bool())
-        def _str_match_regex(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.match_substring_regex(arr, pattern, *args, **kwargs)
-
-        return _str_match_regex(self._expr)
+        return _create_str_udf(pc.match_substring_regex, DataType.bool())(
+            self._expr, pattern, *args, **kwargs
+        )
 
     # Transformation methods
     def reverse(self) -> "UDFExpr":
         """Reverse each string."""
+        return _create_str_udf(pc.utf8_reverse, DataType.string())(self._expr)
 
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_reverse(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_reverse(arr)
-
-        return _str_reverse(self._expr)
-
-    def slice(self, *args, **kwargs) -> "UDFExpr":
+    def slice(self, *args: Any, **kwargs: Any) -> "UDFExpr":
         """Slice strings by codeunit indices."""
+        return _create_str_udf(pc.utf8_slice_codeunits, DataType.string())(
+            self._expr, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_slice(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_slice_codeunits(arr, *args, **kwargs)
-
-        return _str_slice(self._expr)
-
-    def replace(self, pattern, replacement, *args, **kwargs) -> "UDFExpr":
+    def replace(
+        self, pattern: str, replacement: str, *args: Any, **kwargs: Any
+    ) -> "UDFExpr":
         """Replace occurrences of a substring."""
+        return _create_str_udf(pc.replace_substring, DataType.string())(
+            self._expr, pattern, replacement, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_replace(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.replace_substring(arr, pattern, replacement, *args, **kwargs)
-
-        return _str_replace(self._expr)
-
-    def replace_regex(self, pattern, replacement, *args, **kwargs) -> "UDFExpr":
+    def replace_regex(
+        self, pattern: str, replacement: str, *args: Any, **kwargs: Any
+    ) -> "UDFExpr":
         """Replace occurrences matching a regex pattern."""
+        return _create_str_udf(pc.replace_substring_regex, DataType.string())(
+            self._expr, pattern, replacement, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_replace_regex(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.replace_substring_regex(
-                arr, pattern, replacement, *args, **kwargs
-            )
-
-        return _str_replace_regex(self._expr)
-
-    def replace_slice(self, start, stop, replacement, *args, **kwargs) -> "UDFExpr":
+    def replace_slice(
+        self, start: int, stop: int, replacement: str, *args: Any, **kwargs: Any
+    ) -> "UDFExpr":
         """Replace a slice with a string."""
+        return _create_str_udf(pc.binary_replace_slice, DataType.string())(
+            self._expr, start, stop, replacement, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_replace_slice(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.binary_replace_slice(
-                arr, start, stop, replacement, *args, **kwargs
-            )
-
-        return _str_replace_slice(self._expr)
-
-    def split(self, pattern, *args, **kwargs) -> "UDFExpr":
+    def split(self, pattern: str, *args: Any, **kwargs: Any) -> "UDFExpr":
         """Split strings by a pattern."""
+        return _create_str_udf(pc.split_pattern, DataType(object))(
+            self._expr, pattern, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType(object))
-        def _str_split(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.split_pattern(arr, pattern, *args, **kwargs)
-
-        return _str_split(self._expr)
-
-    def split_regex(self, pattern, *args, **kwargs) -> "UDFExpr":
+    def split_regex(self, pattern: str, *args: Any, **kwargs: Any) -> "UDFExpr":
         """Split strings by a regex pattern."""
+        return _create_str_udf(pc.split_pattern_regex, DataType(object))(
+            self._expr, pattern, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType(object))
-        def _str_split_regex(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.split_pattern_regex(arr, pattern, *args, **kwargs)
-
-        return _str_split_regex(self._expr)
-
-    def split_whitespace(self, *args, **kwargs) -> "UDFExpr":
+    def split_whitespace(self, *args: Any, **kwargs: Any) -> "UDFExpr":
         """Split strings on whitespace."""
+        return _create_str_udf(pc.utf8_split_whitespace, DataType(object))(
+            self._expr, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType(object))
-        def _str_split_whitespace(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_split_whitespace(arr, *args, **kwargs)
-
-        return _str_split_whitespace(self._expr)
-
-    def extract(self, pattern, *args, **kwargs) -> "UDFExpr":
+    def extract(self, pattern: str, *args: Any, **kwargs: Any) -> "UDFExpr":
         """Extract a substring matching a regex pattern."""
+        return _create_str_udf(pc.extract_regex, DataType.string())(
+            self._expr, pattern, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_extract(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.extract_regex(arr, pattern, *args, **kwargs)
-
-        return _str_extract(self._expr)
-
-    def repeat(self, n, *args, **kwargs) -> "UDFExpr":
+    def repeat(self, n: int, *args: Any, **kwargs: Any) -> "UDFExpr":
         """Repeat each string n times."""
+        return _create_str_udf(pc.binary_repeat, DataType.string())(
+            self._expr, n, *args, **kwargs
+        )
 
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_repeat(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.binary_repeat(arr, n, *args, **kwargs)
-
-        return _str_repeat(self._expr)
-
-    def center(self, width, padding=" ", *args, **kwargs) -> "UDFExpr":
+    def center(
+        self, width: int, padding: str = " ", *args: Any, **kwargs: Any
+    ) -> "UDFExpr":
         """Center strings in a field of given width."""
-
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_center(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.utf8_center(arr, width, padding, *args, **kwargs)
-
-        return _str_center(self._expr)
+        return _create_str_udf(pc.utf8_center, DataType.string())(
+            self._expr, width, padding, *args, **kwargs
+        )
 
     # Custom methods that need special logic beyond simple PyArrow function calls
-    def strip(self, characters: str = None) -> "UDFExpr":
+    def strip(self, characters: str | None = None) -> "UDFExpr":
         """Remove leading and trailing whitespace or specified characters.
 
         Args:
@@ -957,7 +859,7 @@ class _StringNamespace:
 
         return _str_strip(self._expr)
 
-    def lstrip(self, characters: str = None) -> "UDFExpr":
+    def lstrip(self, characters: str | None = None) -> "UDFExpr":
         """Remove leading whitespace or specified characters.
 
         Args:
@@ -976,7 +878,7 @@ class _StringNamespace:
 
         return _str_lstrip(self._expr)
 
-    def rstrip(self, characters: str = None) -> "UDFExpr":
+    def rstrip(self, characters: str | None = None) -> "UDFExpr":
         """Remove trailing whitespace or specified characters.
 
         Args:
@@ -1070,8 +972,19 @@ class _StructNamespace:
         Returns:
             UDFExpr that extracts the specified field from each struct.
         """
+        # Infer return type from the struct field type
+        return_dtype = DataType(object)  # fallback
+        if self._expr.data_type.is_arrow_type():
+            arrow_type = self._expr.data_type.to_arrow_dtype()
+            if pyarrow.types.is_struct(arrow_type):
+                try:
+                    field_type = arrow_type.field(field_name).type
+                    return_dtype = DataType.from_arrow(field_type)
+                except KeyError:
+                    # Field not found in schema, fallback to object
+                    pass
 
-        @pyarrow_udf(return_dtype=DataType(object))
+        @pyarrow_udf(return_dtype=return_dtype)
         def _struct_field(arr: pyarrow.Array) -> pyarrow.Array:
             return pc.struct_field(arr, field_name)
 
