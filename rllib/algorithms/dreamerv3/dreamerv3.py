@@ -577,6 +577,11 @@ class DreamerV3(Algorithm):
         replay_buffer_results = self.local_replay_buffer.get_metrics()
         self.metrics.aggregate([replay_buffer_results], key=REPLAY_BUFFER_RESULTS)
 
+        # Use self.spaces for the environment spaces of the env-runners
+        single_observation_space, single_action_space = self.spaces[
+            INPUT_ENV_SINGLE_SPACES
+        ]
+
         # Continue sampling batch_size_B x batch_length_T sized batches from the buffer
         # and using these to update our models (`LearnerGroup.update()`)
         # until the computed `training_ratio` is larger than the configured one, meaning
@@ -602,8 +607,6 @@ class DreamerV3(Algorithm):
                 replayed_steps = self.config.batch_size_B * self.config.batch_length_T
                 replayed_steps_this_iter += replayed_steps
 
-                # Get single action space from self.spaces (works with distributed env runners).
-                single_action_space = self.spaces[INPUT_ENV_SINGLE_SPACES][1]
                 if isinstance(single_action_space, gym.spaces.Discrete):
                     sample["actions_ints"] = sample[Columns.ACTIONS]
                     sample[Columns.ACTIONS] = one_hot(
@@ -634,8 +637,6 @@ class DreamerV3(Algorithm):
         # from the posterior states.
         # Only every n iterations and only for the first sampled batch row
         # (videos are `config.batch_length_T` frames long).
-        # Get observation space from self.spaces (works with distributed env runners).
-        single_observation_space = self.spaces[INPUT_ENV_SINGLE_SPACES][0]
         report_predicted_vs_sampled_obs(
             # TODO (sven): DreamerV3 is single-agent only.
             metrics=self.metrics,
