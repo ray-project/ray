@@ -1008,5 +1008,7 @@ RAY_CONFIG(bool, gcs_ray_syncer_batching_enabled, false)
 // The batch size for ray_syncer_bidi_reactor to sync messages to other nodes.
 RAY_CONFIG(size_t, syncer_batch_size, 1)
 
-// The delay for ray_syncer_bidi_reactor to sync messages to other nodes.
-RAY_CONFIG(int64_t, syncer_batch_delay_ms, 0)
+// The maximum period that the GCS will wait for resource update messages before broadcasting the batch.
+// If `gcs_resource_broadcast_max_batch_size` messages arrive before the timeout, the batch will be broadcasted eagerly.
+// This flag only applies if `gcs_resource_broadcast_batching_enabled == true`.
+RAY_CONFIG(int64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
