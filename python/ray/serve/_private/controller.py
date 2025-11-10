@@ -426,7 +426,7 @@ class ServeController:
                     result.append((app_name, dep_name, details, autoscaling_config))
         self._autoscaling_enabled_deployments_cache = result
 
-    def _list_deployments_for_autoscaling(self):
+    def _autoscaling_enabled_deployments_cache(self):
         return iter(self._autoscaling_enabled_deployments_cache)
 
     def _emit_deployment_autoscaling_snapshots(self) -> None:
@@ -436,7 +436,7 @@ class ServeController:
             dep_name,
             details,
             autoscaling_config,
-        ) in self._list_deployments_for_autoscaling():
+        ) in self._autoscaling_enabled_deployments_cache():
             dep_id = DeploymentID(name=dep_name, app_name=app_name)
             deployment_snapshot = (
                 self.autoscaling_state_manager.get_deployment_snapshot(dep_id)

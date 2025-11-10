@@ -235,8 +235,7 @@ class DeploymentAutoscalingState:
         if _skip_bound_check:
             return decision_num_replicas
 
-        if not _skip_bound_check:
-            decision_num_replicas = self.apply_bounds(decision_num_replicas)
+        decision_num_replicas = self.apply_bounds(decision_num_replicas)
 
         self._decision_history.append(
             DecisionRecord(
@@ -285,7 +284,7 @@ class DeploymentAutoscalingState:
 
         return autoscaling_context
 
-    def get_recent_decisions(self) -> List[DecisionRecord]:
+    def get_decision_history(self) -> List[DecisionRecord]:
         return self._decision_history
 
     def _collect_replica_running_requests(self) -> List[TimeSeries]:
@@ -1130,9 +1129,9 @@ class AutoscalingStateManager:
         dep_state = app_state._deployment_autoscaling_states.get(deployment_id)
         return dep_state.get_deployment_snapshot() if dep_state else None
 
-    def get_recent_decisions(self, deployment_id: DeploymentID):
+    def get_decision_history(self, deployment_id: DeploymentID) -> List[DecisionRecord]:
         app_state = self._app_autoscaling_states.get(deployment_id.app_name)
         if not app_state:
             return []
         dep_state = app_state._deployment_autoscaling_states.get(deployment_id)
-        return dep_state.get_recent_decisions() if dep_state else []
+        return dep_state.get_decision_history() if dep_state else []
