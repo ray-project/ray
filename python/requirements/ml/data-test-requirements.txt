@@ -27,3 +27,4 @@ kafka-python>=2.0.0  # For Kafka streaming datasource
 boto3>=1.26.76       # For Kinesis streaming datasource
 croniter>=1.0.0      # For cron scheduling in streaming triggers
 requests>=2.25.0      # For Flink REST API connections
+datasketches

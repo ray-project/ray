@@ -50,11 +50,8 @@
 #include "ray/core_worker/task_execution/task_receiver.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
-#include "ray/pubsub/publisher.h"
-#include "ray/pubsub/subscriber.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
-#include "ray/util/process.h"
 #include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
@@ -124,6 +121,8 @@ class TaskCounter {
   // overlap with those of counter_.
   CounterMap<std::pair<std::string, bool>> running_in_get_counter_ ABSL_GUARDED_BY(mu_);
   CounterMap<std::pair<std::string, bool>> running_in_wait_counter_ ABSL_GUARDED_BY(mu_);
+  CounterMap<std::pair<std::string, bool>> pending_getting_and_pinning_args_fetch_counter_
+      ABSL_GUARDED_BY(mu_);
 
   std::string job_id_ ABSL_GUARDED_BY(mu_);
   // Used for actor state tracking.
@@ -174,7 +173,6 @@ class CoreWorker {
   CoreWorker(CoreWorkerOptions options,
              std::unique_ptr<WorkerContext> worker_context,
              instrumented_io_context &io_service,
-             std::unique_ptr<rpc::ClientCallManager> client_call_manager,
              std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
              std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
              std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
@@ -1207,8 +1205,8 @@ class CoreWorker {
                         rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
-  void HandleRemoteCancelTask(rpc::RemoteCancelTaskRequest request,
-                              rpc::RemoteCancelTaskReply *reply,
+  void HandleCancelRemoteTask(rpc::CancelRemoteTaskRequest request,
+                              rpc::CancelRemoteTaskReply *reply,
                               rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
@@ -1391,7 +1389,8 @@ class CoreWorker {
       int64_t generator_backpressure_num_objects = -1,
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
-      const std::unordered_map<std::string, std::string> &label_selector = {},
+      const LabelSelector &label_selector = {},
+      const std::vector<FallbackOption> &fallback_strategy = {},
       const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE);
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
@@ -1735,16 +1734,12 @@ class CoreWorker {
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   instrumented_io_context &io_service_;
 
-  /// Shared client call manager.
-  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
-
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
   // Shared raylet client pool.
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
 
-  /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
 
   /// RPC server used to receive tasks to execute.
@@ -1852,6 +1847,12 @@ class CoreWorker {
 
   /// Number of executed tasks.
   std::atomic<int64_t> num_executed_tasks_;
+
+  // Number of in flight argument pinning requests used for metric reporting only
+  std::atomic<int64_t> num_get_pin_args_in_flight_;
+
+  // Number of failed argument pinning requests used for metric reporting only
+  std::atomic<int64_t> num_failed_get_pin_args_;
 
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction

@@ -154,7 +154,7 @@
     "resources": [
         {
             "type": "Microsoft.Network/networkInterfaces",
-            "apiVersion": "2023-11-01",
+            "apiVersion": "2024-07-01",
             "name": "[concat(variables('networkInterfaceNamePublic'), copyIndex())]",
             "location": "[variables('location')]",
             "dependsOn": [
@@ -188,7 +188,7 @@
         },
         {
             "type": "Microsoft.Network/networkInterfaces",
-            "apiVersion": "2023-11-01",
+            "apiVersion": "2024-07-01",
             "name": "[concat(variables('networkInterfaceNamePrivate'), copyIndex())]",
             "location": "[variables('location')]",
             "copy": {
@@ -216,7 +216,7 @@
         },
         {
             "type": "Microsoft.Network/publicIpAddresses",
-            "apiVersion": "2023-11-01",
+            "apiVersion": "2024-07-01",
             "name": "[concat(variables('publicIpAddressName'), copyIndex())]",
             "location": "[variables('location')]",
             "properties": {
@@ -236,7 +236,7 @@
         },
         {
             "type": "Microsoft.Compute/virtualMachines",
-            "apiVersion": "2019-03-01",
+            "apiVersion": "2024-07-01",
             "name": "[concat(parameters('vmName'), copyIndex())]",
             "location": "[variables('location')]",
             "dependsOn": [

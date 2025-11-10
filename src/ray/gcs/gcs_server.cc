@@ -39,6 +39,7 @@
 #include "ray/observability/metric_constants.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/stats/stats.h"
 #include "ray/util/network_util.h"
 
@@ -191,7 +192,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
           rpc::ChannelType::RAY_LOG_CHANNEL,
           rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
-      },
+          rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL},
       /*periodical_runner=*/*pubsub_periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
@@ -295,8 +296,15 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init metrics and event exporter.
   metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
-    stats::InitOpenTelemetryExporter(config_.metrics_agent_port, server_status);
-    ray_event_recorder_->StartExportingEvents();
+    if (server_status.ok()) {
+      stats::InitOpenTelemetryExporter(config_.metrics_agent_port);
+      ray_event_recorder_->StartExportingEvents();
+    } else {
+      RAY_LOG(ERROR)
+          << "Failed to establish connection to the event+metrics exporter agent. "
+             "Events and metrics will not be exported. "
+          << "Exporter agent status: " << server_status.ToString();
+    }
   });
 
   // Start RPC server when all tables have finished loading initial
@@ -451,8 +459,7 @@ void GcsServer::InitClusterLeaseManager() {
       *cluster_resource_scheduler_,
       /*get_node_info=*/
       [this](const NodeID &node_id) {
-        auto node = gcs_node_manager_->GetAliveNode(node_id);
-        return node.has_value() ? node.value().get() : nullptr;
+        return gcs_node_manager_->GetAliveNodeAddress(node_id);
       },
       /*announce_infeasible_task=*/nullptr,
       /*local_lease_manager=*/local_lease_manager_);
@@ -517,6 +524,7 @@ void GcsServer::InitGcsActorManager(
       schedule_success_handler,
       raylet_client_pool_,
       worker_client_pool_,
+      metrics_.scheduler_placement_time_ms_histogram,
       /*normal_task_resources_changed_callback=*/
       [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
         gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
@@ -531,6 +539,7 @@ void GcsServer::InitGcsActorManager(
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
+      raylet_client_pool_,
       worker_client_pool_,
       *ray_event_recorder_,
       config_.session_name,
@@ -608,7 +617,8 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(
       syncer::MessageType::COMMANDS, nullptr, gcs_resource_manager_.get());
-  rpc_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(*ray_syncer_));
+  rpc_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(
+      *ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken()));
 }
 
 void GcsServer::InitFunctionManager() {

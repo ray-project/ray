@@ -272,8 +272,8 @@ def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
         "route_prefix": "/",
         "deployments": [{"name": "GetPID", "num_replicas": 1}],
     }
-    client.deploy_apps(ServeDeploySchema(**{"applications": [config]}))
-    wait_for_condition(check_apps_running, apps=["default"])
+    client.deploy_apps(ServeDeploySchema(**{"applications": [config]}), _blocking=True)
+    check_apps_running(apps=["default"])
 
     r = httpx.post("http://localhost:8000")
     assert r.status_code == 200, r.text

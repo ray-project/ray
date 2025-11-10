@@ -363,6 +363,32 @@ class RouterMetricsManager:
         """Adds metrics point for queued and running requests at replicas.
 
         Also prunes keys in the in memory metrics store with outdated datapoints.
+
+        ┌─────────────────────────────────────────────────────────────────┐
+        │  Handle-based metrics collection                                │
+        ├─────────────────────────────────────────────────────────────────┤
+        │                                                                 │
+        │  Client                Handle              Replicas             │
+        │  ┌──────┐            ┌────────┐          ┌─────────┐           │
+        │  │  App │───────────>│ Handle │─────────>│ Replica │           │
+        │  │      │  Requests  │        │ Forwards │    1    │           │
+        │  └──────┘            │ Tracks │          └─────────┘           │
+        │                      │ Queued │                                │
+        │                      │   +    │          ┌─────────┐           │
+        │                      │Running │─────────>│ Replica │           │
+        │                      │Requests│ Forwards │    2    │           │
+        │                      └────────┘          └─────────┘           │
+        │                          │                                      │
+        │                          │ Push metrics                         │
+        │                          └─────────────────> Controller         │
+        │                                                                 │
+        └─────────────────────────────────────────────────────────────────┘
+
+        :::{note}
+        The long-term plan is to deprecate handle-based metrics collection in favor of
+        replica-based collection. Replica-based collection will become the default in a
+        future release. Queued requests will be continues to be tracked at the handle.
+        :::
         """
 
         timestamp = time.time()
@@ -624,7 +650,10 @@ class AsyncioRouter:
 
             # Log usage telemetry to indicate that custom request router
             # feature is being used in this cluster.
-            if self._request_router_class is not PowerOfTwoChoicesRequestRouter:
+            if (
+                self._request_router_class.__name__
+                != PowerOfTwoChoicesRequestRouter.__name__
+            ):
                 ServeUsageTag.CUSTOM_REQUEST_ROUTER_USED.record("1")
         return self._request_router
 
