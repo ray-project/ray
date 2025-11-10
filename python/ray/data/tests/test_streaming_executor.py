@@ -817,7 +817,6 @@ def test_callbacks_initialized_once():
         mock_init.assert_not_called()
 
 
-@pytest.mark.skip("Fails on RayTurbo because different read logical ops")
 def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
     """Test the executor arg in ExecutionCallback."""
 
