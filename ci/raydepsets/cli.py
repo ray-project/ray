@@ -17,7 +17,6 @@ from ci.raydepsets.workspace import Depset, Workspace
 
 DEFAULT_UV_FLAGS = """
     --generate-hashes
-    --strip-extras
     --unsafe-package setuptools
     --index-url https://pypi.org/simple
     --index-strategy unsafe-best-match
@@ -318,10 +317,10 @@ class DependencySetManager:
         if append_flags:
             args.extend(_flatten_flags(append_flags))
         if constraints:
-            for constraint in constraints:
+            for constraint in sorted(constraints):
                 args.extend(["-c", constraint])
         if requirements:
-            for requirement in requirements:
+            for requirement in sorted(requirements):
                 args.extend([requirement])
         if packages:
             # need to add a dash to process stdin

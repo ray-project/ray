@@ -555,7 +555,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         return rpc::TensorTransport::OBJECT_STORE;
       },
       boost::asio::steady_timer(io_service_),
-      *scheduler_placement_time_s_histogram_);
+      *scheduler_placement_time_ms_histogram_);
 
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,
@@ -800,12 +800,12 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       new ray::stats::Gauge(GetActorByStateGaugeMetric()));
   total_lineage_bytes_gauge_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetTotalLineageBytesGaugeMetric()));
-  scheduler_placement_time_s_histogram_ = std::unique_ptr<ray::stats::Histogram>(
-      new ray::stats::Histogram(GetSchedulerPlacementTimeSHistogramMetric()));
   owned_objects_counter_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetOwnedObjectsByStateGaugeMetric()));
   owned_objects_size_counter_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
+  scheduler_placement_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
+      new ray::stats::Histogram(GetSchedulerPlacementTimeMsHistogramMetric()));
 
   // Initialize event framework before starting up worker.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
