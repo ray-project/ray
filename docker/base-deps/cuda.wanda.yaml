@@ -2,7 +2,6 @@ name: "ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base$ARCH_SUFFIX"
 froms: ["nvidia/cuda:$CUDA_VERSION-devel-ubuntu22.04"]
 dockerfile: docker/base-deps/Dockerfile
 srcs:
-  - python/requirements_compiled.txt
   - python/deplocks/base_deps/$REQUIREMENTS_FILE
 build_args:
   - PYTHON_VERSION
