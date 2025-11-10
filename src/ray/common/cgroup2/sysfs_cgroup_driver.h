@@ -168,7 +168,7 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
 
   /**
     Reads the cgroup.procs of "from" and writes them out to the given file.
-    The cgroup.procs file is newline seperated. The current user must have
+    The cgroup.procs file is newline separated. The current user must have
     read-write permissions to both cgroup.procs file as well as the common ancestor
     of the source and destination cgroups.
 
