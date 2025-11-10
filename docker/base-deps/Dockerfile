@@ -110,7 +110,7 @@ export PATH=$HOME/anaconda3/bin:$PATH
 # Some packages are on PyPI as well as other indices, but the latter
 # (unhelpfully) take precedence. We use `--index-strategy unsafe-best-match`
 # to ensure that the best match is chosen from the available indices.
-uv pip install --system --no-cache-dir --no-deps--index-strategy unsafe-best-match \
+uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
     -r $HOME/python_depset.lock
 
 # We install cmake temporarily to get psutil
