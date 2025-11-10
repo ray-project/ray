@@ -54,9 +54,7 @@ class _DPRankAssigner:
                 f"with dp_size_per_node {self.dp_size_per_node}"
             )
 
-    async def register(
-        self, node_id: Optional[str] = None
-    ):
+    async def register(self, node_id: Optional[str] = None):
         """
         Register a replica and assign a rank to it.
 
