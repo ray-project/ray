@@ -6,6 +6,7 @@ import sys
 import time
 import traceback
 from dataclasses import asdict
+from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 import click
@@ -818,6 +819,23 @@ def shutdown(address: str, yes: bool):
     help="Servicer function for adding the method handler to the gRPC server. "
     "Defaults to an empty list and no gRPC server is started.",
 )
+def _convert_enums_to_strings(obj: Any) -> Any:
+    """Recursively convert Enum objects to their string values for YAML serialization.
+
+    PyYAML cannot serialize Enum objects directly. This function traverses
+    dictionaries, lists, and nested structures to convert all Enum instances
+    to their string values.
+    """
+    if isinstance(obj, Enum):
+        return obj.value
+    elif isinstance(obj, dict):
+        return {key: _convert_enums_to_strings(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(_convert_enums_to_strings(item) for item in obj)
+    else:
+        return obj
+
+
 def build(
     import_paths: Tuple[str],
     app_dir: str,
@@ -870,8 +888,11 @@ def build(
     # Parse + validate the set of application configs
     ServeDeploySchema.parse_obj(deploy_config)
 
+    # Convert Enum objects to strings for YAML serialization
+    deploy_config_serializable = _convert_enums_to_strings(deploy_config)
+
     config_str += yaml.dump(
-        deploy_config,
+        deploy_config_serializable,
         Dumper=ServeDeploySchemaDumper,
         default_flow_style=False,
         sort_keys=False,
