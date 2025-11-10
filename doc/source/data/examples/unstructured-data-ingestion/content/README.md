@@ -14,9 +14,9 @@ Build a comprehensive document ingestion pipeline that transforms unstructured d
 
 1. [Data Lake Document Discovery](#step-1-data-lake-document-discovery) (8 min)
 2. [Document Processing and Classification](#step-2-document-processing-and-classification) (10 min)
-3. [Text Extraction and Enrichment](#step-3-text-extraction-and-enrichment) (8 min)
-4. [Data Warehouse Output](#step-4-data-warehouse-output) (6 min)
-5. [Verification and Summary](#step-5-verification-and-summary) (3 min)
+3. [Text Extraction and Enrichment](#step-3-text-chunking-and-enrichment) (8 min)
+4. [Data Warehouse Output](#step-4-data-warehouse-schema-and-output) (6 min)
+5. [Verification and Summary](#verification-and-summary) (3 min)
 
 ## Learning Objectives
 
