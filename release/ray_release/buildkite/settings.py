@@ -66,7 +66,7 @@ def get_priority(priority_str: str) -> Priority:
 def get_test_filters(filters_str: str) -> Dict[str, str]:
     if not filters_str:
         return {}
-
+    logger.info(f"Getting test filters: {filters_str}")
     test_filters = {}
     for line in filters_str.splitlines():
         line = line.strip()
