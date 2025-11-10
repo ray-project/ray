@@ -53,6 +53,19 @@ py_test_module_list(
     ],
 )
 
+py_test_module_list(
+    size = "small",
+    files = glob(["tests/anyscale/test_*.py"]),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 py_test(
     name = "test_formats",
     size = "medium",
@@ -86,6 +99,20 @@ py_test(
     name = "test_issue_detection_manager",
     size = "small",
     srcs = ["tests/test_issue_detection_manager.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_issue_detection",
+    size = "small",
+    srcs = ["tests/test_issue_detection.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1339,6 +1366,20 @@ py_test(
     name = "test_randomize_block_order",
     size = "small",
     srcs = ["tests/test_randomize_block_order.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_ranker",
+    size = "small",
+    srcs = ["tests/test_ranker.py"],
     tags = [
         "exclusive",
         "team:data",
