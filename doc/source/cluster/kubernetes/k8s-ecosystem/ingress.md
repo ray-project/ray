@@ -33,10 +33,10 @@ Four examples show how to use ingress to access your Ray cluster:
 # Step 1: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
-helm install kuberay-operator kuberay/kuberay-operator --version 1.4.2
+helm install kuberay-operator kuberay/kuberay-operator --version 1.5.0
 
 # Step 2: Install a RayCluster
-helm install raycluster kuberay/ray-cluster --version 1.4.2
+helm install raycluster kuberay/ray-cluster --version 1.5.0
 
 # Step 3: Edit the `ray-operator/config/samples/ray-cluster-alb-ingress.yaml`
 #
@@ -123,10 +123,10 @@ Now run the following commands:
 # Step 1: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
-helm install kuberay-operator kuberay/kuberay-operator --version 1.4.2
+helm install kuberay-operator kuberay/kuberay-operator --version 1.5.0
 
 # Step 2: Install a RayCluster
-helm install raycluster kuberay/ray-cluster --version 1.4.2
+helm install raycluster kuberay/ray-cluster --version 1.5.0
 
 # Step 3: Edit ray-cluster-gclb-ingress.yaml to replace the service name with the name of the head service from the RayCluster. (Output of `kubectl get svc`)
 
@@ -186,12 +186,12 @@ kubectl wait --namespace ingress-nginx \
 # Step 3: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
-helm install kuberay-operator kuberay/kuberay-operator --version 1.4.2
+helm install kuberay-operator kuberay/kuberay-operator --version 1.5.0
 
 # Step 4: Install RayCluster and create an ingress separately.
 # More information about change of setting was documented in https://github.com/ray-project/kuberay/pull/699
 # and `ray-operator/config/samples/ray-cluster.separate-ingress.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.4.2/ray-operator/config/samples/ray-cluster.separate-ingress.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.5.0/ray-operator/config/samples/ray-cluster.separate-ingress.yaml
 kubectl apply -f ray-cluster.separate-ingress.yaml
 
 # Step 5: Check the ingress created in Step 4.
@@ -230,10 +230,10 @@ kubectl describe ingress raycluster-ingress-head-ingress
 # Step 1: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
-helm install kuberay-operator kuberay/kuberay-operator --version 1.4.2
+helm install kuberay-operator kuberay/kuberay-operator --version 1.5.0
 
 # Step 2: Install a RayCluster
-helm install raycluster kuberay/ray-cluster --version 1.4.2
+helm install raycluster kuberay/ray-cluster --version 1.5.0
 
 # Step 3: Edit the `ray-operator/config/samples/ray-cluster-agc-gatewayapi.yaml`
 #
