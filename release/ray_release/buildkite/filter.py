@@ -29,9 +29,7 @@ def filter_tests(
 ) -> List[Tuple[Test, bool]]:
     if test_filters is None:
         test_filters = {}
-    import logging
 
-    logger = logging.getLogger()
     tests_to_run = []
     for test in test_collection:
         attr_mismatch = False
@@ -50,8 +48,6 @@ def filter_tests(
                         break
                 else:  # Match filters using regex
                     attr_value = _unflattened_lookup(test, attr) or ""
-
-                    logger.info(f"Matching {attr_value} with {value}")
                     if not re.match(value, attr_value):
                         attr_mismatch = True
                         break
