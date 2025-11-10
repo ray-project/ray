@@ -3,11 +3,12 @@ import shutil
 import sys
 import tempfile
 from typing import Optional
-from azure.storage.blob import BlobServiceClient
-from azure.identity import DefaultAzureCredential
 
 import boto3
+from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobServiceClient
 from google.cloud import storage
+
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.cloud_util import generate_tmp_cloud_storage_path
 from ray_release.cluster_manager.cluster_manager import ClusterManager
@@ -16,13 +17,13 @@ from ray_release.file_manager.file_manager import FileManager
 from ray_release.job_manager import JobManager
 from ray_release.logger import logger
 from ray_release.util import (
-    exponential_backoff_retry,
-    S3_CLOUD_STORAGE,
-    GS_CLOUD_STORAGE,
-    GS_BUCKET,
     AZURE_CLOUD_STORAGE,
     AZURE_STORAGE_ACCOUNT,
     AZURE_STORAGE_CONTAINER,
+    GS_BUCKET,
+    GS_CLOUD_STORAGE,
+    S3_CLOUD_STORAGE,
+    exponential_backoff_retry,
 )
 
 
