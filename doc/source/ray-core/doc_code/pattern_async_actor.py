@@ -16,7 +16,7 @@ class TaskExecutor:
 
     def run(self):
         while True:
-            task = ray.get(task_store.get_next_task.remote())
+            task = ray.get(self.task_store.get_next_task.remote())
             self._execute_task(task)
 
     def _execute_task(self, task):
