@@ -1396,12 +1396,15 @@ def _create_pyarrow_wrapper(
             else:
                 return val, False
 
-        # Convert inputs to PyArrow
-        converted_args, was_pandas_flags = (
-            zip(*[to_arrow(arg) for arg in args]) if args else ([], [])
+        # Convert inputs to PyArrow and track pandas flags
+        args_results = [to_arrow(arg) for arg in args]
+        kwargs_results = {k: to_arrow(v) for k, v in kwargs.items()}
+
+        converted_args = [v[0] for v in args_results]
+        converted_kwargs = {k: v[0] for k, v in kwargs_results.items()}
+        input_was_pandas = any(v[1] for v in args_results) or any(
+            v[1] for v in kwargs_results.values()
         )
-        converted_kwargs = {k: to_arrow(v)[0] for k, v in kwargs.items()}
-        input_was_pandas = any(was_pandas_flags)
 
         # Call function with converted inputs
         result = fn(*converted_args, **converted_kwargs)
@@ -1415,6 +1418,7 @@ def _create_pyarrow_wrapper(
     return arrow_wrapper
 
 
+@PublicAPI(stability="alpha")
 def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
     """Decorator for PyArrow compute functions with automatic format conversion.
 
