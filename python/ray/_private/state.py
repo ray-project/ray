@@ -41,7 +41,6 @@ class GlobalState:
         This lazily initializes clients needed for state accessors.
 
         Returns:
-            Nothing.
         Raises:
             RuntimeError: An exception is raised if ray.init() has not been
                 called yet.
