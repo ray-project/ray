@@ -6,7 +6,7 @@ import sys
 import pytest
 
 import ray
-from ray._common.test_utils import (
+from ray._private.test_utils import (
     RPC_FAILURE_MAP,
     RPC_FAILURE_TYPES,
     wait_for_condition,
