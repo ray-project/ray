@@ -151,8 +151,8 @@ class CoreWorkerTest : public ::testing::Test {
         object_info_publisher.get(),
         fake_object_info_subscriber.get(),
         [](const NodeID &) { return false; },
-        *std::make_shared<ray::observability::FakeGauge>(),
-        *std::make_shared<ray::observability::FakeGauge>(),
+        fake_owned_object_count_gauge_,
+        fake_owned_object_size_gauge_,
         false);
 
     memory_store_ = std::make_shared<CoreWorkerMemoryStore>(
@@ -303,6 +303,8 @@ class CoreWorkerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_actor_by_state_gauge_;
   ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
   ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
+  ray::observability::FakeGauge fake_owned_object_count_gauge_;
+  ray::observability::FakeGauge fake_owned_object_size_gauge_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
 
   // Controllable time for testing publisher timeouts
