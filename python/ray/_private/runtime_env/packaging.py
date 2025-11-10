@@ -93,7 +93,7 @@ def _dir_travel(
     Respects excludes, which will be called to check if this path is skipped.
     """
 
-    new_excludes = get_excludes_from_ignore_files(path, logger=logger)
+    new_excludes = get_excludes_from_ignore_files(path)
     excludes.extend(new_excludes)
 
     skip = any(e(path) for e in excludes)
@@ -285,7 +285,7 @@ def _get_ignore_file(path: Path, ignore_file: str) -> Optional[Callable]:
     Returns None if there is no .gitignore file in the path.
 
     Args:
-        path: The path to the directory to check for a .rayignore file.
+        path: The path to the directory to check for an ignore file.
         ignore_file: The name of the ignore file. Combined with path will
         give the absolute path to the ignore_file.
 
@@ -308,9 +308,7 @@ def _get_ignore_file(path: Path, ignore_file: str) -> Optional[Callable]:
         return None
 
 
-def get_excludes_from_ignore_files(
-    path: Path, logger: Optional[logging.Logger] = default_logger
-) -> List[Callable]:
+def get_excludes_from_ignore_files(path: Path) -> List[Callable]:
     """Get exclusion functions from .gitignore and .rayignore files in the current path.
 
     Environment Variables:
@@ -330,9 +328,6 @@ def get_excludes_from_ignore_files(
         # .gitignore is parsed, and .rayignore inherits from it
         g = _get_ignore_file(path, ignore_file=".gitignore")
         to_ignore.append(g)
-        logger.info(
-            "Ignoring files found in .rayignore (if exists) and .gitginore (if exists)"
-        )
 
     r = _get_ignore_file(path, ignore_file=".rayignore")
     to_ignore.append(r)
