@@ -55,13 +55,12 @@ class _DPRankAssigner:
             )
 
     async def register(
-        self, replica_ctx: "serve.context.ReplicaContext", node_id: Optional[str] = None
+        self, node_id: Optional[str] = None
     ):
         """
         Register a replica and assign a rank to it.
 
         Args:
-            replica_ctx: The replica context.
             node_id: The node id of the replica.
 
         Returns:

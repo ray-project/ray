@@ -24,9 +24,8 @@ class DPServer(LLMServer):
     async def __init__(self, llm_config: LLMConfig, dp_rank_assigner: DeploymentHandle):
         self.dp_rank_assigner = dp_rank_assigner
 
-        replica_ctx = serve.get_replica_context()
         node_id = get_runtime_context().get_node_id()
-        self.dp_rank = await self.dp_rank_assigner.register.remote(replica_ctx, node_id)
+        self.dp_rank = await self.dp_rank_assigner.register.remote(node_id)
 
         logger.info(f"DP rank {self.dp_rank} registered with rank assigner")
 
