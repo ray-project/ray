@@ -5,7 +5,6 @@ import collections
 from typing import TYPE_CHECKING, Deque, Iterator, Optional
 
 import ray
-from ray import ObjectRef
 from ray.exceptions import ObjectRefStreamEndOfStreamError
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -46,7 +45,7 @@ class ObjectRefGenerator:
     >>> next(gen)
     >>> await gen.__anext__()
     """
-    def __init__(self, generator_ref: ObjectRef, worker: "Worker"):
+    def __init__(self, generator_ref: "ray.ObjectRef", worker: "Worker"):
         # The reference to a generator task.
         self._generator_ref = generator_ref
         # The exception raised from a generator task.
@@ -242,7 +241,7 @@ class ObjectRefGenerator:
                 raise StopIteration
         return ref
 
-    async def _suppress_exceptions(self, ref: ObjectRef) -> None:
+    async def _suppress_exceptions(self, ref: "ray.ObjectRef") -> None:
         # Wrap a streamed ref to avoid asyncio warnings about not retrieving
         # the exception when we are just waiting for the ref to become ready.
         # The exception will get returned (or warned) to the user once they

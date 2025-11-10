@@ -93,7 +93,6 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
             with pytest.raises(TypeError):
                 dumps(generator)
 
-            generator.__del__()
             del generator
             c.async_delete_object_ref_stream.assert_called()
 
