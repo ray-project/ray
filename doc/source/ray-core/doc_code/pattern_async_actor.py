@@ -51,7 +51,7 @@ class AsyncTaskExecutor:
             # Here we use await instead of ray.get() to
             # wait for the next task and it will yield
             # the control while waiting.
-            task = await task_store.get_next_task.remote()
+            task = await self.task_store.get_next_task.remote()
             self._execute_task(task)
 
     def _execute_task(self, task):
