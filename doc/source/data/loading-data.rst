@@ -754,7 +754,7 @@ For a complete example script that loads many different Hugging Face datasets, s
 .. _loading_datasets_from_ml_libraries:
 
 Loading data from ML libraries
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray Data interoperates with PyTorch and TensorFlow datasets.
 
