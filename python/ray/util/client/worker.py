@@ -836,12 +836,27 @@ class Worker:
                 serialized_job_config = None
             else:
                 with tempfile.TemporaryDirectory() as tmp_dir:
+                    from ray._private.ray_constants import (
+                        RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
+                    )
+
                     runtime_env = job_config.runtime_env or {}
+                    # Determine whether to respect .gitignore files based on environment variable
+                    # Default is True (respect .gitignore). Set to False if env var is "1".
+                    include_gitignore = (
+                        os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
+                    )
                     runtime_env = upload_py_modules_if_needed(
-                        runtime_env, tmp_dir, logger=logger
+                        runtime_env,
+                        tmp_dir,
+                        include_gitignore=include_gitignore,
+                        logger=logger,
                     )
                     runtime_env = upload_working_dir_if_needed(
-                        runtime_env, tmp_dir, logger=logger
+                        runtime_env,
+                        tmp_dir,
+                        include_gitignore=include_gitignore,
+                        logger=logger,
                     )
                     # Remove excludes, it isn't relevant after the upload step.
                     runtime_env.pop("excludes", None)

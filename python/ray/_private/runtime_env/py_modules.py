@@ -48,6 +48,7 @@ def _check_is_uri(s: str) -> bool:
 
 def upload_py_modules_if_needed(
     runtime_env: Dict[str, Any],
+    include_gitignore: bool,
     scratch_dir: Optional[str] = os.getcwd(),
     logger: Optional[logging.Logger] = default_logger,
     upload_fn=None,
@@ -102,7 +103,11 @@ def upload_py_modules_if_needed(
                 is_dir = Path(module_path).is_dir()
                 excludes = runtime_env.get("excludes", None)
                 if is_dir:
-                    module_uri = get_uri_for_directory(module_path, excludes=excludes)
+                    module_uri = get_uri_for_directory(
+                        module_path,
+                        excludes=excludes,
+                        include_gitignore=include_gitignore,
+                    )
                 else:
                     module_uri = get_uri_for_file(module_path)
                 if upload_fn is None:
@@ -113,6 +118,7 @@ def upload_py_modules_if_needed(
                             module_path,
                             excludes=excludes,
                             include_parent_dir=is_dir,
+                            include_gitignore=include_gitignore,
                             logger=logger,
                         )
                     except Exception as e:

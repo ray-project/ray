@@ -30,6 +30,7 @@ _WIN32 = os.name == "nt"
 
 def upload_working_dir_if_needed(
     runtime_env: Dict[str, Any],
+    include_gitignore: bool,
     scratch_dir: Optional[str] = os.getcwd(),
     logger: Optional[logging.Logger] = default_logger,
     upload_fn: Optional[Callable[[str, Optional[List[str]]], None]] = None,
@@ -64,7 +65,9 @@ def upload_working_dir_if_needed(
 
     excludes = runtime_env.get("excludes", None)
     try:
-        working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
+        working_dir_uri = get_uri_for_directory(
+            working_dir, excludes=excludes, include_gitignore=include_gitignore
+        )
     except ValueError:  # working_dir is not a directory
         package_path = Path(working_dir)
         if not package_path.exists() or package_path.suffix != ".zip":
@@ -90,6 +93,7 @@ def upload_working_dir_if_needed(
                 working_dir,
                 include_parent_dir=False,
                 excludes=excludes,
+                include_gitignore=include_gitignore,
                 logger=logger,
             )
         except Exception as e:

@@ -178,51 +178,57 @@ class TestGetURIForFile:
 class TestGetURIForDirectory:
     def test_invalid_directory(self):
         with pytest.raises(ValueError):
-            get_uri_for_directory("/does/not/exist")
+            get_uri_for_directory("/does/not/exist", include_gitignore=True)
 
         with pytest.raises(ValueError):
-            get_uri_for_directory("does/not/exist")
+            get_uri_for_directory("does/not/exist", include_gitignore=True)
 
     def test_determinism(self, random_dir):
         # Check that it's deterministic for same data.
-        uris = {get_uri_for_directory(random_dir) for _ in range(10)}
+        uris = {
+            get_uri_for_directory(random_dir, include_gitignore=True) for _ in range(10)
+        }
         assert len(uris) == 1
 
         # Add one file, should be different now.
         with open(random_dir / f"test_{random_string()}", "w") as f:
             f.write(random_string())
 
-        assert {get_uri_for_directory(random_dir)} != uris
+        assert {get_uri_for_directory(random_dir, include_gitignore=True)} != uris
 
     def test_relative_paths(self, random_dir):
         # Check that relative or absolute paths result in the same URI.
         p = Path(random_dir)
-        relative_uri = get_uri_for_directory(os.path.relpath(p))
-        absolute_uri = get_uri_for_directory(p.resolve())
+        relative_uri = get_uri_for_directory(os.path.relpath(p), include_gitignore=True)
+        absolute_uri = get_uri_for_directory(p.resolve(), include_gitignore=True)
         assert relative_uri == absolute_uri
 
     def test_excludes(self, random_dir):
         # Excluding a directory should modify the URI.
-        included_uri = get_uri_for_directory(random_dir)
-        excluded_uri = get_uri_for_directory(random_dir, excludes=["subdir"])
+        included_uri = get_uri_for_directory(random_dir, include_gitignore=True)
+        excluded_uri = get_uri_for_directory(
+            random_dir, include_gitignore=True, excludes=["subdir"]
+        )
         assert included_uri != excluded_uri
 
         # Excluding a directory should be the same as deleting it.
         rmtree((Path(random_dir) / "subdir").resolve())
-        deleted_uri = get_uri_for_directory(random_dir)
+        deleted_uri = get_uri_for_directory(random_dir, include_gitignore=True)
         assert deleted_uri == excluded_uri
 
     def test_empty_directory(self):
         try:
             os.mkdir("d1")
             os.mkdir("d2")
-            assert get_uri_for_directory("d1") == get_uri_for_directory("d2")
+            assert get_uri_for_directory(
+                "d1", include_gitignore=True
+            ) == get_uri_for_directory("d2", include_gitignore=True)
         finally:
             os.rmdir("d1")
             os.rmdir("d2")
 
     def test_uri_hash_length(self, random_dir):
-        uri = get_uri_for_directory(random_dir)
+        uri = get_uri_for_directory(random_dir, include_gitignore=True)
         hex_hash = uri.split("_")[-1][: -len(".zip")]
         assert len(hex_hash) == 16
 
@@ -247,24 +253,24 @@ class TestGetURIForDirectory:
             (short_path_dir / "test_socket").open()
 
         # Check that the hash can still be generated without errors.
-        get_uri_for_directory(short_path_dir)
+        get_uri_for_directory(short_path_dir, True)
 
 
 class TestUploadPackageIfNeeded:
     def test_create_upload_once(self, tmp_path, random_dir, ray_start_regular):
-        uri = get_uri_for_directory(random_dir)
-        uploaded = upload_package_if_needed(uri, tmp_path, random_dir)
+        uri = get_uri_for_directory(random_dir, True)
+        uploaded = upload_package_if_needed(uri, tmp_path, random_dir, True)
         assert uploaded
         assert _internal_kv_exists(uri, namespace=KV_NAMESPACE_PACKAGE)
 
-        uploaded = upload_package_if_needed(uri, tmp_path, random_dir)
+        uploaded = upload_package_if_needed(uri, tmp_path, random_dir, True)
         assert not uploaded
         assert _internal_kv_exists(uri, namespace=KV_NAMESPACE_PACKAGE)
 
         # Delete the URI from the internal_kv. This should trigger re-upload.
         _internal_kv_del(uri, namespace=KV_NAMESPACE_PACKAGE)
         assert not _internal_kv_exists(uri, namespace=KV_NAMESPACE_PACKAGE)
-        uploaded = upload_package_if_needed(uri, tmp_path, random_dir)
+        uploaded = upload_package_if_needed(uri, tmp_path, random_dir, True)
         assert uploaded
 
 

@@ -88,10 +88,10 @@ async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     with filepath.open("w") as file:
         file.write("F" * 100)
 
-    uri = get_uri_for_directory(dir_to_upload)
+    uri = get_uri_for_directory(dir_to_upload, True)
     assert get_directory_size_bytes(dir_to_upload) > 0
 
-    uploaded = upload_package_if_needed(uri, tmpdir, dir_to_upload)
+    uploaded = upload_package_if_needed(uri, tmpdir, dir_to_upload, True)
     assert uploaded
 
     manager = WorkingDirPlugin(tmpdir, gcs_client)
