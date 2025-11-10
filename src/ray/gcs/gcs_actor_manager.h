@@ -90,7 +90,8 @@ namespace gcs {
 /// will update its state to `DEAD` and remove it from `registered_actors_` and
 /// `created_actors_`.
 /// 9: A dead actor caused by out-of-scope is lineage reconstructed.
-class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
+class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
+                        public std::enable_shared_from_this<GcsActorManager> {
  public:
   /// Create a GcsActorManager
   ///
@@ -522,9 +523,6 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// Canceled on actor restart to avoid redundant kill requests for old instances.
   absl::flat_hash_map<WorkerID, std::unique_ptr<boost::asio::deadline_timer>>
       graceful_shutdown_timers_;
-
-  /// Shutdown flag to prevent timer callbacks from accessing destroyed state.
-  std::atomic<bool> is_shutdown_{false};
 
   // Debug info.
   enum CountType {

@@ -265,12 +265,7 @@ GcsActorManager::GcsActorManager(
 }
 
 GcsActorManager::~GcsActorManager() {
-  is_shutdown_.store(true, std::memory_order_release);
-
   // Cancel all pending graceful shutdown timers.
-  // Note: This destructor runs after io_context_.stop() is called (see GcsServer::Stop),
-  // which ensures no new handlers are posted. Cancelled handlers will receive
-  // operation_aborted and exit early after checking is_shutdown_.
   for (auto &entry : graceful_shutdown_timers_) {
     entry.second->cancel();
   }
@@ -1045,13 +1040,17 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
             boost::posix_time::milliseconds(graceful_shutdown_timeout_ms));
 
         timer->async_wait(
-            [this, actor_id, worker_id, death_cause, graceful_shutdown_timeout_ms](
-                const boost::system::error_code &error) {
-              if (is_shutdown_.load(std::memory_order_acquire)) {
+            [weak_self = weak_from_this(),
+             actor_id,
+             worker_id,
+             death_cause,
+             graceful_shutdown_timeout_ms](const boost::system::error_code &error) {
+              auto self = weak_self.lock();
+              if (!self) {
                 return;
               }
 
-              graceful_shutdown_timers_.erase(worker_id);
+              self->graceful_shutdown_timers_.erase(worker_id);
               if (error == boost::asio::error::operation_aborted) {
                 return;
               }
@@ -1060,10 +1059,10 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
                   << "Graceful shutdown timeout (" << graceful_shutdown_timeout_ms
                   << "ms) exceeded. Falling back to force kill.";
 
-              auto actor_iter = registered_actors_.find(actor_id);
-              if (actor_iter != registered_actors_.end() &&
+              auto actor_iter = self->registered_actors_.find(actor_id);
+              if (actor_iter != self->registered_actors_.end() &&
                   actor_iter->second->GetWorkerID() == worker_id) {
-                NotifyRayletToKillActor(
+                self->NotifyRayletToKillActor(
                     actor_iter->second, death_cause, /*force_kill=*/true);
               }
             });
