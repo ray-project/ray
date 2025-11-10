@@ -15,7 +15,7 @@ jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 <a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/medium-size-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
-This tutorial shows you how to deploy and serve a medium language model in production with Ray Serve LLM. A medium LLM typically runs on a single node with 4-8 GPUs. It offers a balance between performance and efficiency. This tutorial deploys Llama-3.1-70B, a medium-sized LLM with 70&nbsp;B parameters. These models provide stronger accuracy and reasoning than small models while remaining more affordable and resource-friendly than very large ones. This makes them a solid choice for production workloads that need good quality at lower cost.
+This tutorial shows you how to deploy and serve a medium language model in production with Ray Serve LLM. A medium LLM typically runs on a single node with 4-8 GPUs. It offers a balance between performance and efficiency. This tutorial deploys Llama-3.1-70&nbsp;B, a medium-sized LLM with 70&nbsp;B parameters. These models provide stronger accuracy and reasoning than small models while remaining more affordable and resource-friendly than very large ones. This makes them a solid choice for production workloads that need good quality at lower cost.
 
 For smaller models, see [Deploy a small-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html). For larger models, see [Deploy a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
 
@@ -212,7 +212,7 @@ You can also retrieve both from the service page in the Anyscale console. Click 
 
 ### Access the Serve LLM dashboard
 
-See [Enable LLM monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM dashboard from an Anyscale service:
+See [Monitor your deployment](#monitor-your-deployment) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM dashboard from an Anyscale service:
 1. In the Anyscale console, go to your **Service** or **Workspace**
 2. Navigate to the **Metrics** tab
 3. Click **View in Grafana** and click **Serve LLM Dashboard**

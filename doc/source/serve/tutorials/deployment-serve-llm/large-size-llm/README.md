@@ -256,7 +256,7 @@ You can also retrieve both from the service page in the Anyscale console. Click 
 
 ### Access the Serve LLM dashboard
 
-See [Enable LLM monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM dashboard from an Anyscale service:
+See [Monitor your deployment](#monitor-your-deployment) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM dashboard from an Anyscale service:
 1. In the Anyscale console, go to your **Service** or **Workspace**
 2. Navigate to the **Metrics** tab
 3. Click **View in Grafana** and click **Serve LLM Dashboard**
