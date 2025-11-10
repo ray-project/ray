@@ -40,7 +40,7 @@ from ray.data._internal.datasource.clickhouse_datasink import (
     SinkMode,
 )
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
-from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
+from ray.data._internal.datasource.iceberg import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
 from ray.data._internal.datasource.lance_datasink import LanceDatasink
@@ -131,6 +131,7 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     import torch.utils.data
+    from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
@@ -4034,53 +4035,119 @@ class Dataset:
         table_identifier: str,
         catalog_kwargs: Optional[Dict[str, Any]] = None,
         snapshot_properties: Optional[Dict[str, str]] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        mode: Literal["append", "overwrite", "merge", "cdf"] = "append",
+        overwrite_filter: Optional["BooleanExpression"] = None,
+        merge_keys: Optional[List[str]] = None,
+        update_filter: Optional["BooleanExpression"] = None,
+        change_type_column: str = "_change_type",
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to an Iceberg table.
 
+        Supports append, overwrite, merge (upsert), and CDF (Change Data Feed) modes.
+
         .. tip::
-            For more details on PyIceberg, see
-            - URI: https://py.iceberg.apache.org/
+            For more details on PyIceberg, see https://py.iceberg.apache.org/
 
         Examples:
+            Append data:
+
              .. testcode::
                 :skipif: True
 
-                import ray
-                import pandas as pd
-                docs = [{"title": "Iceberg data sink test"} for key in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
                 ds.write_iceberg(
                     table_identifier="db_name.table_name",
-                    catalog_kwargs={"name": "default", "type": "sql"}
+                    catalog_kwargs={"name": "default", "type": "sql"},
+                    mode="append"
+                )
+
+            Merge (upsert) with keys:
+
+             .. testcode::
+                :skipif: True
+
+                ds.write_iceberg(
+                    table_identifier="db.customers",
+                    catalog_kwargs={"type": "glue"},
+                    mode="merge",
+                    merge_keys=["customer_id"]
                 )
 
         Args:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)
-            catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
-                function (e.g., name, type, etc.). For the function definition, see
-                `pyiceberg catalog
-                <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
-                #pyiceberg.catalog.load_catalog>`_.
-            snapshot_properties: custom properties write to snapshot when committing
-                to an iceberg table.
-            ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
-            concurrency: The maximum number of Ray tasks to run concurrently. Set this
-                to control number of tasks to run concurrently. This doesn't change the
-                total number of tasks run. By default, concurrency is dynamically
-                decided based on the available resources.
+            catalog_kwargs: Arguments for PyIceberg ``load_catalog()``. Common keys:
+                ``"name"`` (default: ``"default"``), ``"type"`` (e.g., ``"glue"``, ``"sql"``).
+                See https://py.iceberg.apache.org/configuration/
+            snapshot_properties: Custom properties to attach to snapshot
+            mode: Write mode: ``"append"``, ``"overwrite"``, ``"merge"`` (upsert), or ``"cdf"``
+            overwrite_filter: PyIceberg BooleanExpression to filter which data to overwrite
+                (only for ``mode="overwrite"``)
+            merge_keys: Column names for merge operations (required for ``mode="merge"`` or ``"cdf"``)
+            update_filter: PyIceberg BooleanExpression to filter which rows can be updated (only for ``mode="merge"``)
+            change_type_column: Column name containing change types for ``mode="cdf"`` (default: ``"_change_type"``)
+            ray_remote_args: kwargs passed to :func:`ray.remote` in write tasks
+            concurrency: Maximum number of concurrent Ray tasks
+
+        Raises:
+            ValueError: If invalid parameter combinations are used
         """
+        # Handle CDF mode - apply mixed INSERT/UPDATE/DELETE operations
+        if mode == "cdf":
+            if not merge_keys:
+                raise ValueError("merge_keys required for mode='cdf'")
 
-        datasink = IcebergDatasink(
-            table_identifier, catalog_kwargs, snapshot_properties
-        )
+            from ray.data._internal.datasource.iceberg.cdf_util import (
+                _write_iceberg_cdf,
+            )
 
-        self.write_datasink(
-            datasink,
-            ray_remote_args=ray_remote_args,
-            concurrency=concurrency,
-        )
+            _write_iceberg_cdf(
+                dataset=self,
+                table_identifier=table_identifier,
+                merge_keys=merge_keys,
+                change_type_column=change_type_column,
+                catalog_kwargs=catalog_kwargs,
+                snapshot_properties=snapshot_properties,
+                ray_remote_args=ray_remote_args,
+                concurrency=concurrency,
+            )
+            return
+
+        # Handle merge mode specially - use the upsert utility
+        if mode == "merge":
+            if not merge_keys:
+                raise ValueError(
+                    "merge_keys must be provided when mode='merge'. "
+                    "Specify at least one column to use as a key for matching rows."
+                )
+
+            from ray.data._internal.datasource.iceberg.upsert_util import _upsert_to_iceberg
+
+            _upsert_to_iceberg(
+                dataset=self,
+                table_identifier=table_identifier,
+                join_columns=merge_keys,
+                catalog_kwargs=catalog_kwargs,
+                snapshot_properties=snapshot_properties,
+                update_filter=update_filter,
+                ray_remote_args=ray_remote_args,
+                concurrency=concurrency,
+            )
+        else:
+            # For append and overwrite modes, use the normal datasink path
+            datasink = IcebergDatasink(
+                table_identifier=table_identifier,
+                catalog_kwargs=catalog_kwargs,
+                snapshot_properties=snapshot_properties,
+                mode=mode,
+                overwrite_filter=overwrite_filter,
+            )
+
+            self.write_datasink(
+                datasink,
+                ray_remote_args=ray_remote_args,
+                concurrency=concurrency,
+            )
 
     @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
     @ConsumptionAPI
