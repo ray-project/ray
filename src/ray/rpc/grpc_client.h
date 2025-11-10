@@ -142,7 +142,7 @@ class GrpcClient {
                                       ? testing::RpcFailure::None
                                       : testing::GetRpcFailure(call_name);
     if (failure == testing::RpcFailure::Request) {
-      // Simulate the case where the PRC fails before server receives
+      // Simulate the case where the RPC fails before server receives
       // the request.
       RAY_LOG(INFO) << "Inject RPC request failure for " << call_name;
       client_call_manager_.GetMainService().post(
@@ -165,6 +165,26 @@ class GrpcClient {
           },
           std::move(call_name),
           method_timeout_ms);
+    } else if (failure == testing::RpcFailure::InFlight) {
+      // Simulate the case where the RPC fails after sending the request to the server but
+      // before the reply is sent back.
+      RAY_LOG(INFO) << "Inject RPC response failure while request in flight for "
+                    << call_name;
+      client_call_manager_.CreateCall<GrpcService, Request, Reply>(
+          *stub_,
+          prepare_async_function,
+          request,
+          [](const Status &, const Reply &) {
+            // The actual reply is dropped.
+          },
+          std::move(call_name),
+          method_timeout_ms);
+      client_call_manager_.GetMainService().post(
+          [callback]() {
+            callback(Status::RpcError("Unavailable", grpc::StatusCode::UNAVAILABLE),
+                     Reply());
+          },
+          "RpcChaos");
     } else {
       auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
           *stub_,

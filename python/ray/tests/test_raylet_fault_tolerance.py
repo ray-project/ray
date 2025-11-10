@@ -14,15 +14,21 @@ from ray.util.scheduling_strategies import (
 
 import psutil
 
+CHAOS_FAILURE_PROBABILITIES = {
+    "request": "100:0:0",
+    "response": "0:100:0",
+    "in_flight": "0:0:100",
+}
 
-@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
+
+@pytest.mark.parametrize("deterministic_failure", ["request", "response", "in_flight"])
 def test_request_worker_lease_idempotent(
     monkeypatch, shutdown_only, deterministic_failure, ray_start_cluster
 ):
+    chaos_failure = CHAOS_FAILURE_PROBABILITIES[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "NodeManagerService.grpc_client.RequestWorkerLease=1:"
-        + ("100:0" if deterministic_failure == "request" else "0:100"),
+        f"NodeManagerService.grpc_client.RequestWorkerLease=1:{chaos_failure}",
     )
 
     @ray.remote
@@ -94,16 +100,18 @@ def test_drain_node_idempotent(monkeypatch, shutdown_only, ray_start_cluster):
 @pytest.fixture
 def inject_release_unused_bundles_rpc_failure(monkeypatch, request):
     deterministic_failure = request.param
+    chaos_failure = CHAOS_FAILURE_PROBABILITIES[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "NodeManagerService.grpc_client.ReleaseUnusedBundles=1:"
-        + ("100:0" if deterministic_failure == "request" else "0:100")
+        f"NodeManagerService.grpc_client.ReleaseUnusedBundles=1:{chaos_failure}"
         + ",NodeManagerService.grpc_client.CancelResourceReserve=-1:100:0",
     )
 
 
 @pytest.mark.parametrize(
-    "inject_release_unused_bundles_rpc_failure", ["request", "response"], indirect=True
+    "inject_release_unused_bundles_rpc_failure",
+    ["request", "response", "in_flight"],
+    indirect=True,
 )
 @pytest.mark.parametrize(
     "ray_start_cluster_head_with_external_redis",
@@ -146,15 +154,17 @@ def test_release_unused_bundles_idempotent(
 @pytest.fixture
 def inject_notify_gcs_restart_rpc_failure(monkeypatch, request):
     deterministic_failure = request.param
+    chaos_failure = CHAOS_FAILURE_PROBABILITIES[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "NodeManagerService.grpc_client.NotifyGCSRestart=1:"
-        + ("100:0" if deterministic_failure == "request" else "0:100"),
+        f"NodeManagerService.grpc_client.NotifyGCSRestart=1:{chaos_failure}",
     )
 
 
 @pytest.mark.parametrize(
-    "inject_notify_gcs_restart_rpc_failure", ["request", "response"], indirect=True
+    "inject_notify_gcs_restart_rpc_failure",
+    ["request", "response", "in_flight"],
+    indirect=True,
 )
 @pytest.mark.parametrize(
     "ray_start_cluster_head_with_external_redis",
@@ -207,7 +217,7 @@ def test_kill_local_actor_rpc_retry_and_idempotency(monkeypatch, shutdown_only):
 
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "NodeManagerService.grpc_client.KillLocalActor=1:100:0",
+        "NodeManagerService.grpc_client.KillLocalActor=1:100:0:0",
     )
 
     ray.init()

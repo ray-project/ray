@@ -10,7 +10,7 @@ from ray._common.test_utils import wait_for_condition
 from ray.core.generated import common_pb2, gcs_pb2
 
 
-@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
+@pytest.mark.parametrize("deterministic_failure", ["request", "response", "in_flight"])
 def test_actor_reconstruction_triggered_by_lineage_reconstruction(
     monkeypatch, ray_start_cluster, deterministic_failure
 ):
@@ -21,7 +21,11 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
     # -> actor goes out of scope again after lineage reconstruction is done
     # -> actor is permanently dead when there is no reference.
     # This test also injects network failure to make sure relevant rpcs are retried.
-    chaos_failure = "100:0" if deterministic_failure == "request" else "0:100"
+    chaos_failure = {
+        "request": "100:0:0",
+        "response": "0:100:0",
+        "in_flight": "0:0:100",
+    }[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
         f"ray::rpc::ActorInfoGcsService.grpc_client.RestartActorForLineageReconstruction=1:{chaos_failure},"

@@ -8,15 +8,21 @@ from ray._private.internal_api import get_memory_info_reply, get_state_from_addr
 from ray._private.test_utils import wait_for_condition
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+CHAOS_FAILURE_PROBABILITIES = {
+    "request": "100:0:0",
+    "response": "0:100:0",
+    "in_flight": "0:0:100",
+}
 
-@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
+
+@pytest.mark.parametrize("deterministic_failure", ["request", "response", "in_flight"])
 def test_free_objects_idempotent(
     monkeypatch, shutdown_only, deterministic_failure, ray_start_cluster
 ):
+    chaos_failure = CHAOS_FAILURE_PROBABILITIES[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "ObjectManagerService.grpc_client.FreeObjects=1:"
-        + ("100:0" if deterministic_failure == "request" else "0:100"),
+        f"ObjectManagerService.grpc_client.FreeObjects=1:{chaos_failure}",
     )
 
     @ray.remote
