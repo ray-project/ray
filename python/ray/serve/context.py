@@ -64,6 +64,21 @@ class ReplicaContext:
     def replica_tag(self) -> str:
         return self.replica_id.unique_id
 
+    def __getstate__(self):
+        """Exclude _handle_registration_callback from serialization.
+
+        The callback contains references to the Replica object which is not
+        serializable. Since it's only used locally within a replica, we can
+        safely exclude it when passing ReplicaContext to remote actors.
+        """
+        state = self.__dict__.copy()
+        state["_handle_registration_callback"] = None
+        return state
+
+    def __setstate__(self, state):
+        """Restore state during deserialization."""
+        self.__dict__.update(state)
+
 
 def _get_global_client(
     _health_check_controller: bool = False, raise_if_no_controller_running: bool = True
