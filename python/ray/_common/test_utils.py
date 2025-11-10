@@ -247,3 +247,12 @@ def check_library_usage_telemetry(
         assert all(
             [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
         ), extra_usage_tags
+
+
+RPC_FAILURE_MAP = {
+    "request": "100:0:0",
+    "response": "0:100:0",
+    "in_flight": "0:0:100",
+}
+
+RPC_FAILURE_TYPES = list(RPC_FAILURE_MAP.keys())

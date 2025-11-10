@@ -4,7 +4,11 @@ import sys
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    RPC_FAILURE_MAP,
+    RPC_FAILURE_TYPES,
+    wait_for_condition,
+)
 from ray.core.generated import autoscaler_pb2
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import (
@@ -14,21 +18,15 @@ from ray.util.scheduling_strategies import (
 
 import psutil
 
-CHAOS_FAILURE_PROBABILITIES = {
-    "request": "100:0:0",
-    "response": "0:100:0",
-    "in_flight": "0:0:100",
-}
 
-
-@pytest.mark.parametrize("deterministic_failure", ["request", "response", "in_flight"])
+@pytest.mark.parametrize("deterministic_failure", RPC_FAILURE_TYPES)
 def test_request_worker_lease_idempotent(
     monkeypatch, shutdown_only, deterministic_failure, ray_start_cluster
 ):
-    chaos_failure = CHAOS_FAILURE_PROBABILITIES[deterministic_failure]
+    failure = RPC_FAILURE_MAP[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        f"NodeManagerService.grpc_client.RequestWorkerLease=1:{chaos_failure}",
+        f"NodeManagerService.grpc_client.RequestWorkerLease=1:{failure}",
     )
 
     @ray.remote
@@ -100,17 +98,17 @@ def test_drain_node_idempotent(monkeypatch, shutdown_only, ray_start_cluster):
 @pytest.fixture
 def inject_release_unused_bundles_rpc_failure(monkeypatch, request):
     deterministic_failure = request.param
-    chaos_failure = CHAOS_FAILURE_PROBABILITIES[deterministic_failure]
+    failure = RPC_FAILURE_MAP[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        f"NodeManagerService.grpc_client.ReleaseUnusedBundles=1:{chaos_failure}"
+        f"NodeManagerService.grpc_client.ReleaseUnusedBundles=1:{failure}"
         + ",NodeManagerService.grpc_client.CancelResourceReserve=-1:100:0",
     )
 
 
 @pytest.mark.parametrize(
     "inject_release_unused_bundles_rpc_failure",
-    ["request", "response", "in_flight"],
+    RPC_FAILURE_TYPES,
     indirect=True,
 )
 @pytest.mark.parametrize(
@@ -154,16 +152,16 @@ def test_release_unused_bundles_idempotent(
 @pytest.fixture
 def inject_notify_gcs_restart_rpc_failure(monkeypatch, request):
     deterministic_failure = request.param
-    chaos_failure = CHAOS_FAILURE_PROBABILITIES[deterministic_failure]
+    failure = RPC_FAILURE_MAP[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        f"NodeManagerService.grpc_client.NotifyGCSRestart=1:{chaos_failure}",
+        f"NodeManagerService.grpc_client.NotifyGCSRestart=1:{failure}",
     )
 
 
 @pytest.mark.parametrize(
     "inject_notify_gcs_restart_rpc_failure",
-    ["request", "response", "in_flight"],
+    RPC_FAILURE_TYPES,
     indirect=True,
 )
 @pytest.mark.parametrize(
