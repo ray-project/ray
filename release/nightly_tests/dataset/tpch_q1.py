@@ -97,9 +97,6 @@ def main(args):
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
 
-    benchmark.run_fn("main", benchmark_fn)
-    benchmark.write_result()
-
 
 if __name__ == "__main__":
     ray.init()
