@@ -207,24 +207,29 @@ if it exists, allowing cleanup of resources like database connections or file ha
     .. tab-item:: Python
 
         .. testcode::
-            :skipif: True
 
             import ray
+            import tempfile
+            import os
 
             @ray.remote
-            class DatabaseActor:
+            class FileProcessorActor:
                 def __init__(self):
-                    self.db_connection = connect_to_database()
+                    self.temp_file = tempfile.NamedTemporaryFile(delete=False)
+                    self.temp_file.write(b"processing data")
+                    self.temp_file.flush()
                     
                 def __ray_shutdown__(self):
-                    if self.db_connection:
-                        self.db_connection.close()
+                    # Clean up temporary file
+                    if hasattr(self, 'temp_file'):
+                        self.temp_file.close()
+                        os.unlink(self.temp_file.name)
                 
-                def query(self, sql):
-                    return self.db_connection.execute(sql)
+                def process(self):
+                    return "done"
 
-            actor = DatabaseActor.remote()
-            ray.get(actor.query.remote("SELECT * FROM users"))
+            actor = FileProcessorActor.remote()
+            ray.get(actor.process.remote())
             del actor  # __ray_shutdown__() is called automatically
 
 When ``__ray_shutdown__()`` is called:
@@ -235,11 +240,11 @@ When ``__ray_shutdown__()`` is called:
 When ``__ray_shutdown__()`` is **NOT** called:
 
 - **Force kill**: When you use ``ray.kill(actor)`` - the actor is killed immediately without cleanup.
-- **Unexpected termination**: When the actor process crashes or exits unexpectedly (such as ``os._exit()`` or segfaults).
+- **Unexpected termination**: When the actor process crashes or exits unexpectedly (such as a segfault or being killed by the OOM killer).
 
 **Important notes:**
 
-- ``__ray_shutdown__()`` runs after all actor tasks complete and the actor is idle.
-- By default, Ray waits 30 seconds for ``__ray_shutdown__()`` to complete. If it doesn't finish within this timeout, the actor is force killed. Configure this with ``ray.init(_system_config={"actor_graceful_shutdown_timeout_ms": 60000})``.
+- ``__ray_shutdown__()`` runs after all actor tasks complete.
+- By default, Ray waits 30 seconds for the graceful shutdown procedure (including ``__ray_shutdown__()``) to complete. If the actor doesn't exit within this timeout, it's force killed. Configure this with ``ray.init(_system_config={"actor_graceful_shutdown_timeout_ms": 60000})``.
 - Exceptions in ``__ray_shutdown__()`` are caught and logged but don't prevent actor termination.
-- For async actors, ``__ray_shutdown__()`` should be a regular (non-async) method.
+- ``__ray_shutdown__()`` must be a synchronous method, including for async actors.
