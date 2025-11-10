@@ -617,7 +617,7 @@ class DeploymentAutoscalingState:
         else:
             scaling_status_raw = AutoscalingStatus.STABLE
 
-        scaling_status = DeploymentSnapshot.format_scaling_status(scaling_status_raw)
+        scaling_status = AutoscalingStatus.format_scaling_status(scaling_status_raw)
 
         look_back_period_s = self._config.look_back_period_s
         metrics_health = DeploymentSnapshot.format_metrics_health_text(

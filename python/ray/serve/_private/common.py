@@ -765,6 +765,15 @@ class AutoscalingStatus(str, Enum):
     DOWNSCALE = "AUTOSCALING_DOWNSCALE"
     STABLE = "AUTOSCALING_STABLE"
 
+    @staticmethod
+    def format_scaling_status(trigger: "AutoscalingStatus") -> str:
+        mapping = {
+            AutoscalingStatus.UPSCALE: "scaling up",
+            AutoscalingStatus.DOWNSCALE: "scaling down",
+            AutoscalingStatus.STABLE: "stable",
+        }
+        return mapping.get(trigger, str(trigger).lower())
+
 
 class DecisionRecord(BaseModel):
     timestamp_str: str
@@ -789,15 +798,6 @@ class DeploymentSnapshot(BaseModel):
     metrics_health: str
     errors: List[str]
     decisions: List[DecisionRecord]
-
-    @staticmethod
-    def format_scaling_status(trigger: AutoscalingStatus) -> str:
-        mapping = {
-            AutoscalingStatus.UPSCALE: "scaling up",
-            AutoscalingStatus.DOWNSCALE: "scaling down",
-            AutoscalingStatus.STABLE: "stable",
-        }
-        return mapping.get(trigger, str(trigger).lower())
 
     @staticmethod
     def format_metrics_health_text(
