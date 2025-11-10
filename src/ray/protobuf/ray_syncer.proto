@@ -49,7 +49,7 @@ message ResourceViewSyncMessage {
   map<string, string> labels = 8;
 }
 
-message InnerRaySyncMessage {
+message RaySyncMessage {
   // The version of the message. -1 means the version is not set.
   int64 version = 1;
   // The type of this message.
