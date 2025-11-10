@@ -703,53 +703,6 @@ read from the dataset path:
     title   string
     text    string
 
-If you need to filter by split (train, test, validation, etc.) or parse filenames,
-you can use the ``datasets`` library to discover files:
-
-.. testcode::
-    :skipif: True
-
-    import os
-    import ray
-    import datasets
-    from huggingface_hub import HfFileSystem
-
-    # Specify the dataset and the split name.
-    dataset_name = "wikimedia/wikipedia"
-    split = "train"
-
-    # Fetch the dataset files.
-    base_path = f"hf://datasets/{dataset_name}"
-    patterns = datasets.data_files.get_data_patterns(base_path)
-    data_files_with_splits = datasets.data_files.DataFilesDict.from_patterns(
-        patterns,
-        base_path=base_path,
-        allowed_extensions=datasets.load.ALL_ALLOWED_EXTENSIONS,
-    )
-    data_files = data_files_with_splits["train"]
-
-    # Read those files into Ray Data.
-    ds = ray.data.read_parquet(
-        data_files,
-        file_extensions=["parquet"],
-        filesystem=HfFileSystem(token=os.environ["HF_TOKEN"]),
-    )
-
-    print(f"Dataset count: {ds.count()}")
-
-.. testoutput::
-    :options: +MOCK
-
-    Dataset count: 61614907
-
-.. tip::
-
-    For datasets that aren't in Parquet format, use the appropriate read function:
-    :func:`~ray.data.read_json` for JSON files, or :func:`~ray.data.read_binary_files`
-    for binary files like audio archives.
-
-For a complete example script that loads many different Hugging Face datasets, see
-:download:`load_data_from_hf.py <doc_code/load_data_from_hf.py>`.
 
 .. _loading_datasets_from_ml_libraries:
 
