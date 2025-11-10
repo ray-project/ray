@@ -1,5 +1,6 @@
 import io
 
+import pandas as pd
 import pyarrow as pa
 import pytest
 from PIL import Image
@@ -204,6 +205,51 @@ class TestDownloadExpressionFunctionality:
             assert result["file_id"] == f"id_{i}"
             assert result["file_uri"] == f"local://{file_paths[i]}"
 
+    def test_download_expression_with_pandas_blocks(self, tmp_path):
+        """Test download with pandas blocks to ensure arrow conversion works.
+
+        This tests the code path in PartitionActor.__call__ where non-arrow
+        blocks are converted to arrow format before processing.
+        """
+        ctx = ray.data.context.DataContext.get_current()
+        old_enable_pandas_block = ctx.enable_pandas_block
+        ctx.enable_pandas_block = True
+        try:
+            # Create test files
+            sample_data = [
+                b"Pandas block test content 1",
+                b"Pandas block test content 2",
+            ]
+
+            file_paths = []
+            for i, data in enumerate(sample_data):
+                file_path = tmp_path / f"pandas_test_{i}.txt"
+                file_path.write_bytes(data)
+                file_paths.append(str(file_path))
+
+            # Create dataset with pandas blocks (not arrow)
+            df = pd.DataFrame(
+                {
+                    "file_uri": [f"local://{path}" for path in file_paths],
+                    "file_id": [f"id_{i}" for i in range(len(file_paths))],
+                }
+            )
+            ds = ray.data.from_pandas(df)
+
+            # Apply download - this should trigger arrow conversion in PartitionActor
+            ds_with_downloads = ds.with_column("content", download("file_uri"))
+
+            # Verify results
+            results = ds_with_downloads.take_all()
+            assert len(results) == len(sample_data)
+
+            for i, result in enumerate(results):
+                assert result["content"] == sample_data[i]
+                assert result["file_id"] == f"id_{i}"
+                assert result["file_uri"] == f"local://{file_paths[i]}"
+        finally:
+            ctx.enable_pandas_block = old_enable_pandas_block
+
 
 class TestDownloadExpressionErrors:
     """Test error conditions and edge cases for download expressions."""
@@ -247,6 +293,117 @@ class TestDownloadExpressionErrors:
         except Exception as e:
             # If it fails, should be a reasonable error (not a crash)
             assert isinstance(e, (ValueError, KeyError, RuntimeError))
+
+    def test_download_expression_with_invalid_uris(self, tmp_path):
+        """Test download expression with URIs that fail to download.
+
+        This tests the exception handling in load_uri_bytes
+        where OSError is caught and None is returned for failed downloads.
+        """
+        # Create one valid file
+        valid_file = tmp_path / "valid.txt"
+        valid_file.write_bytes(b"valid content")
+
+        # Create URIs: one valid, one non-existent file, one invalid path
+        table = pa.Table.from_arrays(
+            [
+                pa.array(
+                    [
+                        f"local://{valid_file}",
+                        f"local://{tmp_path}/nonexistent.txt",  # File doesn't exist
+                        "local:///this/path/does/not/exist/file.txt",  # Invalid path
+                    ]
+                ),
+            ],
+            names=["uri"],
+        )
+
+        ds = ray.data.from_arrow(table)
+        ds_with_downloads = ds.with_column("bytes", download("uri"))
+
+        # Should not crash - failed downloads return None
+        results = ds_with_downloads.take_all()
+        assert len(results) == 3
+
+        # First URI should succeed
+        assert results[0]["bytes"] == b"valid content"
+
+        # Second and third URIs should fail gracefully (return None)
+        assert results[1]["bytes"] is None
+        assert results[2]["bytes"] is None
+
+    def test_download_expression_all_size_estimations_fail(self):
+        """Test download expression when all URI size estimations fail.
+
+        This tests the failed download does not cause division by zero error.
+        """
+        # Create URIs that will fail size estimation (non-existent files)
+        # Using enough URIs to trigger size estimation sampling
+        invalid_uris = [
+            f"local:///nonexistent/path/file_{i}.txt"
+            for i in range(30)  # More than INIT_SAMPLE_BATCH_SIZE (25)
+        ]
+
+        table = pa.Table.from_arrays(
+            [pa.array(invalid_uris)],
+            names=["uri"],
+        )
+
+        ds = ray.data.from_arrow(table)
+        ds_with_downloads = ds.with_column("bytes", download("uri"))
+
+        # Should not crash with divide-by-zero error
+        # The PartitionActor should handle all failed size estimations gracefully
+        # and fall back to using the number of rows in the block as partition size
+        results = ds_with_downloads.take_all()
+
+        # All downloads should fail gracefully (return None)
+        assert len(results) == 30
+        for result in results:
+            assert result["bytes"] is None
+
+    def test_download_expression_mixed_valid_and_invalid_size_estimation(
+        self, tmp_path
+    ):
+        """Test download expression with mix of valid and invalid URIs for size estimation.
+
+        This tests that size estimation handles partial failures correctly.
+        """
+        # Create some valid files
+        valid_files = []
+        for i in range(10):
+            file_path = tmp_path / f"valid_{i}.txt"
+            file_path.write_bytes(b"x" * 100)  # 100 bytes each
+            valid_files.append(str(file_path))
+
+        # Mix valid and invalid URIs
+        mixed_uris = []
+        for i in range(30):
+            if i % 3 == 0 and i // 3 < len(valid_files):
+                # Every 3rd URI is valid (for first 10)
+                mixed_uris.append(f"local://{valid_files[i // 3]}")
+            else:
+                # Others are invalid
+                mixed_uris.append(f"local:///nonexistent/file_{i}.txt")
+
+        table = pa.Table.from_arrays(
+            [pa.array(mixed_uris)],
+            names=["uri"],
+        )
+
+        ds = ray.data.from_arrow(table)
+        ds_with_downloads = ds.with_column("bytes", download("uri"))
+
+        # Should not crash - should handle mixed valid/invalid gracefully
+        results = ds_with_downloads.take_all()
+        assert len(results) == 30
+
+        # Verify valid URIs downloaded successfully
+        for i, result in enumerate(results):
+            if i % 3 == 0 and i // 3 < len(valid_files):
+                assert result["bytes"] == b"x" * 100
+            else:
+                assert result["bytes"] is None
 
 
 class TestDownloadExpressionIntegration:

@@ -1,9 +1,9 @@
 import logging
-import os
 import re
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from ray._private.ray_constants import env_bool
 from ray._raylet import (
     Count as CythonCount,
     Gauge as CythonGauge,
@@ -72,6 +72,14 @@ class Metric:
         for key in self._tag_keys:
             if not isinstance(key, str):
                 raise TypeError(f"Tag keys must be str, got {type(key)}.")
+
+        if ":" in self._name:
+            warnings.warn(
+                f"Metric name {self._name} contains a : character, which is no longer allowed. "
+                f"Please migrate to the new metric name format. "
+                f"This will be an error in the future.",
+                FutureWarning,
+            )
 
     def set_default_tags(self, default_tags: Dict[str, str]):
         """Set default tags of metrics.
@@ -190,7 +198,7 @@ class Counter(Metric):
         if self._discard_metric:
             self._metric = None
         else:
-            if os.environ.get("RAY_enable_open_telemetry") == "1":
+            if env_bool("RAY_enable_open_telemetry", False):
                 """
                 For the new opentelemetry implementation, we'll correctly use Counter
                 rather than Sum.

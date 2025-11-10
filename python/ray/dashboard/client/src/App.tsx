@@ -4,6 +4,16 @@ import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+  getAuthenticationMode,
+  testTokenValidity,
+} from "./authentication/authentication";
+import { AUTHENTICATION_ERROR_EVENT } from "./authentication/constants";
+import {
+  getAuthenticationToken,
+  setAuthenticationToken,
+} from "./authentication/cookies";
+import TokenAuthenticationDialog from "./authentication/TokenAuthenticationDialog";
 import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
 import Loading from "./pages/exception/Loading";
@@ -85,6 +95,10 @@ export type GlobalContextType = {
    */
   grafanaOrgId: string;
   /**
+   * The filter for the Cluster variable in grafana dashboards.
+   */
+  grafanaClusterFilter: string | undefined;
+  /**
    * The uids of the dashboards that ray exports that powers the various metrics UIs.
    */
   dashboardUids: DashboardUids | undefined;
@@ -116,6 +130,7 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   metricsContextLoaded: false,
   grafanaHost: undefined,
   grafanaOrgId: "1",
+  grafanaClusterFilter: undefined,
   dashboardUids: undefined,
   prometheusHealth: undefined,
   sessionName: undefined,
@@ -135,12 +150,21 @@ const App = () => {
     metricsContextLoaded: false,
     grafanaHost: undefined,
     grafanaOrgId: "1",
+    grafanaClusterFilter: undefined,
     dashboardUids: undefined,
     prometheusHealth: undefined,
     sessionName: undefined,
     dashboardDatasource: undefined,
     serverTimeZone: undefined,
   });
+
+  // Authentication state
+  const [authenticationDialogOpen, setAuthenticationDialogOpen] =
+    useState(false);
+  const [hasAttemptedAuthentication, setHasAttemptedAuthentication] =
+    useState(false);
+  const [authenticationError, setAuthenticationError] =
+    useState<string | undefined>();
   useEffect(() => {
     getNodeList().then((res) => {
       if (res?.data?.data?.summary) {
@@ -166,6 +190,7 @@ const App = () => {
       const {
         grafanaHost,
         grafanaOrgId,
+        grafanaClusterFilter,
         sessionName,
         prometheusHealth,
         dashboardUids,
@@ -176,6 +201,7 @@ const App = () => {
         metricsContextLoaded: true,
         grafanaHost,
         grafanaOrgId,
+        grafanaClusterFilter,
         dashboardUids,
         sessionName,
         prometheusHealth,
@@ -210,12 +236,96 @@ const App = () => {
     updateTimezone();
   }, []);
 
+  // Check authentication mode on mount
+  useEffect(() => {
+    const checkAuthentication = async () => {
+      try {
+        const { authentication_mode } = await getAuthenticationMode();
+
+        if (authentication_mode === "token") {
+          // Token authentication is enabled
+          const existingToken = getAuthenticationToken();
+
+          if (!existingToken) {
+            // No token found - show dialog immediately
+            setAuthenticationDialogOpen(true);
+          }
+          // If token exists, let it be used by interceptor
+          // If invalid, interceptor will trigger dialog via 401/403
+        }
+      } catch (error) {
+        console.error("Failed to check authentication mode:", error);
+      }
+    };
+
+    checkAuthentication();
+  }, []);
+
+  // Listen for authentication errors from axios interceptor
+  useEffect(() => {
+    const handleAuthenticationError = (event: Event) => {
+      const customEvent = event as CustomEvent<{ hadToken: boolean }>;
+      const hadToken = customEvent.detail?.hadToken ?? false;
+
+      setHasAttemptedAuthentication(hadToken);
+      setAuthenticationDialogOpen(true);
+    };
+
+    window.addEventListener(
+      AUTHENTICATION_ERROR_EVENT,
+      handleAuthenticationError,
+    );
+
+    return () => {
+      window.removeEventListener(
+        AUTHENTICATION_ERROR_EVENT,
+        handleAuthenticationError,
+      );
+    };
+  }, []);
+
+  // Handle token submission from dialog
+  const handleTokenSubmit = async (token: string) => {
+    try {
+      // Test if token is valid
+      const isValid = await testTokenValidity(token);
+
+      if (isValid) {
+        // Save token to cookie
+        setAuthenticationToken(token);
+        setHasAttemptedAuthentication(true);
+        setAuthenticationDialogOpen(false);
+        setAuthenticationError(undefined);
+
+        // Reload the page to refetch all data with the new token
+        window.location.reload();
+      } else {
+        // Token is invalid
+        setHasAttemptedAuthentication(true);
+        setAuthenticationError(
+          "Invalid authentication token. Please check and try again.",
+        );
+      }
+    } catch (error) {
+      console.error("Failed to validate token:", error);
+      setAuthenticationError(
+        "Failed to validate token. Please check your connection and try again.",
+      );
+    }
+  };
+
   return (
     <StyledEngineProvider injectFirst>
       <ThemeProvider theme={lightTheme}>
         <Suspense fallback={Loading}>
           <GlobalContext.Provider value={{ ...context, currentTimeZone }}>
             <CssBaseline />
+            <TokenAuthenticationDialog
+              open={authenticationDialogOpen}
+              hasExistingToken={hasAttemptedAuthentication}
+              onSubmit={handleTokenSubmit}
+              error={authenticationError}
+            />
             <HashRouter>
               <Routes>
                 {/* Redirect people hitting the /new path to root. TODO(aguo): Delete this redirect in ray 2.5 */}

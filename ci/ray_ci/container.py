@@ -21,6 +21,7 @@ https://developer\.nvidia\.com/ngc/nvidia-deep-learning-container-license
 A copy of this license is made available in this container at /NGC-DL-CONTAINER-LICENSE for your convenience\.
 """
 
+_AZURE_REGISTRY_NAME = "rayreleasetest"
 _DOCKER_ECR_REPO = os.environ.get(
     "RAYCI_WORK_REPO",
     "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp",
@@ -28,6 +29,10 @@ _DOCKER_ECR_REPO = os.environ.get(
 _DOCKER_GCP_REGISTRY = os.environ.get(
     "RAYCI_GCP_REGISTRY",
     "us-west1-docker.pkg.dev/anyscale-oss-ci",
+)
+_DOCKER_AZURE_REGISTRY = os.environ.get(
+    "RAYCI_AZURE_REGISTRY",
+    "rayreleasetest.azurecr.io",
 )
 _DOCKER_ENV = [
     "BUILDKITE",
@@ -42,6 +47,15 @@ _DOCKER_ENV = [
     "BUILDKITE_CACHE_READONLY",
 ]
 _RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "")
+
+
+def get_docker_image(docker_tag: str, build_id: Optional[str] = None) -> str:
+    """Get rayci image for a particular tag."""
+    if not build_id:
+        build_id = _RAYCI_BUILD_ID
+    if build_id:
+        return f"{_DOCKER_ECR_REPO}:{build_id}-{docker_tag}"
+    return f"{_DOCKER_ECR_REPO}:{docker_tag}"
 
 
 class Container(abc.ABC):
@@ -80,12 +94,8 @@ class Container(abc.ABC):
         )
 
     def _get_docker_image(self) -> str:
-        """
-        Get docker image for a particular commit
-        """
-        if not _RAYCI_BUILD_ID:
-            return f"{_DOCKER_ECR_REPO}:{self.docker_tag}"
-        return f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-{self.docker_tag}"
+        """Get docker image for a particular commit."""
+        return get_docker_image(self.docker_tag)
 
     @abc.abstractmethod
     def install_ray(

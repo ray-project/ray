@@ -13,10 +13,7 @@
 // limitations under the License.
 #pragma once
 
-// TODO(#54703): SysFsCgroupDriver should not be a public target.
-// It will be hidden behind a CgroupManagerFactory which will create
-// an appropriate depending on configuration and platform.
-// #include <mntent.h>
+#include <mntent.h>
 
 #include <string>
 #include <unordered_set>
@@ -44,7 +41,7 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
   /**
    * @param mount_file_path only used for testing.
    */
-  explicit SysFsCgroupDriver(std::string mount_file_path = kMountFilePath)
+  explicit SysFsCgroupDriver(std::string mount_file_path = MOUNTED)
       : mount_file_path_(std::move(mount_file_path)) {}
 
   ~SysFsCgroupDriver() override = default;
@@ -171,7 +168,7 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
 
   /**
     Reads the cgroup.procs of "from" and writes them out to the given file.
-    The cgroup.procs file is newline seperated. The current user must have
+    The cgroup.procs file is newline separated. The current user must have
     read-write permissions to both cgroup.procs file as well as the common ancestor
     of the source and destination cgroups.
 
@@ -239,7 +236,6 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
     Adds a constraint to the respective cgroup file.
 
     @param cgroup_path absolute path of the cgroup.
-    @param controller the name of the controller
     @param constraint the name of the cgroup file to add the constraint to e.g. cpu.weight
     @param constraint_value
 
@@ -247,11 +243,10 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
     @return Status::NotFound if the cgroup does not exist.
     @return Status::PermissionDenied if current user doesn't have read, write, and execute
     permissions.
-    @return Status::InvalidArgument if the cgroup is not using cgroupv2, controller is not
-    enabled, or cannot write to the constraint file.
+    @return Status::InvalidArgument if the cgroup is not using cgroupv2, or cannot write
+    to the constraint file.
    */
   Status AddConstraint(const std::string &cgroup,
-                       const std::string &controller,
                        const std::string &constraint,
                        const std::string &constraint_value) override;
 
@@ -296,6 +291,5 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
   static constexpr std::string_view kCgroupSubtreeControlFilename =
       "cgroup.subtree_control";
   static constexpr std::string_view kCgroupControllersFilename = "cgroup.controllers";
-  static inline std::string kMountFilePath = "/etc/mtab";
 };
 }  // namespace ray

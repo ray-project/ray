@@ -421,7 +421,8 @@ def _get_docker_cpus(
 
 def get_num_cpus(
     override_docker_cpu_warning: bool = ENV_DISABLE_DOCKER_CPU_WARNING,
-) -> int:
+    truncate: bool = True,
+) -> float:
     """
     Get the number of CPUs available on this node.
     Depending on the situation, use multiprocessing.cpu_count() or cgroups.
@@ -432,6 +433,7 @@ def get_num_cpus(
             RAY_DISABLE_DOCKER_CPU_WARNING. By default, whether or not to log
             the warning is determined by the env variable
             RAY_DISABLE_DOCKER_CPU_WARNING.
+        truncate: truncates the return value and drops the decimal part.
     """
     cpu_count = multiprocessing.cpu_count()
     if os.environ.get("RAY_USE_MULTIPROCESSING_CPU_COUNT"):
@@ -473,7 +475,8 @@ def get_num_cpus(
                     f"truncated from {docker_count} to "
                     f"{int(docker_count)}."
                 )
-            docker_count = int(docker_count)
+            if truncate:
+                docker_count = int(docker_count)
             cpu_count = docker_count
 
     except Exception:
@@ -947,28 +950,25 @@ def get_wheel_filename(
 
     architecture = architecture or platform.processor()
 
-    if py_version_str in ["311", "310", "39", "38"] and architecture == "arm64":
-        darwin_os_string = "macosx_12_0_arm64"
-    else:
-        darwin_os_string = "macosx_12_0_x86_64"
+    assert sys_platform in ["darwin", "linux", "win32"], sys_platform
 
-    if architecture == "aarch64":
-        linux_os_string = "manylinux2014_aarch64"
-    else:
-        linux_os_string = "manylinux2014_x86_64"
-
-    os_strings = {
-        "darwin": darwin_os_string,
-        "linux": linux_os_string,
-        "win32": "win_amd64",
-    }
-
-    assert sys_platform in os_strings, sys_platform
+    if sys_platform == "darwin":
+        if architecture == "x86_64":
+            os_string = "macosx_12_0_x86_64"
+        else:
+            os_string = "macosx_12_0_arm64"
+    elif sys_platform == "linux":
+        if architecture == "aarch64" or architecture == "arm64":
+            os_string = "manylinux2014_aarch64"
+        else:
+            os_string = "manylinux2014_x86_64"
+    elif sys_platform == "win32":
+        os_string = "win_amd64"
 
     wheel_filename = (
         f"ray-{ray_version}-cp{py_version_str}-"
         f"cp{py_version_str}{'m' if py_version_str in ['37'] else ''}"
-        f"-{os_strings[sys_platform]}.whl"
+        f"-{os_string}.whl"
     )
 
     return wheel_filename
@@ -1026,6 +1026,7 @@ def init_grpc_channel(
     import grpc
     from grpc import aio as aiogrpc
 
+    from ray._private.authentication import authentication_utils
     from ray._private.tls_utils import load_certs_from_env
 
     grpc_module = aiogrpc if asynchronous else grpc
@@ -1040,16 +1041,43 @@ def init_grpc_channel(
     )
     options = options_dict.items()
 
-    if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
+    # Build interceptors list
+    interceptors = []
+    if authentication_utils.is_token_auth_enabled():
+        from ray._private.authentication.grpc_authentication_client_interceptor import (
+            AsyncAuthenticationMetadataClientInterceptor,
+            AuthenticationMetadataClientInterceptor,
+        )
+
+        if asynchronous:
+            interceptors.append(AsyncAuthenticationMetadataClientInterceptor())
+        else:
+            interceptors.append(AuthenticationMetadataClientInterceptor())
+
+    # Create channel with TLS if enabled
+    use_tls = os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true")
+    if use_tls:
         server_cert_chain, private_key, ca_cert = load_certs_from_env()
         credentials = grpc.ssl_channel_credentials(
             certificate_chain=server_cert_chain,
             private_key=private_key,
             root_certificates=ca_cert,
         )
-        channel = grpc_module.secure_channel(address, credentials, options=options)
+        channel_creator = grpc_module.secure_channel
+        base_args = (address, credentials)
     else:
-        channel = grpc_module.insecure_channel(address, options=options)
+        channel_creator = grpc_module.insecure_channel
+        base_args = (address,)
+
+    # Create channel (async channels get interceptors in constructor, sync via intercept_channel)
+    if asynchronous:
+        channel = channel_creator(
+            *base_args, options=options, interceptors=interceptors
+        )
+    else:
+        channel = channel_creator(*base_args, options=options)
+        if interceptors:
+            channel = grpc.intercept_channel(channel, *interceptors)
 
     return channel
 
@@ -1249,7 +1277,7 @@ def check_version_info(
     cluster_metadata,
     this_process_address,
     raise_on_mismatch=True,
-    python_version_match_level="patch",
+    python_version_match_level=None,
 ):
     """Check if the Python and Ray versions stored in GCS matches this process.
     Args:
@@ -1259,7 +1287,8 @@ def check_version_info(
         raise_on_mismatch: Raise an exception on True, log a warning otherwise.
         python_version_match_level: "minor" or "patch". To which python version level we
             try to match. Note if "minor" and the patch is different, we will still log
-            a warning.
+            a warning. Default value is `RAY_DEFAULT_PYTHON_VERSION_MATCH_LEVEL` if it
+            exists, otherwise "patch"
 
     Behavior:
         - We raise or log a warning, based on raise_on_mismatch, if:
@@ -1273,9 +1302,15 @@ def check_version_info(
             - Python patch versions do not match, AND
             - python_version_match_level == 'minor' AND
             - raise_on_mismatch == False.
+
     Raises:
         Exception: An exception is raised if there is a version mismatch.
     """
+    if python_version_match_level is None:
+        python_version_match_level = os.environ.get(
+            "RAY_DEFAULT_PYTHON_VERSION_MATCH_LEVEL", "patch"
+        )
+
     cluster_version_info = (
         cluster_metadata["ray_version"],
         cluster_metadata["python_version"],

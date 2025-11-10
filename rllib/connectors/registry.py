@@ -1,9 +1,8 @@
 """Registry of connector names for global access."""
 from typing import Any
 
-from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.connectors.connector import Connector, ConnectorContext
-
+from ray.rllib.utils.annotations import OldAPIStack
 
 ALL_CONNECTORS = dict()
 
