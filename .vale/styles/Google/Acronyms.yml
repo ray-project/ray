@@ -20,6 +20,7 @@ exceptions:
   - DEBUG
   - DOM
   - DPI
+  - DRF
   - ETL
   - FAQ
   - GCC
@@ -39,8 +40,10 @@ exceptions:
   - JSON
   - JSONL
   - JSX
+  - KAI
   - LESS
   - LLDB
+  - MPS
   - NET
   - NFS
   - NOTE
