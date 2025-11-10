@@ -40,14 +40,6 @@ examples:
       - large language models
       - generative ai
     link: ../llm/examples/batch/vllm-with-structural-output
-  - title: ETL Processing and Optimization
-    skill_level: intermediate
-    frameworks:
-      - Pandas
-    use_cases:
-      - etl
-      - data warehousing
-    link: examples/etl-optimization/content/etl-optimization
   - title: Unstructured Data Ingestion and Processing
     skill_level: advanced
     frameworks:
