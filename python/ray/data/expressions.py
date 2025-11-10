@@ -576,7 +576,12 @@ class _ListNamespace:
 
         @pyarrow_udf(return_dtype=return_dtype)
         def _list_slice(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.list_slice(arr, start=start or 0, stop=stop, step=step or 1)
+            return pc.list_slice(
+                arr,
+                start=0 if start is None else start,
+                stop=stop,
+                step=1 if step is None else step,
+            )
 
         return _list_slice(self._expr)
 
