@@ -1002,7 +1002,7 @@ RAY_CONFIG(bool, start_python_gc_manager_thread, true)
 // still retryable.
 RAY_CONFIG(bool, enable_output_error_log_if_still_retry, true)
 
-// Whether to enable GCS ray_syncer sync messages batching.
+// Whether to enable batching for GCS resource update messages.
 RAY_CONFIG(bool, gcs_ray_syncer_batching_enabled, false)
 
 // The batch size for ray_syncer_bidi_reactor to sync messages to other nodes.
