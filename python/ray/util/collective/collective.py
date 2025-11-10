@@ -47,10 +47,11 @@ except ImportError:
 
 try:
     from ray.util.collective.collective_group.hccl_collective_group import HCCLGroup
-    
+
     _HCCL_AVAILABLE = True
 except ImportError:
     _HCCL_AVAILABLE = False
+
 
 def nccl_available():
     global _LOG_NCCL_WARNING
@@ -80,6 +81,7 @@ def nixl_available():
 
 def hccl_available():
     return _HCCL_AVAILABLE
+
 
 class GroupManager(object):
     """Use this class to manage the collective groups we created so far.

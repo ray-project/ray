@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 class HcclTensorTransport(TensorTransportManager):
     def __init__(self, tensor_transport_backend: Backend):
         self._tensor_transport_backend = tensor_transport_backend
-        
+
     @property
     def tensor_transport_backend(self) -> Backend:
         return self._tensor_transport_backend
@@ -70,9 +70,7 @@ class HcclTensorTransport(TensorTransportManager):
             # it could take arbitrarily long and we don't want to trigger a spurious
             # timeout.
             gpu_object = gpu_object_store.wait_and_get_object(obj_id)
-            return HcclTensorTransport.extract_tensor_transport_metadata(
-                gpu_object
-            )
+            return HcclTensorTransport.extract_tensor_transport_metadata(gpu_object)
 
         # Submit a Ray actor task to the source actor to get the tensor metadata.
         # The metadata is a list of tuples, where each tuple contains the shape and dtype
@@ -178,7 +176,5 @@ class HcclTensorTransport(TensorTransportManager):
             )
 
     @staticmethod
-    def garbage_collect(
-        obj_id: str, tensor_transport_meta: HcclTransportMetadata
-        ):
+    def garbage_collect(obj_id: str, tensor_transport_meta: HcclTransportMetadata):
         pass

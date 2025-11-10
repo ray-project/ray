@@ -1,13 +1,14 @@
 import ctypes
 import datetime
+import logging
 import os
 import threading
 import time
 from typing import List, Optional
-import logging
 
 import torch
 import torch.distributed as dist
+
 import ray
 import ray.experimental.internal_kv as internal_kv
 from ray.util.collective.collective_group.base_collective_group import (
@@ -16,16 +17,16 @@ from ray.util.collective.collective_group.base_collective_group import (
 )
 from ray.util.collective.const import get_store_name
 from ray.util.collective.types import (
-    ReduceOp,
-    AllReduceOptions,
-    BarrierOptions,
-    Backend,
-    ReduceOptions,
-    BroadcastOptions,
     AllGatherOptions,
+    AllReduceOptions,
+    Backend,
+    BarrierOptions,
+    BroadcastOptions,
+    RecvOptions,
+    ReduceOp,
+    ReduceOptions,
     ReduceScatterOptions,
     SendOptions,
-    RecvOptions,
 )
 
 logger = logging.getLogger(__name__)
@@ -148,19 +149,19 @@ class HCCLGroup(BaseGroup):
         os.environ["MASTER_ADDR"] = master_addr
         os.environ["MASTER_PORT"] = master_port
         torch_npu.npu.set_device(rank)
-        if not dist.is_initialized(): # create new process group
+        if not dist.is_initialized():  # create new process group
             dist.init_process_group(backend="hccl", rank=rank, world_size=world_size)
             self._pg = dist.group.WORLD
-        else: # process group exists
+        else:  # process group exists
             default_pg = dist.group.WORLD
             try:
                 default_backend = dist.get_backend(default_pg)
             except Exception:
                 default_backend = None
 
-            if default_backend == "hccl": # if same backend, simply use existing group
+            if default_backend == "hccl":  # if same backend, simply use existing group
                 self._pg = default_pg
-            else: # otherwise create separate group
+            else:  # otherwise create separate group
                 self._pg = dist.new_group(ranks=list(range(world_size)))
         super(HCCLGroup, self).__init__(world_size, rank, group_name)
         self._dev_comm_map = {}
@@ -610,7 +611,10 @@ class HCCLGroup(BaseGroup):
         with torch.npu.device(f"npu:{my_npu_idx}"):
             comm = hcclComm_t()
             exec_result = self.libhccl.HcclCommInitRootInfo(
-                self.world_size, ctypes.byref(root_info), my_p2p_rank, ctypes.byref(comm)
+                self.world_size,
+                ctypes.byref(root_info),
+                my_p2p_rank,
+                ctypes.byref(comm),
             )
             assert (
                 exec_result == 0
@@ -699,7 +703,7 @@ def _get_comm_key_from_devices(devices: List[int]):
 
 def get_rank_device(pg):
     return dist.get_rank(group=pg)
-    
+
 
 def get_tensor_device(tensor):
     """Return the NPU index of a tensor."""
