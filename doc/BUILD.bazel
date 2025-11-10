@@ -519,7 +519,7 @@ py_test(
         ["external/*.py"],
         exclude = ["external/test_hashes.py"],
     ),
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     main = "external/test_hashes.py",
     tags = ["team:ml"],
     deps = [
