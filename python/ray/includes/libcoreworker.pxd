@@ -206,6 +206,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_bool is_debugger_paused)
         int64_t GetCurrentTaskAttemptNumber()
         CNodeID GetCurrentNodeId()
+        c_string GetCurrentTempDir()
         int64_t GetTaskDepth()
         c_bool GetCurrentTaskRetryExceptions()
         CPlacementGroupID GetCurrentPlacementGroupId() const

@@ -208,6 +208,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 
   NodeID local_node_id;
   int assigned_port = 0;
+  std::string temp_dir;
   Status status = raylet_ipc_client->RegisterClient(worker_context->GetWorkerID(),
                                                     options.worker_type,
                                                     worker_context->GetCurrentJobID(),
@@ -217,7 +218,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                                     options.serialized_job_config,
                                                     options.startup_token,
                                                     &local_node_id,
-                                                    &assigned_port);
+                                                    &assigned_port,
+                                                    &temp_dir);
   if (!status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
     RAY_LOG(ERROR).WithField(worker_id)
@@ -662,6 +664,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(periodical_runner),
                                    std::move(core_worker_server),
                                    std::move(rpc_address),
+                                   std::move(temp_dir),
                                    std::move(gcs_client),
                                    std::move(raylet_ipc_client),
                                    std::move(local_raylet_rpc_client),

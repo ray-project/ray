@@ -750,6 +750,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.
   std::string self_node_name_;
+  /// The temp directory for this node.
+  std::string temp_dir_;
   instrumented_io_context &io_service_;
   /// A client connection to the GCS.
   gcs::GcsClient &gcs_client_;

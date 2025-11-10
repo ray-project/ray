@@ -13,6 +13,7 @@ from inspect import signature
 from types import ModuleType
 from typing import Any, Coroutine, Dict, Optional, Tuple
 
+import ray
 from ray._raylet import GcsClient
 from ray.core.generated import gcs_pb2
 
@@ -235,6 +236,10 @@ def resolve_user_ray_temp_dir(gcs_address: str, node_id: str):
     Returns:
         The path to the ray temp directory.
     """
+    # check if temp dir is available from runtime context
+    if ray.is_initialized() and ray.get_runtime_context().get_node_id() == node_id:
+        return ray.get_runtime_context().get_temp_dir()
+
     # Attempt to fetch temp dir as specified by --temp-dir at creation time.
     if gcs_address is not None and node_id is not None:
         gcs_client = GcsClient(gcs_address)

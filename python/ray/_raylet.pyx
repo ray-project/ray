@@ -3098,6 +3098,9 @@ cdef class CoreWorker:
         return NodeID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentNodeId().Binary())
 
+    def get_current_temp_dir(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetCurrentTempDir().decode()
+
     def get_actor_id(self):
         return ActorID(
             CCoreWorkerProcess.GetCoreWorker().GetActorId().Binary())
