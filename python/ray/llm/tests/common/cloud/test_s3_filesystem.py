@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from unittest.mock import MagicMock, patch
 
@@ -325,3 +326,7 @@ class TestS3FileSystemIntegration:
             assert "model.safetensors" not in downloaded_files
             assert "README.md" not in downloaded_files
             assert "LICENSE.txt" not in downloaded_files
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

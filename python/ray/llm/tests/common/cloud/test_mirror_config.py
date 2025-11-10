@@ -1,5 +1,7 @@
 """Tests for mirror config classes."""
 
+import sys
+
 import pytest
 
 from ray.llm._internal.common.utils.cloud_utils import (
@@ -156,3 +158,7 @@ class TestLoraMirrorConfig:
         )
         assert config.max_total_tokens == 1000
         assert config.sync_args == ["--exclude", "*.tmp"]
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

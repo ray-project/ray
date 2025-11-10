@@ -1,8 +1,11 @@
 """Tests for CloudFileSystem class."""
 
 import os
+import sys
 import tempfile
 from unittest.mock import patch
+
+import pytest
 
 from ray.llm._internal.common.utils.cloud_utils import CloudFileSystem
 
@@ -77,3 +80,7 @@ class TestCloudFileSystem:
             assert model_rev_path in call_paths
             assert "gs://bucket/model" in call_uris
             assert "gs://bucket/model/hash" in call_uris
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

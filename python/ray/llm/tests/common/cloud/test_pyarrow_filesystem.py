@@ -1,6 +1,7 @@
 """Tests for PyArrowFileSystem class."""
 
 import os
+import sys
 from unittest.mock import ANY, MagicMock, patch
 
 import pyarrow.fs as pa_fs
@@ -542,3 +543,7 @@ class TestPyArrowFileSystemAzureSupport:
         call_args = mock_fs.get_file_info.call_args[0][0]
         assert call_args.base_dir == "container/parent/"
         assert call_args.recursive is False
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

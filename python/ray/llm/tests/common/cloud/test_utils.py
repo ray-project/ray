@@ -1,6 +1,7 @@
 """Utility tests for cloud functionality."""
 
 import asyncio
+import sys
 
 import pytest
 
@@ -313,3 +314,7 @@ class TestIsRemotePath:
         assert is_remote_path("./relative/path") is False
         assert is_remote_path("file:///local/path") is False
         assert is_remote_path("http://example.com") is False
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
