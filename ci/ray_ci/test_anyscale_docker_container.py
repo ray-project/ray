@@ -4,7 +4,6 @@ from typing import List
 from unittest import mock
 
 import pytest
-from ray_release.configs.global_config import get_global_config
 
 from ci.ray_ci.anyscale_docker_container import AnyscaleDockerContainer
 from ci.ray_ci.container import (
@@ -13,6 +12,8 @@ from ci.ray_ci.container import (
     _DOCKER_GCP_REGISTRY,
 )
 from ci.ray_ci.test_base import RayCITestBase
+
+from ray_release.configs.global_config import get_global_config
 
 
 class TestAnyscaleDockerContainer(RayCITestBase):
