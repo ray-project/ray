@@ -49,7 +49,7 @@ class Ranker(ABC, Generic[RankingValue]):
         of the lexicographically ordered ranks composed of (in order):
 
         Args:
-            ops: Operator to rank
+            op: Operator to rank
             topology: Current execution topology
             resource_manager: Resource manager for usage information
 
@@ -84,7 +84,7 @@ class DefaultRanker(Ranker[Tuple[int, int]]):
             2. Operators' object store utilization
 
         Args:
-            op: Operators to rank
+            op: Operator to rank
             topology: Current execution topology
             resource_manager: Resource manager for usage information
 
