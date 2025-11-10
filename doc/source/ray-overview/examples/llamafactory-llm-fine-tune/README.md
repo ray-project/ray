@@ -6,7 +6,7 @@ Each template is an executable notebook that guides you through setup, configura
 
 ## Why LLaMA-Factory?
 
-LLaMA-Factory is an easy-to-use, open-source framework. Its simple, declarative configs and consistent CLI allow you to define Supervised Fine-Tuning (SFT), Direct Preference Optimization (DPO), and Kahneman-Tversky Optimization (KTO) runs once and reuse them across environments. It supports popular adapters like LoRA and QLoRA using Parameter-Efficient Fine-Tuning and integrates with DeepSpeed for efficient multi-GPU training. This enables reproducible, composable workflows that start small and scale on demand.
+LLaMA-Factory is an easy-to-use, open-source framework. Its simple, declarative configs and consistent CLI allow you to define Continued Pre-Training (CPT), Supervised Fine-Tuning (SFT), Direct Preference Optimization (DPO), and Kahneman-Tversky Optimization (KTO) runs once and reuse them across environments. It supports popular adapters like LoRA and QLoRA using Parameter-Efficient Fine-Tuning and integrates with DeepSpeed for efficient multi-GPU training. This enables reproducible, composable workflows that start small and scale on demand.
 
 ## Templates
 
