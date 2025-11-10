@@ -61,9 +61,10 @@ message RaySyncMessage {
 }
 
 message RaySyncMessageBatch {
-  // For batched messages: list of individual messages
-  // Key is the node_id_hex of the sender, value is the message from that node
-  map<string, InnerRaySyncMessage> batched_messages = 1;
+  // Batch of RaySyncMessages.
+  // If GCS resource update batching is disabled, this will always be of length 1.
+  // For the "commands" channel, this will also always be of length 1.
+  map<string, RaySyncMessage> messages = 1;
 }
 
 service RaySyncer {
