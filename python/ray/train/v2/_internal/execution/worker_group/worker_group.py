@@ -3,6 +3,7 @@ import copy
 import logging
 import os
 import traceback
+import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
@@ -40,6 +41,9 @@ from ray.train.v2._internal.execution.checkpoint.sync_actor import Synchronizati
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
     TrainRunContext,
+)
+from ray.train.v2._internal.execution.worker_group.pg_reaper import (
+    PlacementGroupReaper,
 )
 from ray.train.v2._internal.execution.worker_group.poll import (
     PollTask,
@@ -313,6 +317,22 @@ class WorkerGroup(BaseWorkerGroup):
                 warn_interval_s=self._collective_warn_interval_s,
             )
             worker_group_state_builder.with_sync_actor(sync_actor)
+
+            # Start a detached reaper that will remove the PG if the controller dies.
+            try:
+                reaper_name = f"ray-train-v2-pg-reaper-{uuid.uuid4().hex}"
+                reaper = PlacementGroupReaper.options(
+                    name=reaper_name, lifetime="detached", num_cpus=0
+                ).remote()
+                # Fire-and-forget monitoring loop.
+                reaper.run.remote(
+                    controller=ray.get_runtime_context().current_actor,
+                    placement_group=pg,
+                )
+                worker_group_state_builder.with_reaper_actor(reaper)
+            except Exception:
+                # Best-effort: if reaper cannot be started, proceed without it.
+                pass
 
             workers = self._create_workers(
                 worker_group_context.num_workers,
