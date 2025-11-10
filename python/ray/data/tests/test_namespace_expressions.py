@@ -4,6 +4,8 @@ This module tests the namespace accessor methods (list, str, struct) that provid
 convenient access to PyArrow compute functions through the expression API.
 """
 
+from typing import Any
+
 import pandas as pd
 import pyarrow as pa
 import pytest
@@ -17,24 +19,52 @@ def assert_df_equal(result: pd.DataFrame, expected: pd.DataFrame):
     pd.testing.assert_frame_equal(result, expected, check_dtype=False)
 
 
+def _create_dataset(
+    items_data: Any, dataset_format: str, arrow_table: pa.Table | None = None
+):
+    if dataset_format == "arrow":
+        if arrow_table is not None:
+            # Use pre-constructed arrow table (for complex types like structs)
+            ds = ray.data.from_arrow(arrow_table)
+        else:
+            # Convert items to arrow table (infers types automatically)
+            table = pa.Table.from_pylist(items_data)
+            ds = ray.data.from_arrow(table)
+    elif dataset_format == "pandas":
+        if arrow_table is not None:
+            # Convert arrow table to pandas
+            df = arrow_table.to_pandas()
+        else:
+            # Create pandas DataFrame from items
+            df = pd.DataFrame(items_data)
+        ds = ray.data.from_pandas(df)
+    else:  # items
+        ds = ray.data.from_items(items_data)
+    return ds
+
+
+# Pytest parameterization for all dataset creation formats
+DATASET_FORMATS = ["items", "pandas", "arrow"]
+
+
 # ──────────────────────────────────────
 # List Namespace Tests
 # ──────────────────────────────────────
 
 
+@pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
 class TestListNamespace:
     """Tests for list namespace operations."""
 
-    def test_list_len(self):
+    def test_list_len(self, dataset_format):
         """Test list.len() returns length of each list."""
 
-        ds = ray.data.from_items(
-            [
-                {"items": [1, 2, 3]},
-                {"items": [4, 5]},
-                {"items": []},
-            ]
-        )
+        data = [
+            {"items": [1, 2, 3]},
+            {"items": [4, 5]},
+            {"items": []},
+        ]
+        ds = _create_dataset(data, dataset_format)
         result = ds.with_column("len", col("items").list.len()).to_pandas()
         expected = pd.DataFrame(
             {
@@ -44,15 +74,14 @@ class TestListNamespace:
         )
         assert_df_equal(result, expected)
 
-    def test_list_get(self):
+    def test_list_get(self, dataset_format):
         """Test list.get() extracts element at index."""
 
-        ds = ray.data.from_items(
-            [
-                {"items": [10, 20, 30]},
-                {"items": [40, 50, 60]},
-            ]
-        )
+        data = [
+            {"items": [10, 20, 30]},
+            {"items": [40, 50, 60]},
+        ]
+        ds = _create_dataset(data, dataset_format)
         result = ds.with_column("first", col("items").list.get(0)).to_pandas()
         expected = pd.DataFrame(
             {
@@ -62,10 +91,11 @@ class TestListNamespace:
         )
         assert_df_equal(result, expected)
 
-    def test_list_bracket_index(self):
+    def test_list_bracket_index(self, dataset_format):
         """Test list[i] bracket notation for element access."""
 
-        ds = ray.data.from_items([{"items": [10, 20, 30]}])
+        data = [{"items": [10, 20, 30]}]
+        ds = _create_dataset(data, dataset_format)
         result = ds.with_column("elem", col("items").list[1]).to_pandas()
         expected = pd.DataFrame(
             {
@@ -81,313 +111,215 @@ class TestListNamespace:
 # ──────────────────────────────────────
 
 
+@pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
+@pytest.mark.parametrize(
+    "method_name,input_values,expected_results",
+    [
+        ("len", ["Alice", "Bob"], [5, 3]),
+        ("byte_len", ["ABC"], [3]),
+    ],
+)
 class TestStringLength:
     """Tests for string length operations."""
 
-    def test_str_len(self):
-        """Test str.len() returns character length."""
+    def test_string_length(
+        self, dataset_format, method_name, input_values, expected_results
+    ):
+        """Test string length methods."""
 
-        ds = ray.data.from_items([{"name": "Alice"}, {"name": "Bob"}])
-        result = ds.with_column("len", col("name").str.len()).to_pandas()
-        expected = pd.DataFrame({"name": ["Alice", "Bob"], "len": [5, 3]})
+        data = [{"name": v} for v in input_values]
+        ds = _create_dataset(data, dataset_format)
+
+        method = getattr(col("name").str, method_name)
+        result = ds.with_column("result", method()).to_pandas()
+
+        expected = pd.DataFrame({"name": input_values, "result": expected_results})
         assert_df_equal(result, expected)
 
-    def test_str_byte_len(self):
-        """Test str.byte_len() returns byte length."""
 
-        ds = ray.data.from_items([{"name": "ABC"}])
-        result = ds.with_column("byte_len", col("name").str.byte_len()).to_pandas()
-        expected = pd.DataFrame({"name": ["ABC"], "byte_len": [3]})
-        assert_df_equal(result, expected)
-
-
+@pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
+@pytest.mark.parametrize(
+    "method_name,input_values,expected_values",
+    [
+        ("upper", ["alice", "bob"], ["ALICE", "BOB"]),
+        ("lower", ["ALICE", "BOB"], ["alice", "bob"]),
+        ("capitalize", ["alice", "bob"], ["Alice", "Bob"]),
+        ("title", ["alice smith", "bob jones"], ["Alice Smith", "Bob Jones"]),
+        ("swapcase", ["AlIcE"], ["aLiCe"]),
+    ],
+)
 class TestStringCase:
     """Tests for string case conversion."""
 
-    def test_str_upper(self):
-        """Test str.upper() converts to uppercase."""
+    def test_string_case(
+        self, dataset_format, method_name, input_values, expected_values
+    ):
+        """Test string case conversion methods."""
 
-        ds = ray.data.from_items([{"name": "alice"}, {"name": "bob"}])
-        result = ds.with_column("upper", col("name").str.upper()).to_pandas()
-        expected = pd.DataFrame({"name": ["alice", "bob"], "upper": ["ALICE", "BOB"]})
-        assert_df_equal(result, expected)
+        data = [{"name": v} for v in input_values]
+        ds = _create_dataset(data, dataset_format)
 
-    def test_str_lower(self):
-        """Test str.lower() converts to lowercase."""
+        method = getattr(col("name").str, method_name)
+        result = ds.with_column("result", method()).to_pandas()
 
-        ds = ray.data.from_items([{"name": "ALICE"}, {"name": "BOB"}])
-        result = ds.with_column("lower", col("name").str.lower()).to_pandas()
-        expected = pd.DataFrame({"name": ["ALICE", "BOB"], "lower": ["alice", "bob"]})
-        assert_df_equal(result, expected)
-
-    def test_str_capitalize(self):
-        """Test str.capitalize() capitalizes first character."""
-
-        ds = ray.data.from_items([{"name": "alice"}, {"name": "bob"}])
-        result = ds.with_column("cap", col("name").str.capitalize()).to_pandas()
-        expected = pd.DataFrame({"name": ["alice", "bob"], "cap": ["Alice", "Bob"]})
-        assert_df_equal(result, expected)
-
-    def test_str_title(self):
-        """Test str.title() converts to title case."""
-
-        ds = ray.data.from_items([{"name": "alice smith"}, {"name": "bob jones"}])
-        result = ds.with_column("title", col("name").str.title()).to_pandas()
-        expected = pd.DataFrame(
-            {
-                "name": ["alice smith", "bob jones"],
-                "title": ["Alice Smith", "Bob Jones"],
-            }
-        )
-        assert_df_equal(result, expected)
-
-    def test_str_swapcase(self):
-        """Test str.swapcase() swaps case."""
-
-        ds = ray.data.from_items([{"name": "AlIcE"}])
-        result = ds.with_column("swapped", col("name").str.swapcase()).to_pandas()
-        expected = pd.DataFrame({"name": ["AlIcE"], "swapped": ["aLiCe"]})
+        expected = pd.DataFrame({"name": input_values, "result": expected_values})
         assert_df_equal(result, expected)
 
 
+@pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
+@pytest.mark.parametrize(
+    "method_name,input_values,expected_results",
+    [
+        ("is_alpha", ["abc", "abc123", "123"], [True, False, False]),
+        ("is_alnum", ["abc123", "abc-123"], [True, False]),
+        ("is_digit", ["123", "12a"], [True, False]),
+        ("is_space", ["   ", " a "], [True, False]),
+        ("is_lower", ["abc", "Abc"], [True, False]),
+        ("is_upper", ["ABC", "Abc"], [True, False]),
+        ("is_ascii", ["hello", "hello😊"], [True, False]),
+    ],
+)
 class TestStringPredicates:
     """Tests for string predicate methods (is_*)."""
 
-    def test_is_alpha(self):
-        """Test str.is_alpha() checks for alphabetic characters."""
+    def test_string_predicate(
+        self, dataset_format, method_name, input_values, expected_results
+    ):
+        """Test string predicate methods."""
 
-        ds = ray.data.from_items([{"val": "abc"}, {"val": "abc123"}, {"val": "123"}])
-        result = ds.with_column("is_alpha", col("val").str.is_alpha()).to_pandas()
-        expected = pd.DataFrame(
-            {
-                "val": ["abc", "abc123", "123"],
-                "is_alpha": [True, False, False],
-            }
-        )
-        assert_df_equal(result, expected)
+        data = [{"val": v} for v in input_values]
+        ds = _create_dataset(data, dataset_format)
 
-    def test_is_alnum(self):
-        """Test str.is_alnum() checks for alphanumeric characters."""
+        # Get the method dynamically
+        method = getattr(col("val").str, method_name)
+        result = ds.with_column("result", method()).to_pandas()
 
-        ds = ray.data.from_items([{"val": "abc123"}, {"val": "abc-123"}])
-        result = ds.with_column("is_alnum", col("val").str.is_alnum()).to_pandas()
-        expected = pd.DataFrame(
-            {"val": ["abc123", "abc-123"], "is_alnum": [True, False]}
-        )
-        assert_df_equal(result, expected)
-
-    def test_is_digit(self):
-        """Test str.is_digit() checks for digits only."""
-
-        ds = ray.data.from_items([{"val": "123"}, {"val": "12a"}])
-        result = ds.with_column("is_digit", col("val").str.is_digit()).to_pandas()
-        expected = pd.DataFrame({"val": ["123", "12a"], "is_digit": [True, False]})
-        assert_df_equal(result, expected)
-
-    def test_is_space(self):
-        """Test str.is_space() checks for whitespace only."""
-
-        ds = ray.data.from_items([{"val": "   "}, {"val": " a "}])
-        result = ds.with_column("is_space", col("val").str.is_space()).to_pandas()
-        expected = pd.DataFrame({"val": ["   ", " a "], "is_space": [True, False]})
-        assert_df_equal(result, expected)
-
-    def test_is_lower(self):
-        """Test str.is_lower() checks for lowercase."""
-
-        ds = ray.data.from_items([{"val": "abc"}, {"val": "Abc"}])
-        result = ds.with_column("is_lower", col("val").str.is_lower()).to_pandas()
-        expected = pd.DataFrame({"val": ["abc", "Abc"], "is_lower": [True, False]})
-        assert_df_equal(result, expected)
-
-    def test_is_upper(self):
-        """Test str.is_upper() checks for uppercase."""
-
-        ds = ray.data.from_items([{"val": "ABC"}, {"val": "Abc"}])
-        result = ds.with_column("is_upper", col("val").str.is_upper()).to_pandas()
-        expected = pd.DataFrame({"val": ["ABC", "Abc"], "is_upper": [True, False]})
-        assert_df_equal(result, expected)
-
-    def test_is_ascii(self):
-        """Test str.is_ascii() checks for ASCII characters."""
-
-        ds = ray.data.from_items([{"val": "hello"}, {"val": "hello😊"}])
-        result = ds.with_column("is_ascii", col("val").str.is_ascii()).to_pandas()
-        expected = pd.DataFrame({"val": ["hello", "hello😊"], "is_ascii": [True, False]})
+        expected = pd.DataFrame({"val": input_values, "result": expected_results})
         assert_df_equal(result, expected)
 
 
+@pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
+@pytest.mark.parametrize(
+    "method_name,method_args,input_values,expected_values",
+    [
+        ("strip", (), ["  hello  ", " world "], ["hello", "world"]),
+        ("strip", ("x",), ["xxxhelloxxx"], ["hello"]),
+        ("lstrip", (), ["  hello  "], ["hello  "]),
+        ("rstrip", (), ["  hello  "], ["  hello"]),
+    ],
+)
 class TestStringTrimming:
     """Tests for string trimming operations."""
 
-    def test_strip_whitespace(self):
-        """Test str.strip() removes leading and trailing whitespace."""
+    def test_string_trimming(
+        self, dataset_format, method_name, method_args, input_values, expected_values
+    ):
+        """Test string trimming methods."""
 
-        ds = ray.data.from_items([{"val": "  hello  "}, {"val": " world "}])
-        result = ds.with_column("stripped", col("val").str.strip()).to_pandas()
-        expected = pd.DataFrame(
-            {"val": ["  hello  ", " world "], "stripped": ["hello", "world"]}
-        )
-        assert_df_equal(result, expected)
+        data = [{"val": v} for v in input_values]
+        ds = _create_dataset(data, dataset_format)
 
-    def test_strip_characters(self):
-        """Test str.strip() with custom characters."""
+        method = getattr(col("val").str, method_name)
+        result = ds.with_column("result", method(*method_args)).to_pandas()
 
-        ds = ray.data.from_items([{"val": "xxxhelloxxx"}])
-        result = ds.with_column("stripped", col("val").str.strip("x")).to_pandas()
-        expected = pd.DataFrame({"val": ["xxxhelloxxx"], "stripped": ["hello"]})
-        assert_df_equal(result, expected)
-
-    def test_lstrip(self):
-        """Test str.lstrip() removes leading whitespace."""
-
-        ds = ray.data.from_items([{"val": "  hello  "}])
-        result = ds.with_column("lstripped", col("val").str.lstrip()).to_pandas()
-        expected = pd.DataFrame({"val": ["  hello  "], "lstripped": ["hello  "]})
-        assert_df_equal(result, expected)
-
-    def test_rstrip(self):
-        """Test str.rstrip() removes trailing whitespace."""
-
-        ds = ray.data.from_items([{"val": "  hello  "}])
-        result = ds.with_column("rstripped", col("val").str.rstrip()).to_pandas()
-        expected = pd.DataFrame({"val": ["  hello  "], "rstripped": ["  hello"]})
+        expected = pd.DataFrame({"val": input_values, "result": expected_values})
         assert_df_equal(result, expected)
 
 
+@pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
+@pytest.mark.parametrize(
+    "method_name,method_kwargs,expected_value",
+    [
+        ("pad", {"width": 5, "fillchar": "*", "side": "right"}, "hi***"),
+        ("pad", {"width": 5, "fillchar": "*", "side": "left"}, "***hi"),
+        ("pad", {"width": 6, "fillchar": "*", "side": "both"}, "**hi**"),
+        ("center", {"width": 6, "padding": "*"}, "**hi**"),
+    ],
+)
 class TestStringPadding:
     """Tests for string padding operations."""
 
-    def test_pad_right(self):
-        """Test str.pad() with right padding."""
+    def test_string_padding(
+        self, dataset_format, method_name, method_kwargs, expected_value
+    ):
+        """Test string padding methods."""
 
-        ds = ray.data.from_items([{"val": "hi"}])
-        result = ds.with_column(
-            "padded", col("val").str.pad(5, fillchar="*", side="right")
-        ).to_pandas()
-        expected = pd.DataFrame({"val": ["hi"], "padded": ["hi***"]})
-        assert_df_equal(result, expected)
+        data = [{"val": "hi"}]
+        ds = _create_dataset(data, dataset_format)
 
-    def test_pad_left(self):
-        """Test str.pad() with left padding."""
+        method = getattr(col("val").str, method_name)
+        result = ds.with_column("result", method(**method_kwargs)).to_pandas()
 
-        ds = ray.data.from_items([{"val": "hi"}])
-        result = ds.with_column(
-            "padded", col("val").str.pad(5, fillchar="*", side="left")
-        ).to_pandas()
-        expected = pd.DataFrame({"val": ["hi"], "padded": ["***hi"]})
-        assert_df_equal(result, expected)
-
-    def test_pad_both(self):
-        """Test str.pad() with both-side padding."""
-
-        ds = ray.data.from_items([{"val": "hi"}])
-        result = ds.with_column(
-            "padded", col("val").str.pad(6, fillchar="*", side="both")
-        ).to_pandas()
-        expected = pd.DataFrame({"val": ["hi"], "padded": ["**hi**"]})
-        assert_df_equal(result, expected)
-
-    def test_center(self):
-        """Test str.center() centers strings."""
-
-        ds = ray.data.from_items([{"val": "hi"}])
-        result = ds.with_column("centered", col("val").str.center(6, "*")).to_pandas()
-        expected = pd.DataFrame({"val": ["hi"], "centered": ["**hi**"]})
+        expected = pd.DataFrame({"val": ["hi"], "result": [expected_value]})
         assert_df_equal(result, expected)
 
 
+@pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
+@pytest.mark.parametrize(
+    "method_name,method_args,method_kwargs,input_values,expected_results",
+    [
+        ("starts_with", ("A",), {}, ["Alice", "Bob", "Alex"], [True, False, True]),
+        ("starts_with", ("A",), {"ignore_case": True}, ["alice", "bob"], [True, False]),
+        ("ends_with", ("e",), {}, ["Alice", "Bob"], [True, False]),
+        ("contains", ("li",), {}, ["Alice", "Bob", "Charlie"], [True, False, True]),
+        ("find", ("i",), {}, ["Alice", "Bob"], [2, -1]),
+        ("count", ("a",), {}, ["banana", "apple"], [3, 1]),
+        ("match", ("Al%",), {}, ["Alice", "Bob", "Alex"], [True, False, True]),
+    ],
+)
 class TestStringSearch:
     """Tests for string searching operations."""
 
-    def test_starts_with(self):
-        """Test str.starts_with() checks string prefix."""
+    def test_string_search(
+        self,
+        dataset_format,
+        method_name,
+        method_args,
+        method_kwargs,
+        input_values,
+        expected_results,
+    ):
+        """Test string searching methods."""
 
-        ds = ray.data.from_items([{"val": "Alice"}, {"val": "Bob"}, {"val": "Alex"}])
-        result = ds.with_column("starts_a", col("val").str.starts_with("A")).to_pandas()
-        expected = pd.DataFrame(
-            {"val": ["Alice", "Bob", "Alex"], "starts_a": [True, False, True]}
-        )
-        assert_df_equal(result, expected)
+        data = [{"val": v} for v in input_values]
+        ds = _create_dataset(data, dataset_format)
 
-    def test_starts_with_ignore_case(self):
-        """Test str.starts_with() with case insensitivity."""
-
-        ds = ray.data.from_items([{"val": "alice"}, {"val": "bob"}])
+        method = getattr(col("val").str, method_name)
         result = ds.with_column(
-            "starts_a", col("val").str.starts_with("A", ignore_case=True)
+            "result", method(*method_args, **method_kwargs)
         ).to_pandas()
-        expected = pd.DataFrame({"val": ["alice", "bob"], "starts_a": [True, False]})
-        assert_df_equal(result, expected)
 
-    def test_ends_with(self):
-        """Test str.ends_with() checks string suffix."""
-
-        ds = ray.data.from_items([{"val": "Alice"}, {"val": "Bob"}])
-        result = ds.with_column("ends_e", col("val").str.ends_with("e")).to_pandas()
-        expected = pd.DataFrame({"val": ["Alice", "Bob"], "ends_e": [True, False]})
-        assert_df_equal(result, expected)
-
-    def test_contains(self):
-        """Test str.contains() checks for substring."""
-
-        ds = ray.data.from_items([{"val": "Alice"}, {"val": "Bob"}, {"val": "Charlie"}])
-        result = ds.with_column("has_li", col("val").str.contains("li")).to_pandas()
-        expected = pd.DataFrame(
-            {"val": ["Alice", "Bob", "Charlie"], "has_li": [True, False, True]}
-        )
-        assert_df_equal(result, expected)
-
-    def test_find(self):
-        """Test str.find() returns index of substring."""
-
-        ds = ray.data.from_items([{"val": "Alice"}, {"val": "Bob"}])
-        result = ds.with_column("pos", col("val").str.find("i")).to_pandas()
-        expected = pd.DataFrame({"val": ["Alice", "Bob"], "pos": [2, -1]})
-        assert_df_equal(result, expected)
-
-    def test_count(self):
-        """Test str.count() counts substring occurrences."""
-
-        ds = ray.data.from_items([{"val": "banana"}, {"val": "apple"}])
-        result = ds.with_column("count_a", col("val").str.count("a")).to_pandas()
-        expected = pd.DataFrame({"val": ["banana", "apple"], "count_a": [3, 1]})
-        assert_df_equal(result, expected)
-
-    def test_match_like(self):
-        """Test str.match() matches SQL LIKE patterns."""
-
-        ds = ray.data.from_items([{"val": "Alice"}, {"val": "Bob"}, {"val": "Alex"}])
-        result = ds.with_column("matches", col("val").str.match("Al%")).to_pandas()
-        expected = pd.DataFrame(
-            {"val": ["Alice", "Bob", "Alex"], "matches": [True, False, True]}
-        )
+        expected = pd.DataFrame({"val": input_values, "result": expected_results})
         assert_df_equal(result, expected)
 
 
+@pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
 class TestStringTransform:
     """Tests for string transformation operations."""
 
-    def test_reverse(self):
+    def test_reverse(self, dataset_format):
         """Test str.reverse() reverses strings."""
 
-        ds = ray.data.from_items([{"val": "hello"}, {"val": "world"}])
+        data = [{"val": "hello"}, {"val": "world"}]
+        ds = _create_dataset(data, dataset_format)
         result = ds.with_column("rev", col("val").str.reverse()).to_pandas()
         expected = pd.DataFrame({"val": ["hello", "world"], "rev": ["olleh", "dlrow"]})
         assert_df_equal(result, expected)
 
-    def test_slice(self):
+    def test_slice(self, dataset_format):
         """Test str.slice() extracts substring."""
 
-        ds = ray.data.from_items([{"val": "hello"}])
+        data = [{"val": "hello"}]
+        ds = _create_dataset(data, dataset_format)
         result = ds.with_column("sliced", col("val").str.slice(1, 4)).to_pandas()
         expected = pd.DataFrame({"val": ["hello"], "sliced": ["ell"]})
         assert_df_equal(result, expected)
 
-    def test_replace(self):
+    def test_replace(self, dataset_format):
         """Test str.replace() replaces substring."""
 
-        ds = ray.data.from_items([{"val": "hello world"}])
+        data = [{"val": "hello world"}]
+        ds = _create_dataset(data, dataset_format)
         result = ds.with_column(
             "replaced", col("val").str.replace("world", "universe")
         ).to_pandas()
@@ -396,20 +328,22 @@ class TestStringTransform:
         )
         assert_df_equal(result, expected)
 
-    def test_replace_with_max(self):
+    def test_replace_with_max(self, dataset_format):
         """Test str.replace() with max_replacements."""
 
-        ds = ray.data.from_items([{"val": "aaa"}])
+        data = [{"val": "aaa"}]
+        ds = _create_dataset(data, dataset_format)
         result = ds.with_column(
             "replaced", col("val").str.replace("a", "X", max_replacements=2)
         ).to_pandas()
         expected = pd.DataFrame({"val": ["aaa"], "replaced": ["XXa"]})
         assert_df_equal(result, expected)
 
-    def test_repeat(self):
+    def test_repeat(self, dataset_format):
         """Test str.repeat() repeats strings."""
 
-        ds = ray.data.from_items([{"val": "A"}])
+        data = [{"val": "A"}]
+        ds = _create_dataset(data, dataset_format)
         result = ds.with_column("repeated", col("val").str.repeat(3)).to_pandas()
         expected = pd.DataFrame({"val": ["A"], "repeated": ["AAA"]})
         assert_df_equal(result, expected)
@@ -420,70 +354,38 @@ class TestStringTransform:
 # ──────────────────────────────────────
 
 
+@pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
 class TestStructNamespace:
     """Tests for struct namespace operations."""
 
-    @pytest.fixture
-    def struct_ds(self):
-        """Dataset with struct columns."""
-        return ray.data.from_arrow(
-            pa.table(
-                {
-                    "user": pa.array(
-                        [
-                            {"name": "Alice", "age": 30},
-                            {"name": "Bob", "age": 25},
-                        ],
-                        type=pa.struct(
-                            [
-                                pa.field("name", pa.string()),
-                                pa.field("age", pa.int32()),
-                            ]
-                        ),
-                    )
-                }
-            )
-        )
-
-    @pytest.fixture
-    def nested_struct_ds(self):
-        """Dataset with nested struct columns."""
-        return ray.data.from_arrow(
-            pa.table(
-                {
-                    "user": pa.array(
-                        [
-                            {
-                                "name": "Alice",
-                                "address": {"city": "NYC", "zip": "10001"},
-                            },
-                            {"name": "Bob", "address": {"city": "LA", "zip": "90001"}},
-                        ],
-                        type=pa.struct(
-                            [
-                                pa.field("name", pa.string()),
-                                pa.field(
-                                    "address",
-                                    pa.struct(
-                                        [
-                                            pa.field("city", pa.string()),
-                                            pa.field("zip", pa.string()),
-                                        ]
-                                    ),
-                                ),
-                            ]
-                        ),
-                    )
-                }
-            )
-        )
-
-    def test_struct_field(self, struct_ds):
+    def test_struct_field(self, dataset_format):
         """Test struct.field() extracts field."""
 
-        result = struct_ds.with_column(
-            "age", col("user").struct.field("age")
-        ).to_pandas()
+        # Arrow table with explicit struct types
+        arrow_table = pa.table(
+            {
+                "user": pa.array(
+                    [
+                        {"name": "Alice", "age": 30},
+                        {"name": "Bob", "age": 25},
+                    ],
+                    type=pa.struct(
+                        [
+                            pa.field("name", pa.string()),
+                            pa.field("age", pa.int32()),
+                        ]
+                    ),
+                )
+            }
+        )
+        # Items representation
+        items_data = [
+            {"user": {"name": "Alice", "age": 30}},
+            {"user": {"name": "Bob", "age": 25}},
+        ]
+        ds = _create_dataset(items_data, dataset_format, arrow_table)
+
+        result = ds.with_column("age", col("user").struct.field("age")).to_pandas()
         expected = pd.DataFrame(
             {
                 "user": [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}],
@@ -492,10 +394,32 @@ class TestStructNamespace:
         )
         assert_df_equal(result, expected)
 
-    def test_struct_bracket(self, struct_ds):
+    def test_struct_bracket(self, dataset_format):
         """Test struct['field'] bracket notation."""
 
-        result = struct_ds.with_column("name", col("user").struct["name"]).to_pandas()
+        arrow_table = pa.table(
+            {
+                "user": pa.array(
+                    [
+                        {"name": "Alice", "age": 30},
+                        {"name": "Bob", "age": 25},
+                    ],
+                    type=pa.struct(
+                        [
+                            pa.field("name", pa.string()),
+                            pa.field("age", pa.int32()),
+                        ]
+                    ),
+                )
+            }
+        )
+        items_data = [
+            {"user": {"name": "Alice", "age": 30}},
+            {"user": {"name": "Bob", "age": 25}},
+        ]
+        ds = _create_dataset(items_data, dataset_format, arrow_table)
+
+        result = ds.with_column("name", col("user").struct["name"]).to_pandas()
         expected = pd.DataFrame(
             {
                 "user": [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}],
@@ -504,10 +428,40 @@ class TestStructNamespace:
         )
         assert_df_equal(result, expected)
 
-    def test_struct_nested_field(self, nested_struct_ds):
+    def test_struct_nested_field(self, dataset_format):
         """Test nested struct field access with .field()."""
 
-        result = nested_struct_ds.with_column(
+        arrow_table = pa.table(
+            {
+                "user": pa.array(
+                    [
+                        {"name": "Alice", "address": {"city": "NYC", "zip": "10001"}},
+                        {"name": "Bob", "address": {"city": "LA", "zip": "90001"}},
+                    ],
+                    type=pa.struct(
+                        [
+                            pa.field("name", pa.string()),
+                            pa.field(
+                                "address",
+                                pa.struct(
+                                    [
+                                        pa.field("city", pa.string()),
+                                        pa.field("zip", pa.string()),
+                                    ]
+                                ),
+                            ),
+                        ]
+                    ),
+                )
+            }
+        )
+        items_data = [
+            {"user": {"name": "Alice", "address": {"city": "NYC", "zip": "10001"}}},
+            {"user": {"name": "Bob", "address": {"city": "LA", "zip": "90001"}}},
+        ]
+        ds = _create_dataset(items_data, dataset_format, arrow_table)
+
+        result = ds.with_column(
             "city", col("user").struct.field("address").struct.field("city")
         ).to_pandas()
         expected = pd.DataFrame(
@@ -521,10 +475,40 @@ class TestStructNamespace:
         )
         assert_df_equal(result, expected)
 
-    def test_struct_nested_bracket(self, nested_struct_ds):
+    def test_struct_nested_bracket(self, dataset_format):
         """Test nested struct field access with brackets."""
 
-        result = nested_struct_ds.with_column(
+        arrow_table = pa.table(
+            {
+                "user": pa.array(
+                    [
+                        {"name": "Alice", "address": {"city": "NYC", "zip": "10001"}},
+                        {"name": "Bob", "address": {"city": "LA", "zip": "90001"}},
+                    ],
+                    type=pa.struct(
+                        [
+                            pa.field("name", pa.string()),
+                            pa.field(
+                                "address",
+                                pa.struct(
+                                    [
+                                        pa.field("city", pa.string()),
+                                        pa.field("zip", pa.string()),
+                                    ]
+                                ),
+                            ),
+                        ]
+                    ),
+                )
+            }
+        )
+        items_data = [
+            {"user": {"name": "Alice", "address": {"city": "NYC", "zip": "10001"}}},
+            {"user": {"name": "Bob", "address": {"city": "LA", "zip": "90001"}}},
+        ]
+        ds = _create_dataset(items_data, dataset_format, arrow_table)
+
+        result = ds.with_column(
             "zip", col("user").struct["address"].struct["zip"]
         ).to_pandas()
         expected = pd.DataFrame(
@@ -544,29 +528,33 @@ class TestStructNamespace:
 # ──────────────────────────────────────
 
 
+@pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
 class TestNamespaceIntegration:
     """Tests for chaining and combining namespace expressions."""
 
-    def test_list_with_arithmetic(self):
+    def test_list_with_arithmetic(self, dataset_format):
         """Test list operations combined with arithmetic."""
 
-        ds = ray.data.from_items([{"items": [1, 2, 3]}])
+        data = [{"items": [1, 2, 3]}]
+        ds = _create_dataset(data, dataset_format)
         result = ds.with_column("len_plus_one", col("items").list.len() + 1).to_pandas()
         expected = pd.DataFrame({"items": [[1, 2, 3]], "len_plus_one": [4]})
         assert_df_equal(result, expected)
 
-    def test_string_with_comparison(self):
+    def test_string_with_comparison(self, dataset_format):
         """Test string operations combined with comparison."""
 
-        ds = ray.data.from_items([{"name": "Alice"}, {"name": "Bo"}])
+        data = [{"name": "Alice"}, {"name": "Bo"}]
+        ds = _create_dataset(data, dataset_format)
         result = ds.with_column("long_name", col("name").str.len() > 3).to_pandas()
         expected = pd.DataFrame({"name": ["Alice", "Bo"], "long_name": [True, False]})
         assert_df_equal(result, expected)
 
-    def test_multiple_operations(self):
+    def test_multiple_operations(self, dataset_format):
         """Test multiple namespace operations in single pipeline."""
 
-        ds = ray.data.from_items([{"name": "alice"}])
+        data = [{"name": "alice"}]
+        ds = _create_dataset(data, dataset_format)
         result = (
             ds.with_column("upper", col("name").str.upper())
             .with_column("len", col("name").str.len())

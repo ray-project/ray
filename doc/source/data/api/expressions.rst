@@ -21,6 +21,7 @@ Public API
     col
     lit
     udf
+    pyarrow_udf
     download
 
 Expression Classes
