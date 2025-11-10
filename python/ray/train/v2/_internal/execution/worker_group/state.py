@@ -40,6 +40,7 @@ class WorkerGroupState:
         # Stop reaper first to avoid concurrent cleanup.
         if self.reaper_actor:
             try:
+                print(">>> worker group state, we entered here to stop reaper in graceful shutdown")
                 ray.get(self.reaper_actor.stop.remote())
             except Exception:
                 pass
@@ -84,7 +85,9 @@ class WorkerGroupStateBuilder:
         self.sync_actor = sync_actor
         return self
 
-    def with_reaper_actor(self, reaper_actor: ActorHandle) -> "WorkerGroupStateBuilder":
+    def with_reaper_actor(
+        self, reaper_actor: ActorHandle
+    ) -> "WorkerGroupStateBuilder":
         self.reaper_actor = reaper_actor
         return self
 

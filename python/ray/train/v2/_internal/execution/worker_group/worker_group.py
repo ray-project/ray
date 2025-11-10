@@ -42,9 +42,6 @@ from ray.train.v2._internal.execution.context import (
     DistributedContext,
     TrainRunContext,
 )
-from ray.train.v2._internal.execution.worker_group.pg_reaper import (
-    PlacementGroupReaper,
-)
 from ray.train.v2._internal.execution.worker_group.poll import (
     PollTask,
     WorkerGroupPollStatus,
@@ -52,6 +49,9 @@ from ray.train.v2._internal.execution.worker_group.poll import (
 from ray.train.v2._internal.execution.worker_group.state import (
     WorkerGroupState,
     WorkerGroupStateBuilder,
+)
+from ray.train.v2._internal.execution.worker_group.pg_reaper import (
+    PlacementGroupReaper,
 )
 from ray.train.v2._internal.execution.worker_group.worker import (
     RayTrainWorker,
@@ -321,6 +321,7 @@ class WorkerGroup(BaseWorkerGroup):
             # Start a detached reaper that will remove the PG if the controller dies.
             try:
                 reaper_name = f"ray-train-v2-pg-reaper-{uuid.uuid4().hex}"
+                print(f">>> worker group, we entered here to start pg reaper: {reaper_name}")
                 reaper = PlacementGroupReaper.options(
                     name=reaper_name, lifetime="detached", num_cpus=0
                 ).remote()
