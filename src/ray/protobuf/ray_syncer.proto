@@ -60,7 +60,7 @@ message RaySyncMessage {
   bytes node_id = 4;
 }
 
-message RaySyncMessage {
+message RaySyncMessageBatch {
   // For batched messages: list of individual messages
   // Key is the node_id_hex of the sender, value is the message from that node
   map<string, InnerRaySyncMessage> batched_messages = 1;
