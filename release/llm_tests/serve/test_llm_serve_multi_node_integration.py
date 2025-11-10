@@ -98,6 +98,9 @@ def test_llm_serve_data_parallelism():
             max_num_batched_tokens=256,
             enforce_eager=True,
         ),
+        experimental_configs=dict(
+            dp_size_per_node=2,
+        ),
         placement_group_config=placement_group_config,
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
