@@ -78,6 +78,7 @@ ray_cc_library(
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/rpc:grpc_server",
         "//src/ray/rpc:rpc_callback_types",
+        "//src/ray/rpc/authentication:authentication_token",
     ],
 )
 
@@ -272,6 +273,7 @@ ray_cc_library(
         ":reference_counter_interface",
         "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/common:metrics",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/raylet_ipc_client:raylet_ipc_client_interface",
@@ -423,6 +425,6 @@ ray_cc_library(
     name = "metrics",
     hdrs = ["metrics.h"],
     deps = [
-        "//src/ray/stats:stats_lib",
+        "//src/ray/stats:stats_metric",
     ],
 )

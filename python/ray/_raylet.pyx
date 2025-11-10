@@ -7,7 +7,6 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import asyncio
-from functools import wraps
 import gc
 import inspect
 import logging
@@ -16,13 +15,11 @@ import io
 import os
 import pickle
 import random
-import signal
 import sys
 import threading
 import time
 import traceback
 import _thread
-import typing
 from typing import (
     Any,
     AsyncGenerator,
@@ -43,7 +40,6 @@ import collections
 from libc.stdint cimport (
     int32_t,
     int64_t,
-    INT64_MAX,
     uint64_t,
     uint8_t,
 )
@@ -87,16 +83,17 @@ from ray.includes.common cimport (
     CRayStatus,
     CActorTableData,
     CErrorTableData,
+    CFallbackOption,
     CGcsClientOptions,
     CGcsNodeInfo,
     CJobTableData,
+    CLabelSelector,
     CLogBatch,
     CTaskArg,
     CTaskArgByReference,
     CTaskArgByValue,
     CTaskType,
     CPlacementStrategy,
-    CPythonFunction,
     CSchedulingStrategy,
     CPlacementGroupSchedulingStrategy,
     CNodeAffinitySchedulingStrategy,
@@ -105,9 +102,6 @@ from ray.includes.common cimport (
     CLabelMatchExpression,
     CLabelIn,
     CLabelNotIn,
-    CLabelExists,
-    CLabelDoesNotExist,
-    CLabelOperator,
     CRayFunction,
     CWorkerType,
     CJobConfig,
@@ -130,10 +124,8 @@ from ray.includes.common cimport (
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
     PLACEMENT_STRATEGY_STRICT_SPREAD,
-    CChannelType,
     RAY_ERROR_INFO_CHANNEL,
     RAY_LOG_CHANNEL,
-    GCS_ACTOR_CHANNEL,
     PythonGetLogBatchLines,
     WORKER_EXIT_TYPE_USER_ERROR,
     WORKER_EXIT_TYPE_SYSTEM_ERROR,
@@ -164,7 +156,6 @@ from ray.includes.libcoreworker cimport (
     CTaskOptions,
     ResourceMappingType,
     CFiberEvent,
-    CActorHandle,
     CGeneratorBackpressureWaiter,
     CReaderRefInfo,
 )
@@ -199,7 +190,9 @@ include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 include "includes/metric.pxi"
 include "includes/setproctitle.pxi"
+include "includes/raylet_client.pxi"
 include "includes/gcs_subscriber.pxi"
+include "includes/rpc_token_authentication.pxi"
 
 import ray
 from ray.exceptions import (
@@ -232,7 +225,6 @@ from ray.util.scheduling_strategies import (
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
-from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo, ActorTableData
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
     sync_to_async,
@@ -242,8 +234,6 @@ from ray._private.async_compat import (
 )
 from ray._private.client_mode_hook import disable_client_hook
 import ray.core.generated.common_pb2 as common_pb2
-import ray._private.memory_monitor as memory_monitor
-import ray._private.profiling as profiling
 from ray._common.utils import decode
 from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import DynamicObjectRefGenerator
@@ -321,9 +311,7 @@ class ObjectRefGenerator:
         self.worker.check_connected()
         assert hasattr(worker, "core_worker")
 
-    """
-    Public APIs
-    """
+    # Public APIs
 
     def __iter__(self) -> "ObjectRefGenerator":
         return self
@@ -437,9 +425,7 @@ class ObjectRefGenerator:
         else:
             return False
 
-    """
-    Private APIs
-    """
+    # Private APIs
 
     def _get_next_ref(self) -> ObjectRef:
         """Return the next reference from a generator.
@@ -532,7 +518,7 @@ class ObjectRefGenerator:
 
         if not is_ready:
             # TODO(swang): Avoid fetching the value.
-            ready, unready = await asyncio.wait(
+            _, unready = await asyncio.wait(
                 [asyncio.create_task(self._suppress_exceptions(ref))],
                 timeout=timeout_s
             )
@@ -833,12 +819,13 @@ cdef int prepare_labels(
 
 cdef int prepare_label_selector(
         dict label_selector_dict,
-        unordered_map[c_string, c_string] *label_selector) except -1:
+        CLabelSelector *c_label_selector) except -1:
+
+    c_label_selector[0] = CLabelSelector()
 
     if label_selector_dict is None:
         return 0
 
-    label_selector[0].reserve(len(label_selector_dict))
     for key, value in label_selector_dict.items():
         if not isinstance(key, str):
             raise ValueError(f"Label selector key type must be string, but got {type(key)}")
@@ -851,16 +838,44 @@ cdef int prepare_label_selector(
             inner = value[value.index("(")+1:-1].strip()
             if not inner:
                 raise ValueError(f"No values provided for Label Selector '{value[:value.index('(')]}' operator on key '{key}'.")
-        label_selector[0][key.encode("utf-8")] = value.encode("utf-8")
+        # Add key-value constraint to the LabelSelector object.
+        c_label_selector[0].AddConstraint(key.encode("utf-8"), value.encode("utf-8"))
 
     return 0
 
+cdef int prepare_fallback_strategy(
+        list fallback_strategy,
+        c_vector[CFallbackOption] *fallback_strategy_vector) except -1:
+
+    cdef dict label_selector_dict
+    cdef CLabelSelector c_label_selector
+
+    if fallback_strategy is None:
+        return 0
+
+    for strategy_dict in fallback_strategy:
+        if not isinstance(strategy_dict, dict):
+            raise ValueError(
+                "Fallback strategy must be a list of dicts, "
+                f"but got list containing {type(strategy_dict)}")
+
+        label_selector_dict = strategy_dict.get("label_selector")
+
+        if label_selector_dict is not None and not isinstance(label_selector_dict, dict):
+            raise ValueError("Invalid fallback strategy element: invalid 'label_selector'.")
+
+        prepare_label_selector(label_selector_dict, &c_label_selector)
+
+        fallback_strategy_vector.push_back(
+             CFallbackOption(c_label_selector)
+        )
+
+    return 0
 
 cdef int prepare_resources(
         dict resource_dict,
         unordered_map[c_string, double] *resource_map) except -1:
     cdef:
-        c_string resource_name
         list unit_resources
 
     if resource_dict is None:
@@ -891,7 +906,6 @@ cdef int prepare_resources(
 cdef c_vector[CFunctionDescriptor] prepare_function_descriptors(pyfd_list):
     cdef:
         c_vector[CFunctionDescriptor] fd_list
-        CRayFunction ray_function
 
     fd_list.reserve(len(pyfd_list))
     for pyfd in pyfd_list:
@@ -1855,7 +1869,6 @@ cdef void execute_task(
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
         uint64_t attempt_number = core_worker.get_current_task_attempt_number()
-        c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
     # Helper method used to exit current asyncio actor.
     # This is called when a KeyboardInterrupt is received by the main thread.
@@ -1893,7 +1906,7 @@ cdef void execute_task(
         next_title = f"ray::{class_name}"
 
         def function_executor(*arguments, **kwarguments):
-            function = execution_info.function
+            func = execution_info.function
 
             if core_worker.current_actor_is_asyncio():
                 if not has_async_methods(actor.__class__):
@@ -1909,15 +1922,15 @@ cdef void execute_task(
                             )
                         )
 
-                if is_async_func(function.method):
-                    async_function = function
+                if is_async_func(func.method):
+                    async_function = func
                 else:
                     # Just execute the method if it's ray internal method.
-                    if function.name.startswith("__ray"):
-                        return function(actor, *arguments, **kwarguments)
-                    async_function = sync_to_async(function)
+                    if func.name.startswith("__ray"):
+                        return func(actor, *arguments, **kwarguments)
+                    async_function = sync_to_async(func)
 
-                if inspect.isasyncgenfunction(function.method):
+                if inspect.isasyncgenfunction(func.method):
                     # The coroutine will be handled separately by
                     # execute_dynamic_generator_and_store_task_outputs
                     return async_function(actor, *arguments, **kwarguments)
@@ -1928,7 +1941,7 @@ cdef void execute_task(
                         task_name=task_name, func_args=(actor, *arguments),
                         func_kwargs=kwarguments)
 
-            return function(actor, *arguments, **kwarguments)
+            return func(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data), \
          ray._private.worker._changeproctitle(title, next_title):
@@ -2225,7 +2238,6 @@ cdef execute_task_with_cancellation_handler(
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
-        c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
     task_name = name.decode("utf-8")
     title = f"ray::{task_name}"
@@ -2361,7 +2373,7 @@ cdef execute_task_with_cancellation_handler(
                 " for this method.")
 
 cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
-    # Expected to be idempotent and only called on the primary copy holder.
+    # Expected to be called on the owner process. Will free on the primary copy holder.
     with gil:
         object_id = c_object_id.Hex().decode()
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
@@ -3238,7 +3250,6 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data
-            unique_ptr[CAddress] null_owner_address
             uint64_t data_size = serialized_object.total_bytes
             int64_t c_num_readers = num_readers
             int64_t c_timeout_ms = timeout_ms
@@ -3642,11 +3653,13 @@ cdef class CoreWorker:
                     int64_t generator_backpressure_num_objects,
                     c_bool enable_task_events,
                     labels,
-                    label_selector):
+                    label_selector,
+                    fallback_strategy):
         cdef:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, c_string] c_labels
-            unordered_map[c_string, c_string] c_label_selector
+            CLabelSelector c_label_selector
+            c_vector[CFallbackOption] c_fallback_strategy
             CRayFunction ray_function
             CTaskOptions task_options
             c_vector[unique_ptr[CTaskArg]] args_vector
@@ -3673,6 +3686,7 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             prepare_labels(labels, &c_labels)
             prepare_label_selector(label_selector, &c_label_selector)
+            prepare_fallback_strategy(fallback_strategy, &c_fallback_strategy)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -3689,7 +3703,8 @@ cdef class CoreWorker:
                 c_label_selector,
                 # `tensor_transport` is currently only supported in Ray Actor tasks.
                 # For Ray tasks, we always use `OBJECT_STORE`.
-                TENSOR_TRANSPORT_OBJECT_STORE)
+                TENSOR_TRANSPORT_OBJECT_STORE,
+                c_fallback_strategy)
 
             current_c_task_id = current_task.native()
 
@@ -3740,6 +3755,7 @@ cdef class CoreWorker:
                      label_selector,
                      c_bool allow_out_of_order_execution,
                      c_bool enable_tensor_transport,
+                     fallback_strategy,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3753,7 +3769,8 @@ cdef class CoreWorker:
             c_vector[CObjectID] incremented_put_arg_ids
             optional[c_bool] is_detached_optional = nullopt
             unordered_map[c_string, c_string] c_labels
-            unordered_map[c_string, c_string] c_label_selector
+            CLabelSelector c_label_selector
+            c_vector[CFallbackOption] c_fallback_strategy
             c_string call_site
 
         self.python_scheduling_strategy_to_c(
@@ -3768,6 +3785,7 @@ cdef class CoreWorker:
             prepare_resources(placement_resources, &c_placement_resources)
             prepare_labels(labels, &c_labels)
             prepare_label_selector(label_selector, &c_label_selector)
+            prepare_fallback_strategy(fallback_strategy, &c_fallback_strategy)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -3797,7 +3815,8 @@ cdef class CoreWorker:
                         enable_tensor_transport,
                         enable_task_events,
                         c_labels,
-                        c_label_selector),
+                        c_label_selector,
+                        c_fallback_strategy),
                     extension_data,
                     call_site,
                     &c_actor_id,
@@ -3912,9 +3931,10 @@ cdef class CoreWorker:
             c_string serialized_retry_exception_allowlist
             c_string serialized_runtime_env = b"{}"
             unordered_map[c_string, c_string] c_labels
-            unordered_map[c_string, c_string] c_label_selector
+            CLabelSelector c_label_selector
             c_string call_site
             CTensorTransport c_tensor_transport_val
+            c_vector[CFallbackOption] c_fallback_strategy
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
@@ -3951,7 +3971,8 @@ cdef class CoreWorker:
                         enable_task_events,
                         c_labels,
                         c_label_selector,
-                        c_tensor_transport_val),
+                        c_tensor_transport_val,
+                        c_fallback_strategy),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,
@@ -4452,7 +4473,6 @@ cdef class CoreWorker:
 
         cdef:
             CConcurrencyGroup c_concurrency_group
-            c_vector[CFunctionDescriptor] c_function_descriptors
 
         self.cgname_to_eventloop_dict = {}
         self.fd_to_cgname_dict = {}
@@ -4567,7 +4587,7 @@ cdef class CoreWorker:
         # transport with max_concurrency flag.
         increase_recursion_limit()
 
-        eventloop, async_thread = self.get_event_loop(
+        eventloop, _ = self.get_event_loop(
             function_descriptor, specified_cgname)
 
         async def async_func():
@@ -4910,7 +4930,7 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     except Exception:
         # Only log the error here because this callback is called from Cpp
         # and Cython will ignore the exception anyway
-        logger.exception(f"failed to run async callback (user func)")
+        logger.exception("failed to run async callback (user func)")
     finally:
         # NOTE: we manually increment the Python reference count of the callback when
         # registering it in the core worker, so we must decrement here to avoid a leak.

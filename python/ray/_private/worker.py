@@ -62,6 +62,9 @@ from ray import ActorID, JobID, Language, ObjectRef
 from ray._common import ray_option_utils
 from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.utils import load_class
+from ray._private.authentication.authentication_token_setup import (
+    ensure_token_if_auth_enabled,
+)
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.custom_types import TensorTransportEnum
 from ray._private.function_manager import FunctionActorManager
@@ -1020,7 +1023,9 @@ class Worker:
             # Raise exceptions instead of returning them to the user.
             for i, value in enumerate(values):
                 if isinstance(value, RayError):
-                    if isinstance(value, ray.exceptions.ObjectLostError):
+                    if isinstance(
+                        value, ray.exceptions.ObjectLostError
+                    ) and not isinstance(value, ray.exceptions.OwnerDiedError):
                         global_worker.core_worker.log_plasma_usage()
                     if isinstance(value, RayTaskError):
                         raise value.as_instanceof_cause()
@@ -1559,19 +1564,18 @@ def init(
             memory and cpu resources for ray system processes. To use, only cgroupv2 (not cgroupv1)
             must be enabled with read and write permissions for the raylet. Cgroup memory and
             cpu controllers must also be enabled.
-        system_reserved_cpu: The amount of cpu cores to reserve for ray system processes. Cores can be
-            fractional i.e. 0.5 means half a cpu core.
-            By default, the min of 20% and 1 core will be reserved.
-            Must be >= 0.5 cores and < total number of available cores.
-            Cannot be less than 0.5 cores.
+        system_reserved_cpu: The number of cpu cores to reserve for ray system processes.
+            Cores can be fractional i.e. 1.5 means one and a half a cpu core.
+            By default, the value will be atleast 1 core, and at maximum 3 cores. The default value
+            is calculated using the formula min(3.0, max(1.0, 0.05 * num_cores_on_the_system))
             This option only works if enable_resource_isolation is True.
         system_reserved_memory: The amount of memory (in bytes) to reserve for ray system processes.
-            By default, the min of 10% and 25GB plus object_store_memory will be reserved.
-            Must be >= 100MB and system_reserved_memory + object_store_bytes < total available memory.
+            By default, the value will be atleast 500MB, and at most 10GB. The default value is
+            calculated using the formula min(10GB, max(500MB, 0.10 * memory_available_on_the_system))
             This option only works if enable_resource_isolation is True.
         _cgroup_path: The path for the cgroup the raylet should use to enforce resource isolation.
             By default, the cgroup used for resource isolation will be /sys/fs/cgroup.
-            The raylet must have read/write permissions to this path.
+            The process starting ray must have read/write permissions to this path.
             Cgroup memory and cpu controllers be enabled for this cgroup.
             This option only works if enable_resource_isolation is True.
         _enable_object_reconstruction: If True, when an object stored in
@@ -1866,6 +1870,9 @@ def init(
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
 
+        # Setup and verify authentication for new cluster
+        ensure_token_if_auth_enabled(_system_config, create_token_if_missing=True)
+
         # Don't collect usage stats in ray.init() unless it's a nightly wheel.
         from ray._common.usage import usage_lib
 
@@ -1952,6 +1959,9 @@ def init(
                 "_node_name cannot be configured when connecting to "
                 "an existing cluster."
             )
+
+        # Setup and verify authentication for connecting to existing cluster
+        ensure_token_if_auth_enabled(_system_config, create_token_if_missing=False)
 
         # In this case, we only need to connect the node.
         ray_params = ray._private.parameter.RayParams(
@@ -2625,7 +2635,7 @@ def connect(
         # We also want to skip adding script directory when running from dashboard.
         code_paths = []
         if not interactive_mode and not (
-            namespace and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE
+            namespace and namespace == ray._raylet.RAY_INTERNAL_DASHBOARD_NAMESPACE
         ):
             script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
@@ -2964,7 +2974,11 @@ def get(
         )
         for i, value in enumerate(values):
             if isinstance(value, RayError):
-                if isinstance(value, ray.exceptions.ObjectLostError):
+                # If the object was lost and it wasn't due to owner death, it may be
+                # because the object store is full and objects needed to be evicted.
+                if isinstance(value, ray.exceptions.ObjectLostError) and not isinstance(
+                    value, ray.exceptions.OwnerDiedError
+                ):
                     worker.core_worker.log_plasma_usage()
                 if isinstance(value, RayTaskError):
                     raise value.as_instanceof_cause()
@@ -3385,6 +3399,10 @@ def _make_remote(function_or_class, options):
 
 class RemoteDecorator(Protocol):
     @overload
+    def __call__(self, __t: Type[T]) -> ActorClass[T]:
+        ...
+
+    @overload
     def __call__(self, __function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
         ...
 
@@ -3442,12 +3460,6 @@ class RemoteDecorator(Protocol):
     def __call__(
         self, __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
     ) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
-        ...
-
-    # Pass on typing actors for now. The following makes it so no type errors
-    # are generated for actors.
-    @overload
-    def __call__(self, __t: type) -> Any:
         ...
 
 

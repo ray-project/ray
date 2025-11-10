@@ -29,6 +29,12 @@
         "createMsi": {
             "type": "bool",
             "defaultValue": "true"
+        },
+        "roleAssignmentGuid": {
+            "type": "string",
+            "metadata": {
+                "description": "Deterministic resource name for the MSI role assignment."
+            }
         }
     },
     "variables": {
@@ -51,12 +57,13 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid(variables('roleAssignmentName'))]",
+            "name": "[parameters('roleAssignmentGuid')]",
             "properties": {
                 "principalId": "[reference(resourceId(parameters('msiResourceGroup'), 'Microsoft.ManagedIdentity/userAssignedIdentities', parameters('msiName')), '2024-11-30').principalId]",
                 "roleDefinitionId": "[variables('contributor')]",
                 "scope": "[resourceGroup().id]",
-                "principalType": "ServicePrincipal"
+                "principalType": "ServicePrincipal",
+                "description": "[concat('Ray autoscaler cluster ', parameters('clusterId'))]"
             },
             "dependsOn": [
                 "[parameters('msiName')]"

@@ -29,6 +29,7 @@ from ray.serve._private.metrics_utils import (
     aggregate_timeseries,
     merge_instantaneous_total,
 )
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 from ray.serve.config import AutoscalingContext, AutoscalingPolicy
 
@@ -91,6 +92,15 @@ class DeploymentAutoscalingState:
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
+
+        # Log when custom autoscaling policy is used for deployment
+        if not self._config.policy.is_default_policy_function():
+            logger.info(
+                f"Using custom autoscaling policy '{self._config.policy.policy_function}' "
+                f"for deployment '{self._deployment_id}'."
+            )
+            # Record telemetry for custom autoscaling policy usage
+            ServeUsageTag.CUSTOM_AUTOSCALING_POLICY_USED.record("1")
 
         return self.apply_bounds(target_num_replicas)
 
@@ -774,6 +784,15 @@ class ApplicationAutoscalingState:
         self._policy = autoscaling_policy.get_policy()
         self._policy_state = {}
 
+        # Log when custom autoscaling policy is used for application
+        if not autoscaling_policy.is_default_policy_function():
+            logger.info(
+                f"Using custom autoscaling policy '{autoscaling_policy.policy_function}' "
+                f"for application '{self._app_name}'."
+            )
+            # Record telemetry for custom autoscaling policy usage
+            ServeUsageTag.CUSTOM_AUTOSCALING_POLICY_USED.record("1")
+
     def has_policy(self) -> bool:
         return self._policy is not None
 
@@ -1034,21 +1053,11 @@ class AutoscalingStateManager:
         app_state = self._app_autoscaling_states.get(deployment_id.app_name)
         if app_state:
             app_state.update_running_replica_ids(deployment_id, running_replicas)
-        else:
-            logger.warning(
-                f"Cannot update running replica ids for deployment "
-                f"{deployment_id} because the application {deployment_id.app_name} is not registered"
-            )
 
     def on_replica_stopped(self, replica_id: ReplicaID):
         app_state = self._app_autoscaling_states.get(replica_id.deployment_id.app_name)
         if app_state:
             app_state.on_replica_stopped(replica_id)
-        else:
-            logger.warning(
-                f"Cannot invoke callback on replica stopped for replica "
-                f"{replica_id} because the application {replica_id.deployment_id.app_name} is not registered"
-            )
 
     def get_metrics_for_deployment(
         self, deployment_id: DeploymentID
@@ -1058,10 +1067,6 @@ class AutoscalingStateManager:
                 deployment_id.app_name
             ].get_replica_metrics_by_deployment_id(deployment_id)
         else:
-            logger.warning(
-                f"Cannot get metrics for deployment "
-                f"{deployment_id} because the application {deployment_id.app_name} is not registered"
-            )
             return {}
 
     def get_total_num_requests_for_deployment(
@@ -1072,10 +1077,6 @@ class AutoscalingStateManager:
                 deployment_id.app_name
             ].get_total_num_requests_for_deployment(deployment_id)
         else:
-            logger.warning(
-                f"Cannot get total number of requests for deployment "
-                f"{deployment_id} because the application {deployment_id.app_name} is not registered"
-            )
             return 0
 
     def is_within_bounds(
@@ -1094,11 +1095,6 @@ class AutoscalingStateManager:
         )
         if app_state:
             app_state.record_request_metrics_for_replica(replica_metric_report)
-        else:
-            logger.warning(
-                f"Cannot record request metrics for replica "
-                f"{replica_metric_report.replica_id} because the application {replica_metric_report.replica_id.deployment_id.app_name} is not registered"
-            )
 
     def record_request_metrics_for_handle(
         self,
@@ -1110,11 +1106,6 @@ class AutoscalingStateManager:
         )
         if app_state:
             app_state.record_request_metrics_for_handle(handle_metric_report)
-        else:
-            logger.warning(
-                f"Cannot record request metrics for handle "
-                f"{handle_metric_report.handle_id} because the application {handle_metric_report.deployment_id.app_name} is not registered"
-            )
 
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         for app_state in self._app_autoscaling_states.values():

@@ -2,7 +2,6 @@ import copy
 import logging
 import math
 import os
-import warnings
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -23,7 +22,11 @@ from packaging.version import parse as parse_version
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
-from ray.data._internal.arrow_block import ArrowBlockAccessor
+from ray.data._internal.arrow_block import (
+    _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+    ArrowBlockAccessor,
+)
+from ray.data._internal.collections import collapse_transitive_map
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
@@ -49,7 +52,6 @@ from ray.data.datasource.partitioning import (
     PathPartitionParser,
 )
 from ray.data.datasource.path_util import (
-    _has_file_extension,
     _resolve_paths_and_filesystem,
 )
 from ray.util.debug import log_once
@@ -102,9 +104,6 @@ PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
 # The number of rows to read from each file for sampling. Try to keep it low to avoid
 # reading too much data into memory.
 PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
-
-
-_BATCH_SIZE_PRESERVING_STUB_COL_NAME = "__bsp_stub"
 
 
 class _ParquetFragment:
@@ -172,7 +171,7 @@ class ParquetDatasource(Datasource):
     cost of some potential performance and/or compatibility penalties.
     """
 
-    _FUTURE_FILE_EXTENSIONS = ["parquet"]
+    _FILE_EXTENSIONS = ["parquet"]
 
     def __init__(
         self,
@@ -191,6 +190,7 @@ class ParquetDatasource(Datasource):
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
+        super().__init__()
         _check_pyarrow_version()
 
         self._supports_distributed_reads = not _is_local_scheme(paths)
@@ -275,6 +275,7 @@ class ParquetDatasource(Datasource):
         self._block_udf = _block_udf
         self._to_batches_kwargs = to_batch_kwargs
         self._data_columns = data_columns
+        self._data_columns_rename_map = {}
         self._partition_columns = partition_columns
         self._read_schema = schema
         self._file_schema = pq_ds.schema
@@ -284,7 +285,6 @@ class ParquetDatasource(Datasource):
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
-
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
         elif isinstance(shuffle, FileShuffleConfig):
@@ -314,14 +314,6 @@ class ParquetDatasource(Datasource):
         self._default_batch_size = _estimate_reader_batch_size(
             sampled_file_infos, DataContext.get_current().target_max_block_size
         )
-
-        if file_extensions is None:
-            for path in self._pq_paths:
-                if not _has_file_extension(
-                    path, self._FUTURE_FILE_EXTENSIONS
-                ) and log_once("read_parquet_file_extensions_future_warning"):
-                    emit_file_extensions_future_warning(self._FUTURE_FILE_EXTENSIONS)
-                    break
 
     def estimate_inmemory_data_size(self) -> int:
         # In case of empty projections no data will be read
@@ -360,6 +352,12 @@ class ParquetDatasource(Datasource):
         )
 
         read_tasks = []
+        filter_expr = (
+            self._predicate_expr.to_pyarrow()
+            if self._predicate_expr is not None
+            else None
+        )
+
         for fragments, paths in zip(
             np.array_split(pq_fragments, parallelism),
             np.array_split(pq_paths, parallelism),
@@ -379,6 +377,7 @@ class ParquetDatasource(Datasource):
                 to_batches_kwargs,
                 default_read_batch_size_rows,
                 data_columns,
+                data_columns_rename_map,
                 partition_columns,
                 read_schema,
                 include_paths,
@@ -388,6 +387,7 @@ class ParquetDatasource(Datasource):
                 self._to_batches_kwargs,
                 self._default_batch_size,
                 self._data_columns,
+                self._data_columns_rename_map,
                 self._partition_columns,
                 self._read_schema,
                 self._include_paths,
@@ -401,11 +401,13 @@ class ParquetDatasource(Datasource):
                         to_batches_kwargs,
                         default_read_batch_size_rows,
                         data_columns,
+                        data_columns_rename_map,
                         partition_columns,
                         read_schema,
                         f,
                         include_paths,
                         partitioning,
+                        filter_expr,
                     ),
                     meta,
                     schema=target_schema,
@@ -429,6 +431,9 @@ class ParquetDatasource(Datasource):
     def supports_projection_pushdown(self) -> bool:
         return True
 
+    def supports_predicate_pushdown(self) -> bool:
+        return True
+
     def get_current_projection(self) -> Optional[List[str]]:
         # NOTE: In case there's no projection both file and partition columns
         #       will be none
@@ -437,9 +442,21 @@ class ParquetDatasource(Datasource):
 
         return (self._data_columns or []) + (self._partition_columns or [])
 
-    def apply_projection(self, columns: List[str]) -> "ParquetDatasource":
+    def get_column_renames(self) -> Optional[Dict[str, str]]:
+        return self._data_columns_rename_map if self._data_columns_rename_map else None
+
+    def apply_projection(
+        self,
+        columns: Optional[List[str]],
+        column_rename_map: Optional[Dict[str, str]],
+    ) -> "ParquetDatasource":
         clone = copy.copy(self)
-        clone._data_columns = columns
+
+        clone._data_columns = _combine_projection(self._data_columns, columns)
+        clone._data_columns_rename_map = _combine_rename_map(
+            self._data_columns_rename_map, column_rename_map
+        )
+
         return clone
 
     def _estimate_in_mem_size(self, fragments: List[_ParquetFragment]) -> int:
@@ -453,11 +470,13 @@ def read_fragments(
     to_batches_kwargs: Dict[str, Any],
     default_read_batch_size_rows: Optional[int],
     data_columns: Optional[List[str]],
+    data_columns_rename_map: Optional[Dict[str, str]],
     partition_columns: Optional[List[str]],
     schema: Optional[Union[type, "pyarrow.lib.Schema"]],
     fragments: List[_ParquetFragment],
     include_paths: bool,
     partitioning: Partitioning,
+    filter_expr: Optional["pyarrow.dataset.Expression"] = None,
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
@@ -475,9 +494,11 @@ def read_fragments(
                 fragment.original,
                 schema=schema,
                 data_columns=data_columns,
+                data_columns_rename_map=data_columns_rename_map,
                 partition_columns=partition_columns,
                 partitioning=partitioning,
                 include_path=include_paths,
+                filter_expr=filter_expr,
                 batch_size=default_read_batch_size_rows,
                 to_batches_kwargs=to_batches_kwargs,
             ),
@@ -497,6 +518,7 @@ def _read_batches_from(
     *,
     schema: "pyarrow.Schema",
     data_columns: Optional[List[str]],
+    data_columns_rename_map: Optional[Dict[str, str]],
     partition_columns: Optional[List[str]],
     partitioning: Partitioning,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
@@ -515,7 +537,14 @@ def _read_batches_from(
     # NOTE: Passed in kwargs overrides always take precedence
     # TODO deprecate to_batches_kwargs
     use_threads = to_batches_kwargs.pop("use_threads", use_threads)
-    filter_expr = to_batches_kwargs.pop("filter", filter_expr)
+    # TODO: We should deprecate filter through the read_parquet API and only allow through dataset.filter()
+    filter_from_kwargs = to_batches_kwargs.pop("filter", None)
+    if filter_from_kwargs is not None:
+        filter_expr = (
+            filter_from_kwargs
+            if filter_expr is None
+            else filter_expr & filter_from_kwargs
+        )
     # NOTE: Arrow's ``to_batches`` expects ``batch_size`` as an int
     if batch_size is not None:
         to_batches_kwargs.setdefault("batch_size", batch_size)
@@ -560,6 +589,14 @@ def _read_batches_from(
             if table.num_columns == 0 and table.num_rows > 0:
                 table = table.append_column(
                     _BATCH_SIZE_PRESERVING_STUB_COL_NAME, pa.nulls(table.num_rows)
+                )
+
+            if data_columns_rename_map is not None:
+                table = table.rename_columns(
+                    [
+                        data_columns_rename_map.get(col, col)
+                        for col in table.schema.names
+                    ]
                 )
 
             yield table
@@ -825,6 +862,43 @@ def _add_partitions_to_table(
     return table
 
 
+def _combine_projection(
+    prev_projected_cols: Optional[List[str]], new_projected_cols: Optional[List[str]]
+) -> Optional[List[str]]:
+    # NOTE: Null projection carries special meaning of all columns being selected
+    if prev_projected_cols is None:
+        return new_projected_cols
+    elif new_projected_cols is None:
+        # Retain original projection
+        return prev_projected_cols
+    else:
+        illegal_refs = [
+            col for col in new_projected_cols if col not in prev_projected_cols
+        ]
+
+        if illegal_refs:
+            raise ValueError(
+                f"New projection {new_projected_cols} references non-existent columns "
+                f"(existing projection {prev_projected_cols})"
+            )
+
+        return new_projected_cols
+
+
+def _combine_rename_map(
+    prev_column_rename_map: Optional[Dict[str, str]],
+    new_column_rename_map: Optional[Dict[str, str]],
+):
+    if not prev_column_rename_map:
+        combined = new_column_rename_map
+    elif not new_column_rename_map:
+        combined = prev_column_rename_map
+    else:
+        combined = prev_column_rename_map | new_column_rename_map
+
+    return collapse_transitive_map(combined)
+
+
 def _get_partition_columns_schema(
     partitioning: Partitioning,
     file_paths: List[str],
@@ -859,16 +933,6 @@ def _get_partition_columns_schema(
         fields.append(pa.field(field_name, field_type))
 
     return pa.schema(fields)
-
-
-def emit_file_extensions_future_warning(future_file_extensions: List[str]):
-    warnings.warn(
-        "The default `file_extensions` for `read_parquet` will change "
-        f"from `None` to {future_file_extensions} after Ray 2.43, and your dataset "
-        "contains files that don't match the new `file_extensions`. To maintain "
-        "backwards compatibility, set `file_extensions=None` explicitly.",
-        FutureWarning,
-    )
 
 
 def _derive_schema(
