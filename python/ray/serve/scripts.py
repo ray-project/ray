@@ -784,6 +784,23 @@ def shutdown(address: str, yes: bool):
     )
 
 
+def _convert_enums_to_strings(obj: Any) -> Any:
+    """Recursively convert Enum objects to their string values for YAML serialization.
+
+    PyYAML cannot serialize Enum objects directly. This function traverses
+    dictionaries, lists, and nested structures to convert all Enum instances
+    to their string values.
+    """
+    if isinstance(obj, Enum):
+        return obj.value
+    elif isinstance(obj, dict):
+        return {key: _convert_enums_to_strings(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(_convert_enums_to_strings(item) for item in obj)
+    else:
+        return obj
+
+
 @cli.command(
     short_help="Generate a config file for the specified applications.",
     help=(
@@ -819,23 +836,6 @@ def shutdown(address: str, yes: bool):
     help="Servicer function for adding the method handler to the gRPC server. "
     "Defaults to an empty list and no gRPC server is started.",
 )
-def _convert_enums_to_strings(obj: Any) -> Any:
-    """Recursively convert Enum objects to their string values for YAML serialization.
-
-    PyYAML cannot serialize Enum objects directly. This function traverses
-    dictionaries, lists, and nested structures to convert all Enum instances
-    to their string values.
-    """
-    if isinstance(obj, Enum):
-        return obj.value
-    elif isinstance(obj, dict):
-        return {key: _convert_enums_to_strings(value) for key, value in obj.items()}
-    elif isinstance(obj, (list, tuple)):
-        return type(obj)(_convert_enums_to_strings(item) for item in obj)
-    else:
-        return obj
-
-
 def build(
     import_paths: Tuple[str],
     app_dir: str,
