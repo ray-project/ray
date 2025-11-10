@@ -7,8 +7,6 @@ from ray.serve.llm import (
     LLMServingArgs,
     ModelLoadingConfig,
     build_openai_app,
-)
-from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
     build_dp_deployment,
 )
 
