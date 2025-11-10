@@ -230,7 +230,6 @@ exclude_patterns = [
     "train/examples/**/README.md",
     "serve/tutorials/deployment-serve-llm/README.*",
     "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
-    "data/examples/**/*.ipynb",
     "data/examples/**/content/README.md",
 ] + autogen_files
 
