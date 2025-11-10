@@ -843,7 +843,7 @@ quality_distribution.write_parquet(
 )
 ```
 
-## Verification and Summary
+## Verification
 
 After writing data to the warehouse, verify everything worked correctly. This section demonstrates:
 
@@ -919,7 +919,7 @@ for i, record in enumerate(samples):
     print(f"\t{i+1}. Doc: {doc_id}, Category: {category}, Words: {words}, Quality: {quality}")
 ```
 
-## Summary and Next Steps
+## Summary
 
 You have built a complete end-to-end document ingestion pipeline using Ray Data. This section reviews what you learned and where to go from here.
 
@@ -1071,28 +1071,3 @@ This pipeline demonstrated all major Ray Data operations:
 - Monitoring and debugging
 - Scalability considerations
 
-### Next Steps
-
-**Extend This Pipeline:**
-1. Add LLM-based content analysis (replace pattern matching)
-2. Implement named entity recognition (NER)
-3. Add sentiment analysis for customer documents
-4. Create vector embeddings for semantic search
-5. Integrate with Delta Lake or Apache Iceberg
-
-**Learn More Ray Data:**
-- **Batch Inference**: Process documents with ML models
-- **Data Quality**: Advanced validation patterns
-- **Performance Tuning**: Optimize for your workload
-- **Integration**: Connect to Snowflake, Databricks, etc.
-
-### Resources
-
-- **Ray Data Documentation**: https://docs.ray.io/en/latest/data/data.html
-- **Ray Data Examples**: https://docs.ray.io/en/latest/data/examples/examples.html
-- **Ray Dashboard Guide**: https://docs.ray.io/en/latest/ray-observability/getting-started.html
-- **Anyscale Platform**: https://docs.anyscale.com/
-
----
-
-**You're now ready to build production-scale document ingestion pipelines with Ray Data!**
