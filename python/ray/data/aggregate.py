@@ -946,6 +946,8 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         if pa.types.is_list(col.type):
             if self._encode_lists:
                 col = pc.list_flatten(col)
+                if self._ignore_nulls:
+                    col = pc.drop_null(col)
             else:
                 py_list = col.to_pylist()
                 str_list = [

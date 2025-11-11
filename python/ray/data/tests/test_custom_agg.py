@@ -470,6 +470,18 @@ class TestApproximateTopK:
         assert result["approx_topk(id)"][0] == {"id": "a", "count": 4}
         assert result["approx_topk(id)"][1] == {"id": "b", "count": 2}
 
+    def test_approximate_topk_list_encode_with_none(
+        self, ray_start_regular_shared_2_cpus
+    ):
+        """Test that aggregator correctly ignores None when encoding list values."""
+        data = [{"id": [None, None, None]}, {"id": ["a", None, None]}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(ApproximateTopK(on="id", k=2, encode_lists=True))
+
+        # Should encode list items, so "a" should be most frequent
+        assert len(result["approx_topk(id)"]) == 1
+        assert result["approx_topk(id)"][0] == {"id": "a", "count": 1}
+
 
 class TestUnique:
     """Test cases for Unique aggregation."""
@@ -490,6 +502,23 @@ class TestUnique:
         result = ds.aggregate(Unique(on="id", encode_lists=True))
 
         assert sorted(result["unique(id)"])[0] == "a"
+
+    def test_unique_list_encode_with_none(self, ray_start_regular_shared_2_cpus):
+        """Test that aggregator correctly handles None when encoding list values."""
+        data = [{"id": [None, None, None]}, {"id": ["a", None, None]}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(Unique(on="id", encode_lists=True, ignore_nulls=True))
+
+        assert len(result["unique(id)"]) == 1
+        assert result["unique(id)"][0] == "a"
+
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(Unique(on="id", encode_lists=True, ignore_nulls=False))
+
+        assert len(result["unique(id)"]) == 2
+        assert result["unique(id)"][0] is None or result["unique(id)"][0] == "a"
+        assert result["unique(id)"][1] is None or result["unique(id)"][1] == "a"
+        assert result["unique(id)"][0] != result["unique(id)"][1]
 
 
 if __name__ == "__main__":
