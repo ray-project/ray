@@ -671,13 +671,13 @@
       env: aws
       cluster:
         cluster_compute: cross_az_250_350_compute_aws.yaml
-    - __suffix__: gce_network_chaos
+    - __suffix__: gce_iptable_failure_injection
       run:
         script: >
           python ../simulate_cross_az_network_failure.py --network-failure-interval 210 --command python map_benchmark.py
           --api map_batches --batch-format numpy --compute actors --sf 1000
           --repeat-inputs 1 --concurrency 1024 2048
-    - __suffix__: aws_network_chaos
+    - __suffix__: aws_iptable_failure_injection
       env: aws
       cluster:
         cluster_compute: cross_az_250_350_compute_aws.yaml
