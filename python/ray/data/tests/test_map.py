@@ -278,7 +278,14 @@ def test_gpu_workers_not_reused(
     assert len(unique_worker_ids) == total_blocks
 
 
-@pytest.mark.parametrize("concurrency", ["spam", (1, 2), (1, 2, 3)])
+@pytest.mark.parametrize(
+    "concurrency",
+    [
+        "spam",
+        (1, 2),  # Two-tuples are valid for callable classes but not for functions.
+        (1, 2, 3),
+    ],
+)
 def test_invalid_func_concurrency_raises(ray_start_regular_shared, concurrency):
     ds = ray.data.range(1)
     with pytest.raises(ValueError):
