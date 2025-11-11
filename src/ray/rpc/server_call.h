@@ -345,6 +345,11 @@ class ServerCallImpl : public ServerCall {
   /// Returns true if authentication succeeds or is not required.
   /// Returns false if authentication is required but fails.
   bool ValidateAuthenticationToken() {
+    if ((!auth_token_.has_value() || auth_token_->empty()) &&
+        GetAuthenticationMode() == AuthenticationMode::DISABLED) {
+      return true;  // No auth required
+    }
+
     const auto &metadata = context_.client_metadata();
     auto it = metadata.find(kAuthTokenKey);
     if (it == metadata.end()) {
