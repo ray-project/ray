@@ -41,6 +41,7 @@ def mocked_worker():
     yield worker
 
 
+@pytest.mark.no_capture
 def test_streaming_object_ref_generator_basic_unit(mocked_worker):
     """
     Verify the basic case:
@@ -96,7 +97,6 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
                 generator._next_sync(timeout_s=0)
 
             del generator
-            gc.collect()
             c.async_delete_object_ref_stream.assert_called()
 
 
