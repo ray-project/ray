@@ -1694,9 +1694,9 @@ class ActorClass(Generic[T]):
             # placement groups. Adding the check avoids printing this warning for all Ray Serve applications. In the future,
             # we should consider raising an error instead of a warning, but this is a breaking change.
             logger.warning(
-                "Scheduling a restartable detached actor with a placement group is not recommended, "
-                "Raylet will kill the actor when the placement group is removed. "
-                "The actor will be stuck in the RESTARTING state forever until users explicitly kill it."
+                "Scheduling a restartable detached actor with a placement group is not recommended "
+                "because Ray will kill the actor when the placement group is removed and the actor will "
+                "not be able to be restarted."
             )
 
         if scheduling_strategy is None or isinstance(
