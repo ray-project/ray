@@ -6,9 +6,6 @@ import uuid
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 
 from packaging import version
-from pyiceberg.io import FileIO
-from pyiceberg.table import Transaction
-from pyiceberg.table.metadata import TableMetadata
 
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.savemode import SaveMode
@@ -19,8 +16,10 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow as pa
     from pyiceberg.catalog import Catalog
+    from pyiceberg.io import FileIO
     from pyiceberg.manifest import DataFile
-    from pyiceberg.table import Table
+    from pyiceberg.table import Table, Transaction
+    from pyiceberg.table.metadata import TableMetadata
 
     from ray.data.expressions import Expr
 
