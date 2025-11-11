@@ -48,7 +48,10 @@ if is_v2_enabled():
         TrainingFailedError,
         WorkerGroupError,
     )
-    from ray.train.v2.api.report_config import CheckpointUploadMode  # noqa: F811
+    from ray.train.v2.api.report_config import (  # noqa: F811
+        CheckpointUploadMode,
+        CheckpointView,
+    )
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint  # noqa: F811
     from ray.train.v2.api.result import Result  # noqa: F811
     from ray.train.v2.api.train_fn_utils import (  # noqa: F811
@@ -100,6 +103,7 @@ if is_v2_enabled():
     __all__.extend(
         [
             "CheckpointUploadMode",
+            "CheckpointView",
             "ControllerError",
             "ReportedCheckpoint",
             "UserCallback",
@@ -109,6 +113,7 @@ if is_v2_enabled():
     )
 
     CheckpointUploadMode.__module__ = "ray.train"
+    CheckpointView.__module__ = "ray.train"
     ControllerError.__module__ = "ray.train"
     ReportedCheckpoint.__module__ = "ray.train"
     UserCallback.__module__ = "ray.train"
