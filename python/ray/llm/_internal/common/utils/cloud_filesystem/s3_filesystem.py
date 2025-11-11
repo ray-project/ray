@@ -6,6 +6,7 @@ compared to PyArrow-based implementations.
 """
 
 import os
+import re
 import subprocess
 import tempfile
 from typing import List, Optional, Union
@@ -23,6 +24,10 @@ class S3FileSystem(BaseCloudFileSystem):
     when working with S3 storage. It provides significantly faster transfers
     compared to PyArrow-based implementations, especially for large files.
     """
+
+    @staticmethod
+    def _parse_uri(uri: str):
+        return re.sub(r"^(s3://)[^/@]+@", r"\1", uri)
 
     @staticmethod
     def _run_command(cmd: List[str]) -> subprocess.CompletedProcess:
@@ -68,8 +73,7 @@ class S3FileSystem(BaseCloudFileSystem):
         Returns:
             File contents as string or bytes, or None if file doesn't exist
         """
-        if not object_uri.startswith("s3://"):
-            raise ValueError(f"Invalid S3 URI: {object_uri}")
+        object_uri = S3FileSystem._parse_uri(object_uri)
 
         try:
             # Create a temporary file to download to
@@ -113,8 +117,7 @@ class S3FileSystem(BaseCloudFileSystem):
         Returns:
             List of subfolder names (without trailing slashes)
         """
-        if not folder_uri.startswith("s3://"):
-            raise ValueError(f"Invalid S3 URI: {folder_uri}")
+        folder_uri = S3FileSystem._parse_uri(folder_uri)
 
         # Ensure that the folder_uri has a trailing slash.
         folder_uri = f"{folder_uri.rstrip('/')}/"
@@ -156,6 +159,8 @@ class S3FileSystem(BaseCloudFileSystem):
             substrings_to_include: Only include files containing these substrings
             suffixes_to_exclude: Exclude certain files from download (e.g .safetensors)
         """
+        bucket_uri = S3FileSystem._parse_uri(bucket_uri)
+
         if not bucket_uri.startswith("s3://"):
             raise ValueError(f"Invalid S3 URI: {bucket_uri}")
 
@@ -215,8 +220,8 @@ class S3FileSystem(BaseCloudFileSystem):
             local_path: The local path of the files to upload.
             bucket_uri: The bucket uri to upload the files to, must start with `s3://`.
         """
-        if not bucket_uri.startswith("s3://"):
-            raise ValueError(f"Invalid S3 URI: {bucket_uri}")
+
+        bucket_uri = S3FileSystem._parse_uri(bucket_uri)
 
         try:
             # Ensure bucket_uri has trailing slash for directory upload
