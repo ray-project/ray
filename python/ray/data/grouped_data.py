@@ -328,7 +328,7 @@ class GroupedData:
             >>> from ray.data.expressions import col
             >>> ds = ray.data.from_items([{"group": 1, "value": 1}, {"group": 1, "value": 2}])
             >>> ds.groupby("group").with_column("value_twice", col("value") * 2).sort(["group", "value"]).take_all()
-
+            [{'group': 1, 'value': 1, 'value_twice': 2}, {'group': 1, 'value': 2, 'value_twice': 4}]
         Args:
             column_name: Name of the column to add.
             expr: Expression that yields the values for the new column.
