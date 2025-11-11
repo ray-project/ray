@@ -156,7 +156,7 @@
   variations:
     - __suffix__: aws
 
-- name: hello_world_custom_byod_depset_only
+- name: hello_world_py313
   python: "3.13"
   team: reef
   group: hello_world
