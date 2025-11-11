@@ -898,6 +898,69 @@ def test_apply_app_configs_deletes_existing(check_obj_ref_ready_nowait):
     assert app3_state.status == ApplicationStatus.DEPLOYING
 
 
+@patch(
+    "ray.serve._private.application_state.get_app_code_version",
+    Mock(return_value="123"),
+)
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(return_value=(None, [deployment_params("d1", "/route1")], None)))
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+def test_apply_app_configs_with_external_scaler_enabled(check_obj_ref_ready_nowait):
+    """Test that apply_app_configs correctly sets external_scaler_enabled.
+
+    This test verifies that when apply_app_configs is called with app configs
+    that have external_scaler_enabled=True or False, the ApplicationState is
+    correctly initialized with the appropriate external_scaler_enabled value.
+    """
+    kv_store = MockKVStore()
+    deployment_state_manager = MockDeploymentStateManager(kv_store)
+    app_state_manager = ApplicationStateManager(
+        deployment_state_manager,
+        AutoscalingStateManager(),
+        MockEndpointState(),
+        kv_store,
+        LoggingConfig(),
+    )
+
+    # Deploy app with external_scaler_enabled=True
+    app_config_with_scaler = ServeApplicationSchema(
+        name="app_with_scaler",
+        import_path="fa.ke",
+        route_prefix="/with_scaler",
+        external_scaler_enabled=True,
+    )
+
+    # Deploy app with external_scaler_enabled=False (default)
+    app_config_without_scaler = ServeApplicationSchema(
+        name="app_without_scaler",
+        import_path="fa.ke",
+        route_prefix="/without_scaler",
+        external_scaler_enabled=False,
+    )
+
+    # Apply both configs
+    app_state_manager.apply_app_configs([app_config_with_scaler, app_config_without_scaler])
+
+    # Verify that external_scaler_enabled is correctly set for both apps
+    assert app_state_manager.is_external_scaler_enabled("app_with_scaler") is True
+    assert app_state_manager.is_external_scaler_enabled("app_without_scaler") is False
+
+    # Verify the internal state is also correct
+    app_state_with_scaler = app_state_manager._application_states["app_with_scaler"]
+    app_state_without_scaler = app_state_manager._application_states["app_without_scaler"]
+    assert app_state_with_scaler.external_scaler_enabled is True
+    assert app_state_without_scaler.external_scaler_enabled is False
+
+    # Simulate the build task completing
+    check_obj_ref_ready_nowait.return_value = True
+    app_state_with_scaler.update()
+    app_state_without_scaler.update()
+
+    # After update, external_scaler_enabled should still be preserved
+    assert app_state_manager.is_external_scaler_enabled("app_with_scaler") is True
+    assert app_state_manager.is_external_scaler_enabled("app_without_scaler") is False
+
+
 def test_redeploy_same_app(mocked_application_state):
     """Test redeploying same application with updated deployments."""
     app_state, deployment_state_manager = mocked_application_state
@@ -3104,6 +3167,167 @@ class TestApplicationLevelAutoscaling:
         assert (
             deployment_state_manager._scaling_decisions[d2_id] == 3
         )  # Our policy scales to 3
+
+
+def test_is_external_scaler_enabled(mocked_application_state_manager):
+    """Test is_external_scaler_enabled returns correct value based on app config.
+
+    Test that is_external_scaler_enabled returns True when an app is deployed with
+    external_scaler_enabled=True, False when deployed with external_scaler_enabled=False,
+    and False for non-existent apps.
+    """
+    app_state_manager, _, _ = mocked_application_state_manager
+
+    # Deploy app with external_scaler_enabled=True
+    app_state_manager.deploy_app(
+        "app_with_external_scaler",
+        [deployment_params("deployment1", "/route1")],
+        ApplicationArgsProto(external_scaler_enabled=True),
+    )
+
+    # Deploy app with external_scaler_enabled=False
+    app_state_manager.deploy_app(
+        "app_without_external_scaler",
+        [deployment_params("deployment2", "/route2")],
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
+
+    # Test that is_external_scaler_enabled returns True for app with external scaler enabled
+    assert app_state_manager.is_external_scaler_enabled("app_with_external_scaler") is True
+
+    # Test that is_external_scaler_enabled returns False for app without external scaler
+    assert app_state_manager.is_external_scaler_enabled("app_without_external_scaler") is False
+
+    # Test that is_external_scaler_enabled returns False for non-existent app
+    assert app_state_manager.is_external_scaler_enabled("non_existent_app") is False
+
+
+def test_deploy_apps_with_external_scaler_enabled(mocked_application_state_manager):
+    """Test that deploy_apps correctly uses external_scaler_enabled from name_to_application_args.
+
+    This test verifies that when deploy_apps is called with name_to_application_args
+    containing external_scaler_enabled values, the ApplicationState is correctly
+    initialized with the appropriate external_scaler_enabled value for each app.
+    """
+    (
+        app_state_manager,
+        deployment_state_manager,
+        kv_store,
+    ) = mocked_application_state_manager
+
+    # Deploy multiple apps with different external_scaler_enabled settings
+    name_to_deployment_args = {
+        "app_with_scaler": [deployment_params("d1", "/with_scaler")],
+        "app_without_scaler": [deployment_params("d2", "/without_scaler")],
+        "app_default": [deployment_params("d3", "/default")],
+    }
+
+    name_to_application_args = {
+        "app_with_scaler": ApplicationArgsProto(external_scaler_enabled=True),
+        "app_without_scaler": ApplicationArgsProto(external_scaler_enabled=False),
+        "app_default": ApplicationArgsProto(external_scaler_enabled=False),
+    }
+
+    # Call deploy_apps
+    app_state_manager.deploy_apps(name_to_deployment_args, name_to_application_args)
+
+    # Verify that external_scaler_enabled is correctly set for each app
+    assert app_state_manager.is_external_scaler_enabled("app_with_scaler") is True
+    assert app_state_manager.is_external_scaler_enabled("app_without_scaler") is False
+    assert app_state_manager.is_external_scaler_enabled("app_default") is False
+
+    # Verify the internal state is also correct
+    app_state_with_scaler = app_state_manager._application_states["app_with_scaler"]
+    app_state_without_scaler = app_state_manager._application_states[
+        "app_without_scaler"
+    ]
+    app_state_default = app_state_manager._application_states["app_default"]
+
+    assert app_state_with_scaler.external_scaler_enabled is True
+    assert app_state_without_scaler.external_scaler_enabled is False
+    assert app_state_default.external_scaler_enabled is False
+
+    # Verify that all apps are in the correct state
+    assert app_state_with_scaler.status == ApplicationStatus.DEPLOYING
+    assert app_state_without_scaler.status == ApplicationStatus.DEPLOYING
+    assert app_state_default.status == ApplicationStatus.DEPLOYING
+
+
+def test_external_scaler_enabled_recovery_from_checkpoint(
+    mocked_application_state_manager,
+):
+    """Test that external_scaler_enabled is correctly recovered from checkpoint.
+
+    This test verifies that after a controller crash and recovery, the
+    external_scaler_enabled flag is correctly restored from the checkpoint
+    for both apps with external_scaler_enabled=True and external_scaler_enabled=False.
+    """
+    (
+        app_state_manager,
+        deployment_state_manager,
+        kv_store,
+    ) = mocked_application_state_manager
+
+    app_name_with_scaler = "app_with_external_scaler"
+    app_name_without_scaler = "app_without_external_scaler"
+    deployment_id_with_scaler = DeploymentID(name="d1", app_name=app_name_with_scaler)
+    deployment_id_without_scaler = DeploymentID(
+        name="d2", app_name=app_name_without_scaler
+    )
+
+    # Deploy app with external_scaler_enabled=True
+    app_state_manager.deploy_app(
+        app_name_with_scaler,
+        [deployment_params("d1")],
+        ApplicationArgsProto(external_scaler_enabled=True),
+    )
+
+    # Deploy app with external_scaler_enabled=False
+    app_state_manager.deploy_app(
+        app_name_without_scaler,
+        [deployment_params("d2")],
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
+
+    # Verify initial state
+    assert app_state_manager.is_external_scaler_enabled(app_name_with_scaler) is True
+    assert app_state_manager.is_external_scaler_enabled(app_name_without_scaler) is False
+
+    # Make deployments healthy and update
+    app_state_manager.update()
+    deployment_state_manager.set_deployment_healthy(deployment_id_with_scaler)
+    deployment_state_manager.set_deployment_healthy(deployment_id_without_scaler)
+    app_state_manager.update()
+
+    # Save checkpoint
+    app_state_manager.save_checkpoint()
+
+    # Simulate controller crash - create new managers with the same kv_store
+    new_deployment_state_manager = MockDeploymentStateManager(kv_store)
+    new_app_state_manager = ApplicationStateManager(
+        new_deployment_state_manager,
+        AutoscalingStateManager(),
+        MockEndpointState(),
+        kv_store,
+        LoggingConfig(),
+    )
+
+    # Verify that external_scaler_enabled is correctly recovered from checkpoint
+    assert new_app_state_manager.is_external_scaler_enabled(app_name_with_scaler) is True
+    assert (
+        new_app_state_manager.is_external_scaler_enabled(app_name_without_scaler)
+        is False
+    )
+
+    # Verify the internal state is also correct
+    app_state_with_scaler = new_app_state_manager._application_states[
+        app_name_with_scaler
+    ]
+    app_state_without_scaler = new_app_state_manager._application_states[
+        app_name_without_scaler
+    ]
+    assert app_state_with_scaler.external_scaler_enabled is True
+    assert app_state_without_scaler.external_scaler_enabled is False
 
 
 if __name__ == "__main__":
