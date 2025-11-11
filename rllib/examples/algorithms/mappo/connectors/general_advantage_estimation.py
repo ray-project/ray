@@ -71,11 +71,6 @@ class MAPPOGAEConnector(ConnectorV2):
         vf_preds = {mid: vf_preds[:, i] for i, mid in enumerate(obs_mids)}
         # Loop through all modules and perform each one's GAE computation.
         for module_id, module_vf_preds in vf_preds.items():
-            # Skip those outputs of RLModules that are not implementers of
-            # `ValueFunctionAPI`.
-            if module_vf_preds is None:
-                continue
-
             module = rl_module[module_id]
             device = module_vf_preds.device
             # Convert to numpy for the upcoming GAE computations.
