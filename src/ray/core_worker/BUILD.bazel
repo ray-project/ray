@@ -78,6 +78,7 @@ ray_cc_library(
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/rpc:grpc_server",
         "//src/ray/rpc:rpc_callback_types",
+        "//src/ray/rpc/authentication:authentication_token",
     ],
 )
 
@@ -212,6 +213,7 @@ ray_cc_library(
     srcs = ["reference_counter.cc"],
     hdrs = ["reference_counter.h"],
     deps = [
+        ":metrics",
         ":reference_counter_interface",
         "//src/ray/common:id",
         "//src/ray/core_worker:lease_policy",

@@ -67,8 +67,8 @@ class NixlBackend:
                 self._aborted_transfer_obj_ids.remove(obj_id)
                 raise RuntimeError(f"NIXL transfer aborted for object id: {obj_id}")
 
-        remote_name = None
         local_descs = None
+        remote_name = None
         xfer_handle = None
         try:
             nixl_agent = self._nixl_agent
@@ -105,15 +105,18 @@ class NixlBackend:
                     time.sleep(0.001)  # Avoid busy waiting
                 elif state == "DONE":
                     break
-        finally:
-            # We could raise errors or NIXL could raise errors like NIXL_ERR_REMOTE_DISCONNECT,
-            # so doing best effort cleanup.
-            if xfer_handle:
-                nixl_agent.release_xfer_handle(xfer_handle)
-            if remote_name:
-                nixl_agent.remove_remote_agent(remote_name)
-            with self._aborted_transfer_obj_ids_lock:
-                self._aborted_transfer_obj_ids.discard(obj_id)
+            finally:
+                # We could raise errors or NIXL could raise errors like NIXL_ERR_REMOTE_DISCONNECT,
+                # so doing best effort cleanup.
+                with self._aborted_transfer_obj_ids_lock:
+                    self._aborted_transfer_obj_ids.discard(obj_id)
+                if xfer_handle:
+                    nixl_agent.release_xfer_handle(xfer_handle)
+                if remote_name:
+                    nixl_agent.remove_remote_agent(remote_name)
+                if local_descs:
+                    nixl_agent.deregister_memory(local_descs)
+
 
     def get_nixl_metadata(
         self, tensors: List["torch.Tensor"]

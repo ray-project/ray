@@ -64,9 +64,11 @@ py_test_module_list(
         "test_multiprocessing_standalone.py",
         "test_node_label_scheduling_strategy.py",
         "test_object_spilling_2.py",
+        "test_ray_event_export_task_events.py",
         "test_reference_counting_2.py",
         "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
+        "test_runtime_env_agent_auth.py",
         "test_util_helpers.py",
     ],
     tags = [
@@ -83,7 +85,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     env = {
-        "RAY_enable_open_telemetry": "1",
+        "RAY_enable_open_telemetry": "true",
     },
     files = [
         "test_metric_cardinality.py",
@@ -367,6 +369,7 @@ py_test_module_list(
         "test_task_metrics.py",
         "test_tempdir.py",
         "test_tls_auth.py",
+        "test_token_auth_integration.py",
         "test_traceback.py",
         "test_worker_capping.py",
         "test_worker_state.py",
@@ -576,10 +579,12 @@ py_test_module_list(
         "test_runtime_env_py_executable.py",
         "test_state_api_summary.py",
         "test_streaming_generator_regression.py",
+        "test_submission_client_auth.py",
         "test_system_metrics.py",
         "test_task_events_3.py",
         "test_task_metrics_reconstruction.py",
         "test_top_level_api.py",
+        "test_tpu.py",
         "test_tqdm.py",
         "test_unhandled_error.py",
         "test_wait.py",
