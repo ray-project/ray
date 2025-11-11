@@ -848,7 +848,7 @@ class Worker:
                     )
                     runtime_env = upload_py_modules_if_needed(
                         runtime_env,
-                        tmp_dir,
+                        scratch_dir=tmp_dir,
                         include_gitignore=include_gitignore,
                         logger=logger,
                     )
