@@ -50,6 +50,7 @@ steps:
     label: "wanda: oss-ci-base_ml-py{{matrix}}"
     wanda: ci/docker/base.ml.wanda.yaml
     matrix:
+      - "3.10"
       - "3.11"
       - "3.12"
     env:
@@ -64,6 +65,7 @@ steps:
     label: "wanda: oss-ci-base_gpu-py{{matrix}}"
     wanda: ci/docker/base.gpu.wanda.yaml
     matrix:
+      - "3.10"
       - "3.11"
       - "3.12"
     env:
@@ -75,24 +77,3 @@ steps:
     wanda: ci/docker/base.cu128.wanda.yaml
     env:
       PYTHON: "3.11"
-
-  - name: docbuild
-    label: "wanda: docbuild-py{{matrix}}"
-    wanda: ci/docker/doc.build.wanda.yaml
-    depends_on:
-      - oss-ci-base_build-multipy
-      - ray-core-build
-      - ray-dashboard-build
-    matrix:
-      - "3.9"
-      - "3.10"
-      - "3.12"
-    env:
-      PYTHON: "{{matrix}}"
-      REQUIREMENTS_FILE: "python/deplocks/docs/docbuild_depset_py{{matrix}}.lock"
-    tags: cibase
-
-  - name: docgpubuild
-    wanda: ci/docker/docgpu.build.wanda.yaml
-    depends_on: oss-ci-base_gpu
-    tags: cibase

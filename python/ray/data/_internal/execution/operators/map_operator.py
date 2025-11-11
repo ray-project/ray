@@ -65,7 +65,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(__name__)
 
 
-class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
+class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
 
     This operator implements the distributed map operation, supporting both task
@@ -108,7 +108,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         self._block_ref_bundler = _BlockRefBundler(min_rows_per_bundle)
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
-        self._output_queue: _OutputQueue = None
+        self._output_queue: Optional[_OutputQueue] = None
         # Output metadata, added to on get_next().
         self._output_blocks_stats: List[BlockStats] = []
         # All active `DataOpTask`s.
@@ -153,11 +153,30 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
     def set_additional_split_factor(self, k: int):
         self._additional_split_factor = k
 
-    def internal_queue_num_blocks(self) -> int:
+    def internal_input_queue_num_blocks(self) -> int:
         return self._block_ref_bundler.num_blocks()
 
-    def internal_queue_num_bytes(self) -> int:
+    def internal_input_queue_num_bytes(self) -> int:
         return self._block_ref_bundler.size_bytes()
+
+    def internal_output_queue_num_blocks(self) -> int:
+        return self._output_queue.num_blocks()
+
+    def internal_output_queue_num_bytes(self) -> int:
+        return self._output_queue.size_bytes()
+
+    def clear_internal_input_queue(self) -> None:
+        """Clear internal input queue (block ref bundler)."""
+        while self._block_ref_bundler.has_bundle():
+            (input_bundles, _) = self._block_ref_bundler.get_next_bundle()
+            for input_bundle in input_bundles:
+                self._metrics.on_input_dequeued(input_bundle)
+
+    def clear_internal_output_queue(self) -> None:
+        """Clear internal output queue."""
+        while self._output_queue.has_next():
+            bundle = self._output_queue.get_next()
+            self._metrics.on_output_dequeued(bundle)
 
     @property
     def name(self) -> str:
@@ -716,6 +735,14 @@ class _OutputQueue(ABC):
     def get_next(self) -> RefBundle:
         pass
 
+    @abstractmethod
+    def num_blocks(self) -> int:
+        pass
+
+    @abstractmethod
+    def size_bytes(self) -> int:
+        pass
+
 
 class _OrderedOutputQueue(_OutputQueue):
     """An queue that returns finished tasks in submission order."""
@@ -724,9 +751,13 @@ class _OrderedOutputQueue(_OutputQueue):
         self._task_outputs: Dict[int, Deque[RefBundle]] = defaultdict(lambda: deque())
         self._current_output_index: int = 0
         self._completed_tasks: Set[int] = set()
+        self._size_bytes: int = 0
+        self._num_blocks: int = 0
 
     def notify_task_output_ready(self, task_index: int, output: RefBundle):
         self._task_outputs[task_index].append(output)
+        self._size_bytes += output.size_bytes()
+        self._num_blocks += len(output.blocks)
 
     def _move_to_next_task(self):
         """Move the outut index to the next task.
@@ -752,10 +783,18 @@ class _OrderedOutputQueue(_OutputQueue):
 
     def get_next(self) -> RefBundle:
         next_bundle = self._task_outputs[self._current_output_index].popleft()
+        self._size_bytes -= next_bundle.size_bytes()
+        self._num_blocks -= len(next_bundle.blocks)
         if len(self._task_outputs[self._current_output_index]) == 0:
             if self._current_output_index in self._completed_tasks:
                 self._move_to_next_task()
         return next_bundle
+
+    def num_blocks(self) -> int:
+        return self._num_blocks
+
+    def size_bytes(self) -> int:
+        return self._size_bytes
 
 
 class _UnorderedOutputQueue(_OutputQueue):
@@ -763,15 +802,28 @@ class _UnorderedOutputQueue(_OutputQueue):
 
     def __init__(self):
         self._queue: Deque[RefBundle] = deque()
+        self._num_blocks: int = 0
+        self._size_bytes: int = 0
 
     def notify_task_output_ready(self, _: int, output: RefBundle):
         self._queue.append(output)
+        self._num_blocks += len(output.blocks)
+        self._size_bytes += output.size_bytes()
 
     def has_next(self) -> bool:
         return len(self._queue) > 0
 
     def get_next(self) -> RefBundle:
-        return self._queue.popleft()
+        next_bundle = self._queue.popleft()
+        self._num_blocks -= len(next_bundle.blocks)
+        self._size_bytes -= next_bundle.size_bytes()
+        return next_bundle
+
+    def num_blocks(self) -> int:
+        return self._num_blocks
+
+    def size_bytes(self) -> int:
+        return self._size_bytes
 
 
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:

@@ -2,8 +2,8 @@ import functools
 import math
 import time
 import unittest
-from collections import defaultdict, deque
-from unittest.mock import MagicMock, patch
+from collections import defaultdict
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -134,517 +134,224 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         start2, end2 = ray.get(actor.get_start_and_end_time_for_op.remote(2))
         assert start1 < start2 < end1 < end2, (start1, start2, end1, end2)
 
-    def test_can_add_input_with_normal_concurrency_cap(self):
-        """Test can_add_input when using normal concurrency cap (queue size disabled)."""
-        mock_op = MagicMock()
-        mock_op.name = "TestOperator"
-        mock_op.metrics.num_tasks_running = 3
-        mock_op.throttling_disabled.return_value = False
-        mock_op.execution_finished.return_value = False
-        mock_op.output_dependencies = []
+    def test_can_add_input_with_dynamic_output_queue_size_backpressure_disabled(self):
+        """Test can_add_input when dynamic output queue size backpressure is disabled."""
+        input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
+        map_op = TaskPoolMapOperator(
+            map_transformer=MagicMock(),
+            data_context=DataContext.get_current(),
+            input_op=input_op,
+            max_concurrency=5,
+        )
+        map_op.metrics.num_tasks_running = 3
+
+        topology = {map_op: MagicMock(), input_op: MagicMock()}
+
+        # Create policy with dynamic output queue size backpressure disabled
+        policy = ConcurrencyCapBackpressurePolicy(
+            DataContext.get_current(),
+            topology,
+            MagicMock(),  # resource_manager
+        )
+        policy.enable_dynamic_output_queue_size_backpressure = False
+
+        # Should only check against configured concurrency cap
+        self.assertTrue(policy.can_add_input(map_op))  # 3 < 5
+
+        map_op.metrics.num_tasks_running = 5
+        self.assertFalse(policy.can_add_input(map_op))  # 5 >= 5
+
+    def test_can_add_input_with_non_map_operator(self):
+        """Test can_add_input with non-MapOperator (should use basic cap check)."""
+        input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
+        input_op.metrics.num_tasks_running = 1
+
+        topology = {input_op: MagicMock()}
 
         policy = ConcurrencyCapBackpressurePolicy(
             DataContext.get_current(),
-            {mock_op: MagicMock()},
-            MagicMock(),
+            topology,
+            MagicMock(),  # resource_manager
         )
 
-        # Disable queue size based backpressure
-        policy.enable_dynamic_output_queue_size_backpressure = False
-        policy._concurrency_caps[mock_op] = 5
+        # InputDataBuffer has infinite concurrency cap, so should always allow
+        self.assertTrue(policy.can_add_input(input_op))
 
-        # Should allow input when running < cap
-        result = policy.can_add_input(mock_op)
-        self.assertTrue(result)
+    def test_can_add_input_with_object_store_memory_usage_ratio_above_threshold(self):
+        """Test can_add_input when object store memory usage ratio is above threshold."""
+        input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
+        map_op = TaskPoolMapOperator(
+            map_transformer=MagicMock(),
+            data_context=DataContext.get_current(),
+            input_op=input_op,
+            max_concurrency=5,
+        )
+        map_op.metrics.num_tasks_running = 3
 
-        # Should deny input when running >= cap
-        mock_op.metrics.num_tasks_running = 5
-        result = policy.can_add_input(mock_op)
+        topology = {map_op: MagicMock(), input_op: MagicMock()}
+
+        mock_resource_manager = MagicMock()
+
+        # Mock object store memory usage ratio above threshold
+        threshold = ConcurrencyCapBackpressurePolicy.OBJECT_STORE_USAGE_RATIO
+        mock_usage = MagicMock()
+        mock_usage.object_store_memory = 1000  # usage
+        mock_budget = MagicMock()
+        mock_budget.object_store_memory = int(
+            1000 * (threshold + 0.1)
+        )  # budget above threshold
+
+        mock_resource_manager.get_op_usage.return_value = mock_usage
+        mock_resource_manager.get_budget.return_value = mock_budget
+
+        policy = ConcurrencyCapBackpressurePolicy(
+            DataContext.get_current(),
+            topology,
+            mock_resource_manager,
+        )
+        policy.enable_dynamic_output_queue_size_backpressure = True
+
+        # Should skip dynamic backpressure and use basic cap check
+        self.assertTrue(policy.can_add_input(map_op))  # 3 < 5
+
+        map_op.metrics.num_tasks_running = 5
+        self.assertFalse(policy.can_add_input(map_op))  # 5 >= 5
+
+    def test_can_add_input_with_object_store_memory_usage_ratio_below_threshold(self):
+        """Test can_add_input when object store memory usage ratio is below threshold."""
+        input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
+        map_op = TaskPoolMapOperator(
+            map_transformer=MagicMock(),
+            data_context=DataContext.get_current(),
+            input_op=input_op,
+            max_concurrency=5,
+        )
+        map_op.metrics.num_tasks_running = 3
+
+        topology = {map_op: MagicMock(), input_op: MagicMock()}
+
+        mock_resource_manager = MagicMock()
+
+        # Mock object store memory usage ratio below threshold
+        threshold = ConcurrencyCapBackpressurePolicy.OBJECT_STORE_USAGE_RATIO
+        mock_usage = MagicMock()
+        mock_usage.object_store_memory = 1000  # usage
+        mock_budget = MagicMock()
+        mock_budget.object_store_memory = int(
+            1000 * (threshold - 0.05)
+        )  # below threshold
+
+        mock_resource_manager.get_op_usage.return_value = mock_usage
+        mock_resource_manager.get_budget.return_value = mock_budget
+
+        # Mock queue size methods
+        mock_resource_manager.get_op_internal_object_store_usage.return_value = 100
+        mock_resource_manager.get_op_outputs_object_store_usage_with_downstream.return_value = (
+            200
+        )
+
+        policy = ConcurrencyCapBackpressurePolicy(
+            DataContext.get_current(),
+            topology,
+            mock_resource_manager,
+        )
+        policy.enable_dynamic_output_queue_size_backpressure = True
+
+        # Should proceed with dynamic backpressure logic
+        # Initialize EWMA state for the operator
+        policy._q_level_nbytes[map_op] = 300.0
+        policy._q_level_dev[map_op] = 50.0
+
+        result = policy.can_add_input(map_op)
+        # With queue size 300 in hold region (level=300, dev=50, bounds=[200, 400]),
+        # should hold current level, so running=3 < effective_cap=3 should be False
         self.assertFalse(result)
 
-    def test_update_queue_threshold_bootstrap(self):
-        """Test threshold update for first sample (bootstrap)."""
-        mock_op = MagicMock()
-        policy = ConcurrencyCapBackpressurePolicy(
-            DataContext.get_current(),
-            {mock_op: MagicMock()},
-            MagicMock(),
+    def test_can_add_input_effective_cap_calculation(self):
+        """Test that effective cap calculation works correctly with different queue sizes."""
+        input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
+        map_op = TaskPoolMapOperator(
+            map_transformer=MagicMock(),
+            data_context=DataContext.get_current(),
+            input_op=input_op,
+            max_concurrency=8,
         )
+        map_op.metrics.num_tasks_running = 4
 
-        # Add sample to history first (required for threshold calculation)
-        policy._queue_history[mock_op].append(1000)
+        topology = {map_op: MagicMock(), input_op: MagicMock()}
 
-        # First sample should bootstrap threshold
-        # The threshold will be calculated as max(level + K_DEV * dev, q_now)
-        # where level=q_now=1000, dev=0 (first sample), so threshold = max(1000 + 4*0, 1000) = 1000
-        threshold = policy._update_queue_threshold(mock_op, 1000)
-        self.assertEqual(threshold, 1000)
-        self.assertEqual(policy._queue_thresholds[mock_op], 1000)
+        mock_resource_manager = MagicMock()
+        threshold = ConcurrencyCapBackpressurePolicy.OBJECT_STORE_USAGE_RATIO
+        mock_usage = MagicMock()
+        mock_usage.object_store_memory = 1000
+        mock_budget = MagicMock()
+        mock_budget.object_store_memory = int(
+            1000 * (threshold - 0.05)
+        )  # below threshold
 
-        # Test bootstrap with zero queue (should set threshold to 1 due to rounding)
-        fresh_mock_op = MagicMock()
-        fresh_policy = ConcurrencyCapBackpressurePolicy(
-            DataContext.get_current(),
-            {fresh_mock_op: MagicMock()},
-            MagicMock(),
-        )
-        fresh_policy._queue_thresholds[fresh_mock_op] = 0  # Reset to idle state
-        fresh_policy._queue_history[fresh_mock_op] = deque([0])
-        # Fresh policy starts with clean EWMA state
-
-        threshold_zero = fresh_policy._update_queue_threshold(fresh_mock_op, 0)
-        # When q_now=0, level=0, dev=0, threshold = max(1, max(0 + 4*0, 0)) = 1
-        self.assertEqual(threshold_zero, 1)
-        self.assertEqual(fresh_policy._queue_thresholds[fresh_mock_op], 1)
-
-    def test_update_queue_threshold_asymmetric_ewma(self):
-        """Test threshold update with asymmetric EWMA behavior."""
-        mock_op = MagicMock()
-        policy = ConcurrencyCapBackpressurePolicy(
-            DataContext.get_current(),
-            {mock_op: MagicMock()},
-            MagicMock(),
-        )
-
-        # Set up initial state
-        policy._q_level_nbytes[mock_op] = 100.0
-        policy._q_level_dev[mock_op] = 20.0
-        policy._queue_history[mock_op] = deque([100, 120, 140, 160, 180, 200])
-
-        # Test with growing queue (should use faster alpha_up)
-        threshold = policy._update_queue_threshold(mock_op, 300)
-
-        # Threshold should be at least as high as current queue
-        self.assertGreaterEqual(threshold, 300)
-
-        # Level should have moved toward the new sample using alpha_up
-        self.assertGreater(policy._q_level_nbytes[mock_op], 100.0)
-
-        # Test with declining queue (should use slower EWMA_ALPHA)
-        policy._q_level_nbytes[mock_op] = 200.0
-        policy._q_level_dev[mock_op] = 30.0
-        policy._update_queue_threshold(mock_op, 150)
-
-        # Level should have moved less aggressively downward
-        self.assertGreater(policy._q_level_nbytes[mock_op], 150.0)
-        self.assertLess(policy._q_level_nbytes[mock_op], 200.0)
-
-    def test_update_queue_threshold_no_decrease(self):
-        """Test that thresholds are never decreased, only maintained or increased."""
-        mock_op = MagicMock()
-        policy = ConcurrencyCapBackpressurePolicy(
-            DataContext.get_current(),
-            {mock_op: MagicMock()},
-            MagicMock(),
-        )
-
-        # Set up initial state with high threshold
-        policy._queue_thresholds[mock_op] = 200
-        policy._q_level_nbytes[mock_op] = 10.0  # Very low level
-        policy._q_level_dev[mock_op] = 1.0  # Very low deviation
-        policy._queue_history[mock_op] = deque([10, 11, 12, 13, 14, 15])
-
-        # Test that threshold is maintained when calculated threshold is lower
-        threshold = policy._update_queue_threshold(mock_op, 150)
-
-        # Should maintain the existing threshold (no decrease)
-        self.assertEqual(threshold, 200)
-        self.assertEqual(policy._queue_thresholds[mock_op], 200)
-
-        # Test with even lower queue size
-        threshold_small = policy._update_queue_threshold(mock_op, 50)
-        self.assertEqual(threshold_small, 200)  # Still maintained
-        self.assertEqual(policy._queue_thresholds[mock_op], 200)
-
-    def test_update_queue_threshold_increase(self):
-        """Test that thresholds are increased when calculated threshold is higher."""
-        mock_op = MagicMock()
-        policy = ConcurrencyCapBackpressurePolicy(
-            DataContext.get_current(),
-            {mock_op: MagicMock()},
-            MagicMock(),
-        )
-
-        # Set up initial state with moderate threshold
-        policy._queue_thresholds[mock_op] = 100
-        policy._q_level_nbytes[mock_op] = 50.0
-        policy._q_level_dev[mock_op] = 20.0
-        policy._queue_history[mock_op] = deque([50, 60, 70, 80, 90, 100])
-
-        # Test that threshold is increased when calculated threshold is higher
-        threshold = policy._update_queue_threshold(mock_op, 200)
-
-        # Should increase the threshold
-        self.assertGreaterEqual(threshold, 200)
-        self.assertGreaterEqual(policy._queue_thresholds[mock_op], 200)
-
-    def test_effective_cap_calculation_with_trend(self):
-        """Test effective cap calculation with different trend scenarios."""
-        mock_op = MagicMock()
-        mock_op.metrics.num_tasks_running = 5
+        mock_resource_manager.get_op_usage.return_value = mock_usage
+        mock_resource_manager.get_budget.return_value = mock_budget
 
         policy = ConcurrencyCapBackpressurePolicy(
             DataContext.get_current(),
-            {mock_op: MagicMock()},
-            MagicMock(),
+            topology,
+            mock_resource_manager,
         )
+        policy.enable_dynamic_output_queue_size_backpressure = True
 
-        # Set up queue history for trend calculation
-        policy._queue_history[mock_op] = deque(
-            [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
-        )
-        policy._q_level_dev[mock_op] = 100.0
-        policy._queue_thresholds[mock_op] = 500
-        policy._concurrency_caps[mock_op] = 10
-
-        # Test with high pressure (queue > threshold)
-        with patch.object(
-            policy._resource_manager,
-            "get_op_internal_object_store_usage",
-            return_value=1000,
-        ), patch.object(
-            policy._resource_manager,
-            "get_op_outputs_object_store_usage_with_downstream",
-            return_value=1000,
-        ):
-            effective_cap = policy._effective_cap(mock_op)
-            # Should be reduced due to high pressure
-            self.assertLess(effective_cap, 10)
-            self.assertGreaterEqual(effective_cap, 1)  # Should be at least 1
-
-    def test_effective_cap_insufficient_history(self):
-        """Test effective cap when there's insufficient history for trend calculation."""
-        mock_op = MagicMock()
-        mock_op.metrics.num_tasks_running = 5
-
-        policy = ConcurrencyCapBackpressurePolicy(
-            DataContext.get_current(),
-            {mock_op: MagicMock()},
-            MagicMock(),
-        )
-
-        # Set up insufficient history (less than 6 samples)
-        policy._queue_history[mock_op] = deque([100, 200, 300])
-        policy._concurrency_caps[mock_op] = 10
-
-        effective_cap = policy._effective_cap(mock_op)
-        # Should return max(1, running) when insufficient history
-        self.assertEqual(effective_cap, 5)
-
-    def test_signal_calculation_formulas(self):
-        """Test pressure_signal and trend_signal calculation formulas."""
-        # Test pressure_signal formula: (q_now - threshold) / max(1.0, dev)
-        pressure_cases = [
-            (1000, 500, 100, 5.0, "High pressure"),
-            (500, 500, 100, 0.0, "Neutral pressure"),
-            (200, 500, 100, -3.0, "Low pressure"),
-            (500, 500, 0, 0.0, "Zero deviation uses scale=1.0"),
-        ]
-
-        for q_now, threshold, dev, expected, description in pressure_cases:
-            with self.subTest(signal="pressure", description=description):
-                scale = max(1.0, float(dev))
-                pressure_signal = (q_now - threshold) / scale
-                self.assertAlmostEqual(pressure_signal, expected, places=5)
-
-        # Test trend_signal formula: (recent_avg - older_avg) / max(1.0, dev)
-        trend_cases = [
-            (1000, 500, 100, 5.0, "Strong growth"),
-            (500, 500, 100, 0.0, "No trend"),
-            (200, 500, 100, -3.0, "Strong decline"),
-            (500, 500, 0, 0.0, "Zero deviation uses scale=1.0"),
-        ]
-
-        for recent_avg, older_avg, dev, expected, description in trend_cases:
-            with self.subTest(signal="trend", description=description):
-                scale = max(1.0, float(dev))
-                trend_signal = (recent_avg - older_avg) / scale
-                self.assertAlmostEqual(trend_signal, expected, places=5)
-
-    def test_decision_rules_table_comprehensive(self):
-        """Test all decision rules from the table comprehensively."""
+        # Test different queue sizes using policy constants
         test_cases = [
-            # (pressure_signal, trend_signal, expected_step, description)
-            # High pressure scenarios
-            (2.5, 1.5, -1, "High pressure + growing trend -> backoff"),
-            (2.0, 1.0, -1, "High pressure + growing trend (boundary) -> backoff"),
-            (2.5, 0.5, 0, "High pressure + mild growth -> hold"),
-            (2.5, 0.0, 0, "High pressure + no trend -> hold"),
-            (2.5, -0.5, 0, "High pressure + mild decline -> hold"),
-            (2.5, -1.0, 0, "High pressure + declining trend -> hold"),
-            # Moderate pressure scenarios
-            (1.5, 1.5, 0, "Moderate pressure + growing trend -> hold"),
-            (1.0, 1.0, 0, "Moderate pressure + growing trend (boundary) -> hold"),
-            (1.5, 0.5, 0, "Moderate pressure + mild growth -> hold"),
-            (1.5, 0.0, 0, "Moderate pressure + no trend -> hold"),
-            (1.5, -0.5, 0, "Moderate pressure + mild decline -> hold"),
-            (1.5, -1.0, 0, "Moderate pressure + declining trend -> hold"),
-            # Low pressure scenarios
-            (-1.5, -1.5, 1, "Low pressure + declining trend -> increase"),
-            (-1.0, -1.0, 1, "Low pressure + declining trend (boundary) -> increase"),
-            (-1.5, -0.5, 0, "Low pressure + mild decline -> hold"),
-            (-1.5, 0.0, 0, "Low pressure + no trend -> hold"),
-            (-1.5, 0.5, 0, "Low pressure + mild growth -> hold"),
-            (-1.5, 1.0, 0, "Low pressure + growing trend -> hold"),
-            # Very low pressure scenarios
-            (-2.5, -2.5, 2, "Very low pressure + declining trend -> increase by 2"),
+            # (internal_usage, downstream_usage, level, dev, expected_result, description)
             (
-                -2.0,
-                -2.0,
-                2,
-                "Very low pressure + declining trend (boundary) -> increase by 2",
-            ),
-            (-2.5, -1.5, 1, "Very low pressure + mild decline -> increase by 1"),
-            (-2.5, -1.0, 1, "Very low pressure + mild decline -> increase by 1"),
-            (-2.5, 0.0, 0, "Very low pressure + no trend -> hold"),
-            (-2.5, 0.5, 0, "Very low pressure + mild growth -> hold"),
-            (-2.5, 1.0, 0, "Very low pressure + growing trend -> hold"),
-            # Neutral scenarios
-            (0.5, 0.5, 0, "Low pressure + mild growth -> hold"),
-            (0.0, 0.0, 0, "Neutral pressure + no trend -> hold"),
-            (-0.5, -0.5, 0, "Low pressure + mild decline -> hold"),
-            # Edge cases
-            (1.0, 0.0, 0, "Moderate pressure + no trend (boundary) -> hold"),
-            (0.0, 1.0, 0, "Neutral pressure + growing trend -> hold"),
-            (0.0, -1.0, 0, "Neutral pressure + declining trend -> hold"),
-        ]
-
-        # Create a policy instance to access the helper method
-        mock_op = MagicMock()
-        policy = ConcurrencyCapBackpressurePolicy(
-            DataContext.get_current(),
-            {mock_op: MagicMock()},
-            MagicMock(),
-        )
-
-        for pressure_signal, trend_signal, expected_step, description in test_cases:
-            with self.subTest(description=description):
-                # Use the actual helper method from the policy
-                step = policy._quantized_controller_step(pressure_signal, trend_signal)
-
-                self.assertEqual(
-                    step,
-                    expected_step,
-                    f"Failed for pressure={pressure_signal}, trend={trend_signal}",
-                )
-
-    def test_ewma_calculation_formulas(self):
-        """Test EWMA level, deviation, and alpha calculation formulas."""
-        # Test EWMA level formula: (1 - alpha) * prev + alpha * sample
-        level_cases = [
-            (100.0, 120.0, 0.2, 104.0, "Normal alpha"),
-            (100.0, 80.0, 0.2, 96.0, "Normal alpha down"),
-            (100.0, 100.0, 0.2, 100.0, "Stable"),
-            (0.0, 100.0, 0.2, 20.0, "Bootstrap"),
-        ]
-
-        for prev_level, sample, alpha, expected, description in level_cases:
-            with self.subTest(formula="level", description=description):
-                new_level = (1 - alpha) * prev_level + alpha * sample
-                self.assertAlmostEqual(new_level, expected, places=5)
-
-        # Test EWMA deviation formula: (1 - alpha) * prev_dev + alpha * abs(sample - prev_level)
-        dev_cases = [
-            (20.0, 120.0, 100.0, 0.2, 20.0, "Growing"),
-            (20.0, 100.0, 100.0, 0.2, 16.0, "Stable"),
-            (0.0, 100.0, 0.0, 0.2, 20.0, "Bootstrap"),
-        ]
-
-        for prev_dev, sample, prev_level, alpha, expected, description in dev_cases:
-            with self.subTest(formula="deviation", description=description):
-                new_dev = (1 - alpha) * prev_dev + alpha * abs(sample - prev_level)
-                self.assertAlmostEqual(new_dev, expected, places=5)
-
-        # Test alpha_up calculation: 1.0 - (1.0 - EWMA_ALPHA) ** 2
-        alpha_cases = [
-            (0.2, 0.36, "Normal EWMA_ALPHA"),
-            (0.1, 0.19, "Low EWMA_ALPHA"),
-            (0.5, 0.75, "High EWMA_ALPHA"),
-        ]
-
-        for EWMA_ALPHA, expected, description in alpha_cases:
-            with self.subTest(formula="alpha_up", description=description):
-                alpha_up = 1.0 - (1.0 - EWMA_ALPHA) ** 2
-                self.assertAlmostEqual(alpha_up, expected, places=5)
-
-    def test_threshold_calculation_formula(self):
-        """Test threshold calculation: max(level + K_DEV * dev, q_now)."""
-        test_cases = [
-            (100.0, 20.0, 150.0, 4.0, 180.0, "Normal case"),
-            (100.0, 20.0, 200.0, 4.0, 200.0, "High queue"),
-            (100.0, 0.0, 150.0, 4.0, 150.0, "Zero deviation"),
-            (100.0, 20.0, 150.0, 2.0, 150.0, "Lower K_DEV"),
-        ]
-
-        for level, dev, q_now, K_DEV, expected, description in test_cases:
-            with self.subTest(description=description):
-                threshold = max(level + K_DEV * dev, q_now)
-                self.assertAlmostEqual(threshold, expected, places=5)
-
-    def test_threshold_update_logic_comprehensive(self):
-        """Test comprehensive threshold update logic including bootstrap, upward, and no-decrease cases."""
-        mock_op = MagicMock()
-        policy = ConcurrencyCapBackpressurePolicy(
-            DataContext.get_current(),
-            {mock_op: MagicMock()},
-            MagicMock(),
-        )
-
-        # Test 1: Bootstrap case (prev_threshold = 0)
-        policy._queue_thresholds[mock_op] = 0
-        policy._queue_history[mock_op] = deque([100])
-        threshold1 = policy._update_queue_threshold(mock_op, 100)
-        # Bootstrap: threshold = max(level + K_DEV * dev, q_now) = max(100 + 4*0, 100) = 100
-        self.assertEqual(threshold1, 100)
-
-        # Test 2: Upward adjustment (threshold > prev_threshold)
-        policy._queue_thresholds[mock_op] = 100
-        policy._q_level_nbytes[mock_op] = 50.0
-        policy._q_level_dev[mock_op] = 10.0
-        policy._queue_history[mock_op] = deque([50, 60, 70, 80, 90, 100])
-        threshold2 = policy._update_queue_threshold(mock_op, 200)
-        # The EWMA will update level and dev, so we can't predict exact value
-        # Just verify it's >= 200 (upward adjustment)
-        self.assertGreaterEqual(threshold2, 200)
-
-        # Test 3: No decrease (threshold < prev_threshold, should maintain existing)
-        policy._queue_thresholds[mock_op] = 200
-        policy._q_level_nbytes[mock_op] = 10.0  # Very low level
-        policy._q_level_dev[mock_op] = 1.0  # Very low deviation
-        policy._queue_history[mock_op] = deque([10, 11, 12, 13, 14, 15])
-        threshold3 = policy._update_queue_threshold(mock_op, 150)
-        self.assertEqual(threshold3, 200)
-
-        # Test 4: Zero threshold case
-        fresh_mock_op = MagicMock()
-        fresh_policy = ConcurrencyCapBackpressurePolicy(
-            DataContext.get_current(),
-            {fresh_mock_op: MagicMock()},
-            MagicMock(),
-        )
-        fresh_policy._queue_thresholds[fresh_mock_op] = 0
-        fresh_policy._queue_history[fresh_mock_op] = deque([0])
-        # Fresh policy starts with clean EWMA state
-        threshold4 = fresh_policy._update_queue_threshold(fresh_mock_op, 0)
-        self.assertEqual(threshold4, 1)  # Should round up to 1
-
-    def test_trend_and_effective_cap_formulas(self):
-        """Test trend calculation and effective cap formulas."""
-        # Test trend calculation: recent_avg - older_avg
-        trend_cases = [
-            ([100, 200, 300, 400, 500, 600], 500.0, 200.0, 300.0, "6 samples"),
-            ([100, 200, 300, 400, 500, 600, 700], 600.0, 300.0, 300.0, "7 samples"),
+                50,
+                50,
+                5000.0,
+                200.0,
+                True,
+                "low_queue_below_lower_bound",
+            ),  # 100 < 5000 - 2*200 = 4600, ramp up
+            (
+                200,
+                200,
+                400.0,
+                50.0,
+                False,
+                "medium_queue_in_hold_region",
+            ),  # 400 in [300, 500], hold
+            (
+                300,
+                300,
+                200.0,
+                50.0,
+                False,
+                "high_queue_above_upper_bound",
+            ),  # 600 > 200 + 2*50 = 300, backoff
         ]
 
         for (
-            history,
-            expected_recent,
-            expected_older,
-            expected_trend,
+            internal_usage,
+            downstream_usage,
+            level,
+            dev,
+            expected_result,
             description,
-        ) in trend_cases:
-            with self.subTest(formula="trend", description=description):
-                h = list(history)
-                recent_window = len(h) // 2
-                older_window = len(h) // 2
+        ) in test_cases:
+            with self.subTest(description=description):
+                mock_resource_manager.get_op_internal_object_store_usage.return_value = (
+                    internal_usage
+                )
+                mock_resource_manager.get_op_outputs_object_store_usage_with_downstream.return_value = (
+                    downstream_usage
+                )
 
-                recent_avg = sum(h[-recent_window:]) / float(recent_window)
-                older_avg = sum(
-                    h[-(recent_window + older_window) : -recent_window]
-                ) / float(older_window)
-                trend = recent_avg - older_avg
+                # Initialize EWMA state
+                policy._q_level_nbytes[map_op] = level
+                policy._q_level_dev[map_op] = dev
 
-                self.assertAlmostEqual(recent_avg, expected_recent, places=5)
-                self.assertAlmostEqual(older_avg, expected_older, places=5)
-                self.assertAlmostEqual(trend, expected_trend, places=5)
-
-        # Test effective cap formula: max(1, running + step)
-        cap_cases = [
-            (5, -1, 4, "Reduce by 1"),
-            (5, 0, 5, "No change"),
-            (5, 1, 6, "Increase by 1"),
-            (1, -1, 1, "Min cap"),
-        ]
-
-        for running, step, expected, description in cap_cases:
-            with self.subTest(formula="effective_cap", description=description):
-                effective_cap = max(1, running + step)
-                self.assertEqual(effective_cap, expected)
-
-    def test_ewma_asymmetric_behavior(self):
-        """Test EWMA asymmetric behavior and level calculation."""
-        # Test alpha selection: alpha_up if sample > prev else EWMA_ALPHA
-        alpha_cases = [
-            (100.0, 150.0, 0.2, 0.36, "Rising uses alpha_up"),
-            (100.0, 50.0, 0.2, 0.2, "Falling uses EWMA_ALPHA"),
-            (100.0, 100.0, 0.2, 0.2, "Stable uses EWMA_ALPHA"),
-        ]
-
-        for prev_level, sample, EWMA_ALPHA, expected, description in alpha_cases:
-            with self.subTest(behavior="alpha_selection", description=description):
-                alpha_up = 1.0 - (1.0 - EWMA_ALPHA) ** 2
-                alpha = alpha_up if sample > prev_level else EWMA_ALPHA
-                self.assertAlmostEqual(alpha, expected, places=5)
-
-        # Test level calculation with asymmetric alpha
-        level_cases = [
-            (100.0, 150.0, 0.2, 118.0, "Rising with alpha_up"),
-            (100.0, 50.0, 0.2, 90.0, "Falling with EWMA_ALPHA"),
-            (0.0, 100.0, 0.2, 100.0, "Bootstrap uses sample"),
-        ]
-
-        for prev_level, sample, EWMA_ALPHA, expected, description in level_cases:
-            with self.subTest(behavior="level_calculation", description=description):
-                if prev_level <= 0:
-                    level = sample
-                else:
-                    alpha_up = 1.0 - (1.0 - EWMA_ALPHA) ** 2
-                    alpha = alpha_up if sample > prev_level else EWMA_ALPHA
-                    level = (1 - alpha) * prev_level + alpha * sample
-                self.assertAlmostEqual(level, expected, places=5)
-
-    def test_simple_calculation_formulas(self):
-        """Test simple calculation formulas: scale, min_samples, and windows."""
-        # Test scale calculation: max(1.0, float(dev))
-        scale_cases = [
-            (100.0, 100.0, "Normal deviation"),
-            (0.0, 1.0, "Zero deviation"),
-            (0.5, 1.0, "Small deviation"),
-            (1.1, 1.1, "Just above unit"),
-        ]
-
-        for dev, expected, description in scale_cases:
-            with self.subTest(formula="scale", description=description):
-                scale = max(1.0, float(dev))
-                self.assertAlmostEqual(scale, expected, places=5)
-
-        # Test min_samples calculation: recent_window + older_window
-        min_samples_cases = [
-            (10, 10, "HISTORY_LEN=10"),
-            (6, 6, "HISTORY_LEN=6"),
-            (12, 12, "HISTORY_LEN=12"),
-        ]
-
-        for HISTORY_LEN, expected, description in min_samples_cases:
-            with self.subTest(formula="min_samples", description=description):
-                recent_window = HISTORY_LEN // 2
-                older_window = HISTORY_LEN // 2
-                min_samples = recent_window + older_window
-                self.assertEqual(min_samples, expected)
-
-        # Test window calculation: recent_window = older_window = HISTORY_LEN // 2
-        window_cases = [
-            (10, 5, 5, "HISTORY_LEN=10"),
-            (6, 3, 3, "HISTORY_LEN=6"),
-            (9, 4, 4, "HISTORY_LEN=9 (integer division)"),
-        ]
-
-        for HISTORY_LEN, expected_recent, expected_older, description in window_cases:
-            with self.subTest(formula="windows", description=description):
-                recent_window = HISTORY_LEN // 2
-                older_window = HISTORY_LEN // 2
-                self.assertEqual(recent_window, expected_recent)
-                self.assertEqual(older_window, expected_older)
+                result = policy.can_add_input(map_op)
+                assert (
+                    result == expected_result
+                ), f"Expected {expected_result} for {description}"
 
 
 if __name__ == "__main__":

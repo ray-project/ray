@@ -1,5 +1,6 @@
 from .logical_operator import (
     LogicalOperator,
+    LogicalOperatorSupportsPredicatePushdown,
     LogicalOperatorSupportsProjectionPushdown,
     SupportsPushThrough,
 )
@@ -20,5 +21,6 @@ __all__ = [
     "Rule",
     "SourceOperator",
     "LogicalOperatorSupportsProjectionPushdown",
+    "LogicalOperatorSupportsPredicatePushdown",
     "SupportsPushThrough",
 ]
