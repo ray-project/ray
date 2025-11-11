@@ -115,9 +115,10 @@ def test_groupby_with_column_expression_udf(
     configure_shuffle_method,
     disable_fallback_to_object_extension,
 ):
-    from ray.data.expressions import col, udf
     import pyarrow.compute as pc
+
     from ray.data.datatype import DataType
+    from ray.data.expressions import col, udf
 
     ds = ray.data.from_items(
         [
@@ -177,6 +178,7 @@ def test_groupby_with_column_expression_arithmetic(
         {"group": 2, "value": 3, "value_twice": 6},
         {"group": 2, "value": 4, "value_twice": 8},
     ]
+
 
 def test_map_groups_with_actors(
     ray_start_regular_shared_2_cpus,
