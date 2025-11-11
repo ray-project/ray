@@ -5,7 +5,7 @@ import sys
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from typing import List
+from typing import List, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -858,6 +858,59 @@ async def test_api_manager_list_workers(state_api_manager):
             option=create_api_options(limit=1)
         )
     assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("exception", "status_code"),
+    [
+        (None, 200),
+        (ValueError("Invalid filter parameter"), 400),
+        (DataSourceUnavailable("GCS connection failed"), 500),
+    ],
+)
+async def test_handle_list_api_status_codes(
+    exception: Optional[Exception], status_code: int
+):
+    """Test that handle_list_api calls do_reply with correct status codes.
+
+    This directly tests the HTTP layer logic that maps exceptions to status codes:
+    - Success → HTTP 200 OK
+    - ValueError → HTTP 400 BAD_REQUEST
+    - DataSourceUnavailable → HTTP 500 INTERNAL_ERROR
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    from ray.dashboard.state_api_utils import handle_list_api
+    from ray.util.state.common import ListApiResponse
+
+    # 1. Mock aiohttp request with proper query interface
+    mock_request = MagicMock()
+
+    def mock_get(key, default=None):
+        return default
+
+    mock_request.query = MagicMock()
+    mock_request.query.get = mock_get
+
+    # 2. Mock response whether success or failure.
+    if exception is None:
+        mock_backend = AsyncMock(
+            return_value=ListApiResponse(
+                result=[],
+                total=0,
+                num_after_truncation=0,
+                num_filtered=0,
+                partial_failure_warning="",
+            )
+        )
+    else:
+        mock_backend = AsyncMock(side_effect=exception)
+
+    response = await handle_list_api(mock_backend, mock_request)
+
+    # 3. Assert status_code is correct.
+    assert response.status == status_code
 
 
 @pytest.mark.asyncio

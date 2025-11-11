@@ -19,7 +19,7 @@ except ImportError:
     _RAYLET_AVAILABLE = False
     AuthenticationTokenLoader = None
 
-from ray.tests.authentication_test_utils import (
+from ray._private.authentication_test_utils import (
     clear_auth_token_sources,
     reset_auth_token_state,
     set_auth_mode,
@@ -340,6 +340,62 @@ def test_ray_start_address_with_token(token_match, setup_cluster_with_token_auth
             if ray.is_initialized():
                 ray.shutdown()
             _cleanup_ray_start(env)
+
+
+def test_e2e_operations_with_token_auth(setup_cluster_with_token_auth):
+    """Test that e2e operations work with token authentication enabled.
+
+    This verifies that with token auth enabled:
+    1. Job submission works
+    2. Tasks execute successfully
+    3. Actors can be created and called
+    """
+    cluster_info = setup_cluster_with_token_auth
+
+    # Test 1: Submit a simple task
+    @ray.remote
+    def simple_task(x):
+        return x + 1
+
+    result = ray.get(simple_task.remote(41))
+    assert result == 42, f"Task should return 42, got {result}"
+
+    # Test 2: Create and use an actor
+    @ray.remote
+    class SimpleActor:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    actor = SimpleActor.remote()
+    result = ray.get(actor.increment.remote())
+    assert result == 1, f"Actor method should return 1, got {result}"
+
+    # Test 3: Submit a job and wait for completion
+    from ray.job_submission import JobSubmissionClient
+
+    # Create job submission client (uses HTTP with auth headers)
+    client = JobSubmissionClient(address=cluster_info["dashboard_url"])
+
+    # Submit a simple job
+    job_id = client.submit_job(
+        entrypoint="echo 'Hello from job'",
+    )
+
+    # Wait for job to complete
+    def job_finished():
+        status = client.get_job_status(job_id)
+        return status in ["SUCCEEDED", "FAILED", "STOPPED"]
+
+    wait_for_condition(job_finished, timeout=30)
+
+    final_status = client.get_job_status(job_id)
+    assert (
+        final_status == "SUCCEEDED"
+    ), f"Job should succeed, got status: {final_status}"
 
 
 if __name__ == "__main__":
