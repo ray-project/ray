@@ -1,36 +1,34 @@
 import logging
-from typing import Any, Dict
 from collections.abc import Callable
+from typing import Any, Dict
 
 import numpy as np
 
 from ray.rllib.algorithms.ppo.ppo import (
-    LEARNER_RESULTS_KL_KEY,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
+    LEARNER_RESULTS_KL_KEY,
     LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY,
     LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY,
     PPOConfig,
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import (
-    Learner,
+    ENTROPY_KEY,
     POLICY_LOSS_KEY,
     VF_LOSS_KEY,
-    ENTROPY_KEY,
+    Learner,
 )
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
+from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.examples.algorithms.mappo.connectors.general_advantage_estimation import (
+    SHARED_CRITIC_ID,
+)
+from ray.rllib.examples.algorithms.mappo.mappo_learner import MAPPOLearner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import explained_variance
 from ray.rllib.utils.typing import ModuleID, TensorType
-
-from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
-
-from ray.rllib.examples.algorithms.mappo.mappo_learner import MAPPOLearner
-from ray.rllib.examples.algorithms.mappo.connectors.general_advantage_estimation import (
-    SHARED_CRITIC_ID,
-)
 
 torch, nn = try_import_torch()
 

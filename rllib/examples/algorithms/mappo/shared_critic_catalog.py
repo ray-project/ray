@@ -1,10 +1,10 @@
 import gymnasium as gym
 
+from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.configs import (
     MLPHeadConfig,
 )
-from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.utils import override
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 

@@ -1,21 +1,20 @@
 import logging
-from typing import Any, Dict, List, Optional, Type, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.ppo.ppo import PPO
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.annotations import override
-
-from ray.rllib.algorithms.ppo.ppo import PPO
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner.learner import Learner
 
-from ray.rllib.examples.algorithms.mappo.torch.mappo_torch_learner import (
-    MAPPOTorchLearner,
-)
 from ray.rllib.examples.algorithms.mappo.torch.default_mappo_torch_rl_module import (
     DefaultMAPPOTorchRLModule,
+)
+from ray.rllib.examples.algorithms.mappo.torch.mappo_torch_learner import (
+    MAPPOTorchLearner,
 )
 
 logger = logging.getLogger(__name__)
@@ -94,7 +93,6 @@ class MAPPOConfig(AlgorithmConfig):  # AlgorithmConfig -> PPOConfig -> MAPPO
         kl_coeff: Optional[float] = NotProvided,
         kl_target: Optional[float] = NotProvided,
         entropy_coeff: Optional[float] = NotProvided,
-        entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         clip_param: Optional[float] = NotProvided,
         vf_clip_param: Optional[float] = NotProvided,
         grad_clip: Optional[float] = NotProvided,

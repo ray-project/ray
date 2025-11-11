@@ -4,14 +4,13 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_torch
-from ray.util.annotations import DeveloperAPI
-
-from ray.rllib.examples.algorithms.mappo.mappo_catalog import MAPPOCatalog
 from ray.rllib.examples.algorithms.mappo.default_mappo_rl_module import (
     DefaultMAPPORLModule,
 )
+from ray.rllib.examples.algorithms.mappo.mappo_catalog import MAPPOCatalog
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
+from ray.util.annotations import DeveloperAPI
 
 torch, nn = try_import_torch()
 

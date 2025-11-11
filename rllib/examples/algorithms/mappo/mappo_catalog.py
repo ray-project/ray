@@ -2,17 +2,15 @@
 # __sphinx_doc_begin__
 import gymnasium as gym
 
+from ray.rllib.algorithms.ppo.ppo_catalog import _check_if_diag_gaussian
+from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.configs import (
-    MLPHeadConfig,
     FreeLogStdMLPHeadConfig,
+    MLPHeadConfig,
 )
-from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.utils import override
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
-
-
-from ray.rllib.algorithms.ppo.ppo_catalog import _check_if_diag_gaussian
 
 
 class MAPPOCatalog(Catalog):

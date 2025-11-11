@@ -7,9 +7,13 @@ from ray.rllib.algorithms.ppo.ppo import (
     PPOConfig,
 )
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.examples.algorithms.mappo.connectors.general_advantage_estimation import (
+    SHARED_CRITIC_ID,
+    MAPPOGAEConnector,
+)
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
@@ -19,11 +23,6 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ModuleID, TensorType
-
-from ray.rllib.examples.algorithms.mappo.connectors.general_advantage_estimation import (
-    MAPPOGAEConnector,
-    SHARED_CRITIC_ID,
-)
 
 
 class MAPPOLearner(Learner):
