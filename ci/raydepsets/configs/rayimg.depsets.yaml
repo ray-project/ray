@@ -32,9 +32,9 @@ depsets:
       - py311
       - py312
       - py313
-    # pre_hooks:
-    #   - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh ${PYTHON_VERSION}
-    #   - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh ${PYTHON_VERSION}
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
 
   - name: ray_base_extra_testdeps_${PYTHON_SHORT}
     operation: expand
@@ -54,7 +54,7 @@ depsets:
       - py310
       - py311
       - py312
-      # - py313
+      - py313
 
   - name: ray_base_extra_testdeps_cuda_${PYTHON_SHORT}
     operation: expand
@@ -62,8 +62,6 @@ depsets:
       - release/ray_release/byod/requirements_byod_${PYTHON_VERSION}.in
       - docker/base-deps/requirements.in
       - docker/base-extra/requirements.in
-    constraints:
-      - /tmp/ray-deps/requirements_compiled.txt
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
     output: release/ray_release/byod/ray_base_extra_testdeps_cuda_py${PYTHON_VERSION}.lock
@@ -77,7 +75,7 @@ depsets:
       - py310
       - py311
       - py312
-      # - py313
+      - py313
 
   - name: ray_ml_base_extra_testdeps_${PYTHON_SHORT}
     operation: expand
@@ -85,8 +83,6 @@ depsets:
       - release/ray_release/byod/requirements_ml_byod_${PYTHON_VERSION}.in
       - docker/base-deps/requirements.in
       - docker/base-extra/requirements.in
-    constraints:
-      - /tmp/ray-deps/requirements_compiled.txt
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
     output: release/ray_release/byod/ray_ml_base_extra_testdeps_py${PYTHON_VERSION}.lock
@@ -104,8 +100,6 @@ depsets:
       - release/ray_release/byod/requirements_ml_byod_${PYTHON_VERSION}.in
       - docker/base-deps/requirements.in
       - docker/base-extra/requirements.in
-    constraints:
-      - /tmp/ray-deps/requirements_compiled.txt
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
     output: release/ray_release/byod/ray_ml_base_extra_testdeps_cuda_py${PYTHON_VERSION}.lock
@@ -135,7 +129,7 @@ depsets:
       - py310
       - py311
       - py312
-      # - py313
+      - py313
 
   # First layer of the ray release images. Contains all base layer python dependencies
   # and is a subset of the base extra test deps defined above (release image depset)
@@ -145,7 +139,6 @@ depsets:
     requirements:
       - docker/base-deps/requirements.in
       - docker/base-extra/requirements.in
-    output: python/deplocks/base_extra/ray_base_extra_py${PYTHON_VERSION}.lock
     output: python/deplocks/base_deps/ray_base_deps_py${PYTHON_VERSION}.lock
     append_flags:
       - --unsafe-package ray
@@ -156,4 +149,4 @@ depsets:
       - py310
       - py311
       - py312
-      # - py313
+      - py313

@@ -31,7 +31,7 @@ scipy
 tblib
 terminado
 tensorboardx==2.6.2.2
-tensorflow>=2.16.1
+tensorflow
 trueskill
 tqdm
 typer
