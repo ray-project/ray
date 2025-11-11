@@ -948,7 +948,11 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
                 col = pc.list_flatten(col)
             else:
                 py_list = col.to_pylist()
-                str_list = [None if v is None else str(v) for v in py_list]
+                str_list = [
+                    None if v is None else str(v)
+                    for v in py_list
+                    if not self._ignore_nulls or v is not None
+                ]
                 col = pa.array(str_list, type=pa.string())
 
         return pc.unique(col).to_pylist()
@@ -1529,7 +1533,8 @@ class ApproximateTopK(AggregateFnV2):
             py_value = value.as_py()
             if self._encode_lists and isinstance(py_value, list):
                 for item in py_value:
-                    sketch.update(str(item))
+                    if item is not None:
+                        sketch.update(str(item))
             else:
                 sketch.update(str(py_value))
         return sketch.serialize()
