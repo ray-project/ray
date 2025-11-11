@@ -90,6 +90,9 @@ class BatchIterator:
             the specified amount of formatted batches from blocks. This improves
             performance for non-CPU bound UDFs, allowing batch fetching compute and
             formatting to be overlapped with the UDF. Defaults to 1.
+        prefetch_count_update: Optional callback to report the number of outstanding
+            prefetched blocks and their byte size. Called with (blocks, bytes) whenever
+            the count changes.
     """
 
     def __init__(
