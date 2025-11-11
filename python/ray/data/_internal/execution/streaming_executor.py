@@ -674,7 +674,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 [op.metrics for op in self._topology],
                 self._get_operator_tags(),
                 self._get_state_dict(state=state),
-                force_update=force_update,
             )
             self._metrics_last_updated = now
 
