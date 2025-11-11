@@ -47,8 +47,7 @@ class IcebergDatasink(Datasink[List["pa.Table"]]):
             table_identifier: The identifier of the table to read such as `default.taxi_dataset`
             catalog_kwargs: Optional arguments to use when setting up the Iceberg
                 catalog
-            snapshot_properties: Custom properties to write to snapshot when committing
-                to an iceberg table, e.g. ``{"commit_time": "2021-01-01T00:00:00Z"}``
+            snapshot_properties: Custom properties to write to snapshot summary, such as commit metadata
             mode: Write mode - APPEND, UPSERT, or OVERWRITE. Defaults to APPEND.
                 - APPEND: Add new data without checking for duplicates
                 - UPSERT: Update existing rows or insert new ones based on a join condition
@@ -70,12 +69,12 @@ class IcebergDatasink(Datasink[List["pa.Table"]]):
         """
 
         self.table_identifier = table_identifier
-        self._catalog_kwargs = catalog_kwargs or {}
+        self._catalog_kwargs = (catalog_kwargs or {}).copy()
         self._snapshot_properties = snapshot_properties or {}
         self._mode = mode
         self._overwrite_filter = overwrite_filter
-        self._upsert_kwargs = upsert_kwargs or {}
-        self._overwrite_kwargs = overwrite_kwargs or {}
+        self._upsert_kwargs = (upsert_kwargs or {}).copy()
+        self._overwrite_kwargs = (overwrite_kwargs or {}).copy()
 
         if "name" in self._catalog_kwargs:
             self._catalog_name = self._catalog_kwargs.pop("name")
