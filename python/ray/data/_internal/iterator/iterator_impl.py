@@ -27,7 +27,7 @@ class DataIteratorImpl(DataIterator):
         Iterator[RefBundle],
         Optional[DatasetStats],
         bool,
-            Optional[Callable[[int, int], None]],
+        Optional[Callable[[int, int], None]],
     ]:
         (
             ref_bundles_iterator,

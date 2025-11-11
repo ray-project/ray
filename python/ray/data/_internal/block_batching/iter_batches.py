@@ -362,8 +362,7 @@ def prefetch_batches_locally(
         if prefetch_count_update is not None:
             num_blocks = len(sliding_window)
             total_bytes = sum(
-                metadata.size_bytes or 0
-                for _, metadata in sliding_window
+                metadata.size_bytes or 0 for _, metadata in sliding_window
             )
             prefetch_count_update(num_blocks, total_bytes)
 
