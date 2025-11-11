@@ -640,6 +640,27 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         replica_result = self._fetch_future_result_sync()
         return replica_result.__next__()
 
+    def result(
+        self,
+        *,
+        timeout_s: Optional[float] = None,
+        _skip_asyncio_check: bool = False,
+    ) -> Any:
+        """This method is not available on DeploymentResponseGenerator.
+
+        DeploymentResponseGenerator is returned when using streaming handles.
+        To get results, iterate over the generator using `for` (outside deployments)
+        or `async for` (inside deployments) instead of calling `.result()`.
+
+        Raises:
+            TypeError: Always raises, as this method is not supported for generators.
+        """
+        raise TypeError(
+            "`DeploymentResponseGenerator` doesn't support `.result()`. "
+            "Use iteration instead: `for item in response` (outside deployments) "
+            "or `async for item in response` (inside deployments)."
+        )
+
     @DeveloperAPI
     async def _to_object_ref_gen(self) -> ObjectRefGenerator:
         """Advanced API to convert the generator to a Ray `ObjectRefGenerator`.
