@@ -166,6 +166,7 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         left_seq_partition: pa.Table = self._get_partition_builder(
             input_seq_id=0, partition_id=partition_id
         ).build()
+
         right_seq_partition: pa.Table = self._get_partition_builder(
             input_seq_id=1, partition_id=partition_id
         ).build()
@@ -198,7 +199,6 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         should_index_r = self._should_index_side("right", supported_r, unsupported_r)
 
         # Add index columns for back-referencing if we have unsupported columns
-        # TODO: what are the chances of a collision with the index column?
         if should_index_l:
             supported_l = self._append_index_column(
                 table=supported_l, col_name=self._index_name("left")
@@ -246,7 +246,7 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         return supported
 
     def _index_name(self, suffix: str) -> str:
-        return f"__ray_data_index_level_{suffix}__"
+        return f"__rd_index_level_{suffix}__"
 
     def clear(self, partition_id: int):
         self._left_input_seq_partition_builders.pop(partition_id)
@@ -262,9 +262,6 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
                 f"Unexpected inpt sequence id of '{input_seq_id}' (expected 0 or 1)"
             )
         return partition_builder
-
-    def _get_index_col_name(self, index: int) -> str:
-        return f"__index_level_{index}__"
 
     def _should_index_side(
         self, side: str, supported_table: "pa.Table", unsupported_table: "pa.Table"
@@ -318,9 +315,8 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         """
         supported, unsupported = [], []
         for idx in range(len(table.columns)):
-            column: "pa.ChunkedArray" = table.column(idx)
-
-            col_type = column.type
+            col: "pa.ChunkedArray" = table.column(idx)
+            col_type: "pa.DataType" = col.type
 
             if _is_pa_extension_type(col_type) or self._is_pa_join_not_supported(
                 col_type
@@ -329,7 +325,7 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             else:
                 supported.append(idx)
 
-        return (table.select(supported), table.select(unsupported))
+        return table.select(supported), table.select(unsupported)
 
     def _add_back_unsupported_columns(
         self,

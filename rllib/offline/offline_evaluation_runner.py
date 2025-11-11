@@ -1,8 +1,7 @@
-import ray
 import types
+from typing import TYPE_CHECKING, Any, Collection, Dict, Iterable, Optional, Union
 
-from typing import Any, Collection, Dict, Iterable, Optional, TYPE_CHECKING, Union
-
+import ray
 from ray.data.iterator import DataIterator
 from ray.rllib.core import (
     ALL_MODULES,
