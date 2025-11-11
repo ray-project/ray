@@ -110,16 +110,14 @@ def test_map_groups_with_gpus(
     assert rows == [{"id": 0}]
 
 
-def test_groupby_with_column_expression(
+def test_groupby_with_column_expression_udf(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
-    target_max_block_size_infinite_or_default,
 ):
-    import pyarrow.compute as pc
-
-    from ray.data.datatype import DataType
     from ray.data.expressions import col, udf
+    import pyarrow.compute as pc
+    from ray.data.datatype import DataType
 
     ds = ray.data.from_items(
         [
@@ -150,6 +148,23 @@ def test_groupby_with_column_expression(
         {"group": 2, "value": 4, "min_value": 3},
     ]
 
+
+def test_groupby_with_column_expression_arithmetic(
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+):
+    from ray.data.expressions import col
+
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
     rows = (
         ds.groupby("group")
         .with_column("value_twice", col("value") * 2)
@@ -162,7 +177,6 @@ def test_groupby_with_column_expression(
         {"group": 2, "value": 3, "value_twice": 6},
         {"group": 2, "value": 4, "value_twice": 8},
     ]
-
 
 def test_map_groups_with_actors(
     ray_start_regular_shared_2_cpus,
