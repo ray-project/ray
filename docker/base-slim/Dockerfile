@@ -122,8 +122,7 @@ eval "$(/home/ray/anaconda3/bin/conda shell.bash activate)"
 /home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}"
 /home/ray/anaconda3/bin/conda clean -a
 
-uv pip install --system --no-cache-dir --index-strategy unsafe-best-match \
- -r $HOME/python_depset.lock
+uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match -r $HOME/python_depset.lock
 anyscale --version
 
 mkdir -p /tmp/supervisord
