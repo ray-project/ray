@@ -21,7 +21,6 @@
 #include <string>
 #include <utility>
 
-#include "ray/rpc/authentication/k8s_util.h"
 #include "ray/util/logging.h"
 
 #ifdef _WIN32
@@ -38,61 +37,9 @@
 namespace ray {
 namespace rpc {
 
-namespace {
-const std::chrono::minutes kCacheTTL(5);
-}  // namespace
-
 AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
   static AuthenticationTokenLoader instance;
   return instance;
-}
-
-bool AuthenticationTokenLoader::ValidateToken(const AuthenticationToken &provided_token) {
-  if (GetAuthenticationMode() == AuthenticationMode::TOKEN) {
-    auto expected_token = GetToken();
-    if (!expected_token.has_value()) {
-      return false;
-    }
-    return expected_token->Equals(provided_token);
-  } else if (GetAuthenticationMode() == AuthenticationMode::K8S) {
-    std::call_once(k8s::k8s_client_config_flag, k8s::InitK8sClientConfig);
-    if (!k8s::k8s_client_initialized) {
-      return false;
-    }
-
-    const std::string token_str = provided_token.ToRawValue();
-
-    // Check cache first.
-    {
-      std::lock_guard<std::mutex> lock(k8s_token_cache_mutex_);
-      auto it = k8s_token_cache_.find(provided_token);
-      if (it != k8s_token_cache_.end()) {
-        if (std::chrono::steady_clock::now() < it->second.expiration) {
-          return it->second.allowed;
-        } else {
-          k8s_token_cache_.erase(it);
-        }
-      }
-    }
-
-    bool is_allowed = false;
-    is_allowed = k8s::ValidateToken(provided_token);
-
-    // Only cache validated tokens for now. We don't want to invalidate a token
-    // due to unrelated errors from Kubernetes API server. This has the downside of
-    // causing more load if an unauthenticated client continues to make calls.
-    // TODO(andrewsykim): cache invalid tokens once k8s::ValidateToken can distinguish
-    // between invalid token errors and server errors.
-    if (is_allowed) {
-      std::lock_guard<std::mutex> lock(k8s_token_cache_mutex_);
-      k8s_token_cache_[provided_token] = {is_allowed,
-                                          std::chrono::steady_clock::now() + kCacheTTL};
-    }
-
-    return is_allowed;
-  }
-
-  return true;
 }
 
 std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken() {

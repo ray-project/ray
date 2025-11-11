@@ -113,6 +113,7 @@ ray_cc_library(
         "//src/ray/rpc/authentication:authentication_mode",
         "//src/ray/rpc/authentication:authentication_token",
         "//src/ray/rpc/authentication:authentication_token_loader",
+        "//src/ray/rpc/authentication:authentication_token_validator",
         "//src/ray/stats:stats_metric",
         "@com_github_grpc_grpc//:grpc++",
     ],

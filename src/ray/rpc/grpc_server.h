@@ -107,9 +107,7 @@ class GrpcServer {
     if (auth_token.has_value()) {
       auth_token_ = std::move(auth_token.value());
     } else {
-      if (GetAuthenticationMode() == AuthenticationMode::TOKEN) {
-        auth_token_ = AuthenticationTokenLoader::instance().GetToken();
-      }
+      auth_token_ = AuthenticationTokenLoader::instance().GetToken();
     }
     Init();
   }

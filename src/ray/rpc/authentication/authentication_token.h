@@ -173,5 +173,12 @@ class AuthenticationToken {
   }
 };
 
+// Hash function for AuthenticationToken
+struct AuthenticationTokenHash {
+  std::size_t operator()(const AuthenticationToken &token) const {
+    return std::hash<std::string>()(token.ToValue());
+  }
+};
+
 }  // namespace rpc
 }  // namespace ray

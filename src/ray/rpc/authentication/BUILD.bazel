@@ -43,7 +43,6 @@ ray_cc_library(
     deps = [
         ":authentication_mode",
         ":authentication_token",
-        ":k8s_util",
         "//src/ray/util:logging",
     ],
 )
@@ -58,5 +57,17 @@ ray_cc_library(
         ":authentication_token_loader",
         "//src/ray/common:constants",
         "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
+    name = "authentication_token_validator",
+    srcs = ["authentication_token_validator.cc"],
+    hdrs = ["authentication_token_validator.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":authentication_mode",
+        ":authentication_token",
+        ":k8s_util",
     ],
 )

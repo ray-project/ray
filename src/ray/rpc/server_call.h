@@ -32,6 +32,7 @@
 #include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
+#include "ray/rpc/authentication/authentication_token_validator.h"
 #include "ray/rpc/metrics.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "ray/stats/metric.h"
@@ -344,29 +345,17 @@ class ServerCallImpl : public ServerCall {
   /// Returns true if authentication succeeds or is not required.
   /// Returns false if authentication is required but fails.
   bool ValidateAuthenticationToken() {
-    AuthenticationMode auth_mode = GetAuthenticationMode();
-
-    if (auth_mode == AuthenticationMode::DISABLED) {
-      return true;
-    }
-
     const auto &metadata = context_.client_metadata();
     auto it = metadata.find(kAuthTokenKey);
-
-    if (auth_mode == AuthenticationMode::TOKEN) {
-      if (!auth_token_.has_value() || auth_token_->empty()) {
-        return true;  // No auth required on server side
-      }
-    }
-
     if (it == metadata.end()) {
-      RAY_LOG(WARNING) << "Missing authorization header in request for token auth mode!";
+      RAY_LOG(WARNING) << "Missing authorization header in request!";
       return false;
     }
 
     const std::string_view header(it->second.data(), it->second.length());
     AuthenticationToken provided_token = AuthenticationToken::FromMetadata(header);
-    return ray::rpc::AuthenticationTokenLoader::instance().ValidateToken(provided_token);
+    return ray::rpc::AuthenticationTokenValidator::instance().ValidateToken(
+        auth_token_, provided_token);
   }
 
   /// Log the duration this query used
