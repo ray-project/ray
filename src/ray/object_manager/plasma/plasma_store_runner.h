@@ -28,7 +28,7 @@ namespace plasma {
 class PlasmaStoreRunner {
  public:
   PlasmaStoreRunner(std::string socket_name,
-                    int64_t system_memory,
+                    int64_t object_store_memory,
                     bool hugepages_enabled,
                     std::string plasma_directory,
                     std::string fallback_directory);
@@ -59,7 +59,7 @@ class PlasmaStoreRunner {
   void Shutdown();
   mutable absl::Mutex store_runner_mutex_;
   std::string socket_name_;
-  int64_t system_memory_;
+  int64_t object_store_memory_;
   bool hugepages_enabled_;
   std::string plasma_directory_;
   std::string fallback_directory_;
