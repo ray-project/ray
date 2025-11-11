@@ -5,7 +5,6 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 import pytest
-from ray_release.test import Test, TestState
 
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.tester import (
@@ -18,6 +17,8 @@ from ci.ray_ci.tester import (
     _get_test_targets,
 )
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
+
+from ray_release.test import Test, TestState
 
 
 def _stub_test(val: dict) -> Test:
