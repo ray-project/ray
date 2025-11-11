@@ -92,13 +92,8 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
             )  # noqa
             mocked_ray_get.return_value = None
 
-            # NOTE: we don't use pytest.raises, as it holds an internal reference to
-            # the StopIteration which prevents the generator from being GC'd.
-            try:
+            with pytest.raises(StopIteration):
                 generator._next_sync(timeout_s=0)
-                assert False, "Expected StopIteration to be raised."
-            except StopIteration:
-                pass
 
             del generator
             gc.collect()
