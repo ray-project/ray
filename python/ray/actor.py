@@ -1688,11 +1688,15 @@ class ActorClass(Generic[T]):
         use_placement_group = scheduling_strategy is not None and isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
         )
-        if use_placement_group and detached:
+        is_restartable = max_restarts > 0 or max_restarts == -1
+        if use_placement_group and detached and is_restartable:
+            # TODO(kevin85421): Checking `max_restarts > 0` is because Ray Serve currently schedules detached actors with
+            # placement groups. Adding the check avoids printing this warning for all Ray Serve applications. In the future,
+            # we should consider raising an error instead of a warning, but this is a breaking change.
             logger.warning(
-                "Scheduling a detached actor with a placement group is not recommended, "
-                "Ray will kill the actor when the placement group is removed. "
-                "If the actor is restartable, it will be stuck in the RESTARTING state forever until explicitly killed."
+                "Scheduling a restartable detached actor with a placement group is not recommended, "
+                "Raylet will kill the actor when the placement group is removed. "
+                "The actor will be stuck in the RESTARTING state forever until users explicitly kill it."
             )
 
         if scheduling_strategy is None or isinstance(
