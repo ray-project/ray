@@ -95,8 +95,8 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
             self._try_build_ready_bundle(flush_remaining=True)
 
     def num_blocks(self):
-        return sum(len(bundle.blocks) for bundle in self._pending_bundles) + sum(
-            len(bundle.blocks) for bundle in self._ready_bundles
+        return sum(len(bundle) for bundle in self._pending_bundles) + sum(
+            len(bundle) for bundle in self._ready_bundles
         )
 
     def size_bytes(self) -> int:
