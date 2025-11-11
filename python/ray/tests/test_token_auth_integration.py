@@ -19,7 +19,7 @@ except ImportError:
     _RAYLET_AVAILABLE = False
     AuthenticationTokenLoader = None
 
-from ray.tests.authentication_test_utils import (
+from ray._private.authentication_test_utils import (
     clear_auth_token_sources,
     reset_auth_token_state,
     set_auth_mode,
