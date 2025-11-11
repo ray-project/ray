@@ -938,6 +938,21 @@ ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL = Panel(
     stack=False,
 )
 
+TIME_TO_FIRST_BATCH_PANEL = Panel(
+    id=78,
+    title="Time to First Batch",
+    description="Time spent waiting for the first batch after starting iteration",
+    unit="seconds",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_time_to_first_batch_seconds{{{global_filters}}}) by (dataset)",
+            legend="Time to First Batch: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
 # Ray Data Metrics (Miscellaneous)
 SCHEDULING_LOOP_DURATION_PANEL = Panel(
     id=47,
