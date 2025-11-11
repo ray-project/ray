@@ -116,6 +116,90 @@ def test_get_best_checkpoint():
     )
 
 
+def test_get_best_checkpoint_nested_metrics():
+    """Test that get_best_checkpoint works with nested metric dictionaries.
+
+    Rllib uses nested metric structure like {"env_runners": {"episode_return_mean": value}}
+    """
+    # Test with nested metric structure
+    res = Result(
+        metrics={},
+        checkpoint=None,
+        error=None,
+        path="/bucket/path",
+        best_checkpoints=[
+            (
+                Checkpoint("/bucket/path/ckpt0"),
+                {
+                    "iter": 0,
+                    "env_runners": {"episode_return_mean": 100.0, "num_episodes": 10},
+                },
+            ),
+            (
+                Checkpoint("/bucket/path/ckpt1"),
+                {
+                    "iter": 1,
+                    "env_runners": {"episode_return_mean": 200.0, "num_episodes": 10},
+                },
+            ),
+            (
+                Checkpoint("/bucket/path/ckpt2"),
+                {
+                    "iter": 2,
+                    "env_runners": {"episode_return_mean": 300.0, "num_episodes": 10},
+                },
+            ),
+            (
+                Checkpoint("/bucket/path/ckpt3"),
+                {
+                    "iter": 3,
+                    "env_runners": {"episode_return_mean": 400.0, "num_episodes": 10},
+                },
+            ),
+        ],
+    )
+
+    # Test max mode with nested metric
+    assert (
+        res.get_best_checkpoint(
+            metric="env_runners/episode_return_mean", mode="max"
+        ).path
+        == "/bucket/path/ckpt3"
+    )
+
+    # Test min mode with nested metric
+    assert (
+        res.get_best_checkpoint(
+            metric="env_runners/episode_return_mean", mode="min"
+        ).path
+        == "/bucket/path/ckpt0"
+    )
+
+    # Test that flat keys still work (backwards compatibility)
+    res_flat = Result(
+        metrics={},
+        checkpoint=None,
+        error=None,
+        path="/bucket/path",
+        best_checkpoints=[
+            (
+                Checkpoint("/bucket/path/ckpt0"),
+                {"iter": 0, "env_runners/episode_return_mean": 100.0},
+            ),
+            (
+                Checkpoint("/bucket/path/ckpt1"),
+                {"iter": 1, "env_runners/episode_return_mean": 200.0},
+            ),
+        ],
+    )
+    assert (
+        res_flat.get_best_checkpoint(
+            metric="env_runners/episode_return_mean", mode="max"
+        ).path
+        == "/bucket/path/ckpt1"
+    )
+
+
 @pytest.mark.parametrize("path_type", ["str", "PathLike"])
 @pytest.mark.parametrize("pass_storage_filesystem", [True, False])
 @pytest.mark.parametrize("trailing_slash", [False, True])
