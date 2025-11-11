@@ -379,21 +379,32 @@ def test_ray_timeline(shutdown_only):
 def test_state_init_multiple_threads(shutdown_only):
     ray.init()
     global_state = ray._private.state.state
-    global_state._check_connected()
+    global_state._connect_and_get_accessor()
     gcs_options = global_state.gcs_options
-    global_state.disconnect()
-    global_state._initialize_global_state(gcs_options)
+
+    def disconnect():
+        global_state.disconnect()
+        global_state._initialize_global_state(gcs_options)
+        return True
 
     def get_nodes_from_state_api():
-        return len(global_state.node_table()) == 1
+        try:
+            return len(global_state.node_table()) == 1
+        except ray.exceptions.RaySystemError:
+            # There's a gap between disconnect and _initialize_global_state
+            # and this will be raised if we try to connect during that gap
+            return True
 
+    disconnect()
     with ThreadPoolExecutor(max_workers=50) as executor:
         futures = [executor.submit(get_nodes_from_state_api) for _ in range(50)]
+        futures.extend([executor.submit(disconnect) for _ in range(50)])
+        futures.extend([executor.submit(get_nodes_from_state_api) for _ in range(50)])
         results = [future.result() for future in futures]
 
     # Assert that all calls returned True
     assert all(results)
-    assert len(results) == 50
+    assert len(results) == 150
 
 
 if __name__ == "__main__":
