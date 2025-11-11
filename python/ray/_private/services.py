@@ -1514,6 +1514,53 @@ def start_gcs_server(
     )
     return process_info
 
+def start_ds_worker(
+    ds_worker_port: Optional[int],
+    etcd_address: str,
+    stdout_filepath: Optional[str],
+    stderr_filepath: Optional[str],
+    fate_share: Optional[bool] = None,
+):
+    """Start ds worker, which is a distributed and heterogeneous object storage
+
+    Args:
+        ds_worker_port: The port of the ds worker.
+        etcd_address: The address of etcd.
+        stdout_filepath: The file path to dump dashboard stdout.
+            If None, stdout is not redirected.
+        stderr_filepath: The file path to dump dashboard stderr.
+            If None, stderr is not redirected.
+        fate_share: Whether to share fate between raylet and this process.
+
+    Returns:
+        ProcessInfo for the process that was started.
+    """
+    command = [
+        "dscli",
+        "start",
+        "-w",
+        "--worker_address",
+        f"127.0.0.1:{ds_worker_port}",
+        "--etcd_address",
+        f"{etcd_address}"
+    ]
+
+    stdout_file = None
+    if stdout_filepath:
+        stdout_file = open(os.devnull, "w")
+
+    stderr_file = None
+    if stderr_filepath:
+        stderr_file = open(os.devnull, "w")
+
+    process_info = start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_DS_WORKER,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
+        fate_share=fate_share,
+    )
+    return process_info
 
 def start_raylet(
     redis_address: str,

@@ -1157,6 +1157,26 @@ class Node:
         # when possible.
         self._gcs_address = build_address(self._node_ip_address, gcs_server_port)
 
+    def start_ds_worker(self):
+        """Start the ds worker."""
+        ds_worker_port = self._ray_params.ds_worker_port
+        etcd_address = self._ray_params.etcd_address
+
+        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
+            "ds_worker", unique=True, create_out=True, create_err=True
+        )
+        process_info = ray._private.services.start_ds_worker(
+            ds_worker_port = ds_worker_port,
+            etcd_address = etcd_address,
+            stdout_filepath=stdout_log_fname,
+            stderr_filepath=stderr_log_fname,
+            fate_share=self.kernel_fate_share,
+        )
+        assert ray_constants.PROCESS_TYPE_DS_WORKER not in self.all_processes
+        self.all_processes[ray_constants.PROCESS_TYPE_DS_WORKER] = [
+            process_info,
+        ]
+
     def start_raylet(
         self,
         plasma_directory: str,
@@ -1444,6 +1464,9 @@ class Node:
 
         self.start_raylet(plasma_directory, fallback_directory, object_store_memory)
 
+        if self._ray_params.enable_chariot_ds:
+            self.start_ds_worker()
+
     def _get_system_processes_for_resource_isolation(self) -> str:
         """Returns a list of system processes that will be isolated by raylet.
 
@@ -1590,6 +1613,17 @@ class Node:
         """
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_RAYLET, check_alive=check_alive
+        )
+
+    def kill_ds_worker(self, check_alive: bool = True):
+        """Kill the ds worker.
+
+        Args:
+            check_alive: Raise an exception if the process was already
+                dead.
+        """
+        self._kill_process_type(
+            ray_constants.PROCESS_TYPE_DS_WORKER, check_alive=check_alive
         )
 
     def kill_log_monitor(self, check_alive: bool = True):

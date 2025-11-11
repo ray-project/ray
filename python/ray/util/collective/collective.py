@@ -45,6 +45,13 @@ try:
 except ImportError:
     _NIXL_AVAILABLE = False
 
+try:
+    from ray.util.collective.collective_group.ds_backend import DSBackend
+
+    _DS_AVAILABLE = True
+except ImportError:
+    _DS_AVAILABLE = False
+
 
 def nccl_available():
     global _LOG_NCCL_WARNING
@@ -70,6 +77,10 @@ def torch_distributed_available():
 
 def nixl_available():
     return _NIXL_AVAILABLE
+
+
+def ds_available():
+    return _DS_AVAILABLE
 
 
 class GroupManager(object):
@@ -128,6 +139,10 @@ class GroupManager(object):
             _check_backend_availability(backend)
             logger.debug("Creating NIXL Backend: '{}'...".format(group_name))
             g = NixlBackend()
+        elif backend == types.Backend.DS:
+            _check_backend_availability(backend)
+            logger.debug("Creating DS Backend: '{}'...".format(group_name))
+            g = DSBackend()
         else:
             raise RuntimeError(f"Unexpected backend: {backend}")
 
@@ -744,7 +759,7 @@ def get_group_handle(group_name: str = "default"):
     Returns:
         The collective group handle.
     """
-    if group_name != types.NIXL_GROUP_NAME:
+    if group_name != types.NIXL_GROUP_NAME and group_name != types.DS_GROUP_NAME:
         _check_inside_actor()
     global _group_mgr
     if not is_group_initialized(group_name):
@@ -753,6 +768,10 @@ def get_group_handle(group_name: str = "default"):
             if group_name == types.NIXL_GROUP_NAME:
                 _group_mgr.create_collective_group(
                     types.Backend.NIXL, None, None, group_name, None
+                )
+            elif group_name == types.DS_GROUP_NAME:
+                _group_mgr.create_collective_group(
+                    types.Backend.DS, None, None, group_name, None
                 )
             else:
                 # if the information is stored in an Info object,
@@ -821,6 +840,9 @@ def _check_backend_availability(backend: types.Backend):
     elif backend == types.Backend.NIXL:
         if not nixl_available():
             raise RuntimeError("NIXL is not available.")
+    elif backend == types.Backend.DS:
+        if not ds_available():
+            raise RuntimeError("DS is not available.")
 
 
 def _check_inside_actor():

@@ -179,6 +179,9 @@ class RayParams:
         cluster_id: Optional[str] = None,
         node_id: Optional[str] = None,
         resource_isolation_config: Optional[ResourceIsolationConfig] = None,
+        enable_chariot_ds: Optional[bool] = False,
+        ds_worker_port: Optional[str] = ray_constants.DEFAULT_DS_WORKER_PORT,
+        etcd_address: Optional[str] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -237,6 +240,9 @@ class RayParams:
         self._check_usage()
         self.cluster_id = cluster_id
         self.node_id = node_id
+        self.enable_chariot_ds = enable_chariot_ds
+        self.ds_worker_port = ds_worker_port
+        self.etcd_address = etcd_address
 
         self.resource_isolation_config = resource_isolation_config
         if not self.resource_isolation_config:

@@ -841,6 +841,7 @@ class Worker:
         if tensor_transport not in [
             TensorTransportEnum.OBJECT_STORE,
             TensorTransportEnum.NIXL,
+            TensorTransportEnum.DS,
         ]:
             raise ValueError(
                 "Currently, Ray Direct Transport only supports 'object_store' and 'nixl' for tensor transport in ray.put()."
@@ -991,6 +992,7 @@ class Worker:
         assert tensor_transport in [
             TensorTransportEnum.OBJECT_STORE,
             TensorTransportEnum.NIXL,
+            TensorTransportEnum.DS,
             None,
         ], "Currently, RDT only supports 'object_store' and 'nixl' for tensor transport in ray.get()."
         timeout_ms = (

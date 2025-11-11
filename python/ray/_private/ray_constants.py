@@ -172,6 +172,7 @@ DASHBOARD_ADDRESS = "dashboard"
 DASHBOARD_CLIENT_MAX_SIZE = 100 * 1024**2
 PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
 DEFAULT_DASHBOARD_AGENT_LISTEN_PORT = 52365
+DEFAULT_DS_WORKER_PORT = 31501
 # Default resource requirements for actors when no resource requirements are
 # specified.
 DEFAULT_ACTOR_METHOD_CPU_SIMPLE = 1
@@ -278,6 +279,7 @@ PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_GCS_SERVER = "gcs_server"
 PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER = "python-core-driver"
 PROCESS_TYPE_PYTHON_CORE_WORKER = "python-core-worker"
+PROCESS_TYPE_DS_WORKER = "ds-worker"
 
 # Log file names
 MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_MONITOR}.log"

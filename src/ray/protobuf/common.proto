@@ -738,6 +738,8 @@ enum TensorTransport {
   GLOO = 2;
   // Use NIXL for tensor transport.
   NIXL = 3;
+  // Use DS for tensor transport.
+  DS = 4;
 }
 
 // Argument in the task.
