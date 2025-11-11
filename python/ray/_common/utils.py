@@ -254,7 +254,14 @@ def resolve_user_ray_temp_dir(gcs_address: str, node_id: str):
                 node_info = node_info
                 break
         if node_info is not None:
-            return node_info.temp_dir
+            temp_dir = getattr(node_info, "temp_dir", None)
+            if temp_dir is not None:
+                return temp_dir
+            else:
+                logger.warning(
+                    "Node temp_dir not found in NodeInfo. "
+                    "Using Ray's default temp dir."
+                )
 
     # fallback to default ray temp dir
     tmp_dir = None

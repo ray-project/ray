@@ -501,16 +501,14 @@ class Node:
                     )
                     self._temp_dir = ray._private.utils.get_default_ray_temp_dir()
                 else:
-                    self._temp_dir = (
-                        getattr(node_info, "temp_dir", None)
-                        or ray._private.utils.get_default_ray_temp_dir()
-                    )
+                    self._temp_dir = getattr(node_info, "temp_dir", None)
                     if not self._temp_dir:
                         logger.warning(
                             "Head node temp_dir not found in NodeInfo. "
                             "Using Ray's default temp dir."
                         )
                         self._temp_dir = ray._private.utils.get_default_ray_temp_dir()
+
         logger.debug(f"Setting temp dir to: {self._temp_dir}")
 
         try_to_create_directory(self._temp_dir)
