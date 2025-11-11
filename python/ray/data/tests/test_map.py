@@ -282,8 +282,10 @@ def test_gpu_workers_not_reused(
     "concurrency",
     [
         "spam",
-        (1, 2),  # Two-tuples are valid for callable classes but not for functions.
+        # Two and three-tuples are valid for callable classes but not for functions.
+        (1, 2),
         (1, 2, 3),
+        (1, 2, 3, 4),
     ],
 )
 def test_invalid_func_concurrency_raises(ray_start_regular_shared, concurrency):
@@ -292,7 +294,7 @@ def test_invalid_func_concurrency_raises(ray_start_regular_shared, concurrency):
         ds.map(lambda x: x, concurrency=concurrency)
 
 
-@pytest.mark.parametrize("concurrency", ["spam", (1, 2, 3)])
+@pytest.mark.parametrize("concurrency", ["spam", (1, 2, 3, 4)])
 def test_invalid_class_concurrency_raises(ray_start_regular_shared, concurrency):
     class Fn:
         def __call__(self, row):
