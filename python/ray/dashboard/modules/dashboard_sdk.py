@@ -347,6 +347,7 @@ class SubmissionClient:
         self,
         package_uri: str,
         package_path: str,
+        include_gitignore: bool,
         include_parent_dir: Optional[bool] = False,
         excludes: Optional[List[str]] = None,
         is_file: bool = False,
@@ -361,6 +362,7 @@ class SubmissionClient:
                 create_package(
                     package_path,
                     package_file,
+                    include_gitignore=include_gitignore,
                     include_parent_dir=include_parent_dir,
                     excludes=excludes,
                 )
@@ -396,6 +398,7 @@ class SubmissionClient:
             self._upload_package(
                 package_uri,
                 package_path,
+                include_gitignore=include_gitignore,
                 include_parent_dir=include_parent_dir,
                 excludes=excludes,
                 is_file=is_file,
