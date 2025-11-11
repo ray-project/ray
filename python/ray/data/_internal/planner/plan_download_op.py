@@ -191,7 +191,7 @@ def download_bytes_threaded(
             for uri_path in uri_path_iterator:
                 try:
                     with fs.open_input_file(uri_path) as f:
-                        yield f.read()
+                        yield f.read_all()
                 except OSError as e:
                     logger.debug(
                         f"Failed to download URI '{uri_path}' from column '{uri_column_name}' with error: {e}"
