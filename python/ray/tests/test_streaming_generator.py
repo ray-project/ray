@@ -101,6 +101,7 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
                 pass
 
             del generator
+            gc.collect()
             c.async_delete_object_ref_stream.assert_called()
 
 
