@@ -464,10 +464,11 @@ class TestApproximateTopK:
         """Test that aggregator correctly encodes list values."""
         data = [{"id": ["a", "b", "c"]}, {"id": ["a", "a", "a", "b"]}]
         ds = ray.data.from_items(data)
-        result = ds.aggregate(Unique(on="id", encode_lists=True))
+        result = ds.aggregate(ApproximateTopK(on="id", k=2, encode_lists=True))
 
         # Should encode list items, so "a" should be most frequent
-        assert sorted(result["unique(id)"])[0] == "a"
+        assert result["approx_topk(id)"][0] == {"id": "a", "count": 4}
+        assert result["approx_topk(id)"][1] == {"id": "b", "count": 2}
 
 
 class TestUnique:
