@@ -165,11 +165,6 @@ std::string AuthenticationTokenLoader::ReadTokenFromFile(const std::string &file
   return token;
 }
 
-bool FileExists(const std::string &path) {
-  struct stat buffer;
-  return (stat(path.c_str(), &buffer) == 0);
-}
-
 AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
   // Precedence 1: RAY_AUTH_TOKEN environment variable
   const char *env_token = std::getenv("RAY_AUTH_TOKEN");
@@ -200,15 +195,13 @@ AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
   if (GetAuthenticationMode() == AuthenticationMode::K8S) {
     std::string k8s_service_account_token_path =
         "/var/run/secrets/kubernetes.io/serviceaccount/token";
-    if (FileExists(k8s_service_account_token_path)) {
-      std::string token_str =
-          TrimWhitespace(ReadTokenFromFile(k8s_service_account_token_path));
-      if (!token_str.empty()) {
-        RAY_LOG(DEBUG)
-            << "Loaded authentication token from Kubernetes service account path: "
-            << k8s_service_account_token_path;
-        return AuthenticationToken(token_str);
-      }
+    std::string token_str =
+        TrimWhitespace(ReadTokenFromFile(k8s_service_account_token_path));
+    if (!token_str.empty()) {
+      RAY_LOG(DEBUG)
+          << "Loaded authentication token from Kubernetes service account path: "
+          << k8s_service_account_token_path;
+      return AuthenticationToken(token_str);
     }
     RAY_LOG(DEBUG) << "Kubernetes service account token not found or empty at: "
                    << k8s_service_account_token_path;
