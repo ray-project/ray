@@ -67,6 +67,7 @@ class RpcFailureManager {
     failable_methods_.clear();
     num_req_failures_.clear();
     num_resp_failures_.clear();
+    num_in_flight_failures_.clear();
     wildcard_set_ = false;
     has_failures_ = false;
 

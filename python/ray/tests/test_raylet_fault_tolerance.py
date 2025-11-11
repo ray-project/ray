@@ -61,7 +61,7 @@ def test_drain_node_idempotent(monkeypatch, shutdown_only, ray_start_cluster):
     # NOTE: not testing response failure since the node is already marked as draining and shuts down gracefully.
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "NodeManagerService.grpc_client.DrainRaylet=1:100:0",
+        "NodeManagerService.grpc_client.DrainRaylet=1:100:0:0",
     )
 
     cluster = ray_start_cluster
@@ -102,7 +102,7 @@ def inject_release_unused_bundles_rpc_failure(monkeypatch, request):
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
         f"NodeManagerService.grpc_client.ReleaseUnusedBundles=1:{failure}"
-        + ",NodeManagerService.grpc_client.CancelResourceReserve=-1:100:0",
+        + ",NodeManagerService.grpc_client.CancelResourceReserve=-1:100:0:0",
     )
 
 
