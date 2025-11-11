@@ -153,13 +153,13 @@ export const AdvancedProgressBarSegment = ({
               link.type === "actor" ? (
                 <Box
                   component="button"
-                  sx={{
+                  sx={(theme) => ({
                     border: "none",
                     cursor: "pointer",
                     color: theme.palette.primary.main,
                     textDecoration: "underline",
                     background: "none",
-                  }}
+                  })}
                   onClick={(event) => {
                     onClickLink?.(link);
                     event.stopPropagation();
@@ -170,13 +170,13 @@ export const AdvancedProgressBarSegment = ({
               ) : (
                 <Link
                   component={RouterLink}
-                  sx={{
+                  sx={(theme) => ({
                     border: "none",
                     cursor: "pointer",
                     color: theme.palette.primary.main,
                     textDecoration: "underline",
                     background: "none",
-                  }}
+                  })}
                   to={`tasks/${link.id}`}
                 >
                   {name}
@@ -187,14 +187,14 @@ export const AdvancedProgressBarSegment = ({
             )}
             {isGroup && (
               <React.Fragment>
-                <Box component="span" sx={(theme) => ({ width: 4 }} />
+                <Box component="span" sx={{ width: 4 }} />
                 {"("}
                 <RiCloseLine /> {children.length}
                 {")"}
               </React.Fragment>
             )}
           </TableCell>
-          <TableCell sx={(theme) => ({ width: "100%", paddingRight: 0 })}
+          <TableCell sx={{ width: "100%", paddingRight: 0 }}>
             <MiniTaskProgressBar {...progress} showTotal />
           </TableCell>
         </TableRow>
