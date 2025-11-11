@@ -2,10 +2,7 @@
 Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink API.
 """
 import logging
-import uuid
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
-
-from packaging import version
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.savemode import SaveMode
@@ -16,10 +13,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow as pa
     from pyiceberg.catalog import Catalog
-    from pyiceberg.io import FileIO
-    from pyiceberg.manifest import DataFile
-    from pyiceberg.table import Table, Transaction
-    from pyiceberg.table.metadata import TableMetadata
+    from pyiceberg.table import Table
 
     from ray.data.expressions import Expr
 
@@ -28,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class IcebergDatasink(Datasink[Union[List["DataFile"], List["pa.Table"]]]):
+class IcebergDatasink(Datasink[List["pa.Table"]]):
     """
     Iceberg datasink to write a Ray Dataset into an existing Iceberg table. This module
     heavily uses PyIceberg to write to iceberg table. All the routines in this class override
@@ -88,41 +82,23 @@ class IcebergDatasink(Datasink[Union[List["DataFile"], List["pa.Table"]]]):
         else:
             self._catalog_name = "default"
 
-        self._uuid: str = None
-        self._io: FileIO = None
-        self._txn: Transaction = None
         self._table: "Table" = None
-        self._table_metadata: TableMetadata = None
 
-    # Since iceberg transaction is not pickle-able, because of the table and catalog properties
-    # we need to exclude the transaction object during serialization and deserialization during pickle
+    # Since iceberg table is not pickle-able, we need to exclude it during serialization
     def __getstate__(self) -> dict:
-        """Exclude `_txn` and `_table` during pickling."""
+        """Exclude `_table` during pickling."""
         state = self.__dict__.copy()
-        state.pop("_txn", None)
         state.pop("_table", None)
-        state.pop("_table_metadata", None)
         return state
 
     def __setstate__(self, state: dict) -> None:
         self.__dict__.update(state)
-        self._txn = None
         self._table = None
-        self._table_metadata = None
 
     def _get_catalog(self) -> "Catalog":
         from pyiceberg import catalog
 
         return catalog.load_catalog(self._catalog_name, **self._catalog_kwargs)
-
-    def _ensure_table_loaded_for_append(self) -> None:
-        """Ensure table metadata and IO are loaded for APPEND mode (handles unpickling)."""
-        if self._table_metadata is None or self._io is None:
-            catalog = self._get_catalog()
-            table = catalog.load_table(self.table_identifier)
-            self._txn = table.transaction()
-            self._io = self._txn._table.io
-            self._table_metadata = self._txn.table_metadata
 
     def _pyarrow_type_to_iceberg(self, pa_type: "pa.DataType"):
         """Convert a PyArrow type to an Iceberg type using PyIceberg's native visitor."""
@@ -172,96 +148,13 @@ class IcebergDatasink(Datasink[Union[List["DataFile"], List["pa.Table"]]]):
             catalog = self._get_catalog()
             self._table = catalog.load_table(self.table_identifier)
 
-    def _validate_partitions_for_append(self) -> None:
-        """Validate that all partitions support PyArrow transforms for APPEND mode."""
-        unsupported_partitions = [
-            field
-            for field in self._table_metadata.spec().fields
-            if not getattr(field.transform, "supports_pyarrow_transform", True)
-        ]
-
-        if unsupported_partitions:
-            raise ValueError(
-                f"Not all partition types are supported for writes. "
-                f"Following partitions cannot be written using pyarrow: {unsupported_partitions}"
-            )
-
-    def _setup_manifest_merge(self) -> None:
-        """Configure manifest merge settings for APPEND mode."""
-        import pyiceberg
-        from pyiceberg.table import TableProperties
-
-        if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
-            from pyiceberg.utils.properties import property_as_bool
-        else:
-            from pyiceberg.table import PropertyUtil
-
-            property_as_bool = PropertyUtil.property_as_bool
-
-        self._manifest_merge_enabled = property_as_bool(
-            self._table_metadata.properties,
-            TableProperties.MANIFEST_MERGE_ENABLED,
-            TableProperties.MANIFEST_MERGE_ENABLED_DEFAULT,
-        )
-
     def on_write_start(self) -> None:
-        """Initialize table and transaction for writing."""
+        """Initialize table for writing."""
         catalog = self._get_catalog()
-        table = catalog.load_table(self.table_identifier)
+        self._table = catalog.load_table(self.table_identifier)
 
-        if self._mode == SaveMode.APPEND:
-            # Use transaction-based API for optimal concurrency
-            self._txn = table.transaction()
-            self._io = self._txn._table.io
-            self._table_metadata = self._txn.table_metadata
-            self._table = table
-            self._validate_partitions_for_append()
-            self._setup_manifest_merge()
-        else:
-            # Use high-level APIs for UPSERT/OVERWRITE
-            self._table = table
-            self._table_metadata = table.metadata
-
-        self._uuid = uuid.uuid4()
-
-    def _write_append_mode(self, blocks: Iterable[Block]) -> List["DataFile"]:
-        """Write blocks using transaction-based API for APPEND mode."""
-        from pyiceberg.io.pyarrow import (
-            _check_pyarrow_schema_compatible,
-            _dataframe_to_data_files,
-        )
-        from pyiceberg.table import DOWNCAST_NS_TIMESTAMP_TO_US_ON_WRITE
-        from pyiceberg.utils.config import Config
-
-        self._ensure_table_loaded_for_append()
-
-        data_files_list = []
-        downcast_ns_timestamp_to_us = (
-            Config().get_bool(DOWNCAST_NS_TIMESTAMP_TO_US_ON_WRITE) or False
-        )
-
-        for block in blocks:
-            pa_table = BlockAccessor.for_block(block).to_arrow()
-
-            if pa_table.num_rows <= 0:
-                continue
-
-            _check_pyarrow_schema_compatible(
-                self._table_metadata.schema(),
-                provided_schema=pa_table.schema,
-                downcast_ns_timestamp_to_us=downcast_ns_timestamp_to_us,
-            )
-
-            task_uuid = uuid.uuid4()
-            data_files = _dataframe_to_data_files(
-                self._table_metadata, pa_table, self._io, task_uuid
-            )
-            data_files_list.extend(data_files)
-
-        return data_files_list
-
-    def _write_upsert_overwrite_mode(self, blocks: Iterable[Block]) -> List["pa.Table"]:
-        """Collect PyArrow tables for UPSERT/OVERWRITE modes."""
+    def _collect_tables_from_blocks(self, blocks: Iterable[Block]) -> List["pa.Table"]:
+        """Collect PyArrow tables from blocks."""
         collected_tables = []
 
         for block in blocks:
@@ -272,16 +165,12 @@ class IcebergDatasink(Datasink[Union[List["DataFile"], List["pa.Table"]]]):
 
         return collected_tables
 
-    def write(
-        self, blocks: Iterable[Block], ctx: TaskContext
-    ) -> Union[List["DataFile"], List["pa.Table"]]:
-        """Write blocks to data files based on the configured mode."""
-        if self._mode == SaveMode.APPEND:
-            return self._write_append_mode(blocks)
-        return self._write_upsert_overwrite_mode(blocks)
+    def write(self, blocks: Iterable[Block], ctx: TaskContext) -> List["pa.Table"]:
+        """Collect blocks as PyArrow tables for all write modes."""
+        return self._collect_tables_from_blocks(blocks)
 
     def _collect_and_concat_tables(
-        self, write_result: WriteResult[Union[List["DataFile"], List["pa.Table"]]]
+        self, write_result: WriteResult[List["pa.Table"]]
     ) -> Optional["pa.Table"]:
         """Collect and concatenate all PyArrow tables from write results."""
         import pyarrow as pa
@@ -296,26 +185,15 @@ class IcebergDatasink(Datasink[Union[List["DataFile"], List["pa.Table"]]]):
 
         return pa.concat_tables(all_tables)
 
-    def _complete_append(
-        self, write_result: WriteResult[Union[List["DataFile"], List["pa.Table"]]]
-    ) -> None:
-        """Complete APPEND mode write using transaction commit."""
-        update_snapshot = self._txn.update_snapshot(
-            snapshot_properties=self._snapshot_properties
+    def _complete_append(self, combined_table: "pa.Table") -> None:
+        """Complete APPEND mode write using PyIceberg's append API."""
+        self._table.append(
+            df=combined_table,
+            snapshot_properties=self._snapshot_properties,
         )
-        append_method = (
-            update_snapshot.merge_append
-            if self._manifest_merge_enabled
-            else update_snapshot.fast_append
+        logger.info(
+            f"Appended {combined_table.num_rows} rows to {self.table_identifier}"
         )
-
-        with append_method() as append_files:
-            append_files.commit_uuid = self._uuid
-            for data_files in write_result.write_returns:
-                for data_file in data_files:
-                    append_files.append_data_file(data_file)
-
-        self._txn.commit_transaction()
 
     def _complete_upsert(self, combined_table: "pa.Table") -> None:
         """Complete UPSERT mode write using PyIceberg's upsert API."""
@@ -372,22 +250,20 @@ class IcebergDatasink(Datasink[Union[List["DataFile"], List["pa.Table"]]]):
                 f"with {combined_table.num_rows} rows"
             )
 
-    def on_write_complete(
-        self, write_result: WriteResult[Union[List["DataFile"], List["pa.Table"]]]
-    ) -> None:
+    def on_write_complete(self, write_result: WriteResult[List["pa.Table"]]) -> None:
         """Complete the write operation based on the configured mode."""
-        if self._mode == SaveMode.APPEND:
-            self._complete_append(write_result)
-            return
-
-        # For UPSERT/OVERWRITE: collect tables and apply schema evolution
+        # Collect and concatenate all PyArrow tables
         combined_table = self._collect_and_concat_tables(write_result)
         if combined_table is None:
             return
 
+        # Apply schema evolution for all modes (PyIceberg doesn't handle this automatically)
         self._update_schema(combined_table.schema)
 
-        if self._mode == SaveMode.UPSERT:
+        # Execute the appropriate write operation
+        if self._mode == SaveMode.APPEND:
+            self._complete_append(combined_table)
+        elif self._mode == SaveMode.UPSERT:
             self._complete_upsert(combined_table)
         elif self._mode == SaveMode.OVERWRITE:
             self._complete_overwrite(combined_table)
