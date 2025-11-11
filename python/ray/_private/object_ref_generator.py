@@ -39,9 +39,19 @@ class ObjectRefGenerator:
     Do not initialize the class and create an instance directly.
     The instance should be created by `.remote`.
 
-    >>> gen = generator_task.remote()
-    >>> next(gen)
-    >>> await gen.__anext__()
+    .. testcode::
+
+		import ray
+		from typing import Generator
+
+		@ray.remote(num_returns="streaming")
+		def gen() -> Generator[int, None, None]:
+			for i in range(5):
+				yield i
+
+		obj_ref_gen: ray.ObjectRefGenerator = gen.remote()
+		for obj_ref in obj_ref_gen:
+			print("Got:", ray.get(obj_ref))
     """
 
     def __init__(self, generator_ref: "ray.ObjectRef", worker: "Worker"):
