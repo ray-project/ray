@@ -16,7 +16,7 @@ from typing import (
 
 import numpy as np
 
-from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import RetryingPyFileSystem
 from ray.data.block import BlockMetadata

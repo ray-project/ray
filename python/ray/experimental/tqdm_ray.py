@@ -127,6 +127,14 @@ class tqdm:
     def total(self, total: int):
         self._total = total
 
+    @property
+    def n(self) -> int:
+        return self._x
+
+    @n.setter
+    def n(self, n: int):
+        self._x = n
+
     def _dump_state(self, force_flush=False) -> None:
         now = time.time()
         if not force_flush and now - self._last_flush_time < self._flush_interval_s:
