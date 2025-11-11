@@ -48,7 +48,7 @@ class IcebergDatasink(Datasink[List["pa.Table"]]):
             catalog_kwargs: Optional arguments to use when setting up the Iceberg
                 catalog
             snapshot_properties: Custom properties to write to snapshot when committing
-                to an iceberg table, such as {"commit_time": "2021-01-01T00:00:00Z"}
+                to an iceberg table, e.g. ``{"commit_time": "2021-01-01T00:00:00Z"}``
             mode: Write mode - APPEND, UPSERT, or OVERWRITE. Defaults to APPEND.
                 - APPEND: Add new data without checking for duplicates
                 - UPSERT: Update existing rows or insert new ones based on a join condition
