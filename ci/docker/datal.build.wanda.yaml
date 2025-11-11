@@ -1,4 +1,4 @@
-name: "databuild-py$PYTHON"
+name: "datalbuild-py$PYTHON"
 froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON"]
 dockerfile: ci/docker/data.build.Dockerfile
 srcs:
@@ -10,6 +10,7 @@ srcs:
   - python/requirements/ml/data-requirements.txt
   - python/requirements/ml/data-test-requirements.txt
 build_args:
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
   - ARROW_VERSION=21.*
 tags:
   - cr.ray.io/rayproject/databuild-py$PYTHON
