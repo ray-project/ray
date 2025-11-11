@@ -136,46 +136,6 @@ class _CallableClassUDFCollector(_ExprVisitorBase):
         super().visit_udf(expr)
 
 
-class _CallableClassUDFCollector(_ExprVisitorBase):
-    """Visitor that collects all callable class UDFs from expression trees.
-
-    This visitor traverses expression trees and accumulates UDFExpr nodes
-    that use callable classes (as opposed to regular functions).
-    """
-
-    def __init__(self):
-        """Initialize with an empty list of callable class UDFs."""
-        self._callable_class_udfs: List[UDFExpr] = []
-
-    def get_callable_class_udfs(self) -> List[UDFExpr]:
-        """Get the list of collected callable class UDFs.
-
-        Returns:
-            List of UDFExpr nodes that use callable classes.
-        """
-        return self._callable_class_udfs
-
-    def visit_column(self, expr: ColumnExpr) -> None:
-        """Visit a column expression (no UDFs to collect)."""
-        pass
-
-    def visit_udf(self, expr: UDFExpr) -> None:
-        """Visit a UDF expression and collect it if it's a callable class.
-
-        Args:
-            expr: The UDF expression.
-
-        Returns:
-            None (only collects UDFs as a side effect).
-        """
-        # Check if this UDF uses a callable class (indicated by fn_constructor_class being set)
-        if expr.fn_constructor_class is not None:
-            self._callable_class_udfs.append(expr)
-
-        # Continue visiting child expressions
-        super().visit_udf(expr)
-
-
 class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
     """Visitor rebinding column references in ``Expression``s.
 

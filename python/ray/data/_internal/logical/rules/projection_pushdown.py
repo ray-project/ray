@@ -259,6 +259,7 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
     return Project(
         upstream_project.input_dependency,
         exprs=new_exprs,
+        compute=fused_compute,
         ray_remote_args=downstream_project._ray_remote_args,
     )
 
