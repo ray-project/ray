@@ -149,8 +149,16 @@ export const GlobalContext = React.createContext<GlobalContextType>({
 const App = () => {
   const [currentTimeZone, setCurrentTimeZone] = useState<string>();
   const [themeMode, setThemeMode] = useState<"light" | "dark">(() => {
+    // Check localStorage first
     const stored = localStorage.getItem("themeMode");
-    return stored === "dark" ? "dark" : "light";
+    if (stored === "dark" || stored === "light") {
+      return stored;
+    }
+    // Fall back to system preference
+    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      return "dark";
+    }
+    return "light";
   });
   const [context, setContext] = useState<
     Omit<GlobalContextType, "currentTimeZone" | "themeMode" | "toggleTheme">
@@ -176,6 +184,29 @@ const App = () => {
       return newMode;
     });
   };
+
+  // Listen for system theme changes
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = (e: MediaQueryListEvent) => {
+      // Only update if user hasn't explicitly set a preference
+      const stored = localStorage.getItem("themeMode");
+      if (!stored) {
+        setThemeMode(e.matches ? "dark" : "light");
+      }
+    };
+
+    // Modern browsers
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    }
+    // Older browsers
+    else if (mediaQuery.addListener) {
+      mediaQuery.addListener(handleChange);
+      return () => mediaQuery.removeListener(handleChange);
+    }
+  }, []);
 
   // Authentication state
   const [authenticationDialogOpen, setAuthenticationDialogOpen] =

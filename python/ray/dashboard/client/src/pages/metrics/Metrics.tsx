@@ -89,6 +89,7 @@ export const Metrics = () => {
     dashboardDatasource,
     sessionName,
     currentTimeZone,
+    themeMode,
   } = useContext(GlobalContext);
 
   const grafanaDefaultDashboardUid =
@@ -114,7 +115,7 @@ export const Metrics = () => {
 
         const params = new URLSearchParams();
         params.set("orgId", grafanaOrgIdParam);
-        params.set("theme", "light");
+        params.set("theme", themeMode);
 
         if (kiosk) {
           params.set("kiosk", "1");
@@ -144,6 +145,7 @@ export const Metrics = () => {
       grafanaDataDashboardUid,
       grafanaDefaultDashboardUid,
       grafanaOrgIdParam,
+      themeMode,
       currentTimeZone,
       sessionName,
       grafanaDefaultDatasource,
