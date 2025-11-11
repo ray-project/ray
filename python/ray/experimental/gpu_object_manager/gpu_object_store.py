@@ -304,7 +304,9 @@ class GPUObjectStore:
             self._managed_meta_counts_nixl[meta] -= 1
             if self._managed_meta_counts_nixl[meta] == 0:
                 self._managed_meta_counts_nixl.pop(meta)
-            return self._managed_meta_counts_nixl[meta]
+                return 0
+            else:
+                return self._managed_meta_counts_nixl[meta]
 
     def wait_and_pop_object(
         self, obj_id: str, timeout: Optional[float] = None
