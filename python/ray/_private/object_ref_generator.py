@@ -114,8 +114,6 @@ class ObjectRefGenerator:
         the `ray.get(gen.completed())` raises an exception.
 
         The function returns immediately.
-
-        >>> ray.get(gen.completed())
         """
         return self._generator_ref
 
