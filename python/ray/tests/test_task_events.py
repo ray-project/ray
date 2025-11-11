@@ -7,7 +7,7 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition, SignalActor
 from ray._private.state_api_test_utils import (
     verify_failed_task,
 )
@@ -171,29 +171,20 @@ def test_failed_task_failed_due_to_node_failure(ray_start_cluster):
     ray.init(address=cluster.address)
     node = cluster.add_node(num_cpus=2)
 
-    driver_script = """
-import ray
-ray.init("auto")
+    signal = SignalActor.remote()
 
-@ray.remote(num_cpus=2, max_retries=0)
-def sleep():
-    import time
-    time.sleep(999)
+    @ray.remote(num_cpus=2, max_retries=0)
+    def sleep():
+        ray.get(signal.send.remote())
+        while True:
+            time.sleep(1)
 
-x = sleep.options(name="node-killed").remote()
-ray.get(x)
-    """
+    obj_ref = sleep.options(name="node-killed").remote()
+    ray.get(signal.wait.remote())
 
-    run_string_as_driver_nonblocking(driver_script)
-
-    def driver_running():
-        t = list_tasks(filters=[("name", "=", "node-killed")])
-        return len(t) > 0
-
-    wait_for_condition(driver_running)
-
-    # Kill the node
     cluster.remove_node(node)
+    with pytest.raises(ray.exceptions.NodeDiedError):
+        ray.get(obj_ref)
 
     wait_for_condition(
         verify_failed_task,
