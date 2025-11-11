@@ -671,6 +671,21 @@
       env: aws
       cluster:
         cluster_compute: cross_az_250_350_compute_aws.yaml
+    - __suffix__: gce_network_chaos
+      run:
+        script: >
+          python ../simulate_cross_az_network_failure.py --network-failure-interval 210 --command python map_benchmark.py
+          --api map_batches --batch-format numpy --compute actors --sf 1000
+          --repeat-inputs 1 --concurrency 1024 2048
+    - __suffix__: aws_network_chaos
+      env: aws
+      cluster:
+        cluster_compute: cross_az_250_350_compute_aws.yaml
+      run:
+        script: >
+          python ../simulate_cross_az_network_failure.py --network-failure-interval 210 --command python map_benchmark.py
+          --api map_batches --batch-format numpy --compute actors --sf 1000
+          --repeat-inputs 1 --concurrency 1024 2048
  # TODO(#58246): Enable these variations once RAY_testing_rpc_failure is supported.
  #   - __suffix__: gce_failure_injection
  #     cluster:
