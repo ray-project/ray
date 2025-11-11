@@ -339,18 +339,17 @@ def get_excludes_from_ignore_files(
 
     to_ignore: List[Optional[Callable]] = []
     if include_gitignore:
-        # Default behavior: use both .gitignore and .rayignore
-        # .gitignore is parsed, and .rayignore inherits from it
         g = _get_ignore_file(path, ignore_file=".gitignore")
-        to_ignore.append(g)
-        ignore_files.append(path / ".gitignore")
+        if g is not None:
+            to_ignore.append(g)
+            ignore_files.append(path / ".gitignore")
 
     r = _get_ignore_file(path, ignore_file=".rayignore")
-    to_ignore.append(r)
-    ignore_files.append(path / ".rayignore")
+    if r is not None:
+        to_ignore.append(r)
+        ignore_files.append(path / ".rayignore")
 
-    logger.info(f"Ignoring files from {ignore_files}")
-    return [ignore for ignore in to_ignore if ignore is not None]
+    return to_ignore
 
 
 def pin_runtime_env_uri(uri: str, *, expiration_s: Optional[int] = None) -> None:
