@@ -24,6 +24,7 @@
 #include <fstream>
 #include <string>
 
+#include "ray/rpc/authentication/k8s_constants.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -53,38 +54,32 @@ std::string ReadFile(const std::string &path) {
 bool k8s_client_initialized = false;
 std::once_flag k8s_client_config_flag;
 
-static const char *k8s_ca_cert_path =
-    "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt";
-static const char *k8s_sa_token_path =
-    "/var/run/secrets/kubernetes.io/serviceaccount/token";
-
 static const char *k8s_host = nullptr;
 static const char *k8s_port = nullptr;
 
 void InitK8sClientConfig() {
-  k8s_host = std::getenv("KUBERNETES_SERVICE_HOST");
-  k8s_port = std::getenv("KUBERNETES_SERVICE_PORT");
+  k8s_host = std::getenv(kK8sServiceHostEnvVar);
+  k8s_port = std::getenv(kK8sServicePortEnvVar);
   if (k8s_host == nullptr || k8s_port == nullptr) {
     RAY_LOG(WARNING)
-        << "KUBERNETES_SERVICE_HOST or KUBERNETES_SERVICE_PORT not set. "
+        << kK8sServiceHostEnvVar << " or " << kK8sServicePortEnvVar << " not set. "
         << "Cannot initialize Kubernetes client for k8s authentication mode.";
     k8s_host = nullptr;
     return;
   }
 
-  std::string k8s_sa_token = ReadFile(k8s_sa_token_path);
-
+  std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
   if (k8s_sa_token.empty()) {
     RAY_LOG(WARNING) << "Failed to read Kubernetes service account token from "
-                     << k8s_sa_token_path;
+                     << kK8sSaTokenPath;
     k8s_host = nullptr;  // Invalidate config
     return;
   }
 
-  std::ifstream ca_cert_file(k8s_ca_cert_path);
+  std::ifstream ca_cert_file(kK8sCaCertPath);
   if (!ca_cert_file.is_open()) {
     RAY_LOG(WARNING) << "Failed to open Kubernetes CA certificate from "
-                     << k8s_ca_cert_path;
+                     << kK8sCaCertPath;
     k8s_host = nullptr;  // Invalidate config
     return;
   }
@@ -95,13 +90,13 @@ void InitK8sClientConfig() {
 bool K8sApiPost(const std::string &path,
                 const nlohmann::json &body,
                 nlohmann::json &response_json) {
-  static std::string k8s_sa_token = ReadFile(k8s_sa_token_path);
+  static std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
 
   try {
     net::io_context ioc;
     ssl::context ctx(ssl::context::tlsv12_client);
 
-    ctx.load_verify_file(k8s_ca_cert_path);
+    ctx.load_verify_file(kK8sCaCertPath);
     ctx.set_verify_mode(ssl::verify_peer);
 
     tcp::resolver resolver(ioc);
@@ -160,14 +155,13 @@ bool K8sApiPost(const std::string &path,
 bool ValidateToken(const AuthenticationToken &token) {
   std::string token_str = token.ToRawValue();
 
-  nlohmann::json token_review_req = {{"apiVersion", "authentication.k8s.io/v1"},
-                                     {"kind", "TokenReview"},
+  nlohmann::json token_review_req = {{"apiVersion", kAuthenticationAPIVersion},
+                                     {"kind", kTokenReviewKind},
                                      {"spec", {{"token", token_str}}}};
   nlohmann::json token_review_resp;
 
-  if (!k8s::K8sApiPost("/apis/authentication.k8s.io/v1/tokenreviews",
-                       token_review_req,
-                       token_review_resp)) {
+  if (!k8s::K8sApiPost(
+          kAuthenticationV1TokenReviewPath, token_review_req, token_review_resp)) {
     RAY_LOG(WARNING) << "Kubernetes TokenReview request failed.";
     return false;
   }
@@ -184,20 +178,21 @@ bool ValidateToken(const AuthenticationToken &token) {
     return false;
   }
 
-  const char *ray_cluster_name_env = std::getenv("RAY_CLUSTER_NAME");
-  const char *ray_cluster_namespace_env = std::getenv("RAY_CLUSTER_NAMESPACE");
+  const char *ray_cluster_name_env = std::getenv(kRayClusterNameEnvVar);
+  const char *ray_cluster_namespace_env = std::getenv(kRayClusterNamespaceEnvVar);
 
   if (ray_cluster_name_env == nullptr || ray_cluster_namespace_env == nullptr) {
-    RAY_LOG(WARNING) << "RAY_CLUSTER_NAME or RAY_CLUSTER_NAMESPACE env var not set, "
+    RAY_LOG(WARNING) << kRayClusterNameEnvVar << " or " << kRayClusterNamespaceEnvVar
+                     << " env var not set, "
                      << "authorization check failed.";
     return false;
   }
 
   nlohmann::json spec;
-  spec["resourceAttributes"] = {{"group", "ray.io"},
-                                {"resource", "rayclusters"},
+  spec["resourceAttributes"] = {{"group", kRayResourceGroup},
+                                {"resource", kRayClusterResourceName},
                                 {"name", ray_cluster_name_env},
-                                {"verb", "ray-user"},
+                                {"verb", kRayClusterRayUserVerb},
                                 {"namespace", ray_cluster_namespace_env}};
 
   auto user_info = token_review_resp["status"]["user"];
@@ -211,12 +206,12 @@ bool ValidateToken(const AuthenticationToken &token) {
     spec["extra"] = user_info["extra"];
   }
 
-  nlohmann::json subject_access_review_req = {{"apiVersion", "authorization.k8s.io/v1"},
-                                              {"kind", "SubjectAccessReview"},
+  nlohmann::json subject_access_review_req = {{"apiVersion", kAuthorizationAPIVersion},
+                                              {"kind", kSubjectAccessReviewKind},
                                               {"spec", spec}};
   nlohmann::json subject_access_review_resp;
 
-  if (!k8s::K8sApiPost("/apis/authorization.k8s.io/v1/subjectaccessreviews",
+  if (!k8s::K8sApiPost(kAuthorizationV1SubjectAccessReviewPath,
                        subject_access_review_req,
                        subject_access_review_resp)) {
     RAY_LOG(WARNING) << "Kubernetes SubjectAccessReview request failed.";
