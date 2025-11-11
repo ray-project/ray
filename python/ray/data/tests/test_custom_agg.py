@@ -6,6 +6,7 @@ from ray.data.aggregate import (
     ApproximateQuantile,
     ApproximateTopK,
     MissingValuePercentage,
+    Unique,
     ZeroPercentage,
 )
 from ray.data.tests.conftest import *  # noqa
@@ -458,6 +459,36 @@ class TestApproximateTopK:
         for result in [result_small, result_large]:
             assert result["approx_topk(id)"][0] == {"id": "frequent", "count": 100}
             assert result["approx_topk(id)"][1] == {"id": "common", "count": 50}
+
+    def test_approximate_topk_list_encode(self, ray_start_regular_shared_2_cpus):
+        """Test that aggregator correctly encodes list values."""
+        data = [{"id": ["a", "b", "c"]}, {"id": ["a", "a", "a", "b"]}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(Unique(on="id", encode_lists=True))
+
+        # Should encode list items, so "a" should be most frequent
+        assert sorted(result["unique(id)"])[0] == "a"
+
+
+class TestUnique:
+    """Test cases for Unique aggregation."""
+
+    def test_unique_for_list_elements(self, ray_start_regular_shared_2_cpus):
+        """Test that aggregator correctly serializes lists to string to support
+        list values."""
+        data = [{"id": ["a", "b", "c"]}, {"id": ["a", "a", "a", "b"]}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(Unique(on="id", encode_lists=False))
+
+        assert sorted(result["unique(id)"])[0] == "['a', 'a', 'a', 'b']"
+
+    def test_unique_list_encode(self, ray_start_regular_shared_2_cpus):
+        """Test that aggregator correctly encodes list values."""
+        data = [{"id": ["a", "b", "c"]}, {"id": ["a", "a", "a", "b"]}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(Unique(on="id", encode_lists=True))
+
+        assert sorted(result["unique(id)"])[0] == "a"
 
 
 if __name__ == "__main__":
