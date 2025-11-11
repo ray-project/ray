@@ -1,0 +1,5 @@
+module(
+    name = "io_ray",
+    repo_name = "io_ray",
+    version = "0.1",
+)

@@ -6,8 +6,6 @@ import os
 import runfiles
 import pytest
 
-_REPO_NAME = "io_ray"
-
 _runfiles = runfiles.Create()
 
 
@@ -32,7 +30,7 @@ docs = [
 
 def test_hashes():
     for doc in docs:
-        path = os.path.join(_REPO_NAME, "doc", "external", doc["file"])
+        path = os.path.join("_main", "doc", "external", doc["file"])
         runfile = _runfiles.Rlocation(path)
         with open(runfile, "rb") as f:
             content = f.read()
