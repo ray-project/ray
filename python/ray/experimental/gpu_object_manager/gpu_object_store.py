@@ -302,7 +302,7 @@ class GPUObjectStore:
         with self._lock:
             meta = self._managed_meta_nixl.pop(obj_id)
             self._managed_meta_counts_nixl[meta] -= 1
-            if self._managed_meta_counts_nixl[meta] == 0:
+            if self._managed_meta_counts_nixl[meta] <= 0:
                 self._managed_meta_counts_nixl.pop(meta)
                 return 0
             else:
