@@ -3,7 +3,6 @@ import gc
 import sys
 import threading
 import time
-import traceback
 from unittest.mock import Mock, patch
 
 import numpy as np
