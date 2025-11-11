@@ -137,10 +137,10 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
   void SetClientToken(const std::string &client_token) {
     if (!client_token.empty()) {
       ray::SetEnv("RAY_AUTH_TOKEN", client_token);
-      RayConfig::instance().initialize(R"({"auth_mode": "token"})");
+      RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
     } else {
       ray::UnsetEnv("RAY_AUTH_TOKEN");
-      RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+      RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
     }
     rpc::AuthenticationTokenLoader::instance().ResetCache();
   }
