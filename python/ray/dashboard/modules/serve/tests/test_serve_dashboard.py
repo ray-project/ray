@@ -1278,7 +1278,10 @@ def test_get_serve_instance_details_external_scaler_enabled(ray_start_stop):
     assert "app_with_scaler" in serve_details.applications
     assert "app_without_scaler" in serve_details.applications
     assert serve_details.applications["app_with_scaler"].external_scaler_enabled is True
-    assert serve_details.applications["app_without_scaler"].external_scaler_enabled is False
+    assert (
+        serve_details.applications["app_without_scaler"].external_scaler_enabled
+        is False
+    )
 
     # Test default value (when external_scaler_enabled is not specified)
     config_default = {
