@@ -117,7 +117,6 @@ class NixlBackend:
             if local_descs:
                 nixl_agent.deregister_memory(local_descs)
 
-
     def get_nixl_metadata(
         self, tensors: List["torch.Tensor"]
     ) -> Tuple[Any, bytes, bytes]:
