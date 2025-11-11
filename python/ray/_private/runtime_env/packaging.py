@@ -292,12 +292,11 @@ def _get_excludes(path: Path, excludes: List[str]) -> Callable:
 def _get_ignore_file(path: Path, ignore_file: str) -> Optional[Callable]:
     """Returns a function that returns True if the path should be excluded.
 
-    Returns None if there is no .gitignore file in the path.
+    Returns None if there is no ignore_file in the path.
 
     Args:
         path: The path to the directory to check for an ignore file.
-        ignore_file: The name of the ignore file. Combined with path will
-        give the absolute path to the ignore_file.
+        ignore_file: The name of the ignore file.
 
     Returns:
         A function that returns True if the path should be excluded.
