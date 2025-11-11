@@ -92,7 +92,7 @@ def simulate_cross_az_network_failure():
 
     k = max(1, int(len(worker_ips) * AFFECT_WORKER_RATIO))
     affected = random.sample(worker_ips, k)
-    # NOTE: When running this script on Anyscale with longer failure periods the failed head node could
+    # NOTE: When running this script on Anyscale with longer failure durations the blacked out head node could
     # cause your workspace to lag and die. To avoid this, comment out the below line.
     affected.append(head_ip)
     print(
@@ -147,7 +147,12 @@ def network_failure_loop(interval, stop_event):
         print(
             f"[NETWORK FAILURE {time.strftime('%H:%M:%S')}] Triggering network failure simulation..."
         )
-        simulate_cross_az_network_failure()
+        try:
+            simulate_cross_az_network_failure()
+        except Exception as e:
+            print(
+                f"[NETWORK FAILURE {time.strftime('%H:%M:%S')}] ERROR: Network failure simulation failed: {e}"
+            )
 
 
 def parse_args():
