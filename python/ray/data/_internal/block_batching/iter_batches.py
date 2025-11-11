@@ -121,13 +121,16 @@ class BatchIterator:
         self._shuffle_seed = shuffle_seed
         self._ensure_copy = ensure_copy
         self._prefetch_batches = prefetch_batches
-        self._eager_free = (
-            clear_block_after_read and DataContext.get_current().eager_free
+        ctx = DataContext.get_current()
+        self._eager_free = clear_block_after_read and ctx.eager_free
+        max_inflight_blocks = max(1, (prefetch_batches or 0) + 1)
+        self._block_get_batch_size = min(
+            ctx.iter_get_block_batch_size, max_inflight_blocks
         )
 
         actor_prefetcher_enabled = (
             prefetch_batches > 0
-            and DataContext.get_current().actor_prefetcher_enabled
+            and ctx.actor_prefetcher_enabled
             and not ray.util.client.ray.is_connected()
         )
         self._prefetcher = (
@@ -152,7 +155,11 @@ class BatchIterator:
     def _resolve_block_refs(
         self, block_refs: Iterator[ObjectRef[Block]]
     ) -> Iterator[Block]:
-        return resolve_block_refs(block_ref_iter=block_refs, stats=self._stats)
+        return resolve_block_refs(
+            block_ref_iter=block_refs,
+            stats=self._stats,
+            max_get_batch_size=self._block_get_batch_size,
+        )
 
     def _blocks_to_batches(self, blocks: Iterator[Block]) -> Iterator[Batch]:
         return blocks_to_batches(
@@ -336,12 +343,8 @@ def prefetch_batches_locally(
             current batch during the scan.
         batch_size: User specified batch size, or None to let the system pick.
         eager_free: Whether to eagerly free the object reference from the object store.
-        stats: Dataset stats object used to store ref bundle retrieval time.
+        stats: DatasetStats object to record timing and other statistics.
     """
-
-    def get_next_ref_bundle() -> RefBundle:
-        with stats.iter_get_ref_bundles_s.timer() if stats else nullcontext():
-            return next(ref_bundles)
 
     sliding_window = collections.deque()
     current_window_size = 0
@@ -365,7 +368,7 @@ def prefetch_batches_locally(
         batch_size is None and len(sliding_window) < num_batches_to_prefetch
     ):
         try:
-            next_ref_bundle = get_next_ref_bundle()
+            next_ref_bundle = next(ref_bundles)
             sliding_window.extend(next_ref_bundle.blocks)
             current_window_size += next_ref_bundle.num_rows()
         except StopIteration:
@@ -378,7 +381,7 @@ def prefetch_batches_locally(
         current_window_size -= metadata.num_rows
         if batch_size is None or current_window_size < num_rows_to_prefetch:
             try:
-                next_ref_bundle = get_next_ref_bundle()
+                next_ref_bundle = next(ref_bundles)
                 for block_ref_and_md in next_ref_bundle.blocks:
                     sliding_window.append(block_ref_and_md)
                     current_window_size += block_ref_and_md[1].num_rows

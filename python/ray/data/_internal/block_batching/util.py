@@ -43,19 +43,28 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
 def resolve_block_refs(
     block_ref_iter: Iterator[ObjectRef[Block]],
     stats: Optional[DatasetStats] = None,
+    max_get_batch_size: Optional[int] = None,
 ) -> Iterator[Block]:
     """Resolves the block references for each logical batch.
 
     Args:
         block_ref_iter: An iterator over block object references.
         stats: An optional stats object to recording block hits and misses.
+        max_get_batch_size: Maximum number of block references to resolve in a
+            single ``ray.get()`` call. If ``None``, defaults to
+            ``DataContext.get_current().iter_get_block_batch_size``.
     """
     hits = 0
     misses = 0
     unknowns = 0
 
     ctx = ray.data.context.DataContext.get_current()
-    batch_size = max(1, ctx.iter_get_block_batch_size)
+    effective_batch_size = max(
+        1,
+        max_get_batch_size
+        if max_get_batch_size is not None
+        else ctx.iter_get_block_batch_size,
+    )
     pending: List[ObjectRef[Block]] = []
 
     def _resolve_pending() -> List[Block]:
@@ -64,9 +73,12 @@ def resolve_block_refs(
             return []
 
         current_hit, current_miss, current_unknown = _calculate_ref_hits(pending)
-        hits += current_hit
-        misses += current_miss
-        unknowns += current_unknown
+        if current_hit == current_miss == current_unknown == -1:
+            hits = misses = unknowns = -1
+        elif hits != -1:
+            hits += current_hit
+            misses += current_miss
+            unknowns += current_unknown
 
         with stats.iter_get_s.timer() if stats else nullcontext():
             blocks = ray.get(pending)
@@ -77,10 +89,12 @@ def resolve_block_refs(
 
     for block_ref in block_ref_iter:
         pending.append(block_ref)
-        if len(pending) >= batch_size:
-            yield from _resolve_pending()
+        if len(pending) >= effective_batch_size:
+            for block in _resolve_pending():
+                yield block
 
-    yield from _resolve_pending()
+    for block in _resolve_pending():
+        yield block
 
     if stats:
         stats.iter_blocks_local = hits
