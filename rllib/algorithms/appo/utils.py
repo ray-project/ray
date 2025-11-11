@@ -23,6 +23,143 @@ POLICY_SCOPE = "func"
 TARGET_POLICY_SCOPE = "target_func"
 
 
+class _ImpactItem:
+    """Internal wrapper to track reuse count for each item."""
+
+    def __init__(self, data: Any):
+        self.data = data
+        self.reuse_count = 0
+
+
+class ImpactRingBuffer:
+    """
+    A thread-safe ring buffer implementing the TRUE IMPACT reuse strategy.
+
+    - Implements round-robin reuse by re-queuing to the BACK.
+    - Uses a single lock for correctness.
+    - Evicts the oldest item (from the front) when full.
+    """
+
+    def __init__(self, capacity: int, max_reuse: int = 1):
+        if capacity <= 0:
+            raise ValueError("Capacity must be positive")
+        if max_reuse <= 0:
+            raise ValueError("max_reuse must be positive")
+
+        self._capacity = capacity
+        self._max_reuse = max_reuse
+        self._buffer = deque()
+
+        # A single lock is required for all buffer/deque operations.
+        self._lock = threading.Lock()
+
+        # Semaphore tracks the number of *available* items.
+        self._items_available = threading.Semaphore(0)
+
+        # Statistics
+        self._total_puts = 0
+        self._total_gets = 0
+        self._total_evictions = 0
+        self._total_spent = 0
+
+    def put(self, item: Any, block: int) -> Optional[Any]:
+        """
+        Add a new, unseen item to the END of the buffer.
+        If full, the oldest item (from the FRONT) is evicted.
+        """
+        wrapped_item = _ImpactItem(item)
+        evicted_data = None
+
+        with self._lock:
+            self._total_puts += 1
+
+            # 1. Eviction: Evict from the FRONT if full
+            if len(self._buffer) >= self._capacity:
+                evicted_item = self._buffer.popleft()
+                evicted_data = evicted_item.data
+                self._total_evictions += 1
+                # The semaphore count stays the same because one
+                # item is removed, but another is about to be added.
+            else:
+                # We are adding a new item, so release the semaphore.
+                self._items_available.release()
+
+            # 2. Add new item to the END
+            self._buffer.append(wrapped_item)
+            return evicted_data
+
+    def get(self, block: bool = True, timeout: Optional[float] = None) -> Any:
+        """
+        Get the oldest item (from the FRONT).
+        If the item is not "spent" (reuse_count < max_reuse),
+        it is re-queued at the END of the buffer.
+        """
+        # 1. Acquire right to get an item. This blocks if empty.
+        acquired = self._items_available.acquire(blocking=block, timeout=timeout)
+        if not acquired:
+            if block:
+                raise TimeoutError("Timeout waiting for item")
+            else:
+                raise IndexError("Buffer is empty")
+
+        # 2. Get item from the FRONT (thread-safe)
+        with self._lock:
+            if not self._buffer:
+                # Safety check, should not happen if semaphore is correct
+                self._items_available.release()  # Release the sem we acquired
+                raise IndexError("Buffer is empty")
+
+            wrapped_item = self._buffer.popleft()
+            self._total_gets += 1
+
+        # 3. Process item logic *outside* the lock
+        wrapped_item.reuse_count += 1
+
+        # 4. Check for re-queue
+        if wrapped_item.reuse_count < self._max_reuse:
+            # Item is not spent, put it back at the END
+            with self._lock:
+                self._buffer.append(wrapped_item)
+
+            # Release semaphore again, as item is still available (just at the back)
+            self._items_available.release()
+        else:
+            # Item is spent. Do not re-queue. Do not release semaphore.
+            # The total number of available items has decreased by 1.
+            self._total_spent += 1
+
+        return wrapped_item.data
+
+    def qsize(self) -> int:
+        with self._lock:
+            return len(self._buffer)
+
+    def __len__(self) -> int:
+        return self.qsize()
+
+    def task_done(self):
+        pass
+
+    def get_stats(self) -> dict:
+        """Get buffer statistics for monitoring."""
+        with self._lock:
+            avg_reuse = 0
+            if self._buffer:
+                counts = [item.reuse_count for item in self._buffer]
+                avg_reuse = sum(counts) / len(counts)
+
+            return {
+                "size": len(self._buffer),
+                "capacity": self._capacity,
+                "max_reuse": self._max_reuse,
+                "total_puts": self._total_puts,
+                "total_gets": self._total_gets,
+                "total_evictions": self._total_evictions,
+                "total_spent_items": self._total_spent,
+                "avg_reuse_in_buffer": avg_reuse,
+            }
+
+
 class CircularBuffer:
     """A circular batch-wise buffer as described in [1] for APPO.
 
@@ -78,7 +215,7 @@ class CircularBuffer:
             {"rllib": self.__class__.__name__}
         )
 
-    def add(self, batch):
+    def put(self, batch, block):
         # Add buffer and k=0 information to the deque.
         with TimerAndPrometheusLogger(self._metrics_circular_buffer_add_time):
             with self._lock:
@@ -93,13 +230,13 @@ class CircularBuffer:
             # A valid entry (w/ a batch whose k has not been reach K yet) was dropped.
             dropped_ts = 0
             if dropped_entry is not None:
-                dropped_ts = dropped_entry.env_steps()
+                dropped_ts = dropped_entry[0].env_steps()
                 if dropped_ts > 0:
                     self._metrics_circular_buffer_add_ts_dropped.inc(value=dropped_ts)
 
         return dropped_ts
 
-    def sample(self):
+    def get(self):
         # Only initially, the buffer may be empty -> Just wait for some time.
         with TimerAndPrometheusLogger(self._metrics_circular_buffer_sample_time):
             while len(self) == 0:
@@ -128,6 +265,9 @@ class CircularBuffer:
         """Whether the buffer has been filled once with at least `self.num_batches`."""
         with self._lock:
             return self._num_added >= self.num_batches
+
+    def task_done(self):
+        pass
 
     def __len__(self) -> int:
         """Returns the number of actually valid (non-expired) batches in the buffer."""
@@ -175,7 +315,7 @@ class FastRingBuffer:
         self._total_evictions = 0
         self._total_stale_drops = 0  # For compatibility with get_stats()
 
-    def put(self, item: Any) -> Optional[Any]:
+    def put(self, item: Any, block: bool) -> Optional[Any]:
         """
         Add item to buffer. If full, oldest item is evicted.
         Non-blocking, optimized for high-throughput producers.
