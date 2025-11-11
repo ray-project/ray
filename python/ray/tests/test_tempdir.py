@@ -335,5 +335,62 @@ def test_both_nodes_different_temp_dirs(delete_default_temp_dir):
         shutil.rmtree(worker_temp_dir, ignore_errors=True)
 
 
+def test_resolve_user_ray_temp_dir_from_gcs(delete_default_temp_dir):
+    """Test that resolve_user_ray_temp_dir correctly retrieves temp_dir from GCS.
+
+    This test verifies that resolve_user_ray_temp_dir can correctly fetch temp_dir
+    from GCS node info both before and after ray.init() is called.
+    """
+    import ray._common.utils
+
+    head_temp_dir = os.path.join(
+        ray._private.utils.get_default_temp_dir(), uuid.uuid4().hex
+    )
+
+    # Start head node with temp-dir specified
+    check_call_ray(
+        [
+            "start",
+            "--head",
+            f"--temp-dir={head_temp_dir}",
+            "--port",
+            str(ray_constants.DEFAULT_PORT),
+        ]
+    )
+
+    try:
+        ray.init(address="auto")
+        wait_for_condition(lambda: len(ray.nodes()) == 1, timeout=10)
+        nodes = ray.nodes()
+        assert len(nodes) == 1, "Expected 1 node in the cluster"
+        node_id = nodes[0]["NodeID"]
+        cached_gcs_address = ray._private.worker._global_node.gcs_address
+        ray.shutdown()
+
+        # test WITHOUT ray.init() (fetch temp_dir from GCS)
+        resolved_temp_dir = ray._common.utils.resolve_user_ray_temp_dir(
+            gcs_address=cached_gcs_address, node_id=node_id
+        )
+        assert resolved_temp_dir == head_temp_dir, (
+            f"Expected temp_dir from GCS to be {head_temp_dir}, "
+            f"but got {resolved_temp_dir}"
+        )
+
+        # test WITH ray.init() (fetch temp_dir from runtime context)
+        ray.init(address="auto")
+        resolved_temp_dir = ray._common.utils.resolve_user_ray_temp_dir(
+            gcs_address=ray._private.worker._global_node.gcs_address, node_id=node_id
+        )
+        assert resolved_temp_dir == head_temp_dir, (
+            f"Expected temp_dir from runtime context to be {head_temp_dir}, "
+            f"but got {resolved_temp_dir}"
+        )
+
+        ray.shutdown()
+    finally:
+        check_call_ray(["stop"])
+        shutil.rmtree(head_temp_dir, ignore_errors=True)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

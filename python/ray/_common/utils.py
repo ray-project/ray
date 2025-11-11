@@ -254,8 +254,7 @@ def resolve_user_ray_temp_dir(gcs_address: str, node_id: str):
                 node_info = node_info
                 break
         if node_info is not None:
-            if "temp_dir" in node_info:
-                return node_info["temp_dir"]
+            return node_info.temp_dir
 
     # fallback to default ray temp dir
     tmp_dir = None
