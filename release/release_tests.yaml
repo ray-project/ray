@@ -156,6 +156,35 @@
   variations:
     - __suffix__: aws
 
+- name: hello_world_py313
+  python: "3.13"
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    byod: {}
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    num_retries: 3
+    script: python hello_world.py
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      cluster:
+        cluster_compute: hello_world_compute_config_gce.yaml
+    - __suffix__: azure
+      env: azure
+      cluster:
+        cluster_compute: hello_world_compute_config_azure.yaml
+    - __suffix__: released
+      cluster:
+        ray_version: 2.50.0
 
 #######################
 # Cluster scaling tests
