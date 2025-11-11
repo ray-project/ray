@@ -194,6 +194,7 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
+      REQUIREMENTS_FILE: "ray_base_slim_py{{matrix}}.lock"
 
   - name: ray-slimcudabase
     label: "wanda: ray-slim-py{{matrix.python}}-cu{{matrix.cuda}}-base"
@@ -221,3 +222,4 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       ARCH_SUFFIX: ""
+      REQUIREMENTS_FILE: "ray_base_slim_py{{matrix.python}}.lock"
