@@ -13,7 +13,7 @@ _DEFAULT_AUTH_TOKEN_RELATIVE_PATH = Path(".ray") / "auth_token"
 
 
 def reset_auth_token_state() -> None:
-    """Reset authentication token and auth_mode ray config."""
+    """Reset authentication token and AUTH_MODE ray config."""
 
     AuthenticationTokenLoader.instance().reset_cache()
     Config.initialize("")
