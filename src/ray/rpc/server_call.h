@@ -346,6 +346,10 @@ class ServerCallImpl : public ServerCall {
   bool ValidateAuthenticationToken() {
     AuthenticationMode auth_mode = GetAuthenticationMode();
 
+    if (auth_mode == AuthenticationMode::DISABLED) {
+      return true;
+    }
+
     const auto &metadata = context_.client_metadata();
     auto it = metadata.find(kAuthTokenKey);
 
@@ -353,36 +357,16 @@ class ServerCallImpl : public ServerCall {
       if (!auth_token_.has_value() || auth_token_->empty()) {
         return true;  // No auth required on server side
       }
-      if (it == metadata.end()) {
-        RAY_LOG(WARNING)
-            << "Missing authorization header in request for token auth mode!";
-        return false;
-      }
-      const std::string_view header(it->second.data(), it->second.length());
-      AuthenticationToken provided_token = AuthenticationToken::FromMetadata(header);
-      if (!auth_token_->Equals(provided_token)) {
-        RAY_LOG(WARNING) << "Invalid bearer token in request!";
-        return false;
-      }
-      return true;
     }
 
-    if (auth_mode == AuthenticationMode::K8S) {
-      if (it == metadata.end()) {
-        RAY_LOG(WARNING) << "Missing authorization header in request for k8s auth mode!";
-        return false;
-      }
-      const std::string_view header(it->second.data(), it->second.length());
-      AuthenticationToken provided_token = AuthenticationToken::FromMetadata(header);
-      if (provided_token.empty()) {
-        RAY_LOG(WARNING) << "Empty bearer token in request for k8s auth mode!";
-        return false;
-      }
-      return ray::rpc::AuthenticationTokenLoader::instance().ValidateToken(
-          provided_token);
+    if (it == metadata.end()) {
+      RAY_LOG(WARNING) << "Missing authorization header in request for token auth mode!";
+      return false;
     }
 
-    return true;
+    const std::string_view header(it->second.data(), it->second.length());
+    AuthenticationToken provided_token = AuthenticationToken::FromMetadata(header);
+    return ray::rpc::AuthenticationTokenLoader::instance().ValidateToken(provided_token);
   }
 
   /// Log the duration this query used

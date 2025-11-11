@@ -92,7 +92,7 @@ bool AuthenticationTokenLoader::ValidateToken(const AuthenticationToken &provide
     return is_allowed;
   }
 
-  return false;
+  return true;
 }
 
 std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken() {
