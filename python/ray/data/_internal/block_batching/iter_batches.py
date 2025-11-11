@@ -139,6 +139,9 @@ class BatchIterator:
             else WaitBlockPrefetcher()
         )
         self._yielded_first_batch = False
+
+        # This stores the last time we updated the metrics.
+        # This allows us to update metrics on some interval.
         self._metrics_last_updated: float = 0.0
 
     def _prefetch_blocks(
@@ -243,9 +246,7 @@ class BatchIterator:
         self._yielded_first_batch = False
 
     def after_epoch_end(self):
-        _StatsManager.update_iteration_metrics(
-            self._stats, self._dataset_tag, force_update=True
-        )
+        _StatsManager.update_iteration_metrics(self._stats, self._dataset_tag)
 
     @contextmanager
     def get_next_batch_context(self):

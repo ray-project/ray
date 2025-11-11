@@ -2217,13 +2217,13 @@ def test_stats_manager(mock_get_or_create, shutdown_only):
 
     datasets = [None] * num_threads
 
-    def updateStatsManager(i):
+    def update_stats_manager(i):
         datasets[i] = ray.data.range(10).map_batches(lambda x: x)
         for _ in datasets[i].iter_batches(batch_size=1):
             pass
 
     threads = [
-        threading.Thread(target=updateStatsManager, args=(i,), daemon=True)
+        threading.Thread(target=update_stats_manager, args=(i,), daemon=True)
         for i in range(num_threads)
     ]
     for thread in threads:

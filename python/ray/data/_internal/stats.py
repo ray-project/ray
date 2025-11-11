@@ -774,7 +774,7 @@ def get_or_create_stats_actor() -> ActorHandle[_StatsActor]:
     """Each cluster will contain exactly 1 _StatsActor. This function
     returns the current _StatsActor handle, or create a new one if one
     does not exist in the connected cluster. The _StatsActor is pinned on
-    on the head node or driver.
+    on driver process' node.
     """
     if ray._private.worker._global_node is None:
         raise RuntimeError(
@@ -841,7 +841,6 @@ class _StatsManager:
         op_metrics: List[OpRuntimeMetrics],
         operator_tags: List[str],
         state: Dict[str, Any],
-        force_update: bool = False,
     ):
         per_node_metrics = _StatsManager._aggregate_per_node_metrics(op_metrics)
         op_metrics_dicts = [
@@ -855,9 +854,7 @@ class _StatsManager:
             per_node_metrics,
         )
         try:
-            ref = get_or_create_stats_actor().update_execution_metrics.remote(*args)
-            if force_update:
-                ray.wait([ref], timeout=1)
+            get_or_create_stats_actor().update_execution_metrics.remote(*args)
         except Exception as e:
             logger.warning(
                 f"Error occurred during update_execution_metrics.remote call to _StatsActor: {e}",
@@ -866,14 +863,10 @@ class _StatsManager:
             return
 
     @staticmethod
-    def update_iteration_metrics(
-        stats: "DatasetStats", dataset_tag: str, force_update: bool = False
-    ):
+    def update_iteration_metrics(stats: "DatasetStats", dataset_tag: str):
         args = (stats, dataset_tag)
         try:
-            ref = get_or_create_stats_actor().update_iteration_metrics.remote(*args)
-            if force_update:
-                ray.wait([ref], timeout=1)
+            get_or_create_stats_actor().update_iteration_metrics.remote(*args)
         except Exception as e:
             logger.warning(
                 f"Error occurred during update_iteration_metrics.remote call to _StatsActor: {e}",
