@@ -1032,7 +1032,9 @@ class ServeController:
                 deployments=self.application_state_manager.list_deployment_details(
                     app_name
                 ),
-                external_scaler_enabled=self.application_state_manager.is_external_scaler_enabled(app_name),
+                external_scaler_enabled=self.application_state_manager.is_external_scaler_enabled(
+                    app_name
+                ),
             )
 
         # NOTE(zcin): We use exclude_unset here because we explicitly and intentionally

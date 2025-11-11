@@ -942,7 +942,9 @@ def test_apply_app_configs_with_external_scaler_enabled(check_obj_ref_ready_nowa
     )
 
     # Apply both configs
-    app_state_manager.apply_app_configs([app_config_with_scaler, app_config_without_scaler])
+    app_state_manager.apply_app_configs(
+        [app_config_with_scaler, app_config_without_scaler]
+    )
 
     # Verify that external_scaler_enabled is correctly set for both apps
     assert app_state_manager.is_external_scaler_enabled("app_with_scaler") is True
@@ -950,7 +952,9 @@ def test_apply_app_configs_with_external_scaler_enabled(check_obj_ref_ready_nowa
 
     # Verify the internal state is also correct
     app_state_with_scaler = app_state_manager._application_states["app_with_scaler"]
-    app_state_without_scaler = app_state_manager._application_states["app_without_scaler"]
+    app_state_without_scaler = app_state_manager._application_states[
+        "app_without_scaler"
+    ]
     assert app_state_with_scaler.external_scaler_enabled is True
     assert app_state_without_scaler.external_scaler_enabled is False
 
@@ -3196,10 +3200,15 @@ def test_is_external_scaler_enabled(mocked_application_state_manager):
     )
 
     # Test that is_external_scaler_enabled returns True for app with external scaler enabled
-    assert app_state_manager.is_external_scaler_enabled("app_with_external_scaler") is True
+    assert (
+        app_state_manager.is_external_scaler_enabled("app_with_external_scaler") is True
+    )
 
     # Test that is_external_scaler_enabled returns False for app without external scaler
-    assert app_state_manager.is_external_scaler_enabled("app_without_external_scaler") is False
+    assert (
+        app_state_manager.is_external_scaler_enabled("app_without_external_scaler")
+        is False
+    )
 
     # Test that is_external_scaler_enabled returns False for non-existent app
     assert app_state_manager.is_external_scaler_enabled("non_existent_app") is False
@@ -3294,7 +3303,9 @@ def test_external_scaler_enabled_recovery_from_checkpoint(
 
     # Verify initial state
     assert app_state_manager.is_external_scaler_enabled(app_name_with_scaler) is True
-    assert app_state_manager.is_external_scaler_enabled(app_name_without_scaler) is False
+    assert (
+        app_state_manager.is_external_scaler_enabled(app_name_without_scaler) is False
+    )
 
     # Make deployments healthy and update
     app_state_manager.update()
@@ -3316,7 +3327,9 @@ def test_external_scaler_enabled_recovery_from_checkpoint(
     )
 
     # Verify that external_scaler_enabled is correctly recovered from checkpoint
-    assert new_app_state_manager.is_external_scaler_enabled(app_name_with_scaler) is True
+    assert (
+        new_app_state_manager.is_external_scaler_enabled(app_name_with_scaler) is True
+    )
     assert (
         new_app_state_manager.is_external_scaler_enabled(app_name_without_scaler)
         is False

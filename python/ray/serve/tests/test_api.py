@@ -1243,7 +1243,10 @@ def test_run_with_external_scaler_enabled(serve_instance):
     assert handle.remote().result() == "model response"
 
     # Verify that external_scaler_enabled is set to True
-    assert ray.get(controller.get_external_scaler_enabled.remote("app_with_scaler")) is True
+    assert (
+        ray.get(controller.get_external_scaler_enabled.remote("app_with_scaler"))
+        is True
+    )
 
     # Test with external_scaler_enabled=False (explicit)
     handle = serve.run(
@@ -1255,7 +1258,10 @@ def test_run_with_external_scaler_enabled(serve_instance):
     assert handle.remote().result() == "model response"
 
     # Verify that external_scaler_enabled is set to False
-    assert ray.get(controller.get_external_scaler_enabled.remote("app_without_scaler")) is False
+    assert (
+        ray.get(controller.get_external_scaler_enabled.remote("app_without_scaler"))
+        is False
+    )
 
     # Test with default value (should be False)
     handle = serve.run(
@@ -1266,7 +1272,9 @@ def test_run_with_external_scaler_enabled(serve_instance):
     assert handle.remote().result() == "model response"
 
     # Verify that external_scaler_enabled defaults to False
-    assert ray.get(controller.get_external_scaler_enabled.remote("app_default")) is False
+    assert (
+        ray.get(controller.get_external_scaler_enabled.remote("app_default")) is False
+    )
 
 
 if __name__ == "__main__":
