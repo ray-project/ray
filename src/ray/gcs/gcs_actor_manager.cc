@@ -1756,7 +1756,7 @@ void GcsActorManager::NotifyRayletToKillActor(const std::shared_ptr<GcsActor> &a
   request.set_force_kill(force_kill);
   if (!actor->LocalRayletAddress()) {
     RAY_LOG(INFO).WithField(actor->GetActorID())
-        << "Not sending KillLocalActorRequeset because Actor has not been assigned a "
+        << "Not sending KillLocalActorRequest because Actor has not been assigned a "
            "lease";
     return;
   }
@@ -1773,8 +1773,7 @@ void GcsActorManager::NotifyRayletToKillActor(const std::shared_ptr<GcsActor> &a
           const ray::Status &status, rpc::KillLocalActorReply &&reply) {
         if (!status.ok()) {
           RAY_LOG(INFO).WithField(actor_id).WithField(node_id)
-              << "Node with actor is already dead, "
-              << "return status: " << status.ToString();
+              << "Node with actor is already dead, return status: " << status.ToString();
         } else {
           RAY_LOG(INFO).WithField(actor_id) << "Killed actor successfully.";
         }
