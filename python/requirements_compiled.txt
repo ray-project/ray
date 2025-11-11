@@ -1734,6 +1734,8 @@ pyro-ppl==1.9.1
     # via botorch
 pyro4==4.82
     # via hpbandster
+pyroaring==1.0.3
+    # via pyiceberg
 pysocks==1.7.1
     # via requests
 pyspark==3.4.1
