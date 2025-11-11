@@ -1,17 +1,17 @@
 import abc
-from typing import List
 from datetime import datetime, timedelta
+from typing import List
 
 import github
 from github import Github
 from pybuildkite.buildkite import Buildkite
 
+from ray_release.aws import get_secret_token
+from ray_release.logger import logger
 from ray_release.test import (
     Test,
     TestState,
 )
-from ray_release.aws import get_secret_token
-from ray_release.logger import logger
 
 RAY_REPO = "ray-project/ray"
 BUILDKITE_ORGANIZATION = "ray-project"
