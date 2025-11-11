@@ -98,6 +98,8 @@ const Wrapper =
               dashboardDatasource: "Prometheus",
               serverTimeZone: undefined,
               currentTimeZone: undefined,
+              themeMode: "light",
+              toggleTheme: () => {},
             }}
           >
             {children}

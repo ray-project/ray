@@ -25,6 +25,8 @@ export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
     dashboardDatasource: "Prometheus",
     serverTimeZone: undefined,
     currentTimeZone: undefined,
+    themeMode: "light",
+    toggleTheme: () => {},
   };
 
   return (

@@ -54,15 +54,6 @@ const basicTheme: ThemeOptions = {
         size: "small",
       },
     },
-    MuiCssBaseline: {
-      styleOverrides: {
-        "@global": {
-          a: {
-            color: "#036DCF",
-          },
-        },
-      },
-    },
     MuiTextField: {
       defaultProps: {
         size: "small",
@@ -87,7 +78,6 @@ const basicTheme: ThemeOptions = {
     MuiPaper: {
       styleOverrides: {
         outlined: {
-          borderColor: "#D2DCE6",
           borderRadius: 8,
         },
       },
@@ -97,6 +87,7 @@ const basicTheme: ThemeOptions = {
 
 export const lightTheme = createTheme(basicTheme, {
   palette: {
+    mode: "light",
     primary: {
       main: "#036DCF",
     },
@@ -109,38 +100,71 @@ export const lightTheme = createTheme(basicTheme, {
     },
     text: {
       primary: grey[900],
-      secondary: grey[800],
+      secondary: grey[700],
       disabled: grey[400],
-      hint: grey[300],
     },
     background: {
       paper: "#fff",
       default: blueGrey[50],
+    },
+    divider: "#D2DCE6",
+  },
+  components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        a: {
+          color: "#036DCF",
+        },
+      },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        outlined: {
+          borderColor: "#D2DCE6",
+        },
+      },
     },
   },
 });
 
 export const darkTheme = createTheme(basicTheme, {
   palette: {
+    mode: "dark",
     primary: {
-      main: "#538DF9",
+      main: "#5B9BFF",
     },
     secondary: lightBlue,
     success: {
-      main: "#43A047",
+      main: "#66BB6A",
     },
     error: {
-      main: "#D32F2F",
+      main: "#EF5350",
     },
     text: {
-      primary: blueGrey[50],
-      secondary: blueGrey[100],
-      disabled: blueGrey[200],
-      hint: blueGrey[300],
+      primary: "#E8EAED",
+      secondary: "#9AA0A6",
+      disabled: "#5F6368",
     },
     background: {
-      paper: grey[800],
-      default: grey[900],
+      paper: "#1A1A1A",
+      default: "#0F0F0F",
+    },
+    divider: "rgba(255, 255, 255, 0.12)",
+  },
+  components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        a: {
+          color: "#5B9BFF",
+        },
+      },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        outlined: {
+          borderColor: "rgba(255, 255, 255, 0.12)",
+        },
+      },
     },
   },
 });
