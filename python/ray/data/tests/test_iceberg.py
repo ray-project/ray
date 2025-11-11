@@ -1,5 +1,6 @@
 import os
 import random
+from typing import Any, Dict, Generator, List, Optional, Tuple, Type, Union
 
 import numpy as np
 import pandas as pd
@@ -12,8 +13,10 @@ from pyiceberg import (
     schema as pyi_schema,
     types as pyi_types,
 )
+from pyiceberg.catalog import Catalog
 from pyiceberg.catalog.sql import SqlCatalog
 from pyiceberg.partitioning import PartitionField, PartitionSpec
+from pyiceberg.table import Table
 from pyiceberg.transforms import IdentityTransform
 
 import ray
@@ -23,6 +26,7 @@ from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.map_operator import Filter, Project
 from ray.data._internal.logical.optimizers import LogicalOptimizer
+from ray.data._internal.savemode import SaveMode
 from ray.data._internal.util import rows_same
 from ray.data.expressions import col
 
@@ -743,93 +747,132 @@ def test_predicate_pushdown_complex_expression():
     assert rows_same(result, expected_table)
 
 
+# Helper functions and fixtures for write mode tests
+@pytest.fixture
+def clean_table() -> Generator[Tuple[Catalog, Table], None, None]:
+    """Pytest fixture to get a clean Iceberg table by deleting all data."""
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    table.delete()
+    yield sql_catalog, table
+
+
+def _create_typed_dataframe(data_dict: Dict[str, List[Any]]) -> pd.DataFrame:
+    """Create a pandas DataFrame with proper int32 dtypes for col_a and col_c."""
+    df = pd.DataFrame(data_dict)
+    if "col_a" in df.columns:
+        df["col_a"] = df["col_a"].astype(np.int32)
+    if "col_c" in df.columns:
+        df["col_c"] = df["col_c"].astype(np.int32)
+    return df
+
+
+def _write_to_iceberg(
+    df: pd.DataFrame, mode: Optional[SaveMode] = None, **kwargs: Any
+) -> None:
+    """Write a DataFrame to the test Iceberg table."""
+    ds = ray.data.from_pandas(df)
+    write_kwargs: Dict[str, Any] = {
+        "table_identifier": f"{_DB_NAME}.{_TABLE_NAME}",
+        "catalog_kwargs": _CATALOG_KWARGS.copy(),
+    }
+    if mode is not None:
+        write_kwargs["mode"] = mode
+    write_kwargs.update(kwargs)
+    ds.write_iceberg(**write_kwargs)
+
+
+def _read_from_iceberg(sort_by: Optional[Union[str, List[str]]] = None) -> pd.DataFrame:
+    """Read data from the test Iceberg table and optionally sort."""
+    ds = ray.data.read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    result_df = ds.to_pandas()
+    if sort_by:
+        result_df = result_df.sort_values(sort_by).reset_index(drop=True)
+    return result_df
+
+
+def _verify_schema(expected_fields: Dict[str, Type[pyi_types.IcebergType]]) -> None:
+    """
+    Verify the Iceberg table schema matches expected fields.
+
+    Args:
+        expected_fields: Dict mapping field names to PyIceberg type classes
+                        e.g., {"col_a": pyi_types.IntegerType, "col_b": pyi_types.StringType}
+    """
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    schema = {field.name: field.field_type for field in table.schema().fields}
+
+    assert len(schema) == len(
+        expected_fields
+    ), f"Expected {len(expected_fields)} fields, got {len(schema)}"
+
+    for field_name, expected_type in expected_fields.items():
+        assert field_name in schema, f"Field {field_name} not found in schema"
+        assert isinstance(schema[field_name], expected_type), (
+            f"Field {field_name} expected type {expected_type}, "
+            f"got {type(schema[field_name])}"
+        )
+
+
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
-def test_append_basic():
+def test_append_basic(clean_table):
     """Test basic APPEND mode - add new rows without schema changes."""
-    import numpy as np
-    import pandas as pd
-
     from ray.data import SaveMode
 
-    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
-    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-    table.delete()
-
     # Write initial data
-    initial_data = pd.DataFrame(
+    initial_data = _create_typed_dataframe(
         {
-            "col_a": np.array([1, 2], dtype=np.int32),
+            "col_a": [1, 2],
             "col_b": ["row_1", "row_2"],
-            "col_c": np.array([1, 2], dtype=np.int32),
+            "col_c": [1, 2],
         }
     )
-    ds_initial = ray.data.from_pandas(initial_data)
-    ds_initial.write_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-    )
+    _write_to_iceberg(initial_data)
 
     # Verify initial schema
-    table_before = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-    schema_before = {
-        field.name: field.field_type for field in table_before.schema().fields
-    }
-    assert len(schema_before) == 3
-    assert set(schema_before.keys()) == {"col_a", "col_b", "col_c"}
-
-    # Append more data with same schema
-    append_data = pd.DataFrame(
+    _verify_schema(
         {
-            "col_a": np.array([3, 4], dtype=np.int32),
-            "col_b": ["row_3", "row_4"],
-            "col_c": np.array([3, 4], dtype=np.int32),
+            "col_a": pyi_types.IntegerType,
+            "col_b": pyi_types.StringType,
+            "col_c": pyi_types.IntegerType,
         }
     )
-    ds_append = ray.data.from_pandas(append_data)
-    ds_append.write_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-        mode=SaveMode.APPEND,
+
+    # Append more data with same schema
+    append_data = _create_typed_dataframe(
+        {
+            "col_a": [3, 4],
+            "col_b": ["row_3", "row_4"],
+            "col_c": [3, 4],
+        }
     )
+    _write_to_iceberg(append_data, mode=SaveMode.APPEND)
 
     # Verify data after append
-    read_ds = ray.data.read_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    result_df = _read_from_iceberg(sort_by="col_a")
+    expected_df = _create_typed_dataframe(
+        {
+            "col_a": [1, 2, 3, 4],
+            "col_b": ["row_1", "row_2", "row_3", "row_4"],
+            "col_c": [1, 2, 3, 4],
+        }
     )
-    result_df = read_ds.to_pandas().sort_values("col_a").reset_index(drop=True)
-
-    # Expected: all rows present (original + appended)
-    expected_data = [
-        {"col_a": 1, "col_b": "row_1", "col_c": 1},
-        {"col_a": 2, "col_b": "row_2", "col_c": 2},
-        {"col_a": 3, "col_b": "row_3", "col_c": 3},
-        {"col_a": 4, "col_b": "row_4", "col_c": 4},
-    ]
-    expected_df = pd.DataFrame(expected_data)
-    expected_df["col_a"] = expected_df["col_a"].astype(np.int32)
-    expected_df["col_c"] = expected_df["col_c"].astype(np.int32)
-
     pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
 
     # Verify schema remains unchanged
-    table_after = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-    schema_after = {
-        field.name: field.field_type for field in table_after.schema().fields
-    }
-
-    assert len(schema_after) == 3, f"Expected 3 fields, got {len(schema_after)}"
-    assert "col_a" in schema_after and isinstance(
-        schema_after["col_a"], pyi_types.IntegerType
-    )
-    assert "col_b" in schema_after and isinstance(
-        schema_after["col_b"], pyi_types.StringType
-    )
-    assert "col_c" in schema_after and isinstance(
-        schema_after["col_c"], pyi_types.IntegerType
+    _verify_schema(
+        {
+            "col_a": pyi_types.IntegerType,
+            "col_b": pyi_types.StringType,
+            "col_c": pyi_types.IntegerType,
+        }
     )
 
 
@@ -837,71 +880,44 @@ def test_append_basic():
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
-def test_upsert_basic():
+def test_upsert_basic(clean_table):
     """Test basic upsert functionality - update existing rows and insert new ones."""
-    import numpy as np
-    import pandas as pd
-
     from ray.data import SaveMode
 
-    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
-    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-    table.delete()
-
     # Write initial data
-    initial_data = pd.DataFrame(
+    initial_data = _create_typed_dataframe(
         {
-            "col_a": np.array([1, 2, 3], dtype=np.int32),
+            "col_a": [1, 2, 3],
             "col_b": ["initial_1", "initial_2", "initial_3"],
-            "col_c": np.array([1, 2, 3], dtype=np.int32),
+            "col_c": [1, 2, 3],
         }
     )
-    ds_initial = ray.data.from_pandas(initial_data)
-    ds_initial.write_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-    )
+    _write_to_iceberg(initial_data)
 
     # Verify initial write
-    read_ds = ray.data.read_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-    )
-    result_df = read_ds.to_pandas().sort_values("col_a").reset_index(drop=True)
+    result_df = _read_from_iceberg(sort_by="col_a")
     assert result_df["col_a"].tolist() == [1, 2, 3]
     assert result_df["col_b"].tolist() == ["initial_1", "initial_2", "initial_3"]
 
     # Upsert: update rows 2 and 3, insert row 4
-    upsert_data = pd.DataFrame(
+    upsert_data = _create_typed_dataframe(
         {
-            "col_a": np.array([2, 3, 4], dtype=np.int32),
+            "col_a": [2, 3, 4],
             "col_b": ["updated_2", "updated_3", "new_4"],
-            "col_c": np.array([2, 3, 4], dtype=np.int32),
+            "col_c": [2, 3, 4],
         }
     )
-    ds_upsert = ray.data.from_pandas(upsert_data)
-    ds_upsert.write_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-        mode=SaveMode.UPSERT,
-        upsert_kwargs={"join_cols": ["col_a"]},
+    _write_to_iceberg(
+        upsert_data, mode=SaveMode.UPSERT, upsert_kwargs={"join_cols": ["col_a"]}
     )
 
     # Verify upsert results
-    read_ds_after = ray.data.read_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-    )
-    result_df_after = (
-        read_ds_after.to_pandas().sort_values("col_a").reset_index(drop=True)
-    )
-
-    # Expected data after upsert: row 1 unchanged, rows 2 & 3 updated, row 4 inserted
-    expected_df = pd.DataFrame(
+    result_df_after = _read_from_iceberg(sort_by="col_a")
+    expected_df = _create_typed_dataframe(
         {
-            "col_a": np.array([1, 2, 3, 4], dtype=np.int32),
+            "col_a": [1, 2, 3, 4],
             "col_b": ["initial_1", "updated_2", "updated_3", "new_4"],
-            "col_c": np.array([1, 2, 3, 4], dtype=np.int32),
+            "col_c": [1, 2, 3, 4],
         }
     )
     pd.testing.assert_frame_equal(
@@ -913,69 +929,44 @@ def test_upsert_basic():
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
-def test_upsert_composite_key():
+def test_upsert_composite_key(clean_table):
     """Test upsert with composite key (multiple identifier fields)."""
-    import numpy as np
-    import pandas as pd
-
     from ray.data import SaveMode
 
-    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
-    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-    table.delete()
-
     # Write initial data
-    initial_data = pd.DataFrame(
+    initial_data = _create_typed_dataframe(
         {
-            "col_a": np.array([1, 1, 2, 2], dtype=np.int32),
+            "col_a": [1, 1, 2, 2],
             "col_b": ["A", "B", "A", "B"],
-            "col_c": np.array([10, 20, 30, 40], dtype=np.int32),
+            "col_c": [10, 20, 30, 40],
         }
     )
-    ds_initial = ray.data.from_pandas(initial_data)
-    ds_initial.write_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-    )
+    _write_to_iceberg(initial_data)
 
     # Upsert using composite key (col_a, col_b)
     # Update (1, "B") and (2, "A"), insert (3, "A")
-    upsert_data = pd.DataFrame(
+    upsert_data = _create_typed_dataframe(
         {
-            "col_a": np.array([1, 2, 3], dtype=np.int32),
+            "col_a": [1, 2, 3],
             "col_b": ["B", "A", "A"],
-            "col_c": np.array([999, 888, 777], dtype=np.int32),
+            "col_c": [999, 888, 777],
         }
     )
-    ds_upsert = ray.data.from_pandas(upsert_data)
-    ds_upsert.write_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    _write_to_iceberg(
+        upsert_data,
         mode=SaveMode.UPSERT,
         upsert_kwargs={"join_cols": ["col_a", "col_b"]},
     )
 
     # Verify results
-    read_ds = ray.data.read_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    result_df = _read_from_iceberg(sort_by=["col_a", "col_b"])
+    expected_df = _create_typed_dataframe(
+        {
+            "col_a": [1, 1, 2, 2, 3],
+            "col_b": ["A", "B", "A", "B", "A"],
+            "col_c": [10, 999, 888, 40, 777],
+        }
     )
-    result_df = (
-        read_ds.to_pandas().sort_values(["col_a", "col_b"]).reset_index(drop=True)
-    )
-
-    # Expected data after upsert with composite key
-    expected_data = [
-        {"col_a": 1, "col_b": "A", "col_c": 10},  # Unchanged
-        {"col_a": 1, "col_b": "B", "col_c": 999},  # Updated
-        {"col_a": 2, "col_b": "A", "col_c": 888},  # Updated
-        {"col_a": 2, "col_b": "B", "col_c": 40},  # Unchanged
-        {"col_a": 3, "col_b": "A", "col_c": 777},  # Inserted
-    ]
-    expected_df = pd.DataFrame(expected_data)
-    expected_df["col_a"] = expected_df["col_a"].astype(np.int32)
-    expected_df["col_c"] = expected_df["col_c"].astype(np.int32)
-
     pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
 
 
@@ -983,85 +974,52 @@ def test_upsert_composite_key():
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
-def test_overwrite_full_table():
+def test_overwrite_full_table(clean_table):
     """Test full table overwrite - replace all data."""
-    import numpy as np
-    import pandas as pd
-
     from ray.data import SaveMode
 
-    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
-    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-    table.delete()
-
     # Write initial data
-    initial_data = pd.DataFrame(
+    initial_data = _create_typed_dataframe(
         {
-            "col_a": np.array([1, 2, 3, 4, 5], dtype=np.int32),
+            "col_a": [1, 2, 3, 4, 5],
             "col_b": ["old_1", "old_2", "old_3", "old_4", "old_5"],
-            "col_c": np.array([1, 2, 3, 4, 5], dtype=np.int32),
+            "col_c": [1, 2, 3, 4, 5],
         }
     )
-    ds_initial = ray.data.from_pandas(initial_data)
-    ds_initial.write_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-    )
+    _write_to_iceberg(initial_data)
 
     # Verify initial data
-    read_ds = ray.data.read_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-    )
-    assert len(read_ds.to_pandas()) == 5
+    result_df = _read_from_iceberg()
+    assert len(result_df) == 5
 
     # Overwrite entire table with new data
-    new_data = pd.DataFrame(
+    new_data = _create_typed_dataframe(
         {
-            "col_a": np.array([10, 20, 30], dtype=np.int32),
+            "col_a": [10, 20, 30],
             "col_b": ["new_10", "new_20", "new_30"],
-            "col_c": np.array([100, 200, 300], dtype=np.int32),
+            "col_c": [100, 200, 300],
         }
     )
-    ds_overwrite = ray.data.from_pandas(new_data)
-    ds_overwrite.write_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-        mode=SaveMode.OVERWRITE,
-    )
+    _write_to_iceberg(new_data, mode=SaveMode.OVERWRITE)
 
     # Verify all old data is replaced
-    read_ds_after = ray.data.read_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-    )
-    result_df = read_ds_after.to_pandas().sort_values("col_a").reset_index(drop=True)
-
-    # Expected: completely new data, all old data gone
-    expected_df = pd.DataFrame(
+    result_df = _read_from_iceberg(sort_by="col_a")
+    expected_df = _create_typed_dataframe(
         {
-            "col_a": np.array([10, 20, 30], dtype=np.int32),
+            "col_a": [10, 20, 30],
             "col_b": ["new_10", "new_20", "new_30"],
-            "col_c": np.array([100, 200, 300], dtype=np.int32),
+            "col_c": [100, 200, 300],
         }
     )
     pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
 
     # Verify schema remains unchanged (no new columns added)
-    table_after = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-    schema_after = {
-        field.name: field.field_type for field in table_after.schema().fields
-    }
-
-    assert len(schema_after) == 3, f"Expected 3 fields, got {len(schema_after)}"
-    assert "col_a" in schema_after and isinstance(
-        schema_after["col_a"], pyi_types.IntegerType
-    )
-    assert "col_b" in schema_after and isinstance(
-        schema_after["col_b"], pyi_types.StringType
-    )
-    assert "col_c" in schema_after and isinstance(
-        schema_after["col_c"], pyi_types.IntegerType
+    _verify_schema(
+        {
+            "col_a": pyi_types.IntegerType,
+            "col_b": pyi_types.StringType,
+            "col_c": pyi_types.IntegerType,
+        }
     )
 
 
@@ -1069,84 +1027,50 @@ def test_overwrite_full_table():
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
-def test_overwrite_with_filter():
+def test_overwrite_with_filter(clean_table):
     """Test partial overwrite using filter expression - replace only matching rows."""
-    import numpy as np
-    import pandas as pd
-
     from ray.data import SaveMode
-    from ray.data.expressions import col
-
-    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
-    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-    table.delete()
 
     # Write initial data with different col_c values
-    initial_data = pd.DataFrame(
+    initial_data = _create_typed_dataframe(
         {
-            "col_a": np.array([1, 2, 3, 4, 5], dtype=np.int32),
+            "col_a": [1, 2, 3, 4, 5],
             "col_b": ["data_1", "data_2", "data_3", "data_4", "data_5"],
-            "col_c": np.array([1, 1, 2, 2, 3], dtype=np.int32),
+            "col_c": [1, 1, 2, 2, 3],
         }
     )
-    ds_initial = ray.data.from_pandas(initial_data)
-    ds_initial.write_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-    )
+    _write_to_iceberg(initial_data)
 
     # Partial overwrite: only replace rows where col_c == 2
-    overwrite_data = pd.DataFrame(
+    overwrite_data = _create_typed_dataframe(
         {
-            "col_a": np.array([10, 20], dtype=np.int32),
+            "col_a": [10, 20],
             "col_b": ["replaced_10", "replaced_20"],
-            "col_c": np.array([2, 2], dtype=np.int32),
+            "col_c": [2, 2],
         }
     )
-    ds_overwrite = ray.data.from_pandas(overwrite_data)
-    ds_overwrite.write_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-        mode=SaveMode.OVERWRITE,
-        overwrite_filter=col("col_c") == 2,
+    _write_to_iceberg(
+        overwrite_data, mode=SaveMode.OVERWRITE, overwrite_filter=col("col_c") == 2
     )
 
     # Verify partial overwrite
-    read_ds_after = ray.data.read_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    result_df = _read_from_iceberg(sort_by="col_a")
+    expected_df = _create_typed_dataframe(
+        {
+            "col_a": [1, 2, 5, 10, 20],
+            "col_b": ["data_1", "data_2", "data_5", "replaced_10", "replaced_20"],
+            "col_c": [1, 1, 3, 2, 2],
+        }
     )
-    result_df = read_ds_after.to_pandas().sort_values("col_a").reset_index(drop=True)
-
-    # Expected: rows with col_c=1,3 preserved; rows with col_c=2 replaced
-    expected_data = [
-        {"col_a": 1, "col_b": "data_1", "col_c": 1},  # Preserved (col_c=1)
-        {"col_a": 2, "col_b": "data_2", "col_c": 1},  # Preserved (col_c=1)
-        {"col_a": 5, "col_b": "data_5", "col_c": 3},  # Preserved (col_c=3)
-        {"col_a": 10, "col_b": "replaced_10", "col_c": 2},  # Replaced (col_c=2)
-        {"col_a": 20, "col_b": "replaced_20", "col_c": 2},  # Replaced (col_c=2)
-    ]
-    expected_df = pd.DataFrame(expected_data)
-    expected_df["col_a"] = expected_df["col_a"].astype(np.int32)
-    expected_df["col_c"] = expected_df["col_c"].astype(np.int32)
-
     pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
 
     # Verify schema remains unchanged (no new columns added)
-    table_after = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-    schema_after = {
-        field.name: field.field_type for field in table_after.schema().fields
-    }
-
-    assert len(schema_after) == 3, f"Expected 3 fields, got {len(schema_after)}"
-    assert "col_a" in schema_after and isinstance(
-        schema_after["col_a"], pyi_types.IntegerType
-    )
-    assert "col_b" in schema_after and isinstance(
-        schema_after["col_b"], pyi_types.StringType
-    )
-    assert "col_c" in schema_after and isinstance(
-        schema_after["col_c"], pyi_types.IntegerType
+    _verify_schema(
+        {
+            "col_a": pyi_types.IntegerType,
+            "col_b": pyi_types.StringType,
+            "col_c": pyi_types.IntegerType,
+        }
     )
 
 
@@ -1154,184 +1078,117 @@ def test_overwrite_with_filter():
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
-def test_overwrite_with_schema_evolution():
+def test_overwrite_with_schema_evolution(clean_table):
     """Test schema evolution with OVERWRITE mode - automatically add columns to existing table."""
-    import numpy as np
-    import pandas as pd
-
     from ray.data import SaveMode
 
-    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
-    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-    table.delete()
-
     # Write initial data with 3 columns
-    initial_data = pd.DataFrame(
+    initial_data = _create_typed_dataframe(
         {
-            "col_a": np.array([1, 2, 3], dtype=np.int32),
+            "col_a": [1, 2, 3],
             "col_b": ["row_1", "row_2", "row_3"],
-            "col_c": np.array([1, 2, 3], dtype=np.int32),
+            "col_c": [1, 2, 3],
         }
     )
-    ds_initial = ray.data.from_pandas(initial_data)
-    ds_initial.write_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-    )
+    _write_to_iceberg(initial_data)
 
     # Verify initial schema has 3 columns
-    table_before = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-    schema_before = {
-        field.name: field.field_type for field in table_before.schema().fields
-    }
-    assert len(schema_before) == 3
-    assert set(schema_before.keys()) == {"col_a", "col_b", "col_c"}
-
-    # Overwrite with new column "col_d" - schema evolution happens automatically
-    overwrite_data = pd.DataFrame(
+    _verify_schema(
         {
-            "col_a": np.array([10, 20], dtype=np.int32),
-            "col_b": ["new_10", "new_20"],
-            "col_c": np.array([100, 200], dtype=np.int32),
-            "col_d": ["extra_10", "extra_20"],  # New column - automatically added
+            "col_a": pyi_types.IntegerType,
+            "col_b": pyi_types.StringType,
+            "col_c": pyi_types.IntegerType,
         }
     )
-    ds_overwrite = ray.data.from_pandas(overwrite_data)
-    ds_overwrite.write_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-        mode=SaveMode.OVERWRITE,
+
+    # Overwrite with new column "col_d" - schema evolution happens automatically
+    overwrite_data = _create_typed_dataframe(
+        {
+            "col_a": [10, 20],
+            "col_b": ["new_10", "new_20"],
+            "col_c": [100, 200],
+            "col_d": ["extra_10", "extra_20"],
+        }
     )
+    _write_to_iceberg(overwrite_data, mode=SaveMode.OVERWRITE)
 
     # Verify data after overwrite
-    read_ds = ray.data.read_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    result_df = _read_from_iceberg(sort_by="col_a")
+    expected_df = _create_typed_dataframe(
+        {
+            "col_a": [10, 20],
+            "col_b": ["new_10", "new_20"],
+            "col_c": [100, 200],
+            "col_d": ["extra_10", "extra_20"],
+        }
     )
-    result_df = read_ds.to_pandas().sort_values("col_a").reset_index(drop=True)
-
-    # Expected: only new data (old data replaced), with col_d values
-    expected_data = [
-        {"col_a": 10, "col_b": "new_10", "col_c": 100, "col_d": "extra_10"},
-        {"col_a": 20, "col_b": "new_20", "col_c": 200, "col_d": "extra_20"},
-    ]
-    expected_df = pd.DataFrame(expected_data)
-    expected_df["col_a"] = expected_df["col_a"].astype(np.int32)
-    expected_df["col_c"] = expected_df["col_c"].astype(np.int32)
-
     pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
 
     # Verify schema was updated with new column
-    table_after = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-    schema_after = {
-        field.name: field.field_type for field in table_after.schema().fields
-    }
-
-    assert (
-        len(schema_after) == 4
-    ), f"Expected 4 fields after schema evolution, got {len(schema_after)}"
-    assert "col_a" in schema_after and isinstance(
-        schema_after["col_a"], pyi_types.IntegerType
+    _verify_schema(
+        {
+            "col_a": pyi_types.IntegerType,
+            "col_b": pyi_types.StringType,
+            "col_c": pyi_types.IntegerType,
+            "col_d": pyi_types.StringType,
+        }
     )
-    assert "col_b" in schema_after and isinstance(
-        schema_after["col_b"], pyi_types.StringType
-    )
-    assert "col_c" in schema_after and isinstance(
-        schema_after["col_c"], pyi_types.IntegerType
-    )
-    assert "col_d" in schema_after and isinstance(
-        schema_after["col_d"], pyi_types.StringType
-    ), "col_d should have been added as StringType"
 
 
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
-def test_append_with_schema_evolution():
+def test_append_with_schema_evolution(clean_table):
     """Test schema evolution with UPSERT mode - automatically add columns to existing table."""
-    import numpy as np
-    import pandas as pd
-
     from ray.data import SaveMode
 
-    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
-    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-    table.delete()
-
     # Write initial data with 3 columns
-    initial_data = pd.DataFrame(
+    initial_data = _create_typed_dataframe(
         {
-            "col_a": np.array([1, 2], dtype=np.int32),
+            "col_a": [1, 2],
             "col_b": ["row_1", "row_2"],
-            "col_c": np.array([1, 2], dtype=np.int32),
+            "col_c": [1, 2],
         }
     )
-    ds_initial = ray.data.from_pandas(initial_data)
-    ds_initial.write_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-    )
+    _write_to_iceberg(initial_data)
 
     # Upsert with new column "col_d" - schema evolution happens automatically
     # Note: APPEND mode uses transaction API which doesn't support schema evolution
     # Use UPSERT mode for schema evolution with new rows
-    append_data = pd.DataFrame(
+    append_data = _create_typed_dataframe(
         {
-            "col_a": np.array([3, 4], dtype=np.int32),
+            "col_a": [3, 4],
             "col_b": ["row_3", "row_4"],
-            "col_c": np.array([3, 4], dtype=np.int32),
-            "col_d": ["extra_3", "extra_4"],  # New column - automatically added
+            "col_c": [3, 4],
+            "col_d": ["extra_3", "extra_4"],
         }
     )
-    ds_append = ray.data.from_pandas(append_data)
-    ds_append.write_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-        mode=SaveMode.UPSERT,
-        upsert_kwargs={"join_cols": ["col_a"]},  # Use UPSERT for schema evolution
+    _write_to_iceberg(
+        append_data, mode=SaveMode.UPSERT, upsert_kwargs={"join_cols": ["col_a"]}
     )
 
     # Verify schema evolution and data
-    read_ds = ray.data.read_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    result_df = _read_from_iceberg(sort_by="col_a")
+    expected_df = _create_typed_dataframe(
+        {
+            "col_a": [1, 2, 3, 4],
+            "col_b": ["row_1", "row_2", "row_3", "row_4"],
+            "col_c": [1, 2, 3, 4],
+            "col_d": [None, None, "extra_3", "extra_4"],
+        }
     )
-    result_df = read_ds.to_pandas().sort_values("col_a").reset_index(drop=True)
-
-    # Expected: original rows with null col_d, new rows with col_d values
-    expected_data = [
-        {"col_a": 1, "col_b": "row_1", "col_c": 1, "col_d": None},
-        {"col_a": 2, "col_b": "row_2", "col_c": 2, "col_d": None},
-        {"col_a": 3, "col_b": "row_3", "col_c": 3, "col_d": "extra_3"},
-        {"col_a": 4, "col_b": "row_4", "col_c": 4, "col_d": "extra_4"},
-    ]
-    expected_df = pd.DataFrame(expected_data)
-    expected_df["col_a"] = expected_df["col_a"].astype(np.int32)
-    expected_df["col_c"] = expected_df["col_c"].astype(np.int32)
-
     pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
 
-    # Explicitly verify that the schema was updated in the Iceberg table
-    table_after_upsert = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-    actual_schema = table_after_upsert.schema()
-
-    # Verify schema evolution: check field names and types
-    schema_fields = {field.name: field.field_type for field in actual_schema.fields}
-
-    assert len(schema_fields) == 4, f"Expected 4 fields, got {len(schema_fields)}"
-    assert "col_a" in schema_fields and isinstance(
-        schema_fields["col_a"], pyi_types.IntegerType
+    # Verify schema evolution
+    _verify_schema(
+        {
+            "col_a": pyi_types.IntegerType,
+            "col_b": pyi_types.StringType,
+            "col_c": pyi_types.IntegerType,
+            "col_d": pyi_types.StringType,
+        }
     )
-    assert "col_b" in schema_fields and isinstance(
-        schema_fields["col_b"], pyi_types.StringType
-    )
-    assert "col_c" in schema_fields and isinstance(
-        schema_fields["col_c"], pyi_types.IntegerType
-    )
-    assert "col_d" in schema_fields and isinstance(
-        schema_fields["col_d"], pyi_types.StringType
-    ), "col_d should have been added as StringType"
 
 
 if __name__ == "__main__":

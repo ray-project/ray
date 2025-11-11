@@ -3,7 +3,7 @@ Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink A
 """
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 
 from packaging import version
 from pyiceberg.io import FileIO
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class IcebergDatasink(Datasink[List["DataFile"]]):
+class IcebergDatasink(Datasink[Union[List["DataFile"], List["pa.Table"]]]):
     """
     Iceberg datasink to write a Ray Dataset into an existing Iceberg table. This module
     heavily uses PyIceberg to write to iceberg table. All the routines in this class override
@@ -244,7 +244,7 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         for block in blocks:
             pa_table = BlockAccessor.for_block(block).to_arrow()
 
-            if pa_table.shape[0] <= 0:
+            if pa_table.num_rows <= 0:
                 continue
 
             _check_pyarrow_schema_compatible(
@@ -275,14 +275,14 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
 
     def write(
         self, blocks: Iterable[Block], ctx: TaskContext
-    ) -> WriteResult[List["DataFile"]]:
+    ) -> Union[List["DataFile"], List["pa.Table"]]:
         """Write blocks to data files based on the configured mode."""
         if self._mode == SaveMode.APPEND:
             return self._write_append_mode(blocks)
         return self._write_upsert_overwrite_mode(blocks)
 
     def _collect_and_concat_tables(
-        self, write_result: WriteResult[List["pa.Table"]]
+        self, write_result: WriteResult[Union[List["DataFile"], List["pa.Table"]]]
     ) -> Optional["pa.Table"]:
         """Collect and concatenate all PyArrow tables from write results."""
         import pyarrow as pa
@@ -297,7 +297,9 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
 
         return pa.concat_tables(all_tables)
 
-    def _complete_append(self, write_result: WriteResult[List["DataFile"]]) -> None:
+    def _complete_append(
+        self, write_result: WriteResult[Union[List["DataFile"], List["pa.Table"]]]
+    ) -> None:
         """Complete APPEND mode write using transaction commit."""
         update_snapshot = self._txn.update_snapshot(
             snapshot_properties=self._snapshot_properties
@@ -371,7 +373,9 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
                 f"with {combined_table.num_rows} rows"
             )
 
-    def on_write_complete(self, write_result: WriteResult[List["DataFile"]]) -> None:
+    def on_write_complete(
+        self, write_result: WriteResult[Union[List["DataFile"], List["pa.Table"]]]
+    ) -> None:
         """Complete the write operation based on the configured mode."""
         if self._mode == SaveMode.APPEND:
             self._complete_append(write_result)
