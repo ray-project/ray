@@ -19,6 +19,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
+#include "ray/util/env.h"
 
 #if defined(__APPLE__) || defined(__linux__)
 #include <sys/stat.h>
@@ -107,21 +108,9 @@ class AuthenticationTokenLoaderTest : public ::testing::Test {
 #endif
   }
 
-  void set_env_var(const char *name, const char *value) {
-#ifdef _WIN32
-    _putenv_s(name, value);
-#else
-    setenv(name, value, 1);
-#endif
-  }
+  void set_env_var(const char *name, const char *value) { ray::SetEnv(name, value); }
 
-  void unset_env_var(const char *name) {
-#ifdef _WIN32
-    _putenv_s(name, "")
-#else
-    unsetenv(name);
-#endif
-  }
+  void unset_env_var(const char *name) { ray::UnsetEnv(name); }
 
   void ensure_ray_dir_exists() {
 #ifdef _WIN32

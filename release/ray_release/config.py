@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import jsonschema
 import yaml
+
 from ray_release.anyscale_util import find_cloud_by_name
 from ray_release.bazel import bazel_runfile
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError

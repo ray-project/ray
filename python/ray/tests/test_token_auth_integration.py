@@ -342,8 +342,8 @@ def test_ray_start_address_with_token(token_match, setup_cluster_with_token_auth
             _cleanup_ray_start(env)
 
 
-def test_dashboard_with_token_auth_integration(setup_cluster_with_token_auth):
-    """Test that dashboard components work with token authentication.
+def test_e2e_operations_with_token_auth(setup_cluster_with_token_auth):
+    """Test that e2e operations work with token authentication enabled.
 
     This verifies that with token auth enabled:
     1. Job submission works

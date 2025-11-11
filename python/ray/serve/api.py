@@ -1065,4 +1065,15 @@ def get_deployment_handle(
     if _record_telemetry:
         ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
 
-    return client.get_handle(deployment_name, app_name, check_exists=_check_exists)
+    handle: DeploymentHandle = client.get_handle(
+        deployment_name, app_name, check_exists=_check_exists
+    )
+
+    # Track handle creation if called from within a replica
+    if (
+        internal_replica_context is not None
+        and internal_replica_context._handle_registration_callback is not None
+    ):
+        internal_replica_context._handle_registration_callback(handle.deployment_id)
+
+    return handle
