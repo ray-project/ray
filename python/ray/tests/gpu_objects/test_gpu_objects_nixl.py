@@ -4,7 +4,7 @@ import pytest
 import torch
 
 import ray
-from ray._common.test_utils import wait_for_condition, SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 
 
 @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
