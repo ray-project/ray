@@ -2,6 +2,7 @@ import asyncio
 import gc
 import sys
 import threading
+import traceback
 import time
 from unittest.mock import Mock, patch
 
@@ -95,9 +96,13 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
             with pytest.raises(StopIteration):
                 generator._next_sync(timeout_s=0)
 
-            sys.exc_info()
-            gc.collect()
+            # Clear frames held by the StopIteration traceback so generator frames can be freed.
+            tb = sys.exc_info()[2]
+            if tb is not None:
+                traceback.clear_frames(tb)
+
             del generator
+            gc.collect()
             c.async_delete_object_ref_stream.assert_called()
 
 
