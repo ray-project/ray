@@ -58,7 +58,7 @@ class GlobalState:
             if not connected:
                 self._global_state_accessor = None
                 raise ray.exceptions.RaySystemError(
-                    "Failed to connect to GCS. Please check if the GCS server is running"
+                    "Failed to connect to GCS. Please check if the GCS server is running "
                     "and if this node can connect to the head node."
                 )
             return self._global_state_accessor
