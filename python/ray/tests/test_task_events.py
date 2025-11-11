@@ -166,11 +166,11 @@ def test_failed_task_error(shutdown_only):
 
 def test_failed_task_failed_due_to_node_failure(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1)
+    head_node_id = cluster.add_node(num_cpus=1).node_id
     ray.init(address=cluster.address)
     node = cluster.add_node(num_cpus=2)
 
-    signal = SignalActor.remote()
+    signal = SignalActor.options(label_selector={"ray.io/node-id": head_node_id}).remote()
 
     @ray.remote(num_cpus=2, max_retries=0)
     def sleep():
