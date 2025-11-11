@@ -1224,5 +1224,94 @@ def test_get_serve_instance_details_api_type_case_insensitive(ray_start_stop):
         assert "test_app" in serve_details.applications
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_get_serve_instance_details_external_scaler_enabled(ray_start_stop):
+    """
+    Test that external_scaler_enabled is correctly returned in the API response.
+
+    This test verifies that when applications are deployed with different
+    external_scaler_enabled values, the /api/serve/applications/ endpoint
+    correctly returns the external_scaler_enabled field for each application.
+    """
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+
+    config = {
+        "applications": [
+            {
+                "name": "app_with_scaler",
+                "route_prefix": "/with_scaler",
+                "import_path": world_import_path,
+                "external_scaler_enabled": True,
+            },
+            {
+                "name": "app_without_scaler",
+                "route_prefix": "/without_scaler",
+                "import_path": world_import_path,
+                "external_scaler_enabled": False,
+            },
+        ],
+    }
+
+    deploy_config_multi_app(config, SERVE_HEAD_URL)
+
+    def both_apps_running():
+        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        assert response.status_code == 200
+        serve_details = ServeInstanceDetails(**response.json())
+        return (
+            len(serve_details.applications) == 2
+            and serve_details.applications["app_with_scaler"].status
+            == ApplicationStatus.RUNNING
+            and serve_details.applications["app_without_scaler"].status
+            == ApplicationStatus.RUNNING
+        )
+
+    wait_for_condition(both_apps_running, timeout=15)
+
+    # Verify both apps have correct external_scaler_enabled values
+    response = requests.get(SERVE_HEAD_URL, timeout=15)
+    assert response.status_code == 200
+    serve_details = ServeInstanceDetails(**response.json())
+    assert len(serve_details.applications) == 2
+    assert "app_with_scaler" in serve_details.applications
+    assert "app_without_scaler" in serve_details.applications
+    assert serve_details.applications["app_with_scaler"].external_scaler_enabled is True
+    assert serve_details.applications["app_without_scaler"].external_scaler_enabled is False
+
+    # Test default value (when external_scaler_enabled is not specified)
+    config_default = {
+        "applications": [
+            {
+                "name": "app_default",
+                "route_prefix": "/default",
+                "import_path": world_import_path,
+            }
+        ],
+    }
+
+    deploy_config_multi_app(config_default, SERVE_HEAD_URL)
+
+    def app_default_running():
+        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        assert response.status_code == 200
+        serve_details = ServeInstanceDetails(**response.json())
+        return (
+            len(serve_details.applications) == 1
+            and serve_details.applications["app_default"].status
+            == ApplicationStatus.RUNNING
+        )
+
+    wait_for_condition(app_default_running, timeout=15)
+
+    # Verify default value is False
+    response = requests.get(SERVE_HEAD_URL, timeout=15)
+    assert response.status_code == 200
+    serve_details = ServeInstanceDetails(**response.json())
+    assert "app_default" in serve_details.applications
+    assert serve_details.applications["app_default"].external_scaler_enabled is False
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
