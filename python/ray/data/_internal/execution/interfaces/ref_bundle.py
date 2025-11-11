@@ -257,7 +257,7 @@ def _slice_ref_bundle(
         needed_rows: Number of rows to take from the head of the bundle.
 
     Returns:
-        A tuple of (consumed_bundle, remaining_bundle). The remaining bundle may be
+        A tuple of (sliced_bundle, remaining_bundle). The remaining bundle may be
         empty (i.e. contain zero blocks) if all rows were consumed.
     """
     assert needed_rows > 0, "needed_rows must be positive."
@@ -324,7 +324,7 @@ def _slice_ref_bundle(
 
     assert rows_to_take == 0, "Slice exceeds the available rows in the RefBundle."
 
-    consumed_bundle = RefBundle(
+    sliced_bundle = RefBundle(
         blocks=tuple(consumed_blocks),
         schema=ref_bundle.schema,
         owns_blocks=False,
@@ -338,7 +338,7 @@ def _slice_ref_bundle(
         slices=remaining_slices if remaining_slices else None,
     )
 
-    return consumed_bundle, remaining_bundle
+    return sliced_bundle, remaining_bundle
 
 
 def _merge_ref_bundles(bundles: List[RefBundle]) -> RefBundle:
