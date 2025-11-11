@@ -917,20 +917,18 @@ def test_get_gitignore(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "ignore_gitignore,expected_excludes",
+    "include_gitignore,expected_excludes",
     [
         # Default: both .gitignore and .rayignore are used
-        ("0", ["gitignore", "rayignore"]),
+        (True, ["gitignore", "rayignore"]),
         # Only .rayignore is used, no inheritance
-        ("1", ["rayignore"]),
+        (False, ["rayignore"]),
     ],
 )
 def test_ray_ignore_and_git_ignore_together(
-    tmp_path, ignore_gitignore, expected_excludes, monkeypatch
+    tmp_path, include_gitignore, expected_excludes, monkeypatch
 ):
     """Test get_excludes_from_ignore_files with different environment variable combinations."""
-    # Set up environment variables
-    monkeypatch.setenv(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, ignore_gitignore)
 
     # Create test ignore files
     gitignore_path = tmp_path / ".gitignore"
@@ -942,22 +940,20 @@ def test_ray_ignore_and_git_ignore_together(
     ray_ignore_file = tmp_path / "test.cache"
 
     # Get exclusion functions
-    exclude_funcs = get_excludes_from_ignore_files(tmp_path)
+    exclude_funcs = get_excludes_from_ignore_files(
+        tmp_path, include_gitignore=include_gitignore
+    )
 
     # Check the number of exclusion functions returned
     assert len(exclude_funcs) == len(
         expected_excludes
     ), f"Should have {expected_excludes}"
 
-    # Check if files are excluded based on expected_excludes
-    gitignore_active = "gitignore" in expected_excludes
-    rayignore_active = "rayignore" in expected_excludes
-
     # .gitignore patterns
-    assert any(f(git_ignore_file) for f in exclude_funcs) == gitignore_active
+    assert any(f(git_ignore_file) for f in exclude_funcs) == include_gitignore
 
-    # .rayignore patterns
-    assert any(f(ray_ignore_file) for f in exclude_funcs) == rayignore_active
+    # .rayignore patterns is always used
+    assert any(f(ray_ignore_file) for f in exclude_funcs)
 
 
 @pytest.mark.parametrize("ignore_gitignore", [True, False])
