@@ -3,6 +3,7 @@ import collections
 import inspect
 import logging
 import queue
+from dataclasses import dataclass
 from threading import Thread
 from types import GeneratorType
 from typing import (
@@ -15,7 +16,6 @@ from typing import (
     Optional,
     Tuple,
     TypeVar,
-    Union,
 )
 
 import numpy as np
@@ -75,28 +75,53 @@ DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY = env_integer(
 )
 
 
+@dataclass
+class UDFSpec:
+    """Specification for a callable class UDF to be instantiated in an actor.
+
+    Attributes:
+        original_class: The original callable class (used as lookup key)
+        instantiation_class: The class to instantiate (may be wrapped, e.g., with concurrency support)
+        constructor_args: Positional arguments for the constructor
+        constructor_kwargs: Keyword arguments for the constructor
+    """
+
+    original_class: type
+    instantiation_class: type
+    constructor_args: Tuple[Any, ...]
+    constructor_kwargs: Dict[str, Any]
+
+    @classmethod
+    def from_map_batches(
+        cls,
+        udf_class: type,
+        constructor_args: Tuple[Any, ...],
+        constructor_kwargs: Dict[str, Any],
+    ) -> "UDFSpec":
+        """Create a UDFSpec for map_batches (original == instantiation class)."""
+        return cls(
+            original_class=udf_class,
+            instantiation_class=udf_class,
+            constructor_args=constructor_args,
+            constructor_kwargs=constructor_kwargs,
+        )
+
+
 class _MapActorContext:
     def __init__(
         self,
-        udf_map_cls: Optional[UserDefinedFunction] = None,
-        udf_map_fn: Optional[Callable[[Any], Any]] = None,
         is_async: bool = False,
         udf_instances: Optional[Dict[int, Any]] = None,
     ):
         """Initialize the map actor context.
 
         Args:
-            udf_map_cls: For map_batches - the callable class type
-            udf_map_fn: For map_batches - the instantiated callable class instance
-            is_async: Whether the UDF is async
-            udf_instances: For expressions - dict mapping UDF ID to instance
+            is_async: Whether any UDF is async
+            udf_instances: Dict mapping UDF class ID to instantiated instance
         """
-        self.udf_map_cls = udf_map_cls
-        self.udf_map_fn = udf_map_fn
         self.is_async = is_async
         self.udf_map_asyncio_loop = None
         self.udf_map_asyncio_thread = None
-        # For expression evaluation with callable class UDFs
         self.udf_instances = udf_instances or {}
 
         if is_async:
@@ -135,7 +160,7 @@ def plan_project_op(
     )
 
     callable_class_udfs = []
-    for expr in op.exprs:
+    for expr in projection_exprs:
         collector = _CallableClassUDFCollector()
         collector.visit(expr)
         callable_class_udfs.extend(collector.get_callable_class_udfs())
@@ -163,19 +188,18 @@ def plan_project_op(
                     wrapped_udf_class = orig_udf_class
 
                 seen_udf_classes[orig_udf_id] = (orig_udf_class, wrapped_udf_class)
-                # Store both original class (for lookup key) and wrapped class (for instantiation)
+                # Store UDF spec with both original and wrapped class
                 udf_specs.append(
-                    (
-                        orig_udf_class,  # Original class - used as key for lookup
-                        wrapped_udf_class,  # Wrapped class - used for instantiation
-                        udf_expr.fn_constructor_args,
-                        udf_expr.fn_constructor_kwargs,
+                    UDFSpec(
+                        original_class=orig_udf_class,
+                        instantiation_class=wrapped_udf_class,
+                        constructor_args=udf_expr.fn_constructor_args,
+                        constructor_kwargs=udf_expr.fn_constructor_kwargs,
                     )
                 )
 
         # Use the shared init function creator (same core logic as _get_udf)
-        # No primary_udf_class for expressions (only needed for map_batches backward compat)
-        init_fn = create_actor_context_init_fn(udf_specs, primary_udf_class=None)
+        init_fn = create_actor_context_init_fn(udf_specs)
 
     def _project_block(block: Block) -> Block:
         try:
@@ -387,17 +411,30 @@ def _get_udf(
 
         is_async_udf = _is_async_udf(udf.__call__)
 
+        # Capture original class BEFORE wrapping for use as dict key
+        original_udf_class = udf
+
         if not is_async_udf:
             # TODO(ak) this constrains concurrency for user UDFs to run in a single
             #          thread irrespective of max_concurrency. Remove
             udf = make_callable_class_concurrent(udf)
 
         # Use the shared init function creator (handles both map_batches and expressions)
-        # For map_batches, pass the udf as primary_udf_class to maintain backward compatibility
+        # Pass both original (for dict key) and wrapped (for instantiation) classes
         init_fn = create_actor_context_init_fn(
-            udf_specs=[(udf, fn_constructor_args, fn_constructor_kwargs)],
-            primary_udf_class=udf,  # Makes init_fn also populate udf_map_fn field
+            udf_specs=[
+                UDFSpec(
+                    original_class=original_udf_class,
+                    instantiation_class=udf,
+                    constructor_args=fn_constructor_args,
+                    constructor_kwargs=fn_constructor_kwargs,
+                )
+            ]
         )
+
+        # Capture the class itself (not its ID) for lookup on the actor
+        # The ID must be computed on the actor side after deserialization
+        captured_udf_class = original_udf_class
 
         if inspect.iscoroutinefunction(udf.__call__):
             # Async coroutine UDF: wrapper must be async to work with async transform machinery
@@ -406,8 +443,12 @@ def _get_udf(
                 assert ray.data._map_actor_context.is_async
 
                 try:
+                    # Compute ID on actor side (same process as dict creation)
+                    udf_instance = ray.data._map_actor_context.udf_instances[
+                        id(captured_udf_class)
+                    ]
                     # Direct await - already in async context
-                    return await ray.data._map_actor_context.udf_map_fn(
+                    return await udf_instance(
                         item,
                         *fn_args,
                         **fn_kwargs,
@@ -422,7 +463,11 @@ def _get_udf(
                 assert ray.data._map_actor_context.is_async
 
                 try:
-                    gen = ray.data._map_actor_context.udf_map_fn(
+                    # Compute ID on actor side (same process as dict creation)
+                    udf_instance = ray.data._map_actor_context.udf_instances[
+                        id(captured_udf_class)
+                    ]
+                    gen = udf_instance(
                         item,
                         *fn_args,
                         **fn_kwargs,
@@ -442,7 +487,11 @@ def _get_udf(
                 assert ray.data._map_actor_context is not None
                 assert not ray.data._map_actor_context.is_async
                 try:
-                    return ray.data._map_actor_context.udf_map_fn(
+                    # Compute ID on actor side (same process as dict creation)
+                    udf_instance = ray.data._map_actor_context.udf_instances[
+                        id(captured_udf_class)
+                    ]
+                    return udf_instance(
                         item,
                         *fn_args,
                         **fn_kwargs,
@@ -688,28 +737,14 @@ def call_udf_from_actor_context(
 
 
 def create_actor_context_init_fn(
-    udf_specs: List[
-        Union[
-            Tuple[
-                type, Tuple[Any, ...], Dict[str, Any]
-            ],  # map_batches format: (class, args, kwargs)
-            Tuple[
-                type, type, Tuple[Any, ...], Dict[str, Any]
-            ],  # expressions format: (orig_class, wrapped_class, args, kwargs)
-        ]
-    ],
-    primary_udf_class: Optional[type] = None,
+    udf_specs: List[UDFSpec],
 ):
     """Create an init function for registering callable class UDFs in actor context.
 
     This is the shared core logic between map_batches (single UDF) and expressions (multiple UDFs).
 
     Args:
-        udf_specs: List of UDF specifications. Two formats supported:
-                   - (udf_class, constructor_args, constructor_kwargs) for map_batches
-                   - (original_class, wrapped_class, constructor_args, constructor_kwargs) for expressions
-        primary_udf_class: For map_batches backward compatibility - the main UDF class
-                           whose instance should also be stored in udf_map_fn
+        udf_specs: List of UDF specifications
 
     Returns:
         An init function that sets up all UDFs in the actor context
@@ -719,49 +754,27 @@ def create_actor_context_init_fn(
         import ray
 
         if ray.data._map_actor_context is None:
-            # Normalize specs to (original_class, instantiation_class, args, kwargs)
-            normalized_specs = []
-            for spec in udf_specs:
-                if len(spec) == 3:
-                    # map_batches format: (class, args, kwargs)
-                    udf_class, ctor_args, ctor_kwargs = spec
-                    normalized_specs.append(
-                        (udf_class, udf_class, ctor_args, ctor_kwargs)
-                    )
-                else:
-                    # expressions format: already (orig_class, wrapped_class, args, kwargs)
-                    normalized_specs.append(spec)
-
-            # Check if any UDF is async (check the instantiation class)
+            # Check if any UDF is async
             has_async_udf = any(
-                _is_async_udf(inst_class.__call__)
-                for _, inst_class, _, _ in normalized_specs
+                _is_async_udf(spec.instantiation_class.__call__) for spec in udf_specs
             )
 
             # Create instances for all callable class UDFs
             udf_instances = {}
-            for orig_class, inst_class, ctor_args, ctor_kwargs in normalized_specs:
-                # Use id of the ORIGINAL class as the key (for expression lookup)
-                udf_id = id(orig_class)
+            for spec in udf_specs:
+                # Use id of the ORIGINAL class as the key for lookup
+                udf_id = id(spec.original_class)
                 if udf_id not in udf_instances:
                     # Instantiate using the wrapped/processed class
-                    udf_instances[udf_id] = inst_class(*ctor_args, **ctor_kwargs)
+                    udf_instances[udf_id] = spec.instantiation_class(
+                        *spec.constructor_args, **spec.constructor_kwargs
+                    )
 
-            # For map_batches backward compatibility, also set udf_map_cls and udf_map_fn
-            if primary_udf_class is not None:
-                # Get the primary instance from the instances dict
-                primary_instance = udf_instances[id(primary_udf_class)]
-                ray.data._map_actor_context = _MapActorContext(
-                    udf_map_cls=primary_udf_class,
-                    udf_map_fn=primary_instance,
-                    is_async=has_async_udf,
-                    udf_instances=udf_instances,
-                )
-            else:
-                # Expressions path - only udf_instances dict
-                ray.data._map_actor_context = _MapActorContext(
-                    udf_instances=udf_instances, is_async=has_async_udf
-                )
+            # Single unified context for all UDFs
+            ray.data._map_actor_context = _MapActorContext(
+                is_async=has_async_udf,
+                udf_instances=udf_instances,
+            )
 
     return init_fn
 
