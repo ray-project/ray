@@ -27,6 +27,7 @@ ray_cc_library(
     hdrs = ["k8s_util.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":authentication_token",
         "//src/ray/util:logging",
         "@boost//:asio_ssl",
         "@boost//:beast",

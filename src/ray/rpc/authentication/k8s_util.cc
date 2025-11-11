@@ -157,7 +157,9 @@ bool K8sApiPost(const std::string &path,
   return true;
 }
 
-bool ValidateToken(const std::string &token_str) {
+bool ValidateToken(const AuthenticationToken &token) {
+  std::string token_str = token.ToValue();
+
   nlohmann::json token_review_req = {{"apiVersion", "authentication.k8s.io/v1"},
                                      {"kind", "TokenReview"},
                                      {"spec", {{"token", token_str}}}};

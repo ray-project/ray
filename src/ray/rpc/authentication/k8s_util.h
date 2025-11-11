@@ -19,6 +19,7 @@
 #include <string>
 
 #include "nlohmann/json.hpp"
+#include "ray/rpc/authentication/authentication_token.h"
 
 namespace ray {
 namespace rpc {
@@ -44,7 +45,7 @@ bool K8sApiPost(const std::string &path,
 // Validates a token by calling the Kubernetes API server.
 /// \param token The token to validate.
 /// \return true if the token is valid, false otherwise.
-bool ValidateToken(const std::string &token);
+bool ValidateToken(const AuthenticationToken &token);
 
 }  // namespace k8s
 }  // namespace rpc

@@ -27,6 +27,13 @@
 namespace ray {
 namespace rpc {
 
+// Hash function for AuthenticationToken
+struct AuthenticationTokenHash {
+  std::size_t operator()(const AuthenticationToken &token) const {
+    return std::hash<std::string>()(token.ToValue());
+  }
+};
+
 /// Singleton class for loading and caching authentication tokens.
 /// Supports loading tokens from multiple sources with precedence:
 /// 1. RAY_AUTH_TOKEN environment variable
@@ -89,7 +96,8 @@ class AuthenticationTokenLoader {
     std::chrono::steady_clock::time_point expiration;
   };
   std::mutex k8s_token_cache_mutex_;
-  std::unordered_map<std::string, K8sCacheEntry> k8s_token_cache_;
+  std::unordered_map<AuthenticationToken, K8sCacheEntry, AuthenticationTokenHash>
+      k8s_token_cache_;
 };
 
 }  // namespace rpc

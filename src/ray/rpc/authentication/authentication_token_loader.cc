@@ -65,7 +65,7 @@ bool AuthenticationTokenLoader::ValidateToken(const AuthenticationToken &provide
     // Check cache first.
     {
       std::lock_guard<std::mutex> lock(k8s_token_cache_mutex_);
-      auto it = k8s_token_cache_.find(token_str);
+      auto it = k8s_token_cache_.find(provided_token);
       if (it != k8s_token_cache_.end()) {
         if (std::chrono::steady_clock::now() < it->second.expiration) {
           return it->second.allowed;
@@ -76,7 +76,7 @@ bool AuthenticationTokenLoader::ValidateToken(const AuthenticationToken &provide
     }
 
     bool is_allowed = false;
-    is_allowed = k8s::ValidateToken(token_str);
+    is_allowed = k8s::ValidateToken(provided_token);
 
     // Only cache validated tokens for now. We don't want to invalidate a token
     // due to unrelated errors from Kubernetes API server. This has the downside of
@@ -85,8 +85,8 @@ bool AuthenticationTokenLoader::ValidateToken(const AuthenticationToken &provide
     // between invalid token errors and server errors.
     if (is_allowed) {
       std::lock_guard<std::mutex> lock(k8s_token_cache_mutex_);
-      k8s_token_cache_[token_str] = {is_allowed,
-                                     std::chrono::steady_clock::now() + kCacheTTL};
+      k8s_token_cache_[provided_token] = {is_allowed,
+                                          std::chrono::steady_clock::now() + kCacheTTL};
     }
 
     return is_allowed;
