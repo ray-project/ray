@@ -99,53 +99,25 @@ class IcebergDatasink(Datasink[List["pa.Table"]]):
 
         return catalog.load_catalog(self._catalog_name, **self._catalog_kwargs)
 
-    def _pyarrow_type_to_iceberg(self, pa_type: "pa.DataType"):
-        """Convert a PyArrow type to an Iceberg type using PyIceberg's native visitor."""
-        from pyiceberg.io.pyarrow import _ConvertToIceberg, visit_pyarrow
-
-        visitor = _ConvertToIceberg(downcast_ns_timestamp_to_us=False, format_version=2)
-        return visit_pyarrow(pa_type, visitor)
-
     def _update_schema(self, incoming_schema: "pa.Schema") -> None:
         """
-        Update the table schema to accommodate incoming data.
+        Update the table schema to accommodate incoming data using union-by-name semantics.
+
+        This automatically handles:
+        - Adding new columns from the incoming schema
+        - Type promotion (e.g., int32 -> int64) where compatible
+        - Preserving existing columns not in the incoming schema
 
         Args:
             incoming_schema: The PyArrow schema from the incoming data
         """
-        current_schema = self._table.schema().as_arrow()
-        current_field_names = {field.name for field in current_schema}
+        # Use PyIceberg's update_schema API
+        with self._table.update_schema() as update:
+            update.union_by_name(incoming_schema)
 
-        # Find new fields
-        new_fields = [
-            field for field in incoming_schema if field.name not in current_field_names
-        ]
-
-        if new_fields:
-            logger.info(
-                f"Updating schema to add {len(new_fields)} new fields: "
-                f"{[f.name for f in new_fields]}"
-            )
-
-            # Use PyIceberg's update_schema API
-            with self._table.update_schema() as update:
-                for field in new_fields:
-                    try:
-                        # Convert PyArrow type to Iceberg type
-                        iceberg_type = self._pyarrow_type_to_iceberg(field.type)
-                        update.add_column(
-                            path=field.name,
-                            field_type=iceberg_type,
-                            doc=None,
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to add field {field.name}: {e}. Skipping."
-                        )
-
-            # Reload table completely after schema evolution
-            catalog = self._get_catalog()
-            self._table = catalog.load_table(self.table_identifier)
+        # Reload table completely after schema evolution
+        catalog = self._get_catalog()
+        self._table = catalog.load_table(self.table_identifier)
 
     def on_write_start(self) -> None:
         """Initialize table for writing."""
