@@ -201,7 +201,9 @@ bool ValidateToken(const AuthenticationToken &token) {
                                 {"namespace", ray_cluster_namespace_env}};
 
   auto user_info = token_review_resp["status"]["user"];
-  spec["user"] = user_info["username"];
+  if (user_info.contains("username")) {
+    spec["user"] = user_info["username"];
+  }
   if (user_info.contains("groups")) {
     spec["groups"] = user_info["groups"];
   }
