@@ -293,7 +293,7 @@ def get_ray_temp_dir():
     """
     get_ray_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead.
     """
-    return os.path.join(get_user_temp_dir(), "ray")
+    return resolve_user_ray_temp_dir(None, None)
 
 
 def get_ray_address_file(temp_dir: Optional[str]):
