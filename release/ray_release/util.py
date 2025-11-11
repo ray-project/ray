@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import requests
 
-from ray_release.logger import logger
 from ray_release.configs.global_config import get_global_config
+from ray_release.logger import logger
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -32,6 +32,7 @@ AZURE_STORAGE_CONTAINER = "working-dirs"
 AZURE_STORAGE_ACCOUNT = "rayreleasetests"
 GS_BUCKET = "anyscale-oss-dev-bucket"
 AZURE_REGISTRY_NAME = "rayreleasetest"
+ANYSCALE_RAY_IMAGE_PREFIX = "anyscale/ray"
 ERROR_LOG_PATTERNS = [
     "ERROR",
     "Traceback (most recent call last)",

@@ -144,6 +144,12 @@ DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
     "RAY_DATA_ENABLE_PROGRESS_BAR_NAME_TRUNCATION", True
 )
 
+# Globally enable or disable experimental rich progress bars. This is a new
+# interface to replace the old tqdm progress bar implementation.
+DEFAULT_ENABLE_RICH_PROGRESS_BARS = bool(
+    env_integer("RAY_DATA_ENABLE_RICH_PROGRESS_BARS", 0)
+)
+
 DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ENFORCE_SCHEMAS", False)
 
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
@@ -206,7 +212,9 @@ DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
     "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", -1
 )
 
-DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR = 4
+DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR = env_integer(
+    "RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR", 4
+)
 
 # Enable per node metrics reporting for Ray Data, disabled by default.
 DEFAULT_ENABLE_PER_NODE_METRICS = bool(
@@ -230,6 +238,11 @@ DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD: float = env_float(
 DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
     "RAY_DATA_DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD",
     0.5,
+)
+
+
+DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
+    "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", False
 )
 
 
@@ -369,6 +382,8 @@ class DataContext:
         enable_progress_bar_name_truncation: If True, the name of the progress bar
             (often the operator name) will be truncated if it exceeds
             `ProgressBar.MAX_NAME_LENGTH`. Otherwise, the full operator name is shown.
+        enable_rich_progress_bars: Whether to use the new rich progress bars instead
+            of the tqdm TUI.
         enable_get_object_locations_for_metrics: Whether to enable
             ``get_object_locations`` for metrics.
         write_file_retry_on_errors: A list of substrings of error messages that should
@@ -445,6 +460,8 @@ class DataContext:
             later. If `None`, this type of backpressure is disabled.
         downstream_capacity_backpressure_max_queued_bundles: Maximum number of queued
             bundles before applying backpressure. If `None`, no limit is applied.
+        enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
+        of an operator based on it's and downstream's queue size.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
@@ -536,6 +553,7 @@ class DataContext:
     enable_progress_bar_name_truncation: bool = (
         DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
     )
+    enable_rich_progress_bars: bool = DEFAULT_ENABLE_RICH_PROGRESS_BARS
     enable_get_object_locations_for_metrics: bool = (
         DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
     )
@@ -560,7 +578,8 @@ class DataContext:
     # Setting non-positive value here (ie <= 0) disables this functionality
     # (defaults to -1).
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
-    max_tasks_in_flight_per_actor: Optional[int] = DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR
+    # This setting serves as a global override
+    max_tasks_in_flight_per_actor: Optional[int] = None
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
@@ -581,6 +600,10 @@ class DataContext:
 
     downstream_capacity_backpressure_ratio: float = None
     downstream_capacity_backpressure_max_queued_bundles: int = None
+
+    enable_dynamic_output_queue_size_backpressure: bool = (
+        DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
+    )
 
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 

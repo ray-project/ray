@@ -408,6 +408,7 @@ class DataIterator(abc.ABC):
         """
 
         from ray.train.torch import get_device
+        from ray.train.utils import _in_ray_train_worker
 
         if collate_fn is not None and (dtypes is not None or device != "auto"):
             raise ValueError(
@@ -424,7 +425,7 @@ class DataIterator(abc.ABC):
         if device == "auto":
             # Use the appropriate device for Ray Train, or falls back to CPU if
             # Ray Train is not being used.
-            device = get_device()
+            device = get_device() if _in_ray_train_worker() else "cpu"
 
         from ray.air._internal.torch_utils import (
             move_tensors_to_device,

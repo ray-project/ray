@@ -38,7 +38,7 @@ namespace gcs {
 // RAY_gcs_server_request_timeout_seconds
 int64_t GetGcsTimeoutMs();
 
-using SubscribeOperation = std::function<Status(const StatusCallback &done)>;
+using SubscribeOperation = std::function<void(const StatusCallback &done)>;
 using FetchDataOperation = std::function<void(const StatusCallback &done)>;
 
 class GcsClient;
@@ -170,8 +170,7 @@ class ActorInfoAccessor {
   /// \param actor_id The ID of actor to be subscribed to.
   /// \param subscribe Callback that will be called each time when the actor is updated.
   /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribe(
+  virtual void AsyncSubscribe(
       const ActorID &actor_id,
       const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const StatusCallback &done);
@@ -179,8 +178,7 @@ class ActorInfoAccessor {
   /// Cancel subscription to an actor.
   ///
   /// \param actor_id The ID of the actor to be unsubscribed to.
-  /// \return Status
-  virtual Status AsyncUnsubscribe(const ActorID &actor_id);
+  virtual void AsyncUnsubscribe(const ActorID &actor_id);
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -237,8 +235,7 @@ class JobInfoAccessor {
   ///
   /// \param subscribe Callback that will be called each time when a job updates.
   /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeAll(
+  virtual void AsyncSubscribeAll(
       const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
       const StatusCallback &done);
 
@@ -297,31 +294,23 @@ class NodeInfoAccessor {
   NodeInfoAccessor() = default;
   explicit NodeInfoAccessor(GcsClient *client_impl);
   virtual ~NodeInfoAccessor() = default;
+
   /// Register local node to GCS asynchronously.
   ///
   /// \param node_info The information of node to register to GCS.
   /// \param callback Callback that will be called when registration is complete.
-  /// \return Status
-  virtual Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
-                              const StatusCallback &callback);
+  virtual void RegisterSelf(rpc::GcsNodeInfo &&local_node_info,
+                            const StatusCallback &callback);
 
   /// Unregister local node to GCS asynchronously.
   ///
+  /// \param node_id The ID of the node to unregister from GCS.
   /// \param node_death_info The death information regarding why to unregister from GCS.
   /// \param unregister_done_callback Callback that will be called when unregistration is
   /// done.
-  virtual void UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
+  virtual void UnregisterSelf(const NodeID &node_id,
+                              const rpc::NodeDeathInfo &node_death_info,
                               std::function<void()> unregister_done_callback);
-
-  /// Get id of local node which was registered by 'RegisterSelf'.
-  ///
-  /// \return NodeID
-  virtual const NodeID &GetSelfId() const;
-
-  /// Get information of local node which was registered by 'RegisterSelf'.
-  ///
-  /// \return GcsNodeInfo
-  virtual const rpc::GcsNodeInfo &GetSelfInfo() const;
 
   /// Register a node to GCS asynchronously.
   ///
@@ -329,13 +318,6 @@ class NodeInfoAccessor {
   /// \param callback Callback that will be called when registration is complete.
   virtual void AsyncRegister(const rpc::GcsNodeInfo &node_info,
                              const StatusCallback &callback);
-
-  /// Send a check alive request to GCS for the liveness of this node.
-  ///
-  /// \param callback The callback function once the request is finished.
-  /// \param timeout_ms The timeout for this request.
-  virtual void AsyncCheckSelfAlive(const std::function<void(Status, bool)> &callback,
-                                   int64_t timeout_ms);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
@@ -478,9 +460,6 @@ class NodeInfoAccessor {
 
   GcsClient *client_impl_;
 
-  rpc::GcsNodeInfo local_node_info_;
-  NodeID local_node_id_;
-
   /// The callback to call when a new node is added or a node is removed.
   std::function<void(NodeID, const rpc::GcsNodeInfo &)> node_change_callback_ = nullptr;
 
@@ -529,13 +508,6 @@ class NodeResourceInfoAccessor {
   virtual void AsyncGetDrainingNodes(
       const ItemCallback<std::unordered_map<NodeID, int64_t>> &callback);
 
-  /// Reestablish subscription.
-  /// This should be called when GCS server restarts from a failure.
-  /// PubSub server restart will cause GCS server restart. In this case, we need to
-  /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
-  /// server.
-  virtual void AsyncResubscribe();
-
   /// Get newest resource usage of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
@@ -551,11 +523,6 @@ class NodeResourceInfoAccessor {
                                      rpc::GetAllResourceUsageReply &reply);
 
  private:
-  /// Save the subscribe operation in this function, so we can call it again when PubSub
-  /// server restarts from a failure.
-  SubscribeOperation subscribe_resource_operation_;
-  SubscribeOperation subscribe_batch_resource_usage_operation_;
-
   GcsClient *client_impl_;
 
   Sequencer<NodeID> sequencer_;
@@ -625,8 +592,7 @@ class WorkerInfoAccessor {
   ///
   /// \param subscribe Callback that will be called each time when a worker failed.
   /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeToWorkerFailures(
+  virtual void AsyncSubscribeToWorkerFailures(
       const ItemCallback<rpc::WorkerDeltaData> &subscribe, const StatusCallback &done);
 
   /// Report a worker failure to GCS asynchronously.
@@ -966,6 +932,7 @@ class AutoscalerStateAccessor {
   virtual Status RequestClusterResourceConstraint(
       int64_t timeout_ms,
       const std::vector<std::unordered_map<std::string, double>> &bundles,
+      const std::vector<std::unordered_map<std::string, std::string>> &label_selectors,
       const std::vector<int64_t> &count_array);
 
   virtual Status GetClusterResourceState(int64_t timeout_ms,

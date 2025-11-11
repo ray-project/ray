@@ -14,6 +14,7 @@ import ray.cluster_utils
 from ray._common.test_utils import wait_for_condition
 from ray._private.gc_collect_manager import PythonGCThread
 from ray._private.internal_api import global_gc
+from ray._private.ray_constants import RAY_GC_MIN_COLLECT_INTERVAL
 
 logger = logging.getLogger(__name__)
 
@@ -247,44 +248,44 @@ def test_local_gc_called_once_per_interval(shutdown_only):
         def has_garbage(self):
             return self.garbage() is not None
 
-    def all_garbage_collected(local_ref):
-        return local_ref() is None and not any(
-            ray.get([a.has_garbage.remote() for a in actors])
-        )
-
     try:
         gc.disable()
 
-        # Round 1: first batch of garbage should be collected
-        # Local driver.
+        # 1) Test GC behavior for the local driver.
+
+        # 1a) Wait for the first GC to happen to avoid timing issues.
         local_ref = weakref.ref(ObjectWithCyclicRef())
-        # Remote workers.
-        actors = [GarbageHolder.remote() for _ in range(2)]
-        ray.get([a.make_garbage.remote() for a in actors])
+        wait_for_condition(lambda: local_ref() is None, retry_interval_ms=10)
 
+        # 1b) Check that GC *is not* called within the min interval.
+        local_ref = weakref.ref(ObjectWithCyclicRef())
+        time.sleep(RAY_GC_MIN_COLLECT_INTERVAL / 2)
         assert local_ref() is not None
-        assert all(ray.get([a.has_garbage.remote() for a in actors]))
 
+        # 1c) Check that GC *is* called after the min interval.
         wait_for_condition(
-            lambda: all_garbage_collected(local_ref),
+            lambda: local_ref() is None,
+            timeout=RAY_GC_MIN_COLLECT_INTERVAL * 2,
         )
 
-        # Round 2: second batch should NOT be collected within min_interval
-        local_ref = weakref.ref(ObjectWithCyclicRef())
-        ray.get([a.make_garbage.remote() for a in actors])
+        # 2) Test GC behavior for a remote actor.
+        a = GarbageHolder.remote()
 
-        with pytest.raises(RuntimeError):
-            wait_for_condition(
-                lambda: all_garbage_collected(local_ref),
-                timeout=2.0,  # shorter than min_interval
-                retry_interval_ms=50,
-            )
-
-        # Round 3: after min_interval passes, garbage should be collected
+        # 2a) Wait for the first GC to happen to avoid timing issues.
+        ray.get(a.make_garbage.remote())
         wait_for_condition(
-            lambda: all_garbage_collected(local_ref),
-            timeout=10.0,
-            retry_interval_ms=50,
+            lambda: not ray.get(a.has_garbage.remote()), retry_interval_ms=10
+        )
+
+        # 2b) Check that GC *is not* called within the min interval.
+        ray.get(a.make_garbage.remote())
+        time.sleep(RAY_GC_MIN_COLLECT_INTERVAL / 2)
+        assert ray.get(a.has_garbage.remote())
+
+        # 2c) Check that GC *is* called after the min interval.
+        wait_for_condition(
+            lambda: not ray.get(a.has_garbage.remote()),
+            timeout=RAY_GC_MIN_COLLECT_INTERVAL * 2,
         )
 
     finally:

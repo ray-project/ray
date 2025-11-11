@@ -192,9 +192,6 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
       std::make_move_iterator(required_resources.end()));
   definition_event_data.set_serialized_runtime_env(
       task_spec_->RuntimeEnvInfo().serialized_runtime_env());
-  // TODO(CORE-2277): Remove this once runtime_env_info is fully deprecated.
-  definition_event_data.mutable_runtime_env_info()->CopyFrom(
-      task_spec_->RuntimeEnvInfo());
   definition_event_data.set_job_id(job_id_.Binary());
   definition_event_data.set_parent_task_id(task_spec_->ParentTaskId().Binary());
   definition_event_data.set_placement_group_id(
@@ -819,9 +816,13 @@ void TaskEventBufferImpl::SendRayEventsToAggregator(
         event_aggregator_grpc_in_progress_ = false;
       };
 
-  rpc::events::AddEventsRequest request;
-  *request.mutable_events_data() = std::move(*data);
-  event_aggregator_client_->AddEvents(request, on_complete);
+  if (num_task_events_to_send == 0 && num_dropped_task_attempts_to_send == 0) {
+    event_aggregator_grpc_in_progress_ = false;
+  } else {
+    rpc::events::AddEventsRequest request;
+    *request.mutable_events_data() = std::move(*data);
+    event_aggregator_client_->AddEvents(request, on_complete);
+  }
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {

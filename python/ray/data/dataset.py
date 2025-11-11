@@ -136,7 +136,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
 
-from ray.data.expressions import Expr
+from ray.data.expressions import Expr, StarExpr, col
 
 logger = logging.getLogger(__name__)
 
@@ -343,9 +343,11 @@ class Dataset:
                 that can be instantiated to create such a callable.
             compute: The compute strategy to use for the map operation.
 
-                * If ``compute`` is not specified, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
+                * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
 
                 * Use ``ray.data.TaskPoolStrategy(size=n)`` to launch at most ``n`` concurrent Ray tasks.
+
+                * If ``compute`` is not specified for a callable class, will use ``ray.data.ActorPoolStrategy(min_size=1, max_size=None)`` to launch an autoscaling actor pool from 1 to unlimited workers.
 
                 * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers.
 
@@ -452,7 +454,7 @@ class Dataset:
         batch_size: Union[int, None, Literal["default"]] = None,
         compute: Optional[ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
-        zero_copy_batch: bool = False,
+        zero_copy_batch: bool = True,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -461,6 +463,7 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        udf_modifying_row_count: bool = False,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -478,9 +481,18 @@ class Dataset:
             To understand the format of the input to ``fn``, call :meth:`~Dataset.take_batch`
             on the dataset to get a batch in the same format as will be passed to ``fn``.
 
-        .. tip::
-            If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
-            performance and decrease memory utilization.
+        .. note::
+            ``fn`` should generally avoid modifying data buffers behind its input
+            since these could be zero-copy views into the underlying object residing
+            inside Ray's Object Store.
+
+            To perform any modifications it's recommended to copy the data you
+            want to modify.
+
+            In rare cases when you can't copy inside your UDF, you can instead
+            specify ``zero_copy_batch=False`` and then Ray Data will copy the
+            *whole* batch for you, providing ``fn`` with a copy rather than
+            a zero-copy view.
 
         .. warning::
             Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
@@ -583,9 +595,11 @@ class Dataset:
                 to a given map task. Default ``batch_size`` is ``None``.
             compute: The compute strategy to use for the map operation.
 
-                * If ``compute`` is not specified, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
+                * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
 
                 * Use ``ray.data.TaskPoolStrategy(size=n)`` to launch at most ``n`` concurrent Ray tasks.
+
+                * If ``compute`` is not specified for a callable class, will use ``ray.data.ActorPoolStrategy(min_size=1, max_size=None)`` to launch an autoscaling actor pool from 1 to unlimited workers.
 
                 * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers.
 
@@ -597,16 +611,16 @@ class Dataset:
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
                 ``pyarrow.Table``. If ``batch_format`` is set to ``None`` input
-                block format will be used. Note that
+                block format will be used.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
                 view on data in Ray's object store, which can decrease memory
-                utilization and improve performance. If this is ``False``, the batch
-                is writable, which requires an extra copy to guarantee.
-                If ``fn`` mutates its input, this needs to be ``False`` in order to
-                avoid "assignment destination is read-only" or "buffer source array is
-                read-only" errors. Default is ``False``.
+                utilization and improve performance. Setting this to ``False``,
+                will make a copy of the *whole* batch, therefore allowing UDF to
+                modify underlying data buffers (like tensors, binary arrays, etc)
+                in place. It's recommended to copy only the data you need to
+                modify instead of resorting to copying the whole batch.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -623,6 +637,7 @@ class Dataset:
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: This argument is deprecated. Use ``compute`` argument.
+            udf_modifying_row_count: Set to True if the UDF may modify the number of rows it receives so the limit pushdown optimization will not be applied.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -691,6 +706,7 @@ class Dataset:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
+            udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
@@ -711,6 +727,7 @@ class Dataset:
         num_gpus: Optional[float],
         memory: Optional[float],
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]],
+        udf_modifying_row_count: bool,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         **ray_remote_args,
     ):
@@ -764,6 +781,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
@@ -826,22 +844,21 @@ class Dataset:
         if isinstance(expr, DownloadExpr):
             download_op = Download(
                 self._logical_plan.dag,
-                uri_column_name=expr.uri_column_name,
-                output_bytes_column_name=column_name,
+                uri_column_names=[expr.uri_column_name],
+                output_bytes_column_names=[column_name],
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(download_op, self.context)
         else:
             project_op = Project(
                 self._logical_plan.dag,
-                cols=None,
-                cols_rename=None,
-                exprs={column_name: expr},
+                exprs=[StarExpr(), expr.alias(column_name)],
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(project_op, self.context)
         return Dataset(plan, logical_plan)
 
+    @Deprecated(message="Use `with_column` API instead")
     @PublicAPI(api_group=BT_API_GROUP)
     def add_column(
         self,
@@ -954,7 +971,7 @@ class Dataset:
             batch_format=batch_format,
             compute=compute,
             concurrency=concurrency,
-            zero_copy_batch=False,
+            zero_copy_batch=True,
             **ray_remote_args,
         )
 
@@ -1063,24 +1080,25 @@ class Dataset:
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
         """  # noqa: E501
+        from ray.data.expressions import col
+
         if isinstance(cols, str):
-            cols = [cols]
+            exprs = [col(cols)]
         elif isinstance(cols, list):
             if not all(isinstance(col, str) for col in cols):
                 raise ValueError(
                     "select_columns requires all elements of 'cols' to be strings."
                 )
+            if len(cols) != len(set(cols)):
+                raise ValueError(
+                    "select_columns expected unique column names, "
+                    f"got duplicate column names: {cols}"
+                )
+            exprs = [col(c) for c in cols]
         else:
             raise TypeError(
                 "select_columns requires 'cols' to be a string or a list of strings."
             )
-
-        if len(cols) != len(set(cols)):
-            raise ValueError(
-                "select_columns expected unique column names, "
-                f"got duplicate column names: {cols}"
-            )
-
         # Don't feel like we really need this
         from ray.data._internal.compute import TaskPoolStrategy
 
@@ -1089,8 +1107,7 @@ class Dataset:
         plan = self._plan.copy()
         select_op = Project(
             self._logical_plan.dag,
-            cols=cols,
-            cols_rename=None,
+            exprs=exprs,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
@@ -1170,7 +1187,8 @@ class Dataset:
                     "to be strings."
                 )
 
-            cols_rename = names
+            exprs = [col(prev)._rename(new) for prev, new in names.items()]
+
         elif isinstance(names, list):
             if not names:
                 raise ValueError(
@@ -1194,7 +1212,7 @@ class Dataset:
                     f"schema names: {current_names}."
                 )
 
-            cols_rename = dict(zip(current_names, names))
+            exprs = [col(prev)._rename(new) for prev, new in zip(current_names, names)]
         else:
             raise TypeError(
                 f"rename_columns expected names to be either List[str] or "
@@ -1215,8 +1233,7 @@ class Dataset:
         plan = self._plan.copy()
         select_op = Project(
             self._logical_plan.dag,
-            cols=None,
-            cols_rename=cols_rename,
+            exprs=[StarExpr(), *exprs],
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
@@ -1288,9 +1305,11 @@ class Dataset:
                 that can be instantiated to create such a callable.
             compute: The compute strategy to use for the map operation.
 
-                * If ``compute`` is not specified, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
+                * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
 
                 * Use ``ray.data.TaskPoolStrategy(size=n)`` to launch at most ``n`` concurrent Ray tasks.
+
+                * If ``compute`` is not specified for a callable class, will use ``ray.data.ActorPoolStrategy(min_size=1, max_size=None)`` to launch an autoscaling actor pool from 1 to unlimited workers.
 
                 * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers.
 
@@ -1426,9 +1445,11 @@ class Dataset:
                 are top-level arguments in the underlying Ray actor construction task.
             compute: The compute strategy to use for the map operation.
 
-                * If ``compute`` is not specified, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
+                * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
 
                 * Use ``ray.data.TaskPoolStrategy(size=n)`` to launch at most ``n`` concurrent Ray tasks.
+
+                * If ``compute`` is not specified for a callable class, will use ``ray.data.ActorPoolStrategy(min_size=1, max_size=None)`` to launch an autoscaling actor pool from 1 to unlimited workers.
 
                 * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers.
 
@@ -3584,7 +3605,7 @@ class Dataset:
 
         # NOTE: Project the dataset to avoid the need to carry actual
         #       data when we're only interested in the total count
-        count_op = Count(Project(self._logical_plan.dag, cols=[]))
+        count_op = Count(Project(self._logical_plan.dag, exprs=[]))
         logical_plan = LogicalPlan(count_op, self.context)
         count_ds = Dataset(plan, logical_plan)
 
@@ -4364,6 +4385,7 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
+            mode=mode,
         )
         self.write_datasink(
             datasink,
@@ -4461,6 +4483,7 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
+            mode=mode,
         )
         self.write_datasink(
             datasink,
@@ -4561,6 +4584,7 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
+            mode=mode,
         )
         self.write_datasink(
             datasink,
@@ -6078,10 +6102,21 @@ class Dataset:
 
         .. testoutput::
 
+            <BLANKLINE>
             -------- Logical Plan --------
-            Map(<lambda>)
-            +- ReadRange
+            MapRows[Map(<lambda>)]
+            +- Read[ReadRange]
+            <BLANKLINE>
+            -------- Logical Plan (Optimized) --------
+            MapRows[Map(<lambda>)]
+            +- Read[ReadRange]
+            <BLANKLINE>
             -------- Physical Plan --------
+            TaskPoolMapOperator[Map(<lambda>)]
+            +- TaskPoolMapOperator[ReadRange]
+               +- InputDataBuffer[Input]
+            <BLANKLINE>
+            -------- Physical Plan (Optimized) --------
             TaskPoolMapOperator[ReadRange->Map(<lambda>)]
             +- InputDataBuffer[Input]
             <BLANKLINE>

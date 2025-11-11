@@ -913,7 +913,7 @@ def test_status_constructor_error(serve_instance):
     # The timeout is there to prevent the test from hanging and blocking
     # the test suite if it does fail.
     r = httpx.post("http://localhost:8000/", timeout=10)
-    assert r.status_code == 503 and "unavailable" in r.text
+    assert r.status_code == 503 and "unavailable" in r.text.lower()
 
     @serve.deployment
     class A:

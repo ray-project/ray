@@ -196,9 +196,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
 void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
                                      rpc::DrainNodeReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  auto num_drain_request = request.drain_node_data_size();
-  for (auto i = 0; i < num_drain_request; i++) {
-    const auto &node_drain_request = request.drain_node_data(i);
+  for (const auto &node_drain_request : request.drain_node_data()) {
     const auto node_id = NodeID::FromBinary(node_drain_request.node_id());
 
     DrainNode(node_id);
@@ -692,7 +690,14 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
       auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
           node_id, node_info.node_manager_address(), node_info.node_manager_port());
       auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
-      raylet_client->NotifyGCSRestart(nullptr);
+      raylet_client->NotifyGCSRestart(
+          [](const Status &status, const rpc::NotifyGCSRestartReply &reply) {
+            if (!status.ok()) {
+              RAY_LOG(WARNING) << "NotifyGCSRestart failed. This is expected if the "
+                                  "target node has died. Status: "
+                               << status;
+            }
+          });
     } else if (node_info.state() == rpc::GcsNodeInfo::DEAD) {
       dead_nodes_.emplace(node_id, std::make_shared<rpc::GcsNodeInfo>(node_info));
       sorted_dead_node_list_.emplace_back(node_id, node_info.end_time_ms());
