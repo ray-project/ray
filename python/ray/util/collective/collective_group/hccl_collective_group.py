@@ -140,10 +140,17 @@ class HCCLGroup(BaseGroup):
             )
 
         ASCEND_VISIBLE_DEVICES = os.getenv("ASCEND_VISIBLE_DEVICES")
-        ASCEND_RT_VISIBLE_DEVICES = ",".join(
-            str(i) for i in range(len(ASCEND_VISIBLE_DEVICES.split(",")))
+        if not ASCEND_VISIBLE_DEVICES:
+            raise RuntimeError(
+                "ASCEND_VISIBLE_DEVICES is not set. "
+                "This variable must be defined to initialize HCCL for Ascend NPUs. "
+                "Expected a comma-separated list of physical NPU IDs."
+            )
+
+        devices = [d for d in ASCEND_VISIBLE_DEVICES.split(",") if d]
+        os.environ["ASCEND_RT_VISIBLE_DEVICES"] = ",".join(
+            str(i) for i in range(len(devices))
         )
-        os.environ["ASCEND_RT_VISIBLE_DEVICES"] = ASCEND_RT_VISIBLE_DEVICES
         metadata = metadata.decode()
         master_addr, master_port = metadata.split(":")
         os.environ["MASTER_ADDR"] = master_addr
@@ -172,7 +179,7 @@ class HCCLGroup(BaseGroup):
         self.libhccl = libhccl
 
     def destroy_group(self):
-        if len(self._dev_comm_map.keys()) > 0:
+        if self._dev_comm_map and len(self._dev_comm_map.keys()) > 0:
             for comm_key, comms in self._dev_comm_map.items():
                 if comms:
                     for comm in comms:
@@ -372,7 +379,6 @@ class HCCLGroup(BaseGroup):
                     npuStream_t(stream.npu_stream),
                 )
                 stream.synchronize()
-                logger.info(f"HcclReduceScatter execute result: {exec_result}")
 
         input_flattened = [
             _flatten_for_scatter_gather(tensor_list, copy=True)
@@ -503,6 +509,7 @@ class HCCLGroup(BaseGroup):
     def _get_hccl_root_info(self, store_ref, timeout_s=180):
         """Get the HcclRootInfo from the store through Ray.
         Args:
+            store_ref: reference to store actor
             timeout_s: timeout in seconds.
         Return:
             root_info: the HcclRootInfo if successful.
@@ -545,7 +552,7 @@ class HCCLGroup(BaseGroup):
 
         def comm_init_task(i, device):
             device_rank = self.rank * len(device_list) + i
-            with torch.npu.device(device):
+            with torch.npu.device(dist.get_rank(group=self._pg)):
                 comms[i] = hcclComm_t()
                 exec_result = self.libhccl.HcclCommInitRootInfo(
                     device_world_size,
@@ -611,7 +618,7 @@ class HCCLGroup(BaseGroup):
         with torch.npu.device(f"npu:{my_npu_idx}"):
             comm = hcclComm_t()
             exec_result = self.libhccl.HcclCommInitRootInfo(
-                self.world_size,
+                2,
                 ctypes.byref(root_info),
                 my_p2p_rank,
                 ctypes.byref(comm),
@@ -628,9 +635,10 @@ class HCCLGroup(BaseGroup):
         return [comm]
 
     def _collective(self, input_tensors, output_tensors, collective_func):
-        devices = get_tensor_device_list(input_tensors)
-        key = _get_comm_key_from_devices(devices)
-        comms = self._get_hccl_collective_communicator(key, devices)
+        tensor_devices = get_tensor_device_list(input_tensors)
+        total_devices = get_npu_device_list(pg=self._pg)
+        key = _get_comm_key_from_devices(total_devices)
+        comms = self._get_hccl_collective_communicator(key, tensor_devices)
         streams = self._dev_streams_map[key]
 
         tasks: List[Optional[threading.Thread]] = [None] * len(input_tensors)
@@ -649,7 +657,7 @@ class HCCLGroup(BaseGroup):
         tensor_npu_idx = get_tensor_device(tensors[0])
         my_npu_idx = get_rank_device(self._pg)
         comm_key = _get_comm_key_send_recv(
-            self.rank, tensor_npu_idx, peer_rank, peer_npu_idx
+            self.rank, tensor_npu_idx, peer_rank, tensor_npu_idx
         )
         comms = self._get_hccl_p2p_communicator(
             comm_key, my_npu_idx, peer_rank, peer_npu_idx
@@ -703,6 +711,10 @@ def _get_comm_key_from_devices(devices: List[int]):
 
 def get_rank_device(pg):
     return dist.get_rank(group=pg)
+
+
+def get_npu_device_list(pg):
+    return [i for i in range(dist.get_world_size(group=pg))]
 
 
 def get_tensor_device(tensor):
