@@ -141,7 +141,8 @@ class BatchIterator:
         self._yielded_first_batch = False
 
         # This stores the last time we updated the metrics.
-        # This allows us to update metrics on some interval.
+        # This allows us to update metrics on some interval,
+        # by comparing it with the current timestamp.
         self._metrics_last_updated: float = 0.0
 
     def _prefetch_blocks(
