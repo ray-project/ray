@@ -7,13 +7,12 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition, SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.state_api_test_utils import (
     verify_failed_task,
 )
 from ray._private.test_utils import (
     raw_metrics,
-    run_string_as_driver_nonblocking,
 )
 from ray._private.worker import RayContext
 from ray.exceptions import RuntimeEnvSetupError
