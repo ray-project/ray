@@ -1,5 +1,5 @@
 from dataclasses import replace
-from typing import TYPE_CHECKING, Dict, List, TypeVar
+from typing import Dict, List, TypeVar
 
 from ray.data.expressions import (
     AliasExpr,
@@ -8,7 +8,6 @@ from ray.data.expressions import (
     DownloadExpr,
     Expr,
     LiteralExpr,
-    Operation,
     StarExpr,
     UDFExpr,
     UnaryExpr,
@@ -16,9 +15,6 @@ from ray.data.expressions import (
 )
 
 T = TypeVar("T")
-
-if TYPE_CHECKING:
-    from pyiceberg.expressions import BooleanExpression
 
 
 class _ExprVisitorBase(_ExprVisitor[None]):
@@ -100,7 +96,7 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
         self.visit(expr.expr)
 
 
-class _ColumnRefRebindingVisitor(_ExprVisitor[Expr]):
+class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
     """Visitor rebinding column references in ``Expression``s.
 
     This visitor traverses given ``Expression`` trees and substitutes column references
@@ -351,136 +347,3 @@ class _TreeReprVisitor(_ExprVisitor[str]):
 
     def visit_star(self, expr: "StarExpr") -> str:
         return self._make_tree_lines("COL(*)", expr=expr)
-
-
-class _IcebergExpressionVisitor(_ExprVisitor["BooleanExpression"]):
-    """
-    Visitor that converts Ray Data expressions to PyIceberg expressions.
-
-    This enables Ray Data users to write filters using the familiar col() syntax
-    while leveraging Iceberg's native filtering capabilities.
-
-    Example:
-        >>> from ray.data.expressions import col
-        >>> ray_expr = (col("date") >= "2024-01-01") & (col("status") == "active")
-        >>> iceberg_expr = _IcebergExpressionVisitor().visit(ray_expr)
-        >>> # iceberg_expr can now be used with PyIceberg's filter APIs
-    """
-
-    def visit_column(self, expr: "ColumnExpr") -> "BooleanExpression":
-        """Convert a column reference to an Iceberg reference."""
-        from pyiceberg.expressions import Reference
-
-        return Reference(expr.name)
-
-    def visit_literal(self, expr: "LiteralExpr") -> "BooleanExpression":
-        """Convert a literal value to an Iceberg literal."""
-        from pyiceberg.expressions import literal
-
-        return literal(expr.value)
-
-    def visit_binary(self, expr: "BinaryExpr") -> "BooleanExpression":
-        """Convert a binary operation to an Iceberg expression."""
-        from pyiceberg.expressions import (
-            And,
-            EqualTo,
-            GreaterThan,
-            GreaterThanOrEqual,
-            In,
-            LessThan,
-            LessThanOrEqual,
-            NotEqualTo,
-            NotIn,
-            Or,
-        )
-
-        # Handle IN/NOT_IN specially since they don't visit the right operand
-        # (the right operand is a list literal that can't be converted)
-        if expr.op == Operation.IN:
-            left = self.visit(expr.left)
-            # For IN operations, right should be a literal list
-            if isinstance(expr.right, LiteralExpr):
-                return In(left, expr.right.value)
-            else:
-                raise ValueError(
-                    f"IN operation requires right operand to be a literal list, "
-                    f"got {type(expr.right).__name__}"
-                )
-        elif expr.op == Operation.NOT_IN:
-            left = self.visit(expr.left)
-            if isinstance(expr.right, LiteralExpr):
-                return NotIn(left, expr.right.value)
-            else:
-                raise ValueError(
-                    f"NOT_IN operation requires right operand to be a literal list, "
-                    f"got {type(expr.right).__name__}"
-                )
-
-        # For all other operations, visit both operands
-        left = self.visit(expr.left)
-        right = self.visit(expr.right)
-
-        # Map Ray Data operations to Iceberg operations
-        operation_map = {
-            Operation.EQ: EqualTo,
-            Operation.NE: NotEqualTo,
-            Operation.GT: GreaterThan,
-            Operation.GE: GreaterThanOrEqual,
-            Operation.LT: LessThan,
-            Operation.LE: LessThanOrEqual,
-            Operation.AND: And,
-            Operation.OR: Or,
-        }
-
-        if expr.op in operation_map:
-            return operation_map[expr.op](left, right)
-        else:
-            # Arithmetic operations are not supported in filter expressions
-            raise ValueError(
-                f"Unsupported binary operation for Iceberg filters: {expr.op}. "
-                f"Iceberg filters support: EQ, NE, GT, GE, LT, LE, AND, OR, IN, NOT_IN. "
-                f"Arithmetic operations (ADD, SUB, MUL, DIV) cannot be used in filters."
-            )
-
-    def visit_unary(self, expr: "UnaryExpr") -> "BooleanExpression":
-        """Convert a unary operation to an Iceberg expression."""
-        from pyiceberg.expressions import IsNull, Not, NotNull
-
-        operand = self.visit(expr.operand)
-
-        operation_map = {
-            Operation.IS_NULL: IsNull,
-            Operation.IS_NOT_NULL: NotNull,
-            Operation.NOT: Not,
-        }
-
-        if expr.op in operation_map:
-            return operation_map[expr.op](operand)
-        else:
-            raise ValueError(
-                f"Unsupported unary operation for Iceberg: {expr.op}. "
-                f"Supported operations: IS_NULL, IS_NOT_NULL, NOT"
-            )
-
-    def visit_alias(self, expr) -> "BooleanExpression":
-        """Convert an aliased expression (just unwrap the alias)."""
-        return self.visit(expr.expr)
-
-    def visit_udf(self, expr) -> "BooleanExpression":
-        """UDF expressions cannot be converted to Iceberg expressions."""
-        raise TypeError(
-            "UDF expressions cannot be converted to Iceberg expressions. "
-            "Iceberg filters must use simple column comparisons and boolean operations."
-        )
-
-    def visit_download(self, expr) -> "BooleanExpression":
-        """Download expressions cannot be converted to Iceberg expressions."""
-        raise TypeError(
-            "Download expressions cannot be converted to Iceberg expressions."
-        )
-
-    def visit_star(self, expr) -> "BooleanExpression":
-        """Star expressions cannot be converted to Iceberg expressions."""
-        raise TypeError(
-            "Star expressions cannot be converted to Iceberg filter expressions."
-        )

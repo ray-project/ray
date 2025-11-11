@@ -344,7 +344,11 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
 
         if self._overwrite_filter:
             # Partial overwrite with filter
-            iceberg_filter = self._overwrite_filter.to_iceberg()
+            from ray.data._internal.datasource.iceberg_datasource import (
+                _IcebergExpressionVisitor,
+            )
+
+            iceberg_filter = _IcebergExpressionVisitor().visit(self._overwrite_filter)
             self._table.overwrite(
                 df=combined_table,
                 overwrite_filter=iceberg_filter,

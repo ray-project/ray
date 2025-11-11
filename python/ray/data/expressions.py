@@ -7,7 +7,6 @@ from enum import Enum
 from typing import Any, Callable, Dict, Generic, List, TypeVar, Union
 
 import pyarrow
-from pyiceberg.expressions import BooleanExpression
 
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
@@ -242,31 +241,6 @@ class Expr(ABC):
             TypeError: If the expression type cannot be converted to PyArrow.
         """
         return _PyArrowExpressionVisitor().visit(self)
-
-    def to_iceberg(self) -> "BooleanExpression":
-        """
-        Convert a Ray Data expression to a PyIceberg expression.
-
-        Returns:
-            A PyIceberg BooleanExpression that can be used with PyIceberg's filter APIs
-
-        Raises:
-            ValueError: If the expression contains operations not supported by Iceberg
-            TypeError: If the expression type cannot be converted to Iceberg
-
-        Example:
-            >>> from ray.data.expressions import col
-            >>> ray_expr = (col("age") >= 18) & (col("status") == "active")
-            >>> iceberg_expr = ray_expr.to_iceberg()
-            >>> # Use with PyIceberg
-            >>> table.overwrite(df=data, overwrite_filter=iceberg_expr)
-        """
-        from ray.data._internal.planner.plan_expression.expression_visitors import (
-            _IcebergExpressionVisitor,
-        )
-
-        visitor = _IcebergExpressionVisitor()
-        return visitor.visit(self)
 
     def __repr__(self) -> str:
         """Return a tree-structured string representation of the expression.
