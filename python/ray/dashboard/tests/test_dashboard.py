@@ -14,23 +14,23 @@ from unittest.mock import MagicMock
 from urllib.parse import quote_plus
 
 import pytest
-from ray._common.test_utils import wait_for_condition
 import requests
 from click.testing import CliRunner
 from requests.exceptions import ConnectionError, HTTPError
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
 import ray.scripts.scripts as scripts
-from ray._common.utils import get_or_create_event_loop
-import ray._private.ray_constants as ray_constants
-from ray._common.ray_constants import (
-    LOGGING_ROTATE_BYTES,
-    LOGGING_ROTATE_BACKUP_COUNT,
-)
 from ray._common.network_utils import build_address, parse_address
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BACKUP_COUNT,
+    LOGGING_ROTATE_BYTES,
+)
+from ray._common.test_utils import wait_for_condition
+from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS_LEGACY,

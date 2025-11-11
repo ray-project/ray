@@ -2,12 +2,12 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from opentelemetry.metrics import NoOpCounter, NoOpUpDownCounter, NoOpHistogram
+from opentelemetry.metrics import NoOpCounter, NoOpHistogram, NoOpUpDownCounter
 
+from ray._private.metrics_agent import Gauge, Record
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
-from ray._private.metrics_agent import Record, Gauge
 
 
 @patch("opentelemetry.metrics.set_meter_provider")
@@ -118,6 +118,16 @@ def test_register_histogram_metric(
         value=10.0,
     )
     mock_logger_warning.assert_not_called()
+
+    mock_meter.create_histogram.return_value = NoOpHistogram(name="neg_histogram")
+    recorder.register_histogram_metric(
+        name="neg_histogram",
+        description="Histogram with negative first boundary",
+        buckets=[-5.0, 0.0, 10.0],
+    )
+
+    mids = recorder.get_histogram_bucket_midpoints("neg_histogram")
+    assert mids == pytest.approx([-7.5, -2.5, 5.0, 20.0])
 
 
 @patch("opentelemetry.metrics.set_meter_provider")

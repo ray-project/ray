@@ -5,7 +5,11 @@ from random import randint
 from typing import AsyncGenerator, Dict, Union
 
 from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
-from ray.llm._internal.serve.configs.openai_api_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
+    DiskMultiplexConfig,
+    LLMConfig,
+)
+from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
     CompletionRequest,
@@ -13,12 +17,12 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
+    ScoreRequest,
+    ScoreResponse,
+    TranscriptionRequest,
+    TranscriptionResponse,
 )
-from ray.llm._internal.serve.configs.server_models import (
-    DiskMultiplexConfig,
-    LLMConfig,
-)
-from ray.llm._internal.serve.deployments.llm.llm_engine import LLMEngine
+from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
 
 
@@ -131,6 +135,58 @@ class MockVLLMEngine(LLMEngine):
             usage={
                 "prompt_tokens": len(str(request.input).split()),
                 "total_tokens": len(str(request.input).split()),
+            },
+        )
+        yield response
+
+    async def transcriptions(
+        self, request: TranscriptionRequest
+    ) -> AsyncGenerator[Union[str, TranscriptionResponse, ErrorResponse], None]:
+        """Mock transcription generation."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+        # Extract audio file info
+        language = getattr(request, "language", "en")
+        temperature = getattr(request, "temperature", 0.0)
+
+        # Generate transcription response
+        async for response in self._generate_transcription_response(
+            request=request, language=language, temperature=temperature
+        ):
+            yield response
+
+    async def score(
+        self, request: ScoreRequest
+    ) -> AsyncGenerator[Union[str, ScoreResponse, ErrorResponse], None]:
+        """Mock score generation for text pairs."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+        # Extract text_1 and text_2 from the request
+        text_1 = getattr(request, "text_1", "")
+        text_2 = getattr(request, "text_2", "")
+
+        # Convert to lists if they aren't already
+        text_1_list = text_1 if isinstance(text_1, list) else [text_1]
+        text_2_list = text_2 if isinstance(text_2, list) else [text_2]
+
+        # Generate mock scores for each pair
+        score_data = []
+        for i, (t1, t2) in enumerate(zip(text_1_list, text_2_list)):
+            # Generate a random score (can be any float value)
+            score = random.uniform(-10.0, 10.0)
+
+            score_data.append({"object": "score", "score": score, "index": i})
+
+        # Create the response
+        response = ScoreResponse(
+            object="list",
+            data=score_data,
+            model=getattr(request, "model", "mock-model"),
+            usage={
+                "prompt_tokens": len(str(text_1).split()) + len(str(text_2).split()),
+                "total_tokens": len(str(text_1).split()) + len(str(text_2).split()),
             },
         )
         yield response
@@ -275,6 +331,95 @@ class MockVLLMEngine(LLMEngine):
                 },
             )
 
+            yield response
+
+    async def _generate_transcription_response(
+        self,
+        request: TranscriptionRequest,
+        language: str,
+        temperature: float,
+    ) -> AsyncGenerator[Union[str, TranscriptionResponse], None]:
+        """Generate mock transcription response."""
+
+        request_id = request.request_id or f"transcribe-{random.randint(1000, 9999)}"
+        lora_prefix = (
+            ""
+            if request.model not in self._current_lora_model
+            else f"[lora_model] {request.model}: "
+        )
+
+        # Generate mock transcription text with LoRA prefix
+        mock_transcription_text = (
+            f"Mock transcription in {language} language with temperature {temperature}"
+        )
+        if lora_prefix:
+            mock_transcription_text = f"{lora_prefix}{mock_transcription_text}"
+
+        if request.stream:
+            # Streaming response - return SSE formatted strings
+            created_time = int(asyncio.get_event_loop().time())
+            model_name = getattr(request, "model", "mock-model")
+
+            # Split transcription into words for streaming
+            words = mock_transcription_text.split()
+
+            for i, word in enumerate(words):
+                # Create streaming chunk
+                choice = {
+                    "delta": {
+                        "content": word + (" " if i < len(words) - 1 else ""),
+                    },
+                }
+
+                chunk_data = {
+                    "delta": None,
+                    "type": None,
+                    "logprobs": None,
+                    "id": request_id,
+                    "object": "transcription.chunk",
+                    "created": created_time,
+                    "model": model_name,
+                    "choices": [choice],
+                }
+
+                # Format as SSE
+                yield f"data: {json.dumps(chunk_data)}\n\n"
+                await asyncio.sleep(0.01)  # Simulate processing time
+
+            # Send final chunk with finish_reason
+            final_choice = {
+                "delta": {
+                    "content": "",
+                    "finish_reason": "stop",
+                    "stop_reason": None,
+                },
+            }
+
+            final_chunk_data = {
+                "delta": None,
+                "type": None,
+                "logprobs": None,
+                "id": request_id,
+                "object": "transcription.chunk",
+                "created": created_time,
+                "model": model_name,
+                "choices": [final_choice],
+            }
+
+            yield f"data: {json.dumps(final_chunk_data)}\n\n"
+
+            # Send final [DONE] message
+            yield "data: [DONE]\n\n"
+        else:
+            # Non-streaming response - return response object
+            response = TranscriptionResponse(
+                text=mock_transcription_text,
+                logprobs=None,
+                usage={
+                    "seconds": 5.0,
+                    "type": "duration",
+                },
+            )
             yield response
 
 

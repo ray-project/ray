@@ -76,7 +76,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            predictions = ds.map_batches(HuggingFacePredictor, concurrency=2)
+            predictions = ds.map_batches(HuggingFacePredictor, compute=ray.data.ActorPoolStrategy(size=2))
             # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
@@ -126,7 +126,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            predictions = ds.map_batches(TorchPredictor, concurrency=2)
+            predictions = ds.map_batches(TorchPredictor, compute=ray.data.ActorPoolStrategy(size=2))
             # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
@@ -171,7 +171,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            predictions = ds.map_batches(TFPredictor, concurrency=2)
+            predictions = ds.map_batches(TFPredictor, compute=ray.data.ActorPoolStrategy(size=2))
              # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
@@ -280,7 +280,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
                 # Increase this for larger datasets.
                 batch_size=1,
                 # Set the concurrency to the number of GPUs in your cluster.
-                concurrency=2,
+                compute=ray.data.ActorPoolStrategy(size=2),
                 )
             predictions.show(limit=1)
 
@@ -328,7 +328,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
                 # Increase this for larger datasets.
                 batch_size=1,
                 # Set the concurrency to the number of GPUs in your cluster.
-                concurrency=2,
+                compute=ray.data.ActorPoolStrategy(size=2),
                 )
             predictions.show(limit=1)
 
@@ -375,7 +375,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
                 # Increase this for larger datasets.
                 batch_size=1,
                 # Set the concurrency to the number of GPUs in your cluster.
-                concurrency=2,
+                compute=ray.data.ActorPoolStrategy(size=2),
             )
             predictions.show(limit=1)
 
@@ -465,6 +465,6 @@ Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
         # Require 5 CPUs per actor (so at most 3 can fit per 16 CPU node).
         num_cpus=5,
         # 3 actors per node, with 4 nodes in the cluster means concurrency of 12.
-        concurrency=12,
+        compute=ray.data.ActorPoolStrategy(size=12),
         )
     predictions.show(limit=1)

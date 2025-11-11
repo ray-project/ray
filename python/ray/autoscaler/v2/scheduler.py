@@ -20,13 +20,13 @@ from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
 from ray.autoscaler.v2.utils import ProtobufUtil, ResourceRequestUtil
-from ray.core.generated.common_pb2 import LabelSelectorOperator
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
     ResourceRequest,
     ResourceRequestByCount,
 )
+from ray.core.generated.common_pb2 import LabelSelectorOperator
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
     LaunchRequest,
@@ -161,6 +161,8 @@ class SchedulingNode:
     # The node's current resource capacity.
     total_resources: Dict[str, float] = field(default_factory=dict)
     # Node's labels, including static or dynamic labels.
+    # Note that dynamic labels are a deprecated feature. And it is only used for the
+    # autoscaler’s strict-spread placement group scheduling (antiaffinity)
     labels: Dict[str, str] = field(default_factory=dict)
     # Observability descriptive message for why the node was launched in the
     # first place.
@@ -278,6 +280,9 @@ class SchedulingNode:
                 available_resources=dict(instance.ray_node.available_resources),
                 labels={
                     **(instance.ray_node.labels or {}),
+                    # DEPRECATED: Dynamic labels are a deprecated feature. This field
+                    # is used here only for the autoscaler’s strict-spread placement
+                    # group scheduling (antiaffinity).
                     **(instance.ray_node.dynamic_labels or {}),
                 },
                 status=SchedulingNodeStatus.SCHEDULABLE,
@@ -606,7 +611,7 @@ class SchedulingNode:
         # Add the request to the node.
         self.add_sched_request(request, resource_request_source)
 
-        # Update the dynamic labels if there's any
+        # Update the placement group in labels if there's any
         for constraint in request.placement_constraints:
             # We don't need to check for affinity constraints here since
             # we have already combined resource requests with the affinity
@@ -1368,7 +1373,13 @@ class ResourceDemandScheduler(IResourceScheduler):
         for gang_req in sorted(
             gang_requests, key=_sort_gang_resource_requests, reverse=True
         ):
-            requests = gang_req.requests
+            if gang_req.bundle_selectors:
+                # TODO: @ryanaoleary multiple `bundle_selectors` will be supported
+                # for `fallback_strategy`.
+                requests = gang_req.bundle_selectors[0].resource_requests
+            else:
+                # Use legacy field if `bundle_selectors` not provided.
+                requests = gang_req.requests
             # Try to combine requests with affinity constraints into the same request.
             requests = ResourceRequestUtil.combine_requests_with_affinity(requests)
 

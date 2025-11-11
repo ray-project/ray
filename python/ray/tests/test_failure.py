@@ -1,25 +1,22 @@
+import logging
 import os
 import signal
 import sys
-import time
-import logging
 import threading
+import time
 
 import numpy as np
 import pytest
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    convert_actor_state,
     get_error_message,
     init_error_pubsub,
 )
-from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError, ActorDiedError
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.exceptions import ActorDiedError, GetTimeoutError, RayActorError, RayTaskError
 
 
 def test_unhandled_errors(ray_start_regular):
@@ -562,6 +559,7 @@ def test_no_warning_many_actor_tasks_queued_when_sequential(shutdown_only):
                 "health_check_period_ms": 100,
                 "timeout_ms_task_wait_for_death_info": 100,
             },
+            "include_dashboard": True,  # for list_actors API
         },
     ],
     indirect=True,
@@ -619,13 +617,11 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
 
     # Wait for the actor to be alive again in a new worker process.
     def check_actor_restart():
-        actors = list(ray._private.state.actors().values())
+        actors = ray.util.state.list_actors(
+            detail=True
+        )  # detail is needed for num_restarts to populate
         assert len(actors) == 1
-        print(actors)
-        return (
-            actors[0]["State"] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
-            and actors[0]["NumRestarts"] == 1
-        )
+        return actors[0].state == "ALIVE" and actors[0].num_restarts == 1
 
     wait_for_condition(check_actor_restart)
 
@@ -689,70 +685,6 @@ def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
     assert str(exc_info.value.cause) == "MyFinalException from task"
 
     caplog.clear()
-
-
-def test_transient_error_retry(monkeypatch, ray_start_cluster):
-    with monkeypatch.context() as m:
-        # This test submits 200 tasks with infinite retries and verifies that all tasks eventually succeed in the unstable network environment.
-        m.setenv(
-            "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.PushTask=100:25:25",
-        )
-        cluster = ray_start_cluster
-        cluster.add_node(
-            num_cpus=1,
-            resources={"head": 1},
-        )
-        ray.init(address=cluster.address)
-
-        @ray.remote(max_task_retries=-1, resources={"head": 1})
-        class RetryActor:
-            def echo(self, value):
-                return value
-
-        refs = []
-        actor = RetryActor.remote()
-        for i in range(200):
-            refs.append(actor.echo.remote(i))
-        assert ray.get(refs) == list(range(200))
-
-
-@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
-def test_update_object_location_batch_failure(
-    monkeypatch, ray_start_cluster, deterministic_failure
-):
-    with monkeypatch.context() as m:
-        m.setenv(
-            "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.UpdateObjectLocationBatch=1:"
-            + ("100:0" if deterministic_failure == "request" else "0:100"),
-        )
-        cluster = ray_start_cluster
-        head_node_id = cluster.add_node(
-            num_cpus=0,
-        ).node_id
-        ray.init(address=cluster.address)
-        worker_node_id = cluster.add_node(num_cpus=1).node_id
-
-        @ray.remote(num_cpus=1)
-        def create_large_object():
-            return np.zeros(100 * 1024 * 1024, dtype=np.uint8)
-
-        @ray.remote(num_cpus=0)
-        def consume_large_object(obj):
-            return sys.getsizeof(obj)
-
-        obj_ref = create_large_object.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=worker_node_id, soft=False
-            )
-        ).remote()
-        consume_ref = consume_large_object.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=head_node_id, soft=False
-            )
-        ).remote(obj_ref)
-        assert ray.get(consume_ref, timeout=10) > 0
 
 
 def test_raytaskerror_serialization(ray_start_regular):

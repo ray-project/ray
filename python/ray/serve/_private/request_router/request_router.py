@@ -940,7 +940,10 @@ class RequestRouter(ABC):
                 # replica is found. These sequence should only help to reduce the
                 # latency of the request. No backoff and sleep should be applied, until
                 # we have fall into the case trying on all available replicas.
-                if not pending_request.routing_context.should_backoff:
+                if (
+                    pending_request
+                    and not pending_request.routing_context.should_backoff
+                ):
                     continue
 
                 if not entered_backoff:
@@ -979,46 +982,52 @@ class RequestRouter(ABC):
                 backoff_index = 0
                 pending_request = self._get_next_pending_request_to_route()
                 request_metadata = pending_request.metadata if pending_request else None
-                async for candidates in self._choose_replicas_with_backoff(
+                gen_choose_replicas_with_backoff = self._choose_replicas_with_backoff(
                     pending_request
-                ):
-                    # Clear out pending requests at the front of the
-                    # queue that have been cancelled, then reevaluate
-                    # if we need to continue this routing task.
-                    while (
-                        len(self._pending_requests_to_fulfill) > 0
-                        and self._pending_requests_to_fulfill[0].future.done()
-                    ):
-                        self._pending_requests_to_fulfill.popleft()
+                )
+                try:
+                    async for candidates in gen_choose_replicas_with_backoff:
+                        # Clear out pending requests at the front of the
+                        # queue that have been cancelled, then reevaluate
+                        # if we need to continue this routing task.
+                        while (
+                            len(self._pending_requests_to_fulfill) > 0
+                            and self._pending_requests_to_fulfill[0].future.done()
+                        ):
+                            self._pending_requests_to_fulfill.popleft()
 
-                    if len(self._routing_tasks) > self.target_num_routing_tasks:
-                        break
+                        if len(self._routing_tasks) > self.target_num_routing_tasks:
+                            break
 
-                    replica = await self._select_from_candidate_replicas(
-                        candidates, backoff_index
-                    )
-                    if replica is not None:
-                        self._fulfill_next_pending_request(replica, request_metadata)
-                        break
-
-                    backoff_index += 1
-                    if backoff_index >= 50 and backoff_index % 50 == 0:
-                        routing_time_elapsed = time.time() - start_time
-                        warning_log = (
-                            "Failed to route request after "
-                            f"{backoff_index} attempts over "
-                            f"{routing_time_elapsed:.2f}s. Retrying."
+                        replica = await self._select_from_candidate_replicas(
+                            candidates, backoff_index
                         )
-                        if request_metadata is not None:
-                            warning_log += (
-                                f" Request ID: {request_metadata.request_id}."
+                        if replica is not None:
+                            self._fulfill_next_pending_request(
+                                replica, request_metadata
                             )
-                            if request_metadata.multiplexed_model_id:
+                            break
+
+                        backoff_index += 1
+                        if backoff_index >= 50 and backoff_index % 50 == 0:
+                            routing_time_elapsed = time.time() - start_time
+                            warning_log = (
+                                "Failed to route request after "
+                                f"{backoff_index} attempts over "
+                                f"{routing_time_elapsed:.2f}s. Retrying."
+                            )
+                            if request_metadata is not None:
                                 warning_log += (
-                                    " Multiplexed model ID: "
-                                    f"{request_metadata.multiplexed_model_id}."
+                                    f" Request ID: {request_metadata.request_id}."
                                 )
-                        logger.warning(warning_log)
+                                if request_metadata.multiplexed_model_id:
+                                    warning_log += (
+                                        " Multiplexed model ID: "
+                                        f"{request_metadata.multiplexed_model_id}."
+                                    )
+                            logger.warning(warning_log)
+                finally:
+                    await gen_choose_replicas_with_backoff.aclose()
 
         except Exception:
             logger.exception("Unexpected error in _fulfill_pending_requests.")
@@ -1087,9 +1096,22 @@ class RequestRouter(ABC):
 
     def _update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         """Compatibility shim for RunningReplicaInfo datatype."""
-        return self.update_replicas(
-            [self.create_replica_wrapper(r) for r in running_replicas]
-        )
+        replica_wrappers = []
+        for r in running_replicas:
+            try:
+                replica_wrappers.append(self.create_replica_wrapper(r))
+            except ValueError:
+                # NOTE(abrar): ValueError is raised when the actor handle is not found
+                # by ray.get_actor.
+
+                # Actor has died (e.g., due to node failure) but controller hasn't
+                # detected it yet. Skip this replica; controller will send an update
+                # when it detects the failure.
+                logger.warning(
+                    f"Failed to get handle to replica {r.replica_id} during router "
+                    "update. The replica actor may have died. Skipping this replica."
+                )
+        return self.update_replicas(replica_wrappers)
 
     def select_available_replicas(
         self, candidates: Optional[List[RunningReplica]] = None

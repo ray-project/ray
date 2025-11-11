@@ -1,6 +1,6 @@
 import asyncio
-import time
 import sys
+import time
 from collections import defaultdict
 from typing import Dict
 
@@ -8,14 +8,12 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray._common.utils import hex_to_binary
-
-from ray.util.state import list_actors
 from ray._private.test_utils import (
     raw_metrics,
     run_string_as_driver,
 )
 from ray._private.worker import RayContext
+from ray.util.state import list_actors
 
 _SYSTEM_CONFIG = {
     "metrics_report_interval_ms": 200,
@@ -84,7 +82,7 @@ def test_basic_states(shutdown_only):
     # Test creation states.
     expected = {
         "ALIVE": 3,
-        "IDLE": 3,
+        "ALIVE_IDLE": 3,
         "PENDING_CREATION": 1,
     }
     wait_for_condition(
@@ -99,9 +97,7 @@ def test_basic_states(shutdown_only):
     c.wait.remote()
     expected = {
         "ALIVE": 3,
-        "RUNNING_TASK": 1,
-        "RUNNING_IN_RAY_GET": 1,
-        "RUNNING_IN_RAY_WAIT": 1,
+        "ALIVE_RUNNING_TASKS": 3,
         "PENDING_CREATION": 1,
     }
     wait_for_condition(
@@ -128,7 +124,7 @@ def test_destroy_actors(shutdown_only):
 
     expected = {
         "ALIVE": 1,
-        "IDLE": 1,
+        "ALIVE_IDLE": 1,
         "DEAD": 2,
     }
     wait_for_condition(
@@ -226,7 +222,7 @@ def test_async_actor(shutdown_only):
     a.sleep.remote()
     expected = {
         "ALIVE": 1,
-        "RUNNING_TASK": 1,
+        "ALIVE_RUNNING_TASKS": 1,
     }
     wait_for_condition(
         lambda: actors_by_state(info) == expected,
@@ -239,7 +235,7 @@ def test_async_actor(shutdown_only):
     a.do_get.remote()
     expected = {
         "ALIVE": 1,
-        "RUNNING_IN_RAY_GET": 1,
+        "ALIVE_RUNNING_TASKS": 1,
     }
     wait_for_condition(
         lambda: actors_by_state(info) == expected,
@@ -284,7 +280,7 @@ def test_tracking_by_name(shutdown_only):
 
 
 def test_get_all_actors_info(shutdown_only):
-    ray.init(num_cpus=2)
+    ray.init(num_cpus=2, include_dashboard=True)
 
     @ray.remote(num_cpus=1)
     class Actor:
@@ -294,28 +290,31 @@ def test_get_all_actors_info(shutdown_only):
     actor_1 = Actor.remote()
     actor_2 = Actor.remote()
     ray.get([actor_1.ping.remote(), actor_2.ping.remote()], timeout=5)
-    actors_info = ray.state.actors()
+    actors_info = list_actors(detail=True)
     assert len(actors_info) == 2
 
     job_id_hex = ray.get_runtime_context().get_job_id()
-    job_id = ray.JobID(hex_to_binary(job_id_hex))
-    actors_info = ray.state.actors(job_id=job_id)
+    actors_info = list_actors(filters=[("job_id", "=", job_id_hex)], detail=True)
     assert len(actors_info) == 2
-    actors_info = ray.state.actors(job_id=ray.JobID.from_int(100))
+    actors_info = list_actors(
+        filters=[("job_id", "=", ray.JobID.from_int(100).hex())], detail=True
+    )
     assert len(actors_info) == 0
 
     # To filter actors by state
     actor_3 = Actor.remote()
     wait_for_condition(
-        lambda: len(ray.state.actors(actor_state_name="PENDING_CREATION")) == 1
+        lambda: len(list_actors(filters=[("state", "=", "PENDING_CREATION")])) == 1
     )
-    assert (
-        actor_3._actor_id.hex()
-        in ray.state.actors(actor_state_name="PENDING_CREATION").keys()
+    assert actor_3._actor_id.hex() in list(
+        map(
+            lambda s: s.actor_id,
+            list_actors(filters=[("state", "=", "PENDING_CREATION")]),
+        )
     )
 
-    with pytest.raises(ValueError, match="not a valid actor state name"):
-        actors_info = ray.state.actors(actor_state_name="UNKONWN_STATE")
+    with pytest.raises(ray.util.state.exception.RayStateApiException):
+        actors_info = list_actors(filters=[("state", "=", "UNKONWN_STATE")])
 
 
 if __name__ == "__main__":

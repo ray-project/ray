@@ -9,17 +9,17 @@ import pytest
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.experimental.internal_kv as internal_kv
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    make_global_state_accessor,
-    get_metric_check_condition,
     MetricSamplePattern,
+    get_metric_check_condition,
+    make_global_state_accessor,
 )
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
-from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.util.state import list_tasks
 
 
@@ -787,17 +787,17 @@ def test_workload_placement_metrics(ray_start_regular):
     placement_metric_condition = get_metric_check_condition(
         [
             MetricSamplePattern(
-                name="ray_scheduler_placement_time_s_bucket",
+                name="ray_scheduler_placement_time_ms_bucket",
                 value=1.0,
                 partial_label_match={"WorkloadType": "Actor"},
             ),
             MetricSamplePattern(
-                name="ray_scheduler_placement_time_s_bucket",
+                name="ray_scheduler_placement_time_ms_bucket",
                 value=1.0,
                 partial_label_match={"WorkloadType": "Task"},
             ),
             MetricSamplePattern(
-                name="ray_scheduler_placement_time_s_bucket",
+                name="ray_scheduler_placement_time_ms_bucket",
                 value=1.0,
                 partial_label_match={"WorkloadType": "PlacementGroup"},
             ),

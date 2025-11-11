@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/raylet/worker.h"
+#include "ray/raylet/worker_interface.h"
 
 namespace ray {
 
@@ -42,20 +42,22 @@ class MockWorker : public WorkerInterface {
 
   void SetOwnerAddress(const rpc::Address &address) override { address_ = address; }
 
-  void AssignTaskId(const TaskID &task_id) override { task_id_ = task_id; }
-
-  void SetAssignedTask(const RayTask &assigned_task) override {
-    task_ = assigned_task;
-    task_assign_time_ = absl::Now();
-    root_detached_actor_id_ = assigned_task.GetTaskSpecification().RootDetachedActorId();
-    const auto &task_spec = assigned_task.GetTaskSpecification();
-    SetJobId(task_spec.JobId());
-    SetBundleId(task_spec.PlacementGroupBundleId());
-    SetOwnerAddress(task_spec.CallerAddress());
-    AssignTaskId(task_spec.TaskId());
+  void GrantLease(const RayLease &granted_lease) override {
+    lease_ = granted_lease;
+    lease_grant_time_ = absl::Now();
+    root_detached_actor_id_ = granted_lease.GetLeaseSpecification().RootDetachedActorId();
+    const auto &lease_spec = granted_lease.GetLeaseSpecification();
+    SetJobId(lease_spec.JobId());
+    SetBundleId(lease_spec.PlacementGroupBundleId());
+    SetOwnerAddress(lease_spec.CallerAddress());
+    GrantLeaseId(lease_spec.LeaseId());
   };
 
-  absl::Time GetAssignedTaskTime() const override { return task_assign_time_; };
+  void GrantLeaseId(const LeaseID &lease_id) override { lease_id_ = lease_id; }
+
+  const RayLease &GetGrantedLease() const override { return lease_; }
+
+  absl::Time GetGrantedLeaseTime() const override { return lease_grant_time_; };
 
   std::optional<bool> GetIsGpu() const override { return is_gpu_; }
 
@@ -83,10 +85,7 @@ class MockWorker : public WorkerInterface {
   }
 
   void MarkDead() override { RAY_CHECK(false) << "Method unused"; }
-  bool IsDead() const override {
-    RAY_CHECK(false) << "Method unused";
-    return killing_.load(std::memory_order_acquire);
-  }
+  bool IsDead() const override { return killing_.load(std::memory_order_acquire); }
   void KillAsync(instrumented_io_context &io_service, bool force) override {
     bool expected = false;
     killing_.compare_exchange_strong(expected, true, std::memory_order_acq_rel);
@@ -108,7 +107,7 @@ class MockWorker : public WorkerInterface {
   void Connect(int port) override { RAY_CHECK(false) << "Method unused"; }
 
   void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) override {
-    RAY_CHECK(false) << "Method unused";
+    rpc_client_ = rpc_client;
   }
 
   int AssignedPort() const override {
@@ -116,7 +115,7 @@ class MockWorker : public WorkerInterface {
     return -1;
   }
   void SetAssignedPort(int port) override { RAY_CHECK(false) << "Method unused"; }
-  const TaskID &GetAssignedTaskId() const override { return task_id_; }
+  const LeaseID &GetGrantedLeaseId() const override { return lease_id_; }
   const JobID &GetAssignedJobId() const override { return job_id_; }
   int GetRuntimeEnvHash() const override { return runtime_env_hash_; }
   void AssignActorId(const ActorID &actor_id) override {
@@ -126,20 +125,19 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return ActorID::Nil();
   }
-  const std::string GetTaskOrActorIdAsDebugString() const override {
+  const std::string GetLeaseIdAsDebugString() const override {
     RAY_CHECK(false) << "Method unused";
     return "";
   }
 
   bool IsDetachedActor() const override {
-    return task_.GetTaskSpecification().IsDetachedActor();
+    return lease_.GetLeaseSpecification().IsDetachedActor();
   }
 
-  const std::shared_ptr<ClientConnection> Connection() const override {
-    RAY_CHECK(false) << "Method unused";
-    return nullptr;
-  }
+  const std::shared_ptr<ClientConnection> Connection() const override { return nullptr; }
   const rpc::Address &GetOwnerAddress() const override { return address_; }
+  std::optional<pid_t> GetSavedProcessGroupId() const override { return std::nullopt; }
+  void SetSavedProcessGroupId(pid_t pgid) override { (void)pgid; }
 
   void ActorCallArgWaitComplete(int64_t tag) override {
     RAY_CHECK(false) << "Method unused";
@@ -158,17 +156,14 @@ class MockWorker : public WorkerInterface {
 
   void SetBundleId(const BundleID &bundle_id) override { bundle_id_ = bundle_id; }
 
-  RayTask &GetAssignedTask() override { return task_; }
+  RayLease &GetGrantedLease() override { return lease_; }
 
   bool IsRegistered() override {
     RAY_CHECK(false) << "Method unused";
     return false;
   }
 
-  rpc::CoreWorkerClientInterface *rpc_client() override {
-    RAY_CHECK(false) << "Method unused";
-    return nullptr;
-  }
+  rpc::CoreWorkerClientInterface *rpc_client() override { return rpc_client_.get(); }
 
   bool IsAvailableForScheduling() const override {
     RAY_CHECK(false) << "Method unused";
@@ -197,14 +192,15 @@ class MockWorker : public WorkerInterface {
   std::optional<bool> is_actor_worker_;
   BundleID bundle_id_;
   bool blocked_ = false;
-  RayTask task_;
-  absl::Time task_assign_time_;
+  RayLease lease_;
+  absl::Time lease_grant_time_;
   int runtime_env_hash_;
-  TaskID task_id_;
+  LeaseID lease_id_;
   JobID job_id_;
   ActorID root_detached_actor_id_;
   Process proc_;
   std::atomic<bool> killing_ = false;
+  std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
 };
 
 }  // namespace raylet

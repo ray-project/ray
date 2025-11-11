@@ -11,11 +11,11 @@ from typing import Optional
 from unittest.mock import patch
 
 import pytest
-from ray._common.test_utils import wait_for_condition
 import requests
 import yaml
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.runtime_env.packaging import (
     create_package,
     download_and_unpack_package,
@@ -268,8 +268,7 @@ ray.get(f.remote())
                 yield {
                     "runtime_env": {"py_modules": [str(Path(tmp_dir) / "test_module")]},
                     "entrypoint": (
-                        "python -c 'import test_module;"
-                        "print(test_module.run_test())'"
+                        "python -c 'import test_module;print(test_module.run_test())'"
                     ),
                     "expected_logs": "Hello from test_module!\n",
                 }

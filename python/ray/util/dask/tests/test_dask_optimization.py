@@ -1,8 +1,8 @@
 import sys
+from unittest import mock
 
 import dask
 import dask.dataframe as dd
-from unittest import mock
 import numpy as np
 import pandas as pd
 import pytest
@@ -21,9 +21,10 @@ except ImportError:
 
 if Version(dask.__version__) < Version("2025.1") and not DASK_EXPR_INSTALLED:
     from dask.dataframe.shuffle import SimpleShuffleLayer
+
     from ray.util.dask.optimizations import (
-        rewrite_simple_shuffle_layer,
         MultipleReturnSimpleShuffleLayer,
+        rewrite_simple_shuffle_layer,
     )
 
 pytestmark = pytest.mark.skipif(

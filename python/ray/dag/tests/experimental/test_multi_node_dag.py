@@ -1,14 +1,16 @@
-import random
-import ray
 import os
+import random
 import sys
 import time
+
 import pytest
+
+import ray
+import ray.remote_function
 from ray._common.test_utils import wait_for_condition
 from ray.dag import InputNode, MultiOutputNode
-import ray.remote_function
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.tests.conftest import *  # noqa
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)

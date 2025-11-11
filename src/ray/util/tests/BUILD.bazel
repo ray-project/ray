@@ -126,17 +126,6 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "sample_test",
-    size = "small",
-    srcs = ["sample_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        "//src/ray/util:sample",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
     name = "sequencer_test",
     size = "small",
     srcs = ["sequencer_test.cc"],
@@ -353,6 +342,19 @@ ray_cc_test(
         "//src/ray/util:filesystem",
         "//src/ray/util:process_cleaner",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "process_spawn_pg_test",
+    srcs = ["process_spawn_pg_test.cc"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        "//src/ray/util:process",
         "@com_google_googletest//:gtest_main",
     ],
 )
