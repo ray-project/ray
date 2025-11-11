@@ -35,7 +35,7 @@ class GlobalState:
         self._global_state_accessor = None
         self._init_lock = Lock()
 
-    def _connect_and_get_accessor(self):
+    def _connect_and_get_accessor(self) -> GlobalStateAccessor:
         """
         This lazily initializes clients needed for state accessors and returns a connected global state accessor.
 
@@ -897,7 +897,7 @@ class GlobalState:
 
         return result
 
-    def get_actor_info(self, actor_id):
+    def get_actor_info(self, actor_id: ray.ActorID) -> Optional[str]:
         """Get the actor info for a actor id."""
         accessor = self._connect_and_get_accessor()
         return accessor.get_actor_info(actor_id)
