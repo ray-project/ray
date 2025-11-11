@@ -14,10 +14,7 @@
 
 #include "ray/rpc/authentication/authentication_token_loader.h"
 
-#include <sys/stat.h>
-
 #include <fstream>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <utility>
 

@@ -31,7 +31,6 @@
 #include "ray/common/status.h"
 #include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/authentication_token.h"
-#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/authentication/authentication_token_validator.h"
 #include "ray/rpc/metrics.h"
 #include "ray/rpc/rpc_callback_types.h"

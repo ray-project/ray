@@ -24,6 +24,7 @@
 #include <fstream>
 #include <string>
 
+#include "nlohmann/json.hpp"
 #include "ray/rpc/authentication/k8s_constants.h"
 #include "ray/util/logging.h"
 

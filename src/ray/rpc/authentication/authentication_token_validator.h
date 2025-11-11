@@ -18,7 +18,6 @@
 #include <unordered_map>
 
 #include "ray/rpc/authentication/authentication_token.h"
-#include "ray/rpc/authentication/k8s_util.h"
 
 namespace ray {
 namespace rpc {
