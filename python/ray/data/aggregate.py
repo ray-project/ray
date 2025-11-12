@@ -1537,7 +1537,7 @@ class ApproximateTopK(AggregateFnV2):
                 for item in py_value:
                     if item is not None:
                         sketch.update(str(item))
-            else:
+            elif py_value is not None:
                 sketch.update(str(py_value))
         return sketch.serialize()
 
