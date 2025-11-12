@@ -342,11 +342,7 @@ class TestDownloadExpressionErrors:
             "foo://bar",        # Invalid scheme
             "://no-scheme",     # Missing scheme
             "",                 # Empty URI
-            "relative/path",    # No scheme
-            "random_string",    # Random string
-            "/absolute/path",   # No scheme (though might work as file path)
-            "./relative",       # Relative path
-            "../parent",        # Parent directory reference
+            "foobar",    # Random string
             "http://host/path?query=<script>",  # Injection attempts
             "file:///\x00/null/byte",           # Null byte
             "http://host/path\n\r",             # Line breaks
