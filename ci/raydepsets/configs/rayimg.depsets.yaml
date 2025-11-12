@@ -134,3 +134,20 @@ depsets:
     build_arg_sets:
       - py39
       - py310
+
+  - name: ray_base_slim_${PYTHON_SHORT}
+    operation: compile
+    requirements:
+      - docker/base-slim/requirements.in
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    output: python/deplocks/base_slim/ray_base_slim_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+      - py311
+      - py312
