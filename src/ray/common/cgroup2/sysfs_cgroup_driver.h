@@ -291,5 +291,6 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
   static constexpr std::string_view kCgroupSubtreeControlFilename =
       "cgroup.subtree_control";
   static constexpr std::string_view kCgroupControllersFilename = "cgroup.controllers";
+  static inline std::string kFallbackMountsFilePath = "/proc/mounts";
 };
 }  // namespace ray

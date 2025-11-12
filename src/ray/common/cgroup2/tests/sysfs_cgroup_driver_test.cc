@@ -43,6 +43,12 @@ TEST(SysFsCgroupDriverTest, CheckCgroupv2EnabledFailsIfMalformedMountFile) {
   EXPECT_TRUE(s.IsInvalid()) << s.ToString();
 }
 
+TEST(SysFsCgroupDriverTest, CheckCgroupv2EnabledUsesFallbackIfMountFileDoesNotExist) {
+  SysFsCgroupDriver driver("/does/not/exist");
+  Status s = driver.CheckCgroupv2Enabled();
+  EXPECT_TRUE(s.ok()) << s.ToString();
+}
+
 TEST(SysFsCgroupDriverTest,
      CheckCgroupv2EnabledFailsIfCgroupv1MountedAndCgroupv2NotMounted) {
   TempFile temp_mount_file;
