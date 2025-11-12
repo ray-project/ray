@@ -121,7 +121,8 @@ def build_sglang_engine_processor(
                     model=chat_template_stage_cfg.model or config.model_source,
                     chat_template=chat_template_stage_cfg.chat_template
                     or config.chat_template,
-                    chat_template_kwargs=chat_template_kwargs,
+                    chat_template_kwargs=chat_template_stage_cfg.chat_template_kwargs
+                    or chat_template_kwargs,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,

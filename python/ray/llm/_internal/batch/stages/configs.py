@@ -55,9 +55,9 @@ def resolve_stage_config(
     """
     processor_defaults = processor_defaults or {}
 
-    # If already a typed config, use it directly (but still merge defaults)
+    # If already a typed config, create a copy to avoid mutating the input
     if isinstance(stage_cfg_value, stage_config_cls):
-        resolved = stage_cfg_value
+        resolved = stage_config_cls.model_validate(stage_cfg_value.model_dump())
     # If bool, create minimal config with enabled flag
     elif isinstance(stage_cfg_value, bool):
         resolved = stage_config_cls(enabled=stage_cfg_value)
