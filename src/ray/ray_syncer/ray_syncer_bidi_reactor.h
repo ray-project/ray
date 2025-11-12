@@ -56,14 +56,14 @@ using ray::rpc::syncer::ResourceViewSyncMessage;
 ///
 ///
 /// For the client side:
-/// +------------+      +-------------+       +------------+  gRPC error or disconnected   +--------+
-/// | StartCall  | ---> |  StartRead  | <---> | OnReadDone | ----------------------------> | OnDone |
-/// +------------+      +-------------+       +------------+                               +--------+
-///   |                                                                                        ^
-///   |                                                                                        |
-///   v                                                                                        |
-/// +------------+      +-------------+  gRPC error or disconnected                            |
-/// | StartWrite | <--> | OnWriteDone | -------------------------------------------------------+
+/// +------------+      +-------------+       +------------+  gRPC error or ALL incoming data read   +--------+
+/// | StartCall  | ---> |  StartRead  | <---> | OnReadDone | --------------------------------------> | OnDone |
+/// +------------+      +-------------+       +------------+                                         +--------+
+///   |                                                                                                   ^
+///   |                                                                                                   |
+///   v                                                                                                   |
+/// +------------+      +-------------+  gRPC error or disconnected                                       |
+/// | StartWrite | <--> | OnWriteDone | ------------------------------------------------------------------+
 /// +------------+      +-------------+
 // clang-format on
 class RaySyncerBidiReactor {

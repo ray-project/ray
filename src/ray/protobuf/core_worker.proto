@@ -524,9 +524,9 @@ service CoreWorkerService {
   rpc GetObjectLocationsOwner(GetObjectLocationsOwnerRequest)
       returns (GetObjectLocationsOwnerReply);
 
-  // Request from the GCS actor manager or actor scheduler that the worker shut down
-  // without completing outstanding work.
-  // Failure: TODO: Never retries
+  // Request from the Raylet that the actor shut down without completing outstanding work.
+  // Failure: Idempotent, does not retry. However requests should only be sent via
+  // KillLocalActor from the raylet which does implement retries
   rpc KillActor(KillActorRequest) returns (KillActorReply);
 
   // Request from owner worker to executor worker to cancel a task.
