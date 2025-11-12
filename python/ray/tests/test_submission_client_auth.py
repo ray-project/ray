@@ -4,14 +4,14 @@ from ray._private.authentication.authentication_constants import (
     HTTP_REQUEST_INVALID_TOKEN_ERROR_MESSAGE,
     HTTP_REQUEST_MISSING_TOKEN_ERROR_MESSAGE,
 )
-from ray.dashboard.modules.dashboard_sdk import SubmissionClient
-from ray.dashboard.modules.job.sdk import JobSubmissionClient
-from ray.tests.authentication_test_utils import (
+from ray._private.authentication_test_utils import (
     clear_auth_token_sources,
     reset_auth_token_state,
     set_auth_mode,
     set_env_auth_token,
 )
+from ray.dashboard.modules.dashboard_sdk import SubmissionClient
+from ray.dashboard.modules.job.sdk import JobSubmissionClient
 from ray.util.state import StateApiClient
 
 
