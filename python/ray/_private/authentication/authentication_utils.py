@@ -15,7 +15,7 @@ def is_token_auth_enabled() -> bool:
     """Check if token authentication is enabled.
 
     Returns:
-        bool: True if auth_mode is set to "token", False otherwise
+        bool: True if AUTH_MODE is set to "token", False otherwise
     """
     if not _RAYLET_AVAILABLE:
         return False
