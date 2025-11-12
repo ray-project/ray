@@ -140,7 +140,7 @@ class Join(NAry, SupportsPushThrough):
             input_op=left_op,
         )
         left_new_columns = self._rename_projection(
-            old_keys=self._left_key_columns,
+            old_keys=list(self._left_key_columns),
             column_rename_map=column_rename_map,
         )
 
@@ -152,7 +152,7 @@ class Join(NAry, SupportsPushThrough):
             input_op=right_op,
         )
         right_new_columns = self._rename_projection(
-            old_keys=self._right_key_columns,
+            old_keys=list(self._right_key_columns),
             column_rename_map=column_rename_map,
         )
 

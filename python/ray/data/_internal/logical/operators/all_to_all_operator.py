@@ -179,8 +179,7 @@ class Repartition(AbstractAllToAll, SupportsPushThrough):
         # This is necessary because the repartition operation needs these columns to partition by.
 
         # Collect all required columns (output columns + partition keys)
-        current_keys: List[str] = self.get_referenced_columns() or []
-        required_columns = set(columns) | set(current_keys)
+        required_columns = set(columns) | set(self.get_referenced_columns() or [])
 
         upstream_project = self._create_upstream_project(
             columns=list(required_columns),
@@ -188,10 +187,12 @@ class Repartition(AbstractAllToAll, SupportsPushThrough):
             input_op=self.input_dependencies[0],
         )
 
-        new_keys: List[str] = self._rename_projection(
-            old_keys=current_keys,
-            column_rename_map=column_rename_map,
-        )
+        new_keys: Optional[List[str]] = None
+        if self.get_referenced_columns() is not None:
+            new_keys = self._rename_projection(
+                old_keys=self.get_referenced_columns(),
+                column_rename_map=column_rename_map,
+            )
 
         return Repartition(
             input_op=upstream_project,

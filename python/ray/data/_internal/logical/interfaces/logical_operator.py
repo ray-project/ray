@@ -135,7 +135,7 @@ class SupportsPushThrough(LogicalOperator):
     def _create_upstream_project(
         self,
         columns: List[str],
-        column_rename_map: Optional[Dict[str, str]],
+        column_rename_map: Dict[str, str],
         input_op: LogicalOperator,
     ) -> "Project":
         from ray.data._internal.logical.operators.map_operator import Project
