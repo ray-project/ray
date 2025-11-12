@@ -385,7 +385,7 @@ class MockRayletClient : public rpc::FakeRayletClient {
   void CancelLocalTask(
       const rpc::CancelLocalTaskRequest &request,
       const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) override {
-    cancel_local_task_requests.push_front(request);
+    cancel_local_task_requests.push_back(request);
     cancel_local_task_callbacks.push_back(callback);
   }
 
@@ -414,13 +414,12 @@ class MockRayletClient : public rpc::FakeRayletClient {
   int num_get_task_failure_causes = 0;
   int reported_backlog_size = 0;
   std::map<SchedulingClass, int64_t> reported_backlogs;
-  std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
-  std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
+  std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks;
+  std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks;
   std::list<rpc::ClientCallback<rpc::GetWorkerFailureCauseReply>>
-      get_task_failure_cause_callbacks = {};
-  std::list<rpc::CancelLocalTaskRequest> cancel_local_task_requests = {};
-  std::list<rpc::ClientCallback<rpc::CancelLocalTaskReply>> cancel_local_task_callbacks =
-      {};
+      get_task_failure_cause_callbacks;
+  std::list<rpc::CancelLocalTaskRequest> cancel_local_task_requests;
+  std::list<rpc::ClientCallback<rpc::CancelLocalTaskReply>> cancel_local_task_callbacks;
 };
 
 class MockLeasePolicy : public LeasePolicyInterface {
@@ -668,7 +667,6 @@ TEST_F(NormalTaskSubmitterTest, TestCancellationWhileHandlingTaskFailure) {
 
   // Set up GCS node mock to return node as alive
   using testing::_;
-  using testing::Return;
 
   rpc::GcsNodeInfo node_info;
   node_info.set_node_id(local_node_id.Binary());
@@ -677,7 +675,7 @@ TEST_F(NormalTaskSubmitterTest, TestCancellationWhileHandlingTaskFailure) {
   node_info.set_state(rpc::GcsNodeInfo::ALIVE);
 
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, Get(_, false))
-      .WillRepeatedly(Return(&node_info));
+      .WillRepeatedly(testing::Return(&node_info));
 
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
@@ -1788,7 +1786,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
   // Try non-force kill, worker returns normally
   submitter.CancelTask(task, false, false);
   ASSERT_TRUE(worker_client->ReplyPushTask());
-  ASSERT_EQ(raylet_client->cancel_local_task_requests.front().intended_task_id(),
+  ASSERT_EQ(raylet_client->cancel_local_task_requests.back().intended_task_id(),
             task.TaskIdBinary());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 1);

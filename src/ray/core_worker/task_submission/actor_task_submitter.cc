@@ -998,7 +998,8 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
 
   // If there's no client, it means actor is not created yet.
   // Retry in 1 second.
-  rpc::Address client_address;
+  NodeID node_id;
+  std::string executor_worker_id;
   {
     absl::MutexLock lock(&mu_);
     RAY_LOG(DEBUG).WithField(task_id) << "Task was sent to an actor. Send a cancel RPC.";
@@ -1008,60 +1009,60 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
       RetryCancelTask(task_spec, recursive, 1000);
       return;
     }
-    client_address = queue->second.client_address_.value();
+    node_id = NodeID::FromBinary(queue->second.client_address_.value().node_id());
+    executor_worker_id = queue->second.client_address_.value().worker_id();
   }
 
-  const auto node_id = NodeID::FromBinary(client_address.node_id());
-  const auto executor_worker_id = client_address.worker_id();
+  auto do_cancel_local_task =
+      [this,
+       task_spec = std::move(task_spec),
+       task_id,
+       force_kill,
+       recursive,
+       executor_worker_id](const rpc::GcsNodeAddressAndLiveness &node_info) mutable {
+        rpc::Address raylet_address;
+        raylet_address.set_node_id(node_info.node_id());
+        raylet_address.set_ip_address(node_info.node_manager_address());
+        raylet_address.set_port(node_info.node_manager_port());
 
-  auto do_cancel_local_task = [this,
-                               task_spec = std::move(task_spec),
-                               task_id,
-                               force_kill,
-                               recursive,
-                               executor_worker_id = std::move(executor_worker_id)](
-                                  const rpc::GcsNodeInfo &node_info) mutable {
-    rpc::Address raylet_address;
-    raylet_address.set_node_id(node_info.node_id());
-    raylet_address.set_ip_address(node_info.node_manager_address());
-    raylet_address.set_port(node_info.node_manager_port());
+        rpc::CancelLocalTaskRequest request;
+        request.set_intended_task_id(task_spec.TaskIdBinary());
+        request.set_force_kill(force_kill);
+        request.set_recursive(recursive);
+        request.set_caller_worker_id(task_spec.CallerWorkerIdBinary());
+        request.set_executor_worker_id(executor_worker_id);
 
-    rpc::CancelLocalTaskRequest request;
-    request.set_intended_task_id(task_spec.TaskIdBinary());
-    request.set_force_kill(force_kill);
-    request.set_recursive(recursive);
-    request.set_caller_worker_id(task_spec.CallerWorkerIdBinary());
-    request.set_executor_worker_id(executor_worker_id);
+        auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(raylet_address);
+        raylet_client->CancelLocalTask(
+            request,
+            [this, task_spec = std::move(task_spec), recursive, task_id](
+                const Status &status, const rpc::CancelLocalTaskReply &reply) mutable {
+              RAY_LOG(DEBUG).WithField(task_spec.TaskId())
+                  << "CancelTask RPC response received with status " << status.ToString();
 
-    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(raylet_address);
-    raylet_client->CancelLocalTask(
-        request,
-        [this, task_spec = std::move(task_spec), recursive, task_id](
-            const Status &status, const rpc::CancelLocalTaskReply &reply) mutable {
-          RAY_LOG(DEBUG).WithField(task_spec.TaskId())
-              << "CancelTask RPC response received with status " << status.ToString();
+              // Keep retrying every 2 seconds until a task is officially
+              // finished.
+              if (!task_manager_.GetTaskSpec(task_id)) {
+                // Task is already finished.
+                RAY_LOG(DEBUG).WithField(task_spec.TaskId())
+                    << "Task is finished. Stop a cancel request.";
+                return;
+              }
 
-          // Keep retrying every 2 seconds until a task is officially
-          // finished.
-          if (!task_manager_.GetTaskSpec(task_id)) {
-            // Task is already finished.
-            RAY_LOG(DEBUG).WithField(task_spec.TaskId())
-                << "Task is finished. Stop a cancel request.";
-            return;
-          }
-
-          if (!reply.attempt_succeeded()) {
-            RetryCancelTask(std::move(task_spec), recursive, 2000);
-          }
-        });
-  };
+              if (!reply.attempt_succeeded()) {
+                RetryCancelTask(std::move(task_spec), recursive, 2000);
+              }
+            });
+      };
 
   // Check GCS node cache. If node info is not in the cache, query the GCS instead.
-  auto *node_info = gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
+  auto *node_info = gcs_client_->Nodes().GetNodeAddressAndLiveness(
+      node_id, /*filter_dead_nodes=*/false);
   if (node_info == nullptr) {
-    gcs_client_->Nodes().AsyncGetAll(
+    gcs_client_->Nodes().AsyncGetAllNodeAddressAndLiveness(
         [do_cancel_local_task = std::move(do_cancel_local_task), node_id](
-            const Status &status, std::vector<rpc::GcsNodeInfo> &&nodes) mutable {
+            const Status &status,
+            std::vector<rpc::GcsNodeAddressAndLiveness> &&nodes) mutable {
           if (!status.ok()) {
             RAY_LOG(INFO) << "Failed to get node info from GCS";
             return;
