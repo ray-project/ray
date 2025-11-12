@@ -140,7 +140,7 @@ class PredicatePushdownBehavior(Enum):
     PASSTHROUGH = "passthrough"
 
     # Predicate can be pushed through but needs column rebinding (e.g., Project)
-    PASSTHROUGH_WITH_REBINDING = "passthrough_with_rebinding"
+    PASSTHROUGH_WITH_SUBSTITUTION = "PASSTHROUGH_WITH_SUBSTITUTION"
 
     # Predicate can be pushed into each branch (e.g., Union)
     PUSH_INTO_BRANCHES = "push_into_branches"
@@ -162,8 +162,8 @@ class PredicatePassThrough(ABC):
         """Returns the predicate pushdown behavior for this operator."""
         pass
 
-    def get_column_rebinding(self) -> Optional[Dict[str, str]]:
-        """Returns column renames needed when pushing through (for PASSTHROUGH_WITH_REBINDING).
+    def get_column_substitutions(self) -> Optional[Dict[str, str]]:
+        """Returns column renames needed when pushing through (for PASSTHROUGH_WITH_SUBSTITUTION).
 
         Returns:
             Dict mapping from old_name -> new_name, or None if no rebinding needed

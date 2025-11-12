@@ -329,9 +329,9 @@ class Project(AbstractMap, PredicatePassThrough):
         return False
 
     def predicate_pushdown_behavior(self) -> PredicatePushdownBehavior:
-        return PredicatePushdownBehavior.PASSTHROUGH_WITH_REBINDING
+        return PredicatePushdownBehavior.PASSTHROUGH_WITH_SUBSTITUTION
 
-    def get_column_rebinding(self) -> Optional[Dict[str, str]]:
+    def get_column_substitutions(self) -> Optional[Dict[str, str]]:
         """Returns the column renames from this projection.
 
         Maps source_column_name -> output_column_name. This is what we need

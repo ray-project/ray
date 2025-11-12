@@ -28,7 +28,7 @@ class PredicatePushdown(Rule):
     Eligibility is determined by the PredicatePassThrough trait, which operators
     implement to declare their pushdown behavior:
     - PASSTHROUGH: Filter passes through unchanged (Sort, Repartition, Shuffle, Limit)
-    - PASSTHROUGH_WITH_REBINDING: Filter passes through with column rebinding (Project)
+    - PASSTHROUGH_WITH_SUBSTITUTION: Filter passes through with column rebinding (Project)
     - PUSH_INTO_BRANCHES: Filter is pushed into each branch (Union)
     - CONDITIONAL: Filter may be pushed based on analysis (Join - supports inner, outer,
       semi, and anti joins; only full outer joins cannot push predicates)
@@ -66,7 +66,7 @@ class PredicatePushdown(Rule):
         )
 
     @classmethod
-    def _rebind_predicate_columns(
+    def _substitute_predicate_columns(
         cls, predicate_expr: Expr, column_rename_map: dict[str, str]
     ) -> Expr:
         """Rebind column references in a predicate expression.
@@ -109,9 +109,9 @@ class PredicatePushdown(Rule):
             # This happens when projection pushdown has been applied
             rename_map = input_op.get_column_renames()
             if rename_map:
-                # Rebind the predicate to use original column names
+                # Substitute the predicate to use original column names
                 # This is needed to ensure that the predicate expression can be pushed into the input operator.
-                predicate_expr = cls._rebind_predicate_columns(
+                predicate_expr = cls._substitute_predicate_columns(
                     predicate_expr, rename_map
                 )
 
@@ -133,11 +133,11 @@ class PredicatePushdown(Rule):
                 # Return input_op with the pushed filter as its input
                 return cls._clone_op_with_new_inputs(input_op, [pushed_filter])
 
-            elif behavior == PredicatePushdownBehavior.PASSTHROUGH_WITH_REBINDING:
+            elif behavior == PredicatePushdownBehavior.PASSTHROUGH_WITH_SUBSTITUTION:
                 # Rebind columns and push through
-                rename_map = input_op.get_column_rebinding()
+                rename_map = input_op.get_column_substitutions()
                 if rename_map:
-                    predicate_expr = cls._rebind_predicate_columns(
+                    predicate_expr = cls._substitute_predicate_columns(
                         predicate_expr, rename_map
                     )
 

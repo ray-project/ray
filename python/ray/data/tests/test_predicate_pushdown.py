@@ -445,8 +445,8 @@ class TestPassthroughBehavior:
         )
 
 
-class TestPassthroughWithRebindingBehavior:
-    """Tests for PASSTHROUGH_WITH_REBINDING behavior operators.
+class TestPassthroughWithSubstitutionBehavior:
+    """Tests for PASSTHROUGH_WITH_SUBSTITUTION behavior operators.
 
     Operator: Project (used by rename_columns, select, with_column)
     Predicates push through but column names must be rebound.
