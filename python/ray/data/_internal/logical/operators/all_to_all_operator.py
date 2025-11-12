@@ -272,7 +272,7 @@ class Sort(AbstractAllToAll, SupportsPushThrough):
         )
 
 
-class Aggregate(AbstractAllToAll, SupportsPushThrough):
+class Aggregate(AbstractAllToAll):
     """Logical operator for aggregate."""
 
     def __init__(
@@ -296,41 +296,3 @@ class Aggregate(AbstractAllToAll, SupportsPushThrough):
         self._aggs = aggs
         self._num_partitions = num_partitions
         self._batch_format = batch_format
-
-    def get_referenced_columns(self) -> Optional[List[str]]:
-        if self._key is None:
-            return None
-        elif isinstance(self._key, str):
-            return [self._key]
-        else:
-            return self._key
-
-    def apply_projection(
-        self,
-        columns: List[str],
-        column_rename_map: Dict[str, str],
-    ) -> LogicalOperator:
-
-        # When pushing projections through aggregate, we must ensure groupby key columns
-        # are preserved, even if they're not in the output projection.
-        # This is necessary because the aggregate operation needs these columns to group by.
-
-        # Collect all required columns (output columns + groupby keys)
-        required_columns = set(columns) | set(self.get_referenced_columns() or [])
-        upstream_project = self._create_upstream_project(
-            columns=list(required_columns),
-            column_rename_map=column_rename_map,
-            input_op=self.input_dependencies[0],
-        )
-        new_columns = self._rename_projection(
-            old_keys=self.get_referenced_columns(),
-            column_rename_map=column_rename_map,
-        )
-        return Aggregate(
-            input_op=upstream_project,
-            key=new_columns,
-            # TODO(justin): this is broken, need to rename which columns are referenced here.
-            aggs=self._aggs,
-            num_partitions=self._num_partitions,
-            batch_format=self._batch_format,
-        )
