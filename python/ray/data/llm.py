@@ -113,13 +113,16 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             each batch. The default value may not be optimal when the batch size
             or the batch processing latency is too small, but it should be good
             enough for batch size >= 64.
-        apply_chat_template: Whether to apply chat template.
-        chat_template: The chat template to use. This is usually not needed if the
-            model checkpoint already contains the chat template.
-        tokenize: Whether to tokenize the input before passing it to the vLLM engine.
-            If not, vLLM will tokenize the prompt in the engine.
-        detokenize: Whether to detokenize the output.
-        has_image: Whether the input messages have images.
+        chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, and runtime_env. Legacy ``apply_chat_template`` and ``chat_template``
+            fields are deprecated but still supported.
+        tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
+            Defaults to True. Legacy ``tokenize`` field is deprecated but still supported.
+        detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
+            Defaults to True. Legacy ``detokenize`` field is deprecated but still supported.
+        prepare_image_stage: Prepare image stage config (bool | dict | PrepareImageStageConfig).
+            Defaults to False. Legacy ``has_image`` field is deprecated but still supported.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
@@ -127,6 +130,7 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
             If ``concurrency`` is an ``int`` ``n``, CPU stages use an autoscaling
             pool from ``(1, n)``, while GPU stages use a fixed pool of ``n`` workers.
+            Stage-specific concurrency can be set via nested stage configs.
 
     Examples:
 
@@ -205,12 +209,13 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
             each batch. The default value may not be optimal when the batch size
             or the batch processing latency is too small, but it should be good
             enough for batch size >= 64.
-        apply_chat_template: Whether to apply chat template.
-        chat_template: The chat template to use. This is usually not needed if the
-            model checkpoint already contains the chat template.
-        tokenize: Whether to tokenize the input before passing it to the SGLang engine.
-            If not, SGLang will tokenize the prompt in the engine.
-        detokenize: Whether to detokenize the output.
+        chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
+            Defaults to True. Legacy ``apply_chat_template`` and ``chat_template``
+            fields are deprecated but still supported.
+        tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
+            Defaults to True. Legacy ``tokenize`` field is deprecated but still supported.
+        detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
+            Defaults to True. Legacy ``detokenize`` field is deprecated but still supported.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
@@ -218,6 +223,7 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
             actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
             If ``concurrency`` is an ``int`` ``n``, CPU stages use an autoscaling
             pool from ``(1, n)``, while GPU stages use a fixed pool of ``n`` workers.
+            Stage-specific concurrency can be set via nested stage configs.
 
     Examples:
         .. testcode::
@@ -375,7 +381,10 @@ def build_llm_processor(
     """Build a LLM processor using the given config.
 
     Args:
-        config: The processor config.
+        config: The processor config. Supports nested stage configs for per-stage
+            control (e.g., ``chat_template_stage=ChatTemplateStageConfig(batch_size=128)``).
+            Legacy boolean flags (``apply_chat_template``, ``tokenize``, etc.) are
+            deprecated but still supported.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages. Each row
