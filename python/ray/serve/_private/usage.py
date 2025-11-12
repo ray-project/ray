@@ -41,6 +41,7 @@ class ServeUsageTag(Enum):
     NUM_REPLICAS_USING_ASYNCHRONOUS_INFERENCE = (
         TagKey.SERVE_NUM_REPLICAS_USING_ASYNCHRONOUS_INFERENCE
     )
+    CUSTOM_AUTOSCALING_POLICY_USED = TagKey.SERVE_CUSTOM_AUTOSCALING_POLICY_USED
 
     def record(self, value: str):
         """Record telemetry value."""
