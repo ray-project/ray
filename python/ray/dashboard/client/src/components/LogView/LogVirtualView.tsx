@@ -251,17 +251,17 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
       <Box
         key={`${index}list`}
         style={style}
-        sx={{
+        sx={(theme) => ({
           overflowX: "visible",
           whiteSpace: "nowrap",
-          "&::before": (theme) => ({
+          "&::before": {
             content: `"${i + 1}"`,
             marginRight: 0.5,
             width: `${logs.length}`.length * 6 + 4,
             color: theme.palette.text.disabled,
             display: "inline-block",
-          }),
-        }}
+          },
+        })}
         onClick={() => {
           if ((window.getSelection()?.toString().length ?? 0) === 0) {
             // Only open if user is not selecting text
