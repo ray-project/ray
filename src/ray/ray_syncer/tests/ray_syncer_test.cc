@@ -241,8 +241,8 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend) {
       /* remote_node_id */ node_id.Binary(),
       /* message_processor */
       [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
-      /* batch_size */ 3,
-      /* batch_delay_ms */ 100);
+      /* max_batch_size */ 3,
+      /* max_batch_delay_ms */ 100);
 
   auto from_node_id1 = NodeID::FromRandom();
   auto from_node_id2 = NodeID::FromRandom();
@@ -280,8 +280,8 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeoutTriggerSend) {
       /* remote_node_id */ node_id.Binary(),
       /* message_processor */
       [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
-      /* batch_size */ 3,
-      /* batch_delay_ms */ 100);
+      /* max_batch_size */ 3,
+      /* max_batch_delay_ms */ 100);
 
   auto from_node_id = NodeID::FromRandom();
   auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);

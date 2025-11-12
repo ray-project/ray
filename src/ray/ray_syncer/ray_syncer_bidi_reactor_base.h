@@ -41,19 +41,19 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   /// \param message_processor The callback for the message received.
   /// \param cleanup_cb When the connection terminates, it'll be called to cleanup
   ///     the environment.
-  /// \param batch_size The maximum number of messages in a batch.
-  /// \param batch_delay_ms The maximum delay time to wait before sending a batch.
+  /// \param max_batch_size The maximum number of messages in a batch.
+  /// \param max_batch_delay_ms The maximum delay time to wait before sending a batch.
   RaySyncerBidiReactorBase(
       instrumented_io_context &io_context,
       std::string remote_node_id,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
-      size_t batch_size = 1,
-      int64_t batch_delay_ms = 0)
+      size_t max_batch_size = 1,
+      int64_t max_batch_delay_ms = 0)
       : RaySyncerBidiReactor(std::move(remote_node_id)),
         io_context_(io_context),
         message_processor_(std::move(message_processor)),
-        batch_size_(batch_size),
-        batch_delay_ms_(std::chrono::milliseconds(batch_delay_ms)),
+        max_batch_size_(max_batch_size),
+        max_batch_delay_ms_(std::chrono::milliseconds(max_batch_delay_ms)),
         batch_timer_(io_context),
         batch_timer_active_(false) {}
 
@@ -82,8 +82,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     node_versions[message->message_type()] = message->version();
     sending_buffer_[std::make_pair(message->node_id(), message->message_type())] =
         std::move(message);
-    // In single-threaded io_context, buffer size can only reach batch_size_ exactly.
-    if (sending_buffer_.size() == batch_size_ || batch_delay_ms_.count() == 0) {
+    // In single-threaded io_context, buffer size can only reach max_batch_size_ exactly.
+    if (sending_buffer_.size() == max_batch_size_ || max_batch_delay_ms_.count() == 0) {
       // Send immediately if batch size limit is reached or delay is 0
       if (batch_timer_active_) {
         batch_timer_.cancel();
@@ -93,9 +93,10 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     } else {
       // Start or restart the batch timer
       if (!batch_timer_active_) {
-        RAY_LOG(INFO) << "Batch timer expires after " << batch_delay_ms_.count() << " ms";
+        RAY_LOG(INFO) << "Batch timer expires after " << max_batch_delay_ms_.count()
+                      << " ms";
         batch_timer_active_ = true;
-        batch_timer_.expires_after(batch_delay_ms_);
+        batch_timer_.expires_after(max_batch_delay_ms_);
         batch_timer_.async_wait([this](const boost::system::error_code &ec) {
           if (!ec && !*IsDisconnected()) {
             batch_timer_active_ = false;
@@ -252,8 +253,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
 
   // For testing
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBase);
-  FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseBatchSize);
-  FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeout);
+  FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend);
+  FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeoutTriggerSend);
 
   friend struct SyncerServerTest;
 
@@ -286,8 +287,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   bool sending_ = false;
 
   /// Batch configuration
-  const size_t batch_size_;
-  const std::chrono::milliseconds batch_delay_ms_;
+  const size_t max_batch_size_;
+  const std::chrono::milliseconds max_batch_delay_ms_;
 
   /// Batch timer for delayed sending
   boost::asio::steady_timer batch_timer_;

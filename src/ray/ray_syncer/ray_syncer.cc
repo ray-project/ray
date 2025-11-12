@@ -114,8 +114,8 @@ void RaySyncer::Connect(const std::string &node_id,
               }
             },
             /* stub */ std::move(stub),
-            /* batch_size */ batch_size_,
-            /* batch_delay_ms */ batch_delay_ms_);
+            /* max_batch_size */ max_batch_size_,
+            /* max_batch_delay_ms */ max_batch_delay_ms_);
         Connect(reactor);
         reactor->StartCall();
       }))

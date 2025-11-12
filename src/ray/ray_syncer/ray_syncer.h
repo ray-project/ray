@@ -94,13 +94,14 @@ class RaySyncer {
   /// \param io_context The io context for this component.
   /// \param node_id The id of current node.
   /// \param on_rpc_completion A callback which invokes after a sync rpc succeeds.
-  /// \param batch_size The max number of messages to be sent in a batch.
-  /// \param batch_delay_ms The max delay in milliseconds to wait before sending a batch.
+  /// \param max_batch_size The max number of messages to be sent in a batch.
+  /// \param max_batch_delay_ms The max delay in milliseconds to wait before sending a
+  /// batch.
   RaySyncer(instrumented_io_context &io_context,
             const std::string &node_id,
             RpcCompletionCallback on_rpc_completion = {},
-            size_t batch_size = 1,
-            int64_t batch_delay_ms = 0);
+            size_t max_batch_size = 1,
+            int64_t max_batch_delay_ms = 0);
   ~RaySyncer();
 
   /// Connect to a node.
@@ -187,10 +188,10 @@ class RaySyncer {
   RpcCompletionCallback on_rpc_completion_;
 
   /// The max number of messages to be sent in a batch.
-  const size_t batch_size_;
+  const size_t max_batch_size_;
 
   /// The max delay in milliseconds to wait before sending a batch.
-  const int64_t batch_delay_ms_;
+  const int64_t max_batch_delay_ms_;
 
   friend class RaySyncerService;
   /// Test purpose
