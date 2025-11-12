@@ -66,7 +66,7 @@ In this mode, you _must_ disable the KubeRay init container injection by setting
 
 ```bash
 # Set ENABLE_INIT_CONTAINER_INJECTION=false on the KubeRay operator.
-helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.4.2 \
+helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.5.0 \
   --set env\[0\].name=ENABLE_INIT_CONTAINER_INJECTION \
   --set-string env\[0\].value=false
 

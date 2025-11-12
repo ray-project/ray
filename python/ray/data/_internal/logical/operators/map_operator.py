@@ -268,6 +268,15 @@ class Filter(AbstractUDFMap):
     def can_modify_num_rows(self) -> bool:
         return True
 
+    def is_expression_based(self) -> bool:
+        return self._predicate_expr is not None
+
+    def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
+        if self.is_expression_based():
+            # TODO: Use a truncated expression prefix here instead of <expression>.
+            return f"{op_name}(<expression>)"
+        return super()._get_operator_name(op_name, fn)
+
 
 class Project(AbstractMap):
     """Logical operator for all Projection Operations."""

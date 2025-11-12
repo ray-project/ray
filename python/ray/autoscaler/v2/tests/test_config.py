@@ -5,9 +5,16 @@ import tempfile
 
 import pytest  # noqa
 
+from ray._common.utils import binary_to_hex
 from ray._private.test_utils import get_test_config_path
 from ray.autoscaler import AUTOSCALER_DIR_PATH
-from ray.autoscaler.v2.instance_manager.config import FileConfigReader, Provider
+from ray.autoscaler._private.util import format_readonly_node_type
+from ray.autoscaler.v2.instance_manager import config as config_mod
+from ray.autoscaler.v2.instance_manager.config import (
+    FileConfigReader,
+    Provider,
+    ReadOnlyProviderConfigReader,
+)
 
 
 @pytest.mark.parametrize(
@@ -177,6 +184,56 @@ def test_read_config():
     # Reload
     config_reader.refresh_cached_autoscaling_config()
     assert config_reader.get_cached_autoscaling_config().provider == Provider.GCP
+
+
+def test_readonly_node_type_name_and_fallback(monkeypatch):
+    class _DummyNodeState:
+        def __init__(self, ray_node_type_name, node_id, total_resources):
+            self.ray_node_type_name = ray_node_type_name
+            self.node_id = node_id
+            self.total_resources = total_resources
+
+    class _DummyClusterState:
+        def __init__(self, node_states):
+            self.node_states = node_states
+
+    # Avoid real GCS usage.
+    monkeypatch.setattr(config_mod, "GcsClient", lambda address: object())
+    # Build a cluster with:
+    # - 1 named head type
+    # - 2 named worker types of the same type (aggregation check)
+    # - 1 worker type without name (fallback to node_id-based type)
+    unnamed_worker_id = b"\xab"
+    fallback_name = format_readonly_node_type(binary_to_hex(unnamed_worker_id))
+    nodes = [
+        _DummyNodeState(
+            "ray.head.default", b"\x01", {"CPU": 1, "node:__internal_head__": 1}
+        ),
+        _DummyNodeState("worker.custom", b"\x02", {"CPU": 2}),
+        _DummyNodeState("worker.custom", b"\x03", {"CPU": 2}),
+        _DummyNodeState("", unnamed_worker_id, {"CPU": 3}),
+    ]
+    monkeypatch.setattr(
+        config_mod,
+        "get_cluster_resource_state",
+        lambda _gc: _DummyClusterState(nodes),
+    )
+
+    reader = ReadOnlyProviderConfigReader("dummy:0")
+    reader.refresh_cached_autoscaling_config()
+    cfg = reader.get_cached_autoscaling_config()
+
+    node_types = cfg.get_config("available_node_types")
+    # Head assertions
+    assert "ray.head.default" in node_types
+    assert node_types["ray.head.default"]["max_workers"] == 0
+    assert cfg.get_head_node_type() == "ray.head.default"
+    # Preferred name aggregation
+    assert "worker.custom" in node_types
+    assert node_types["worker.custom"]["max_workers"] == 2
+    # Fallback for unnamed worker
+    assert fallback_name in node_types
+    assert node_types[fallback_name]["max_workers"] == 1
 
 
 if __name__ == "__main__":

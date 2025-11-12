@@ -4,6 +4,7 @@ from ray.includes.rpc_token_authentication cimport (
     CAuthenticationToken,
     CAuthenticationTokenLoader,
 )
+from ray._private.authentication.authentication_constants import AUTHORIZATION_HEADER_NAME
 
 
 # Authentication mode enum exposed to Python
@@ -69,3 +70,26 @@ class AuthenticationTokenLoader:
         variables or files on the next request.
         """
         CAuthenticationTokenLoader.instance().ResetCache()
+
+    def get_token_for_http_header(self) -> dict:
+        """Get authentication token as a dictionary for HTTP headers.
+
+        This method loads the token from C++ AuthenticationTokenLoader and returns it
+        as a dictionary that can be merged with existing headers. It returns an empty
+        dictionary if:
+        - A token does not exist
+        - The token is empty
+
+        Returns:
+            dict: Empty dict or {"authorization": "Bearer <token>"}
+        """
+        if not self.has_token():
+            return {}
+
+        # Get the token from C++ layer
+        cdef optional[CAuthenticationToken] token_opt = CAuthenticationTokenLoader.instance().GetToken()
+
+        if not token_opt.has_value() or token_opt.value().empty():
+            return {}
+
+        return {AUTHORIZATION_HEADER_NAME: token_opt.value().ToAuthorizationHeaderValue().decode('utf-8')}

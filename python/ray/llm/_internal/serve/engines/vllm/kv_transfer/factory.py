@@ -5,13 +5,13 @@ KV connector backends without eagerly importing all implementations.
 This avoids circular import issues and improves startup performance.
 """
 
-import importlib
-from typing import TYPE_CHECKING, Callable, Type
+from typing import TYPE_CHECKING, Type, Union
 
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.utils.registry import get_registry
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -19,29 +19,37 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Get the registry instance for KV connector backends
+_kv_backend_registry = get_registry("kv_connector_backend")
+
 
 class KVConnectorBackendFactory:
     """Factory for creating KV connector backend instances with lazy loading."""
 
-    _registry: dict[str, Callable[[], Type["BaseConnectorBackend"]]] = {}
-
     @classmethod
-    def register_backend(cls, name: str, module_path: str, class_name: str) -> None:
-        """Register a connector backend with lazy-loading module and class name.
+    def register_backend(
+        cls,
+        name: str,
+        backend_class_or_path: Union[Type["BaseConnectorBackend"], str],
+    ) -> None:
+        """Register a connector backend.
+
+        This enables the backend to be accessed on every Ray process in the cluster.
 
         Args:
             name: The name of the connector (e.g., "LMCacheConnectorV1")
-            module_path: The module path to import (e.g., "...lmcache")
-            class_name: The class name to load from the module
+            backend_class_or_path: Either:
+                - The backend class object directly (preferred), or
+                - A string in the format "module_path:class_name" for lazy loading
+
+        Examples:
+            # Register with class directly (recommended):
+            KVConnectorBackendFactory.register_backend("MyConnector", MyConnectorClass)
+
+            # Register with module path string (for lazy loading):
+            KVConnectorBackendFactory.register_backend("MyConnector", "my.module:MyClass")
         """
-        if name in cls._registry:
-            raise ValueError(f"Connector backend '{name}' is already registered.")
-
-        def loader() -> Type["BaseConnectorBackend"]:
-            module = importlib.import_module(module_path)
-            return getattr(module, class_name)
-
-        cls._registry[name] = loader
+        _kv_backend_registry.register(name, backend_class_or_path)
 
     @classmethod
     def get_backend_class(cls, name: str) -> Type["BaseConnectorBackend"]:
@@ -61,17 +69,18 @@ class KVConnectorBackendFactory:
         Raises:
             ImportError: If a registered backend fails to load
         """
-        if name not in cls._registry:
+        try:
+            return _kv_backend_registry.get(name)
+        except ValueError:
             logger.warning(
                 f"Unsupported connector backend: {name}. "
-                f"Registered backends: {list(cls._registry.keys())}."
-                f"Using default backend: {BaseConnectorBackend.__name__}."
+                f"Using default: {BaseConnectorBackend.__name__}."
             )
             return BaseConnectorBackend
-        try:
-            return cls._registry[name]()
-        except (ImportError, AttributeError) as e:
-            raise ImportError(f"Failed to load connector backend '{name}': {e}") from e
+        except Exception as e:
+            raise ImportError(
+                f"Failed to load connector backend '{name}': {type(e).__name__}: {e}"
+            ) from e
 
     @classmethod
     def create_backend(
@@ -86,46 +95,42 @@ class KVConnectorBackendFactory:
         Returns:
             An instance of the connector backend
         """
-        backend_class = cls.get_backend_class(name)
-        return backend_class(llm_config)
+        return cls.get_backend_class(name)(llm_config)
 
     @classmethod
     def is_registered(cls, name: str) -> bool:
-        """Check if a connector backend is registered.
-
-        Args:
-            name: The name of the connector backend
-
-        Returns:
-            True if the backend is registered, False otherwise
-        """
-        return name in cls._registry
+        """Check if a connector backend is registered."""
+        return _kv_backend_registry.contains(name)
 
     @classmethod
-    def list_registered_backends(cls) -> list[str]:
-        """List all registered connector backend names.
+    def unregister_backend(cls, name: str) -> None:
+        """Unregister a connector backend.
 
-        Returns:
-            A list of registered backend names
+        Removes the backend from the registry across all Ray processes.
+
+        Args:
+            name: The name of the connector backend to unregister
         """
-        return list(cls._registry.keys())
+        _kv_backend_registry.unregister(name)
 
 
-# Register connector backends
-KVConnectorBackendFactory.register_backend(
-    "LMCacheConnectorV1",
-    "ray.llm._internal.serve.engines.vllm.kv_transfer.lmcache",
-    "LMCacheConnectorV1Backend",
-)
+BUILTIN_BACKENDS = {
+    "LMCacheConnectorV1": "ray.llm._internal.serve.engines.vllm.kv_transfer.lmcache:LMCacheConnectorV1Backend",
+    "NixlConnector": "ray.llm._internal.serve.engines.vllm.kv_transfer.nixl:NixlConnectorBackend",
+    "MultiConnector": "ray.llm._internal.serve.engines.vllm.kv_transfer.multi_connector:MultiConnectorBackend",
+}
 
-KVConnectorBackendFactory.register_backend(
-    "NixlConnector",
-    "ray.llm._internal.serve.engines.vllm.kv_transfer.nixl",
-    "NixlConnectorBackend",
-)
 
-KVConnectorBackendFactory.register_backend(
-    "MultiConnector",
-    "ray.llm._internal.serve.engines.vllm.kv_transfer.multi_connector",
-    "MultiConnectorBackend",
-)
+def _initialize_registry() -> None:
+    """Initialize the registry with built-in backends.
+
+    This function is called when the module is imported to ensure
+    built-in backends are registered.
+    """
+    for name, backend_path in BUILTIN_BACKENDS.items():
+        if not KVConnectorBackendFactory.is_registered(name):
+            KVConnectorBackendFactory.register_backend(name, backend_path)
+
+
+# Initialize registry when module is imported
+_initialize_registry()

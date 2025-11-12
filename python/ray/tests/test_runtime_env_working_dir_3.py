@@ -9,12 +9,12 @@ import pytest
 
 import ray
 import ray.experimental.internal_kv as kv
+from ray._common.network_utils import find_free_port
 from ray._common.test_utils import wait_for_condition
 from ray._private.ray_constants import RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR
 from ray._private.test_utils import (
     chdir,
     check_local_files_gced,
-    find_free_port,
 )
 from ray._private.utils import get_directory_size_bytes
 

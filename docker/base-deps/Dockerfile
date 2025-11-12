@@ -65,6 +65,7 @@ EOF
 
 USER $RAY_UID
 ENV HOME=/home/ray
+WORKDIR /home/ray
 
 COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
 
@@ -121,7 +122,7 @@ PIP_PKGS=(
 )
 
 # Install uv
-wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+wget -qO- https://astral.sh/uv/install.sh | sudo -E env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 # Set up Conda as system Python
 export PATH=$HOME/anaconda3/bin:$PATH

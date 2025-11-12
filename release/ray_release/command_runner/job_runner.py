@@ -10,8 +10,8 @@ from ray_release.exception import (
     ClusterNodesWaitTimeout,
     CommandError,
     CommandTimeout,
-    LogsError,
     FetchResultError,
+    LogsError,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.job_manager import JobManager

@@ -88,7 +88,7 @@ class TestRLModuleSpecs(unittest.TestCase):
         spec.build()
 
     def test_get_spec_from_module_multi_agent(self):
-        """Tests wether MultiRLModuleSpec.from_module() works."""
+        """Tests whether MultiRLModuleSpec.from_module() works."""
         env = gym.make("CartPole-v1")
         num_agents = 2
         module_specs = {}
@@ -107,7 +107,7 @@ class TestRLModuleSpecs(unittest.TestCase):
         self.assertEqual(spec, spec_from_module)
 
     def test_get_spec_from_module_single_agent(self):
-        """Tests wether RLModuleSpec.from_module() works."""
+        """Tests whether RLModuleSpec.from_module() works."""
         env = gym.make("CartPole-v1")
         spec = RLModuleSpec(
             module_class=VPGTorchRLModule,
@@ -121,7 +121,7 @@ class TestRLModuleSpecs(unittest.TestCase):
         self.assertEqual(spec, spec_from_module)
 
     def test_update_specs(self):
-        """Tests wether RLModuleSpec.update() works."""
+        """Tests whether RLModuleSpec.update() works."""
         env = gym.make("CartPole-v0")
 
         # Test if RLModuleSpec.update() works.

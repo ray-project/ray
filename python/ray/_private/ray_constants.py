@@ -163,6 +163,9 @@ RAY_JOB_SUBMIT_HOOK = "RAY_JOB_SUBMIT_HOOK"
 # instantiate a Job SubmissionClient.
 RAY_JOB_HEADERS = "RAY_JOB_HEADERS"
 
+# Timeout waiting for the dashboard to come alive during node startup.
+RAY_DASHBOARD_STARTUP_TIMEOUT_S = env_integer("RAY_DASHBOARD_STARTUP_TIMEOUT_S", 60)
+
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
 DASHBOARD_ADDRESS = "dashboard"
@@ -572,7 +575,7 @@ RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "l
 
 # Whether enable OpenTelemetry as the metrics collection backend. The default is
 # using OpenCensus.
-RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", False)
+RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", True)
 
 # How long to wait for a fetch to complete during ray.get before timing out and raising an exception to the user.
 #

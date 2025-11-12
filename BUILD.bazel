@@ -9,12 +9,11 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
-load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_runtime", "py_runtime_pair")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "ray_cc_library")
 
 package(
@@ -23,32 +22,11 @@ package(
 
 # Hermetic python environment, currently only used for CI infra and scripts.
 
-py_runtime(
-    name = "python3_runtime",
-    interpreter = python39,
-    python_version = "PY3",
-    visibility = ["//visibility:private"],
-)
-
-py_runtime_pair(
-    name = "python_runtime_pair",
-    py2_runtime = None,
-    py3_runtime = ":python3_runtime",
-    visibility = ["//visibility:private"],
-)
-
 constraint_setting(name = "hermetic")
 
 constraint_value(
     name = "hermetic_python",
     constraint_setting = ":hermetic",
-)
-
-toolchain(
-    name = "python_toolchain",
-    exec_compatible_with = [":hermetic_python"],
-    toolchain = ":python_runtime_pair",
-    toolchain_type = "@bazel_tools//tools/python:toolchain_type",
 )
 
 platform(

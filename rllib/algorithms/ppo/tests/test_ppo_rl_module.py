@@ -17,7 +17,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
-
 torch, nn = try_import_torch()
 
 
@@ -186,7 +185,8 @@ class TestPPO(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

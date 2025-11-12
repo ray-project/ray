@@ -9,6 +9,9 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from ray._private.authentication.authentication_constants import (
+    TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
+)
 from ray._private.authentication.authentication_token_generator import (
     generate_new_authentication_token,
 )
@@ -19,13 +22,6 @@ from ray._raylet import (
 )
 
 logger = logging.getLogger(__name__)
-
-TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE = (
-    "Token authentication is enabled but no authentication token was found. Please provide a token with one of these options:\n"
-    + "  1. RAY_AUTH_TOKEN environment variable\n"
-    + "  2. RAY_AUTH_TOKEN_PATH environment variable (path to token file)\n"
-    + "  3. Default token file: ~/.ray/auth_token"
-)
 
 
 def generate_and_save_token() -> None:
@@ -71,7 +67,7 @@ def ensure_token_if_auth_enabled(
     3. Generate and save a default token for new local clusters if one doesn't already exist.
 
     Args:
-        system_config: Ray raises an error if you set auth_mode in system_config instead of the environment.
+        system_config: Ray raises an error if you set AUTH_MODE in system_config instead of the environment.
         create_token_if_missing: Generate a new token if one doesn't already exist.
 
     Raises:
@@ -83,11 +79,11 @@ def ensure_token_if_auth_enabled(
     if get_authentication_mode() != AuthenticationMode.TOKEN:
         if (
             system_config
-            and "auth_mode" in system_config
-            and system_config["auth_mode"] != "disabled"
+            and "AUTH_MODE" in system_config
+            and system_config["AUTH_MODE"] != "disabled"
         ):
             raise RuntimeError(
-                "Set authentication mode can only be set with the `RAY_auth_mode` environment variable, not using the system_config."
+                "Set authentication mode can only be set with the `RAY_AUTH_MODE` environment variable, not using the system_config."
             )
         return
 

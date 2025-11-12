@@ -56,9 +56,7 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
 
     def verify1():
         gc.collect()
-        actor_info = ray._private.state.state.global_state_accessor.get_actor_info(
-            actor_id
-        )
+        actor_info = ray._private.state.state.get_actor_info(actor_id)
         assert actor_info is not None
         actor_info = gcs_pb2.ActorTableData.FromString(actor_info)
         assert actor_info.state == gcs_pb2.ActorTableData.ActorState.DEAD
@@ -81,9 +79,7 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
     assert ray.get(obj2) == [1] * 1024 * 1024
 
     def verify2():
-        actor_info = ray._private.state.state.global_state_accessor.get_actor_info(
-            actor_id
-        )
+        actor_info = ray._private.state.state.get_actor_info(actor_id)
         assert actor_info is not None
         actor_info = gcs_pb2.ActorTableData.FromString(actor_info)
         assert actor_info.state == gcs_pb2.ActorTableData.ActorState.DEAD
@@ -102,9 +98,7 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
     del obj2
 
     def verify3():
-        actor_info = ray._private.state.state.global_state_accessor.get_actor_info(
-            actor_id
-        )
+        actor_info = ray._private.state.state.get_actor_info(actor_id)
         assert actor_info is not None
         actor_info = gcs_pb2.ActorTableData.FromString(actor_info)
         assert actor_info.state == gcs_pb2.ActorTableData.ActorState.DEAD

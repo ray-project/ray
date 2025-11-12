@@ -713,6 +713,66 @@ class TestCli(unittest.TestCase):
             assert output_text == output_text_valid
 
     @patch("sys.stdout", new_callable=io.StringIO)
+    def test_requirements_ordering(self, mock_stdout):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            save_packages_to_file(
+                Path(tmpdir) / "requirements_expanded.txt",
+                ["six"],
+            )
+            save_packages_to_file(
+                Path(tmpdir) / "requirements_compiled_test_expand.txt",
+                ["zipp"],
+            )
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=[
+                    "requirements_test.txt",
+                    "requirements_expanded.txt",
+                    "requirements_compiled_test_expand.txt",
+                ],
+                append_flags=["--no-annotate", "--no-header"],
+                name="requirements_ordering_test_depset",
+                output="requirements_compiled_requirements_ordering.txt",
+            )
+            stdout = mock_stdout.getvalue()
+            assert (
+                "requirements_compiled_test_expand.txt requirements_expanded.txt requirements_test.txt"
+                in stdout
+            )
+
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_constraints_ordering(self, mock_stdout):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            save_packages_to_file(
+                Path(tmpdir) / "requirements_expanded.txt",
+                ["six==1.17.0"],
+            )
+            save_packages_to_file(
+                Path(tmpdir) / "requirements_compiled_test_expand.txt",
+                ["zipp==3.19.2"],
+            )
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                requirements=["requirements_test.txt"],
+                constraints=[
+                    "requirement_constraints_test.txt",
+                    "requirements_expanded.txt",
+                    "requirements_compiled_test_expand.txt",
+                ],
+                append_flags=["--no-annotate", "--no-header"],
+                name="constraints_ordering_test_depset",
+                output="requirements_compiled_constraints_ordering.txt",
+            )
+            stdout = mock_stdout.getvalue()
+            assert (
+                "-c requirement_constraints_test.txt -c requirements_compiled_test_expand.txt -c requirements_expanded.txt"
+                in stdout
+            )
+
+    @patch("sys.stdout", new_callable=io.StringIO)
     def test_execute_pre_hook(self, mock_stdout):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)

@@ -1484,9 +1484,6 @@ python/ray/llm/_internal/common/utils/download_utils.py
     DOC201: Function `get_model_location_on_disk` does not have a return section in docstring
     DOC201: Method `CloudModelDownloader.get_model` does not have a return section in docstring
 --------------------
-python/ray/llm/_internal/serve/configs/openai_api_models.py
-    DOC201: Function `to_model_metadata` does not have a return section in docstring
---------------------
 python/ray/llm/_internal/serve/observability/metrics/middleware.py
     DOC106: Function `_get_route_details`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Function `_get_route_details`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
@@ -2194,6 +2191,9 @@ python/ray/tune/search/searcher.py
     DOC201: Method `Searcher.set_max_concurrency` does not have a return section in docstring
 --------------------
 python/ray/tune/search/variant_generator.py
+    DOC101: Function `generate_variants`: Docstring contains fewer arguments than in function signature.
+    DOC103: Function `generate_variants`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [constant_grid_search: bool, random_state: 'RandomState', unresolved_spec: Dict].
+    DOC404: Function `generate_variants` yield type(s) in docstring not consistent with the return annotation. The yield type (the 0th arg in Generator[...]/Iterator[...]): Tuple[Dict, Dict]; docstring "yields" section types:
     DOC201: Function `grid_search` does not have a return section in docstring
 --------------------
 python/ray/tune/search/zoopt/zoopt_search.py

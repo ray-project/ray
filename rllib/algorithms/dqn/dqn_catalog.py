@@ -1,13 +1,13 @@
 import gymnasium as gym
 
-from ray.rllib.core.models.catalog import Catalog
-from ray.rllib.core.models.base import Model
-from ray.rllib.core.models.configs import MLPHeadConfig
 from ray.rllib.core.distribution.torch.torch_distribution import TorchCategorical
+from ray.rllib.core.models.base import Model
+from ray.rllib.core.models.catalog import Catalog
+from ray.rllib.core.models.configs import MLPHeadConfig
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
-    override,
     OverrideToImplementCustomLogic,
+    override,
 )
 
 

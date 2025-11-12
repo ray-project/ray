@@ -8,7 +8,7 @@ fi
 
 # Build ray java
 if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
-  bazel build //java:ray_java_pkg
+  bazel run //java:gen_ray_java_pkg
 fi
 
 export PATH="/usr/local/node/bin:$PATH"

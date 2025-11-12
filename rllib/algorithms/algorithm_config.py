@@ -1,10 +1,11 @@
 import copy
 import dataclasses
-from enum import Enum
 import logging
 import math
 import sys
+from enum import Enum
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Collection,
@@ -13,16 +14,20 @@ from typing import (
     Optional,
     Tuple,
     Type,
-    TYPE_CHECKING,
     Union,
 )
-from typing_extensions import Self
 
 import gymnasium as gym
 import tree
 from packaging import version
+from typing_extensions import Self
 
 import ray
+from ray._common.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    deprecation_warning,
+)
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core import DEFAULT_MODULE_ID
@@ -34,7 +39,7 @@ from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.env import INPUT_ENV_SPACES, INPUT_ENV_SINGLE_SPACES
+from ray.rllib.env import INPUT_ENV_SINGLE_SPACES, INPUT_ENV_SPACES
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -48,11 +53,6 @@ from ray.rllib.utils import deep_update, force_list, merge_dicts
 from ray.rllib.utils.annotations import (
     OldAPIStack,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
-)
-from ray._common.deprecation import (
-    DEPRECATED_VALUE,
-    Deprecated,
-    deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import NotProvided, from_config
@@ -83,7 +83,6 @@ from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
 from ray.util import log_once
 from ray.util.placement_group import PlacementGroup
-
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm

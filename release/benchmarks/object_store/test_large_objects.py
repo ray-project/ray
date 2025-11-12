@@ -1,12 +1,11 @@
-import numpy as np
-
-import ray
-
 import json
 import os
 from time import perf_counter
+
+import numpy as np
 from tqdm import tqdm
 
+import ray
 
 NUM_NODES = 9
 OBJECT_SIZE = 2**32

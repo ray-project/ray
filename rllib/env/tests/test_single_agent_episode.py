@@ -1,10 +1,11 @@
+import copy
+import unittest
 from collections import defaultdict
 from typing import Any, Dict, Optional, SupportsFloat, Tuple
-import unittest
-import copy
+
 import gymnasium as gym
-from gymnasium.core import ActType, ObsType
 import numpy as np
+from gymnasium.core import ActType, ObsType
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.test_utils import check
@@ -882,7 +883,8 @@ class TestSingleAgentEpisode(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

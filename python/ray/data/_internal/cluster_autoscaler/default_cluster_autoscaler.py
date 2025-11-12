@@ -36,7 +36,7 @@ class DefaultClusterAutoscaler(ClusterAutoscaler):
         self._last_request_time = 0
 
     def try_trigger_scaling(self):
-        """Try to scale up the cluster to accomodate the provided in-progress workload.
+        """Try to scale up the cluster to accommodate the provided in-progress workload.
 
         This makes a resource request to Ray's autoscaler consisting of the current,
         aggregate usage of all operators in the DAG + the incremental usage of all

@@ -21,7 +21,7 @@
 namespace ray {
 namespace pubsub {
 
-Status GcsSubscriber::SubscribeAllJobs(
+void GcsSubscriber::SubscribeAllJobs(
     const gcs::SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
     const gcs::StatusCallback &done) {
   auto subscribe_item_callback = [subscribe](rpc::PubMessage &&msg) {
@@ -44,10 +44,9 @@ Status GcsSubscriber::SubscribeAllJobs(
       },
       std::move(subscribe_item_callback),
       std::move(subscription_failure_callback));
-  return Status::OK();
 }
 
-Status GcsSubscriber::SubscribeActor(
+void GcsSubscriber::SubscribeActor(
     const ActorID &id,
     const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const gcs::StatusCallback &done) {
@@ -74,13 +73,11 @@ Status GcsSubscriber::SubscribeActor(
       },
       std::move(subscription_callback),
       std::move(subscription_failure_callback));
-  return Status::OK();
 }
 
-Status GcsSubscriber::UnsubscribeActor(const ActorID &id) {
+void GcsSubscriber::UnsubscribeActor(const ActorID &id) {
   subscriber_->Unsubscribe(
       rpc::ChannelType::GCS_ACTOR_CHANNEL, gcs_address_, id.Binary());
-  return Status::OK();
 }
 
 bool GcsSubscriber::IsActorUnsubscribed(const ActorID &id) {
@@ -138,7 +135,7 @@ void GcsSubscriber::SubscribeAllNodeAddressAndLiveness(
       std::move(subscription_failure_callback));
 }
 
-Status GcsSubscriber::SubscribeAllWorkerFailures(
+void GcsSubscriber::SubscribeAllWorkerFailures(
     const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe,
     const gcs::StatusCallback &done) {
   auto subscribe_item_callback = [subscribe](rpc::PubMessage &&msg) {
@@ -163,7 +160,6 @@ Status GcsSubscriber::SubscribeAllWorkerFailures(
       },
       std::move(subscribe_item_callback),
       std::move(subscription_failure_callback));
-  return Status::OK();
 }
 
 }  // namespace pubsub

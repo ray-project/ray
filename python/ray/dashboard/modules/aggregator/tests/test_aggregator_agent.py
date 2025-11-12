@@ -8,11 +8,9 @@ import pytest
 from google.protobuf.timestamp_pb2 import Timestamp
 
 import ray.dashboard.consts as dashboard_consts
+from ray._common.network_utils import find_free_port
 from ray._private import ray_constants
-from ray._private.test_utils import (
-    find_free_port,
-    wait_for_condition,
-)
+from ray._private.test_utils import wait_for_condition
 from ray._private.utils import init_grpc_channel
 from ray._raylet import GcsClient
 from ray.core.generated.common_pb2 import (

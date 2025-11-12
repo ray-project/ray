@@ -1,15 +1,14 @@
-from typing import List, Optional, Dict
-
 import os
 import subprocess
 import sys
+from typing import Dict, List, Optional
 
 from ray_release.config import RELEASE_PACKAGE_DIR
 from ray_release.logger import logger
 from ray_release.test import (
     Test,
 )
-from ray_release.util import AZURE_REGISTRY_NAME, ANYSCALE_RAY_IMAGE_PREFIX
+from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX, AZURE_REGISTRY_NAME
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
