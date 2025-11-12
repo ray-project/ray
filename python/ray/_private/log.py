@@ -127,13 +127,6 @@ def setup_process_exit_logger(
     logger.setLevel(level)
     logger.propagate = False
 
-    for h in logger.handlers:
-        if (
-            isinstance(h, logging.FileHandler)
-            and getattr(h, "baseFilename", None) == process_exit_log_path
-        ):
-            return logger
-
     fh = logging.FileHandler(process_exit_log_path, encoding="utf-8")
     if formatter is None:
         formatter = logging.Formatter(
