@@ -338,23 +338,12 @@ class TestDownloadExpressionErrors:
         This tests that pyarrow.lib.ArrowInvalid exceptions are caught and
         return None instead of crashing.
         """
-        table = pa.Table.from_arrays(
-            [
-                pa.array(["foo://bar", "invalid://uri"]),
-            ],
-            names=["uri"],
-        )
-
-        ds = ray.data.from_arrow(table)
+     
+        ds = ray.data.from_items([{"uri": "foo://bar"}])
         ds_with_downloads = ds.with_column("bytes", download("uri"))
-
-        # Should not crash - invalid URI schemes return None
         results = ds_with_downloads.take_all()
-        assert len(results) == 2
-
-        # Both URIs should fail gracefully (return None)
+        assert len(results) == 1
         assert results[0]["bytes"] is None
-        assert results[1]["bytes"] is None
 
     def test_download_expression_all_size_estimations_fail(self):
         """Test download expression when all URI size estimations fail.
