@@ -1,3 +1,11 @@
 span.find-kws {
   background-color: #ffd800;
 }
+
+/* Dark mode support for find keywords */
+@media (prefers-color-scheme: dark) {
+  span.find-kws {
+    background-color: #b89700;
+    color: #ffffff;
+  }
+}

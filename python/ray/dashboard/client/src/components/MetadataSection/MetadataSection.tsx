@@ -84,7 +84,7 @@ export const MetadataContentField: React.FC<{
         onMouseEnter={() => setCopyIconClicked(false)}
         onMouseLeave={() => setTimeout(() => setCopyIconClicked(false), 333)}
         size="small"
-        sx={{ color: "black", marginLeft: 0.5 }}
+        sx={(theme) => ({ color: theme.palette.text.secondary, marginLeft: 0.5 })}
       >
         <RiFileCopyLine />
       </IconButton>

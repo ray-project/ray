@@ -346,6 +346,7 @@ const ActorTable = ({
       <Box sx={{ display: "flex", flex: 1, alignItems: "center" }}>
         <Autocomplete
           style={{ margin: 8, width: 120 }}
+          sx={{ '& .MuiSvgIcon-root': { color: 'text.secondary' } }}
           options={Array.from(
             new Set(Object.values(actors).map((e) => e.state)),
           )}
@@ -358,6 +359,7 @@ const ActorTable = ({
         />
         <Autocomplete
           style={{ margin: 8, width: 150 }}
+          sx={{ '& .MuiSvgIcon-root': { color: 'text.secondary' } }}
           defaultValue={filterToActorId === undefined ? jobId : undefined}
           options={Array.from(
             new Set(Object.values(actors).map((e) => e.jobId)),
@@ -371,6 +373,7 @@ const ActorTable = ({
         />
         <Autocomplete
           style={{ margin: 8, width: 150 }}
+          sx={{ '& .MuiSvgIcon-root': { color: 'text.secondary' } }}
           options={Array.from(
             new Set(Object.values(actors).map((e) => e.address?.ipAddress)),
           )}
@@ -384,6 +387,7 @@ const ActorTable = ({
         <Autocomplete
           data-testid="nodeIdFilter"
           style={{ margin: 8, width: 150 }}
+          sx={{ '& .MuiSvgIcon-root': { color: 'text.secondary' } }}
           options={Array.from(
             new Set(Object.values(actors).map((e) => e.address?.nodeId)),
           )}
@@ -404,7 +408,7 @@ const ActorTable = ({
             },
             endAdornment: (
               <InputAdornment position="end">
-                <SearchOutlined />
+                <SearchOutlined sx={(theme) => ({ color: theme.palette.text.secondary })} />
               </InputAdornment>
             ),
           }}
@@ -421,7 +425,7 @@ const ActorTable = ({
             },
             endAdornment: (
               <InputAdornment position="end">
-                <SearchOutlined />
+                <SearchOutlined sx={(theme) => ({ color: theme.palette.text.secondary })} />
               </InputAdornment>
             ),
           }}
@@ -436,7 +440,7 @@ const ActorTable = ({
             },
             endAdornment: (
               <InputAdornment position="end">
-                <SearchOutlined />
+                <SearchOutlined sx={(theme) => ({ color: theme.palette.text.secondary })} />
               </InputAdornment>
             ),
           }}
@@ -451,7 +455,7 @@ const ActorTable = ({
             },
             endAdornment: (
               <InputAdornment position="end">
-                <SearchOutlined />
+                <SearchOutlined sx={(theme) => ({ color: theme.palette.text.secondary })} />
               </InputAdornment>
             ),
           }}
@@ -466,7 +470,7 @@ const ActorTable = ({
             },
             endAdornment: (
               <InputAdornment position="end">
-                <SearchOutlined />
+                <SearchOutlined sx={(theme) => ({ color: theme.palette.text.secondary })} />
               </InputAdornment>
             ),
           }}
@@ -483,7 +487,7 @@ const ActorTable = ({
             },
             endAdornment: (
               <InputAdornment position="end">
-                <SearchOutlined />
+                <SearchOutlined sx={(theme) => ({ color: theme.palette.text.secondary })} />
               </InputAdornment>
             ),
           }}

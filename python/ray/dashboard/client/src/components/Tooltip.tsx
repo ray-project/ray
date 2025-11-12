@@ -32,7 +32,7 @@ export const HelpInfo = ({ children, className, sx }: HelpInfoProps) => {
       <HelpOutlineIcon
         fontSize="small"
         sx={[
-          { color: (theme) => theme.palette.grey[500] },
+          { color: (theme) => theme.palette.text.secondary },
           ...(Array.isArray(sx) ? sx : [sx]),
         ]}
       />

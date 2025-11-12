@@ -36,7 +36,7 @@ export const SearchInput = ({
         defaultValue,
         endAdornment: (
           <InputAdornment position="end">
-            <SearchOutlined />
+            <SearchOutlined sx={(theme) => ({ color: theme.palette.text.secondary })} />
           </InputAdornment>
         ),
       }}
@@ -177,7 +177,7 @@ export const SearchTimezone = ({
           <Typography component="span" sx={{ marginRight: 1 }}>
             {option.country}
           </Typography>
-          <Typography sx={{ color: "#8C9196" }} component="span">
+          <Typography sx={(theme) => ({ color: theme.palette.text.secondary })} component="span">
             {option.value}
           </Typography>
           <Box sx={{ flexGrow: 1 }} />
@@ -200,7 +200,7 @@ export const SearchTimezone = ({
       )}
       renderGroup={(params) => (
         <li>
-          <Typography sx={{ color: "#5F6469", paddingX: 2, paddingY: "6px" }}>
+          <Typography sx={(theme) => ({ color: theme.palette.text.secondary, paddingX: 2, paddingY: "6px" })}>
             {params.group}
           </Typography>
           <Box

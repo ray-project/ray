@@ -105,12 +105,12 @@ const ListItem = ({
           {title}
         </Typography>
         <Typography
-          sx={{
+          sx={(theme) => ({
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            color: "#5F6469",
-          }}
+            color: theme.palette.text.secondary,
+          })}
           title={subtitle}
           variant="caption"
         >

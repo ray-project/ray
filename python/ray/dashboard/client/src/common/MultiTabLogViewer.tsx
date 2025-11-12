@@ -132,6 +132,7 @@ export const MultiTabLogViewer = ({
             setExpanded(!expanded);
           }}
           size="large"
+          sx={{ '& svg': { color: 'text.secondary' } }}
         >
           {expanded ? <RiSortAsc /> : <RiSortDesc />}
         </IconButton>
