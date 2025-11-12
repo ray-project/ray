@@ -343,6 +343,13 @@ class TestDownloadExpressionErrors:
             "://no-scheme",     # Missing scheme
             "",                 # Empty URI
             "relative/path",    # No scheme
+            "random_string",    # Random string
+            "/absolute/path",   # No scheme (though might work as file path)
+            "./relative",       # Relative path
+            "../parent",        # Parent directory reference
+            "http://host/path?query=<script>",  # Injection attempts
+            "file:///\x00/null/byte",           # Null byte
+            "http://host/path\n\r",             # Line breaks
         ]
 
         ds = ray.data.from_items([{"uri": uri} for uri in malformed_uris])
