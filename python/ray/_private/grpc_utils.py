@@ -1,5 +1,3 @@
-"""Utilities for creating gRPC channels and servers with authentication support."""
-
 import os
 from concurrent import futures
 from typing import Any, Optional, Sequence, Tuple

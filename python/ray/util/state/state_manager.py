@@ -14,7 +14,6 @@ import ray.dashboard.modules.log.log_consts as log_consts
 from ray._common.network_utils import build_address
 from ray._common.utils import hex_to_binary
 from ray._private import ray_constants
-from ray._private.grpc_utils import init_grpc_channel
 from ray._raylet import ActorID, GcsClient, JobID, NodeID, TaskID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
@@ -145,12 +144,16 @@ class StateDataSourceClient:
         )
 
     def get_raylet_stub(self, ip: str, port: int):
+        from ray._private.grpc_utils import init_grpc_channel
+
         options = _STATE_MANAGER_GRPC_OPTIONS
         channel = init_grpc_channel(build_address(ip, port), options, asynchronous=True)
         return NodeManagerServiceStub(channel)
 
     async def get_log_service_stub(self, node_id: NodeID) -> LogServiceStub:
         """Returns None if the agent on the node is not registered in Internal KV."""
+        from ray._private.grpc_utils import init_grpc_channel
+
         agent_addr = await self._gcs_client.async_internal_kv_get(
             f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
