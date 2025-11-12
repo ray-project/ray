@@ -127,7 +127,10 @@ class RefBundle:
             if block_slice is None:
                 # Full block
                 total += metadata.size_bytes
-            elif metadata.num_rows and metadata.num_rows != block_slice.num_rows:
+            elif metadata.num_rows is None or metadata.num_rows == 0:
+                # Unknown num_rows or empty block - use full metadata size
+                total += metadata.size_bytes
+            elif metadata.num_rows != block_slice.num_rows:
                 # Partial block - estimate size based on rows
                 per_row = metadata.size_bytes / metadata.num_rows
                 total += max(1, int(math.ceil(per_row * block_slice.num_rows)))
