@@ -931,6 +931,7 @@ def test_serve_instance_details_is_json_serializable():
                         "replicas": [],
                     }
                 },
+                "external_scaler_enabled": False,
             }
         },
     )._get_user_facing_json_serializable_dict(exclude_unset=True)
@@ -965,6 +966,7 @@ def test_serve_instance_details_is_json_serializable():
                             "replicas": [],
                         }
                     },
+                    "external_scaler_enabled": False,
                 }
             },
         }
