@@ -2676,6 +2676,52 @@ class Dataset:
             logical_plan,
         )
 
+    def _determine_broadcast_datasets(
+        self,
+        right_ds: "Dataset",
+        join_type: str,
+        left_key_columns: Tuple[str],
+        right_key_columns: Tuple[str],
+    ) -> Tuple["Dataset", "Dataset", Tuple[str], Tuple[str], bool]:
+        """Determine which dataset to broadcast for broadcast joins.
+
+        For outer joins, we must iterate over the dataset we want all rows from.
+        For inner joins, we prefer to broadcast the smaller dataset.
+
+        Args:
+            right_ds: The right dataset to join with.
+            join_type: The type of join to perform.
+            left_key_columns: Join key columns for the left dataset.
+            right_key_columns: Join key columns for the right dataset.
+
+        Returns:
+            Tuple of (large_ds, small_ds, large_key_columns, small_key_columns, datasets_swapped)
+        """
+
+        def _get_count_if_materialized(dataset):
+            if (
+                hasattr(dataset, "_plan")
+                and hasattr(dataset._plan, "has_computed_output")
+                and dataset._plan.has_computed_output()
+            ):
+                return dataset.count()
+            return None
+
+        right_count = _get_count_if_materialized(right_ds)
+        left_count = _get_count_if_materialized(self)
+
+        if join_type == "right_outer":
+            return right_ds, self, right_key_columns, left_key_columns, True
+        elif join_type == "left_outer":
+            return self, right_ds, left_key_columns, right_key_columns, False
+        elif left_count is not None and right_count is not None:
+            if left_count >= right_count:
+                return self, right_ds, left_key_columns, right_key_columns, False
+            else:
+                return right_ds, self, right_key_columns, left_key_columns, True
+        else:
+            return self, right_ds, left_key_columns, right_key_columns, False
+
     @AllToAllAPI
     @PublicAPI(api_group=SMJ_API_GROUP)
     def join(
@@ -2914,75 +2960,22 @@ class Dataset:
             # For broadcast joins to work correctly, we must ensure the dataset being
             # iterated (large_ds) is the one we want all rows from.
 
-            # Only call count() if datasets are already materialized to avoid expensive computation
-            def _get_count_if_materialized(dataset):
-                """Get count only if dataset is already materialized."""
-                if (
-                    hasattr(dataset, "_plan")
-                    and hasattr(dataset._plan, "has_computed_output")
-                    and dataset._plan.has_computed_output()
-                ):
-                    return dataset.count()
-                return None
+            # Determine which dataset to broadcast based on join type and size
+            (
+                large_ds,
+                small_ds,
+                large_key_columns,
+                small_key_columns,
+                datasets_swapped,
+            ) = self._determine_broadcast_datasets(ds, join_type, on, right_on)
 
-            ds_count = _get_count_if_materialized(ds)
-            self_count = _get_count_if_materialized(self)
-
-            # Determine swapping based on join type to avoid duplicate rows
-            # For right_outer: we must iterate over right dataset (ds) to get all its rows
-            # For left_outer: we must iterate over left dataset (self) to get all its rows
-            # For inner/full_outer: prefer to iterate over larger dataset
-
-            if join_type == "right_outer":
-                # For right_outer, we must iterate over right dataset to get all right rows
-                # Swap so right (ds) becomes large (iterated) and left (self) becomes small (broadcasted)
-                large_ds = ds
-                small_ds = self
-                large_key_columns = right_on
-                small_key_columns = on
-                datasets_swapped = True
-            elif join_type == "left_outer":
-                # For left_outer, we must iterate over left dataset to get all left rows
-                # Keep left (self) as large (iterated) and right (ds) as small (broadcasted)
-                large_ds = self
-                small_ds = ds
-                large_key_columns = on
-                small_key_columns = right_on
-                datasets_swapped = False
-            elif ds_count is not None and self_count is not None:
-                # For inner joins: use counts to determine which to broadcast
-                if self_count >= ds_count:
-                    # self (left) is larger, ds (right) is smaller
-                    large_ds = self
-                    small_ds = ds
-                    large_key_columns = on
-                    small_key_columns = right_on
-                    datasets_swapped = False
-                else:
-                    # ds (right) is larger, self (left) is smaller
-                    large_ds = ds
-                    small_ds = self
-                    large_key_columns = right_on
-                    small_key_columns = on
-                    datasets_swapped = True
-            else:
-                # If not materialized, default to broadcasting the right dataset (ds)
-                # This is a reasonable default for most broadcast join use cases
-                large_ds = self
-                small_ds = ds
-                large_key_columns = on
-                small_key_columns = right_on
-                datasets_swapped = False
-
-            # Determine the correct suffixes based on which dataset is large/small
+            # Map suffixes to large/small tables based on swapping
             if datasets_swapped:
-                # Original left (self) is now small, original right (ds) is now large
-                large_table_suffix = right_suffix  # large table is original right
-                small_table_suffix = left_suffix  # small table is original left
+                large_table_suffix = right_suffix
+                small_table_suffix = left_suffix
             else:
-                # Original left (self) is large, original right (ds) is small
-                large_table_suffix = left_suffix  # large table is original left
-                small_table_suffix = right_suffix  # small table is original right
+                large_table_suffix = left_suffix
+                small_table_suffix = right_suffix
 
             # Create the broadcast join function - PyArrow will handle the supported join types natively
             # Note: left_suffix and right_suffix always refer to the original left and right datasets

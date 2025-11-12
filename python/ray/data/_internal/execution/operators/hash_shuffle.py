@@ -1583,12 +1583,14 @@ def _try_estimate_output_bytes(
     input_logical_ops: List[LogicalOperator],
 ) -> Optional[int]:
     inferred_op_output_bytes = [
-        op.infer_metadata().size_bytes for op in input_logical_ops
+        op.infer_metadata().size_bytes for op in input_logical_ops if op is not None
     ]
 
     # Return sum of input ops estimated output byte sizes,
     # if all are well defined
-    if all(nbs is not None for nbs in inferred_op_output_bytes):
+    if inferred_op_output_bytes and all(
+        nbs is not None for nbs in inferred_op_output_bytes
+    ):
         return sum(inferred_op_output_bytes)
 
     return None

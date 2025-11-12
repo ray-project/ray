@@ -1622,9 +1622,15 @@ def test_broadcast_join_schema_mismatch_keys(ray_start_regular_shared_2_cpus):
         # The exact behavior depends on PyArrow's type coercion
         # We just verify it doesn't crash
         assert result_count >= 0
-    except (ValueError, TypeError) as e:
+    except (ValueError, TypeError, Exception) as e:
         # It's acceptable for this to fail with a clear error
-        assert "type" in str(e).lower() or "schema" in str(e).lower()
+        # UserCodeException wraps PyArrow errors, so we check the underlying message
+        error_msg = str(e).lower()
+        if hasattr(e, "__cause__") and e.__cause__:
+            error_msg += " " + str(e.__cause__).lower()
+        assert (
+            "type" in error_msg or "schema" in error_msg or "incompatible" in error_msg
+        )
 
 
 def test_broadcast_join_duplicate_keys(ray_start_regular_shared_2_cpus):

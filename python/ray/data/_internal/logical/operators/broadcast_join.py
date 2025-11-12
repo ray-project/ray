@@ -5,6 +5,9 @@ using PyArrow's native join functionality. Broadcast joins are useful when one d
 is significantly smaller than the other, allowing the smaller dataset to be broadcast
 to all partitions of the larger dataset.
 
+PyArrow join documentation:
+https://arrow.apache.org/docs/python/generated/pyarrow.Table.html#pyarrow.Table.join
+
 Architecture and Streaming Execution Integration:
 -------------------------------------------------
 The broadcast join implementation leverages Ray Data's streaming execution model through
@@ -39,6 +42,11 @@ processes, not on the driver. ObjectRefs are stored and materialized lazily.
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES,
+    MIN_PYARROW_VERSION_VIEW_TYPES,
+)
 from ray.data._internal.logical.operators.join_operator import (
     JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP,
     JoinType,
@@ -200,12 +208,20 @@ class BroadcastJoinFunction:
         self.datasets_swapped = datasets_swapped
 
         # Materialize and coalesce the small dataset for broadcasting
-        # Using repartition(1) ensures all data is in a single partition for efficient broadcasting
         coalesced_ds = small_table_dataset.repartition(1).materialize()
 
         # Warn if broadcasting a large dataset
-        estimated_size_bytes = _estimate_dataset_size_bytes(coalesced_ds)
-        if estimated_size_bytes and estimated_size_bytes > 1024 * 1024 * 1024:  # 1 GB
+        self._warn_if_large_dataset(coalesced_ds)
+
+        # Store object references instead of materializing on driver to avoid OOM
+        self._small_table_refs = coalesced_ds.to_arrow_refs()
+        self._small_table_schema = self._get_schema(coalesced_ds)
+        self._cached_small_table = None
+
+    def _warn_if_large_dataset(self, dataset: Dataset) -> None:
+        """Warn if broadcasting a dataset larger than 1 GB."""
+        estimated_size_bytes = _estimate_dataset_size_bytes(dataset)
+        if estimated_size_bytes and estimated_size_bytes > 1024 * 1024 * 1024:
             import warnings
 
             warnings.warn(
@@ -213,24 +229,15 @@ class BroadcastJoinFunction:
                 "Large broadcast datasets may cause out-of-memory errors on worker nodes. "
                 "Consider using a hash shuffle join (broadcast=False) for large datasets.",
                 UserWarning,
-                stacklevel=3,
+                stacklevel=4,
             )
 
-        # Store object references instead of materializing on driver to avoid OOM
-        self._small_table_refs = coalesced_ds.to_arrow_refs()
+    def _get_schema(self, dataset: Dataset) -> "pa.Schema":
+        """Get schema from dataset, defaulting to empty schema if None."""
+        import pyarrow as pa
 
-        # Get schema from the dataset without materializing data on driver
-        if len(self._small_table_refs) == 0:
-            # Handle empty dataset case - safe to create empty table on driver
-            import pyarrow as pa
-
-            self._small_table_schema = pa.schema([])
-        else:
-            # Get schema from the dataset metadata to avoid driver materialization
-            self._small_table_schema = coalesced_ds.schema()
-
-        # No cached table - everything will be materialized in workers
-        self._cached_small_table = None
+        schema = dataset.schema()
+        return schema if schema is not None else pa.schema([])
 
     @property
     def small_table(self) -> "pa.Table":
@@ -320,6 +327,12 @@ class BroadcastJoinFunction:
             self.small_table_key_columns
         )
 
+        # Validate that join key columns don't have unsupported types
+        self._validate_join_key_types(batch, self.large_table_key_columns, "large")
+        self._validate_join_key_types(
+            self.small_table, self.small_table_key_columns, "small"
+        )
+
         # Fix null types in non-key columns before joining
         # PyArrow join doesn't support null types in non-key fields
         batch = self._fix_null_types(batch, self.large_table_key_columns)
@@ -328,15 +341,12 @@ class BroadcastJoinFunction:
         )
 
         # Perform the PyArrow join
-        # The join parameters depend on whether datasets were swapped for optimization
+        # When datasets are swapped, small_table becomes the left table in the join.
+        # Join type semantics are preserved relative to original datasets, not physical positions.
         if self.datasets_swapped:
-            # When datasets are swapped, small_table becomes the left table in the join
-            # We need to adjust the join type to preserve original left/right semantics
-            swapped_join_type = self._get_swapped_join_type(arrow_join_type)
-
             joined_table = small_table.join(
                 batch,
-                join_type=swapped_join_type,
+                join_type=arrow_join_type,
                 keys=list(self.small_table_key_columns),
                 right_keys=(
                     list(self.large_table_key_columns)
@@ -348,7 +358,6 @@ class BroadcastJoinFunction:
                 coalesce_keys=coalesce_keys,
             )
         else:
-            # Normal case: large batch joins with small table
             joined_table = batch.join(
                 small_table,
                 join_type=arrow_join_type,
@@ -365,13 +374,84 @@ class BroadcastJoinFunction:
 
         return joined_table
 
+    def _is_pa_join_not_supported(self, type: "pa.DataType") -> bool:
+        """Check if a PyArrow type is not supported in join operations.
+
+        PyArrow doesn't support joins on columns with certain complex types
+        (lists, structs, maps, unions, extension types, etc.).
+
+        Args:
+            type: The PyArrow data type to check.
+
+        Returns:
+            True if the type cannot be used in join operations, False otherwise.
+        """
+        import pyarrow as pa
+
+        pyarrow_version = get_pyarrow_version()
+        is_v12 = pyarrow_version >= MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES
+        is_v16 = pyarrow_version >= MIN_PYARROW_VERSION_VIEW_TYPES
+
+        return (
+            pa.types.is_map(type)
+            or pa.types.is_union(type)
+            or pa.types.is_list(type)
+            or pa.types.is_struct(type)
+            or pa.types.is_null(type)
+            or pa.types.is_large_list(type)
+            or pa.types.is_fixed_size_list(type)
+            or (is_v12 and pa.types.is_run_end_encoded(type))
+            or (
+                is_v16
+                and (
+                    pa.types.is_binary_view(type)
+                    or pa.types.is_string_view(type)
+                    or pa.types.is_list_view(type)
+                )
+            )
+        )
+
+    def _validate_join_key_types(
+        self, table: "pa.Table", key_columns: Tuple[str, ...], table_name: str
+    ) -> None:
+        """Validate that join key columns don't have unsupported types.
+
+        Args:
+            table: The PyArrow table to validate.
+            key_columns: Tuple of join key column names.
+            table_name: Name of the table (for error messages).
+
+        Raises:
+            ValueError: If any join key column has an unsupported type.
+        """
+
+        from ray.air.util.transform_pyarrow import _is_pa_extension_type
+
+        conflicting_columns = []
+        for col_name in key_columns:
+            if col_name not in table.column_names:
+                continue
+            col_type = table.schema.field(col_name).type
+            if _is_pa_extension_type(col_type) or self._is_pa_join_not_supported(
+                col_type
+            ):
+                conflicting_columns.append(col_name)
+
+        if conflicting_columns:
+            raise ValueError(
+                f"Cannot join on columns with unjoinable types. "
+                f"{table_name.capitalize()} join key columns {conflicting_columns} "
+                f"have unjoinable types (map, union, list, struct, etc.) "
+                f"which cannot be used for join operations."
+            )
+
     def _fix_null_types(
         self, table: "pa.Table", key_columns: Tuple[str, ...]
     ) -> "pa.Table":
         """Cast null types to nullable string types in non-key columns.
 
         PyArrow's join operation doesn't support null types in non-key fields.
-        This function fixes null types by casting them to nullable string types.
+        See: https://arrow.apache.org/docs/python/generated/pyarrow.Table.html#pyarrow.Table.join
 
         Args:
             table: The PyArrow table to fix.
@@ -382,20 +462,16 @@ class BroadcastJoinFunction:
         """
         import pyarrow as pa
 
-        # Check if any non-key columns have null types
         columns_to_fix = {}
         for col_name in table.column_names:
             if col_name not in key_columns:
                 col_type = table.schema.field(col_name).type
                 if pa.types.is_null(col_type):
-                    # Cast null type to nullable string type
-                    # Use string type as default since we can't infer the actual type
                     columns_to_fix[col_name] = pa.string()
 
         if not columns_to_fix:
             return table
 
-        # Build new schema with fixed types
         new_fields = []
         for field in table.schema:
             if field.name in columns_to_fix:
@@ -405,25 +481,7 @@ class BroadcastJoinFunction:
             else:
                 new_fields.append(field)
 
-        # Cast the table to the new schema
         return table.cast(pa.schema(new_fields))
-
-    def _get_swapped_join_type(self, original_join_type: str) -> str:
-        """Get the appropriate join type when datasets are swapped.
-
-        When datasets are physically swapped in the PyArrow join operation,
-        the join type semantics are preserved relative to the original datasets.
-        The join type describes the relationship between the original left and right
-        datasets, not the physical left/right positions in the PyArrow join call.
-
-        For example, a "right_outer" join means "keep all rows from the original right
-        dataset". If we swap so the original right is now on the right side of the
-        PyArrow join, we still use "right outer" to preserve this semantic.
-
-        Therefore, we do NOT reverse left/right join types when swapping datasets.
-        """
-        # No reversal needed - join type semantics are relative to original datasets
-        return original_join_type
 
     def _create_empty_result_table(self, batch: "pa.Table") -> "pa.Table":
         """Create an empty result table with proper schema for join operations.
@@ -470,64 +528,57 @@ class BroadcastJoinFunction:
     def _handle_empty_small_table(self, batch: "pa.Table") -> "pa.Table":
         """Handle the case where the small table is empty.
 
+        PyArrow doesn't handle empty tables correctly for outer joins, so we need
+        to manually construct the result based on join semantics.
+
         Args:
             batch: The batch from the large dataset.
 
         Returns:
             The appropriate result based on join type semantics.
         """
-        # When datasets are swapped, we need to adjust join semantics:
-        # - small_table represents the original LEFT dataset
-        # - batch represents the original RIGHT dataset
+        # Determine if we should return empty or add null columns based on join type
+        # When swapped: small_table = original LEFT, batch = original RIGHT
+        # When not swapped: small_table = original RIGHT, batch = original LEFT
 
+        should_return_empty = False
         if self.datasets_swapped:
-            # Small table is empty original LEFT, batch is original RIGHT
-            if self.join_type in [JoinType.INNER, JoinType.LEFT_OUTER]:
-                # Inner and left outer joins return empty when left side is empty
-                return self._create_empty_result_table(batch)
-            elif self.join_type in [JoinType.RIGHT_OUTER, JoinType.FULL_OUTER]:
-                # Right and full outer joins return the right side when left side is empty
-                return self._add_null_columns(batch, self.small_table_columns_suffix)
-            else:
-                return self._create_empty_result_table(batch)
+            # Empty LEFT: inner/left_outer return empty, right_outer/full_outer return RIGHT with nulls
+            should_return_empty = self.join_type in [
+                JoinType.INNER,
+                JoinType.LEFT_OUTER,
+            ]
         else:
-            # Small table is original RIGHT, batch is original LEFT
-            if self.join_type in [JoinType.INNER, JoinType.RIGHT_OUTER]:
-                # Inner and right outer joins return empty when right side is empty
-                return self._create_empty_result_table(batch)
-            elif self.join_type in [JoinType.LEFT_OUTER, JoinType.FULL_OUTER]:
-                # Left and full outer joins return the left side when right side is empty
-                return self._add_null_columns(batch, self.small_table_columns_suffix)
-            else:
-                return self._create_empty_result_table(batch)
+            # Empty RIGHT: inner/right_outer return empty, left_outer/full_outer return LEFT with nulls
+            should_return_empty = self.join_type in [
+                JoinType.INNER,
+                JoinType.RIGHT_OUTER,
+            ]
 
-    def _add_null_columns(self, batch: "pa.Table", suffix: Optional[str]) -> "pa.Table":
+        if should_return_empty:
+            return self._create_empty_result_table(batch)
+        else:
+            return self._add_null_columns(batch)
+
+    def _add_null_columns(self, batch: "pa.Table") -> "pa.Table":
         """Add null columns for missing side in outer joins.
 
         Args:
             batch: The batch from the large dataset.
-            suffix: Suffix to append to column names if there's a conflict.
 
         Returns:
             The batch with null columns added for the missing side.
         """
-        result_table = batch
         import pyarrow as pa
 
-        # Add null columns for each column in the small table
+        result_table = batch
         for col_name in self.small_table_column_names:
             if (
                 col_name not in self.small_table_key_columns
                 and col_name not in batch.column_names
             ):
-                # Add null column with appropriate name and type
-                if col_name in batch.column_names and suffix:
-                    new_col_name = f"{col_name}{suffix}"
-                else:
-                    new_col_name = col_name
-
                 col_type = self.small_table_schema_field(col_name).type
                 null_array = pa.array([None] * batch.num_rows, type=col_type)
-                result_table = result_table.append_column(new_col_name, null_array)
+                result_table = result_table.append_column(col_name, null_array)
 
         return result_table
