@@ -294,58 +294,22 @@ class TestDownloadExpressionErrors:
             # If it fails, should be a reasonable error (not a crash)
             assert isinstance(e, (ValueError, KeyError, RuntimeError))
 
-    def test_download_expression_with_invalid_uris(self, tmp_path):
-        """Test download expression with URIs that fail to download.
-
-        This tests the exception handling in load_uri_bytes
-        where OSError is caught and None is returned for failed downloads.
-        """
-        # Create one valid file
-        valid_file = tmp_path / "valid.txt"
-        valid_file.write_bytes(b"valid content")
-
-        # Create URIs: one valid, one non-existent file, one invalid path
-        table = pa.Table.from_arrays(
-            [
-                pa.array(
-                    [
-                        f"local://{valid_file}",
-                        f"local://{tmp_path}/nonexistent.txt",  # File doesn't exist
-                        "local:///this/path/does/not/exist/file.txt",  # Invalid path
-                    ]
-                ),
-            ],
-            names=["uri"],
-        )
-
-        ds = ray.data.from_arrow(table)
-        ds_with_downloads = ds.with_column("bytes", download("uri"))
-
-        # Should not crash - failed downloads return None
-        results = ds_with_downloads.take_all()
-        assert len(results) == 3
-
-        # First URI should succeed
-        assert results[0]["bytes"] == b"valid content"
-
-        # Second and third URIs should fail gracefully (return None)
-        assert results[1]["bytes"] is None
-        assert results[2]["bytes"] is None
-
-    def test_download_expression_with_malformed_uris(self):
+    def test_download_expression_with_malformed_uris(self, tmp_path):
         """Test download expression with malformed URIs.
 
         This tests that various malformed URIs are caught and return None
         instead of crashing.
         """
         malformed_uris = [
-            "foo://bar",        # Invalid scheme
-            "://no-scheme",     # Missing scheme
-            "",                 # Empty URI
-            "foobar",    # Random string
+            f"local://{tmp_path}/nonexistent.txt",  # File doesn't exist
+            f"local:///this/path/does/not/exist/file.txt",  # Invalid path
+            "foo://bar",  # Invalid scheme
+            "://no-scheme",  # Missing scheme
+            "",  # Empty URI
+            "foobar",  # Random string
             "http://host/path?query=<script>",  # Injection attempts
-            "file:///\x00/null/byte",           # Null byte
-            "http://host/path\n\r",             # Line breaks
+            "file:///\x00/null/byte",  # Null byte
+            "http://host/path\n\r",  # Line breaks
         ]
 
         ds = ray.data.from_items([{"uri": uri} for uri in malformed_uris])
