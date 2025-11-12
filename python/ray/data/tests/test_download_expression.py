@@ -332,18 +332,27 @@ class TestDownloadExpressionErrors:
         assert results[1]["bytes"] is None
         assert results[2]["bytes"] is None
 
-    def test_download_expression_with_invalid_uri_scheme(self):
-        """Test download expression with invalid URI scheme like foo://bar.
+    def test_download_expression_with_malformed_uris(self):
+        """Test download expression with malformed URIs.
 
-        This tests that pyarrow.lib.ArrowInvalid exceptions are caught and
-        return None instead of crashing.
+        This tests that various malformed URIs are caught and return None
+        instead of crashing.
         """
-     
-        ds = ray.data.from_items([{"uri": "foo://bar"}])
+        malformed_uris = [
+            "foo://bar",        # Invalid scheme
+            "://no-scheme",     # Missing scheme
+            "",                 # Empty URI
+            "relative/path",    # No scheme
+        ]
+
+        ds = ray.data.from_items([{"uri": uri} for uri in malformed_uris])
         ds_with_downloads = ds.with_column("bytes", download("uri"))
         results = ds_with_downloads.take_all()
-        assert len(results) == 1
-        assert results[0]["bytes"] is None
+
+        # All malformed URIs should return None
+        assert len(results) == len(malformed_uris)
+        for result in results:
+            assert result["bytes"] is None
 
     def test_download_expression_all_size_estimations_fail(self):
         """Test download expression when all URI size estimations fail.
