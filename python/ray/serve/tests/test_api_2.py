@@ -85,6 +85,13 @@ def test_check_http_options():
     _check_http_options({}, {})
     _check_http_options(None, None)
 
+    curr = HTTPOptions()
+    new = {"foo": 123}
+    with pytest.raises(RayServeConfigException) as exc:
+        _check_http_options(curr, new)
+    msg = str(exc.value)
+    assert "Invalid http_options key 'foo'." in msg
+
     curr = HTTPOptions(host="127.0.0.1", port=8000)
     new = {"host": "0.0.0.0"}
     with pytest.raises(RayServeConfigException) as exc:

@@ -43,6 +43,14 @@ def _check_http_options(
 
     diff_http_options = {}
     for option, new_value in new_http_options.items():
+        if not hasattr(curr_http_options, option):
+            valid_fields = (
+                getattr(HTTPOptions, "__fields__", None)
+                or getattr(HTTPOptions, "model_fields", {}).keys()
+            )
+            raise RayServeConfigException(
+                f"Invalid http_options key '{option}'. Valid keys: {sorted(valid_fields)}"
+            )
         prev_value = getattr(curr_http_options, option)
         if prev_value != new_value:
             prev_value, new_value = maybe_restore_proxy_location(prev_value, new_value)
