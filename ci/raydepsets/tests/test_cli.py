@@ -334,12 +334,12 @@ class TestCli(unittest.TestCase):
 
     def test_override_uv_flag_multiple_flags(self):
         expected_flags = DEFAULT_UV_FLAGS.copy()
-        expected_flags.remove("--unsafe-package")
-        expected_flags.remove("setuptools")
-        expected_flags.extend(["--unsafe-package", "dummy"])
+        expected_flags.remove("--index-url")
+        expected_flags.remove("https://pypi.org/simple")
+        expected_flags.extend(["--index-url", "https://dummyurl.com"])
         assert (
             _override_uv_flags(
-                ["--unsafe-package dummy"],
+                ["--index-url https://dummyurl.com"],
                 DEFAULT_UV_FLAGS.copy(),
             )
             == expected_flags

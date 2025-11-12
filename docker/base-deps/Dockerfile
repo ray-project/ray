@@ -69,6 +69,7 @@ USER $RAY_UID
 ENV HOME=/home/ray
 WORKDIR /home/ray
 
+COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
 COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 SHELL ["/bin/bash", "-c"]

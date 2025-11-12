@@ -209,6 +209,8 @@ class MockReferenceCounter : public ReferenceCounterInterface {
   MOCK_CONST_METHOD1(GetTensorTransport,
                      std::optional<rpc::TensorTransport>(const ObjectID &object_id));
 
+  MOCK_METHOD0(RecordMetrics, void());
+
   virtual ~MockReferenceCounter() {}
 };
 
