@@ -189,8 +189,8 @@ def download_bytes_threaded(
         def load_uri_bytes(uri_path_iterator):
             """Function that takes an iterator of URI paths and yields downloaded bytes for each."""
             for uri_path in uri_path_iterator:
-                # Handle both file and stream for uri download:
                 try:
+                    # Use open_input_stream to handle the rare scenario where the data source is not seekable.
                     with fs.open_input_stream(uri_path) as f:
                         yield f.read()
                 except OSError as e:
@@ -199,8 +199,8 @@ def download_bytes_threaded(
                     )
                     yield None
                 except Exception as e:
-                    # Catch unexpected errors like pyarrow.lib.ArrowInvalid caused by invalid uri like `foo://bar`
-                    # This make sure we don't fail the entire dataset download because of one invalid uri.
+                    # Catch unexpected errors like pyarrow.lib.ArrowInvalid caused by an invalid uri like
+                    # `foo://bar` to avoid failing because of one invalid uri.
                     logger.error(f"Unexpected error in load_uri_bytes: {e}")
                     yield None
 
