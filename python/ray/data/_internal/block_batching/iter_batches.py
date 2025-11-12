@@ -141,7 +141,6 @@ class BatchIterator:
         )
         self._yielded_first_batch = False
         self._prefetch_count_update = prefetch_count_update
-        self._dataset_tag = dataset_tag
 
     def _prefetch_blocks(
         self, ref_bundles: Iterator[RefBundle]
@@ -330,7 +329,7 @@ def prefetch_batches_locally(
     num_batches_to_prefetch: int,
     batch_size: Optional[int],
     eager_free: bool = False,
-    prefetch_count_update: Optional[Callable[[int], None]] = None,
+    prefetch_count_update: Optional[Callable[[int, int], None]] = None,
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterator of batched RefBundles, returns an iterator over the

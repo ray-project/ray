@@ -77,7 +77,7 @@ class StreamSplitDataIterator(DataIterator):
         Iterator[RefBundle],
         Optional[DatasetStats],
         bool,
-        Optional[Callable[[int], None]],
+        Optional[Callable[[int, int], None]],
     ]:
         def gen_blocks() -> Iterator[RefBundle]:
             cur_epoch = ray.get(
