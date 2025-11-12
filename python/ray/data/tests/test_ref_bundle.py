@@ -6,7 +6,6 @@ from ray import ObjectRef
 from ray.data._internal.execution.interfaces import BlockSlice, RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _merge_ref_bundles,
-    _slice_ref_bundle,
 )
 from ray.data.block import BlockMetadata
 
@@ -137,7 +136,7 @@ def test_slice_ref_bundle_basic():
         schema="schema",
     )
 
-    consumed, remaining = _slice_ref_bundle(bundle, 8)
+    consumed, remaining = bundle.slice(8)
 
     assert consumed.num_rows() == 8
     assert remaining.num_rows() == 2
@@ -149,6 +148,23 @@ def test_slice_ref_bundle_basic():
     assert remaining.slices == [
         BlockSlice(start_offset=2, end_offset=4),
     ]
+
+
+def test_slice_ref_bundle_should_raise_error_if_needed_rows_is_not_less_than_num_rows():
+
+    block_ref = ObjectRef(b"1" * 28)
+    metadata = BlockMetadata(
+        num_rows=5, size_bytes=50, exec_stats=None, input_files=None
+    )
+
+    bundle = RefBundle(
+        blocks=[(block_ref, metadata)],
+        owns_blocks=True,
+        schema=None,
+    )
+
+    with pytest.raises(AssertionError):
+        bundle.slice(5)
 
 
 def test_slice_ref_bundle_with_existing_slices():
@@ -176,7 +192,7 @@ def test_slice_ref_bundle_with_existing_slices():
         ],
     )
 
-    consumed, remaining = _slice_ref_bundle(bundle, 7)
+    consumed, remaining = bundle.slice(7)
 
     assert consumed.num_rows() == 7
     assert consumed.slices == [
@@ -203,10 +219,10 @@ def test_slice_ref_bundle_invalid_rows():
     )
 
     with pytest.raises(AssertionError):
-        _slice_ref_bundle(bundle, 0)
+        bundle.slice(0)
 
     with pytest.raises(AssertionError):
-        _slice_ref_bundle(bundle, 6)
+        bundle.slice(6)
 
 
 def test_merge_ref_bundles():

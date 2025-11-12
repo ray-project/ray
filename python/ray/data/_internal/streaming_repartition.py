@@ -4,7 +4,6 @@ from typing import Deque, List, Tuple
 from ray.data._internal.execution.interfaces import BlockSlice, RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _merge_ref_bundles,
-    _slice_ref_bundle,
 )
 from ray.data._internal.execution.operators.map_operator import BaseRefBundler
 
@@ -48,8 +47,8 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
                 and rows_needed_from_last_bundle < pending_bundles[-1].num_rows()
             ):
                 last_bundle = pending_bundles.pop()
-                sliced_bundle, remaining_bundle = _slice_ref_bundle(
-                    last_bundle, rows_needed_from_last_bundle
+                sliced_bundle, remaining_bundle = last_bundle.slice(
+                    rows_needed_from_last_bundle
                 )
                 pending_bundles.append(sliced_bundle)
             self._ready_bundles.append(_merge_ref_bundles(pending_bundles))
