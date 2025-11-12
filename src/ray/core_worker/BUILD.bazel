@@ -213,6 +213,7 @@ ray_cc_library(
     srcs = ["reference_counter.cc"],
     hdrs = ["reference_counter.h"],
     deps = [
+        ":metrics",
         ":reference_counter_interface",
         "//src/ray/common:id",
         "//src/ray/core_worker:lease_policy",
