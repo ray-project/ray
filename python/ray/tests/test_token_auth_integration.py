@@ -19,7 +19,7 @@ except ImportError:
     _RAYLET_AVAILABLE = False
     AuthenticationTokenLoader = None
 
-from ray.tests.authentication_test_utils import (
+from ray._private.authentication_test_utils import (
     clear_auth_token_sources,
     reset_auth_token_state,
     set_auth_mode,
@@ -222,7 +222,7 @@ def test_ray_start_without_token_raises_error(is_head, request):
     """Test that ray start fails when auth_mode=token but no token exists."""
     # Set up environment with token auth enabled but no token
     env = os.environ.copy()
-    env["RAY_auth_mode"] = "token"
+    env["RAY_AUTH_MODE"] = "token"
     env.pop("RAY_AUTH_TOKEN", None)
     env.pop("RAY_AUTH_TOKEN_PATH", None)
 
@@ -253,7 +253,7 @@ def test_ray_start_head_with_token_succeeds():
     test_token = "a" * 32
     env = os.environ.copy()
     env["RAY_AUTH_TOKEN"] = test_token
-    env["RAY_auth_mode"] = "token"
+    env["RAY_AUTH_MODE"] = "token"
 
     try:
         # Start head node - should succeed
@@ -303,7 +303,7 @@ def test_ray_start_address_with_token(token_match, setup_cluster_with_token_auth
 
     # Set up environment for worker
     env = os.environ.copy()
-    env["RAY_auth_mode"] = "token"
+    env["RAY_AUTH_MODE"] = "token"
 
     if token_match == "correct":
         env["RAY_AUTH_TOKEN"] = cluster_token
