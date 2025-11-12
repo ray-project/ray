@@ -553,7 +553,11 @@ TEST_F(ClusterLeaseManagerTest, BasicTest) {
     *callback_occurred_ptr = true;
   };
 
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
   ASSERT_FALSE(callback_occurred);
   ASSERT_EQ(leased_workers_.size(), 0);
@@ -592,7 +596,11 @@ TEST_F(ClusterLeaseManagerTest, IdempotencyTest) {
     *callback_occurred_ptr = true;
   };
 
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
   ASSERT_FALSE(callback_occurred);
   ASSERT_EQ(leased_workers_.size(), 0);
@@ -671,10 +679,22 @@ TEST_F(ClusterLeaseManagerTest, GrantQueueNonBlockingTest) {
 
   // Ensure task_A is not at the front of the queue.
   lease_manager_.QueueAndScheduleLease(
-      lease_B_1, false, false, &reply_B_1, empty_callback);
-  lease_manager_.QueueAndScheduleLease(lease_A, false, false, &reply_A, callback);
+      lease_B_1,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(empty_callback, &reply_B_1)});
   lease_manager_.QueueAndScheduleLease(
-      lease_B_2, false, false, &reply_B_2, empty_callback);
+      lease_A,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply_A)});
+  lease_manager_.QueueAndScheduleLease(
+      lease_B_2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(empty_callback, &reply_B_2)});
   pool_.TriggerCallbacks();
 
   // Push a worker that can only run task A.
@@ -735,7 +755,11 @@ TEST_F(ClusterLeaseManagerTest, BlockedWorkerDiesTest) {
     *callback_occurred_ptr = true;
   };
 
-  lease_manager_.QueueAndScheduleLease(lease1, false, false, &reply1, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease1,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply1)});
   pool_.TriggerCallbacks();
 
   ASSERT_FALSE(callback_occurred);
@@ -749,7 +773,11 @@ TEST_F(ClusterLeaseManagerTest, BlockedWorkerDiesTest) {
   lease_manager_.ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
 
-  lease_manager_.QueueAndScheduleLease(lease2, false, false, &reply2, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply2)});
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
   lease_manager_.ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
@@ -790,7 +818,11 @@ TEST_F(ClusterLeaseManagerTest, BlockedWorkerDies2Test) {
     *callback_occurred_ptr = true;
   };
 
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
 
   ASSERT_FALSE(callback_occurred);
@@ -835,7 +867,11 @@ TEST_F(ClusterLeaseManagerTest, NoFeasibleNodeTest) {
     *callback_called_ptr = true;
   };
 
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
 
   ASSERT_FALSE(callback_called);
@@ -859,7 +895,11 @@ TEST_F(ClusterLeaseManagerTest, DrainingWhileResolving) {
                       Status, std::function<void()>, std::function<void()>) {
     *callback_occurred_ptr = true;
   };
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   std::shared_ptr<MockWorker> worker2 =
@@ -879,7 +919,11 @@ TEST_F(ClusterLeaseManagerTest, DrainingWhileResolving) {
   missing_objects_.insert(missing_arg);
   rpc::RequestWorkerLeaseReply spillback_reply;
   lease_manager_.QueueAndScheduleLease(
-      resolving_args_lease, false, false, &spillback_reply, callback);
+      resolving_args_lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(callback, &spillback_reply)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
@@ -924,7 +968,11 @@ TEST_F(ClusterLeaseManagerTest, ResourceTakenWhileResolving) {
   missing_objects_.insert(missing_arg);
   std::unordered_set<LeaseID> expected_subscribed_leases = {
       lease.GetLeaseSpecification().LeaseId()};
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(lease_dependency_manager_.subscribed_leases, expected_subscribed_leases);
 
@@ -937,7 +985,11 @@ TEST_F(ClusterLeaseManagerTest, ResourceTakenWhileResolving) {
 
   /* This lease can run */
   auto lease2 = CreateLease({{ray::kCPU_ResourceLabel, 5}}, 1);
-  lease_manager_.QueueAndScheduleLease(lease2, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(lease_dependency_manager_.subscribed_leases, expected_subscribed_leases);
 
@@ -999,7 +1051,11 @@ TEST_F(ClusterLeaseManagerTest, TestIsSelectedBasedOnLocality) {
   auto lease1 = CreateLease({{ray::kCPU_ResourceLabel, 5}});
   rpc::RequestWorkerLeaseReply local_reply;
   lease_manager_.QueueAndScheduleLease(
-      lease1, false, /*is_selected_based_on_locality=*/false, &local_reply, callback);
+      lease1,
+      false,
+      /*is_selected_based_on_locality=*/false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(callback, &local_reply)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 1);
   // The first lease was dispatched.
@@ -1009,7 +1065,11 @@ TEST_F(ClusterLeaseManagerTest, TestIsSelectedBasedOnLocality) {
   auto lease2 = CreateLease({{ray::kCPU_ResourceLabel, 1}});
   rpc::RequestWorkerLeaseReply spillback_reply;
   lease_manager_.QueueAndScheduleLease(
-      lease2, false, /*is_selected_based_on_locality=*/false, &spillback_reply, callback);
+      lease2,
+      false,
+      /*is_selected_based_on_locality=*/false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(callback, &spillback_reply)});
   pool_.TriggerCallbacks();
   // The second lease was spilled.
   ASSERT_EQ(num_callbacks, 2);
@@ -1019,7 +1079,11 @@ TEST_F(ClusterLeaseManagerTest, TestIsSelectedBasedOnLocality) {
 
   auto lease3 = CreateLease({{ray::kCPU_ResourceLabel, 1}});
   lease_manager_.QueueAndScheduleLease(
-      lease3, false, /*is_selected_based_on_locality=*/true, &local_reply, callback);
+      lease3,
+      false,
+      /*is_selected_based_on_locality=*/true,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(callback, &local_reply)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 3);
   // The third lease was dispatched.
@@ -1053,7 +1117,11 @@ TEST_F(ClusterLeaseManagerTest, TestGrantOrReject) {
   auto lease1 = CreateLease({{ray::kCPU_ResourceLabel, 5}});
   rpc::RequestWorkerLeaseReply local_reply;
   lease_manager_.QueueAndScheduleLease(
-      lease1, /*grant_or_reject=*/false, false, &local_reply, callback);
+      lease1,
+      /*grant_or_reject=*/false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(callback, &local_reply)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 1);
   // The first lease was dispatched.
@@ -1063,7 +1131,11 @@ TEST_F(ClusterLeaseManagerTest, TestGrantOrReject) {
   auto lease2 = CreateLease({{ray::kCPU_ResourceLabel, 1}});
   rpc::RequestWorkerLeaseReply spillback_reply;
   lease_manager_.QueueAndScheduleLease(
-      lease2, /*grant_or_reject=*/false, false, &spillback_reply, callback);
+      lease2,
+      /*grant_or_reject=*/false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(callback, &spillback_reply)});
   pool_.TriggerCallbacks();
   // The second lease was spilled.
   ASSERT_EQ(num_callbacks, 2);
@@ -1073,7 +1145,11 @@ TEST_F(ClusterLeaseManagerTest, TestGrantOrReject) {
 
   auto lease3 = CreateLease({{ray::kCPU_ResourceLabel, 1}});
   lease_manager_.QueueAndScheduleLease(
-      lease3, /*grant_or_reject=*/true, false, &local_reply, callback);
+      lease3,
+      /*grant_or_reject=*/true,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(callback, &local_reply)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 3);
   // The third lease was dispatched.
@@ -1108,7 +1184,12 @@ TEST_F(ClusterLeaseManagerTest, TestSpillAfterAssigned) {
   /* Blocked on starting a worker. */
   auto lease = CreateLease({{ray::kCPU_ResourceLabel, 5}});
   rpc::RequestWorkerLeaseReply local_reply;
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &local_reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(callback, &local_reply)});
   pool_.TriggerCallbacks();
 
   ASSERT_EQ(num_callbacks, 0);
@@ -1118,7 +1199,11 @@ TEST_F(ClusterLeaseManagerTest, TestSpillAfterAssigned) {
   auto lease2 = CreateLease({{ray::kCPU_ResourceLabel, 5}});
   rpc::RequestWorkerLeaseReply reject_reply;
   lease_manager_.QueueAndScheduleLease(
-      lease2, /*grant_or_reject=*/true, false, &reject_reply, callback);
+      lease2,
+      /*grant_or_reject=*/true,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(callback, &reject_reply)});
   pool_.TriggerCallbacks();
 
   // The second lease was rejected.
@@ -1129,7 +1214,12 @@ TEST_F(ClusterLeaseManagerTest, TestSpillAfterAssigned) {
   // Resources are no longer available for the third.
   auto lease3 = CreateLease({{ray::kCPU_ResourceLabel, 5}});
   rpc::RequestWorkerLeaseReply spillback_reply;
-  lease_manager_.QueueAndScheduleLease(lease3, false, false, &spillback_reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease3,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(callback, &spillback_reply)});
   pool_.TriggerCallbacks();
 
   // The third lease was spilled.
@@ -1167,7 +1257,11 @@ TEST_F(ClusterLeaseManagerTest, TestIdleNode) {
     *callback_occurred_ptr = true;
   };
 
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
   ASSERT_TRUE(scheduler_->GetLocalResourceManager().IsLocalNodeIdle());
   ASSERT_FALSE(callback_occurred);
@@ -1210,8 +1304,16 @@ TEST_F(ClusterLeaseManagerTest, NotOKPopWorkerAfterDrainingTest) {
                       Status, std::function<void()>, std::function<void()>) {
     *callback_called_ptr = true;
   };
-  lease_manager_.QueueAndScheduleLease(lease1, false, false, &reply1, callback);
-  lease_manager_.QueueAndScheduleLease(lease2, false, false, &reply2, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease1,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply1)});
+  lease_manager_.QueueAndScheduleLease(
+      lease2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply2)});
 
   auto remote_node_id = NodeID::FromRandom();
   AddNode(remote_node_id, 5);
@@ -1242,7 +1344,11 @@ TEST_F(ClusterLeaseManagerTest, NotOKPopWorkerTest) {
                       Status, std::function<void()>, std::function<void()>) {
     *callback_called_ptr = true;
   };
-  lease_manager_.QueueAndScheduleLease(lease1, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease1,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   ASSERT_EQ(NumLeasesToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 1);
   ASSERT_EQ(NumLeasesToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
   ASSERT_EQ(NumRunningLeases(), 1);
@@ -1256,7 +1362,11 @@ TEST_F(ClusterLeaseManagerTest, NotOKPopWorkerTest) {
   callback_called = false;
   reply.Clear();
   RayLease lease2 = CreateLease({{ray::kCPU_ResourceLabel, 1}});
-  lease_manager_.QueueAndScheduleLease(lease2, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   ASSERT_EQ(NumLeasesToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 1);
   ASSERT_EQ(NumLeasesToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
   ASSERT_EQ(NumRunningLeases(), 1);
@@ -1275,7 +1385,11 @@ TEST_F(ClusterLeaseManagerTest, NotOKPopWorkerTest) {
   callback_called = false;
   reply.Clear();
   RayLease lease3 = CreateLease({{ray::kCPU_ResourceLabel, 1}});
-  lease_manager_.QueueAndScheduleLease(lease3, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease3,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   ASSERT_EQ(NumLeasesToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 1);
   ASSERT_EQ(NumLeasesToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
   ASSERT_EQ(NumRunningLeases(), 1);
@@ -1310,7 +1424,10 @@ TEST_F(ClusterLeaseManagerTest, TaskUnschedulableTest) {
   };
 
   lease_manager_.QueueAndScheduleLease(
-      RayLease(lease_spec), false, false, &reply, callback);
+      RayLease(lease_spec),
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   ASSERT_TRUE(callback_called);
   ASSERT_TRUE(reply.canceled());
   ASSERT_EQ(reply.failure_type(),
@@ -1335,7 +1452,11 @@ TEST_F(ClusterLeaseManagerTest, TaskCancellationTest) {
   // Lease1 not queued so we can't cancel it.
   ASSERT_FALSE(lease_manager_.CancelLease(lease1.GetLeaseSpecification().LeaseId()));
 
-  lease_manager_.QueueAndScheduleLease(lease1, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease1,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
 
   // Lease1 is now in dispatch queue.
@@ -1351,7 +1472,11 @@ TEST_F(ClusterLeaseManagerTest, TaskCancellationTest) {
   ASSERT_EQ(leased_workers_.size(), 0);
 
   RayLease lease2 = CreateLease({{ray::kCPU_ResourceLabel, 1}});
-  lease_manager_.QueueAndScheduleLease(lease2, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
 
   // Lease2 is now granted so we can't cancel it.
@@ -1373,9 +1498,17 @@ TEST_F(ClusterLeaseManagerTest, TaskCancellationTest) {
   RayLease lease4 = CreateLease({{ray::kCPU_ResourceLabel, 200}});
   rpc::RequestWorkerLeaseReply reply4;
   // Lease 3 should be popping worker
-  lease_manager_.QueueAndScheduleLease(lease3, false, false, &reply3, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease3,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply3)});
   // Lease 4 is infeasible
-  lease_manager_.QueueAndScheduleLease(lease4, false, false, &reply4, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease4,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply4)});
   pool_.TriggerCallbacks();
   ASSERT_TRUE(lease_manager_.CancelLeases(
       [](const std::shared_ptr<internal::Work> &work) { return true; },
@@ -1403,7 +1536,11 @@ TEST_F(ClusterLeaseManagerTest, TaskCancelInfeasibleTask) {
     *callback_called_ptr = true;
   };
 
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
 
   // RayLease is now queued so cancellation works.
@@ -1458,9 +1595,17 @@ TEST_F(ClusterLeaseManagerTest, TaskCancelWithResourceShape) {
     *callback_called_ptr_2 = true;
   };
 
-  lease_manager_.QueueAndScheduleLease(lease1, false, false, &reply1, callback1);
+  lease_manager_.QueueAndScheduleLease(
+      lease1,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback1, &reply1)});
   pool_.TriggerCallbacks();
-  lease_manager_.QueueAndScheduleLease(lease2, false, false, &reply2, callback2);
+  lease_manager_.QueueAndScheduleLease(
+      lease2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback2, &reply2)});
   pool_.TriggerCallbacks();
 
   callback_called_1 = false;
@@ -1503,7 +1648,11 @@ TEST_F(ClusterLeaseManagerTest, HeartbeatTest) {
       *callback_called_ptr = true;
     };
 
-    lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+    lease_manager_.QueueAndScheduleLease(
+        lease,
+        false,
+        false,
+        std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
     pool_.TriggerCallbacks();
     ASSERT_TRUE(callback_called);
     // Now {CPU: 7, GPU: 4, MEM:128}
@@ -1520,7 +1669,11 @@ TEST_F(ClusterLeaseManagerTest, HeartbeatTest) {
       *callback_called_ptr = true;
     };
 
-    lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+    lease_manager_.QueueAndScheduleLease(
+        lease,
+        false,
+        false,
+        std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
     pool_.TriggerCallbacks();
     ASSERT_FALSE(callback_called);  // No worker available.
     // Now {CPU: 7, GPU: 4, MEM:128} with 1 queued lease.
@@ -1538,7 +1691,11 @@ TEST_F(ClusterLeaseManagerTest, HeartbeatTest) {
       *callback_called_ptr = true;
     };
 
-    lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+    lease_manager_.QueueAndScheduleLease(
+        lease,
+        false,
+        false,
+        std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
     pool_.TriggerCallbacks();
     ASSERT_FALSE(callback_called);  // Infeasible.
     // Now there is also an infeasible lease {CPU: 9}.
@@ -1556,7 +1713,11 @@ TEST_F(ClusterLeaseManagerTest, HeartbeatTest) {
       *callback_called_ptr = true;
     };
 
-    lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+    lease_manager_.QueueAndScheduleLease(
+        lease,
+        false,
+        false,
+        std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
     pool_.TriggerCallbacks();
     ASSERT_FALSE(callback_called);  // Infeasible.
     // Now there is also an infeasible lease {CPU: 10}.
@@ -1622,7 +1783,11 @@ TEST_F(ClusterLeaseManagerTest, ResourceReportForNodeAffinitySchedulingStrategyT
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(false);
   RayLease lease1 =
       CreateLease({{ray::kCPU_ResourceLabel, 1}}, 0, {}, nullptr, scheduling_strategy);
-  lease_manager_.QueueAndScheduleLease(lease1, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease1,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
 
   // Feasible soft lease won't be reported.
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
@@ -1630,7 +1795,11 @@ TEST_F(ClusterLeaseManagerTest, ResourceReportForNodeAffinitySchedulingStrategyT
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(true);
   RayLease task2 =
       CreateLease({{ray::kCPU_ResourceLabel, 2}}, 0, {}, nullptr, scheduling_strategy);
-  lease_manager_.QueueAndScheduleLease(task2, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      task2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
 
   // Infeasible soft lease will be reported.
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
@@ -1638,7 +1807,11 @@ TEST_F(ClusterLeaseManagerTest, ResourceReportForNodeAffinitySchedulingStrategyT
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(true);
   RayLease task3 =
       CreateLease({{ray::kGPU_ResourceLabel, 1}}, 0, {}, nullptr, scheduling_strategy);
-  lease_manager_.QueueAndScheduleLease(task3, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      task3,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   ASSERT_FALSE(callback_occurred);
 
   // Infeasible strict lease won't be reported (will fail immediately).
@@ -1647,7 +1820,11 @@ TEST_F(ClusterLeaseManagerTest, ResourceReportForNodeAffinitySchedulingStrategyT
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(false);
   RayLease task4 =
       CreateLease({{ray::kGPU_ResourceLabel, 2}}, 0, {}, nullptr, scheduling_strategy);
-  lease_manager_.QueueAndScheduleLease(task4, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      task4,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   ASSERT_TRUE(callback_occurred);
   ASSERT_TRUE(reply.canceled());
   ASSERT_EQ(reply.failure_type(),
@@ -1684,7 +1861,11 @@ TEST_F(ClusterLeaseManagerTest, BacklogReportTest) {
   std::vector<WorkerID> worker_ids;
   for (int i = 0; i < 10; i++) {
     RayLease lease = CreateLease({{ray::kCPU_ResourceLabel, 8}});
-    lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+    lease_manager_.QueueAndScheduleLease(
+        lease,
+        false,
+        false,
+        std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
     worker_ids.push_back(WorkerID::FromRandom());
     local_lease_manager_->SetWorkerBacklog(
         lease.GetLeaseSpecification().GetSchedulingClass(), worker_ids.back(), 10 - i);
@@ -1767,7 +1948,11 @@ TEST_F(ClusterLeaseManagerTest, OwnerDeadTest) {
     *callback_occurred_ptr = true;
   };
 
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
 
   ASSERT_FALSE(callback_occurred);
@@ -1777,7 +1962,11 @@ TEST_F(ClusterLeaseManagerTest, OwnerDeadTest) {
   AssertNoLeaks();
 
   callback_occurred = false;
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
 
   ASSERT_FALSE(callback_occurred);
@@ -1799,7 +1988,11 @@ TEST_F(ClusterLeaseManagerTest, TestInfeasibleLeaseWarning) {
                       Status, std::function<void()>, std::function<void()>) {
     *callback_occurred = true;
   };
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(announce_infeasible_lease_calls_, 1);
 
@@ -1846,7 +2039,11 @@ TEST_F(ClusterLeaseManagerTest, TestMultipleInfeasibleLeasesWarnOnce) {
                       Status, std::function<void()>, std::function<void()>) {
     *callback_occurred = true;
   };
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(announce_infeasible_lease_calls_, 1);
 
@@ -1858,7 +2055,11 @@ TEST_F(ClusterLeaseManagerTest, TestMultipleInfeasibleLeasesWarnOnce) {
                        Status, std::function<void()>, std::function<void()>) {
     *callback_occurred2 = true;
   };
-  lease_manager_.QueueAndScheduleLease(lease2, false, false, &reply2, callback2);
+  lease_manager_.QueueAndScheduleLease(
+      lease2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback2, &reply2)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(announce_infeasible_lease_calls_, 1);
 }
@@ -1879,7 +2080,11 @@ TEST_F(ClusterLeaseManagerTest, TestAnyPendingLeasesForResourceAcquisition) {
                       Status, std::function<void()>, std::function<void()>) {
     *callback_occurred = true;
   };
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
   ASSERT_TRUE(*callback_occurred);
   ASSERT_EQ(leased_workers_.size(), 1);
@@ -1902,7 +2107,11 @@ TEST_F(ClusterLeaseManagerTest, TestAnyPendingLeasesForResourceAcquisition) {
                        Status, std::function<void()>, std::function<void()>) {
     *callback_occurred2 = true;
   };
-  lease_manager_.QueueAndScheduleLease(lease2, false, false, &reply2, callback2);
+  lease_manager_.QueueAndScheduleLease(
+      lease2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback2, &reply2)});
   pool_.TriggerCallbacks();
   ASSERT_FALSE(*callback_occurred2);
   auto pending_lease = lease_manager_.AnyPendingLeasesForResourceAcquisition(
@@ -1936,7 +2145,11 @@ TEST_F(ClusterLeaseManagerTest, ArgumentEvicted) {
   missing_objects_.insert(missing_arg);
   std::unordered_set<LeaseID> expected_subscribed_leases = {
       lease.GetLeaseSpecification().LeaseId()};
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(lease_dependency_manager_.subscribed_leases, expected_subscribed_leases);
   ASSERT_EQ(num_callbacks, 0);
@@ -1975,14 +2188,15 @@ TEST_F(ClusterLeaseManagerTest, FeasibleToNonFeasible) {
   RayLease lease1 = CreateLease({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply1;
   bool callback_occurred1 = false;
+  auto callback1 = [&callback_occurred1](
+                       Status, std::function<void()>, std::function<void()>) {
+    callback_occurred1 = true;
+  };
   lease_manager_.QueueAndScheduleLease(
       lease1,
       false,
       false,
-      &reply1,
-      [&callback_occurred1](Status, std::function<void()>, std::function<void()>) {
-        callback_occurred1 = true;
-      });
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback1, &reply1)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_TRUE(callback_occurred1);
@@ -1999,14 +2213,15 @@ TEST_F(ClusterLeaseManagerTest, FeasibleToNonFeasible) {
   RayLease lease2 = CreateLease({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply2;
   bool callback_occurred2 = false;
+  auto callback2 = [&callback_occurred2](
+                       Status, std::function<void()>, std::function<void()>) {
+    callback_occurred2 = true;
+  };
   lease_manager_.QueueAndScheduleLease(
       lease2,
       false,
       false,
-      &reply2,
-      [&callback_occurred2](Status, std::function<void()>, std::function<void()>) {
-        callback_occurred2 = true;
-      });
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback2, &reply2)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_FALSE(callback_occurred2);
@@ -2196,7 +2411,12 @@ TEST_F(ClusterLeaseManagerTest, TestSpillWaitingLeases) {
           .mutable_scheduling_strategy()
           ->mutable_spread_scheduling_strategy();
     }
-    lease_manager_.QueueAndScheduleLease(lease, false, false, replies[i].get(), callback);
+    lease_manager_.QueueAndScheduleLease(
+        lease,
+        false,
+        false,
+        std::vector<internal::ReplyCallback>{
+            internal::ReplyCallback(callback, replies[i].get())});
     pool_.TriggerCallbacks();
   }
   ASSERT_EQ(num_callbacks, 0);
@@ -2288,7 +2508,11 @@ TEST_F(ClusterLeaseManagerTest, PinnedArgsMemoryTest) {
                             nullptr,
                             rpc::SchedulingStrategy(),
                             lease_id1);
-  lease_manager_.QueueAndScheduleLease(lease1, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease1,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
@@ -2303,7 +2527,11 @@ TEST_F(ClusterLeaseManagerTest, PinnedArgsMemoryTest) {
                             nullptr,
                             rpc::SchedulingStrategy(),
                             lease_id2);
-  lease_manager_.QueueAndScheduleLease(lease2, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
@@ -2348,7 +2576,11 @@ TEST_F(ClusterLeaseManagerTest, PinnedArgsSameMemoryTest) {
   // This lease can run.
   default_arg_size_ = 600;
   auto lease = CreateLease({{ray::kCPU_ResourceLabel, 1}}, 1);
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
@@ -2359,7 +2591,11 @@ TEST_F(ClusterLeaseManagerTest, PinnedArgsSameMemoryTest) {
   auto lease2 = CreateLease({{ray::kCPU_ResourceLabel, 1}},
                             1,
                             lease.GetLeaseSpecification().GetDependencyIds());
-  lease_manager_.QueueAndScheduleLease(lease2, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 2);
   ASSERT_EQ(leased_workers_.size(), 2);
@@ -2388,7 +2624,11 @@ TEST_F(ClusterLeaseManagerTest, LargeArgsNoStarvationTest) {
   default_arg_size_ = 2000;
   auto lease = CreateLease({{ray::kCPU_ResourceLabel, 1}}, 1);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
@@ -2417,7 +2657,11 @@ TEST_F(ClusterLeaseManagerTest, PopWorkerExactlyOnce) {
     *callback_occurred_ptr = true;
   };
 
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
 
   // Make sure callback doesn't occurred.
   ASSERT_FALSE(callback_occurred);
@@ -2479,9 +2723,21 @@ TEST_F(ClusterLeaseManagerTest, CapRunningOnDispatchQueue) {
   auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
     num_callbacks++;
   };
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
-  lease_manager_.QueueAndScheduleLease(lease2, false, false, &reply, callback);
-  lease_manager_.QueueAndScheduleLease(lease3, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  lease_manager_.QueueAndScheduleLease(
+      lease2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  lease_manager_.QueueAndScheduleLease(
+      lease3,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
 
   ASSERT_EQ(num_callbacks, 2);
@@ -2528,9 +2784,21 @@ TEST_F(ClusterLeaseManagerTest, ZeroCPULeases) {
   auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
     num_callbacks++;
   };
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
-  lease_manager_.QueueAndScheduleLease(lease2, false, false, &reply, callback);
-  lease_manager_.QueueAndScheduleLease(lease3, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  lease_manager_.QueueAndScheduleLease(
+      lease2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  lease_manager_.QueueAndScheduleLease(
+      lease3,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
 
   // We shouldn't cap anything for zero cpu leases (and shouldn't crash before
@@ -2563,9 +2831,21 @@ TEST_F(ClusterLeaseManagerTestWithoutCPUsAtHead, ZeroCPUNode) {
   auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
     num_callbacks++;
   };
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
-  lease_manager_.QueueAndScheduleLease(lease2, false, false, &reply, callback);
-  lease_manager_.QueueAndScheduleLease(lease3, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  lease_manager_.QueueAndScheduleLease(
+      lease2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  lease_manager_.QueueAndScheduleLease(
+      lease3,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
 
   // We shouldn't cap anything for zero cpu leases (and shouldn't crash before
@@ -2598,7 +2878,12 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapSpillback) {
     RayLease lease = CreateLease({{ray::kCPU_ResourceLabel, 8}});
     leases.push_back(lease);
     replies.push_back(std::make_unique<rpc::RequestWorkerLeaseReply>());
-    lease_manager_.QueueAndScheduleLease(lease, false, false, replies[i].get(), callback);
+    lease_manager_.QueueAndScheduleLease(
+        lease,
+        false,
+        false,
+        std::vector<internal::ReplyCallback>{
+            internal::ReplyCallback(callback, replies[i].get())});
     pool_.TriggerCallbacks();
   }
 
@@ -2642,7 +2927,11 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapIncrease) {
     num_callbacks++;
   };
   for (const auto &lease : leases) {
-    lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+    lease_manager_.QueueAndScheduleLease(
+        lease,
+        false,
+        false,
+        std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   }
 
   auto runtime_env_hash = leases[0].GetLeaseSpecification().GetRuntimeEnvHash();
@@ -2699,7 +2988,11 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapIncrease) {
   RayLease lease = CreateLease({{ray::kCPU_ResourceLabel, 8}},
                                /*num_args=*/0,
                                /*args=*/{});
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
 
   std::shared_ptr<MockWorker> new_worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
@@ -2741,7 +3034,11 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapResetTest) {
     num_callbacks++;
   };
   for (const auto &lease : leases) {
-    lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+    lease_manager_.QueueAndScheduleLease(
+        lease,
+        false,
+        false,
+        std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   }
 
   auto runtime_env_hash = leases[0].GetLeaseSpecification().GetRuntimeEnvHash();
@@ -2773,7 +3070,11 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapResetTest) {
     RayLease lease = CreateLease({{ray::kCPU_ResourceLabel, 8}},
                                  /*num_args=*/0,
                                  /*args=*/{});
-    lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+    lease_manager_.QueueAndScheduleLease(
+        lease,
+        false,
+        false,
+        std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   }
 
   std::shared_ptr<MockWorker> worker3 =
@@ -2799,7 +3100,11 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapResetTest) {
     RayLease lease5 = CreateLease({},
                                   /*num_args=*/0,
                                   /*args=*/{});
-    lease_manager_.QueueAndScheduleLease(lease5, false, false, &reply, callback);
+    lease_manager_.QueueAndScheduleLease(
+        lease5,
+        false,
+        false,
+        std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
     std::shared_ptr<MockWorker> worker5 =
         std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker5));
@@ -2828,7 +3133,11 @@ TEST_F(ClusterLeaseManagerTest, DispatchTimerAfterRequestTest) {
   auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
     num_callbacks++;
   };
-  lease_manager_.QueueAndScheduleLease(first_lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      first_lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
 
   auto runtime_env_hash = first_lease.GetLeaseSpecification().GetRuntimeEnvHash();
   std::vector<std::shared_ptr<MockWorker>> workers;
@@ -2846,7 +3155,11 @@ TEST_F(ClusterLeaseManagerTest, DispatchTimerAfterRequestTest) {
   RayLease second_lease = CreateLease({{ray::kCPU_ResourceLabel, 8}},
                                       /*num_args=*/0,
                                       /*args=*/{});
-  lease_manager_.QueueAndScheduleLease(second_lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      second_lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
 
   /// Can't schedule yet due to the cap.
@@ -2874,7 +3187,11 @@ TEST_F(ClusterLeaseManagerTest, DispatchTimerAfterRequestTest) {
   RayLease third_lease = CreateLease({{ray::kCPU_ResourceLabel, 8}},
                                      /*num_args=*/0,
                                      /*args=*/{});
-  lease_manager_.QueueAndScheduleLease(third_lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      third_lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
 
   /// We still can't schedule the third lease since the timer doesn't start
@@ -2908,7 +3225,11 @@ TEST_F(ClusterLeaseManagerTest, PopWorkerBeforeDraining) {
                       Status, std::function<void()>, std::function<void()>) {
     *callback_occurred_ptr = true;
   };
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
 
   // Drain the local node.
   rpc::DrainRayletRequest drain_request;
@@ -2935,7 +3256,11 @@ TEST_F(ClusterLeaseManagerTest, UnscheduleableWhileDraining) {
                       Status, std::function<void()>, std::function<void()>) {
     *callback_occurred_ptr = true;
   };
-  lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   std::shared_ptr<MockWorker> worker2 =
@@ -2958,7 +3283,11 @@ TEST_F(ClusterLeaseManagerTest, UnscheduleableWhileDraining) {
   RayLease spillback_lease = CreateLease({{ray::kCPU_ResourceLabel, 1}});
   rpc::RequestWorkerLeaseReply spillback_reply;
   lease_manager_.QueueAndScheduleLease(
-      spillback_lease, false, false, &spillback_reply, callback);
+      spillback_lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(callback, &spillback_reply)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
@@ -2988,7 +3317,11 @@ TEST_F(ClusterLeaseManagerTestWithoutCPUsAtHead, OneCpuInfeasibleLease) {
 
   for (int i = 0; i < num_cases; ++i) {
     RayLease lease = CreateLease({{ray::kCPU_ResourceLabel, cpu_request[i]}});
-    lease_manager_.QueueAndScheduleLease(lease, false, false, &reply, callback);
+    lease_manager_.QueueAndScheduleLease(
+        lease,
+        false,
+        false,
+        std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
     pool_.TriggerCallbacks();
 
     // The lease cannot run because there is only 1 node (head) with 0 CPU.

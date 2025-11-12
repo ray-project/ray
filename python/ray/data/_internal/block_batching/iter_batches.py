@@ -154,6 +154,7 @@ class BatchIterator:
             num_batches_to_prefetch=self._prefetch_batches,
             batch_size=self._batch_size,
             eager_free=self._eager_free,
+            stats=self._stats,
         )
 
     def _resolve_block_refs(
@@ -333,6 +334,7 @@ def prefetch_batches_locally(
     num_batches_to_prefetch: int,
     batch_size: Optional[int],
     eager_free: bool = False,
+    stats: Optional[DatasetStats] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterator of batched RefBundles, returns an iterator over the
     corresponding block references while prefetching `num_batches_to_prefetch`
@@ -345,7 +347,12 @@ def prefetch_batches_locally(
             current batch during the scan.
         batch_size: User specified batch size, or None to let the system pick.
         eager_free: Whether to eagerly free the object reference from the object store.
+        stats: Dataset stats object used to store ref bundle retrieval time.
     """
+
+    def get_next_ref_bundle() -> RefBundle:
+        with stats.iter_get_ref_bundles_s.timer() if stats else nullcontext():
+            return next(ref_bundles)
 
     sliding_window = collections.deque()
     current_window_size = 0
@@ -369,7 +376,7 @@ def prefetch_batches_locally(
         batch_size is None and len(sliding_window) < num_batches_to_prefetch
     ):
         try:
-            next_ref_bundle = next(ref_bundles)
+            next_ref_bundle = get_next_ref_bundle()
             sliding_window.extend(next_ref_bundle.blocks)
             current_window_size += next_ref_bundle.num_rows()
         except StopIteration:
@@ -382,7 +389,7 @@ def prefetch_batches_locally(
         current_window_size -= metadata.num_rows
         if batch_size is None or current_window_size < num_rows_to_prefetch:
             try:
-                next_ref_bundle = next(ref_bundles)
+                next_ref_bundle = get_next_ref_bundle()
                 for block_ref_and_md in next_ref_bundle.blocks:
                     sliding_window.append(block_ref_and_md)
                     current_window_size += block_ref_and_md[1].num_rows

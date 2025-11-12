@@ -1,8 +1,8 @@
 import itertools
 import unittest
-import ray
-
 from pathlib import Path
+
+import ray
 
 
 class TestMARWIL(unittest.TestCase):
@@ -31,7 +31,8 @@ class TestMARWIL(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

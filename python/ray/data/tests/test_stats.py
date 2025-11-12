@@ -500,6 +500,7 @@ Dataset iterator time breakdown:
     * Total time spent waiting for the first batch after starting iteration: T
     * Total execution time for user thread: T
 * Batch iteration time breakdown (summed across prefetch threads):
+    * In get RefBundles: T min, T max, T avg, T total
     * In ray.get(): T min, T max, T avg, T total
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
@@ -695,6 +696,7 @@ def test_dataset_stats_basic(
         f"    * Total time spent waiting for the first batch after starting iteration: T\n"
         f"    * Total execution time for user thread: T\n"
         f"* Batch iteration time breakdown (summed across prefetch threads):\n"
+        f"    * In get RefBundles: T min, T max, T avg, T total\n"
         f"    * In ray.get(): T min, T max, T avg, T total\n"
         f"    * In batch creation: T min, T max, T avg, T total\n"
         f"    * In batch formatting: T min, T max, T avg, T total\n"
@@ -739,6 +741,7 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
         f"    * Total time spent waiting for the first batch after starting iteration: T\n"
         f"    * Total execution time for user thread: T\n"
         f"* Batch iteration time breakdown (summed across prefetch threads):\n"
+        f"    * In get RefBundles: T min, T max, T avg, T total\n"
         f"    * In ray.get(): T min, T max, T avg, T total\n"
         f"    * In batch creation: T min, T max, T avg, T total\n"
         f"    * In batch formatting: T min, T max, T avg, T total\n"
@@ -844,6 +847,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   ],\n"
         "   iter_stats=IterStatsSummary(\n"
         "      wait_time=T,\n"
+        "      get_ref_bundles_time=T,\n"
         "      get_time=T,\n"
         "      iter_blocks_local=None,\n"
         "      iter_blocks_remote=None,\n"
@@ -865,6 +869,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "         operators_stats=[],\n"
         "         iter_stats=IterStatsSummary(\n"
         "            wait_time=T,\n"
+        "            get_ref_bundles_time=T,\n"
         "            get_time=T,\n"
         "            iter_blocks_local=None,\n"
         "            iter_blocks_remote=None,\n"
@@ -984,6 +989,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   ],\n"
         "   iter_stats=IterStatsSummary(\n"
         "      wait_time=T,\n"
+        "      get_ref_bundles_time=T,\n"
         "      get_time=T,\n"
         "      iter_blocks_local=None,\n"
         "      iter_blocks_remote=None,\n"
@@ -1079,6 +1085,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "         ],\n"
         "         iter_stats=IterStatsSummary(\n"
         "            wait_time=T,\n"
+        "            get_ref_bundles_time=T,\n"
         "            get_time=T,\n"
         "            iter_blocks_local=None,\n"
         "            iter_blocks_remote=None,\n"
@@ -1100,6 +1107,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "               operators_stats=[],\n"
         "               iter_stats=IterStatsSummary(\n"
         "                  wait_time=T,\n"
+        "                  get_ref_bundles_time=T,\n"
         "                  get_time=T,\n"
         "                  iter_blocks_local=None,\n"
         "                  iter_blocks_remote=None,\n"
@@ -1536,6 +1544,7 @@ Dataset iterator time breakdown:
     * Total time spent waiting for the first batch after starting iteration: T
     * Total execution time for user thread: T
 * Batch iteration time breakdown (summed across prefetch threads):
+    * In get RefBundles: T min, T max, T avg, T total
     * In ray.get(): T min, T max, T avg, T total
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
