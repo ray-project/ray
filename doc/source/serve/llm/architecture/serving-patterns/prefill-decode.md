@@ -5,7 +5,7 @@ Prefill-decode (PD) disaggregation is a serving pattern that separates the prefi
 
 ## Architecture overview
 
-```{figure} ../../images/pd.png
+```{figure} ../../images/pd_arch.png
 ---
 width: 700px
 name: pd-architecture
