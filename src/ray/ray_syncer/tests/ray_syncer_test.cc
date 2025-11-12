@@ -233,7 +233,7 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
       3, sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
 }
 
-TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatching) {
+TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend) {
   auto node_id = NodeID::FromRandom();
 
   MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
@@ -243,6 +243,7 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatching) {
       [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
       /* batch_size */ 3,
       /* batch_delay_ms */ 100);
+
   auto from_node_id1 = NodeID::FromRandom();
   auto from_node_id2 = NodeID::FromRandom();
   auto msg1 = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id1);
@@ -269,6 +270,32 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatching) {
       [&sync_reactor]() { return sync_reactor.sending_buffer_.size() == 0; }, 1000));
 
   ASSERT_EQ(2, sync_reactor.node_versions_.size());
+}
+
+TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeoutTriggerSend) {
+  auto node_id = NodeID::FromRandom();
+
+  MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
+      /* io_context */ io_context_,
+      /* remote_node_id */ node_id.Binary(),
+      /* message_processor */
+      [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
+      /* batch_size */ 3,
+      /* batch_delay_ms */ 100);
+
+  auto from_node_id = NodeID::FromRandom();
+  auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
+  auto msg_ptr = std::make_shared<RaySyncMessage>(msg);
+
+  // First message will be batched
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr));
+  ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
+
+  // Wait for batch delay to trigger sending
+  EXPECT_TRUE(WaitForCondition(
+      [&sync_reactor]() { return sync_reactor.sending_buffer_.size() == 0; }, 1000));
+
+  ASSERT_EQ(1, sync_reactor.node_versions_.size());
 }
 
 struct SyncerServerTest {

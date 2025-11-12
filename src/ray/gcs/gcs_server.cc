@@ -613,7 +613,9 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
       [this](const NodeID &node_id) {
         gcs_healthcheck_manager_->MarkNodeHealthy(node_id);
       },
-      RayConfig::instance().gcs_ray_syncer_batching_enabled());
+      /* batch_size */ RayConfig::instance().gcs_resource_broadcast_max_batch_size(),
+      /* batch_delay_ms */
+      RayConfig::instance().gcs_resource_broadcast_max_batch_delay_ms());
   ray_syncer_->Register(
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(

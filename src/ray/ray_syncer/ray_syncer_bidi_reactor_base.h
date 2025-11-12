@@ -85,10 +85,15 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     // In single-threaded io_context, buffer size can only reach batch_size_ exactly.
     if (sending_buffer_.size() == batch_size_ || batch_delay_ms_.count() == 0) {
       // Send immediately if batch size limit is reached or delay is 0
+      if (batch_timer_active_) {
+        batch_timer_.cancel();
+        batch_timer_active_ = false;
+      }
       StartSend();
     } else {
       // Start or restart the batch timer
       if (!batch_timer_active_) {
+        RAY_LOG(INFO) << "Batch timer expires after " << batch_delay_ms_.count() << " ms";
         batch_timer_active_ = true;
         batch_timer_.expires_after(batch_delay_ms_);
         batch_timer_.async_wait([this](const boost::system::error_code &ec) {
@@ -155,12 +160,6 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   void StartSend() {
     if (sending_ || sending_buffer_.empty()) {
       return;
-    }
-
-    // Cancel any pending batch timer since we're sending now
-    if (batch_timer_active_) {
-      batch_timer_.cancel();
-      batch_timer_active_ = false;
     }
 
     RAY_LOG(DEBUG) << "Start sending to " << NodeID::FromBinary(GetRemoteNodeID())
@@ -253,7 +252,9 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
 
   // For testing
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBase);
-  FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseBatching);
+  FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseBatchSize);
+  FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeout);
+
   friend struct SyncerServerTest;
 
   std::array<int64_t, kComponentArraySize> &GetNodeComponentVersions(

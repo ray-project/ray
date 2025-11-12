@@ -1002,14 +1002,11 @@ RAY_CONFIG(bool, start_python_gc_manager_thread, true)
 // still retryable.
 RAY_CONFIG(bool, enable_output_error_log_if_still_retry, true)
 
-// Whether to enable batching for GCS resource update messages.
-RAY_CONFIG(bool, gcs_ray_syncer_batching_enabled, false)
-
 // The batch size for ray_syncer_bidi_reactor to sync messages to other nodes.
 RAY_CONFIG(size_t, gcs_resource_broadcast_max_batch_size, 1)
 
 // The maximum period that the GCS will wait for resource update messages before
 // broadcasting the batch. If `gcs_resource_broadcast_max_batch_size` messages arrive
 // before the timeout, the batch will be broadcasted eagerly. This flag only applies if
-// `gcs_resource_broadcast_batching_enabled == true`.
+// `gcs_resource_broadcast_max_batch_size == 1`.
 RAY_CONFIG(int64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
