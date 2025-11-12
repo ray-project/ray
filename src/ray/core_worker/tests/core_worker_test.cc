@@ -129,6 +129,8 @@ class CoreWorkerTest : public ::testing::Test {
     rpc_address_.set_node_id(NodeID::FromRandom().Binary());
     rpc_address_.set_worker_id(worker_context->GetWorkerID().Binary());
 
+    temp_dir_ = "/tmp/ray";
+
     fake_periodical_runner_ = std::make_unique<FakePeriodicalRunner>();
 
     auto object_info_publisher = std::make_unique<pubsub::Publisher>(
@@ -255,6 +257,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(periodical_runner),
                                                 std::move(core_worker_server),
                                                 std::move(rpc_address_),
+                                                std::move(temp_dir_),
                                                 mock_gcs_client_,
                                                 std::move(fake_raylet_ipc_client),
                                                 std::move(fake_local_raylet_rpc_client),
@@ -290,6 +293,7 @@ class CoreWorkerTest : public ::testing::Test {
   boost::thread io_thread_;
 
   rpc::Address rpc_address_;
+  std::string temp_dir_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
