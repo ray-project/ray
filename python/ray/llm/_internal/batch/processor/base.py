@@ -199,17 +199,50 @@ class OfflineProcessorConfig(ProcessorConfig):
     @root_validator(pre=True)
     def _coerce_legacy_to_stage_config(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         # Only set stage fields if not explicitly provided.
+        # Emit deprecation warnings when legacy boolean flags are used.
         if "chat_template_stage" not in values:
+            if "apply_chat_template" in values or "chat_template" in values:
+                logger.warning(
+                    "The `apply_chat_template` and `chat_template` fields are deprecated. "
+                    "Use `chat_template_stage` instead. For example: "
+                    "`chat_template_stage=ChatTemplateStageConfig(enabled=True, chat_template='...')` "
+                    "or `chat_template_stage={'enabled': True, 'chat_template': '...'}`. "
+                    "This will raise an error in a future version."
+                )
             enabled = values.get("apply_chat_template", True)
             stage: Dict[str, Any] = {"enabled": enabled}
             if values.get("chat_template") is not None:
                 stage["chat_template"] = values["chat_template"]
             values["chat_template_stage"] = stage
         if "tokenize_stage" not in values:
+            if "tokenize" in values:
+                logger.warning(
+                    "The `tokenize` field is deprecated. "
+                    "Use `tokenize_stage` instead. For example: "
+                    "`tokenize_stage=TokenizerStageConfig(enabled=True)` "
+                    "or `tokenize_stage={'enabled': True}`. "
+                    "This will raise an error in a future version."
+                )
             values["tokenize_stage"] = {"enabled": values.get("tokenize", True)}
         if "detokenize_stage" not in values:
+            if "detokenize" in values:
+                logger.warning(
+                    "The `detokenize` field is deprecated. "
+                    "Use `detokenize_stage` instead. For example: "
+                    "`detokenize_stage=DetokenizeStageConfig(enabled=True)` "
+                    "or `detokenize_stage={'enabled': True}`. "
+                    "This will raise an error in a future version."
+                )
             values["detokenize_stage"] = {"enabled": values.get("detokenize", True)}
         if "prepare_image_stage" not in values:
+            if "has_image" in values:
+                logger.warning(
+                    "The `has_image` field is deprecated. "
+                    "Use `prepare_image_stage` instead. For example: "
+                    "`prepare_image_stage=PrepareImageStageConfig(enabled=True)` "
+                    "or `prepare_image_stage={'enabled': True}`. "
+                    "This will raise an error in a future version."
+                )
             values["prepare_image_stage"] = {"enabled": values.get("has_image", False)}
         return values
 
