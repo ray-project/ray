@@ -151,21 +151,53 @@ class Join(NAry, PredicatePassThrough):
         - RIGHT_OUTER/SEMI/ANTI: Can push to right side (preserved/output side)
         - FULL_OUTER: Cannot push (both sides can generate nulls)
 
-        The predicate must reference columns from exactly one side of the join.
+        The predicate must reference columns from exactly one side of the join,
+        OR only reference join key columns (which exist on both sides).
         """
-        references_left, references_right = self._get_predicate_side_references(
-            predicate_expr
-        )
-        if references_left is None:
+        # Get predicate columns and schemas once
+        predicate_columns = self._get_referenced_columns(predicate_expr)
+        left_schema = self.input_dependencies[0].infer_schema()
+        right_schema = self.input_dependencies[1].infer_schema()
+
+        if not left_schema or not right_schema:
             return None
 
-        # Predicate must reference exactly one side
-        if not (references_left ^ references_right):
-            # References both sides or neither
-            return None
+        # Determine which side(s) the predicate references
+        left_columns = set(left_schema.names)
+        right_columns = set(right_schema.names)
+        references_left = bool(predicate_columns & left_columns)
+        references_right = bool(predicate_columns & right_columns)
 
-        # Define which sides can accept predicates for each join type
-        # (can_push_left, can_push_right)
+        # Get pushdown rules for this join type
+        can_push_left, can_push_right = self._get_pushdown_rules()
+
+        # Case 1: Predicate references exactly one side (standard case)
+        if references_left ^ references_right:
+            if references_left and can_push_left:
+                return JoinSide.LEFT
+            elif references_right and can_push_right:
+                return JoinSide.RIGHT
+            else:
+                return None
+
+        # Case 2: Predicate references both sides - check if only join keys
+        if references_left and references_right:
+            all_join_keys = set(self._left_key_columns) | set(self._right_key_columns)
+            if predicate_columns.issubset(all_join_keys):
+                # Safe to push to preserved/output side based on join type
+                # For inner joins, push to left (arbitrary choice, either works)
+                return self._decide_push_side(can_push_left, can_push_right)
+
+        # Cannot push down
+        return None
+
+    def _get_pushdown_rules(self) -> Tuple[bool, bool]:
+        """Get pushdown rules for the current join type.
+
+        Returns:
+            Tuple of (can_push_left, can_push_right) indicating which sides
+            can accept predicate pushdown for this join type.
+        """
         pushdown_rules = {
             JoinType.INNER: (True, True),
             JoinType.LEFT_OUTER: (True, False),
@@ -176,18 +208,25 @@ class Join(NAry, PredicatePassThrough):
             JoinType.RIGHT_ANTI: (False, True),
             JoinType.FULL_OUTER: (False, False),
         }
+        return pushdown_rules.get(self._join_type, (False, False))
 
-        can_push_left, can_push_right = pushdown_rules.get(
-            self._join_type, (False, False)
-        )
+    def _decide_push_side(
+        self, can_push_left: bool, can_push_right: bool
+    ) -> Optional[JoinSide]:
+        """Helper to decide which side to push to based on join type rules.
 
-        # Return the side if both predicate references it AND join type allows it
-        if references_left and can_push_left:
+        Args:
+            can_push_left: Whether the join type allows pushing to left side
+            can_push_right: Whether the join type allows pushing to right side
+
+        Returns:
+            The side to push to, or None if no pushdown is allowed
+        """
+        if can_push_left:
             return JoinSide.LEFT
-        elif references_right and can_push_right:
+        elif can_push_right:
             return JoinSide.RIGHT
-        else:
-            return None
+        return None
 
     def _get_predicate_side_references(
         self, predicate_expr: "Expr"

@@ -136,9 +136,6 @@ class LogicalOperatorSupportsPredicatePushdown(LogicalOperator):
 class PredicatePushdownBehavior(Enum):
     """Defines how predicates can be pushed through an operator."""
 
-    # Predicate cannot be pushed through this operator at all
-    CANNOT_PUSH_THROUGH = "cannot_push_through"
-
     # Predicate can be pushed through as-is (e.g., Sort, Repartition, RandomShuffle, Limit)
     PASSTHROUGH = "passthrough"
 
