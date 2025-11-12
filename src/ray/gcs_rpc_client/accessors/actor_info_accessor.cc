@@ -115,7 +115,7 @@ Status ActorInfoAccessor::SyncGetByName(const std::string &name,
   request.set_name(name);
   request.set_ray_namespace(ray_namespace);
   auto status = context_->GetGcsRpcClient().SyncGetNamedActorInfo(
-      std::move(request), &reply, gcs::GetGcsTimeoutMs());
+      std::move(request), &reply, rpc::GetGcsTimeoutMs());
   if (status.ok()) {
     actor_table_data = std::move(*reply.mutable_actor_table_data());
     task_spec = std::move(*reply.mutable_task_spec());
@@ -132,7 +132,7 @@ Status ActorInfoAccessor::SyncListNamedActors(
   request.set_ray_namespace(ray_namespace);
   rpc::ListNamedActorsReply reply;
   auto status = context_->GetGcsRpcClient().SyncListNamedActors(
-      std::move(request), &reply, gcs::GetGcsTimeoutMs());
+      std::move(request), &reply, rpc::GetGcsTimeoutMs());
   if (!status.ok()) {
     return status;
   }
@@ -199,7 +199,7 @@ Status ActorInfoAccessor::SyncRegisterActor(const ray::TaskSpecification &task_s
   rpc::RegisterActorReply reply;
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   auto status = context_->GetGcsRpcClient().SyncRegisterActor(
-      std::move(request), &reply, gcs::GetGcsTimeoutMs());
+      std::move(request), &reply, rpc::GetGcsTimeoutMs());
   return ComputeGcsStatus(status, reply.status());
 }
 

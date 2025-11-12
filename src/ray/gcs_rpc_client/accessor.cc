@@ -818,7 +818,7 @@ Status PlacementGroupInfoAccessor::SyncCreatePlacementGroup(
   rpc::CreatePlacementGroupReply reply;
   request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
   auto status = client_impl_->GetGcsRpcClient().SyncCreatePlacementGroup(
-      std::move(request), &reply, GetGcsTimeoutMs());
+      std::move(request), &reply, rpc::GetGcsTimeoutMs());
   if (status.ok()) {
     RAY_LOG(DEBUG).WithField(placement_group_spec.PlacementGroupId())
         << "Finished registering placement group.";
@@ -835,7 +835,7 @@ Status PlacementGroupInfoAccessor::SyncRemovePlacementGroup(
   rpc::RemovePlacementGroupReply reply;
   request.set_placement_group_id(placement_group_id.Binary());
   auto status = client_impl_->GetGcsRpcClient().SyncRemovePlacementGroup(
-      std::move(request), &reply, GetGcsTimeoutMs());
+      std::move(request), &reply, rpc::GetGcsTimeoutMs());
   return status;
 }
 

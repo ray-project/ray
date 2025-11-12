@@ -403,7 +403,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
           nodes = std::move(result);
           promise.set_value(status.ok());
         },
-        gcs::GetGcsTimeoutMs());
+        rpc::GetGcsTimeoutMs());
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return nodes;
   }
