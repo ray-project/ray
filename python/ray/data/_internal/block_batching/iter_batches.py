@@ -373,49 +373,52 @@ def prefetch_batches_locally(
                 yield block_ref
         return
 
-    if batch_size is not None:
-        num_rows_to_prefetch = num_batches_to_prefetch * batch_size
-    else:
-        num_rows_to_prefetch = None
+    try:
+        if batch_size is not None:
+            num_rows_to_prefetch = num_batches_to_prefetch * batch_size
+        else:
+            num_rows_to_prefetch = None
 
-    # Create and fetch the initial window.
-    # Stop adding if the number of rows in this window is greater than requested
-    # batch size, or if the batch size is None and the number of blocks in this window
-    # is greater than requested batches to prefetch.
-    while (batch_size is not None and current_window_size < num_rows_to_prefetch) or (
-        batch_size is None and len(sliding_window) < num_batches_to_prefetch
-    ):
-        try:
-            next_ref_bundle = get_next_ref_bundle()
-            sliding_window.extend(next_ref_bundle.blocks)
-            current_window_size += next_ref_bundle.num_rows()
-        except StopIteration:
-            break
-
-    prefetcher.prefetch_blocks([block_ref for block_ref, _ in list(sliding_window)])
-    _report_prefetch_count()
-
-    while sliding_window:
-        block_ref, metadata = sliding_window.popleft()
-        current_window_size -= metadata.num_rows
-        if batch_size is None or current_window_size < num_rows_to_prefetch:
+        # Create and fetch the initial window.
+        # Stop adding if the number of rows in this window is greater than requested
+        # batch size, or if the batch size is None and the number of blocks in this window
+        # is greater than requested batches to prefetch.
+        while (batch_size is not None and current_window_size < num_rows_to_prefetch) or (
+            batch_size is None and len(sliding_window) < num_batches_to_prefetch
+        ):
             try:
                 next_ref_bundle = get_next_ref_bundle()
-                for block_ref_and_md in next_ref_bundle.blocks:
-                    sliding_window.append(block_ref_and_md)
-                    current_window_size += block_ref_and_md[1].num_rows
-                prefetcher.prefetch_blocks(
-                    [block_ref for block_ref, _ in list(sliding_window)]
-                )
-                _report_prefetch_count()
+                sliding_window.extend(next_ref_bundle.blocks)
+                current_window_size += next_ref_bundle.num_rows()
             except StopIteration:
-                pass
-        yield block_ref
-        trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
+                break
+
+        prefetcher.prefetch_blocks([block_ref for block_ref, _ in list(sliding_window)])
         _report_prefetch_count()
-    if prefetch_count_update is not None:
-        prefetch_count_update(0, 0)
-    prefetcher.stop()
+
+        while sliding_window:
+            block_ref, metadata = sliding_window.popleft()
+            current_window_size -= metadata.num_rows
+            if batch_size is None or current_window_size < num_rows_to_prefetch:
+                try:
+                    next_ref_bundle = get_next_ref_bundle()
+                    for block_ref_and_md in next_ref_bundle.blocks:
+                        sliding_window.append(block_ref_and_md)
+                        current_window_size += block_ref_and_md[1].num_rows
+                    prefetcher.prefetch_blocks(
+                        [block_ref for block_ref, _ in list(sliding_window)]
+                    )
+                    _report_prefetch_count()
+                except StopIteration:
+                    pass
+            yield block_ref
+            trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
+            _report_prefetch_count()
+    finally:
+        # Ensure cleanup always runs, even if iteration stops early
+        if prefetch_count_update is not None:
+            prefetch_count_update(0, 0)
+        prefetcher.stop()
 
 
 def restore_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:
