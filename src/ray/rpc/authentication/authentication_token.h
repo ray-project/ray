@@ -107,6 +107,12 @@ class AuthenticationToken {
     return std::string(secret_.begin(), secret_.end());
   }
 
+  /// Get token hash
+  /// @return Hash of the token value
+  std::size_t ToHash() const {
+    return std::hash<std::string>()(std::string(secret_.begin(), secret_.end()));
+  }
+
   /// Create AuthenticationToken from gRPC metadata value
   /// Strips "Bearer " prefix and creates token object
   /// @param metadata_value The raw value from server metadata (should include "Bearer "
@@ -176,7 +182,7 @@ class AuthenticationToken {
 // Hash function for AuthenticationToken
 struct AuthenticationTokenHash {
   std::size_t operator()(const AuthenticationToken &token) const {
-    return std::hash<std::string>()(token.ToValue());
+    return token.ToHash();
   }
 };
 
