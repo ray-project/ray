@@ -94,6 +94,7 @@ def build_sglang_engine_processor(
     # Prepare processor defaults for merging into stage configs
     processor_defaults = {
         "batch_size": config.batch_size,
+        "concurrency": config.concurrency,
         "runtime_env": config.runtime_env,
         "model_source": config.model_source,
     }
@@ -112,8 +113,9 @@ def build_sglang_engine_processor(
             else config.get_concurrency()
         )
         # Normalize concurrency to tuple if needed
+        # CPU stages use autoscaling (1, n) for int concurrency
         if isinstance(stage_concurrency, int):
-            stage_concurrency = (stage_concurrency, stage_concurrency)
+            stage_concurrency = (1, stage_concurrency)
 
         stages.append(
             ChatTemplateStage(
@@ -148,8 +150,9 @@ def build_sglang_engine_processor(
             else config.get_concurrency()
         )
         # Normalize concurrency to tuple if needed
+        # CPU stages use autoscaling (1, n) for int concurrency
         if isinstance(stage_concurrency, int):
-            stage_concurrency = (stage_concurrency, stage_concurrency)
+            stage_concurrency = (1, stage_concurrency)
 
         stages.append(
             TokenizeStage(
@@ -211,8 +214,9 @@ def build_sglang_engine_processor(
             else config.get_concurrency()
         )
         # Normalize concurrency to tuple if needed
+        # CPU stages use autoscaling (1, n) for int concurrency
         if isinstance(stage_concurrency, int):
-            stage_concurrency = (stage_concurrency, stage_concurrency)
+            stage_concurrency = (1, stage_concurrency)
 
         stages.append(
             DetokenizeStage(

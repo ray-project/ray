@@ -71,6 +71,8 @@ def resolve_stage_config(
     # Merge processor defaults for fields not explicitly set
     if resolved.batch_size is None and "batch_size" in processor_defaults:
         resolved.batch_size = processor_defaults["batch_size"]
+    if resolved.concurrency is None and "concurrency" in processor_defaults:
+        resolved.concurrency = processor_defaults["concurrency"]
     if resolved.runtime_env is None and "runtime_env" in processor_defaults:
         resolved.runtime_env = processor_defaults["runtime_env"]
     # For model fields, use processor model_source if not set
