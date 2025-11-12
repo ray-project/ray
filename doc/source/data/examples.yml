@@ -45,3 +45,11 @@ examples:
     frameworks:
       - xgboost
     link: ../train/examples/xgboost/distributed-xgboost-lightgbm
+  - title: LLM Batch Inference for text data
+    skill_level: beginner
+    frameworks:
+      - vLLM
+    use_cases:
+      - large language models
+      - generative ai
+    link: examples/llm_batch_inference_text
