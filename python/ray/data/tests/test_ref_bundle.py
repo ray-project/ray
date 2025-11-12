@@ -224,6 +224,111 @@ def test_slice_ref_bundle_invalid_rows():
         bundle.slice(6)
 
 
+def test_ref_bundle_with_none_slices():
+    """Test that None can be used to represent full blocks in slices."""
+
+    block_ref_one = ObjectRef(b"1" * 28)
+    block_ref_two = ObjectRef(b"2" * 28)
+
+    meta_one = BlockMetadata(
+        num_rows=10, size_bytes=100, exec_stats=None, input_files=None
+    )
+    meta_two = BlockMetadata(
+        num_rows=5, size_bytes=50, exec_stats=None, input_files=None
+    )
+
+    # Test with all None slices (representing full blocks)
+    bundle = RefBundle(
+        blocks=[
+            (block_ref_one, meta_one),
+            (block_ref_two, meta_two),
+        ],
+        owns_blocks=True,
+        schema=None,
+        slices=[None, None],
+    )
+
+    assert bundle.num_rows() == 15  # 10 + 5
+    assert bundle.size_bytes() == 150  # 100 + 50
+
+
+def test_ref_bundle_with_mixed_none_and_explicit_slices():
+    """Test mixing None and explicit BlockSlice objects."""
+
+    block_ref_one = ObjectRef(b"1" * 28)
+    block_ref_two = ObjectRef(b"2" * 28)
+    block_ref_three = ObjectRef(b"3" * 28)
+
+    meta_one = BlockMetadata(
+        num_rows=10, size_bytes=100, exec_stats=None, input_files=None
+    )
+    meta_two = BlockMetadata(
+        num_rows=8, size_bytes=80, exec_stats=None, input_files=None
+    )
+    meta_three = BlockMetadata(
+        num_rows=6, size_bytes=60, exec_stats=None, input_files=None
+    )
+
+    # Mix None (full block) with explicit slices
+    bundle = RefBundle(
+        blocks=[
+            (block_ref_one, meta_one),
+            (block_ref_two, meta_two),
+            (block_ref_three, meta_three),
+        ],
+        owns_blocks=True,
+        schema=None,
+        slices=[
+            None,  # Full block: 10 rows, 100 bytes
+            BlockSlice(start_offset=2, end_offset=6),  # 4 rows, ~40 bytes
+            None,  # Full block: 6 rows, 60 bytes
+        ],
+    )
+
+    assert bundle.num_rows() == 20  # 10 + 4 + 6
+    assert bundle.size_bytes() == 200  # 100 + 40 + 60
+
+
+def test_slice_ref_bundle_with_none_slices():
+    """Test slicing a bundle that has None slices."""
+
+    block_ref_one = ObjectRef(b"1" * 28)
+    block_ref_two = ObjectRef(b"2" * 28)
+
+    meta_one = BlockMetadata(
+        num_rows=6, size_bytes=60, exec_stats=None, input_files=None
+    )
+    meta_two = BlockMetadata(
+        num_rows=4, size_bytes=40, exec_stats=None, input_files=None
+    )
+
+    # Start with None slices (full blocks)
+    bundle = RefBundle(
+        blocks=[
+            (block_ref_one, meta_one),
+            (block_ref_two, meta_two),
+        ],
+        owns_blocks=True,
+        schema="schema",
+        slices=[None, None],
+    )
+
+    # Slice it to get first 8 rows
+    consumed, remaining = bundle.slice(8)
+
+    assert consumed.num_rows() == 8
+    assert remaining.num_rows() == 2
+
+    # The None slices should be converted to explicit BlockSlice objects
+    assert consumed.slices == [
+        BlockSlice(start_offset=0, end_offset=6),
+        BlockSlice(start_offset=0, end_offset=2),
+    ]
+    assert remaining.slices == [
+        BlockSlice(start_offset=2, end_offset=4),
+    ]
+
+
 def test_merge_ref_bundles():
 
     block_ref_one = ObjectRef(b"1" * 28)
