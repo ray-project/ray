@@ -37,6 +37,7 @@ from ray._common.utils import get_or_create_event_loop
 from ray._private import (
     ray_constants,
 )
+from ray._private.grpc_utils import init_grpc_channel
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._private.worker import RayContext
@@ -1867,7 +1868,7 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
     raylet_address = build_address(
         raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
     )
-    channel = ray._private.grpc_utils.init_grpc_channel(raylet_address)
+    channel = init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     for _ in range(num_retry):
         try:
@@ -1888,7 +1889,7 @@ def get_resource_usage(gcs_address, timeout=10):
     if not gcs_address:
         gcs_address = ray.worker._global_node.gcs_address
 
-    gcs_channel = ray._private.grpc_utils.init_grpc_channel(
+    gcs_channel = init_grpc_channel(
         gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=False
     )
 

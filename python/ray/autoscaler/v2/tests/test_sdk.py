@@ -11,6 +11,7 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.test_utils import wait_for_condition
+from ray._private.grpc_utils import init_grpc_channel
 from ray.autoscaler.v2.schema import (
     ClusterStatus,
     LaunchRequest,
@@ -37,9 +38,7 @@ from ray.util.state.api import list_nodes
 def _autoscaler_state_service_stub():
     """Get the grpc stub for the autoscaler state service"""
     gcs_address = ray.get_runtime_context().gcs_address
-    gcs_channel = ray._private.grpc_utils.init_grpc_channel(
-        gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS
-    )
+    gcs_channel = init_grpc_channel(gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS)
     return autoscaler_pb2_grpc.AutoscalerStateServiceStub(gcs_channel)
 
 

@@ -9,12 +9,12 @@ import aiohttp
 import grpc
 from grpc.aio._call import UnaryStreamCall
 
-import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules.log.log_consts as log_consts
 from ray._common.network_utils import build_address
 from ray._common.utils import hex_to_binary
 from ray._private import ray_constants
+from ray._private.grpc_utils import init_grpc_channel
 from ray._raylet import ActorID, GcsClient, JobID, NodeID, TaskID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
@@ -146,9 +146,7 @@ class StateDataSourceClient:
 
     def get_raylet_stub(self, ip: str, port: int):
         options = _STATE_MANAGER_GRPC_OPTIONS
-        channel = ray._private.grpc_utils.init_grpc_channel(
-            build_address(ip, port), options, asynchronous=True
-        )
+        channel = init_grpc_channel(build_address(ip, port), options, asynchronous=True)
         return NodeManagerServiceStub(channel)
 
     async def get_log_service_stub(self, node_id: NodeID) -> LogServiceStub:
@@ -162,7 +160,7 @@ class StateDataSourceClient:
             return None
         ip, http_port, grpc_port = json.loads(agent_addr)
         options = ray_constants.GLOBAL_GRPC_OPTIONS
-        channel = ray._private.grpc_utils.init_grpc_channel(
+        channel = init_grpc_channel(
             build_address(ip, grpc_port), options=options, asynchronous=True
         )
         return LogServiceStub(channel)
