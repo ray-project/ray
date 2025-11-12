@@ -50,6 +50,7 @@ ray_cc_library(
     deps = [
         ":authentication_mode",
         ":authentication_token",
+        ":k8s_constants",
         "//src/ray/util:logging",
     ],
 )

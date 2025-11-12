@@ -18,6 +18,7 @@
 #include <string>
 #include <utility>
 
+#include "ray/rpc/authentication/k8s_constants.h"
 #include "ray/util/logging.h"
 
 #ifdef _WIN32
@@ -137,18 +138,15 @@ AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
 
   // Precedence 3 (auth_mode=k8s only): Load Kubernetes service account token
   if (GetAuthenticationMode() == AuthenticationMode::K8S) {
-    std::string k8s_service_account_token_path =
-        "/var/run/secrets/kubernetes.io/serviceaccount/token";
-    std::string token_str =
-        TrimWhitespace(ReadTokenFromFile(k8s_service_account_token_path));
+    std::string token_str = TrimWhitespace(ReadTokenFromFile(k8s::kK8sSaTokenPath));
     if (!token_str.empty()) {
       RAY_LOG(DEBUG)
           << "Loaded authentication token from Kubernetes service account path: "
-          << k8s_service_account_token_path;
+          << k8s::kK8sSaTokenPath;
       return AuthenticationToken(token_str);
     }
     RAY_LOG(DEBUG) << "Kubernetes service account token not found or empty at: "
-                   << k8s_service_account_token_path;
+                   << k8s::kK8sSaTokenPath;
   }
 
   // Precedence 4: Default token path ~/.ray/auth_token
