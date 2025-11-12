@@ -2,8 +2,8 @@ from typing import Dict
 
 from ray.rllib.algorithms.dqn.dqn_learner import DQNLearner
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.typing import ModuleID, TensorType

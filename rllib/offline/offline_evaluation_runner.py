@@ -1,8 +1,7 @@
-import ray
 import types
+from typing import TYPE_CHECKING, Any, Collection, Dict, Iterable, Optional, Union
 
-from typing import Any, Collection, Dict, Iterable, Optional, TYPE_CHECKING, Union
-
+import ray
 from ray.data.iterator import DataIterator
 from ray.rllib.core import (
     ALL_MODULES,
@@ -389,9 +388,11 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         try:
             self.__device = get_device(
                 self.config,
-                0
-                if not self.worker_index
-                else self.config.num_gpus_per_offline_eval_runner,
+                (
+                    0
+                    if not self.worker_index
+                    else self.config.num_gpus_per_offline_eval_runner
+                ),
             )
         except NotImplementedError:
             self.__device = None
@@ -456,7 +457,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         return self.__batch_iterator
 
     @property
-    def _device(self) -> DeviceType:
+    def _device(self) -> Union[DeviceType, None]:
         return self.__device
 
     @property

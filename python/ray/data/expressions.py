@@ -242,6 +242,29 @@ class Expr(ABC):
         """
         return _PyArrowExpressionVisitor().visit(self)
 
+    def __repr__(self) -> str:
+        """Return a tree-structured string representation of the expression.
+
+        Returns:
+            A multi-line string showing the expression tree structure using
+            box-drawing characters for visual clarity.
+
+        Example:
+            >>> from ray.data.expressions import col, lit
+            >>> expr = (col("x") + lit(5)) * col("y")
+            >>> print(expr)
+            MUL
+                ├── left: ADD
+                │   ├── left: COL('x')
+                │   └── right: LIT(5)
+                └── right: COL('y')
+        """
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _TreeReprVisitor,
+        )
+
+        return _TreeReprVisitor().visit(self)
+
     def _bin(self, other: Any, op: Operation) -> "Expr":
         """Create a binary expression with the given operation.
 
@@ -378,11 +401,16 @@ class Expr(ABC):
             >>> expr = (col("price") * col("quantity")).alias("total")
             >>> # Can be used with Dataset operations that support named expressions
         """
-        return AliasExpr(data_type=self.data_type, expr=self, _name=name)
+        return AliasExpr(
+            data_type=self.data_type, expr=self, _name=name, _is_rename=False
+        )
+
+    def _unalias(self) -> "Expr":
+        return self
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class ColumnExpr(Expr):
     """Expression that references a column by name.
 
@@ -407,12 +435,15 @@ class ColumnExpr(Expr):
         """Get the column name."""
         return self._name
 
+    def _rename(self, name: str):
+        return AliasExpr(self.data_type, self, name, _is_rename=True)
+
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, ColumnExpr) and self.name == other.name
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class LiteralExpr(Expr):
     """Expression that represents a constant scalar value.
 
@@ -450,7 +481,7 @@ class LiteralExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class BinaryExpr(Expr):
     """Expression that represents a binary operation between two expressions.
 
@@ -486,7 +517,7 @@ class BinaryExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class UnaryExpr(Expr):
     """Expression that represents a unary operation on a single expression.
 
@@ -508,7 +539,10 @@ class UnaryExpr(Expr):
     op: Operation
     operand: Expr
 
-    data_type: DataType = field(init=False)
+    # Default to bool return dtype for unary operations like is_null() and NOT.
+    # This enables chaining operations such as col("x").is_not_null().alias("valid"),
+    # where downstream expressions (like AliasExpr) need the data type.
+    data_type: DataType = field(default_factory=lambda: DataType.bool(), init=False)
 
     def structurally_equals(self, other: Any) -> bool:
         return (
@@ -519,7 +553,7 @@ class UnaryExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class UDFExpr(Expr):
     """Expression that represents a user-defined function call.
 
@@ -661,7 +695,7 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class DownloadExpr(Expr):
     """Expression that represents a download operation."""
 
@@ -676,28 +710,39 @@ class DownloadExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class AliasExpr(Expr):
     """Expression that represents an alias for an expression."""
 
     expr: Expr
     _name: str
+    _is_rename: bool
 
     @property
     def name(self) -> str:
         """Get the alias name."""
         return self._name
 
+    def alias(self, name: str) -> "Expr":
+        # Always unalias before creating new one
+        return AliasExpr(
+            self.expr.data_type, self.expr, _name=name, _is_rename=self._is_rename
+        )
+
+    def _unalias(self) -> "Expr":
+        return self.expr
+
     def structurally_equals(self, other: Any) -> bool:
         return (
             isinstance(other, AliasExpr)
             and self.expr.structurally_equals(other.expr)
             and self.name == other.name
+            and self._is_rename == self._is_rename
         )
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class StarExpr(Expr):
     """Expression that represents all columns from the input.
 
@@ -782,7 +827,8 @@ def lit(value: Any) -> LiteralExpr:
     return LiteralExpr(value)
 
 
-@PublicAPI(stability="beta")
+# TODO remove
+@DeveloperAPI(stability="alpha")
 def star() -> StarExpr:
     """
     References all input columns from the input.
@@ -797,7 +843,7 @@ def star() -> StarExpr:
     return StarExpr()
 
 
-@DeveloperAPI(stability="alpha")
+@PublicAPI(stability="alpha")
 def download(uri_column_name: str) -> DownloadExpr:
     """
     Create a download expression that downloads content from URIs.

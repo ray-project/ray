@@ -583,6 +583,34 @@ def test_schedule_replica():
     operator = scheduler._launching_replicas[d_id][r3_id].target_labels["abc"]
     assert isinstance(operator, In) and operator.values == ["xyz"]
 
+    # internal implicit resource with max_replicas_per_node
+    r4_id = ReplicaID(unique_id="r4", deployment_id=d_id)
+    scheduling_request = ReplicaSchedulingRequest(
+        replica_id=r4_id,
+        actor_def=MockActorClass(),
+        actor_resources={"my_rs": 1, "CPU": 1},
+        placement_group_bundles=None,
+        placement_group_strategy=None,
+        actor_options={"name": "r4", "num_cpus": 1, "resources": {"my_rs": 1}},
+        actor_init_args=(),
+        on_scheduled=set_scheduling_strategy,
+        max_replicas_per_node=10,
+    )
+    scheduler._pending_replicas[d_id][r4_id] = scheduling_request
+    scheduler._schedule_replica(
+        scheduling_request=scheduling_request,
+        default_scheduling_strategy="some_default",
+        target_node_id=None,
+        target_labels=None,
+    )
+    assert scheduling_strategy == "some_default"
+    assert len(scheduler._launching_replicas[d_id]) == 5
+    assert scheduling_request.actor_options == {
+        "name": "r4",
+        "num_cpus": 1,
+        "resources": {"my_rs": 1},
+    }
+
 
 def test_downscale_multiple_deployments():
     """Test to make sure downscale prefers replicas without node id

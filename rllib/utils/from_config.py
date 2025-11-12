@@ -4,15 +4,19 @@ import os
 import re
 from copy import deepcopy
 from functools import partial
+from typing import TYPE_CHECKING, Optional
 
 import yaml
 
 from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 
+if TYPE_CHECKING:
+    from ray.rllib.utils.typing import FromConfigSpec
+
 
 @DeveloperAPI
-def from_config(cls, config=None, **kwargs):
+def from_config(cls, config: Optional["FromConfigSpec"] = None, **kwargs):
     """Uses the given config to create an object.
 
     If `config` is a dict, an optional "type" key can be used as a
