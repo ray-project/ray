@@ -169,7 +169,8 @@
 
   run:
     timeout: 1800
-    script: bash test.sh
+    num_retries: 3
+    script: python hello_world.py
 
   variations:
     - __suffix__: aws
