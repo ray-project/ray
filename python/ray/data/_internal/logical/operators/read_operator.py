@@ -1,7 +1,7 @@
 import copy
 import functools
 import math
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperatorSupportsPredicatePushdown,
@@ -162,26 +162,23 @@ class Read(
     def supports_projection_pushdown(self) -> bool:
         return self._datasource.supports_projection_pushdown()
 
-    def get_current_projection(self) -> Optional[List[str]]:
-        return self._datasource.get_current_projection()
-
-    def get_column_renames(self) -> Optional[Dict[str, str]]:
-        return self._datasource.get_column_renames()
+    def get_projection_map(self) -> Optional[Dict[str, str]]:
+        return self._datasource.get_projection_map()
 
     def apply_projection(
         self,
-        columns: Optional[List[str]],
-        column_rename_map: Optional[Dict[str, str]],
+        projection_map: Optional[Dict[str, str]],
     ) -> "Read":
         clone = copy.copy(self)
 
-        projected_datasource = self._datasource.apply_projection(
-            columns, column_rename_map
-        )
+        projected_datasource = self._datasource.apply_projection(projection_map)
         clone._datasource = projected_datasource
         clone._datasource_or_legacy_reader = projected_datasource
 
         return clone
+
+    def get_column_renames(self) -> Optional[Dict[str, str]]:
+        return self._datasource.get_column_renames()
 
     def supports_predicate_pushdown(self) -> bool:
         return self._datasource.supports_predicate_pushdown()
