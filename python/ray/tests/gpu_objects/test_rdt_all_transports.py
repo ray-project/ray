@@ -9,7 +9,9 @@ from ray.experimental.collective import create_collective_group
 
 USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
 TRANSPORTS_AND_DEVICES = (
-    [("nixl", "cuda"), ("nccl", "cuda")] if USE_GPU else [("gloo", "cpu")]
+    [("nixl", "cuda"), ("nccl", "cuda"), ("gloo", "cpu")]
+    if USE_GPU
+    else [("gloo", "cpu")]
 )
 
 
@@ -26,11 +28,14 @@ class AsyncActor:
         return device_data
 
 
-@pytest.mark.parametrize("ray_start_regular_shared", [{"num_gpus": 4}], indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_regular_shared", [{"num_gpus": 4} if USE_GPU else {}], indirect=True
+)
 @pytest.mark.parametrize("transport, device", TRANSPORTS_AND_DEVICES)
 def test_rdt_async_chain(ray_start_regular_shared, transport, device):
     actors = [AsyncActor.remote() for _ in range(3)]
-    create_collective_group(actors, transport)
+    if transport == "gloo" or transport == "nccl":
+        create_collective_group(actors, transport)
     data = torch.randn(100, 100)
     send_ref = actors[0].send.options(tensor_transport=transport).remote(data, device)
     int_ref = (
