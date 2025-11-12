@@ -481,7 +481,12 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_type=MetricsType.Histogram,
         metrics_args={"boundaries": histogram_buckets_s},
     )
-    task_completion_time_without_backpressure: float = metric_field(
+    task_completion_time_s: float = metric_field(
+        default=0,
+        description="Time spent running tasks to completion.",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    task_completion_time_excl_backpressure_s: float = metric_field(
         default=0,
         description="Time spent running tasks to completion without backpressure.",
         metrics_group=MetricsGroup.TASKS,
@@ -677,6 +682,30 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return None
         else:
             return self.num_task_outputs_generated / self.block_generation_time
+
+    @metric_property(
+        description="Average task's completion time in seconds (including throttling).",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    def average_total_task_completion_time_s(self) -> Optional[float]:
+        """Average task's completion time in seconds (including throttling)"""
+        if self.num_tasks_finished == 0:
+            return None
+        else:
+            return self.task_completion_time_s / self.num_tasks_finished
+
+    @metric_property(
+        description="Average task's completion time in seconds (excluding throttling).",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    def average_task_completion_excl_backpressure_time_s(self) -> Optional[float]:
+        """Average task's completion time in seconds (excluding throttling)"""
+        if self.num_tasks_finished == 0:
+            return None
+        else:
+            return (
+                self.task_completion_time_excl_backpressure_s / self.num_tasks_finished
+            )
 
     @metric_property(
         description="Average size of task output in bytes.",
@@ -981,8 +1010,10 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.bytes_outputs_of_finished_tasks += task_info.bytes_outputs
         self.rows_outputs_of_finished_tasks += task_info.num_rows_produced
 
+        task_time_delta = time.perf_counter() - task_info.start_time
+        self.task_completion_time_s += task_time_delta
+
         with self._histogram_thread_lock:
-            task_time_delta = time.perf_counter() - task_info.start_time
             bucket_index = find_bucket_index(histogram_buckets_s, task_time_delta)
             self.task_completion_time[bucket_index] += 1
 
@@ -997,7 +1028,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # NOTE: This is used for Issue Detection
         self._op_task_duration_stats.add_duration(task_time_delta)
 
-        self.task_completion_time_without_backpressure += task_info.cum_block_gen_time
+        self.task_completion_time_excl_backpressure_s += task_info.cum_block_gen_time
         inputs = self._running_tasks[task_index].inputs
         self.num_task_inputs_processed += len(inputs)
         total_input_size = inputs.size_bytes()

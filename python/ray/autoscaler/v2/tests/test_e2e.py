@@ -654,7 +654,7 @@ assert all(ray.get(results))
         nodes = {node["NodeID"]: node["Labels"] for node in ray.nodes()}
         task_selectors = {
             "task_0": {"accelerator-type": "A100"},
-            "task_1": {"region": "in(us-east1,me-central1)"},
+            "task_1": {"region": "in(me-central1,us-east1)"},
             "task_2": {"accelerator-type": "!in(A100,TPU)"},
             "task_3": {"market-type": "!spot"},
         }
@@ -799,7 +799,7 @@ ray.get([a.ready.remote() for a in actors])
         nodes = {node["NodeID"]: node["Labels"] for node in ray.nodes()}
         actor_selectors = {
             "actor_0": {"accelerator-type": "A100"},
-            "actor_1": {"region": "in(us-east1,me-central1)"},
+            "actor_1": {"region": "in(me-central1,us-east1)"},
             "actor_2": {"accelerator-type": "!in(A100,TPU)"},
             "actor_3": {"market-type": "!spot"},
         }
@@ -900,9 +900,22 @@ def test_pg_scheduled_on_node_with_bundle_label_selector(autoscaler_v2):
         ray.get(pg.ready())
 
         # Validate the number and types of the auto-scaled nodes are as expected.
-        status = get_cluster_status(gcs_address)
-        assert len(status.active_nodes) == expected_nodes
+        # Add a wait here to avoid flaky test behavior.
+        def check_nodes_active():
+            status = get_cluster_status(gcs_address)
+            return len(status.active_nodes) == expected_nodes
 
+        try:
+            wait_for_condition(check_nodes_active, timeout=30, retry_interval_ms=500)
+        except Exception as e:
+            latest_status = get_cluster_status(gcs_address)
+            raise AssertionError(
+                f"Timed out waiting for {expected_nodes} active nodes. "
+                f"Got: {len(latest_status.active_nodes)}. "
+                f"Full status: {latest_status}"
+            ) from e
+
+        status = get_cluster_status(gcs_address)
         actual_node_types = {node.ray_node_type_name for node in status.active_nodes}
         expected_node_types = {"a100_node", "tpu_node"}
         assert actual_node_types == expected_node_types

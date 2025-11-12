@@ -5,8 +5,8 @@ import ray
 from ray import tune
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.tune import Callback
-from ray.tune.experiment import Trial
 from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.experiment import Trial
 from ray.tune.result import TRAINING_ITERATION
 
 trial_executor = None
@@ -126,7 +126,8 @@ class TestPlacementGroups(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

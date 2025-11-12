@@ -150,9 +150,7 @@ def test_wait_for_actor_ref_deleted_rpc_retry_and_idempotency(
     del actor
 
     def verify_actor_ref_deleted():
-        actor_info = ray._private.state.state.global_state_accessor.get_actor_info(
-            actor_id
-        )
+        actor_info = ray._private.state.state.get_actor_info(actor_id)
         if actor_info is None:
             return False
         actor_info = gcs_pb2.ActorTableData.FromString(actor_info)
@@ -205,6 +203,33 @@ def test_cancel_remote_task_rpc_retry_and_idempotency(
     ray.cancel(inner)
     with pytest.raises(TaskCancelledError):
         ray.get(inner, timeout=10)
+
+
+def test_double_borrowing_with_rpc_failure(monkeypatch, shutdown_only):
+    """Regression test for https://github.com/ray-project/ray/issues/57997"""
+    monkeypatch.setenv(
+        "RAY_testing_rpc_failure", "CoreWorkerService.grpc_client.PushTask=3:0:100"
+    )
+
+    ray.init()
+
+    @ray.remote(max_task_retries=-1, max_restarts=-1)
+    class Actor:
+        def __init__(self, objs):
+            # Actor is a borrower of obj
+            self.obj = objs[0]
+
+        def test(self):
+            # Return the borrowed object inside the list
+            # so the caller is a borrower as well.
+            # This actor task will be retried since
+            # the first PushTask RPC response will be lost.
+            return [self.obj]
+
+    obj = ray.put(31)
+    actor = Actor.remote([obj])
+    result = ray.get(actor.test.remote())
+    assert ray.get(result[0]) == 31
 
 
 if __name__ == "__main__":

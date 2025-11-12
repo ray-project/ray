@@ -327,6 +327,11 @@ class _StatsActor:
             description="Seconds spent in iterator initialization code",
             tag_keys=iter_tag_keys,
         )
+        self.iter_get_ref_bundles_s = Gauge(
+            "data_iter_get_ref_bundles_seconds",
+            description="Seconds spent getting RefBundles from the dataset iterator",
+            tag_keys=iter_tag_keys,
+        )
         self.iter_get_s = Gauge(
             "data_iter_get_seconds",
             description="Seconds spent in ray.get() while resolving block references",
@@ -565,6 +570,7 @@ class _StatsActor:
         tags = self._create_tags(dataset_tag)
 
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
+        self.iter_get_ref_bundles_s.set(stats.iter_get_ref_bundles_s.get(), tags)
         self.iter_get_s.set(stats.iter_get_s.get(), tags)
         self.iter_next_batch_s.set(stats.iter_next_batch_s.get(), tags)
         self.iter_format_batch_s.set(stats.iter_format_batch_s.get(), tags)
@@ -1098,6 +1104,7 @@ class DatasetStats:
 
         # Iteration stats, filled out if the user iterates over the dataset.
         self.iter_wait_s: Timer = Timer()
+        self.iter_get_ref_bundles_s: Timer = Timer()
         self.iter_get_s: Timer = Timer()
         self.iter_next_batch_s: Timer = Timer()
         self.iter_format_batch_s: Timer = Timer()
@@ -1146,6 +1153,7 @@ class DatasetStats:
 
         iter_stats = IterStatsSummary(
             self.iter_wait_s,
+            self.iter_get_ref_bundles_s,
             self.iter_get_s,
             self.iter_next_batch_s,
             self.iter_format_batch_s,
@@ -1843,6 +1851,8 @@ class OperatorStatsSummary:
 class IterStatsSummary:
     # Time spent in actor based prefetching, in seconds.
     wait_time: Timer
+    # Time spent getting RefBundles from the dataset iterator, in seconds
+    get_ref_bundles_time: Timer
     # Time spent in `ray.get()`, in seconds
     get_time: Timer
     # Time spent in batch building, in seconds
@@ -1880,6 +1890,7 @@ class IterStatsSummary:
             self.block_time.get()
             or self.time_to_first_batch.get()
             or self.total_time.get()
+            or self.get_ref_bundles_time.get()
             or self.get_time.get()
             or self.next_time.get()
             or self.format_time.get()
@@ -1911,6 +1922,13 @@ class IterStatsSummary:
             out += (
                 "* Batch iteration time breakdown (summed across prefetch threads):\n"
             )
+            if self.get_ref_bundles_time.get():
+                out += "    * In get RefBundles: {} min, {} max, {} avg, {} total\n".format(
+                    fmt(self.get_ref_bundles_time.min()),
+                    fmt(self.get_ref_bundles_time.max()),
+                    fmt(self.get_ref_bundles_time.avg()),
+                    fmt(self.get_ref_bundles_time.get()),
+                )
             if self.get_time.get():
                 out += "    * In ray.get(): {} min, {} max, {} avg, {} total\n".format(
                     fmt(self.get_time.min()),
@@ -1973,6 +1991,7 @@ class IterStatsSummary:
         return (
             f"IterStatsSummary(\n"
             f"{indent}   wait_time={fmt(self.wait_time.get()) or None},\n"
+            f"{indent}   get_ref_bundles_time={fmt(self.get_ref_bundles_time.get()) or None},\n"
             f"{indent}   get_time={fmt(self.get_time.get()) or None},\n"
             f"{indent}   iter_blocks_local={self.iter_blocks_local or None},\n"
             f"{indent}   iter_blocks_remote={self.iter_blocks_remote or None},\n"
