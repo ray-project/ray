@@ -32,12 +32,10 @@ bool AuthenticationTokenValidator::ValidateToken(
     const std::optional<AuthenticationToken> &expected_token,
     const AuthenticationToken &provided_token) {
   if (GetAuthenticationMode() == AuthenticationMode::TOKEN) {
-    if (!expected_token.has_value() || expected_token->empty()) {
-      return true;  // No auth required on server side
-    }
-
     return expected_token->Equals(provided_token);
-  } else if (GetAuthenticationMode() == AuthenticationMode::K8S) {
+  }
+
+  if (GetAuthenticationMode() == AuthenticationMode::K8S) {
     std::call_once(k8s::k8s_client_config_flag, k8s::InitK8sClientConfig);
     if (!k8s::k8s_client_initialized) {
       RAY_LOG(WARNING) << "Kubernetes client not initialized, K8s authentication failed.";
@@ -71,7 +69,7 @@ bool AuthenticationTokenValidator::ValidateToken(
       std::lock_guard<std::mutex> lock(k8s_token_cache_mutex_);
       k8s_token_cache_[provided_token] = {is_allowed,
                                           std::chrono::steady_clock::now() + kCacheTTL};
-      RAY_LOG(DEBUG) << "K8s token validated and saved to cached.";
+      RAY_LOG(DEBUG) << "K8s token validated and saved to cache.";
     }
 
     return is_allowed;

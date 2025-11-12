@@ -41,7 +41,7 @@ def validate_authentication_token(provided_token: str) -> bool:
     """
     cdef optional[CAuthenticationToken] expected_opt = CAuthenticationTokenLoader.instance().GetToken()
 
-    if not expected_opt.has_value():
+    if not expected_opt.has_value() and get_authentication_mode() == CAuthenticationMode.TOKEN:
         return False
 
     # Parse provided token from Bearer format

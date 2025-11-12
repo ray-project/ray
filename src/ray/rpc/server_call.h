@@ -344,9 +344,12 @@ class ServerCallImpl : public ServerCall {
   /// Returns true if authentication succeeds or is not required.
   /// Returns false if authentication is required but fails.
   bool ValidateAuthenticationToken() {
+    // If auth token is empty, we assume auth is not required.
+    // The only exception is when auth mode is 'k8s' where the server
+    // auth token can be empty.
     if ((!auth_token_.has_value() || auth_token_->empty()) &&
-        GetAuthenticationMode() == AuthenticationMode::DISABLED) {
-      return true;  // No auth required
+        GetAuthenticationMode() != AuthenticationMode::K8S) {
+      return true;
     }
 
     const auto &metadata = context_.client_metadata();
