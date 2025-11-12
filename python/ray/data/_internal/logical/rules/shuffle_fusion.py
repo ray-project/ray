@@ -67,7 +67,7 @@ def _disconnect_op_from_dag(curr_op: Operator):
         After:  prev_op -> next_op
 
     Args:
-        op: The operator to remove from the DAG
+        curr_op: The operator to remove from the DAG
     """
     next_ops = curr_op.output_dependencies
     prev_ops = curr_op.input_dependencies

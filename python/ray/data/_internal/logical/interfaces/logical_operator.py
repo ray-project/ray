@@ -110,6 +110,9 @@ class LogicalOperatorHasShuffleKeys(LogicalOperator):
     """Mixin for operators containing shuffle keys"""
 
     def get_partition_keys(self) -> Optional[List[str]]:
+        return None
+
+
 class LogicalOperatorSupportsPredicatePushdown(LogicalOperator):
     """Mixin for reading operators supporting predicate pushdown"""
 
