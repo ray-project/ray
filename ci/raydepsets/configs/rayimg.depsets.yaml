@@ -12,7 +12,6 @@ build_arg_sets:
     PYTHON_VERSION: "3.12"
     PYTHON_SHORT: "312"
 
-
 depsets:
   - name: ray_img_depset_${PYTHON_SHORT}
     requirements:
@@ -76,6 +75,26 @@ depsets:
       - py310
       - py311
       - py312
+
+  - name: ray_base_extra_testdeps_gpu_${PYTHON_SHORT}
+    operation: expand
+    requirements:
+      - release/ray_release/byod/requirements_byod_gpu_${PYTHON_VERSION}.in
+      - docker/base-deps/requirements.in
+      - docker/base-extra/requirements.in
+    constraints:
+      - /tmp/ray-deps/requirements_compiled.txt
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    output: release/ray_release/byod/ray_base_extra_testdeps_gpu_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --unsafe-package ray
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
 
   - name: ray_ml_base_extra_testdeps_${PYTHON_SHORT}
     operation: expand
