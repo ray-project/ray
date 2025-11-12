@@ -12,12 +12,12 @@ For example, passing a CUDA ``torch.Tensor`` from one Ray task to another would 
 *Ray Direct Transport (RDT)* is a new feature that allows Ray to store and pass objects directly between Ray actors.
 This feature augments the familiar Ray :class:`ObjectRef <ray.ObjectRef>` API by:
 
-- Keeping GPU data in GPU memory until a transfer is needed
+- Keeping GPU data in GPU memory until a transfer is necessary
 - Avoiding expensive serialization and copies to and from the Ray object store
 - Using efficient data transports like collective communication libraries (`Gloo <https://github.com/pytorch/gloo>`__ or `NCCL <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`__) or point-to-point RDMA (via `NVIDIA's NIXL <https://github.com/ai-dynamo/nixl>`__) to transfer data directly between devices, including both CPU and GPUs
 
 .. note::
-   RDT is currently in **alpha**. Not all Ray Core APIs are supported yet. Future releases may introduce breaking API changes. See the :ref:`limitations <limitations>` section for more details.
+   RDT is currently in **alpha** and doesn't support all Ray Core APIs yet. Future releases may introduce breaking API changes. See the :ref:`limitations <limitations>` section for more details.
 
 Getting started
 ===============
@@ -290,12 +290,6 @@ For collective-based tensor transports (Gloo and NCCL):
 * Similarly, the process that created the collective group cannot serialize and pass RDT :class:`ray.ObjectRefs <ray.ObjectRef>` to other Ray tasks or actors. Instead, the :class:`ray.ObjectRef`\s can only be passed as direct arguments to other actor tasks, and those actors must be in the same collective group.
 * Each actor can only be in one collective group per tensor transport at a time.
 * No support for :func:`ray.put <ray.put>`.
-* If a system-level error occurs during a collective operation, the collective group will be destroyed and the actors will no longer be able to communicate via the collective group. Note that application-level errors, i.e. exceptions raised by user code, will not destroy the collective group and will instead be propagated to any dependent task(s), as for non-RDT Ray objects. System-level errors include:
-
-   * Errors internal to the third-party transport, e.g., NCCL network errors
-   * Actor and node failure
-   * Tensors returned by the user that are located on an unsupported device, e.g., a CPU tensor when using NCCL
-   * Any unexpected system bugs
 
 
 Due to a known issue, for NIXL, we currently do not support storing different GPU objects at the same actor, where the objects contain an overlapping but not equal set of tensors. To support this pattern, ensure that the first `ObjectRef` has gone out of scope before storing the same tensor(s) again in a second object.
@@ -304,6 +298,23 @@ Due to a known issue, for NIXL, we currently do not support storing different GP
    :language: python
    :start-after: __nixl_limitations_start__
    :end-before: __nixl_limitations_end__
+
+Error handling
+==============
+
+* Application-level errors, i.e. exceptions raised by user code, will not destroy the collective group and will instead be propagated to any dependent task(s), as for non-RDT Ray objects.
+
+* If a system-level error occurs during a GLOO or NCCL collective operation, the collective group will be destroyed and the actors will be killed to prevent any hanging.
+
+* If a system-level error occurs during a NIXL transfer, Ray or NIXL will abort the transfer with an exception and Ray will raise the exception in the dependent task or on the ray.get on the NIXL ref.
+
+* System-level errors include:
+   * Errors internal to the third-party transport, e.g., NCCL network errors
+   * Actor or node failures
+   * Transport errors due to tensor device / transport mismatches, e.g., a CPU tensor when using NCCL
+   * Ray object fetch timeouts (can be overridden by setting the ``RAY_fetch_fail_timeout_milliseconds`` environment variable)
+   * Any unexpected system bugs
+
 
 Advanced: RDT Internals
 =======================
