@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 @serve.deployment(num_replicas=1)
-class DPRankAssigner:
+class _DPRankAssigner:
     """
     Data Parallel Rank Assigner.
 

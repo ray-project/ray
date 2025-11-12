@@ -151,6 +151,8 @@ class CoreWorkerTest : public ::testing::Test {
         object_info_publisher.get(),
         fake_object_info_subscriber.get(),
         [](const NodeID &) { return false; },
+        fake_owned_object_count_gauge_,
+        fake_owned_object_size_gauge_,
         false);
 
     // Mock reference counter as enabled
@@ -225,7 +227,7 @@ class CoreWorkerTest : public ::testing::Test {
         lease_request_rate_limiter,
         [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
         boost::asio::steady_timer(io_service_),
-        fake_scheduler_placement_time_s_histogram_);
+        fake_scheduler_placement_time_ms_histogram_);
 
     auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *core_worker_client_pool,
@@ -301,7 +303,9 @@ class CoreWorkerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_task_by_state_gauge_;
   ray::observability::FakeGauge fake_actor_by_state_gauge_;
   ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
-  ray::observability::FakeHistogram fake_scheduler_placement_time_s_histogram_;
+  ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
+  ray::observability::FakeGauge fake_owned_object_count_gauge_;
+  ray::observability::FakeGauge fake_owned_object_size_gauge_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
 
   // Controllable time for testing publisher timeouts
@@ -618,7 +622,9 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   ReferenceCounter ref_counter(addr,
                                /*object_info_publisher=*/nullptr,
                                /*object_info_subscriber=*/nullptr,
-                               is_node_dead);
+                               is_node_dead,
+                               *std::make_shared<ray::observability::FakeGauge>(),
+                               *std::make_shared<ray::observability::FakeGauge>());
 
   // Fake plasma client that records Get calls.
   std::vector<std::vector<ObjectID>> observed_batches;

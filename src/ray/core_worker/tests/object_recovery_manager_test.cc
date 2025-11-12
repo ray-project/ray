@@ -28,6 +28,7 @@
 #include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
@@ -137,6 +138,8 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
             publisher_.get(),
             subscriber_.get(),
             /*is_node_dead=*/[](const NodeID &) { return false; },
+            *std::make_shared<ray::observability::FakeGauge>(),
+            *std::make_shared<ray::observability::FakeGauge>(),
             /*lineage_pinning_enabled=*/lineage_enabled)),
         manager_(
             rpc::Address(),

@@ -24,7 +24,7 @@ namespace ray {
 namespace rpc {
 
 AuthenticationMode GetAuthenticationMode() {
-  std::string auth_mode_lower = absl::AsciiStrToLower(RayConfig::instance().auth_mode());
+  std::string auth_mode_lower = absl::AsciiStrToLower(RayConfig::instance().AUTH_MODE());
 
   if (auth_mode_lower == "token") {
     return AuthenticationMode::TOKEN;
