@@ -140,10 +140,13 @@ export const darkTheme = createTheme(basicTheme, {
     error: {
       main: "#EF5350",
     },
+    warning: {
+      main: "#FF8C1A",
+    },
     text: {
       primary: "#E8EAED",
       secondary: "#9AA0A6",
-      disabled: "#5F6368",
+      disabled: "#8A8E93",
     },
     background: {
       paper: "#1A1A1A",

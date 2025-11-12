@@ -190,12 +190,12 @@ export const SearchTimezone = ({
       renderInput={(params) => (
         <TextField
           {...params}
-          sx={{
+          sx={(theme) => ({
             width: 120,
             "& .MuiOutlinedInput-notchedOutline": {
-              borderColor: "#D2DCE6",
+              borderColor: theme.palette.divider,
             },
-          }}
+          })}
           placeholder={curUtc}
         />
       )}

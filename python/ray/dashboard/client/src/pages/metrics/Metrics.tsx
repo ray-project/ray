@@ -177,7 +177,7 @@ export const Metrics = () => {
       ) : (
         <React.Fragment>
           <Paper
-            sx={{
+            sx={(theme) => ({
               position: "sticky",
               top: MAIN_NAV_HEIGHT,
               width: "100%",
@@ -185,10 +185,10 @@ export const Metrics = () => {
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
-              boxShadow: "0px 1px 0px #D2DCE6",
+              boxShadow: `0px 1px 0px ${theme.palette.divider}`,
               zIndex: 1,
               flexShrink: 0,
-            }}
+            })}
           >
             <Tabs
               value={selectedTab}

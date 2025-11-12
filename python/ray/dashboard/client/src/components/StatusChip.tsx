@@ -1,4 +1,4 @@
-import { Box, Color } from "@mui/material";
+import { Box, Color, useTheme } from "@mui/material";
 import { blue, blueGrey, cyan, green, red } from "@mui/material/colors";
 import React, { CSSProperties, ReactNode } from "react";
 import { TaskStatus } from "../pages/job/hook/useJobProgress";
@@ -12,10 +12,13 @@ import {
   ServeSystemActorStatus,
 } from "../type/serve";
 
-const orange = "#DB6D00";
-const grey = "#5F6469";
+// Use theme-aware colors for better accessibility
+const getStatusColors = (themeMode: "light" | "dark") => ({
+  orange: themeMode === "dark" ? "#FF8C1A" : "#DB6D00",
+  grey: themeMode === "dark" ? "#8A8F94" : "#5F6469",
+});
 
-const colorMap = {
+const getColorMap = (orange: string, grey: string) => ({
   node: {
     ALIVE: green,
     DEAD: grey,
@@ -88,7 +91,7 @@ const colorMap = {
   [key: string]: {
     [key: string]: Color | string;
   };
-};
+});
 
 const typeMap = {
   deps: blue,
@@ -106,6 +109,10 @@ export type StatusChipProps = {
 };
 
 export const StatusChip = ({ type, status, suffix, icon }: StatusChipProps) => {
+  const theme = useTheme();
+  const { orange, grey } = getStatusColors(theme.palette.mode);
+  const colorMap = getColorMap(orange, grey);
+
   let color: Color | string = blueGrey;
 
   if (typeMap[type]) {
