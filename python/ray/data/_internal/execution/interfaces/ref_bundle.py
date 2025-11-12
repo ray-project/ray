@@ -6,7 +6,6 @@ from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 
 import ray
 from .common import NodeIdStr
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data.block import Block, BlockAccessor, BlockMetadata, Schema
 from ray.data.context import DataContext
@@ -278,8 +277,10 @@ class RefBundle:
         merged_slices = list(itertools.chain(*[bundle.slices for bundle in bundles]))
         return cls(
             blocks=tuple(merged_blocks),
-            schema=bundles[0].schema,
-            owns_blocks=False,
+            schema=bundles[0].schema,  # Assume all bundles have the same schema
+            owns_blocks=bundles[
+                0
+            ].owns_blocks,  # Assume all bundles have the same ownership
             slices=merged_slices,
         )
 
@@ -335,15 +336,14 @@ def _iter_sliced_blocks(
     slices: List[BlockSlice],
 ) -> Iterator[Block]:
     blocks_list = list(blocks)
-    builder = DelegatingBlockBuilder()
     for block, block_slice in zip(blocks_list, slices):
         accessor = BlockAccessor.for_block(block)
         start = block_slice.start_offset
         end = block_slice.end_offset
+        assert start <= end, "start must be less than end"
+        assert start >= 0, "start must be non-negative"
+        assert (
+            end <= accessor.num_rows()
+        ), "end must be less than or equal to the number of rows in the block"
 
-        if start == 0 and end >= accessor.num_rows():
-            builder.add_block(block)
-        else:
-            builder.add_block(accessor.slice(start, end, copy=False))
-
-    yield builder.build()
+        yield accessor.slice(start, end, copy=False)

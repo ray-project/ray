@@ -195,11 +195,13 @@ def test_slice_ref_bundle_with_existing_slices():
     assert consumed.slices == [
         BlockSlice(start_offset=2, end_offset=9),
     ]
+    assert consumed.size_bytes() == 70
     assert remaining.num_rows() == 4
     assert remaining.slices == [
         BlockSlice(start_offset=9, end_offset=10),
         BlockSlice(start_offset=0, end_offset=3),
     ]
+    assert remaining.size_bytes() == 40
 
 
 def test_slice_ref_bundle_invalid_rows():

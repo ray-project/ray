@@ -1,4 +1,5 @@
 from collections import deque
+from dataclasses import replace
 from typing import Deque, List, Tuple
 
 from ray.data._internal.execution.interfaces import BlockSlice, RefBundle
@@ -56,18 +57,14 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
                 self._total_pending_rows += remaining_bundle.num_rows()
 
     def add_bundle(self, ref_bundle: RefBundle):
-        schema = ref_bundle.schema
-
         self._total_pending_rows += ref_bundle.num_rows()
         self._pending_bundles.append(
-            RefBundle(
-                blocks=tuple(ref_bundle.blocks),
+            replace(
+                ref_bundle,
                 slices=[
                     BlockSlice(start_offset=0, end_offset=metadata.num_rows)
                     for metadata in ref_bundle.metadata
                 ],
-                schema=schema,
-                owns_blocks=False,
             )
         )
         self._try_build_ready_bundle()
