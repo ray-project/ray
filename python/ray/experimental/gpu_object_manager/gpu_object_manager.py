@@ -203,14 +203,14 @@ class GPUObjectManager:
                 # This is dead code until we implement a NCCL abort since NIXL
                 # is the only abortable transport for now and is one-sided.
                 ref_info.src_actor.__ray_call__.options(
-                    concurrency_group="_ray_system_error"
+                    concurrency_group="_ray_system_rdt_error"
                 ).remote(
                     __ray_abort_transport__,
                     ref_info.obj_id,
                     ref_info.communicator_meta,
                 )
             ref_info.dst_actor.__ray_call__.options(
-                concurrency_group="_ray_system_error"
+                concurrency_group="_ray_system_rdt_error"
             ).remote(
                 __ray_abort_transport__,
                 ref_info.obj_id,
