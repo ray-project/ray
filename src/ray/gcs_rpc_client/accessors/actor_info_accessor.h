@@ -27,7 +27,7 @@
 namespace ray {
 namespace gcs {
 
-using SubscribeOperation = std::function<Status(const StatusCallback &done)>;
+using SubscribeOperation = std::function<void(const StatusCallback &done)>;
 using FetchDataOperation = std::function<void(const StatusCallback &done)>;
 
 /**
@@ -195,19 +195,17 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
     @param actor_id The ID of actor to be subscribed to.
     @param subscribe Callback that will be called each time when the actor is updated.
     @param done Callback that will be called when subscription is complete.
-    @return Status
    */
-  Status AsyncSubscribe(const ActorID &actor_id,
-                        const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-                        const StatusCallback &done) override;
+  void AsyncSubscribe(const ActorID &actor_id,
+                      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+                      const StatusCallback &done) override;
 
   /**
     Cancel subscription to an actor.
 
     @param actor_id The ID of the actor to be unsubscribed to.
-    @return Status
    */
-  Status AsyncUnsubscribe(const ActorID &actor_id) override;
+  void AsyncUnsubscribe(const ActorID &actor_id) override;
 
   /**
     Reestablish subscription.

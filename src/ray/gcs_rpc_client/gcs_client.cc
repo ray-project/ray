@@ -179,10 +179,10 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
   publisher_accessor_ = std::make_unique<PublisherAccessor>(this);
 
   resubscribe_func_ = [this]() {
+    RAY_LOG(INFO) << "Resubscribing to GCS tables.";
     job_accessor_->AsyncResubscribe();
     actor_accessor_->AsyncResubscribe();
     node_accessor_->AsyncResubscribe();
-    node_resource_accessor_->AsyncResubscribe();
     worker_accessor_->AsyncResubscribe();
   };
 

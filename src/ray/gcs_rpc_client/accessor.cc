@@ -64,7 +64,7 @@ void JobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
       });
 }
 
-Status JobInfoAccessor::AsyncSubscribeAll(
+void JobInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
@@ -86,9 +86,9 @@ Status JobInfoAccessor::AsyncSubscribeAll(
                 /*timeout_ms=*/-1);
   };
   subscribe_operation_ = [this, subscribe](const StatusCallback &done_callback) {
-    return client_impl_->GetGcsSubscriber().SubscribeAllJobs(subscribe, done_callback);
+    client_impl_->GetGcsSubscriber().SubscribeAllJobs(subscribe, done_callback);
   };
-  return subscribe_operation_(
+  subscribe_operation_(
       [this, done](const Status &status) { fetch_all_data_operation_(done); });
 }
 
@@ -100,9 +100,9 @@ void JobInfoAccessor::AsyncResubscribe() {
   };
 
   if (subscribe_operation_ != nullptr) {
-    RAY_CHECK_OK(subscribe_operation_([this, fetch_all_done](const Status &) {
+    subscribe_operation_([this, fetch_all_done](const Status &) {
       fetch_all_data_operation_(fetch_all_done);
-    }));
+    });
   }
 }
 
@@ -161,18 +161,17 @@ void JobInfoAccessor::AsyncGetNextJobID(const ItemCallback<JobID> &callback) {
 
 NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl) : client_impl_(client_impl) {}
 
-void NodeInfoAccessor::RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
+void NodeInfoAccessor::RegisterSelf(rpc::GcsNodeInfo &&local_node_info,
                                     const StatusCallback &callback) {
   auto node_id = NodeID::FromBinary(local_node_info.node_id());
   RAY_LOG(DEBUG).WithField(node_id)
       << "Registering node info, address is = " << local_node_info.node_manager_address();
   RAY_CHECK(local_node_info.state() == rpc::GcsNodeInfo::ALIVE);
   rpc::RegisterNodeRequest request;
-  request.mutable_node_info()->CopyFrom(local_node_info);
+  *request.mutable_node_info() = std::move(local_node_info);
   client_impl_->GetGcsRpcClient().RegisterNode(
       std::move(request),
-      [node_id, local_node_info, callback](const Status &status,
-                                           rpc::RegisterNodeReply &&) {
+      [node_id, callback](const Status &status, rpc::RegisterNodeReply &&) {
         if (callback) {
           callback(status);
         }
@@ -568,9 +567,7 @@ void NodeInfoAccessor::AsyncResubscribe() {
         /*done=*/
         [this](const Status &) {
           fetch_node_data_operation_([](const Status &) {
-            RAY_LOG(INFO)
-                << "Finished fetching all node information from gcs server after gcs "
-                   "server or pub-sub server is restarted.";
+            RAY_LOG(INFO) << "Finished fetching all node information for resubscription.";
           });
         });
   }
@@ -581,10 +578,8 @@ void NodeInfoAccessor::AsyncResubscribe() {
         /*done=*/
         [this](const Status &) {
           fetch_node_address_and_liveness_data_operation_([](const Status &) {
-            RAY_LOG(INFO)
-                << "Finished fetching all node address and liveness information from gcs "
-                   "server after gcs "
-                   "server or pub-sub server is restarted.";
+            RAY_LOG(INFO) << "Finished fetching all node address and liveness "
+                             "information for resubscription.";
           });
         });
   }
@@ -631,16 +626,6 @@ void NodeResourceInfoAccessor::AsyncGetDrainingNodes(
         }
         callback(std::move(draining_nodes));
       });
-}
-
-void NodeResourceInfoAccessor::AsyncResubscribe() {
-  RAY_LOG(DEBUG) << "Reestablishing subscription for node resource info.";
-  if (subscribe_resource_operation_ != nullptr) {
-    RAY_CHECK_OK(subscribe_resource_operation_(nullptr));
-  }
-  if (subscribe_batch_resource_usage_operation_ != nullptr) {
-    RAY_CHECK_OK(subscribe_batch_resource_usage_operation_(nullptr));
-  }
 }
 
 void NodeResourceInfoAccessor::AsyncGetAllResourceUsage(
@@ -707,14 +692,13 @@ void ErrorInfoAccessor::AsyncReportJobError(rpc::ErrorTableData data) {
 WorkerInfoAccessor::WorkerInfoAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
-Status WorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
+void WorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
     const ItemCallback<rpc::WorkerDeltaData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   subscribe_operation_ = [this, subscribe](const StatusCallback &done_callback) {
-    return client_impl_->GetGcsSubscriber().SubscribeAllWorkerFailures(subscribe,
-                                                                       done_callback);
+    client_impl_->GetGcsSubscriber().SubscribeAllWorkerFailures(subscribe, done_callback);
   };
-  return subscribe_operation_(done);
+  subscribe_operation_(done);
 }
 
 void WorkerInfoAccessor::AsyncResubscribe() {
@@ -723,7 +707,7 @@ void WorkerInfoAccessor::AsyncResubscribe() {
   RAY_LOG(DEBUG) << "Reestablishing subscription for worker failures.";
   // The pub-sub server has restarted, we need to resubscribe to the pub-sub server.
   if (subscribe_operation_ != nullptr) {
-    RAY_CHECK_OK(subscribe_operation_(nullptr));
+    subscribe_operation_(nullptr);
   }
 }
 
@@ -834,7 +818,7 @@ Status PlacementGroupInfoAccessor::SyncCreatePlacementGroup(
   rpc::CreatePlacementGroupReply reply;
   request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
   auto status = client_impl_->GetGcsRpcClient().SyncCreatePlacementGroup(
-      std::move(request), &reply, gcs::GetGcsTimeoutMs());
+      std::move(request), &reply, GetGcsTimeoutMs());
   if (status.ok()) {
     RAY_LOG(DEBUG).WithField(placement_group_spec.PlacementGroupId())
         << "Finished registering placement group.";
@@ -851,7 +835,7 @@ Status PlacementGroupInfoAccessor::SyncRemovePlacementGroup(
   rpc::RemovePlacementGroupReply reply;
   request.set_placement_group_id(placement_group_id.Binary());
   auto status = client_impl_->GetGcsRpcClient().SyncRemovePlacementGroup(
-      std::move(request), &reply, gcs::GetGcsTimeoutMs());
+      std::move(request), &reply, GetGcsTimeoutMs());
   return status;
 }
 
@@ -1225,7 +1209,7 @@ Status AutoscalerStateAccessor::RequestClusterResourceConstraint(
       auto *ls = new_resource_requests_by_count->mutable_request()->add_label_selectors();
       // Parse label_selector map to proto format.
       ray::LabelSelector label_selector(label_selectors[i]);
-      *ls = label_selector.ToProto();
+      label_selector.ToProto(ls);
     }
   }
 

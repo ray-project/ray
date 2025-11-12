@@ -183,9 +183,8 @@ class ActorInfoAccessorInterface {
     @param actor_id The ID of actor to be subscribed to.
     @param subscribe Callback that will be called each time when the actor is updated.
     @param done Callback that will be called when subscription is complete.
-    @return Status
    */
-  virtual Status AsyncSubscribe(
+  virtual void AsyncSubscribe(
       const ActorID &actor_id,
       const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const StatusCallback &done) = 0;
@@ -194,9 +193,8 @@ class ActorInfoAccessorInterface {
     Cancel subscription to an actor.
 
     @param actor_id The ID of the actor to be unsubscribed to.
-    @return Status
    */
-  virtual Status AsyncUnsubscribe(const ActorID &actor_id) = 0;
+  virtual void AsyncUnsubscribe(const ActorID &actor_id) = 0;
 
   /**
     Reestablish subscription.

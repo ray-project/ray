@@ -96,7 +96,7 @@ class CoreWorkerTest : public ::testing::Test {
       return Status::OK();
     };
 
-    auto client_call_manager = std::make_unique<rpc::ClientCallManager>(
+    client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
         io_service_, /*record_stats=*/false, /*local_address=*/"");
 
     auto core_worker_client_pool =
@@ -167,7 +167,7 @@ class CoreWorkerTest : public ::testing::Test {
 
     auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
         std::make_unique<gcs::MockGcsClient>(),
-        std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager),
+        std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager_),
         "test_session");
 
     task_manager_ = std::make_shared<TaskManager>(
@@ -187,6 +187,7 @@ class CoreWorkerTest : public ::testing::Test {
         },
         mock_gcs_client_,
         fake_task_by_state_gauge_,
+        fake_total_lineage_bytes_gauge_,
         /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
@@ -222,7 +223,8 @@ class CoreWorkerTest : public ::testing::Test {
         JobID::Nil(),
         lease_request_rate_limiter,
         [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
-        boost::asio::steady_timer(io_service_));
+        boost::asio::steady_timer(io_service_),
+        fake_scheduler_placement_time_ms_histogram_);
 
     auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *core_worker_client_pool,
@@ -246,7 +248,6 @@ class CoreWorkerTest : public ::testing::Test {
     core_worker_ = std::make_shared<CoreWorker>(std::move(options),
                                                 std::move(worker_context),
                                                 io_service_,
-                                                std::move(client_call_manager),
                                                 std::move(core_worker_client_pool),
                                                 std::move(raylet_client_pool),
                                                 std::move(periodical_runner),
@@ -287,6 +288,7 @@ class CoreWorkerTest : public ::testing::Test {
   boost::thread io_thread_;
 
   rpc::Address rpc_address_;
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   ActorTaskSubmitter *actor_task_submitter_;
@@ -297,6 +299,8 @@ class CoreWorkerTest : public ::testing::Test {
   std::shared_ptr<CoreWorker> core_worker_;
   ray::observability::FakeGauge fake_task_by_state_gauge_;
   ray::observability::FakeGauge fake_actor_by_state_gauge_;
+  ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
+  ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
 
   // Controllable time for testing publisher timeouts

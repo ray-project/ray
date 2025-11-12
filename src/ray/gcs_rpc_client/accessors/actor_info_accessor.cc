@@ -254,7 +254,7 @@ void ActorInfoAccessor::AsyncReportActorOutOfScope(
       timeout_ms);
 }
 
-Status ActorInfoAccessor::AsyncSubscribe(
+void ActorInfoAccessor::AsyncSubscribe(
     const ActorID &actor_id,
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
@@ -279,30 +279,28 @@ Status ActorInfoAccessor::AsyncSubscribe(
 
   {
     absl::MutexLock lock(&mutex_);
-    resubscribe_operations_[actor_id] =
-        [this, actor_id, subscribe](const StatusCallback &subscribe_done) {
-          return context_->GetGcsSubscriber().SubscribeActor(
-              actor_id, subscribe, subscribe_done);
-        };
+    resubscribe_operations_[actor_id] = [this, actor_id, subscribe](
+                                            const StatusCallback &subscribe_done) {
+      context_->GetGcsSubscriber().SubscribeActor(actor_id, subscribe, subscribe_done);
+    };
     fetch_data_operations_[actor_id] = fetch_data_operation;
   }
 
-  return context_->GetGcsSubscriber().SubscribeActor(
+  context_->GetGcsSubscriber().SubscribeActor(
       actor_id, subscribe, [fetch_data_operation, done](const Status &) {
         fetch_data_operation(done);
       });
 }
 
-Status ActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
+void ActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
   RAY_LOG(DEBUG).WithField(actor_id).WithField(actor_id.JobId())
       << "Cancelling subscription to an actor";
-  auto status = context_->GetGcsSubscriber().UnsubscribeActor(actor_id);
+  context_->GetGcsSubscriber().UnsubscribeActor(actor_id);
   absl::MutexLock lock(&mutex_);
   resubscribe_operations_.erase(actor_id);
   fetch_data_operations_.erase(actor_id);
   RAY_LOG(DEBUG).WithField(actor_id).WithField(actor_id.JobId())
       << "Finished cancelling subscription to an actor";
-  return status;
 }
 
 void ActorInfoAccessor::AsyncResubscribe() {
@@ -312,7 +310,7 @@ void ActorInfoAccessor::AsyncResubscribe() {
   // server first, then fetch data from the GCS server.
   absl::MutexLock lock(&mutex_);
   for (auto &[actor_id, resubscribe_op] : resubscribe_operations_) {
-    RAY_CHECK_OK(resubscribe_op([this, id = actor_id](const Status &status) {
+    resubscribe_op([this, id = actor_id](const Status &status) {
       absl::MutexLock callback_lock(&mutex_);
       auto fetch_data_operation = fetch_data_operations_[id];
       // `fetch_data_operation` is called in the callback function of subscribe.
@@ -321,7 +319,7 @@ void ActorInfoAccessor::AsyncResubscribe() {
       if (fetch_data_operation != nullptr) {
         fetch_data_operation(nullptr);
       }
-    }));
+    });
   }
 }
 

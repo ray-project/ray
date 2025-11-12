@@ -4,15 +4,15 @@ from typing import Any, Dict
 import numpy as np
 
 from ray.rllib.algorithms.ppo.ppo import (
-    LEARNER_RESULTS_KL_KEY,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
+    LEARNER_RESULTS_KL_KEY,
     LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY,
     LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY,
     PPOConfig,
 )
 from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
+from ray.rllib.core.learner.learner import ENTROPY_KEY, POLICY_LOSS_KEY, VF_LOSS_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import override

@@ -17,7 +17,6 @@ from ci.raydepsets.workspace import Depset, Workspace
 
 DEFAULT_UV_FLAGS = """
     --generate-hashes
-    --strip-extras
     --unsafe-package setuptools
     --index-url https://pypi.org/simple
     --index-strategy unsafe-best-match
@@ -34,7 +33,7 @@ def cli():
 
 
 @cli.command()
-@click.argument("config_path", default="ci/raydepsets/configs/ray.depsets.yaml")
+@click.argument("config_path", default="ci/raydepsets/configs/*.depsets.yaml")
 @click.option(
     "--workspace-dir",
     default=None,
@@ -53,12 +52,18 @@ def cli():
     is_flag=True,
     help="Check the the compiled dependencies are valid. Only compatible with generating all dependency sets.",
 )
+@click.option(
+    "--all-configs",
+    is_flag=True,
+    help="Build all configs",
+)
 def build(
     config_path: str,
     workspace_dir: Optional[str],
     name: Optional[str],
     uv_cache_dir: Optional[str],
     check: Optional[bool],
+    all_configs: Optional[bool],
 ):
     """
     Build dependency sets from a config file.
@@ -70,6 +75,7 @@ def build(
         workspace_dir=workspace_dir,
         uv_cache_dir=uv_cache_dir,
         check=check,
+        build_all_configs=all_configs,
     )
     manager.execute(name)
     if check:
@@ -89,12 +95,13 @@ class DependencySetManager:
         workspace_dir: Optional[str] = None,
         uv_cache_dir: Optional[str] = None,
         check: Optional[bool] = False,
+        build_all_configs: Optional[bool] = False,
     ):
         self.workspace = Workspace(workspace_dir)
         self.config = self.workspace.load_configs(config_path)
         self.config_name = os.path.basename(config_path)
         self.build_graph = DiGraph()
-        self._build()
+        self._build(build_all_configs)
         self._uv_binary = _uv_binary()
         self._uv_cache_dir = uv_cache_dir
         if check:
@@ -139,7 +146,7 @@ class DependencySetManager:
         diffs = self.get_diffs()
         if len(diffs) > 0:
             raise RuntimeError(
-                "Lock files are not up to date. Please update lock files and push the changes.\n"
+                f"Lock files are not up to date for config: {self.config_name}. Please update lock files and push the changes.\n"
                 + "".join(diffs)
             )
         click.echo("Lock files are up to date.")
@@ -147,7 +154,7 @@ class DependencySetManager:
     def get_source_and_dest(self, output_path: str) -> tuple[Path, Path]:
         return (self.get_path(output_path), (Path(self.temp_dir) / output_path))
 
-    def _build(self):
+    def _build(self, build_all_configs: Optional[bool] = False):
         for depset in self.config.depsets:
             if depset.operation == "compile":
                 self.build_graph.add_node(
@@ -177,7 +184,9 @@ class DependencySetManager:
                 for depset_name in depset.depsets:
                     self.build_graph.add_edge(depset_name, depset.name)
             else:
-                raise ValueError(f"Invalid operation: {depset.operation}")
+                raise ValueError(
+                    f"Invalid operation: {depset.operation} for depset {depset.name} in config {depset.config_name}"
+                )
             if depset.pre_hooks:
                 for ind, hook in enumerate(depset.pre_hooks):
                     hook_name = f"{depset.name}_pre_hook_{ind+1}"
@@ -189,7 +198,8 @@ class DependencySetManager:
                         config_name=depset.config_name,
                     )
                     self.build_graph.add_edge(hook_name, depset.name)
-        self.subgraph_config_nodes()
+        if not build_all_configs:
+            self.subgraph_config_nodes()
 
     def subgraph_dependency_nodes(self, depset_name: str):
         dependency_nodes = networkx_ancestors(self.build_graph, depset_name)
@@ -232,24 +242,27 @@ class DependencySetManager:
         self, cmd: str, args: List[str], stdin: Optional[bytes] = None
     ) -> str:
         cmd = [self._uv_binary, "pip", cmd, *args]
-        click.echo(f"Executing command: {cmd}")
-        status = subprocess.run(cmd, cwd=self.workspace.dir, input=stdin)
+        click.echo(f"Executing command: {' '.join(cmd)}")
+        status = subprocess.run(
+            cmd, cwd=self.workspace.dir, input=stdin, capture_output=True
+        )
         if status.returncode != 0:
-            raise RuntimeError(f"Failed to execute command: {cmd}")
-        return status.stdout
+            raise RuntimeError(
+                f"Failed to execute command: {' '.join(cmd)} with error: {status.stderr.decode('utf-8')}"
+            )
+        return status.stdout.decode("utf-8")
 
     def execute_pre_hook(self, pre_hook: str):
         status = subprocess.run(
             shlex.split(pre_hook),
             cwd=self.workspace.dir,
             capture_output=True,
-            text=True,
         )
         if status.returncode != 0:
             raise RuntimeError(
-                f"Failed to execute pre_hook {pre_hook} with error: {status.stderr}",
+                f"Failed to execute pre_hook {pre_hook} with error: {status.stderr.decode('utf-8')}",
             )
-        click.echo(f"{status.stdout}")
+        click.echo(f"{status.stdout.decode('utf-8')}")
         click.echo(f"Executed pre_hook {pre_hook} successfully")
 
     def execute_depset(self, depset: Depset):
@@ -304,10 +317,10 @@ class DependencySetManager:
         if append_flags:
             args.extend(_flatten_flags(append_flags))
         if constraints:
-            for constraint in constraints:
+            for constraint in sorted(constraints):
                 args.extend(["-c", constraint])
         if requirements:
-            for requirement in requirements:
+            for requirement in sorted(requirements):
                 args.extend([requirement])
         if packages:
             # need to add a dash to process stdin
@@ -379,7 +392,7 @@ class DependencySetManager:
         for req in requirements:
             if req not in source_depset.requirements:
                 raise RuntimeError(
-                    f"Requirement {req} is not a subset of {source_depset.name}"
+                    f"Requirement {req} is not a subset of {source_depset.name} in config {source_depset.config_name}"
                 )
 
     def get_expanded_depset_requirements(

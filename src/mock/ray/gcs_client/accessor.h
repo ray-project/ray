@@ -29,7 +29,7 @@ class MockJobInfoAccessor : public JobInfoAccessor {
               AsyncMarkFinished,
               (const JobID &job_id, const StatusCallback &callback),
               (override));
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               AsyncSubscribeAll,
               ((const SubscribeCallback<JobID, rpc::JobTableData> &subscribe),
                const StatusCallback &done),
@@ -56,7 +56,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
  public:
   MOCK_METHOD(void,
               RegisterSelf,
-              (const rpc::GcsNodeInfo &local_node_info, const StatusCallback &callback),
+              (rpc::GcsNodeInfo && local_node_info, const StatusCallback &callback),
               (override));
   MOCK_METHOD(void,
               AsyncRegister,
@@ -129,7 +129,6 @@ class MockNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
               AsyncGetAllAvailableResources,
               (const MultiItemCallback<rpc::AvailableResources> &callback),
               (override));
-  MOCK_METHOD(void, AsyncResubscribe, (), (override));
   MOCK_METHOD(void,
               AsyncGetAllResourceUsage,
               (const ItemCallback<rpc::ResourceUsageBatchData> &callback),
@@ -169,7 +168,7 @@ namespace gcs {
 
 class MockWorkerInfoAccessor : public WorkerInfoAccessor {
  public:
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               AsyncSubscribeToWorkerFailures,
               (const ItemCallback<rpc::WorkerDeltaData> &subscribe,
                const StatusCallback &done),
