@@ -274,11 +274,11 @@ class BatchIterator:
 
     @contextmanager
     def yield_batch_context(self, batch: Batch):
-        if self._stats is None:
-            return
-        with self._stats.iter_user_s.timer():
+        with self._stats.iter_user_s.timer() if self._stats else nullcontext():
             yield
 
+        if self._stats is None:
+            return
         now = time.time()
         if (now - self._metrics_last_updated) > self.UPDATE_METRICS_INTERVAL_S:
             _StatsManager.update_iteration_metrics(self._stats, self._dataset_tag)
