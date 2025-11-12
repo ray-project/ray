@@ -51,7 +51,7 @@ Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
   int fd = open(mount_file_path.c_str(), O_RDONLY);
 
   if (fd == -1) {
-    mount_file_path = kFallbackMountsFilePath;
+    mount_file_path = fallback_mount_file_path_;
   }
 
   close(fd);
