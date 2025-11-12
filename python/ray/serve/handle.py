@@ -652,6 +652,13 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         To get results, iterate over the generator using `for` (outside deployments)
         or `async for` (inside deployments) instead of calling `.result()`.
 
+        Args:
+            timeout_s: Present for API parity with non-streaming responses; ignored.
+            _skip_asyncio_check: Present for API parity; ignored.
+
+        Returns:
+            NoReturn: This method always raises a TypeError.
+
         Raises:
             TypeError: Always raises, as this method is not supported for generators.
         """
