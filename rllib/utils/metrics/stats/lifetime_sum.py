@@ -48,7 +48,7 @@ class LifetimeSumStats(StatsBase):
 
     def initialize_throughput_reference_time(self, time: float) -> None:
         assert (
-            self.is_root
+            not self.is_leaf
         ), "initialize_throughput_reference_time can only be called on root stats"
         self._last_reduce_time = time
         self._last_restore_time = time
