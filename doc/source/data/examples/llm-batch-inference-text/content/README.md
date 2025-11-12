@@ -124,11 +124,13 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
         messages=[
             {
                 "role": "system",
-                "content": "You are a helpful assistant that reformats dates."
+                "content": "You are a helpful assistant that reformats dates to MM-DD-YYYY."
+                            "Be concise and output only the formatted date and nothing else."
+                            "For example, if we ask to reformat 'Subscription Date': datetime.date(2020, 11, 29)' then your answer should only be '2020-11-29'"
             },
             {
                 "role": "user",
-                "content": f"Convert this date:\n{row['Subscription Date']}\n\nas the format: MM-DD-YYYY"
+                "content": f"Convert this date:\n{row['Subscription Date']}."
             },
         ],
         sampling_params=dict(
@@ -244,20 +246,26 @@ The dashboard shows:
 
 ## Scale up to larger datasets
 
-Your Ray Data processing pipeline can easily scale up to process more data. This section demonstrates processing the full 2-million-row dataset.
+Your Ray Data processing pipeline can easily scale up to process more data. By default, this section processes the full 2-million-row dataset. You can control the dataset size through the `DATASET_LIMIT` environment variable.
 
 
 ```python
-# Process a larger dataset (100,000 rows).
-print("Processing the full dataset (2M rows)...")
+import os
+
+# Configure dataset size  (default: full 2M dataset).
+dataset_limit = int(os.environ.get("LARGE_DATASET_LIMIT", 2_000_000))
+print(f"Scaling dataset to: {dataset_limit:,} rows...")
+
+# Apply the limit to the dataset.
+ds_large = ds.limit(dataset_limit)
 
 # Repartition for better parallelism.
 num_partitions_large = 128
 print(f"Repartitioning dataset into {num_partitions_large} blocks...")
-ds = ds.repartition(num_blocks=num_partitions_large)
+ds_large = ds_large.repartition(num_blocks=num_partitions_large)
 
 # Run the same processor on the larger dataset.
-processed_large = processor(ds)
+processed_large = processor(ds_large)
 processed_large = processed_large.materialize()
 
 print(f"\nProcessed {processed_large.count()} rows successfully.")
