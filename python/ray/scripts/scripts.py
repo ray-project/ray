@@ -32,6 +32,7 @@ from ray._private.label_utils import (
     parse_node_labels_json,
     parse_node_labels_string,
 )
+from ray._private.log import format_returncode, setup_process_exit_logger
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.utils import (
     get_ray_client_dependency_error,
@@ -1130,17 +1131,11 @@ def start(
                 "exit with SIGTERM will be treated as graceful, thus NOT reported."
             )
             cli_logger.flush()
-            process_exit_logger = logging.getLogger("ray.process_exit")
-            process_exit_logger.setLevel(logging.INFO)
-            process_exit_logger.propagate = False
             try:
-                os.makedirs(os.path.dirname(process_exit_log_path), exist_ok=True)
-                if not process_exit_logger.handlers:
-                    h = logging.FileHandler(process_exit_log_path, encoding="utf-8")
-                    h.setFormatter(logging.Formatter(ray_constants.LOGGER_FORMAT))
-                    process_exit_logger.addHandler(h)
+                process_exit_logger = setup_process_exit_logger(process_exit_log_path)
             except Exception as e:
-                cli_logger.warning("Failed to init process-exit logger: {}", e)
+                cli_logger.warning("Failed to init process exit logger: {}", e)
+                process_exit_logger = None
 
         while True:
             time.sleep(1)
@@ -1176,11 +1171,7 @@ def start(
                             _tags={"exit code": str(process.returncode)},
                         )
                         rc = getattr(process, "returncode", None)
-                        rc_str = (
-                            f"{rc} (signal {-rc})"
-                            if isinstance(rc, int) and rc < 0
-                            else str(rc)
-                        )
+                        rc_str = format_returncode(rc)
                         lines_for_file.append(f"  {process_type} [exit code={rc_str}]")
                 try:
                     file_msg = (
@@ -1189,7 +1180,7 @@ def start(
                     )
                     process_exit_logger.error("%s", file_msg)
                 except Exception as e:
-                    cli_logger.warning("Failed to write process-exit log: {}", e)
+                    cli_logger.warning("Failed to write process exit log: {}", e)
 
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
