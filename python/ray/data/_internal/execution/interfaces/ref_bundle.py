@@ -268,6 +268,21 @@ class RefBundle:
 
         return sliced_bundle, remaining_bundle
 
+    @classmethod
+    def merge_ref_bundles(cls, bundles: List["RefBundle"]) -> "RefBundle":
+        assert bundles, "Cannot merge an empty list of RefBundles."
+        assert all(
+            bundle.slices is not None for bundle in bundles
+        ), "All bundles must have slices."
+        merged_blocks = list(itertools.chain(*[bundle.blocks for bundle in bundles]))
+        merged_slices = list(itertools.chain(*[bundle.slices for bundle in bundles]))
+        return cls(
+            blocks=tuple(merged_blocks),
+            schema=bundles[0].schema,
+            owns_blocks=False,
+            slices=merged_slices,
+        )
+
     def __eq__(self, other) -> bool:
         return self is other
 
@@ -332,18 +347,3 @@ def _iter_sliced_blocks(
             builder.add_block(accessor.slice(start, end, copy=False))
 
     yield builder.build()
-
-
-def _merge_ref_bundles(bundles: List[RefBundle]) -> RefBundle:
-    assert all(
-        bundle.slices is not None for bundle in bundles
-    ), "All bundles must have slices."
-    merged_blocks = list(itertools.chain(*[bundle.blocks for bundle in bundles]))
-    merged_slices = list(itertools.chain(*[bundle.slices for bundle in bundles]))
-    merged_bundle = RefBundle(
-        blocks=tuple(merged_blocks),
-        schema=bundles[0].schema,
-        owns_blocks=False,
-        slices=merged_slices,
-    )
-    return merged_bundle

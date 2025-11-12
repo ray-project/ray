@@ -4,9 +4,6 @@ import pytest
 
 from ray import ObjectRef
 from ray.data._internal.execution.interfaces import BlockSlice, RefBundle
-from ray.data._internal.execution.interfaces.ref_bundle import (
-    _merge_ref_bundles,
-)
 from ray.data.block import BlockMetadata
 
 
@@ -256,7 +253,7 @@ def test_merge_ref_bundles():
         ],
     )
 
-    merged = _merge_ref_bundles([bundle_one, bundle_two])
+    merged = RefBundle.merge_ref_bundles([bundle_one, bundle_two])
 
     assert merged.schema == "schema"
     assert merged.owns_blocks is False

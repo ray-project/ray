@@ -2,9 +2,6 @@ from collections import deque
 from typing import Deque, List, Tuple
 
 from ray.data._internal.execution.interfaces import BlockSlice, RefBundle
-from ray.data._internal.execution.interfaces.ref_bundle import (
-    _merge_ref_bundles,
-)
 from ray.data._internal.execution.operators.map_operator import BaseRefBundler
 
 """Streaming repartition builds fixed-size outputs from a stream of inputs.
@@ -51,7 +48,7 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
                     rows_needed_from_last_bundle
                 )
                 pending_bundles.append(sliced_bundle)
-            self._ready_bundles.append(_merge_ref_bundles(pending_bundles))
+            self._ready_bundles.append(RefBundle.merge_ref_bundles(pending_bundles))
             self._pending_bundles.clear()
             self._total_pending_rows = 0
             if remaining_bundle and remaining_bundle.num_rows() > 0:
