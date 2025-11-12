@@ -204,11 +204,19 @@ def test_slice_ref_bundle_with_existing_slices():
     assert remaining.size_bytes() == 40
 
 
-def test_slice_ref_bundle_invalid_rows():
-
+@pytest.mark.parametrize(
+    "num_rows,slice_rows",
+    [
+        (5, 0),  # Zero rows requested
+        (5, 5),  # Equal to total (must be less than)
+        (5, 6),  # More than available
+    ],
+)
+def test_slice_ref_bundle_invalid_rows(num_rows, slice_rows):
+    """Test that slicing with invalid row counts raises appropriate errors."""
     block_ref = ObjectRef(b"1" * 28)
     metadata = BlockMetadata(
-        num_rows=5, size_bytes=50, exec_stats=None, input_files=None
+        num_rows=num_rows, size_bytes=num_rows * 10, exec_stats=None, input_files=None
     )
 
     bundle = RefBundle(
@@ -218,10 +226,7 @@ def test_slice_ref_bundle_invalid_rows():
     )
 
     with pytest.raises(AssertionError):
-        bundle.slice(0)
-
-    with pytest.raises(AssertionError):
-        bundle.slice(6)
+        bundle.slice(slice_rows)
 
 
 def test_ref_bundle_with_none_slices():
