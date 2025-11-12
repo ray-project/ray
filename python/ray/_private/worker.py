@@ -2619,14 +2619,14 @@ def connect(
         include_gitignore = os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
         runtime_env = upload_py_modules_if_needed(
             runtime_env,
-            scratch_dir=scratch_dir,
             include_gitignore=include_gitignore,
+            scratch_dir=scratch_dir,
             logger=logger,
         )
         runtime_env = upload_working_dir_if_needed(
             runtime_env,
-            scratch_dir=scratch_dir,
             include_gitignore=include_gitignore,
+            scratch_dir=scratch_dir,
             logger=logger,
         )
         runtime_env = upload_worker_process_setup_hook_if_needed(

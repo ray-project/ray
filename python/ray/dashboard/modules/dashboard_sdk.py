@@ -418,14 +418,14 @@ class SubmissionClient:
         def _upload_fn(working_dir, excludes, is_file=False):
             self._upload_package_if_needed(
                 working_dir,
-                include_gitignore,
+                include_gitignore=include_gitignore,
                 include_parent_dir=False,
                 excludes=excludes,
                 is_file=is_file,
             )
 
         upload_working_dir_if_needed(
-            runtime_env, include_gitignore, upload_fn=_upload_fn
+            runtime_env, include_gitignore=include_gitignore, upload_fn=_upload_fn
         )
 
     def _upload_py_modules_if_needed(self, runtime_env: Dict[str, Any]):
@@ -438,14 +438,14 @@ class SubmissionClient:
         def _upload_fn(module_path, excludes, is_file=False):
             self._upload_package_if_needed(
                 module_path,
-                include_gitignore,
+                include_gitignore=include_gitignore,
                 include_parent_dir=True,
                 excludes=excludes,
                 is_file=is_file,
             )
 
         upload_py_modules_if_needed(
-            runtime_env, include_gitignore, upload_fn=_upload_fn
+            runtime_env, include_gitignore=include_gitignore, upload_fn=_upload_fn
         )
 
     @PublicAPI(stability="beta")

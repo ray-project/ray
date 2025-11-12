@@ -66,7 +66,9 @@ def upload_working_dir_if_needed(
     excludes = runtime_env.get("excludes", None)
     try:
         working_dir_uri = get_uri_for_directory(
-            working_dir, excludes=excludes, include_gitignore=include_gitignore
+            working_dir,
+            include_gitignore=include_gitignore,
+            excludes=excludes,
         )
     except ValueError:  # working_dir is not a directory
         package_path = Path(working_dir)

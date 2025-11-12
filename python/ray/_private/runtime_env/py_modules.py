@@ -105,8 +105,8 @@ def upload_py_modules_if_needed(
                 if is_dir:
                     module_uri = get_uri_for_directory(
                         module_path,
-                        excludes=excludes,
                         include_gitignore=include_gitignore,
+                        excludes=excludes,
                     )
                 else:
                     module_uri = get_uri_for_file(module_path)
@@ -116,9 +116,9 @@ def upload_py_modules_if_needed(
                             module_uri,
                             scratch_dir,
                             module_path,
-                            excludes=excludes,
-                            include_parent_dir=is_dir,
                             include_gitignore=include_gitignore,
+                            include_parent_dir=is_dir,
+                            excludes=excludes,
                             logger=logger,
                         )
                     except Exception as e:

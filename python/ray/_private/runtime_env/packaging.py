@@ -348,6 +348,8 @@ def get_excludes_from_ignore_files(
         to_ignore.append(r)
         ignore_files.append(path / ".rayignore")
 
+    logger.info(f"Ignoring upload to cluster for these files: {ignore_files}")
+
     return to_ignore
 
 
@@ -592,7 +594,10 @@ def get_uri_for_directory(
         raise ValueError(f"directory {directory} must be an existing directory")
 
     hash_val = _hash_directory(
-        directory, directory, _get_excludes(directory, excludes), include_gitignore
+        directory,
+        directory,
+        _get_excludes(directory, excludes),
+        include_gitignore=include_gitignore,
     )
 
     return "{protocol}://{pkg_name}.zip".format(

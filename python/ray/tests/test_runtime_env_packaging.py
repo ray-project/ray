@@ -253,24 +253,30 @@ class TestGetURIForDirectory:
             (short_path_dir / "test_socket").open()
 
         # Check that the hash can still be generated without errors.
-        get_uri_for_directory(short_path_dir, True)
+        get_uri_for_directory(short_path_dir, include_gitignore=True)
 
 
 class TestUploadPackageIfNeeded:
     def test_create_upload_once(self, tmp_path, random_dir, ray_start_regular):
-        uri = get_uri_for_directory(random_dir, True)
-        uploaded = upload_package_if_needed(uri, tmp_path, random_dir, True)
+        uri = get_uri_for_directory(random_dir, include_gitignore=True)
+        uploaded = upload_package_if_needed(
+            uri, tmp_path, random_dir, include_gitignore=True
+        )
         assert uploaded
         assert _internal_kv_exists(uri, namespace=KV_NAMESPACE_PACKAGE)
 
-        uploaded = upload_package_if_needed(uri, tmp_path, random_dir, True)
+        uploaded = upload_package_if_needed(
+            uri, tmp_path, random_dir, include_gitignore=True
+        )
         assert not uploaded
         assert _internal_kv_exists(uri, namespace=KV_NAMESPACE_PACKAGE)
 
         # Delete the URI from the internal_kv. This should trigger re-upload.
         _internal_kv_del(uri, namespace=KV_NAMESPACE_PACKAGE)
         assert not _internal_kv_exists(uri, namespace=KV_NAMESPACE_PACKAGE)
-        uploaded = upload_package_if_needed(uri, tmp_path, random_dir, True)
+        uploaded = upload_package_if_needed(
+            uri, tmp_path, random_dir, include_gitignore=True
+        )
         assert uploaded
 
 
@@ -1029,7 +1035,7 @@ def test_travel(tmp_path, ignore_gitignore, monkeypatch):
             with open(path) as f:
                 visited_file_paths.add((str(path), f.read()))
 
-    _dir_travel(root, [exclude_spec], handler)
+    _dir_travel(root, [exclude_spec], handler, include_gitignore=True)
     assert file_paths == visited_file_paths
     assert dir_paths == visited_dir_paths
 
