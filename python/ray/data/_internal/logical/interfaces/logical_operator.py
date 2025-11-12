@@ -165,27 +165,6 @@ class PredicatePushable(ABC):
         """Returns the predicate pushdown behavior for this operator."""
         pass
 
-    def can_push_predicate_through(self, predicate_expr: Expr) -> bool:
-        """Checks if a specific predicate can be pushed through this operator.
-
-        Args:
-            predicate_expr: The predicate to check
-
-        Returns:
-            True if the predicate can be pushed through this operator
-        """
-        behavior = self.predicate_pushdown_behavior()
-
-        if behavior == PredicatePushdownBehavior.CANNOT_PUSH_THROUGH:
-            return False
-        elif behavior == PredicatePushdownBehavior.CONDITIONAL:
-            # For conditional operators (like Join), check if there's a valid side to push to
-            # Subclass should implement a method to determine this
-            return False  # Default to conservative behavior
-        else:
-            # PASSTHROUGH, PASSTHROUGH_WITH_REBINDING, PUSH_INTO_BRANCHES
-            return True
-
     def get_column_rebinding(self) -> Optional[Dict[str, str]]:
         """Returns column renames needed when pushing through (for PASSTHROUGH_WITH_REBINDING).
 
