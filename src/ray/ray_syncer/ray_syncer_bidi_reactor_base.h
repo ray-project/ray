@@ -98,8 +98,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
         batch_timer_active_ = true;
         batch_timer_.expires_after(max_batch_delay_ms_);
         batch_timer_.async_wait([this](const boost::system::error_code &ec) {
+          batch_timer_active_ = false;
           if (!ec && !*IsDisconnected()) {
-            batch_timer_active_ = false;
             StartSend();
           } else if (ec != boost::asio::error::operation_aborted) {
             RAY_LOG(ERROR) << "Batch timer error: " << ec.message();
