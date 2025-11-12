@@ -430,14 +430,13 @@ def test_get_auth_token_cli(use_generate):
             # Test --generate flag (no token set)
             clear_auth_token_sources(remove_default=True)
             args = ["ray", "get-auth-token", "--generate"]
-            env = os.environ.copy()
         else:
             # Test with existing token from env var
             set_env_auth_token(test_token)
             reset_auth_token_state()
             args = ["ray", "get-auth-token"]
-            env = os.environ.copy()
 
+        env = os.environ.copy()
         result = subprocess.run(
             args,
             env=env,

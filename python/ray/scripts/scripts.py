@@ -2694,7 +2694,10 @@ def shutdown_prometheus():
     help="Generate a new token if none exists",
 )
 def get_auth_token(generate):
-    """Prints the authentication token to stdout. if generate is true, it will generate a new token."""
+    """Prints the Ray authentication token to stdout when RAY_AUTH_MODE=token.
+
+    If --generate is specified, a new token is created and saved to ~/.ray/auth_token if one does not exist.
+    """
     from ray._private.authentication.authentication_token_setup import (
         generate_and_save_token,
     )
