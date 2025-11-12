@@ -1,6 +1,10 @@
 from typing import Optional
 
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    PredicatePushable,
+    PredicatePushdownBehavior,
+)
 
 
 class NAry(LogicalOperator):
@@ -37,7 +41,7 @@ class Zip(NAry):
         return total_num_outputs
 
 
-class Union(NAry):
+class Union(NAry, PredicatePushable):
     """Logical operator for union."""
 
     def __init__(
@@ -54,3 +58,7 @@ class Union(NAry):
                 return None
             total_num_outputs += num_outputs
         return total_num_outputs
+
+    def predicate_pushdown_behavior(self) -> PredicatePushdownBehavior:
+        # Union allows pushing filter into each branch
+        return PredicatePushdownBehavior.PUSH_INTO_BRANCHES

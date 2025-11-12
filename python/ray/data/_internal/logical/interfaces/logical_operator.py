@@ -1,3 +1,5 @@
+from abc import ABC, abstractmethod
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
 from .operator import Operator
@@ -127,5 +129,67 @@ class LogicalOperatorSupportsPredicatePushdown(LogicalOperator):
         Returns:
             A dictionary mapping old column names to new column names,
             or None if no renaming has been applied.
+        """
+        return None
+
+
+class PredicatePushdownBehavior(Enum):
+    """Defines how predicates can be pushed through an operator."""
+
+    # Predicate cannot be pushed through this operator at all
+    CANNOT_PUSH_THROUGH = "cannot_push_through"
+
+    # Predicate can be pushed through as-is (e.g., Sort, Repartition, RandomShuffle, Limit)
+    PASSTHROUGH = "passthrough"
+
+    # Predicate can be pushed through but needs column rebinding (e.g., Project)
+    PASSTHROUGH_WITH_REBINDING = "passthrough_with_rebinding"
+
+    # Predicate can be pushed into each branch (e.g., Union)
+    PUSH_INTO_BRANCHES = "push_into_branches"
+
+    # Predicate can be conditionally pushed based on columns (e.g., Join)
+    CONDITIONAL = "conditional"
+
+
+class PredicatePushable(ABC):
+    """Mixin for operators that allow predicates to be pushed through them.
+
+    This is distinct from LogicalOperatorSupportsPredicatePushdown, which is for
+    operators that can *accept* predicates (like Read). This trait is for operators
+    that allow predicates to *pass through* them.
+    """
+
+    @abstractmethod
+    def predicate_pushdown_behavior(self) -> PredicatePushdownBehavior:
+        """Returns the predicate pushdown behavior for this operator."""
+        pass
+
+    def can_push_predicate_through(self, predicate_expr: Expr) -> bool:
+        """Checks if a specific predicate can be pushed through this operator.
+
+        Args:
+            predicate_expr: The predicate to check
+
+        Returns:
+            True if the predicate can be pushed through this operator
+        """
+        behavior = self.predicate_pushdown_behavior()
+
+        if behavior == PredicatePushdownBehavior.CANNOT_PUSH_THROUGH:
+            return False
+        elif behavior == PredicatePushdownBehavior.CONDITIONAL:
+            # For conditional operators (like Join), check if there's a valid side to push to
+            # Subclass should implement a method to determine this
+            return False  # Default to conservative behavior
+        else:
+            # PASSTHROUGH, PASSTHROUGH_WITH_REBINDING, PUSH_INTO_BRANCHES
+            return True
+
+    def get_column_rebinding(self) -> Optional[Dict[str, str]]:
+        """Returns column renames needed when pushing through (for PASSTHROUGH_WITH_REBINDING).
+
+        Returns:
+            Dict mapping from old_name -> new_name, or None if no rebinding needed
         """
         return None

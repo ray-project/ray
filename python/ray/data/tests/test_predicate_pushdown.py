@@ -8,6 +8,7 @@ import pytest
 import ray
 from ray.data import Dataset
 from ray.data._internal.logical.optimizers import LogicalOptimizer
+from ray.data._internal.util import rows_same
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_execution_optimizer_limit_pushdown import (
@@ -239,67 +240,6 @@ def test_filter_mixed_expression_not_readfiles(ray_start_regular_shared):
     )
 
 
-def test_read_range_union_with_filter_pushdown(ray_start_regular_shared):
-    ds1 = ray.data.range(100, parallelism=2)
-    ds2 = ray.data.range(100, parallelism=2)
-    ds = ds1.union(ds2).filter(expr="id >= 50")
-    result = ds.take_all()
-    assert ds.count() == 100
-    _check_valid_plan_and_result(
-        ds,
-        "Read[ReadRange] -> Filter[Filter(<expression>)], "
-        "Read[ReadRange] -> Filter[Filter(<expression>)] -> Union[Union]",
-        result,
-    )
-
-
-def test_multiple_union_with_filter_pushdown(ray_start_regular_shared):
-    ds1 = ray.data.read_parquet("example://iris.parquet")
-    ds2 = ray.data.read_parquet("example://iris.parquet")
-    ds3 = ray.data.read_parquet("example://iris.parquet")
-    ds = ds1.union(ds2).union(ds3).filter(expr="sepal.length > 5.0")
-    result = ds.take_all()
-    assert ds.count() == 354
-    assert all(record["sepal.length"] > 5.0 for record in result)
-
-    # For union operations, verify the pattern separately for each branch
-    actual_plan = ds._plan._logical_plan.dag.dag_str
-    # Check that filter was pushed down into all three reads (no Filter operator in plan)
-    assert (
-        "Filter[Filter" not in actual_plan
-    ), f"Filter should be pushed down, got: {actual_plan}"
-    # Check that union operations are present
-    assert (
-        actual_plan.count("Union[Union]") == 2
-    ), f"Expected 2 unions, got: {actual_plan}"
-    # Check result
-    assert ds.take_all() == result
-
-
-def test_multiple_filter_with_union_pushdown_parquet(ray_start_regular_shared):
-    ds1 = ray.data.read_parquet("example://iris.parquet")
-    ds1 = ds1.filter(expr="sepal.width > 2.0")
-    ds2 = ray.data.read_parquet("example://iris.parquet")
-    ds2 = ds2.filter(expr="sepal.width > 2.0")
-    ds = ds1.union(ds2).filter(expr="sepal.length < 5.0")
-    result = ds.take_all()
-    assert all(record["sepal.width"] > 2.0 for record in result)
-    assert all(record["sepal.length"] < 5.0 for record in result)
-
-    assert ds.count() == 44
-
-    # For union operations, verify the pattern separately for each branch
-    actual_plan = ds._plan._logical_plan.dag.dag_str
-    # Check that all filters were pushed down (no Filter operator in plan)
-    assert (
-        "Filter[Filter" not in actual_plan
-    ), f"Filters should be pushed down, got: {actual_plan}"
-    # Check that union operation is present
-    assert "Union[Union]" in actual_plan, f"Expected union, got: {actual_plan}"
-    # Check result
-    assert ds.take_all() == result
-
-
 @pytest.mark.parametrize(
     "operations,output_rename_map,expected_filter_expr,test_id",
     [
@@ -367,6 +307,257 @@ def test_pushdown_with_rename_and_filter(
     df1 = ds1.to_pandas()
     assert len(df) == len(df1), f"Expected {len(df)} rows, got {len(df1)} rows"
     pd.testing.assert_frame_equal(df, df1)
+
+
+def _get_optimized_plan(ds: Dataset) -> str:
+    """Get the optimized logical plan as a string."""
+    logical_plan = ds._plan._logical_plan
+    optimized_plan = LogicalOptimizer().optimize(logical_plan)
+    return optimized_plan.dag.dag_str
+
+
+def _check_plan_matches_pattern(ds: Dataset, expected_pattern: str):
+    """Check that the optimized plan matches the expected regex pattern."""
+    actual_plan = _get_optimized_plan(ds)
+    assert re.match(expected_pattern, actual_plan), (
+        f"Plan mismatch:\n"
+        f"Expected pattern: {expected_pattern}\n"
+        f"Actual plan: {actual_plan}"
+    )
+
+
+class TestPredicatePushdownIntoRead:
+    """Tests for pushing predicates into Read operators.
+
+    When a data source supports predicate pushdown (like Parquet),
+    the filter should be absorbed into the Read operator itself.
+    """
+
+    @pytest.fixture
+    def parquet_ds(self, ray_start_regular_shared):
+        return ray.data.read_parquet("example://iris.parquet")
+
+    def test_complex_pipeline_all_filters_push_to_read(self, parquet_ds):
+        """Complex pipeline: filters should push through all operators into Read.
+
+        Pipeline: Read -> Filter -> Rename -> Filter -> Sort -> Repartition
+                  -> Filter -> Limit -> Filter
+
+        All filters should fuse, push through all operators, rebind through rename,
+        and be absorbed into the Read operator.
+        """
+        ds = (
+            parquet_ds.filter(expr=col("sepal.length") > 4.0)
+            .rename_columns({"sepal.length": "len", "sepal.width": "width"})
+            .filter(expr=col("len") < 7.0)
+            .sort("len")
+            .repartition(3)
+            .filter(expr=col("width") > 2.5)
+            .limit(100)
+            .filter(expr=col("len") > 4.5)
+        )
+
+        # Verify correctness: should apply all filters correctly
+        expected = (
+            parquet_ds.filter(
+                expr=(col("sepal.length") > 4.0)
+                & (col("sepal.length") < 7.0)
+                & (col("sepal.width") > 2.5)
+                & (col("sepal.length") > 4.5)
+            )
+            .rename_columns({"sepal.length": "len", "sepal.width": "width"})
+            .sort("len")
+            .repartition(3)
+            .limit(100)
+        )
+
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+        # Verify plan: all filters pushed into Read, passthrough ops remain
+        plan = _get_optimized_plan(ds)
+        assert "Filter[Filter" not in plan, f"No Filter operators should remain: {plan}"
+
+
+class TestPassthroughBehavior:
+    """Tests for PASSTHROUGH behavior operators.
+
+    Operators: Sort, Repartition, RandomShuffle, Limit
+    Predicates pass through unchanged - operators don't affect filtering.
+    """
+
+    @pytest.fixture
+    def base_ds(self, ray_start_regular_shared):
+        return ray.data.range(100)
+
+    @pytest.mark.parametrize(
+        "transform,expected_op_pattern",
+        [
+            (lambda ds: ds.sort("id"), r"Sort\[Sort\]"),
+            (lambda ds: ds.repartition(10), r"Repartition\[Repartition\]"),
+            (lambda ds: ds.random_shuffle(), r"RandomShuffle\[RandomShuffle\]"),
+            (lambda ds: ds.limit(50), r"Limit\[limit=50\]"),
+        ],
+        ids=["sort", "repartition", "random_shuffle", "limit"],
+    )
+    def test_filter_pushes_through_operator(
+        self, base_ds, transform, expected_op_pattern
+    ):
+        """Filter should push through passthrough operators."""
+        ds = transform(base_ds).filter(expr=col("id") < 10)
+
+        # Verify correctness against expected result
+        expected = base_ds.filter(expr=col("id") < 10)
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+        # Filter pushed down, operator remains
+        _check_plan_matches_pattern(
+            ds,
+            f"{READ_OPERATOR_PATTERN} -> Filter\\[Filter\\(<expression>\\)\\] -> {expected_op_pattern}$",
+        )
+
+    def test_filter_pushes_through_multiple_ops(self, base_ds):
+        """Filter should push through multiple passthrough operators."""
+        ds = base_ds.sort("id").repartition(5).limit(50).filter(expr=col("id") < 10)
+
+        # Verify correctness against expected result
+        expected = base_ds.filter(expr=col("id") < 10)
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+        # Verify plan: filter pushed down, all operators remain
+        _check_plan_matches_pattern(
+            ds,
+            f"{READ_OPERATOR_PATTERN} -> Filter\\[Filter\\(<expression>\\)\\] -> "
+            r"Sort\[Sort\] -> Repartition\[Repartition\] -> Limit\[limit=50\]$",
+        )
+
+    def test_multiple_filters_fuse_and_push_through(self, base_ds):
+        """Multiple filters should fuse and push through passthrough operators."""
+        ds = base_ds.filter(expr=col("id") > 5).sort("id").filter(expr=col("id") < 20)
+
+        # Verify correctness against expected result
+        expected = base_ds.filter(expr=(col("id") > 5) & (col("id") < 20))
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+        # Verify plan: filters fused and pushed
+        _check_plan_matches_pattern(
+            ds,
+            f"{READ_OPERATOR_PATTERN} -> Filter\\[Filter\\(<expression>\\)\\] -> Sort\\[Sort\\]$",
+        )
+
+
+class TestPassthroughWithRebindingBehavior:
+    """Tests for PASSTHROUGH_WITH_REBINDING behavior operators.
+
+    Operator: Project (used by rename_columns, select, with_column)
+    Predicates push through but column names must be rebound.
+    """
+
+    @pytest.fixture
+    def parquet_ds(self, ray_start_regular_shared):
+        return ray.data.read_parquet("example://iris.parquet")
+
+    def test_simple_rename_with_filter(self, parquet_ds):
+        """Filter after rename should rebind columns and push down."""
+        ds = parquet_ds.rename_columns({"sepal.length": "len"}).filter(
+            expr=col("len") > 5.0
+        )
+
+        # Verify correctness against expected result
+        expected = parquet_ds.filter(expr=col("sepal.length") > 5.0).rename_columns(
+            {"sepal.length": "len"}
+        )
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+        # Filter rebound and pushed to Read
+        _check_plan_matches_pattern(ds, f"{READ_OPERATOR_PATTERN}$")
+
+    def test_chained_renames_with_filter(self, parquet_ds):
+        """Multiple renames should track through filter pushdown."""
+        ds = (
+            parquet_ds.rename_columns({"sepal.length": "a"})
+            .rename_columns({"a": "b"})
+            .filter(expr=col("b") > 5.0)
+        )
+
+        # Verify correctness against expected result
+        expected = (
+            parquet_ds.filter(expr=col("sepal.length") > 5.0)
+            .rename_columns({"sepal.length": "a"})
+            .rename_columns({"a": "b"})
+        )
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+        _check_plan_matches_pattern(ds, f"{READ_OPERATOR_PATTERN}$")
+
+    def test_multiple_filters_with_renames(self, parquet_ds):
+        """Multiple filters with renames should all rebind and push."""
+        ds = (
+            parquet_ds.rename_columns({"sepal.length": "a"})
+            .filter(expr=col("a") > 2.0)
+            .rename_columns({"a": "b"})
+            .filter(expr=col("b") < 5.0)
+        )
+
+        # Verify correctness against expected result
+        expected = (
+            parquet_ds.filter(
+                expr=(col("sepal.length") > 2.0) & (col("sepal.length") < 5.0)
+            )
+            .rename_columns({"sepal.length": "a"})
+            .rename_columns({"a": "b"})
+        )
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+        _check_plan_matches_pattern(ds, f"{READ_OPERATOR_PATTERN}$")
+
+
+class TestPushIntoBranchesBehavior:
+    """Tests for PUSH_INTO_BRANCHES behavior operators.
+
+    Operator: Union
+    Predicates are duplicated and pushed into each branch.
+    """
+
+    def test_simple_union_with_filter(self, ray_start_regular_shared):
+        """Filter after union should push into both branches."""
+        ds1 = ray.data.range(100, parallelism=2)
+        ds2 = ray.data.range(100, parallelism=2)
+        ds = ds1.union(ds2).filter(expr=col("id") >= 50)
+
+        # Verify correctness: should have duplicates from both branches
+        base = ray.data.range(100)
+        expected = base.filter(expr=col("id") >= 50).union(
+            base.filter(expr=col("id") >= 50)
+        )
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+    def test_multiple_unions_with_filter(self, ray_start_regular_shared):
+        """Filter should push into all branches of multiple unions."""
+        ds1 = ray.data.read_parquet("example://iris.parquet")
+        ds2 = ray.data.read_parquet("example://iris.parquet")
+        ds3 = ray.data.read_parquet("example://iris.parquet")
+        ds = ds1.union(ds2).union(ds3).filter(expr=col("sepal.length") > 5.0)
+
+        # Verify correctness: should have 3x the filtered results
+        single_filtered = ray.data.read_parquet("example://iris.parquet").filter(
+            expr=col("sepal.length") > 5.0
+        )
+        expected = single_filtered.union(single_filtered).union(single_filtered)
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+    def test_branch_filters_plus_union_filter(self, ray_start_regular_shared):
+        """Individual branch filters plus union filter should all push."""
+        parquet_ds = ray.data.read_parquet("example://iris.parquet")
+        ds1 = parquet_ds.filter(expr=col("sepal.width") > 2.0)
+        ds2 = parquet_ds.filter(expr=col("sepal.width") > 2.0)
+        ds = ds1.union(ds2).filter(expr=col("sepal.length") < 5.0)
+
+        # Verify correctness: both filters applied
+        expected_single = parquet_ds.filter(
+            expr=(col("sepal.width") > 2.0) & (col("sepal.length") < 5.0)
+        )
+        expected = expected_single.union(expected_single)
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
 
 
 if __name__ == "__main__":

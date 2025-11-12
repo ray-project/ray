@@ -1,6 +1,10 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    PredicatePushable,
+    PredicatePushdownBehavior,
+)
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
@@ -40,7 +44,7 @@ class AbstractAllToAll(LogicalOperator):
         self._sub_progress_bar_names = sub_progress_bar_names
 
 
-class RandomizeBlocks(AbstractAllToAll):
+class RandomizeBlocks(AbstractAllToAll, PredicatePushable):
     """Logical operator for randomize_block_order."""
 
     def __init__(
@@ -66,8 +70,12 @@ class RandomizeBlocks(AbstractAllToAll):
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
+    def predicate_pushdown_behavior(self) -> PredicatePushdownBehavior:
+        # Randomizing block order doesn't affect filtering correctness
+        return PredicatePushdownBehavior.PASSTHROUGH
 
-class RandomShuffle(AbstractAllToAll):
+
+class RandomShuffle(AbstractAllToAll, PredicatePushable):
     """Logical operator for random_shuffle."""
 
     def __init__(
@@ -100,8 +108,12 @@ class RandomShuffle(AbstractAllToAll):
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
+    def predicate_pushdown_behavior(self) -> PredicatePushdownBehavior:
+        # Random shuffle doesn't affect filtering correctness
+        return PredicatePushdownBehavior.PASSTHROUGH
 
-class Repartition(AbstractAllToAll):
+
+class Repartition(AbstractAllToAll, PredicatePushable):
     """Logical operator for repartition."""
 
     def __init__(
@@ -143,8 +155,12 @@ class Repartition(AbstractAllToAll):
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
+    def predicate_pushdown_behavior(self) -> PredicatePushdownBehavior:
+        # Repartition doesn't affect filtering correctness
+        return PredicatePushdownBehavior.PASSTHROUGH
 
-class Sort(AbstractAllToAll):
+
+class Sort(AbstractAllToAll, PredicatePushable):
     """Logical operator for sort."""
 
     def __init__(
@@ -176,6 +192,10 @@ class Sort(AbstractAllToAll):
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
+
+    def predicate_pushdown_behavior(self) -> PredicatePushdownBehavior:
+        # Sort doesn't affect filtering correctness
+        return PredicatePushdownBehavior.PASSTHROUGH
 
 
 class Aggregate(AbstractAllToAll):

@@ -682,6 +682,110 @@ def test_join_with_unjoinable_non_key_columns(
         )
 
 
+@pytest.mark.parametrize(
+    "join_type,filter_side,should_push",
+    [
+        ("inner", "left", True),
+        ("inner", "right", True),
+        ("left_outer", "left", True),
+        ("left_outer", "right", False),
+    ],
+    ids=["inner_left", "inner_right", "left_outer_left", "left_outer_right"],
+)
+def test_join_with_predicate_pushdown(
+    ray_start_regular_shared_2_cpus, join_type, filter_side, should_push
+):
+    """Test that predicate pushdown works correctly with different join types.
+
+    Filters on single-side predicates should push past the join when appropriate:
+    - Inner join: can push to either side
+    - Left outer: can push to left (preserved) side only
+    - Right outer: can push to right (preserved) side only
+    """
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+    from ray.data._internal.util import MiB
+    from ray.data.expressions import col
+
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
+    # Create datasets directly without map to allow filter pushdown through join
+    # Both have ids 0-31 with different value columns
+    left_data = [{"id": i, "left_val": i * 10} for i in range(32)]
+    right_data = [{"id": i, "right_val": i * 100} for i in range(32)]
+
+    left_ds = ray.data.from_items(left_data)
+    right_ds = ray.data.from_items(right_data)
+
+    # Join then filter
+    joined = left_ds.join(
+        right_ds,
+        join_type=join_type,
+        num_partitions=4,
+        on=("id",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+
+    # Filter on column from specified side
+    if filter_side == "left":
+        filtered_ds = joined.filter(expr=col("left_val") < 100)
+    else:
+        filtered_ds = joined.filter(expr=col("right_val") < 1000)
+
+    # Verify correctness by computing expected result with pandas
+    from ray.data._internal.util import rows_same
+
+    left_pd = left_ds.to_pandas()
+    right_pd = right_ds.to_pandas()
+
+    # Compute expected join result
+    if join_type == "inner":
+        expected_pd = left_pd.merge(right_pd, on="id", how="inner")
+    elif join_type == "left_outer":
+        expected_pd = left_pd.merge(right_pd, on="id", how="left")
+    else:
+        raise ValueError(f"Unsupported join type for this test: {join_type}")
+
+    # Apply filter (must match what we filtered in Ray Data)
+    if filter_side == "left":
+        # For left-side filter, use notna() to include NaN rows from outer joins
+        expected_pd = expected_pd[expected_pd["left_val"] < 100]
+    else:
+        # For right-side filter in outer joins, NaN values fail the comparison
+        # and are filtered out (matching Ray Data behavior)
+        expected_pd = expected_pd[expected_pd["right_val"] < 1000]
+
+    actual_df = filtered_ds.to_pandas()
+    expected_df = expected_pd.reset_index(drop=True)
+
+    assert rows_same(actual_df, expected_df), (
+        f"Results don't match for {join_type} join with {filter_side} filter:\n"
+        f"Actual:\n{actual_df}\n\nExpected:\n{expected_df}"
+    )
+
+    # Check plan to verify pushdown behavior
+    logical_plan = filtered_ds._plan._logical_plan
+    optimized_plan = LogicalOptimizer().optimize(logical_plan)
+    plan_str = optimized_plan.dag.dag_str
+
+    join_idx = plan_str.find("Join[Join]")
+    filter_idx = plan_str.find("Filter[Filter(<expression>)]")
+
+    if should_push:
+        # Filter should be pushed before join
+        assert filter_idx != -1, f"Filter should exist in plan: {plan_str}"
+        assert filter_idx < join_idx, (
+            f"Filter should be pushed before Join for {join_type} with {filter_side} "
+            f"predicate. Plan: {plan_str}"
+        )
+    else:
+        # Filter should remain after join
+        if filter_idx != -1:
+            assert filter_idx > join_idx, (
+                f"Filter should stay after Join for {join_type} with {filter_side} "
+                f"predicate. Plan: {plan_str}"
+            )
+
+
 if __name__ == "__main__":
     import sys
 
