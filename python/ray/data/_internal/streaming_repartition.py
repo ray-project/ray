@@ -41,26 +41,23 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
             rows_needed_from_last_bundle = (
                 self._total_pending_rows % self._target_num_rows
             )
-            if rows_needed_from_last_bundle > 0:
-                last_bundle = self._pending_bundles.pop()
-                to_consume, remaining = _slice_ref_bundle(
+            pending_bundles = list(self._pending_bundles)
+            remaining_bundle = None
+            if (
+                rows_needed_from_last_bundle > 0
+                and rows_needed_from_last_bundle < pending_bundles[-1].num_rows()
+            ):
+                last_bundle = pending_bundles.pop()
+                sliced_bundle, remaining_bundle = _slice_ref_bundle(
                     last_bundle, rows_needed_from_last_bundle
                 )
-                merged_bundle = _merge_ref_bundles(
-                    list(self._pending_bundles) + [to_consume]
-                )
-                self._ready_bundles.append(merged_bundle)
-                self._pending_bundles.clear()
-                self._total_pending_rows = 0
-                if remaining.num_rows() > 0:
-                    self._pending_bundles.append(remaining)
-                    self._total_pending_rows += remaining.num_rows()
-            else:
-                self._ready_bundles.append(
-                    _merge_ref_bundles(list(self._pending_bundles))
-                )
-                self._pending_bundles.clear()
-                self._total_pending_rows = 0
+                pending_bundles.append(sliced_bundle)
+            self._ready_bundles.append(_merge_ref_bundles(pending_bundles))
+            self._pending_bundles.clear()
+            self._total_pending_rows = 0
+            if remaining_bundle and remaining_bundle.num_rows() > 0:
+                self._pending_bundles.append(remaining_bundle)
+                self._total_pending_rows += remaining_bundle.num_rows()
 
     def add_bundle(self, ref_bundle: RefBundle):
         schema = ref_bundle.schema

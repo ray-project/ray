@@ -268,6 +268,10 @@ def _slice_ref_bundle(
         needed_rows <= ref_bundle.num_rows()
     ), f"Requested {needed_rows} rows but bundle only has {ref_bundle.num_rows()} rows."
 
+    assert (
+        needed_rows < ref_bundle.num_rows()
+    ), f"To slice a RefBundle, the number of requested rows must be less than the number of rows in the bundle. Requested {needed_rows} rows but bundle only has {ref_bundle.num_rows()} rows."
+
     if ref_bundle.slices is not None:
         block_slices = list(ref_bundle.slices)
     else:
@@ -321,8 +325,6 @@ def _slice_ref_bundle(
                 remaining_slices.append(remainder_slice)
 
             rows_to_take = 0
-
-    assert rows_to_take == 0, "Slice exceeds the available rows in the RefBundle."
 
     sliced_bundle = RefBundle(
         blocks=tuple(consumed_blocks),
