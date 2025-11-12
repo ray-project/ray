@@ -228,33 +228,6 @@ class Join(NAry, PredicatePassThrough):
             return JoinSide.RIGHT
         return None
 
-    def _get_predicate_side_references(
-        self, predicate_expr: "Expr"
-    ) -> Tuple[Optional[bool], Optional[bool]]:
-        """Determine which side(s) of the join a predicate references.
-
-        Args:
-            predicate_expr: The predicate expression to check
-
-        Returns:
-            Tuple of (references_left, references_right), or (None, None) if schemas unavailable
-        """
-        predicate_columns: set[str] = self._get_referenced_columns(predicate_expr)
-
-        left_schema = self.input_dependencies[0].infer_schema()
-        right_schema = self.input_dependencies[1].infer_schema()
-
-        if not left_schema or not right_schema:
-            return None, None
-
-        left_columns = set(left_schema.names)
-        right_columns = set(right_schema.names)
-
-        references_left = any(col in left_columns for col in predicate_columns)
-        references_right = any(col in right_columns for col in predicate_columns)
-
-        return references_left, references_right
-
     def _get_referenced_columns(self, expr: "Expr") -> set[str]:
         """Extract all column names referenced in an expression."""
         from ray.data._internal.planner.plan_expression.expression_visitors import (
