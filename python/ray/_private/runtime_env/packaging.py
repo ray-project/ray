@@ -348,7 +348,8 @@ def get_excludes_from_ignore_files(
         to_ignore.append(r)
         ignore_files.append(path / ".rayignore")
 
-    logger.info(f"Ignoring upload to cluster for these files: {ignore_files}")
+    if ignore_files:
+        logger.info(f"Ignoring upload to cluster for these files: {ignore_files}")
 
     return to_ignore
 

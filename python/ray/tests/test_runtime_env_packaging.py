@@ -16,7 +16,6 @@ import pytest
 import ray
 from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
-    RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
 )
 from ray._private.runtime_env.packaging import (
     GCS_STORAGE_MAX_SIZE,
@@ -971,11 +970,6 @@ def test_travel(tmp_path, ignore_gitignore, monkeypatch):
     excludes = []
     root = tmp_path / "test"
 
-    if ignore_gitignore:
-        monkeypatch.setenv(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "1")
-    else:
-        monkeypatch.delenv(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, raising=False)
-
     def construct(path, excluded=False, depth=0):
         nonlocal item_num
         path.mkdir(parents=True)
@@ -1035,7 +1029,7 @@ def test_travel(tmp_path, ignore_gitignore, monkeypatch):
             with open(path) as f:
                 visited_file_paths.add((str(path), f.read()))
 
-    _dir_travel(root, [exclude_spec], handler, include_gitignore=True)
+    _dir_travel(root, [exclude_spec], handler, include_gitignore=not ignore_gitignore)
     assert file_paths == visited_file_paths
     assert dir_paths == visited_dir_paths
 
