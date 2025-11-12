@@ -82,12 +82,6 @@ class TestS3FileSystem:
         assert S3FileSystem.get_file("s3://bucket/nonexistent.txt") is None
 
     @patch("subprocess.run")
-    def test_get_file_invalid_uri(self, mock_run):
-        """Test getting a file with invalid URI."""
-        with pytest.raises(ValueError, match="Invalid S3 URI"):
-            S3FileSystem.get_file("gs://bucket/test.txt")
-
-    @patch("subprocess.run")
     @pytest.mark.parametrize(
         "uri,expected_path",
         [

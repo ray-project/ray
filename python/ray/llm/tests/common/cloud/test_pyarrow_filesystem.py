@@ -2,6 +2,7 @@
 
 import os
 import sys
+import tempfile
 from unittest.mock import ANY, MagicMock, patch
 
 import pyarrow.fs as pa_fs
@@ -81,10 +82,34 @@ class TestPyArrowFileSystem:
         # Verify get_fs_and_path was called
         mock_get_fs_and_path.assert_called_once_with("gs://bucket/parent/")
 
+    @patch("pyarrow.fs.copy_files")
     @patch("pyarrow.fs.S3FileSystem")
-    def test_download_files(self, mock_s3fs):
-        """Test downloading files from cloud storage."""
-        import tempfile
+    def test_download_files_no_filters(self, mock_s3fs, mock_copy_files):
+        """Test downloading files from cloud storage without filters."""
+
+        # Setup mock filesystem
+        mock_fs = MagicMock()
+        mock_s3fs.return_value = mock_fs
+
+        # Create temp directory for testing
+        with tempfile.TemporaryDirectory() as tempdir:
+            # Test downloading files without filters
+            PyArrowFileSystem.download_files(tempdir, "s3://bucket/dir")
+
+            # Verify copy_files was called with correct arguments
+            mock_copy_files.assert_called_once_with(
+                source="bucket/dir",
+                destination=tempdir,
+                source_filesystem=mock_fs,
+                destination_filesystem=ANY,
+                use_threads=True,
+                chunk_size=64 * 1024 * 1024,
+            )
+
+    @patch("pyarrow.fs.copy_files")
+    @patch("pyarrow.fs.S3FileSystem")
+    def test_download_files_with_filters(self, mock_s3fs, mock_copy_files):
+        """Test downloading files from cloud storage with filters."""
 
         # Setup mock filesystem
         mock_fs = MagicMock()
@@ -97,37 +122,63 @@ class TestPyArrowFileSystem:
 
         file_info2 = MagicMock()
         file_info2.type = pa_fs.FileType.File
-        file_info2.path = "bucket/dir/subdir/file2.txt"
+        file_info2.path = "bucket/dir/subdir/file2.json"
+
+        file_info3 = MagicMock()
+        file_info3.type = pa_fs.FileType.File
+        file_info3.path = "bucket/dir/file3.tmp"
 
         dir_info = MagicMock()
         dir_info.type = pa_fs.FileType.Directory
         dir_info.path = "bucket/dir/subdir"
 
-        mock_fs.get_file_info.return_value = [file_info1, file_info2, dir_info]
-
-        # Mock file content
-        mock_file = MagicMock()
-        mock_file.read.return_value = b"test content"
-        mock_fs.open_input_file.return_value.__enter__.return_value = mock_file
+        mock_fs.get_file_info.return_value = [
+            file_info1,
+            file_info2,
+            file_info3,
+            dir_info,
+        ]
 
         # Create temp directory for testing
         with tempfile.TemporaryDirectory() as tempdir:
-            # Test downloading files
-            PyArrowFileSystem.download_files(tempdir, "s3://bucket/dir")
+            # Test downloading files with filters
+            PyArrowFileSystem.download_files(
+                tempdir,
+                "s3://bucket/dir",
+                substrings_to_include=["file1", "file2"],
+                suffixes_to_exclude=[".tmp"],
+            )
 
-            # Check that files were downloaded correctly
-            assert os.path.exists(os.path.join(tempdir, "file1.txt"))
-            assert os.path.exists(os.path.join(tempdir, "subdir", "file2.txt"))
+            # Verify copy_files was called for each filtered file
+            assert mock_copy_files.call_count == 2
 
-            # Check content of downloaded files
-            with open(os.path.join(tempdir, "file1.txt"), "rb") as f:
-                assert f.read() == b"test content"
+            # Get all calls to copy_files
+            calls = mock_copy_files.call_args_list
+
+            # Verify the calls (order may vary due to threading)
+            expected_sources = {"bucket/dir/file1.txt", "bucket/dir/subdir/file2.json"}
+            expected_dests = {
+                os.path.join(tempdir, "file1.txt"),
+                os.path.join(tempdir, "subdir", "file2.json"),
+            }
+
+            actual_sources = {call.kwargs["source"] for call in calls}
+            actual_dests = {call.kwargs["destination"] for call in calls}
+
+            assert actual_sources == expected_sources
+            assert actual_dests == expected_dests
+
+            # Verify all calls have correct filesystem and options
+            for call in calls:
+                assert call.kwargs["source_filesystem"] == mock_fs
+                assert call.kwargs["destination_filesystem"] is not None
+                assert call.kwargs["use_threads"] is True
+                assert call.kwargs["chunk_size"] == 64 * 1024 * 1024
 
     @patch("pyarrow.fs.copy_files")
     @patch("pyarrow.fs.S3FileSystem")
     def test_upload_files(self, mock_s3fs, mock_copy_files):
         """Test uploading files to cloud storage."""
-        import tempfile
 
         # Setup mock filesystem
         mock_fs = MagicMock()

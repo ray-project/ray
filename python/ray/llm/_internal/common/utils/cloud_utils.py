@@ -22,6 +22,7 @@ from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_filesystem import (
     AzureFileSystem,
     GCSFileSystem,
+    PyArrowFileSystem,
     S3FileSystem,
 )
 
@@ -154,8 +155,9 @@ class CloudFileSystem:
         Raises:
             ValueError: If the URI scheme is not supported
         """
-
-        if bucket_uri.startswith("s3://"):
+        if bucket_uri.startswith("pyarrow-"):
+            return PyArrowFileSystem
+        elif bucket_uri.startswith("s3://"):
             return S3FileSystem
         elif bucket_uri.startswith("gs://"):
             return GCSFileSystem

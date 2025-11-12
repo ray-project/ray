@@ -37,6 +37,10 @@ class PyArrowFileSystem(BaseCloudFileSystem):
         Returns:
             Tuple of (filesystem, path)
         """
+
+        if object_uri.startswith("pyarrow-"):
+            object_uri = object_uri[8:]
+
         anonymous = False
         # Check for anonymous access pattern (only for S3/GCS)
         # e.g. s3://anonymous@bucket/path
@@ -276,52 +280,6 @@ class PyArrowFileSystem(BaseCloudFileSystem):
         except Exception as e:
             logger.info(f"Error listing subfolders in {folder_uri}: {e}")
             return []
-
-    # @staticmethod
-    # def download_files(
-    #     path: str,
-    #     bucket_uri: str,
-    #     substrings_to_include: Optional[List[str]] = None,
-    #     suffixes_to_exclude: Optional[List[str]] = None,
-    # ) -> None:
-    #     """Download files from cloud storage to a local directory.
-
-    #     Args:
-    #         path: Local directory where files will be downloaded
-    #         bucket_uri: URI of cloud directory
-    #         substrings_to_include: Only include files containing these substrings
-    #         suffixes_to_exclude: Exclude certain files from download (e.g .safetensors)
-    #     """
-    #     try:
-    #         fs, source_path = PyArrowFileSystem.get_fs_and_path(bucket_uri)
-
-    #         # Ensure the destination directory exists
-    #         os.makedirs(path, exist_ok=True)
-
-    #         # Get filtered files to download
-    #         files_to_download = PyArrowFileSystem._filter_files(
-    #             fs, source_path, path, substrings_to_include, suffixes_to_exclude
-    #         )
-
-    #         # Download each file using PyArrow's copy_files API
-    #         local_fs = pa_fs.LocalFileSystem()
-    #         for source_file_path, dest_file_path in files_to_download:
-    #             # Create destination directory if needed
-    #             dest_dir = os.path.dirname(dest_file_path)
-    #             if dest_dir:
-    #                 os.makedirs(dest_dir, exist_ok=True)
-
-    #             # Download the file using PyArrow's copy_files API
-    #             pa_fs.copy_files(
-    #                 source=source_file_path,
-    #                 destination=dest_file_path,
-    #                 source_filesystem=fs,
-    #                 destination_filesystem=local_fs,
-    #             )
-
-    #     except Exception as e:
-    #         logger.exception(f"Error downloading files from {bucket_uri}: {e}")
-    #         raise
 
     @staticmethod
     def download_files(

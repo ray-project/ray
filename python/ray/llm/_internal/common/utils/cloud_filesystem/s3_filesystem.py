@@ -1,15 +1,18 @@
-"""S3-specific filesystem implementation using AWS CLI.
+"""S3-specific filesystem implementation using boto3.
 
-This module provides an S3-specific implementation that uses AWS CLI for optimal
-performance. This leverages native AWS tools for significantly faster transfers
-compared to PyArrow-based implementations.
+This module provides an S3-specific implementation that uses boto3 (AWS SDK for Python)
+for reliable and efficient S3 operations.
 """
 
 import os
 import re
-import subprocess
-import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from typing import List, Optional, Union
+
+import boto3
+from botocore.client import BaseClient
+from botocore.config import Config
 
 from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_filesystem.base import BaseCloudFileSystem
@@ -18,47 +21,63 @@ logger = get_logger(__name__)
 
 
 class S3FileSystem(BaseCloudFileSystem):
-    """S3-specific implementation of cloud filesystem operations using AWS CLI.
+    """S3-specific implementation of cloud filesystem operations using boto3.
 
-    This implementation uses AWS CLI (aws s3 cp, aws s3 ls) for optimal performance
-    when working with S3 storage. It provides significantly faster transfers
-    compared to PyArrow-based implementations, especially for large files.
+    This implementation uses boto3 (AWS SDK for Python) for reliable and efficient
+    operations with S3 storage.
     """
 
     @staticmethod
-    def _parse_uri(uri: str):
-        return re.sub(r"^(s3://)[^/@]+@", r"\1", uri)
-
-    @staticmethod
-    def _run_command(cmd: List[str]) -> subprocess.CompletedProcess:
-        """Run a command and handle errors.
+    def _parse_s3_uri(uri: str) -> tuple[str, str]:
+        """Parse S3 URI into bucket and key.
 
         Args:
-            cmd: List of command arguments (e.g., ['aws', 's3', 'cp', ...])
+            uri: S3 URI (e.g., s3://bucket/path/to/object)
 
         Returns:
-            CompletedProcess object from subprocess.run
+            Tuple of (bucket_name, key)
 
         Raises:
-            subprocess.CalledProcessError: If the command fails
-            FileNotFoundError: If the command is not installed
+            ValueError: If URI is not a valid S3 URI
         """
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return result
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Command '{cmd[0]}' is not installed.")
-        except subprocess.CalledProcessError as e:
-            print(f"Command failed: {' '.join(cmd)}")
-            print(f"Error: {e.stderr}")
-            logger.error(f"Command failed: {' '.join(cmd)}")
-            logger.error(f"Error output: {e.stderr}")
-            raise
+        # Remove user info if present
+        uri = re.sub(r"^(s3://)[^/@]+@", r"\1", uri)
+
+        if not uri.startswith("s3://"):
+            raise ValueError(f"Invalid S3 URI: {uri}")
+
+        # Remove s3:// prefix and split into bucket and key
+        path = uri[5:]  # Remove "s3://"
+        parts = path.split("/", 1)
+        bucket = parts[0]
+        key = parts[1] if len(parts) > 1 else ""
+
+        return bucket, key
+
+    @staticmethod
+    def _get_s3_client(max_pool_connections: int = 50):
+        """Create a new S3 client instance with connection pooling.
+
+        Args:
+            max_pool_connections: Maximum number of connections in the pool.
+                Should be >= max_workers for optimal performance.
+
+        Returns:
+            boto3 S3 client with connection pooling configured
+        """
+        # Configure connection pooling for better concurrent performance
+        config = Config(
+            max_pool_connections=max_pool_connections,
+            # Retry configuration for transient failures
+            retries={
+                "max_attempts": 3,
+                "mode": "adaptive",  # Adapts retry behavior based on error type
+            },
+            # TCP keepalive helps with long-running connections
+            tcp_keepalive=True,
+        )
+
+        return boto3.client("s3", config=config)
 
     @staticmethod
     def get_file(
@@ -73,39 +92,19 @@ class S3FileSystem(BaseCloudFileSystem):
         Returns:
             File contents as string or bytes, or None if file doesn't exist
         """
-        object_uri = S3FileSystem._parse_uri(object_uri)
-
         try:
-            # Create a temporary file to download to
-            with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-                tmp_path = tmp_file.name
+            bucket, key = S3FileSystem._parse_s3_uri(object_uri)
+            s3_client = S3FileSystem._get_s3_client()
 
-            try:
-                # Download file using AWS CLI
-                cmd = ["aws", "s3", "cp", object_uri, tmp_path]
-                S3FileSystem._run_command(cmd)
+            # Download file directly into memory
+            response = s3_client.get_object(Bucket=bucket, Key=key)
+            body = response["Body"].read()
 
-                # Read the file
-                mode = "r" if decode_as_utf_8 else "rb"
-                with open(tmp_path, mode) as f:
-                    body = f.read()
-
-                return body
-            finally:
-                # Clean up temporary file
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-
-        except subprocess.CalledProcessError as e:
-            # Check if file doesn't exist (AWS CLI returns non-zero exit code)
-            if "NoSuchKey" in e.stderr or "does not exist" in e.stderr.lower():
-                logger.info(f"URI {object_uri} does not exist.")
-                return None
-            logger.info(f"Error reading {object_uri}: {e.stderr}")
-            return None
+            if decode_as_utf_8:
+                return body.decode("utf-8")
+            return body
         except Exception as e:
             logger.info(f"Error reading {object_uri}: {e}")
-            return None
 
     @staticmethod
     def list_subfolders(folder_uri: str) -> List[str]:
@@ -117,26 +116,28 @@ class S3FileSystem(BaseCloudFileSystem):
         Returns:
             List of subfolder names (without trailing slashes)
         """
-        folder_uri = S3FileSystem._parse_uri(folder_uri)
-
-        # Ensure that the folder_uri has a trailing slash.
-        folder_uri = f"{folder_uri.rstrip('/')}/"
-
         try:
-            # Use AWS CLI to list objects with common prefix
-            cmd = ["aws", "s3", "ls", folder_uri]
-            result = S3FileSystem._run_command(cmd)
+            bucket, prefix = S3FileSystem._parse_s3_uri(folder_uri)
+
+            # Ensure that the prefix has a trailing slash
+            if prefix and not prefix.endswith("/"):
+                prefix = f"{prefix}/"
+
+            s3_client = S3FileSystem._get_s3_client()
+
+            # List objects with delimiter to get only immediate subfolders
+            response = s3_client.list_objects_v2(
+                Bucket=bucket, Prefix=prefix, Delimiter="/"
+            )
 
             subfolders = []
-            for line in result.stdout.strip().split("\n"):
-                stripped_line = line.strip()
-                if not stripped_line:
-                    continue
-                # AWS CLI ls output format: "PRE folder_name/" or "timestamp size key"
-                # We're looking for lines containing "PRE" (prefixes/directories)
-                if stripped_line.startswith("PRE"):
-                    # Extract folder name: "PRE folder_name/" -> "folder_name"
-                    folder_name = stripped_line.split()[-1].rstrip("/")
+            # CommonPrefixes contains the subdirectories
+            for common_prefix in response.get("CommonPrefixes", []):
+                folder_path = common_prefix["Prefix"]
+                # Extract the folder name from the full prefix
+                # Remove the parent prefix and trailing slash
+                folder_name = folder_path[len(prefix) :].rstrip("/")
+                if folder_name:
                     subfolders.append(folder_name)
 
             return subfolders
@@ -145,65 +146,190 @@ class S3FileSystem(BaseCloudFileSystem):
             return []
 
     @staticmethod
+    def _calculate_optimal_workers(
+        num_files: int, total_size: int, default_max: int = 100, default_min: int = 10
+    ) -> int:
+        """Calculate optimal number of workers based on file characteristics.
+
+        Args:
+            num_files: Number of files to download
+            total_size: Total size of all files in bytes
+            default_max: Maximum workers to cap at
+            default_min: Minimum workers to use
+
+        Returns:
+            Optimal number of workers between default_min and default_max
+        """
+        if num_files == 0:
+            return default_min
+
+        avg_file_size = total_size / num_files if total_size > 0 else 0
+
+        # Strategy: More workers for smaller files, fewer for larger files
+        if avg_file_size < 1024 * 1024:  # < 1MB (small files)
+            # Use more workers for many small files
+            workers = min(num_files, default_max)
+        elif avg_file_size < 10 * 1024 * 1024:  # 1-10MB (medium files)
+            # Use moderate workers
+            workers = min(num_files // 2, default_max // 2)
+        else:  # > 10MB (large files)
+            # Use fewer workers since each download is bandwidth-intensive
+            workers = min(20, num_files)
+
+        # Ensure workers is between min and max
+        return max(default_min, min(workers, default_max))
+
+    @staticmethod
+    def _download_single_file(
+        s3_client: BaseClient, bucket: str, key: str, local_file_path: str
+    ) -> tuple[str, bool]:
+        """Download a single file from S3.
+
+        Args:
+            s3_client: Shared boto3 S3 client
+            bucket: S3 bucket name
+            key: S3 object key
+            local_file_path: Local path where file will be saved
+
+        Returns:
+            Tuple of (key, success)
+        """
+        try:
+            # Create parent directories if needed
+            os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+
+            s3_client.download_file(bucket, key, local_file_path)
+            logger.debug(f"Downloaded {key} to {local_file_path}")
+            return key, True
+        except Exception as e:
+            logger.error(f"Failed to download {key}: {e}")
+            return key, False
+
+    @staticmethod
     def download_files(
         path: str,
         bucket_uri: str,
         substrings_to_include: Optional[List[str]] = None,
         suffixes_to_exclude: Optional[List[str]] = None,
+        max_workers: Optional[int] = None,
     ) -> None:
-        """Download files from cloud storage to a local directory.
+        """Download files from cloud storage to a local directory concurrently.
 
         Args:
             path: Local directory where files will be downloaded
             bucket_uri: URI of cloud directory
             substrings_to_include: Only include files containing these substrings
             suffixes_to_exclude: Exclude certain files from download (e.g .safetensors)
+            max_workers: Maximum number of concurrent downloads. If None, automatically
+                calculated based on file count and sizes (min: 10, max: 100)
         """
-        bucket_uri = S3FileSystem._parse_uri(bucket_uri)
-
-        if not bucket_uri.startswith("s3://"):
-            raise ValueError(f"Invalid S3 URI: {bucket_uri}")
-
         try:
+            bucket, prefix = S3FileSystem._parse_s3_uri(bucket_uri)
+
             # Ensure the destination directory exists
             os.makedirs(path, exist_ok=True)
 
-            # Ensure bucket_uri has trailing slash for directory listing
-            source_uri = f"{bucket_uri.rstrip('/')}/"
+            # Ensure prefix has trailing slash for directory listing
+            if prefix and not prefix.endswith("/"):
+                prefix = f"{prefix}/"
 
-            # Build AWS CLI command
-            cmd = ["aws", "s3", "cp", source_uri, path, "--recursive"]
+            # Create initial client for listing (will recreate with proper pool size later)
+            s3_client = S3FileSystem._get_s3_client()
 
-            # AWS CLI filter logic:
-            # - By default, all files are included
-            # - --exclude removes files matching the pattern
-            # - --include adds files matching the pattern (even if excluded)
-            # - Order matters: filters are processed sequentially
+            # List all objects in the bucket with the given prefix
+            paginator = s3_client.get_paginator("list_objects_v2")
+            pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
 
-            # If we have include filters, we need to exclude everything first,
-            # then include only what we want
-            if substrings_to_include:
-                # Exclude everything first
-                cmd.extend(["--exclude", "*"])
-                # Then include files matching any of the substring patterns
-                for substring in substrings_to_include:
-                    # Create wildcard pattern: *substring* matches files containing substring
-                    pattern = f"*{substring}*"
-                    cmd.extend(["--include", pattern])
+            # Collect all files to download and track total size
+            files_to_download = []
+            total_size = 0
 
-            # Add exclude filters (suffixes_to_exclude)
-            # These will exclude files ending with the specified suffixes
-            if suffixes_to_exclude:
-                for suffix in suffixes_to_exclude:
-                    # Ensure suffix starts with * if it doesn't already
-                    if not suffix.startswith("*"):
-                        pattern = f"*{suffix}"
-                    else:
-                        pattern = suffix
-                    cmd.extend(["--exclude", pattern])
+            for page in pages:
+                for obj in page.get("Contents", []):
+                    key = obj["Key"]
+                    size = obj.get("Size", 0)
 
-            # Run the download command
-            S3FileSystem._run_command(cmd)
+                    # Skip if it's a directory marker
+                    if key.endswith("/"):
+                        continue
+
+                    # Get the relative path (remove the prefix)
+                    relative_path = key[len(prefix) :]
+
+                    # Apply include filters
+                    if substrings_to_include:
+                        if not any(
+                            substr in relative_path for substr in substrings_to_include
+                        ):
+                            continue
+
+                    # Apply exclude filters
+                    if suffixes_to_exclude:
+                        if any(
+                            relative_path.endswith(suffix.lstrip("*"))
+                            for suffix in suffixes_to_exclude
+                        ):
+                            continue
+
+                    # Construct local file path
+                    local_file_path = os.path.join(path, relative_path)
+                    files_to_download.append((bucket, key, local_file_path))
+                    total_size += size
+
+            # Download files concurrently
+            if not files_to_download:
+                logger.info(f"No files matching filters to download from {bucket_uri}")
+                return
+
+            # Dynamically calculate workers if not provided
+            if max_workers is None:
+                max_workers = S3FileSystem._calculate_optimal_workers(
+                    num_files=len(files_to_download),
+                    total_size=total_size,
+                    default_max=100,
+                    default_min=10,
+                )
+                logger.info(
+                    f"Auto-selected {max_workers} workers for {len(files_to_download)} files "
+                    f"({total_size / (1024**2):.1f} MB total)"
+                )
+
+            # Create shared client with proper connection pool size for downloads
+            s3_client = S3FileSystem._get_s3_client(
+                max_pool_connections=max_workers + 10
+            )
+
+            failed_downloads = []
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all download tasks with shared client
+                future_to_key = {
+                    executor.submit(
+                        S3FileSystem._download_single_file,
+                        s3_client,  # Pass shared client to each worker
+                        bucket,
+                        key,
+                        local_path,
+                    ): key
+                    for bucket, key, local_path in files_to_download
+                }
+
+                # Process completed downloads
+                for future in as_completed(future_to_key):
+                    key, success = future.result()
+                    if not success:
+                        failed_downloads.append(key)
+
+            # Report any failures
+            if failed_downloads:
+                logger.warning(
+                    f"Failed to download {len(failed_downloads)} files: {failed_downloads[:5]}..."
+                )
+                raise Exception(
+                    f"Failed to download {len(failed_downloads)} out of {len(files_to_download)} files"
+                )
+
+            logger.info(f"Successfully downloaded {len(files_to_download)} files")
 
         except Exception as e:
             logger.exception(f"Error downloading files from {bucket_uri}: {e}")
@@ -220,18 +346,39 @@ class S3FileSystem(BaseCloudFileSystem):
             local_path: The local path of the files to upload.
             bucket_uri: The bucket uri to upload the files to, must start with `s3://`.
         """
-
-        bucket_uri = S3FileSystem._parse_uri(bucket_uri)
-
         try:
-            # Ensure bucket_uri has trailing slash for directory upload
-            dest_uri = f"{bucket_uri.rstrip('/')}/"
+            bucket, prefix = S3FileSystem._parse_s3_uri(bucket_uri)
 
-            # Build AWS CLI command for recursive upload
-            cmd = ["aws", "s3", "cp", local_path, dest_uri, "--recursive"]
+            # Ensure prefix has trailing slash for directory upload
+            if prefix and not prefix.endswith("/"):
+                prefix = f"{prefix}/"
 
-            # Run the upload command
-            S3FileSystem._run_command(cmd)
+            s3_client = S3FileSystem._get_s3_client()
+
+            local_path_obj = Path(local_path)
+
+            # Walk through the local directory and upload each file
+            if local_path_obj.is_file():
+                # Upload a single file
+                file_name = local_path_obj.name
+                s3_key = f"{prefix}{file_name}" if prefix else file_name
+                s3_client.upload_file(str(local_path_obj), bucket, s3_key)
+                logger.debug(f"Uploaded {local_path_obj} to s3://{bucket}/{s3_key}")
+            elif local_path_obj.is_dir():
+                # Upload directory recursively
+                for file_path in local_path_obj.rglob("*"):
+                    if file_path.is_file():
+                        # Calculate relative path from local_path
+                        relative_path = file_path.relative_to(local_path_obj)
+                        # Construct S3 key
+                        s3_key = f"{prefix}{relative_path.as_posix()}"
+                        # Upload file
+                        s3_client.upload_file(str(file_path), bucket, s3_key)
+                        logger.debug(f"Uploaded {file_path} to s3://{bucket}/{s3_key}")
+            else:
+                raise ValueError(
+                    f"Path {local_path} does not exist or is not a file/directory"
+                )
 
         except Exception as e:
             logger.exception(f"Error uploading files to {bucket_uri}: {e}")
