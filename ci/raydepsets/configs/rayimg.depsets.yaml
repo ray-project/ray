@@ -25,6 +25,7 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --unsafe-package ray
       - --python-platform=linux
+      - --unsafe-package setuptools
     build_arg_sets:
       - py39
       - py310
@@ -49,6 +50,7 @@ depsets:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+      - --unsafe-package setuptools
     build_arg_sets:
       - py39
       - py310
@@ -71,6 +73,7 @@ depsets:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+      - --unsafe-package setuptools
     build_arg_sets:
       - py39
       - py310
@@ -92,6 +95,7 @@ depsets:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+      - --unsafe-package setuptools
     build_arg_sets:
       - py39
       - py310
@@ -112,6 +116,7 @@ depsets:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+      - --unsafe-package setuptools
     build_arg_sets:
       - py39
       - py310

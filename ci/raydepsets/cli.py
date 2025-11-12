@@ -18,7 +18,6 @@ from ci.raydepsets.workspace import Depset, Workspace
 DEFAULT_UV_FLAGS = """
     --generate-hashes
     --strip-extras
-    --unsafe-package setuptools
     --index-url https://pypi.org/simple
     --index-strategy unsafe-best-match
     --no-strip-markers
@@ -439,6 +438,7 @@ def _flatten_flags(flags: List[str]) -> List[str]:
     """
     flattened_flags = []
     for flag in flags:
+        print(flag)
         flattened_flags.extend(flag.split())
     return flattened_flags
 

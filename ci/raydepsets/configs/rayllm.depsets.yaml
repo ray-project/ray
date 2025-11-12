@@ -13,6 +13,7 @@ build_arg_sets:
     - --unsafe-package ray
     - --python-platform=linux
     - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+    - --unsafe-package setuptools
   build_arg_sets:
     - cpu
     - cu128
