@@ -167,7 +167,7 @@ class DataIterator(abc.ABC):
     def _create_batch_iterator(
         self,
         ref_bundles_iter: Iterator[RefBundle],
-        prefetch_count_update: Optional[Callable[[int], None]] = None,
+        prefetch_count_update: Optional[Callable[[int, int], None]] = None,
         **kwargs,
     ) -> BatchIterator:
         return BatchIterator(

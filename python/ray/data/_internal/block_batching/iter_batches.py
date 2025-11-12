@@ -383,9 +383,9 @@ def prefetch_batches_locally(
         # Stop adding if the number of rows in this window is greater than requested
         # batch size, or if the batch size is None and the number of blocks in this window
         # is greater than requested batches to prefetch.
-        while (batch_size is not None and current_window_size < num_rows_to_prefetch) or (
-            batch_size is None and len(sliding_window) < num_batches_to_prefetch
-        ):
+        while (
+            batch_size is not None and current_window_size < num_rows_to_prefetch
+        ) or (batch_size is None and len(sliding_window) < num_batches_to_prefetch):
             try:
                 next_ref_bundle = get_next_ref_bundle()
                 sliding_window.extend(next_ref_bundle.blocks)
