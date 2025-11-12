@@ -100,7 +100,7 @@ export const lightTheme = createTheme(basicTheme, {
     },
     text: {
       primary: grey[900],
-      secondary: grey[700],
+      secondary: grey[800],
       disabled: grey[400],
     },
     background: {
