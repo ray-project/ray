@@ -3702,7 +3702,7 @@ class Algorithm(Checkpointable, Trainable):
                     self.offline_eval_runner_group
                 )
                 if restored:
-
+                    # Fire the callback for re-created offline evaluation runners.
                     make_callback(
                         "on_offline_eval_runners_recreated",
                         callbacks_objects=self.callbacks,

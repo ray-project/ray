@@ -117,8 +117,8 @@ class MetricsLogger:
     """A generic class collecting and reducing metrics.
 
     Use this API to log and merge metrics.
-    Mostly metrics should be logged in parallel components with MetricsLogger.log_value().
-    RLlib will then aggregate metrics, reduce them and log them.
+    Metrics should be logged in parallel components with MetricsLogger.log_value().
+    RLlib will then aggregate metrics, reduce them and report them.
 
     The MetricsLogger supports logging anything that has a corresponding reduction method.
     These are defined natively in the Stats classes, which are used to log the metrics.
@@ -128,7 +128,7 @@ class MetricsLogger:
     Note: In our docstirngs we make heavy use of the phrase 'parallel components'.
     This pertains to the architecture of the logging system, where we have one 'root' MetricsLogger
     that is used to aggregate all metrics of n parallel ('non-root') MetricsLoggers that are used to log metrics for each parallel component.
-    A parallel component is typically a single Learner worker, an EnvRunner, or a ConnectorV2 or any other component of which more than one instance is running in parallel.
+    A parallel component is typically a single Learner, an EnvRunner, or a ConnectorV2 or any other component of which more than one instance is running in parallel.
     """
 
     def __init__(
