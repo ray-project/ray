@@ -41,16 +41,14 @@ def _setup_jax_distributed_environment(
         use_tpu: Whether to configure for TPU. If True and JAX_PLATFORMS is not
             already set, it will be set to "tpu".
     """
-    # If user/test already set JAX_PLATFORMS, respect their choice
-    if os.environ.get("JAX_PLATFORMS"):
-        jax_platforms = os.environ.get("JAX_PLATFORMS", "").lower()
-    else:
-        # Set JAX_PLATFORMS based on configuration
-        if use_tpu:
-            os.environ["JAX_PLATFORMS"] = "tpu"
-            jax_platforms = "tpu"
-        else:
-            jax_platforms = ""
+    # Get JAX_PLATFORMS from environment if already set
+    jax_platforms = os.environ.get("JAX_PLATFORMS", "").lower()
+
+    if not jax_platforms and use_tpu:
+        os.environ["JAX_PLATFORMS"] = "tpu"
+        jax_platforms = "tpu"
+
+    # TODO(lehui): Add env vars for JAX on GPU.
 
     import jax
 
