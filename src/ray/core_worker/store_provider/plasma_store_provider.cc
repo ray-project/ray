@@ -257,7 +257,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     int64_t timeout_ms,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
   std::vector<ipc::ScopedResponse> get_request_cleanup_handlers;
-  int64_t get_request_id = get_request_counter_.fetch_add(1);
 
   bool got_exception = false;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
@@ -277,8 +276,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     // 1. Make the request to pull all objects into local plasma if not local already.
     std::vector<rpc::Address> owner_addresses =
         reference_counter_.GetOwnerAddresses(batch_ids);
-    StatusOr<ipc::ScopedResponse> status_or_cleanup =
-        raylet_ipc_client_->AsyncGetObjects(batch_ids, owner_addresses, get_request_id);
+    StatusOr<ipc::ScopedResponse> status_or_cleanup = raylet_ipc_client_->AsyncGetObjects(
+        batch_ids, owner_addresses, get_request_counter_.fetch_add(1));
     RAY_RETURN_NOT_OK(status_or_cleanup.status());
     get_request_cleanup_handlers.emplace_back(std::move(status_or_cleanup.value()));
 
