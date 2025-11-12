@@ -91,7 +91,7 @@ class BatchIterator:
             performance for non-CPU bound UDFs, allowing batch fetching compute and
             formatting to be overlapped with the UDF. Defaults to 1.
         prefetch_count_update: Optional callback to report the number of outstanding
-            prefetched blocks and their byte size. Called with (blocks, bytes) whenever
+            prefetched blocks and their byte size. Called with (num_blocks, num_bytes) whenever
             the count changes.
     """
 
@@ -344,7 +344,7 @@ def prefetch_batches_locally(
         batch_size: User specified batch size, or None to let the system pick.
         eager_free: Whether to eagerly free the object reference from the object store.
         prefetch_count_update: Optional callback to report the number of outstanding
-            prefetched blocks and their byte size. Called with (blocks, bytes) whenever
+            prefetched blocks and their byte size. Called with (num_blocks, num_bytes) whenever
             the count changes.
         stats: Dataset stats object used to store ref bundle retrieval time.
     """

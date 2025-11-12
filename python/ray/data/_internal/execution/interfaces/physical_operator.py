@@ -457,18 +457,18 @@ class PhysicalOperator(Operator):
         self._metrics._extra_metrics = self._extra_metrics()
         return self._metrics
 
-    def update_prefetch_count(self, blocks: int, bytes: int) -> None:
+    def update_prefetch_count(self, num_blocks: int, num_bytes: int) -> None:
         """Update the number of outstanding prefetched blocks and their byte size.
 
         This is called by the iterator to report how many blocks are currently
         prefetched, so the resource manager can account for object store memory.
 
         Args:
-            blocks: Number of outstanding prefetched blocks.
-            bytes: Total byte size of outstanding prefetched blocks.
+            num_blocks: Number of outstanding prefetched blocks.
+            num_bytes: Total byte size of outstanding prefetched blocks.
         """
-        self._metrics.num_prefetched_blocks = blocks
-        self._metrics.num_prefetched_bytes = bytes
+        self._metrics.num_prefetched_blocks = num_blocks
+        self._metrics.num_prefetched_bytes = num_bytes
 
     def _extra_metrics(self) -> Dict[str, Any]:
         """Subclasses should override this method to report extra metrics

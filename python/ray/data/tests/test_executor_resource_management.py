@@ -615,9 +615,9 @@ def test_prefetch_count_reporting_regular_iterator(
     # Patch update_prefetch_count to track all calls
     original_update = last_op.update_prefetch_count
 
-    def tracked_update(blocks, bytes):
-        prefetch_counts.append(blocks)
-        original_update(blocks, bytes)
+    def tracked_update(num_blocks, num_bytes):
+        prefetch_counts.append(num_blocks)
+        original_update(num_blocks, num_bytes)
 
     last_op.update_prefetch_count = tracked_update
 
