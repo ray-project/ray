@@ -1372,7 +1372,7 @@ TEST_P(DrainRayletIdempotencyTest, TestHandleDrainRayletIdempotency) {
 
   auto [drain_reason, is_node_idle] = GetParam();
   if (!is_node_idle) {
-    cluster_resource_scheduler_->GetLocalResourceManager().SetBusyFootprint(
+    cluster_resource_scheduler_->GetLocalResourceManager().MarkFootprintAsBusy(
         WorkFootprint::NODE_WORKERS);
   }
 
