@@ -164,9 +164,7 @@
   working_dir: hello_world_tests
 
   cluster:
-    byod:
-      type: gpu
-      python_depset: emoji.lock
+    byod: {}
     cluster_compute: hello_world_compute_config.yaml
 
   run:
