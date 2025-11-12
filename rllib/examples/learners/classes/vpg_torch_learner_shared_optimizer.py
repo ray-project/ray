@@ -1,5 +1,5 @@
-from ray.rllib.examples.learners.classes.vpg_torch_learner import VPGTorchLearner
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
+from ray.rllib.examples.learners.classes.vpg_torch_learner import VPGTorchLearner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 

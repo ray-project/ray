@@ -76,7 +76,7 @@ class MockReplicaActorWrapper:
         version: DeploymentVersion,
     ):
         self._replica_id = replica_id
-
+        self._actor_name = replica_id.to_full_id_str()
         # Will be set when `start()` is called.
         self.started = False
         # Will be set when `recover()` is called.
@@ -309,6 +309,10 @@ class MockReplicaActorWrapper:
 
     def get_routing_stats(self) -> Dict[str, Any]:
         return {}
+
+    @property
+    def route_patterns(self) -> Optional[List[str]]:
+        return None
 
 
 def deployment_info(
