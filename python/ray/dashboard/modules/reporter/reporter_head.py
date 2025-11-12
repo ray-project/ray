@@ -24,7 +24,7 @@ from ray._private.ray_constants import (
     KV_NAMESPACE_DASHBOARD,
     env_integer,
 )
-from ray._private.utils import init_grpc_channel
+from ray._private.grpc_utils import init_grpc_channel
 from ray.autoscaler._private.commands import debug_status
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS

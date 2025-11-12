@@ -146,7 +146,7 @@ class StateDataSourceClient:
 
     def get_raylet_stub(self, ip: str, port: int):
         options = _STATE_MANAGER_GRPC_OPTIONS
-        channel = ray._private.utils.init_grpc_channel(
+        channel = ray._private.grpc_utils.init_grpc_channel(
             build_address(ip, port), options, asynchronous=True
         )
         return NodeManagerServiceStub(channel)
@@ -162,7 +162,7 @@ class StateDataSourceClient:
             return None
         ip, http_port, grpc_port = json.loads(agent_addr)
         options = ray_constants.GLOBAL_GRPC_OPTIONS
-        channel = ray._private.utils.init_grpc_channel(
+        channel = ray._private.grpc_utils.init_grpc_channel(
             build_address(ip, grpc_port), options=options, asynchronous=True
         )
         return LogServiceStub(channel)

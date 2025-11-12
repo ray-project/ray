@@ -290,7 +290,7 @@ class NodeHead(SubprocessModule):
             node["nodeManagerAddress"], int(node["nodeManagerPort"])
         )
         options = ray_constants.GLOBAL_GRPC_OPTIONS
-        channel = ray._private.utils.init_grpc_channel(
+        channel = ray._private.grpc_utils.init_grpc_channel(
             address, options, asynchronous=True
         )
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)

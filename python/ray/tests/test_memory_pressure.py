@@ -25,7 +25,7 @@ expected_worker_eviction_message = (
 
 
 def get_local_state_client():
-    gcs_channel = ray._private.utils.init_grpc_channel(
+    gcs_channel = ray._private.grpc_utils.init_grpc_channel(
         ray.worker._global_node.gcs_address,
         ray_constants.GLOBAL_GRPC_OPTIONS,
         asynchronous=True,

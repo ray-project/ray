@@ -144,7 +144,7 @@ def state_source_client(gcs_address):
         ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
         ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
     )
-    gcs_channel = ray._private.utils.init_grpc_channel(
+    gcs_channel = ray._private.grpc_utils.init_grpc_channel(
         gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
     gcs_client = GcsClient(address=gcs_address)

@@ -37,7 +37,7 @@ from ray.util.state.api import list_nodes
 def _autoscaler_state_service_stub():
     """Get the grpc stub for the autoscaler state service"""
     gcs_address = ray.get_runtime_context().gcs_address
-    gcs_channel = ray._private.utils.init_grpc_channel(
+    gcs_channel = ray._private.grpc_utils.init_grpc_channel(
         gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS
     )
     return autoscaler_pb2_grpc.AutoscalerStateServiceStub(gcs_channel)

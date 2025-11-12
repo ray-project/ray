@@ -1867,7 +1867,7 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
     raylet_address = build_address(
         raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
     )
-    channel = ray._private.utils.init_grpc_channel(raylet_address)
+    channel = ray._private.grpc_utils.init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     for _ in range(num_retry):
         try:
@@ -1888,7 +1888,7 @@ def get_resource_usage(gcs_address, timeout=10):
     if not gcs_address:
         gcs_address = ray.worker._global_node.gcs_address
 
-    gcs_channel = ray._private.utils.init_grpc_channel(
+    gcs_channel = ray._private.grpc_utils.init_grpc_channel(
         gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=False
     )
 
