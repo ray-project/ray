@@ -12,6 +12,9 @@ class ItemStats(StatsBase):
     Note the follwing limitation: That, when calling `ItemStats.merge()`, we replace the current item.
     This is because there can only be a single item tracked by definition.
 
+    This class will check if the logged item is a GPU tensor.
+    If it is, it will be converted to CPU memory.
+
     Use this if you want to track a single item that should not be reduced.
     An example would be to log the total loss.
     """
@@ -38,6 +41,8 @@ class ItemStats(StatsBase):
     def reduce(self, compile: bool = True) -> Union[Any, "ItemStats"]:
         item = self._item
         self._item = None
+
+        item = single_value_to_cpu(item)
 
         if compile:
             return item
@@ -95,9 +100,10 @@ class ItemStats(StatsBase):
             # ItemStats doesn't support latest_merged_only since it tracks a single item
             # Just return the current item regardless
             pass
+        item = single_value_to_cpu(self._item)
         if compile:
-            return self._item
-        return [self._item]
+            return item
+        return [item]
 
     def __repr__(self) -> str:
         return f"ItemStats({self.peek()}"

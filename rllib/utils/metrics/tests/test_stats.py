@@ -47,8 +47,8 @@ def get_device(use_gpu):
         (SumStats, [{"window": 4}, {}], [1, 5, 3], 9),
         (LifetimeSumStats, [{}], [10, 20], 30),
         (EmaStats, [{"ema_coeff": 0.01}], [10, 20], 10.1),
+        (ItemSeriesStats, [{"window": 4}], [1, 2, 3, 4, 5], [2, 3, 4, 5]),
         # Don't test Percentile Stats because reduce beahviour is quite different from other stats
-        # Don't test ItemSeriesStats because reduce beahviour is quite different from other stats
     ],
 )
 @pytest.mark.parametrize("use_gpu", [False, True])
@@ -180,6 +180,7 @@ def test_peek_and_reduce_percentiles_stats(use_gpu):
 
 
 def test_peek_and_reduce_item_series_stats():
+    # We test GPU behaviour for these elsewhere
     stats = ItemSeriesStats(window=10)
     for value in ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]:
         stats.push(value)

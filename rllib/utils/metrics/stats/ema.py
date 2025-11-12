@@ -175,9 +175,7 @@ class EmaStats(StatsBase):
             else:
                 value = self._value
 
-        # Convert GPU tensor to CPU
-        if torch and isinstance(value, torch.Tensor):
-            value = single_value_to_cpu(value)
+        value = single_value_to_cpu(value)
 
         return value if compile else [value]
 
@@ -206,7 +204,7 @@ class EmaStats(StatsBase):
 
         # Convert GPU tensor to CPU
         if torch and isinstance(value, torch.Tensor):
-            value = value.detach().cpu().item()
+            value = single_value_to_cpu(value)
 
         self._value = np.nan
 

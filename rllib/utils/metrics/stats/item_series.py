@@ -4,6 +4,7 @@ from collections import deque
 
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.stats.base import StatsBase
+from ray.rllib.utils.metrics.stats.utils import batch_values_to_cpu
 
 
 @DeveloperAPI
@@ -14,7 +15,8 @@ class ItemSeriesStats(StatsBase):
     An example would be to log actions and translate them into a chart to visualize
     the distribution of actions outside of RLlib.
 
-    This class should not handle GPU tensors.
+    This class will check if logged items are GPU tensors.
+    If they are, they will be converted to CPU memory.
 
     Note that at the root level, the internal item list can grow to `window * len(incoming_stats)`.
     """
@@ -72,6 +74,8 @@ class ItemSeriesStats(StatsBase):
         items = self.items
         self._set_items([])
 
+        items = batch_values_to_cpu(items)
+
         if compile:
             return items
 
@@ -108,12 +112,16 @@ class ItemSeriesStats(StatsBase):
         if latest_merged_only:
             if self.latest_merged is None:
                 # No merged items yet, return empty list
-                return []
+                items = []
             # Use only the latest merged items
-            return self.latest_merged
+            items = self.latest_merged
         else:
             # Normal peek behavior
-            return self.items
+            items = self.items
+
+        items = batch_values_to_cpu(items)
+
+        return items
 
     def merge(self, incoming_stats: List["ItemSeriesStats"]) -> None:
         """Merges ItemSeriesStats objects.
