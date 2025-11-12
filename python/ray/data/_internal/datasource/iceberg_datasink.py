@@ -76,6 +76,18 @@ class IcebergDatasink(Datasink[List["pa.Table"]]):
         self._upsert_kwargs = (upsert_kwargs or {}).copy()
         self._overwrite_kwargs = (overwrite_kwargs or {}).copy()
 
+        # Validate kwargs are only set for relevant modes
+        if self._upsert_kwargs and self._mode != SaveMode.UPSERT:
+            raise ValueError(
+                f"upsert_kwargs can only be specified when mode is SaveMode.UPSERT, "
+                f"but mode is {self._mode}"
+            )
+        if self._overwrite_kwargs and self._mode != SaveMode.OVERWRITE:
+            raise ValueError(
+                f"overwrite_kwargs can only be specified when mode is SaveMode.OVERWRITE, "
+                f"but mode is {self._mode}"
+            )
+
         if "name" in self._catalog_kwargs:
             self._catalog_name = self._catalog_kwargs.pop("name")
         else:
