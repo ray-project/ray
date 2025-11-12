@@ -56,6 +56,7 @@ py_test_module_list(
         "test_gcs_utils.py",
         "test_get_locations.py",
         "test_global_state.py",
+        "test_grpc_authentication_server_interceptor.py",
         "test_healthcheck.py",
         "test_metric_cardinality.py",
         "test_metrics_agent.py",
@@ -71,28 +72,6 @@ py_test_module_list(
         "test_runtime_env_agent_auth.py",
         "test_util_helpers.py",
     ],
-    tags = [
-        "exclusive",
-        "medium_size_python_tests_a_to_j",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test_module_list(
-    size = "medium",
-    env = {
-        "RAY_enable_open_telemetry": "true",
-    },
-    files = [
-        "test_metric_cardinality.py",
-        "test_metrics_agent.py",
-        "test_task_metrics.py",
-    ],
-    name_suffix = "_otel",
     tags = [
         "exclusive",
         "medium_size_python_tests_a_to_j",

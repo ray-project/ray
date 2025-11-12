@@ -1755,7 +1755,9 @@ void GcsActorManager::NotifyRayletToKillActor(const std::shared_ptr<GcsActor> &a
   request.mutable_death_cause()->CopyFrom(death_cause);
   request.set_force_kill(force_kill);
   if (!actor->LocalRayletAddress()) {
-    RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " has not been assigned a lease";
+    RAY_LOG(INFO).WithField(actor->GetActorID())
+        << "Not sending KillLocalActorRequest because Actor has not been assigned a "
+           "lease";
     return;
   }
   auto actor_raylet_client =
@@ -1767,13 +1769,13 @@ void GcsActorManager::NotifyRayletToKillActor(const std::shared_ptr<GcsActor> &a
       << "Send request to kill actor to worker at node";
   actor_raylet_client->KillLocalActor(
       request,
-      [actor_id = actor->GetActorID()](const ray::Status &status,
-                                       rpc::KillLocalActorReply &&reply) {
+      [node_id = actor->GetNodeID(), actor_id = actor->GetActorID()](
+          const ray::Status &status, rpc::KillLocalActorReply &&reply) {
         if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to kill actor " << actor_id
-                         << ", return status: " << status.ToString();
+          RAY_LOG(INFO).WithField(actor_id).WithField(node_id)
+              << "Node with actor is already dead, return status: " << status.ToString();
         } else {
-          RAY_LOG(INFO) << "Killed actor " << actor_id << " successfully.";
+          RAY_LOG(INFO).WithField(actor_id) << "Killed actor successfully.";
         }
       });
 }
