@@ -297,6 +297,38 @@ class RefBundle:
     def __len__(self) -> int:
         return len(self.blocks)
 
+    def __str__(self) -> str:
+        lines = [
+            f"RefBundle({len(self.blocks)} blocks,",
+            f"  {self.num_rows()} rows,",
+            f"  schema={self.schema},",
+            f"  owns_blocks={self.owns_blocks},",
+            "  blocks=(",
+        ]
+
+        # Loop through each block and show details
+        for i, ((block_ref, metadata), block_slice) in enumerate(
+            zip(self.blocks, self.slices)
+        ):
+            row_str = (
+                f"{metadata.num_rows} rows"
+                if metadata.num_rows is not None
+                else "unknown rows"
+            )
+            bytes_str = f"{metadata.size_bytes} bytes"
+            slice_str = (
+                f"slice={block_slice}"
+                if block_slice is not None
+                else "slice=None (full block)"
+            )
+
+            lines.append(f"    {i}: {row_str}, {bytes_str}, {slice_str}")
+
+        lines.append("  )")
+        lines.append(")")
+
+        return "\n".join(lines)
+
 
 @dataclass
 class _ObjectMetadata:

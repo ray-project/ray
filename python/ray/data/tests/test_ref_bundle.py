@@ -334,6 +334,48 @@ def test_slice_ref_bundle_with_none_slices():
     ]
 
 
+def test_ref_bundle_str():
+    """Test the __str__ method returns a readable representation."""
+    block_ref_one = ObjectRef(b"1" * 28)
+    block_ref_two = ObjectRef(b"2" * 28)
+    block_ref_three = ObjectRef(b"3" * 28)
+
+    meta_one = BlockMetadata(
+        num_rows=10, size_bytes=100, exec_stats=None, input_files=None
+    )
+    meta_two = BlockMetadata(
+        num_rows=5, size_bytes=50, exec_stats=None, input_files=None
+    )
+    meta_three = BlockMetadata(
+        num_rows=3, size_bytes=30, exec_stats=None, input_files=None
+    )
+    slice_three = BlockSlice(start_offset=0, end_offset=3)
+
+    bundle = RefBundle(
+        blocks=[
+            (block_ref_one, meta_one),
+            (block_ref_two, meta_two),
+            (block_ref_three, meta_three),
+        ],
+        owns_blocks=True,
+        schema="test_schema",
+        slices=[None, None, slice_three],
+    )
+
+    expected = """RefBundle(3 blocks,
+  18 rows,
+  schema=test_schema,
+  owns_blocks=True,
+  blocks=(
+    0: 10 rows, 100 bytes, slice=None (full block)
+    1: 5 rows, 50 bytes, slice=None (full block)
+    2: 3 rows, 30 bytes, slice=BlockSlice(start_offset=0, end_offset=3)
+  )
+)"""
+
+    assert str(bundle) == expected
+
+
 def test_merge_ref_bundles():
 
     block_ref_one = ObjectRef(b"1" * 28)
