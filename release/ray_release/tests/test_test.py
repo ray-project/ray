@@ -197,14 +197,14 @@ def test_get_anyscale_byod_image():
             "cluster": {
                 "byod": {
                     "type": "gpu",
-                    "post_build_script": "foo.sh",
+                    "post_build_script": "release/ray_release/tests/test_post_build_script.sh",
                 }
             },
         }
     ).get_anyscale_byod_image() == (
         f"{get_global_config()['byod_ecr']}"
         f"/{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu-"
-        "5f311914c59730d72cee8e2a015c5d6eedf6523bfbf5abe2494e0cb85a5a7b70"
+        "ca242d8ab45386647ec6f0b209eb742882e7bd715755c0a4956d9498fa4cbb21"
     )
 
 
@@ -232,14 +232,14 @@ def test_get_anyscale_byod_image_ray_version():
                 "ray_version": "2.50.0",
                 "byod": {
                     "type": "gpu",
-                    "post_build_script": "foo.sh",
+                    "post_build_script": "release/ray_release/tests/test_post_build_script.sh",
                 },
             },
         }
     ).get_anyscale_byod_image() == (
         f"{get_global_config()['byod_ecr']}"
         f"/{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu-"
-        "5f311914c59730d72cee8e2a015c5d6eedf6523bfbf5abe2494e0cb85a5a7b70"
+        "ca242d8ab45386647ec6f0b209eb742882e7bd715755c0a4956d9498fa4cbb21"
         "-2.50.0"
     )
 
@@ -552,19 +552,17 @@ def test_get_byod_image_tag(mock_get_byod_base_image_tag):
             "name": "linux://test",
             "cluster": {
                 "byod": {
-                    "post_build_script": "test_post_build_script.sh",
-                    "python_depset": "test_python_depset.lock",
+                    "post_build_script": "release/ray_release/tests/test_post_build_script.sh",
+                    "python_depset": "release/ray_release/tests/test_depset.lock",
                 },
             },
         }
     )
     mock_get_byod_base_image_tag.return_value = "test-image"
-    custom_info = {
-        "post_build_script": "test_post_build_script.sh",
-        "python_depset": "test_python_depset.lock",
-    }
-    hash_value = dict_hash(custom_info)
-    assert test.get_byod_image_tag() == f"test-image-{hash_value}"
+    expected_hash_value = dict_hash(
+        '#!/bin/bash\necho "Hello, world!"\nemoji==2.10.0\n'
+    )
+    assert test.get_byod_image_tag() == f"test-image-{expected_hash_value}"
 
 
 @patch("ray_release.test.Test.get_byod_base_image_tag")
@@ -575,19 +573,14 @@ def test_get_byod_image_tag_ray_version(mock_get_byod_base_image_tag):
             "cluster": {
                 "ray_version": "2.50.0",
                 "byod": {
-                    "post_build_script": "test_post_build_script.sh",
-                    "python_depset": "test_python_depset.lock",
+                    "post_build_script": "release/ray_release/tests/test_post_build_script.sh",
                 },
             },
         }
     )
     mock_get_byod_base_image_tag.return_value = "test-image"
-    custom_info = {
-        "post_build_script": "test_post_build_script.sh",
-        "python_depset": "test_python_depset.lock",
-    }
-    hash_value = dict_hash(custom_info)
-    assert test.get_byod_image_tag() == f"test-image-{hash_value}-2.50.0"
+    expected_hash_value = dict_hash('#!/bin/bash\necho "Hello, world!"\n')
+    assert test.get_byod_image_tag() == f"test-image-{expected_hash_value}-2.50.0"
 
 
 if __name__ == "__main__":
