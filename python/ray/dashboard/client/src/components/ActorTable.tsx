@@ -112,7 +112,7 @@ const ActorTable = ({
     const actorList = Object.values(actors || {}).filter(filterFunc);
     let actorsSortedUserKey = actorList;
     if (aggregateUserSortKeys.includes(sorterKey)) {
-      // Uptime, GPU utilization, and GRAM usage are user specified sort keys but require an aggregate function
+      // Uptime, GPU utilization, and VRAM usage are user specified sort keys but require an aggregate function
       // over the actor attribute, so sorting with sortBy
       actorsSortedUserKey = _.sortBy(actorList, (actor) => {
         const descMultiplier = descVal ? 1 : -1;
@@ -285,10 +285,10 @@ const ActorTable = ({
       ),
     },
     {
-      label: "GRAM",
+      label: "VRAM",
       helpInfo: (
         <Typography>
-          Actor's GRAM usage (from Worker Process). <br />
+          Actor's VRAM usage (from Worker Process). <br />
         </Typography>
       ),
     },
@@ -515,9 +515,9 @@ const ActorTable = ({
               ["mem[0]", "Total Memory"],
               ["processStats.cpuPercent", "CPU"],
               // Fake attribute key used when sorting by GPU utilization and
-              // GRAM usage because aggregate function required on actor key before sorting.
+              // VRAM usage because aggregate function required on actor key before sorting.
               [gpuUtilizationSorterKey, "GPU Utilization"],
-              [gramUsageSorterKey, "GRAM Usage"],
+              [gramUsageSorterKey, "VRAM Usage"],
             ]}
             onChange={(val) => setSortKey(val)}
             showAllOption={false}
