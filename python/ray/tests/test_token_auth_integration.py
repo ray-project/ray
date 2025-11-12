@@ -9,7 +9,7 @@ from typing import Optional
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition, client_test_enabled
+from ray._private.test_utils import client_test_enabled, wait_for_condition
 
 try:
     from ray._raylet import AuthenticationTokenLoader
@@ -117,9 +117,10 @@ def clean_token_sources(cleanup_auth_token_env):
 
     reset_auth_token_state()
 
+
 @pytest.mark.skipif(
     client_test_enabled(),
-    reason="This test is for starting a new local cluster, not compatible with client mode"
+    reason="This test is for starting a new local cluster, not compatible with client mode",
 )
 def test_local_cluster_generates_token():
     """Test ray.init() generates token for local cluster when auth_mode=token is set."""
@@ -222,7 +223,7 @@ def test_cluster_token_authentication(tokens_match, setup_cluster_with_token_aut
 
 @pytest.mark.skipif(
     client_test_enabled(),
-    reason="Uses subprocess ray start, not compatible with client mode"
+    reason="Uses subprocess ray start, not compatible with client mode",
 )
 @pytest.mark.parametrize("is_head", [True, False])
 def test_ray_start_without_token_raises_error(is_head, request):
@@ -256,7 +257,7 @@ def test_ray_start_without_token_raises_error(is_head, request):
 
 @pytest.mark.skipif(
     client_test_enabled(),
-    reason="Uses subprocess ray start, not compatible with client mode"
+    reason="Uses subprocess ray start, not compatible with client mode",
 )
 def test_ray_start_head_with_token_succeeds():
     """Test that ray start --head succeeds when token auth is enabled with a valid token."""
@@ -303,7 +304,7 @@ def test_ray_start_head_with_token_succeeds():
 
 @pytest.mark.skipif(
     client_test_enabled(),
-    reason="Uses subprocess ray start, not compatible with client mode"
+    reason="Uses subprocess ray start, not compatible with client mode",
 )
 @pytest.mark.parametrize("token_match", ["correct", "incorrect"])
 def test_ray_start_address_with_token(token_match, setup_cluster_with_token_auth):

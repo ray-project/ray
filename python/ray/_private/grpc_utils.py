@@ -6,10 +6,10 @@ from typing import Any, Optional, Sequence, Tuple
 
 import grpc
 from grpc import aio as aiogrpc
-from ray._private.authentication import authentication_utils
-from ray._private.tls_utils import load_certs_from_env
 
 import ray
+from ray._private.authentication import authentication_utils
+from ray._private.tls_utils import load_certs_from_env
 
 
 def init_grpc_channel(

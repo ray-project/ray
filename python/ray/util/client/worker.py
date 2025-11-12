@@ -71,13 +71,9 @@ MESSAGE_SIZE_THRESHOLD = 10 * 2**20  # 10 MB
 
 # Links to the Ray Design Pattern doc to use in the task overhead warning
 # message
-DESIGN_PATTERN_FINE_GRAIN_TASKS_LINK = (
-    "https://docs.ray.io/en/latest/ray-core/patterns/too-fine-grained-tasks.html"  # noqa E501
-)
+DESIGN_PATTERN_FINE_GRAIN_TASKS_LINK = "https://docs.ray.io/en/latest/ray-core/patterns/too-fine-grained-tasks.html"  # noqa E501
 
-DESIGN_PATTERN_LARGE_OBJECTS_LINK = (
-    "https://docs.ray.io/en/latest/ray-core/patterns/closure-capture-large-objects.html"  # noqa E501
-)
+DESIGN_PATTERN_LARGE_OBJECTS_LINK = "https://docs.ray.io/en/latest/ray-core/patterns/closure-capture-large-objects.html"  # noqa E501
 
 
 def backoff(timeout: int) -> int:
@@ -616,8 +612,9 @@ class Worker:
         self.data_client.Schedule(task, populate_ids)
 
         self.total_outbound_message_size_bytes += task.ByteSize()
-        if self.total_outbound_message_size_bytes > MESSAGE_SIZE_THRESHOLD and log_once(
-            "client_communication_overhead_warning"
+        if (
+            self.total_outbound_message_size_bytes > MESSAGE_SIZE_THRESHOLD
+            and log_once("client_communication_overhead_warning")
         ):
             warnings.warn(
                 "More than 10MB of messages have been created to schedule "

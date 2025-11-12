@@ -10,9 +10,9 @@ from ray._private.grpc_utils import create_grpc_server_with_interceptors
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.tests.authentication_test_utils import (
     authentication_env_guard,
+    reset_auth_token_state,
     set_auth_mode,
     set_env_auth_token,
-    reset_auth_token_state,
 )
 
 
@@ -69,6 +69,7 @@ def _create_test_server_base(
 
     return server, port
 
+
 @pytest.fixture
 def create_sync_test_server():
     """Factory to create synchronous gRPC test server.
@@ -107,7 +108,6 @@ def create_async_test_server():
         return server, port
 
     return _create
-
 
 
 @pytest.fixture
