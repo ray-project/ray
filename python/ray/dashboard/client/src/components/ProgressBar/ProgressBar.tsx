@@ -181,22 +181,22 @@ export const ProgressBar = ({
           (expanded ? (
             <Box
               component={RiArrowDownSLine}
-              sx={{
+              sx={(theme) => ({
                 width: 16,
                 height: 16,
                 marginRight: 1,
-                color: 'text.secondary',
-              }}
+                color: theme.palette.text.secondary,
+              })}
             />
           ) : (
             <Box
               component={RiArrowRightSLine}
-              sx={{
+              sx={(theme) => ({
                 width: 16,
                 height: 16,
                 marginRight: 1,
-                color: 'text.secondary',
-              }}
+                color: theme.palette.text.secondary,
+              })}
             />
           ))}
         <LegendTooltip
