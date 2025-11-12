@@ -364,6 +364,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                   const c_string &detail,
                   const shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes)
 
+        void ForceExit(const CWorkerExitType exit_type, const c_string &detail)
+
         unordered_map[CLineageReconstructionTask, uint64_t] \
             GetLocalOngoingLineageReconstructionTasks() const
 
