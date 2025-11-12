@@ -257,7 +257,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
   std::vector<ipc::ScopedResponse> get_request_cleanup_handlers;
   absl::flat_hash_map<ObjectID, int64_t> remaining_object_id_to_idx;
-  int64_t get_request_id = get_request_counter_.fetch_add(1);
 
   // TODO(57923): Need to understand if batching is necessary. If it's necessary,
   // then the reason needs to be documented.
@@ -274,8 +273,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     // 1. Make the request to pull all objects into local plasma if not local already.
-    StatusOr<ipc::ScopedResponse> status_or_cleanup =
-        raylet_ipc_client_->AsyncGetObjects(batch_ids, owner_addresses, get_request_id);
+    StatusOr<ipc::ScopedResponse> status_or_cleanup = raylet_ipc_client_->AsyncGetObjects(
+        batch_ids, batch_owner_addresses, get_request_counter_.fetch_add(1));
     RAY_RETURN_NOT_OK(status_or_cleanup.status());
     get_request_cleanup_handlers.emplace_back(std::move(status_or_cleanup.value()));
 

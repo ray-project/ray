@@ -55,7 +55,8 @@ class FakeRayletIpcClient : public RayletIpcClientInterface {
 
   StatusOr<ScopedResponse> AsyncGetObjects(
       const std::vector<ObjectID> &object_ids,
-      const std::vector<rpc::Address> &owner_addresses) override {
+      const std::vector<rpc::Address> &owner_addresses,
+      int64_t get_request_id) override {
     return ScopedResponse();
   }
 

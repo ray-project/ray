@@ -135,7 +135,8 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
 
   /// \param worker_id The ID of the worker that called `ray.get`.
   /// \param required_objects The objects required by the worker.
-  /// \param get_request_id The ID of the get request.
+  /// \param get_request_id The ID of the get request. It is used by the worker to clean
+  /// up a GetRequest.
   void StartGetRequest(const WorkerID &worker_id,
                        std::vector<rpc::ObjectReference> &&required_objects,
                        int64_t get_request_id);

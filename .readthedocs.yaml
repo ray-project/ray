@@ -20,4 +20,4 @@ sphinx:
 # https://docs.readthedocs.io/en/stable/guides/reproducible-builds.html
 python:
   install:
-    - requirements: python/deplocks/docs/docbuild_depset_py3.10.lock
+    - requirements: doc/requirements-doc.lock.txt
