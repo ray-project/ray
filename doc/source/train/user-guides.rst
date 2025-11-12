@@ -16,5 +16,6 @@ Ray Train User Guides
     user-guides/experiment-tracking
     user-guides/results
     user-guides/fault-tolerance
+    user-guides/monitor-your-application
     user-guides/reproducibility
     Hyperparameter Optimization <user-guides/hyperparameter-optimization>

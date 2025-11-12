@@ -67,6 +67,7 @@ EOF
 
 USER $RAY_UID
 ENV HOME=/home/ray
+WORKDIR /home/ray
 
 COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
 COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
@@ -103,7 +104,7 @@ $HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.2
 $HOME/anaconda3/bin/conda clean -y --all
 
 # Install uv
-wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+wget -qO- https://astral.sh/uv/install.sh | sudo -E env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 # Set up Conda as system Python
 export PATH=$HOME/anaconda3/bin:$PATH
