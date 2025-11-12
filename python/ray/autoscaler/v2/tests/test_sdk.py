@@ -11,6 +11,7 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.test_utils import wait_for_condition
+from ray._private import authentication_test_utils
 from ray._private.grpc_utils import init_grpc_channel
 from ray.autoscaler.v2.schema import (
     ClusterStatus,
@@ -31,7 +32,6 @@ from ray.autoscaler.v2.tests.util import (
 from ray.core.generated import autoscaler_pb2, autoscaler_pb2_grpc
 from ray.core.generated.autoscaler_pb2 import ClusterResourceState, NodeStatus
 from ray.core.generated.common_pb2 import LabelSelectorOperator
-from ray.tests import authentication_test_utils
 from ray.util.state.api import list_nodes
 
 

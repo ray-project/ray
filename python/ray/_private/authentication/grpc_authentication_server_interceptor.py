@@ -49,6 +49,7 @@ class AsyncAuthenticationServerInterceptor(aiogrpc.ServerInterceptor):
 
     This interceptor checks the "authorization" metadata header for a valid
     Bearer token when token authentication is enabled via RAY_AUTH_MODE=token.
+
     If the token is missing or invalid, the request is rejected with UNAUTHENTICATED status.
     """
 
