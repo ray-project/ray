@@ -48,8 +48,9 @@ def stats_from_legacy_state(state: Dict[str, Any], is_root: bool = False) -> Sta
     cls_identifier = state["reduce"]
     new_state = {
         # Always set is_leaf to True for legacy stats for compatibility
-        "is_leaf": True,
+        "is_leaf": not is_root,  # We assume that legacy stats have been logged correctly (to leaf stats only) because we have no way of checking otherwise.
         "is_root": is_root,
+        "latest_merged": [],  # Always include a latest_merged field for compatibility.
     }
     if state.get("clear_on_reduce", True) is False:
         if cls_identifier == "sum":
