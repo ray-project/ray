@@ -9,15 +9,15 @@ from grpc import aio as aiogrpc
 from ray._private.authentication.grpc_authentication_server_interceptor import (
     AsyncAuthenticationServerInterceptor,
 )
-
-# Create a simple test service for testing
-from ray.core.generated import reporter_pb2, reporter_pb2_grpc
-from ray.tests.authentication_test_utils import (
+from ray._private.authentication_test_utils import (
     authentication_env_guard,
     reset_auth_token_state,
     set_auth_mode,
     set_env_auth_token,
 )
+
+# Create a simple test service for testing
+from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 
 
 class TestReporterServicer(reporter_pb2_grpc.ReporterServiceServicer):
