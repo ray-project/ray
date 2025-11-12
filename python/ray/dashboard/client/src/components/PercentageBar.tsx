@@ -11,7 +11,9 @@ const PercentageBar = (
   return (
     <Box
       sx={{
-        background: "linear-gradient(45deg, #21CBF3ee 30%, #2196F3ee 90%)",
+        background: theme.palette.mode === 'dark'
+          ? "linear-gradient(45deg, #0D47A1ee 30%, #01579Bee 90%)"
+          : "linear-gradient(45deg, #21CBF3ee 30%, #21CBF3ee 90%)",
         border: `1px solid ${theme.palette.mode === 'dark' ? theme.palette.divider : '#ffffffbb'}`,
         padding: "0 12px",
         height: 18,

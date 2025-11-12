@@ -72,6 +72,7 @@ export const SearchSelect = ({
           width: 100,
         },
       }}
+      sx={{ '& .MuiSvgIcon-root': { color: 'text.secondary' } }}
       defaultValue={defaultValue || ""}
     >
       {showAllOption ? <MenuItem value="">All</MenuItem> : null}

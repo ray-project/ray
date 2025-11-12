@@ -185,6 +185,7 @@ export const ProgressBar = ({
                 width: 16,
                 height: 16,
                 marginRight: 1,
+                color: 'text.secondary',
               }}
             />
           ) : (
@@ -194,6 +195,7 @@ export const ProgressBar = ({
                 width: 16,
                 height: 16,
                 marginRight: 1,
+                color: 'text.secondary',
               }}
             />
           ))}

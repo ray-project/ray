@@ -31,7 +31,7 @@ import {
 import rowStyles from "../common/RowStyles";
 import { sliceToPage } from "../common/util";
 import { getSumGpuUtilization, WorkerGpuRow } from "../pages/node/GPUColumn";
-import { getSumGRAMUsage, WorkerGRAM } from "../pages/node/GRAMColumn";
+import { getSumVRAMUsage, WorkerVRAM } from "../pages/node/VRAMColumn";
 import { ActorDetail, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
@@ -137,8 +137,8 @@ const ActorTable = ({
             );
             return sumGpuUtilization * descMultiplier;
           case gramUsageSorterKey:
-            const sumGRAMUsage = getSumGRAMUsage(actor.pid, actor.gpus);
-            return sumGRAMUsage * descMultiplier;
+            const sumVRAMUsage = getSumVRAMUsage(actor.pid, actor.gpus);
+            return sumVRAMUsage * descMultiplier;
           default:
             return 0;
         }
@@ -731,7 +731,7 @@ const ActorTable = ({
                     <WorkerGpuRow workerPID={pid} gpus={gpus} />
                   </TableCell>
                   <TableCell>
-                    <WorkerGRAM workerPID={pid} gpus={gpus} />
+                    <WorkerVRAM workerPID={pid} gpus={gpus} />
                   </TableCell>
                   <TableCell
                     align="center"
