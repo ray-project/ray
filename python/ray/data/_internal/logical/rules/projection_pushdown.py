@@ -287,7 +287,6 @@ class ProjectionPushdown(Rule):
 
         return fused
 
-    # TODO(Justin): Rename this method
     @classmethod
     def _push_projection_into_read_op(cls, op: LogicalOperator) -> LogicalOperator:
 
