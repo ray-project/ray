@@ -395,7 +395,7 @@ raise RuntimeError('Intentionally failed.')
 
         runtime_env = {"working_dir": tmp_dir}
         runtime_env = upload_working_dir_if_needed(
-            runtime_env, tmp_dir, include_gitignore=True, logger=logger
+            runtime_env, include_gitignore=True, scratch_dir=tmp_dir, logger=logger
         )
         runtime_env = RuntimeEnv(**runtime_env).to_dict()
 
