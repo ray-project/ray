@@ -32,3 +32,16 @@ ray_cc_library(
         "//src/ray/util:logging",
     ],
 )
+
+ray_cc_library(
+    name = "token_auth_client_interceptor",
+    srcs = ["token_auth_client_interceptor.cc"],
+    hdrs = ["token_auth_client_interceptor.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":authentication_token",
+        ":authentication_token_loader",
+        "//src/ray/common:constants",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
