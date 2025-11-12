@@ -153,6 +153,8 @@ class TaskManagerTest : public ::testing::Test {
             publisher_.get(),
             subscriber_.get(),
             /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+            *std::make_shared<ray::observability::FakeGauge>(),
+            *std::make_shared<ray::observability::FakeGauge>(),
             lineage_pinning_enabled)),
         io_context_("TaskManagerTest"),
         store_(std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
@@ -182,6 +184,7 @@ class TaskManagerTest : public ::testing::Test {
             },
             mock_gcs_client_,
             fake_task_by_state_counter_,
+            fake_total_lineage_bytes_gauge_,
             /*free_actor_object_callback=*/[](const ObjectID &object_id) {}) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
@@ -229,6 +232,7 @@ class TaskManagerTest : public ::testing::Test {
   uint32_t last_delay_ms_ = 0;
   std::unordered_set<ObjectID> stored_in_plasma;
   ray::observability::FakeGauge fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
 };
 
 class TaskManagerLineageTest : public TaskManagerTest {
@@ -1375,6 +1379,8 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      *std::make_shared<ray::observability::FakeGauge>(),
+      *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
   auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
 
@@ -1402,6 +1408,7 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       },
       mock_gcs_client_,
       fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   rpc::Address caller_address;
@@ -1434,6 +1441,8 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      *std::make_shared<ray::observability::FakeGauge>(),
+      *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
   auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
   TaskManager retry_mgr(
@@ -1464,6 +1473,7 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       },
       mock_gcs_client_,
       fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   rpc::Address caller_address;
@@ -1494,6 +1504,8 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      *std::make_shared<ray::observability::FakeGauge>(),
+      *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
   auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
   TaskManager dyn_mgr(
@@ -1524,6 +1536,7 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       },
       mock_gcs_client_,
       fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
@@ -2987,6 +3000,8 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      *std::make_shared<ray::observability::FakeGauge>(),
+      *std::make_shared<ray::observability::FakeGauge>(),
       false);
   auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
 
@@ -3011,6 +3026,7 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
       mock_gcs_client_,
       fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   // Create a task with retries enabled
@@ -3066,6 +3082,8 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      *std::make_shared<ray::observability::FakeGauge>(),
+      *std::make_shared<ray::observability::FakeGauge>(),
       false);
   auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
 
@@ -3090,6 +3108,7 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
       mock_gcs_client_,
       fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   // Create a task that will be retried

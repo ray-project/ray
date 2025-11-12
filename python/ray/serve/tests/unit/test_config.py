@@ -6,7 +6,12 @@ import pytest
 from ray import cloudpickle, serve
 from ray._common.pydantic_compat import ValidationError
 from ray._common.utils import import_attr
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
+from ray.serve._private.config import (
+    DeploymentConfig,
+    ReplicaConfig,
+    _proto_to_dict,
+    prepare_imperative_http_options,
+)
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
@@ -655,6 +660,71 @@ def test_http_options():
     assert HTTPOptions(location=DeploymentMode.EveryNode).location == "EveryNode"
 
 
+def test_prepare_imperative_http_options():
+    assert prepare_imperative_http_options(
+        proxy_location=None,
+        http_options=None,
+    ) == HTTPOptions(location=DeploymentMode.EveryNode)
+
+    assert prepare_imperative_http_options(
+        proxy_location=None,
+        http_options={},
+    ) == HTTPOptions(location=DeploymentMode.EveryNode)
+
+    assert prepare_imperative_http_options(
+        proxy_location=None,
+        http_options=HTTPOptions(**{}),
+    ) == HTTPOptions(
+        location=DeploymentMode.HeadOnly
+    )  # in this case we can't know whether location was provided or not
+
+    assert prepare_imperative_http_options(
+        proxy_location=None,
+        http_options=HTTPOptions(),
+    ) == HTTPOptions(location=DeploymentMode.HeadOnly)
+
+    assert prepare_imperative_http_options(
+        proxy_location=None,
+        http_options={"test": "test"},
+    ) == HTTPOptions(location=DeploymentMode.EveryNode)
+
+    assert prepare_imperative_http_options(
+        proxy_location=None,
+        http_options={"host": "0.0.0.0"},
+    ) == HTTPOptions(location=DeploymentMode.EveryNode, host="0.0.0.0")
+
+    assert prepare_imperative_http_options(
+        proxy_location=None,
+        http_options={"location": "NoServer"},
+    ) == HTTPOptions(location=DeploymentMode.NoServer)
+
+    assert prepare_imperative_http_options(
+        proxy_location=ProxyLocation.Disabled,
+        http_options=None,
+    ) == HTTPOptions(location=DeploymentMode.NoServer)
+
+    assert prepare_imperative_http_options(
+        proxy_location=ProxyLocation.HeadOnly,
+        http_options={"host": "0.0.0.0"},
+    ) == HTTPOptions(location=DeploymentMode.HeadOnly, host="0.0.0.0")
+
+    assert prepare_imperative_http_options(
+        proxy_location=ProxyLocation.HeadOnly,
+        http_options={"location": "NoServer"},
+    ) == HTTPOptions(location=DeploymentMode.HeadOnly)
+
+    with pytest.raises(ValueError, match="not a valid ProxyLocation"):
+        prepare_imperative_http_options(proxy_location="wrong", http_options=None)
+
+    with pytest.raises(ValueError, match="not a valid enumeration"):
+        prepare_imperative_http_options(
+            proxy_location=None, http_options={"location": "123"}
+        )
+
+    with pytest.raises(ValueError, match="Unexpected type"):
+        prepare_imperative_http_options(proxy_location=None, http_options="wrong")
+
+
 def test_with_proto():
     # Test roundtrip
     config = DeploymentConfig(num_replicas=100, max_ongoing_requests=16)
@@ -813,7 +883,17 @@ def test_autoscaling_policy_serializations(policy):
     ).autoscaling_config.policy.get_policy()
 
     if policy is None:
-        assert deserialized_autoscaling_policy == default_autoscaling_policy
+        # Compare function attributes instead of function objects since
+        # cloudpickle.register_pickle_by_value() causes deserialization to
+        # create a new function object rather than returning the same object
+        assert (
+            deserialized_autoscaling_policy.__name__
+            == default_autoscaling_policy.__name__
+        )
+        assert (
+            deserialized_autoscaling_policy.__module__
+            == default_autoscaling_policy.__module__
+        )
     else:
         # Compare function behavior instead of function objects
         # since serialization/deserialization creates new function objects
