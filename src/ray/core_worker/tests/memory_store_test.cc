@@ -53,7 +53,7 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   std::shared_ptr<CoreWorkerMemoryStore> memory_store =
       std::make_shared<CoreWorkerMemoryStore>(
           io_context.GetIoService(),
-          /*reference_counting=*/true,
+          /*reference_counting_enabled=*/true,
           nullptr,
           nullptr,
           [&](const RayObject &obj) { unhandled_count++; });
@@ -209,7 +209,7 @@ TEST(TestMemoryStore, TestObjectAllocator) {
 
   std::shared_ptr<CoreWorkerMemoryStore> memory_store =
       std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(),
-                                              /*reference_counting=*/true,
+                                              /*reference_counting_enabled=*/true,
                                               nullptr,
                                               nullptr,
                                               nullptr,

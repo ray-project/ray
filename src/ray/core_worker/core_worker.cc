@@ -3100,7 +3100,8 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   std::vector<ObjectID> object_ids = {return_id};
   auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids);
 
-  auto status = plasma_store_provider_->Get(object_ids, owner_addresses, 0, &result_map);
+  Status status =
+      plasma_store_provider_->Get(object_ids, owner_addresses, 0, &result_map);
   // Remove the temporary ref.
   RemoveLocalReference(return_id);
 

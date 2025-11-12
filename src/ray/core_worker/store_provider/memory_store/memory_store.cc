@@ -203,7 +203,6 @@ void CoreWorkerMemoryStore::Put(const RayObject &object,
       object_async_get_requests_.erase(async_callback_it);
     }
 
-    bool should_add_entry = true;
     auto object_request_iter = object_get_requests_.find(object_id);
     if (object_request_iter != object_get_requests_.end()) {
       auto &get_requests = object_request_iter->second;
@@ -211,12 +210,11 @@ void CoreWorkerMemoryStore::Put(const RayObject &object,
         get_request->Set(object_id, object_entry);
       }
     }
-    // Don't put it in the store, since we won't get a callback for deletion.
-    if (reference_counting_enabled_ && !has_reference) {
-      should_add_entry = false;
-    }
 
-    if (should_add_entry) {
+    // Don't put it in the store, if we can't get a callback for deletion.
+    // The exception here is if we are in local mode, put should still put the object in
+    // the store.
+    if (!reference_counting_enabled_ || has_reference) {
       // If there is no existing get request, then add the `RayObject` to map.
       EmplaceObjectAndUpdateStats(object_id, object_entry);
     } else {
