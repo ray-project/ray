@@ -52,9 +52,9 @@ Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
 
   if (fd == -1) {
     mount_file_path = fallback_mount_file_path_;
+  } else {
+    close(fd);
   }
-
-  close(fd);
 
   FILE *fp = setmntent(mount_file_path.c_str(), "r");
 
