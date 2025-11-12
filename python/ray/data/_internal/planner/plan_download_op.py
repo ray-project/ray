@@ -201,7 +201,9 @@ def download_bytes_threaded(
                 except Exception as e:
                     # Catch unexpected errors like pyarrow.lib.ArrowInvalid caused by an invalid uri like
                     # `foo://bar` to avoid failing because of one invalid uri.
-                    logger.error(f"Unexpected error in load_uri_bytes: {e}")
+                    logger.error(
+                        f"Unexpected error in load_uri_bytes for column '{uri_column_name}' and uri '{uri_path}': {e}"
+                    )
                     yield None
 
         # Use make_async_gen to download URI bytes concurrently
