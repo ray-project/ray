@@ -189,11 +189,11 @@ def download_bytes_threaded(
         def load_uri_bytes(uri_path_iterator):
             """Function that takes an iterator of URI paths and yields downloaded bytes for each."""
             for uri_path in uri_path_iterator:
-                result = None
+                read_bytes = None
                 try:
                     # Use open_input_stream to handle the rare scenario where the data source is not seekable.
                     with fs.open_input_stream(uri_path) as f:
-                        result = f.read()
+                        read_bytes = f.read()
                 except OSError as e:
                     logger.debug(
                         f"OSError: '{uri_path}' from column '{uri_column_name}' with error: {e}"
@@ -205,7 +205,7 @@ def download_bytes_threaded(
                         f"Unexpected error in load_uri_bytes for column '{uri_column_name}' and uri '{uri_path}': {e}"
                     )
                 finally:
-                    yield result
+                    yield read_bytes
 
         # Use make_async_gen to download URI bytes concurrently
         # This preserves the order of results to match the input URIs
