@@ -722,7 +722,8 @@ def test_prefetch_count_reporting_streaming_split(
         ), f"All prefetch counts should be 0-2, got: {all_counts}"
 
     # Verify prefetch count update works after iteration
-    ray.get(coord_actor.update_prefetch_count.remote(5, 1000))
+    # Test with split_idx=0 (first split)
+    ray.get(coord_actor.update_prefetch_count.remote(0, 5, 1000))
     assert ray.get(coord_actor.get_prefetch_count.remote()) == 5
 
 
