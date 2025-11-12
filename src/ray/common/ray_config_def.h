@@ -271,6 +271,12 @@ RAY_CONFIG(int64_t, raylet_fetch_timeout_milliseconds, 1000)
 /// the worker SIGKILL.
 RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 5000)
 
+/// Timeout for graceful actor shutdown (e.g. when actor goes out of scope).
+/// If an actor does not gracefully shut down within this timeout, it will be force
+/// killed. Set to -1 for infinite timeout to prevent the actor from being force killed
+/// during graceful shutdown.
+RAY_CONFIG(int64_t, actor_graceful_shutdown_timeout_ms, 30000)
+
 /// The duration that we wait after the worker is launched before the
 /// starting_worker_timeout_callback() is called.
 RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
