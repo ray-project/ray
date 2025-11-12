@@ -32,6 +32,9 @@ bool AuthenticationTokenValidator::ValidateToken(
     const std::optional<AuthenticationToken> &expected_token,
     const AuthenticationToken &provided_token) {
   if (GetAuthenticationMode() == AuthenticationMode::TOKEN) {
+    RAY_CHECK(expected_token.has_value() && !expected_token->empty())
+        << "Ray token authentication is enabled but expected token is empty";
+
     return expected_token->Equals(provided_token);
   }
 
