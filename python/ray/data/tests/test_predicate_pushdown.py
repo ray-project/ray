@@ -148,12 +148,12 @@ def test_chained_filter_with_expressions(parquet_ds):
         ),
         (
             lambda ds: ds.filter(expr=col("sepal.length") > 5.0),
-            "",  # Expression filter pushes down to read
+            "Filter[Filter(<expression>)]",  # CSV doesn't support predicate pushdown
         ),
     ],
 )
 def test_filter_pushdown_csv(csv_ds, filter_fn, expected_suffix):
-    """Test filtering on CSV files with predicate pushdown."""
+    """Test filtering on CSV files (CSV doesn't support predicate pushdown)."""
     filtered_ds = filter_fn(csv_ds)
     filtered_data = filtered_ds.take_all()
     assert filtered_ds.count() == 118
@@ -166,7 +166,7 @@ def test_filter_pushdown_csv(csv_ds, filter_fn, expected_suffix):
 
 
 def test_filter_mixed(csv_ds):
-    """Test that mixed function and expressions work (CSV supports predicate pushdown)."""
+    """Test that mixed function and expressions work (CSV doesn't support predicate pushdown)."""
     csv_ds = csv_ds.filter(lambda r: r["sepal.length"] < 5.0)
     csv_ds = csv_ds.filter(expr="sepal.length > 3.0")
     csv_ds = csv_ds.filter(expr="sepal.length > 4.0")
@@ -178,6 +178,7 @@ def test_filter_mixed(csv_ds):
     assert all(record["sepal.length"] < 5.0 for record in filtered_expr_data)
     assert all(record["sepal.length"] > 4.0 for record in filtered_expr_data)
     # After optimization: expression filters before map get fused, expression filters after map get fused
+    # CSV doesn't support predicate pushdown, so filters stay after Read
     _check_plan_with_flexible_read(
         csv_ds,
         "Filter[Filter(<lambda>)] -> Filter[Filter(<expression>)] -> "
@@ -204,7 +205,7 @@ def test_filter_mixed_expression_first_parquet(ray_start_regular_shared):
 
 
 def test_filter_mixed_expression_first_csv(ray_start_regular_shared):
-    """Test that mixed functional and expressions work with CSV (supports predicate pushdown)."""
+    """Test that mixed functional and expressions work with CSV (doesn't support predicate pushdown)."""
     ds = ray.data.read_csv("example://iris.csv")
     ds = ds.filter(expr="sepal.length > 3.0")
     ds = ds.filter(expr="sepal.length > 4.0")
@@ -213,10 +214,10 @@ def test_filter_mixed_expression_first_csv(ray_start_regular_shared):
     assert ds.count() == 22
     assert all(record["sepal.length"] < 5.0 for record in filtered_expr_data)
     assert all(record["sepal.length"] > 4.0 for record in filtered_expr_data)
-    # Expression filters pushed down to read, UDF filter remains
+    # CSV doesn't support predicate pushdown, so expression filters get fused but not pushed down
     _check_plan_with_flexible_read(
         ds,
-        "Filter[Filter(<lambda>)]",
+        "Filter[Filter(<expression>)] -> Filter[Filter(<lambda>)]",
         filtered_expr_data,
     )
 

@@ -1,4 +1,5 @@
 load("@python3_9//:defs.bzl", python39 = "interpreter")
+load("@python3_10//:defs.bzl", python310 = "interpreter")
 load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_runtime", "py_runtime_pair")
 
@@ -80,5 +81,26 @@ toolchain(
     name = "py39_toolchain",
     exec_compatible_with = ["//:hermetic_python"],
     toolchain = ":py39_runtime_pair",
+    toolchain_type = "@bazel_tools//tools/python:toolchain_type",
+)
+
+py_runtime(
+    name = "py310_runtime",
+    interpreter = python310,
+    python_version = "PY3",
+    visibility = ["//visibility:private"],
+)
+
+py_runtime_pair(
+    name = "py310_runtime_pair",
+    py2_runtime = None,
+    py3_runtime = ":py310_runtime",
+    visibility = ["//visibility:private"],
+)
+
+toolchain(
+    name = "py310_toolchain",
+    exec_compatible_with = ["//:hermetic_python"],
+    toolchain = ":py310_runtime_pair",
     toolchain_type = "@bazel_tools//tools/python:toolchain_type",
 )
