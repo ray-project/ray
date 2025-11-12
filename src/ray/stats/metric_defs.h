@@ -55,7 +55,6 @@ DECLARE_stats(operation_active_count);
 DECLARE_stats(scheduler_failed_worker_startup_total);
 DECLARE_stats(scheduler_tasks);
 DECLARE_stats(scheduler_unscheduleable_tasks);
-DECLARE_stats(scheduler_placement_time_s);
 DECLARE_stats(local_resource_view_node_count);
 
 /// Raylet Resource Manager
