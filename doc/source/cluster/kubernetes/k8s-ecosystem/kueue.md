@@ -233,9 +233,130 @@ You can see that KubeRay operator deletes the Pods belonging to the RayJob with 
 
 ## Working with RayCluster and RayService
 
-### RayCluster with Kueue
-For gang scheduling with RayCluster resources, Kueue ensures that all cluster components (head and worker nodes) are provisioned together. This prevents partial cluster creation and resource waste.
-**For detailed RayCluster integration**: See the [Kueue documentation for RayCluster](https://kueue.sigs.k8s.io/docs/tasks/run/rayclusters/).
-### RayService with Kueue
-RayService integration with Kueue enables gang scheduling for model serving workloads, ensuring consistent resource allocation for serving infrastructure.
-**For detailed RayService integration**: See the [Kueue documentation for RayService](https://kueue.sigs.k8s.io/docs/tasks/run/rayservices/).
+> **Note**
+> This section expands on the **Working with RayCluster and RayService** overview above. It focuses **only** on `RayCluster` and `RayService` with Kueue. 
+
+#### Prerequisites
+Make sure you have already:
+- Installed the **KubeRay operator**.
+- Installed **Kueue** (for example: `kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/$VERSION/manifests.yaml`).
+- Created Kueue resources (ResourceFlavor, ClusterQueue, LocalQueue, WorkloadPriorityClass).
+
+---
+
+### RayCluster with Kueue — details & examples
+
+**How Kueue manages a RayCluster**  
+Kueue gang-schedules the head and worker Pods together to avoid partial cluster creation and resource waste.
+
+**Queue label**  
+Add a LocalQueue label on the RayCluster so Kueue can manage it:
+```yaml
+metadata:
+  labels:
+    kueue.x-k8s.io/queue-name: user-queue
+```
+
+**Request resources**  
+Specify resource requests in the head/worker templates so Kueue can admit the Workload:
+```yaml
+spec:
+  headGroupSpec:
+    template:
+      spec:
+        containers:
+          - resources:
+              requests:
+                cpu: "1"
+  workerGroupSpecs:
+    - template:
+        spec:
+          containers:
+            - resources:
+                requests:
+                  cpu: "1"
+```
+
+**Enable in-tree Ray autoscaling (elastic RayCluster only)**  
+Kueue supports in-tree autoscaling for **elastic** RayClusters. To enable it:
+1) Turn on the `ElasticJobsViaWorkloadSlices` feature gate.  
+2) Annotate the RayCluster with `kueue.x-k8s.io/elastic-job: "true"`.  
+3) Set `spec.enableInTreeAutoscaling: true`.
+
+Minimal example:
+```yaml
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: raycluster-elastic
+  labels:
+    kueue.x-k8s.io/queue-name: user-queue
+  annotations:
+    kueue.x-k8s.io/elastic-job: "true"
+spec:
+  enableInTreeAutoscaling: true
+  headGroupSpec:
+    template:
+      spec:
+        containers:
+          - name: ray-head
+            resources:
+              requests:
+                cpu: "1"
+  workerGroupSpecs:
+    - replicas: 1
+      template:
+        spec:
+          containers:
+            - name: ray-worker
+              resources:
+                requests:
+                  cpu: "1"
+```
+
+**RayCluster-specific limitations**
+- **Max worker groups = 7** (Kueue allows up to 8 PodSets per Workload: 1 head + up to 7 workers).
+- **Autoscaling is supported only for elastic RayCluster** (see steps above).
+- On Kueue **versions prior to v0.8.1**, you must **restart Kueue** once after installation to use RayCluster.
+
+---
+
+### RayService with Kueue — details & examples
+
+**How Kueue manages a RayService**  
+Kueue manages the RayService **through the RayCluster that RayService creates**. The queue label on the RayService is **propagated** to its RayCluster so Kueue can manage admission.
+
+**Queue label**  
+Add the LocalQueue label on the RayService:
+```yaml
+metadata:
+  labels:
+    kueue.x-k8s.io/queue-name: user-queue
+```
+This label is propagated to the RayCluster spawned by the RayService.
+
+**Request resources**  
+Request CPU/memory in `spec.rayClusterConfig` so Kueue can admit the Workload:
+```yaml
+spec:
+  rayClusterConfig:
+    headGroupSpec:
+      template:
+        spec:
+          containers:
+            - resources:
+                requests:
+                  cpu: "1"
+    workerGroupSpecs:
+      - template:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "1"
+```
+
+**RayService-specific limitations**
+- **Max worker groups = 7** (same PodSets limit).
+- **Disable in-tree autoscaling for RayService** (Kueue controls resource allocation for the service via its RayCluster).
+- If you are on Kueue **prior to v0.8.1**, restart Kueue once post-installation to ensure RayCluster management works.
