@@ -668,13 +668,13 @@ TEST_F(NormalTaskSubmitterTest, TestCancellationWhileHandlingTaskFailure) {
   // Set up GCS node mock to return node as alive
   using testing::_;
 
-  rpc::GcsNodeInfo node_info;
+  rpc::GcsNodeAddressAndLiveness node_info;
   node_info.set_node_id(local_node_id.Binary());
   node_info.set_node_manager_address("127.0.0.1");
   node_info.set_node_manager_port(9999);
   node_info.set_state(rpc::GcsNodeInfo::ALIVE);
 
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, Get(_, false))
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, GetNodeAddressAndLiveness(_, false))
       .WillRepeatedly(testing::Return(&node_info));
 
   auto submitter =
@@ -1748,13 +1748,14 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
 }
 
 TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
-  rpc::GcsNodeInfo node_info;
+  rpc::GcsNodeAddressAndLiveness node_info;
   node_info.set_node_id(local_node_id.Binary());
   node_info.set_node_manager_address("127.0.0.1");
   node_info.set_node_manager_port(9999);
   node_info.set_state(rpc::GcsNodeInfo::ALIVE);
 
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, Get(local_node_id, false))
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              GetNodeAddressAndLiveness(local_node_id, false))
       .WillOnce(testing::Return(&node_info))
       .WillOnce(testing::Return(&node_info));
 
@@ -1868,13 +1869,14 @@ TEST_F(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) 
   // Cancel -> failed queue generator for resubmit -> cancel reply -> successful queue for
   // resubmit -> push task reply -> honor the cancel not the queued resubmit.
 
-  rpc::GcsNodeInfo node_info;
+  rpc::GcsNodeAddressAndLiveness node_info;
   node_info.set_node_id(local_node_id.Binary());
   node_info.set_node_manager_address("127.0.0.1");
   node_info.set_node_manager_port(9999);
   node_info.set_state(rpc::GcsNodeInfo::ALIVE);
 
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, Get(local_node_id, false))
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              GetNodeAddressAndLiveness(local_node_id, false))
       .WillOnce(testing::Return(&node_info))
       .WillOnce(testing::Return(&node_info));
 
