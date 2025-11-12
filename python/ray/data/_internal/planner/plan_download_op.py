@@ -196,13 +196,13 @@ def download_bytes_threaded(
                         read_bytes = f.read()
                 except OSError as e:
                     logger.debug(
-                        f"OSError: '{uri_path}' from column '{uri_column_name}' with error: {e}"
+                        f"OSError reading uri '{uri_path}' for column '{uri_column_name}': {e}"
                     )
                 except Exception as e:
                     # Catch unexpected errors like pyarrow.lib.ArrowInvalid caused by an invalid uri like
                     # `foo://bar` to avoid failing because of one invalid uri.
-                    logger.debug(
-                        f"Unexpected error in load_uri_bytes for column '{uri_column_name}' and uri '{uri_path}': {e}"
+                    logger.warning(
+                        f"Unexpected error reading uri '{uri_path}' for column '{uri_column_name}': {e}"
                     )
                 finally:
                     yield read_bytes
