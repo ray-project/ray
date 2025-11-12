@@ -98,6 +98,9 @@ export const lightTheme = createTheme(basicTheme, {
     error: {
       main: "#D32F2F",
     },
+    warning: {
+      light: "#cfcf08",
+    },
     text: {
       primary: grey[900],
       secondary: grey[800],
@@ -142,6 +145,7 @@ export const darkTheme = createTheme(basicTheme, {
     },
     warning: {
       main: "#FF8C1A",
+      light: "#E8E850",
     },
     text: {
       primary: "#E8EAED",

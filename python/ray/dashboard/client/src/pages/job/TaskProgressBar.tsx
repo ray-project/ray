@@ -50,7 +50,7 @@ export const TaskProgressBar = ({
     {
       label: "Waiting for scheduling",
       value: numPendingNodeAssignment + numSubmittedToWorker,
-      color: theme.palette.mode === 'dark' ? '#d4d424' : '#cfcf08',
+      color: theme.palette.warning.light,
     },
     {
       label: "Waiting for dependencies",
@@ -158,7 +158,7 @@ export const MiniTaskProgressBar = ({
       {
         label: "Waiting for scheduling",
         value: numPendingNodeAssignment + numSubmittedToWorker,
-        color: theme.palette.mode === 'dark' ? '#d4d424' : '#cfcf08',
+        color: theme.palette.warning.light,
       },
       {
         label: "Waiting for dependencies",

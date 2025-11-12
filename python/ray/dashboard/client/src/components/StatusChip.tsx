@@ -102,7 +102,7 @@ const typeMap = {
 };
 
 export type StatusChipProps = {
-  type: keyof typeof colorMap;
+  type: keyof ReturnType<typeof getColorMap>;
   status: string | ActorEnum | ReactNode;
   suffix?: ReactNode;
   icon?: ReactNode;
