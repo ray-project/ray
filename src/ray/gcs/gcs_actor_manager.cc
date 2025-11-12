@@ -1079,8 +1079,10 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     }
   }
 
-  // Mark actor as DEAD to notify callers. For graceful shutdowns, created_actors_
-  // cleanup is deferred to allow timeout fallback, but we still update state for callers.
+  // Update the actor to DEAD in case any callers are still alive. This can
+  // happen if the owner of the actor dies while there are still callers.
+  // TODO(swang): We can skip this step and delete the actor table entry
+  // entirely if the callers check directly whether the owner is still alive.
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   auto time = current_sys_time_ms();
   if (actor->GetState() != rpc::ActorTableData::DEAD) {
@@ -1095,6 +1097,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
                      .reason() == rpc::ActorDiedErrorContext::OUT_OF_SCOPE &&
              death_cause.actor_died_error_context().reason() ==
                  rpc::ActorDiedErrorContext::REF_DELETED) {
+    // Update death cause from restartable OUT_OF_SCOPE to non-restartable REF_DELETED
     mutable_actor_table_data->mutable_death_cause()->CopyFrom(death_cause);
   }
   mutable_actor_table_data->set_timestamp(time);
@@ -1105,6 +1108,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     registered_actors_.erase(it);
     function_manager_.RemoveJobReference(actor_id.JobId());
     RemoveActorNameFromRegistry(actor);
+    // Clean up the client to the actor's owner, if necessary.
     if (!actor->IsDetached()) {
       RemoveActorFromOwner(actor);
     } else {
