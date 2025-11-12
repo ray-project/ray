@@ -11,6 +11,7 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.test_utils import wait_for_condition
+from ray._private import authentication_test_utils
 from ray.autoscaler.v2.schema import (
     ClusterStatus,
     LaunchRequest,
@@ -403,7 +404,6 @@ def test_pg_pending_gang_requests_basic(shutdown_only):
 
 
 def test_pg_usage_labels(shutdown_only):
-
     ray.init(num_cpus=1)
 
     # Create a pg
@@ -922,6 +922,70 @@ def test_is_autoscaler_v2_enabled(shutdown_only, monkeypatch, env_val, enabled):
             return True
 
         wait_for_condition(verify)
+
+
+@pytest.mark.parametrize(
+    "token_state,setup_token,should_fail",
+    [
+        ("valid", lambda: None, False),
+        ("invalid", lambda: _setup_invalid_token(), True),
+    ],
+)
+def test_autoscaler_api_with_token_auth(
+    setup_cluster_with_token_auth,
+    cleanup_auth_token_env,
+    token_state,
+    setup_token,
+    should_fail,
+):
+    """Parametrized test for autoscaler API with different token states.
+
+    Tests request_cluster_resources with valid, invalid, and missing tokens.
+    """
+    # Setup token state (this changes the client-side token)
+    setup_token()
+
+    if should_fail:
+        # API call should fail with invalid token
+        with pytest.raises(Exception) as exc_info:
+            request_cluster_resources(
+                ray.get_runtime_context().gcs_address,
+                [{"resources": {"CPU": 1}, "label_selector": {}}],
+            )
+
+        # Verify it's an authentication error
+        error_str = str(exc_info.value).lower()
+        assert (
+            "unauthenticated" in error_str or "invalidauthtoken" in error_str
+        ), f"request_cluster_resources with {token_state} token should return auth error, got: {exc_info.value}"
+    else:
+        # API call should succeed with valid token
+        request_cluster_resources(
+            ray.get_runtime_context().gcs_address,
+            [{"resources": {"CPU": 1}, "label_selector": {}}],
+        )
+
+        # Verify the request was successful using the autoscaler state service stub
+        stub = _autoscaler_state_service_stub()
+        state = get_cluster_resource_state(stub)
+        assert (
+            len(state.cluster_resource_constraints) > 0
+        ), f"request_cluster_resources with {token_state} token should succeed"
+
+
+def _setup_invalid_token():
+    """Helper to set up an invalid authentication token."""
+
+    invalid_token = "invalid_token_value"
+    authentication_test_utils.set_env_auth_token(invalid_token)
+    authentication_test_utils.reset_auth_token_state()
+
+
+def _clear_token():
+    """Helper to clear authentication token sources."""
+
+    authentication_test_utils.clear_auth_token_sources()
+    authentication_test_utils.reset_auth_token_state()
 
 
 if __name__ == "__main__":
