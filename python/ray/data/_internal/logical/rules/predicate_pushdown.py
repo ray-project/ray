@@ -5,7 +5,7 @@ from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePushdown,
     LogicalPlan,
-    PredicatePushable,
+    PredicatePassThrough,
     PredicatePushdownBehavior,
     Rule,
 )
@@ -25,14 +25,14 @@ class PredicatePushdown(Rule):
     2. Pushes filter expressions through eligible operators using trait-based rules
     3. Pushes filters into data sources that support predicate pushdown
 
-    Eligibility is determined by the PredicatePushable trait, which operators
+    Eligibility is determined by the PredicatePassThrough trait, which operators
     implement to declare their pushdown behavior:
     - PASSTHROUGH: Filter passes through unchanged (Sort, Repartition, Shuffle, Limit)
     - PASSTHROUGH_WITH_REBINDING: Filter passes through with column rebinding (Project)
     - PUSH_INTO_BRANCHES: Filter is pushed into each branch (Union)
     - CONDITIONAL: Filter may be pushed based on analysis (Join - supports inner, outer,
       semi, and anti joins; only full outer joins cannot push predicates)
-    - Not implementing PredicatePushable: Cannot push through (Aggregate, FlatMap, UDF ops)
+    - Not implementing PredicatePassThrough: Cannot push through (Aggregate, FlatMap, UDF ops)
     """
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
@@ -119,7 +119,7 @@ class PredicatePushdown(Rule):
             return input_op.apply_predicate(predicate_expr)
 
         # Case 2: Check if operator allows predicates to pass through
-        if isinstance(input_op, PredicatePushable):
+        if isinstance(input_op, PredicatePassThrough):
             behavior = input_op.predicate_pushdown_behavior()
 
             if behavior == PredicatePushdownBehavior.PASSTHROUGH:

@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
-    PredicatePushable,
+    PredicatePassThrough,
     PredicatePushdownBehavior,
 )
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
@@ -44,7 +44,7 @@ class AbstractAllToAll(LogicalOperator):
         self._sub_progress_bar_names = sub_progress_bar_names
 
 
-class RandomizeBlocks(AbstractAllToAll, PredicatePushable):
+class RandomizeBlocks(AbstractAllToAll, PredicatePassThrough):
     """Logical operator for randomize_block_order."""
 
     def __init__(
@@ -75,7 +75,7 @@ class RandomizeBlocks(AbstractAllToAll, PredicatePushable):
         return PredicatePushdownBehavior.PASSTHROUGH
 
 
-class RandomShuffle(AbstractAllToAll, PredicatePushable):
+class RandomShuffle(AbstractAllToAll, PredicatePassThrough):
     """Logical operator for random_shuffle."""
 
     def __init__(
@@ -113,7 +113,7 @@ class RandomShuffle(AbstractAllToAll, PredicatePushable):
         return PredicatePushdownBehavior.PASSTHROUGH
 
 
-class Repartition(AbstractAllToAll, PredicatePushable):
+class Repartition(AbstractAllToAll, PredicatePassThrough):
     """Logical operator for repartition."""
 
     def __init__(
@@ -160,7 +160,7 @@ class Repartition(AbstractAllToAll, PredicatePushable):
         return PredicatePushdownBehavior.PASSTHROUGH
 
 
-class Sort(AbstractAllToAll, PredicatePushable):
+class Sort(AbstractAllToAll, PredicatePassThrough):
     """Logical operator for sort."""
 
     def __init__(

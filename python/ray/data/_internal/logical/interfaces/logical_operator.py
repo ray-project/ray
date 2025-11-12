@@ -152,7 +152,7 @@ class PredicatePushdownBehavior(Enum):
     CONDITIONAL = "conditional"
 
 
-class PredicatePushable(ABC):
+class PredicatePassThrough(ABC):
     """Mixin for operators that allow predicates to be pushed through them.
 
     This is distinct from LogicalOperatorSupportsPredicatePushdown, which is for

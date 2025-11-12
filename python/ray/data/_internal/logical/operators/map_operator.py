@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
-    PredicatePushable,
+    PredicatePassThrough,
     PredicatePushdownBehavior,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
@@ -282,7 +282,7 @@ class Filter(AbstractUDFMap):
         return super()._get_operator_name(op_name, fn)
 
 
-class Project(AbstractMap, PredicatePushable):
+class Project(AbstractMap, PredicatePassThrough):
     """Logical operator for all Projection Operations."""
 
     def __init__(

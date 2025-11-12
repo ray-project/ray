@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
-    PredicatePushable,
+    PredicatePassThrough,
     PredicatePushdownBehavior,
 )
 from ray.data.block import BlockMetadata
@@ -42,7 +42,7 @@ class AbstractOneToOne(LogicalOperator):
         ...
 
 
-class Limit(AbstractOneToOne, PredicatePushable):
+class Limit(AbstractOneToOne, PredicatePassThrough):
     """Logical operator for limit."""
 
     def __init__(

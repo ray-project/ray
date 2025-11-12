@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
-    PredicatePushable,
+    PredicatePassThrough,
     PredicatePushdownBehavior,
 )
 from ray.data._internal.logical.operators.n_ary_operator import NAry
@@ -34,7 +34,7 @@ class JoinSide(Enum):
     RIGHT = 1
 
 
-class Join(NAry, PredicatePushable):
+class Join(NAry, PredicatePassThrough):
     """Logical operator for join."""
 
     def __init__(

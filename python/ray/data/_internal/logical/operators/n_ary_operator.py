@@ -2,7 +2,7 @@ from typing import Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
-    PredicatePushable,
+    PredicatePassThrough,
     PredicatePushdownBehavior,
 )
 
@@ -41,7 +41,7 @@ class Zip(NAry):
         return total_num_outputs
 
 
-class Union(NAry, PredicatePushable):
+class Union(NAry, PredicatePassThrough):
     """Logical operator for union."""
 
     def __init__(
