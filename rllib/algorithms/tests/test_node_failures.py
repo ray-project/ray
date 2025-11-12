@@ -15,7 +15,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.test_utils import check
 
-
 object_store_memory = 10**8
 num_nodes = 3
 
@@ -195,7 +194,8 @@ class TestNodeFailures(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
