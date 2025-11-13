@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class IcebergDatasink(Datasink[List["DataFile"]]):
+class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
     """
     Iceberg datasink to write a Ray Dataset into an existing Iceberg table. This module
     heavily uses PyIceberg to write to iceberg table. All the routines in this class override
@@ -134,12 +134,21 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         Args:
             incoming_schema: The PyArrow schema from the incoming data
         """
-        # Use PyIceberg's update_schema API
-        with self._table.update_schema() as update:
-            update.union_by_name(incoming_schema)
+        from pyiceberg.exceptions import CommitFailedException
 
-        # Reload table completely after schema evolution
-        self._reload_table()
+        # Use PyIceberg's update_schema API
+        try:
+            with self._table.update_schema() as update:
+                update.union_by_name(incoming_schema)
+        except CommitFailedException:
+            # Another worker updated the schema concurrently. Reload and continue -
+            # union_by_name is idempotent so if they added our columns, we're good.
+            # If not, _dataframe_to_data_files will fail with a clear error.
+            logger.debug(
+                "Schema update conflict - another worker modified schema, reloading"
+            )
+        finally:
+            self._reload_table()
 
     def on_write_start(self) -> None:
         """Initialize table for writing and set up write UUID."""
@@ -147,11 +156,13 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         # Generate a unique write UUID for this write operation
         self._write_uuid = uuid.uuid4()
 
-    def write(self, blocks: Iterable[Block], ctx: TaskContext) -> List["DataFile"]:
+    def write(
+        self, blocks: Iterable[Block], ctx: TaskContext
+    ) -> tuple[list["DataFile"], "pa.Schema"]:
         """
         Write blocks as parquet files to the table location.
 
-        Returns DataFile objects with metadata about the written files.
+        Returns a tuple of (DataFile objects, schema of written data).
         This respects streaming semantics by writing files incrementally
         as tasks complete.
         """
@@ -172,13 +183,15 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
                 tables.append(pa_table)
 
         if not tables:
-            return []
+            # Return empty schema for empty blocks
+            return ([], pa.schema([]))
 
         # Combine all tables from this task
         combined_table = pa.concat_tables(tables)
 
-        # Ensure table schema is evolved before generating DataFiles so that
-        # PyIceberg name-mapping can resolve field IDs for any new columns.
+        # Ensure table schema is evolved before generating DataFiles. PyIceberg's
+        # name-mapping requires field IDs for all columns before writing.
+        # We handle concurrent schema updates with retry logic.
         self._update_schema(combined_table.schema)
 
         # Use PyIceberg's _dataframe_to_data_files which properly handles:
@@ -197,21 +210,26 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
             )
         )
 
-        return data_files
+        return (data_files, combined_table.schema)
 
-    def _collect_data_files(
-        self, write_result: WriteResult[List["DataFile"]]
-    ) -> List["DataFile"]:
-        """Collect all DataFile objects from write results."""
+    def _collect_data_files_and_schemas(
+        self, write_result: WriteResult[tuple[list["DataFile"], "pa.Schema"]]
+    ) -> tuple[list["DataFile"], list["pa.Schema"]]:
+        """Collect all DataFile objects and schemas from write results."""
         all_data_files = []
-        for data_files_batch in write_result.write_returns:
+        all_schemas = []
+
+        for data_files_batch, schema in write_result.write_returns:
             all_data_files.extend(data_files_batch)
+            # Only collect non-empty schemas
+            if len(schema) > 0:
+                all_schemas.append(schema)
 
         if not all_data_files:
             logger.warning("No data files written")
-            return []
+            return ([], [])
 
-        return all_data_files
+        return (all_data_files, all_schemas)
 
     def _read_data_files_as_table(self, data_files: List["DataFile"]) -> "pa.Table":
         """
@@ -324,15 +342,17 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
                 f"with {combined_table.num_rows} rows"
             )
 
-    def on_write_complete(self, write_result: WriteResult[List["DataFile"]]) -> None:
+    def on_write_complete(
+        self, write_result: WriteResult[tuple[list["DataFile"], "pa.Schema"]]
+    ) -> None:
         """
         Complete the write operation based on the configured mode.
 
         This commits the snapshot with all the data files that were written
         during the write phase, respecting streaming semantics.
         """
-        # Collect all DataFile objects
-        data_files = self._collect_data_files(write_result)
+        # Collect all DataFile objects and schemas from write tasks
+        data_files, schemas = self._collect_data_files_and_schemas(write_result)
         if not data_files:
             logger.warning("No data files to commit")
             return
@@ -346,21 +366,14 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         self._reload_table()
 
         # Before committing in any mode, ensure the table schema contains any new columns
-        # present in the written data files.
-        import pyarrow.parquet as pq
+        # present in the written data. Unify schemas from all write tasks.
+        if schemas:
+            from ray.data._internal.arrow_ops import transform_pyarrow
 
-        from ray.data._internal.arrow_ops import transform_pyarrow
-
-        schemas = []
-        for df in data_files:
-            input_file = self._table.io.new_input(df.file_path)
-            with input_file.open() as f:
-                md = pq.read_metadata(f)
-                schemas.append(md.schema.to_arrow_schema())
-
-        # Unify Arrow schemas then evolve once
-        incoming_schema = transform_pyarrow.unify_schemas(schemas, promote_types=True)
-        self._update_schema(incoming_schema)
+            incoming_schema = transform_pyarrow.unify_schemas(
+                schemas, promote_types=True
+            )
+            self._update_schema(incoming_schema)
 
         # Execute the appropriate write operation
         if self._mode == SaveMode.APPEND:
