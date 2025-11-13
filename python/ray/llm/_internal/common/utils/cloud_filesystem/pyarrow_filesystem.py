@@ -246,7 +246,7 @@ class PyArrowFileSystem(BaseCloudFileSystem):
                 body = body.decode("utf-8")
             return body
         except Exception as e:
-            logger.info(f"Error reading {object_uri}: {e}")
+            logger.warning(f"Error reading {object_uri}: {e}")
             return None
 
     @staticmethod

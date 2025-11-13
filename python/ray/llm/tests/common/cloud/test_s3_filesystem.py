@@ -2,12 +2,12 @@
 
 import json
 import os
-import subprocess
 import sys
 import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 from ray.llm._internal.common.utils.cloud_filesystem.s3_filesystem import (
     S3FileSystem,
@@ -17,46 +17,33 @@ from ray.llm._internal.common.utils.cloud_filesystem.s3_filesystem import (
 class TestS3FileSystem:
     """Tests for the S3FileSystem class."""
 
-    @patch("os.unlink")
-    @patch("os.path.exists")
-    @patch("builtins.open", create=True)
-    @patch("subprocess.run")
-    @patch("tempfile.NamedTemporaryFile")
+    @patch("boto3.client")
     @pytest.mark.parametrize(
-        "decode_as_utf_8,expected_content,expected_mode",
+        "decode_as_utf_8,file_content,expected_content",
         [
-            (True, "test file content", "r"),
-            (False, b"test file content", "rb"),
+            (True, b"test file content", "test file content"),
+            (False, b"test file content", b"test file content"),
         ],
     )
     def test_get_file(
         self,
-        mock_tempfile,
-        mock_run,
-        mock_open,
-        mock_exists,
-        mock_unlink,
+        mock_boto_client,
         decode_as_utf_8,
+        file_content,
         expected_content,
-        expected_mode,
     ):
         """Test getting a file from S3 as string or bytes."""
-        # Setup mock tempfile
-        mock_tmp_file = MagicMock()
-        mock_tmp_file.name = "/tmp/test_file_123"
-        mock_tmp_file.__enter__.return_value = mock_tmp_file
-        mock_tempfile.return_value = mock_tmp_file
+        # Setup mock S3 client
+        mock_s3_client = MagicMock()
+        mock_boto_client.return_value = mock_s3_client
 
-        # Setup mock subprocess result
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_run.return_value = mock_result
-
-        # Setup mock file reading
-        mock_file = MagicMock()
-        mock_file.read.return_value = expected_content
-        mock_open.return_value.__enter__.return_value = mock_file
-        mock_exists.return_value = True
+        # Mock get_object response
+        mock_body = MagicMock()
+        mock_body.read.return_value = file_content
+        mock_s3_client.get_object.return_value = {
+            "Body": mock_body,
+            "ContentLength": len(file_content),
+        }
 
         # Test getting file
         content = S3FileSystem.get_file(
@@ -64,176 +51,383 @@ class TestS3FileSystem:
         )
 
         assert content == expected_content
-        mock_open.assert_called_once_with("/tmp/test_file_123", expected_mode)
-
-    @patch("subprocess.run")
-    @pytest.mark.parametrize(
-        "stderr",
-        [
-            "An error occurred (NoSuchKey) when calling the GetObject operation",
-            "The file does not exist",
-        ],
-    )
-    def test_get_file_not_found(self, mock_run, stderr):
-        """Test getting a non-existent file from S3."""
-        mock_run.side_effect = subprocess.CalledProcessError(
-            returncode=1, cmd=["aws", "s3", "cp"], stderr=stderr
+        mock_s3_client.get_object.assert_called_once_with(
+            Bucket="bucket", Key="test.txt"
         )
+
+    @patch("boto3.client")
+    def test_get_file_not_found(self, mock_boto_client):
+        """Test getting a non-existent file from S3."""
+        # Setup mock S3 client
+        mock_s3_client = MagicMock()
+        mock_boto_client.return_value = mock_s3_client
+
+        # Simulate NoSuchKey error
+        mock_s3_client.get_object.side_effect = ClientError(
+            {
+                "Error": {
+                    "Code": "NoSuchKey",
+                    "Message": "The specified key does not exist.",
+                }
+            },
+            "GetObject",
+        )
+
         assert S3FileSystem.get_file("s3://bucket/nonexistent.txt") is None
 
-    @patch("subprocess.run")
+    @patch("boto3.client")
+    def test_get_file_anonymous(self, mock_boto_client):
+        """Test getting a file from S3 with anonymous access."""
+        # Setup mock S3 client
+        mock_s3_client = MagicMock()
+        mock_boto_client.return_value = mock_s3_client
+
+        # Mock get_object response
+        mock_body = MagicMock()
+        mock_body.read.return_value = b"anonymous content"
+        mock_s3_client.get_object.return_value = {
+            "Body": mock_body,
+        }
+
+        # Test getting file with anonymous URI
+        content = S3FileSystem.get_file("s3://anonymous@bucket/test.txt")
+
+        assert content == "anonymous content"
+        # Verify anonymous config was used (UNSIGNED signature)
+        assert mock_boto_client.called
+
+    @patch("boto3.client")
     @pytest.mark.parametrize(
-        "uri,expected_path",
+        "uri,expected_prefix",
         [
-            ("s3://bucket/parent", "s3://bucket/parent/"),
-            ("s3://bucket/parent/", "s3://bucket/parent/"),
+            ("s3://bucket/parent", "parent/"),
+            ("s3://bucket/parent/", "parent/"),
         ],
     )
-    def test_list_subfolders(self, mock_run, uri, expected_path):
+    def test_list_subfolders(self, mock_boto_client, uri, expected_prefix):
         """Test listing subfolders in S3."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = (
-            "PRE folder1/\nPRE folder2/\n2024-01-01 12:00:00    12345 file.txt\n"
-        )
-        mock_run.return_value = mock_result
+        # Setup mock S3 client
+        mock_s3_client = MagicMock()
+        mock_boto_client.return_value = mock_s3_client
+
+        # Mock list_objects_v2 response
+        mock_s3_client.list_objects_v2.return_value = {
+            "CommonPrefixes": [
+                {"Prefix": f"{expected_prefix}folder1/"},
+                {"Prefix": f"{expected_prefix}folder2/"},
+            ]
+        }
 
         folders = S3FileSystem.list_subfolders(uri)
         assert sorted(folders) == ["folder1", "folder2"]
-        assert mock_run.call_args[0][0][3] == expected_path
+        mock_s3_client.list_objects_v2.assert_called_once_with(
+            Bucket="bucket", Prefix=expected_prefix, Delimiter="/"
+        )
 
-    @patch("subprocess.run")
-    def test_list_subfolders_exception(self, mock_run):
-        """Test listing subfolders when command fails."""
-        mock_run.side_effect = Exception("Network error")
+    @patch("boto3.client")
+    def test_list_subfolders_exception(self, mock_boto_client):
+        """Test listing subfolders when operation fails."""
+        # Setup mock S3 client
+        mock_s3_client = MagicMock()
+        mock_boto_client.return_value = mock_s3_client
+
+        mock_s3_client.list_objects_v2.side_effect = Exception("Network error")
         assert S3FileSystem.list_subfolders("s3://bucket/parent") == []
 
-    @patch("subprocess.run")
-    def test_list_subfolders_invalid_uri(self, mock_run):
+    def test_list_subfolders_invalid_uri(self):
         """Test listing subfolders with invalid URI."""
-        with pytest.raises(ValueError, match="Invalid S3 URI"):
-            S3FileSystem.list_subfolders("gs://bucket/parent")
+        # list_subfolders catches all exceptions and returns empty list
+        result = S3FileSystem.list_subfolders("gs://bucket/parent")
+        assert result == []
 
-    @patch("subprocess.run")
+    @patch("boto3.client")
     @pytest.mark.parametrize(
-        "uri,expected_path",
+        "uri,expected_prefix",
         [
-            ("s3://bucket/dir", "s3://bucket/dir/"),
-            ("s3://bucket/dir/", "s3://bucket/dir/"),
+            ("s3://bucket/dir", "dir/"),
+            ("s3://bucket/dir/", "dir/"),
         ],
     )
-    def test_download_files(self, mock_run, uri, expected_path):
+    def test_download_files(self, mock_boto_client, uri, expected_prefix):
         """Test downloading files from S3."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_run.return_value = mock_result
+        # Setup mock S3 client
+        mock_s3_client = MagicMock()
+        mock_boto_client.return_value = mock_s3_client
+
+        # Mock paginator
+        mock_paginator = MagicMock()
+        mock_s3_client.get_paginator.return_value = mock_paginator
+        mock_paginator.paginate.return_value = [
+            {
+                "Contents": [
+                    {"Key": f"{expected_prefix}file1.txt", "Size": 100},
+                    {"Key": f"{expected_prefix}file2.txt", "Size": 200},
+                ]
+            }
+        ]
+
+        # Mock download_file to do nothing
+        mock_s3_client.download_file = MagicMock()
 
         with tempfile.TemporaryDirectory() as tempdir:
-            S3FileSystem.download_files(tempdir, uri)
-            call_args = mock_run.call_args[0][0]
-            assert call_args[3] == expected_path
-            assert "--recursive" in call_args
+            S3FileSystem.download_files(tempdir, uri, max_workers=2)
 
-    @patch("subprocess.run")
-    def test_download_files_with_filters(self, mock_run):
+            # Verify paginator was called correctly
+            mock_s3_client.get_paginator.assert_called_with("list_objects_v2")
+            mock_paginator.paginate.assert_called_once_with(
+                Bucket="bucket", Prefix=expected_prefix
+            )
+
+            # Verify files were downloaded
+            assert mock_s3_client.download_file.call_count == 2
+
+    @patch("boto3.client")
+    def test_download_files_with_filters(self, mock_boto_client):
         """Test downloading files with inclusion and exclusion filters."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_run.return_value = mock_result
+        # Setup mock S3 client
+        mock_s3_client = MagicMock()
+        mock_boto_client.return_value = mock_s3_client
+
+        # Mock paginator with various files
+        mock_paginator = MagicMock()
+        mock_s3_client.get_paginator.return_value = mock_paginator
+        mock_paginator.paginate.return_value = [
+            {
+                "Contents": [
+                    {"Key": "dir/config.json", "Size": 100},
+                    {"Key": "dir/tokenizer.json", "Size": 200},
+                    {"Key": "dir/data.tmp", "Size": 300},
+                    {"Key": "dir/readme.txt", "Size": 400},
+                    {"Key": "dir/other.bin", "Size": 500},
+                ]
+            }
+        ]
+
+        # Mock download_file to do nothing
+        mock_s3_client.download_file = MagicMock()
 
         with tempfile.TemporaryDirectory() as tempdir:
             S3FileSystem.download_files(
                 tempdir,
                 "s3://bucket/dir",
                 substrings_to_include=["config", "tokenizer"],
-                suffixes_to_exclude=[".tmp", "*.txt"],
+                suffixes_to_exclude=[".tmp", ".txt"],
+                max_workers=2,
             )
 
-            call_args = mock_run.call_args[0][0]
-            assert "--exclude" in call_args
-            assert "--include" in call_args
-            assert "*config*" in call_args
-            assert "*tokenizer*" in call_args
-            assert "*.tmp" in call_args
-            assert "*.txt" in call_args
+            # Should only download config.json and tokenizer.json
+            # (included by substring, not excluded by suffix)
+            assert mock_s3_client.download_file.call_count == 2
 
-    @patch("subprocess.run")
-    def test_download_files_exception(self, mock_run):
-        """Test downloading files when command fails."""
-        mock_run.side_effect = Exception("Network error")
+            # Get the keys that were downloaded
+            downloaded_keys = [
+                call[0][1] for call in mock_s3_client.download_file.call_args_list
+            ]
+            assert "dir/config.json" in downloaded_keys
+            assert "dir/tokenizer.json" in downloaded_keys
+
+    @patch("boto3.client")
+    def test_download_files_no_matching_files(self, mock_boto_client):
+        """Test downloading when no files match filters."""
+        # Setup mock S3 client
+        mock_s3_client = MagicMock()
+        mock_boto_client.return_value = mock_s3_client
+
+        # Mock paginator with files that won't match
+        mock_paginator = MagicMock()
+        mock_s3_client.get_paginator.return_value = mock_paginator
+        mock_paginator.paginate.return_value = [
+            {
+                "Contents": [
+                    {"Key": "dir/file1.txt", "Size": 100},
+                ]
+            }
+        ]
+
         with tempfile.TemporaryDirectory() as tempdir:
-            with pytest.raises(Exception, match="Network error"):
-                S3FileSystem.download_files(tempdir, "s3://bucket/dir")
+            # This should not raise, just return without downloading
+            S3FileSystem.download_files(
+                tempdir,
+                "s3://bucket/dir",
+                substrings_to_include=["nonexistent"],
+                max_workers=2,
+            )
 
-    @patch("subprocess.run")
-    def test_download_files_invalid_uri(self, mock_run):
+            # Verify no files were downloaded
+            mock_s3_client.download_file.assert_not_called()
+
+    @patch("boto3.client")
+    @patch("ray.llm._internal.common.utils.cloud_filesystem.s3_filesystem.logger")
+    def test_download_files_concurrent_failure(self, mock_logger, mock_boto_client):
+        """Test downloading files when some downloads fail."""
+        # Setup mock S3 client
+        mock_s3_client = MagicMock()
+        mock_boto_client.return_value = mock_s3_client
+
+        # Mock paginator
+        mock_paginator = MagicMock()
+        mock_s3_client.get_paginator.return_value = mock_paginator
+        mock_paginator.paginate.return_value = [
+            {
+                "Contents": [
+                    {"Key": "dir/file1.txt", "Size": 100},
+                    {"Key": "dir/file2.txt", "Size": 200},
+                ]
+            }
+        ]
+
+        # Make download_file fail
+        mock_s3_client.download_file.side_effect = Exception("Download failed")
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            # Should complete without raising, but log errors
+            S3FileSystem.download_files(tempdir, "s3://bucket/dir", max_workers=2)
+
+            # Verify error was logged for failed downloads
+            mock_logger.error.assert_called()
+            error_call = mock_logger.error.call_args_list[0][0][0]
+            assert "Failed to download" in error_call
+
+    def test_download_files_invalid_uri(self):
         """Test downloading files with invalid URI."""
         with tempfile.TemporaryDirectory() as tempdir:
             with pytest.raises(ValueError, match="Invalid S3 URI"):
                 S3FileSystem.download_files(tempdir, "gs://bucket/dir")
 
-    @patch("subprocess.run")
+    @patch("boto3.client")
     @pytest.mark.parametrize(
-        "uri,expected_path",
+        "uri,expected_prefix",
         [
-            ("s3://bucket/dir", "s3://bucket/dir/"),
-            ("s3://bucket/dir/", "s3://bucket/dir/"),
+            ("s3://bucket/dir", "dir/"),
+            ("s3://bucket/dir/", "dir/"),
         ],
     )
-    def test_upload_files(self, mock_run, uri, expected_path):
-        """Test uploading files to S3."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_run.return_value = mock_result
+    def test_upload_files_directory(self, mock_boto_client, uri, expected_prefix):
+        """Test uploading a directory to S3."""
+        # Setup mock S3 client
+        mock_s3_client = MagicMock()
+        mock_boto_client.return_value = mock_s3_client
+        mock_s3_client.upload_file = MagicMock()
 
         with tempfile.TemporaryDirectory() as tempdir:
+            # Create some test files
+            test_file1 = os.path.join(tempdir, "file1.txt")
+            test_file2 = os.path.join(tempdir, "subdir", "file2.txt")
+            os.makedirs(os.path.dirname(test_file2), exist_ok=True)
+
+            with open(test_file1, "w") as f:
+                f.write("test1")
+            with open(test_file2, "w") as f:
+                f.write("test2")
+
             S3FileSystem.upload_files(tempdir, uri)
-            call_args = mock_run.call_args[0][0]
-            assert call_args[4] == expected_path
-            assert "--recursive" in call_args
 
-    @patch("subprocess.run")
-    def test_upload_files_exception(self, mock_run):
-        """Test uploading files when command fails."""
-        mock_run.side_effect = Exception("Network error")
+            # Verify files were uploaded
+            assert mock_s3_client.upload_file.call_count == 2
+
+            # Check the S3 keys that were used
+            uploaded_keys = [
+                call[0][2] for call in mock_s3_client.upload_file.call_args_list
+            ]
+            assert f"{expected_prefix}file1.txt" in uploaded_keys
+            assert f"{expected_prefix}subdir/file2.txt" in uploaded_keys
+
+    @patch("boto3.client")
+    def test_upload_files_single_file(self, mock_boto_client):
+        """Test uploading a single file to S3."""
+        # Setup mock S3 client
+        mock_s3_client = MagicMock()
+        mock_boto_client.return_value = mock_s3_client
+        mock_s3_client.upload_file = MagicMock()
+
         with tempfile.TemporaryDirectory() as tempdir:
+            # Create a test file
+            test_file = os.path.join(tempdir, "single.txt")
+            with open(test_file, "w") as f:
+                f.write("test content")
+
+            S3FileSystem.upload_files(test_file, "s3://bucket/dir/")
+
+            # Verify single file was uploaded
+            mock_s3_client.upload_file.assert_called_once()
+            call_args = mock_s3_client.upload_file.call_args[0]
+            assert call_args[2] == "dir/single.txt"
+
+    @patch("boto3.client")
+    def test_upload_files_exception(self, mock_boto_client):
+        """Test uploading files when operation fails."""
+        # Setup mock S3 client
+        mock_s3_client = MagicMock()
+        mock_boto_client.return_value = mock_s3_client
+        mock_s3_client.upload_file.side_effect = Exception("Network error")
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            # Create a test file
+            test_file = os.path.join(tempdir, "test.txt")
+            with open(test_file, "w") as f:
+                f.write("test")
+
             with pytest.raises(Exception, match="Network error"):
                 S3FileSystem.upload_files(tempdir, "s3://bucket/dir")
 
-    @patch("subprocess.run")
-    def test_upload_files_invalid_uri(self, mock_run):
+    def test_upload_files_invalid_uri(self):
         """Test uploading files with invalid URI."""
         with tempfile.TemporaryDirectory() as tempdir:
             with pytest.raises(ValueError, match="Invalid S3 URI"):
                 S3FileSystem.upload_files(tempdir, "gs://bucket/dir")
 
-    @patch("subprocess.run")
-    def test_run_command_success(self, mock_run):
-        """Test _run_command with successful execution."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_run.return_value = mock_result
-        result = S3FileSystem._run_command(["aws", "s3", "ls"])
-        assert result == mock_result
-        mock_run.assert_called_once_with(
-            ["aws", "s3", "ls"], capture_output=True, text=True, check=True
-        )
+    def test_upload_files_nonexistent_path(self):
+        """Test uploading from a path that doesn't exist."""
+        with pytest.raises(ValueError, match="does not exist"):
+            S3FileSystem.upload_files("/nonexistent/path", "s3://bucket/dir")
 
-    @patch("subprocess.run")
-    def test_run_command_file_not_found(self, mock_run):
-        """Test _run_command when command is not found."""
-        mock_run.side_effect = FileNotFoundError()
-        with pytest.raises(FileNotFoundError, match="is not installed"):
-            S3FileSystem._run_command(["nonexistent", "command"])
-
-    @patch("subprocess.run")
-    def test_run_command_called_process_error(self, mock_run):
-        """Test _run_command when command fails."""
-        mock_run.side_effect = subprocess.CalledProcessError(
-            returncode=1, cmd=["aws", "s3", "cp"], stderr="Access Denied"
+    def test_parse_s3_uri(self):
+        """Test parsing S3 URIs."""
+        # Standard URI
+        bucket, key, is_anon = S3FileSystem._parse_s3_uri(
+            "s3://bucket/path/to/file.txt"
         )
-        with pytest.raises(subprocess.CalledProcessError):
-            S3FileSystem._run_command(["aws", "s3", "cp", "s3://bucket/file", "/tmp"])
+        assert bucket == "bucket"
+        assert key == "path/to/file.txt"
+        assert is_anon is False
+
+        # Anonymous URI
+        bucket, key, is_anon = S3FileSystem._parse_s3_uri(
+            "s3://anonymous@bucket/file.txt"
+        )
+        assert bucket == "bucket"
+        assert key == "file.txt"
+        assert is_anon is True
+
+        # Bucket only
+        bucket, key, is_anon = S3FileSystem._parse_s3_uri("s3://bucket")
+        assert bucket == "bucket"
+        assert key == ""
+        assert is_anon is False
+
+    def test_calculate_optimal_workers(self):
+        """Test worker calculation based on file characteristics."""
+        # Many small files (< 1MB)
+        workers = S3FileSystem._calculate_optimal_workers(
+            num_files=50, total_size=50 * 500 * 1024  # 50 files * 500KB each
+        )
+        assert workers == 50  # Should use many workers for small files
+
+        # Medium files (1-10MB)
+        workers = S3FileSystem._calculate_optimal_workers(
+            num_files=50, total_size=50 * 5 * 1024 * 1024  # 50 files * 5MB each
+        )
+        assert workers == 25  # Should use moderate workers
+
+        # Large files (> 10MB)
+        workers = S3FileSystem._calculate_optimal_workers(
+            num_files=50, total_size=50 * 50 * 1024 * 1024  # 50 files * 50MB each
+        )
+        assert workers == 20  # Should cap at 20 for large files
+
+        # Zero files
+        workers = S3FileSystem._calculate_optimal_workers(num_files=0, total_size=0)
+        assert workers == 10  # Should return default_min
 
 
 class TestS3FileSystemIntegration:

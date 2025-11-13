@@ -5,12 +5,12 @@ for reliable and efficient S3 operations.
 """
 
 import os
-import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Optional, Union
 
 import boto3
+from botocore import UNSIGNED
 from botocore.client import BaseClient
 from botocore.config import Config
 
@@ -28,20 +28,23 @@ class S3FileSystem(BaseCloudFileSystem):
     """
 
     @staticmethod
-    def _parse_s3_uri(uri: str) -> tuple[str, str]:
+    def _parse_s3_uri(uri: str) -> tuple[str, str, bool]:
         """Parse S3 URI into bucket and key.
 
         Args:
-            uri: S3 URI (e.g., s3://bucket/path/to/object)
+            uri: S3 URI (e.g., s3://bucket/path/to/object or s3://anonymous@bucket/path/to/object)
 
         Returns:
-            Tuple of (bucket_name, key)
+            Tuple of (bucket_name, key, is_anonymous)
 
         Raises:
             ValueError: If URI is not a valid S3 URI
         """
-        # Remove user info if present
-        uri = re.sub(r"^(s3://)[^/@]+@", r"\1", uri)
+        # Check if anonymous@ prefix exists
+        is_anonymous = False
+        if uri.startswith("s3://anonymous@"):
+            is_anonymous = True
+            uri = uri.replace("s3://anonymous@", "s3://", 1)
 
         if not uri.startswith("s3://"):
             raise ValueError(f"Invalid S3 URI: {uri}")
@@ -52,15 +55,16 @@ class S3FileSystem(BaseCloudFileSystem):
         bucket = parts[0]
         key = parts[1] if len(parts) > 1 else ""
 
-        return bucket, key
+        return bucket, key, is_anonymous
 
     @staticmethod
-    def _get_s3_client(max_pool_connections: int = 50):
+    def _get_s3_client(max_pool_connections: int = 50, anonymous: bool = False):
         """Create a new S3 client instance with connection pooling.
 
         Args:
             max_pool_connections: Maximum number of connections in the pool.
                 Should be >= max_workers for optimal performance.
+            anonymous: Whether to use anonymous access to S3.
 
         Returns:
             boto3 S3 client with connection pooling configured
@@ -75,6 +79,7 @@ class S3FileSystem(BaseCloudFileSystem):
             },
             # TCP keepalive helps with long-running connections
             tcp_keepalive=True,
+            signature_version=UNSIGNED if anonymous else None,
         )
 
         return boto3.client("s3", config=config)
@@ -93,8 +98,8 @@ class S3FileSystem(BaseCloudFileSystem):
             File contents as string or bytes, or None if file doesn't exist
         """
         try:
-            bucket, key = S3FileSystem._parse_s3_uri(object_uri)
-            s3_client = S3FileSystem._get_s3_client()
+            bucket, key, is_anonymous = S3FileSystem._parse_s3_uri(object_uri)
+            s3_client = S3FileSystem._get_s3_client(anonymous=is_anonymous)
 
             # Download file directly into memory
             response = s3_client.get_object(Bucket=bucket, Key=key)
@@ -104,7 +109,7 @@ class S3FileSystem(BaseCloudFileSystem):
                 return body.decode("utf-8")
             return body
         except Exception as e:
-            logger.info(f"Error reading {object_uri}: {e}")
+            logger.error(f"Error reading {object_uri}: {e}")
 
     @staticmethod
     def list_subfolders(folder_uri: str) -> List[str]:
@@ -117,13 +122,13 @@ class S3FileSystem(BaseCloudFileSystem):
             List of subfolder names (without trailing slashes)
         """
         try:
-            bucket, prefix = S3FileSystem._parse_s3_uri(folder_uri)
+            bucket, prefix, is_anonymous = S3FileSystem._parse_s3_uri(folder_uri)
 
             # Ensure that the prefix has a trailing slash
             if prefix and not prefix.endswith("/"):
                 prefix = f"{prefix}/"
 
-            s3_client = S3FileSystem._get_s3_client()
+            s3_client = S3FileSystem._get_s3_client(anonymous=is_anonymous)
 
             # List objects with delimiter to get only immediate subfolders
             response = s3_client.list_objects_v2(
@@ -142,7 +147,7 @@ class S3FileSystem(BaseCloudFileSystem):
 
             return subfolders
         except Exception as e:
-            logger.info(f"Error listing subfolders in {folder_uri}: {e}")
+            logger.error(f"Error listing subfolders in {folder_uri}: {e}")
             return []
 
     @staticmethod
@@ -224,7 +229,7 @@ class S3FileSystem(BaseCloudFileSystem):
                 calculated based on file count and sizes (min: 10, max: 100)
         """
         try:
-            bucket, prefix = S3FileSystem._parse_s3_uri(bucket_uri)
+            bucket, prefix, is_anonymous = S3FileSystem._parse_s3_uri(bucket_uri)
 
             # Ensure the destination directory exists
             os.makedirs(path, exist_ok=True)
@@ -234,7 +239,7 @@ class S3FileSystem(BaseCloudFileSystem):
                 prefix = f"{prefix}/"
 
             # Create initial client for listing (will recreate with proper pool size later)
-            s3_client = S3FileSystem._get_s3_client()
+            s3_client = S3FileSystem._get_s3_client(anonymous=is_anonymous)
 
             # List all objects in the bucket with the given prefix
             paginator = s3_client.get_paginator("list_objects_v2")
@@ -289,14 +294,10 @@ class S3FileSystem(BaseCloudFileSystem):
                     default_max=100,
                     default_min=10,
                 )
-                logger.info(
-                    f"Auto-selected {max_workers} workers for {len(files_to_download)} files "
-                    f"({total_size / (1024**2):.1f} MB total)"
-                )
 
             # Create shared client with proper connection pool size for downloads
             s3_client = S3FileSystem._get_s3_client(
-                max_pool_connections=max_workers + 10
+                max_pool_connections=max_workers + 10, anonymous=is_anonymous
             )
 
             failed_downloads = []
@@ -322,14 +323,9 @@ class S3FileSystem(BaseCloudFileSystem):
 
             # Report any failures
             if failed_downloads:
-                logger.warning(
+                logger.error(
                     f"Failed to download {len(failed_downloads)} files: {failed_downloads[:5]}..."
                 )
-                raise Exception(
-                    f"Failed to download {len(failed_downloads)} out of {len(files_to_download)} files"
-                )
-
-            logger.info(f"Successfully downloaded {len(files_to_download)} files")
 
         except Exception as e:
             logger.exception(f"Error downloading files from {bucket_uri}: {e}")
@@ -347,13 +343,13 @@ class S3FileSystem(BaseCloudFileSystem):
             bucket_uri: The bucket uri to upload the files to, must start with `s3://`.
         """
         try:
-            bucket, prefix = S3FileSystem._parse_s3_uri(bucket_uri)
+            bucket, prefix, is_anonymous = S3FileSystem._parse_s3_uri(bucket_uri)
 
             # Ensure prefix has trailing slash for directory upload
             if prefix and not prefix.endswith("/"):
                 prefix = f"{prefix}/"
 
-            s3_client = S3FileSystem._get_s3_client()
+            s3_client = S3FileSystem._get_s3_client(anonymous=is_anonymous)
 
             local_path_obj = Path(local_path)
 
