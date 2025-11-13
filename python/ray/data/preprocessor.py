@@ -425,6 +425,7 @@ class Preprocessor(abc.ABC):
         return pickle.loads(base64.b64decode(serialized))
 
 
+@DeveloperAPI
 class SerializablePreprocessorBase(Preprocessor, abc.ABC):
     """Abstract base class for serializable preprocessors.
 
@@ -466,6 +467,7 @@ class SerializablePreprocessorBase(Preprocessor, abc.ABC):
     - Handle version migration and backwards compatibility in ``_set_serializable_fields()`` if needed
     """
 
+    @DeveloperAPI
     class SerializationFormat(Enum):
         CLOUDPICKLE = "cloudpickle"
         PICKLE = "pickle"  # legacy
