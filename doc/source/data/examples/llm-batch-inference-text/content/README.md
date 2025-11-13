@@ -252,8 +252,8 @@ You can control the dataset size through the `LARGE_DATASET_LIMIT` environment v
 ```python
 import os
 
-# Configure dataset size  (default: full 2M dataset).
-dataset_limit = int(os.environ.get("LARGE_DATASET_LIMIT", 2_000_000))
+# Configure how many images to process (default: 1M for demonstration).
+dataset_limit = int(os.environ.get("LARGE_DATASET_LIMIT", 1_000_000))
 print(f"Scaling dataset to: {dataset_limit:,} rows...")
 
 # Apply the limit to the dataset.
