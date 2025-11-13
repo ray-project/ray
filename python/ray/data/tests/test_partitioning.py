@@ -655,15 +655,24 @@ def test_path_partition_parser_hive(fs, base_dir):
     partitioned_path = posixpath.join(base_dir, "foo/bar/qux=3/")
     assert partition_parser(partitioned_path) == {"qux": "3"}
 
-    partition_parser = PathPartitionParser.of(
-        base_dir=base_dir,
-        field_names=["foo", "bar"],
-        filesystem=fs,
-    )
-    partitioned_path = posixpath.join(base_dir, "foo=1/bar=2/test")
-    assert partition_parser(partitioned_path) == {"foo": "1", "bar": "2"}
-    partitioned_path = posixpath.join(base_dir, "prefix/foo=1/padding/bar=2/test")
-    assert partition_parser(partitioned_path) == {"foo": "1", "bar": "2"}
+
+@pytest.mark.parametrize(
+    "path, expected_partitions",
+    [
+        # '%2F' should decode to '/'
+        ("bucket/key=partition%2Fvalue/file.txt", {"key": "partition/value"}),
+        # '+' must remain literal when decoding path components. See
+        # https://github.com/ray-project/ray/pull/57625#discussion_r2441360523.
+        ("bucket/key=foo+bar/file.txt", {"key": "foo+bar"}),
+        # '%2B' should decode to '+'
+        ("bucket/key=foo%2Bbar/file.txt", {"key": "foo+bar"}),
+    ],
+)
+def test_path_partition_parser_decodes_special_characters(
+    path: str, expected_partitions: Dict[str, str]
+):
+    partition_parser = PathPartitionParser.of(base_dir="bucket")
+    assert partition_parser(path) == expected_partitions
 
 
 @pytest.mark.parametrize(
