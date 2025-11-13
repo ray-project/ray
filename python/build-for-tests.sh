@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# install python package
+pip install jsonpatch
+pip install "ray[default]==2.51.0"
+pip uninstall -y ray
+
 source /root/.bashrc
 set -exuo pipefail
 
