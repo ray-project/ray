@@ -1,32 +1,21 @@
 import ray
 import requests
-from fastapi import FastAPI
 from ray import serve
 from ray.serve.handle import DeploymentHandle
 
-app = FastAPI()
-
-@serve.deployment
-@serve.ingress(app)
-class MyFastAPIDeployment:
-    def __init__(self, engine_handle: DeploymentHandle):
-        self._engine_handle = engine_handle
-
-    @app.get("/v1/chat/completions/{in_prompt}") # serve as OPENAI /v1/chat/completions endpoint 
-    async def root(self, in_prompt: str):                 # make endpoint async
-        # Asynchronous call to a method of that deployment (executes remotely) used remote
-        res = await self._engine_handle.chat.remote(in_prompt) 
-        return "useing Llama-3.1-8B-Instruct for your !", in_prompt, res
-
-@serve.deployment
+#@serve.deployment disable serve.deployment
 class SGLangServer:
-    def __init__(self):
+    def __init__(self, llm_config: LLMConfig):
 
-        self.engine_kwargs = dict(
+        default_engine_kwargs = dict(
             model_path = "/scratch2/huggingface/hub/meta-llama/Llama-3.1-8B-Instruct/",
             mem_fraction_static = 0.8,
             tp_size = 8,
         )
+
+        if llm_config.engine_kwargs:
+            default_engine_kwargs.update(llm_config.engine_kwargs)
+        self.engine_kwargs = default_engine_kwargs
 
         try:
             import sglang
@@ -45,7 +34,20 @@ class SGLangServer:
         )
         return {"echo": res}
 
-sglangServer = SGLangServer.bind()
-my_App = MyFastAPIDeployment.bind(sglangServer)
-handle: DeploymentHandle = serve.run(my_App, blocking = True)
+    async def llm_config(self) -> Optional[LLMConfig]:
+        return self.llm_config
+
+    @classmethod
+    def get_deployment_options(cls, llm_config: "LLMConfig"):
+        return {'autoscaling_config': {'min_replicas': 1, 'max_replicas': 1}, 
+                'placement_group_bundles': [{'CPU': 1, 'GPU': 1, 'accelerator_type:H100': 0.001}, {'GPU': 1, 'accelerator_type:H100': 0.001}], 
+                'placement_group_strategy': 'PACK', 
+                'ray_actor_options': {'runtime_env': 
+                                      {'worker_process_setup_hook': 'ray.llm._internal.serve._worker_process_setup_hook'}
+                                      }
+                }
+
+#sglangServer = SGLangServer.bind()
+#my_App = MyFastAPIDeployment.bind(sglangServer)
+#handle: DeploymentHandle = serve.run(my_App, blocking = True)
 
