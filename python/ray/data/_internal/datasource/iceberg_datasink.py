@@ -5,9 +5,6 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
-from pyiceberg.expressions import AlwaysFalse, AlwaysTrue, BooleanExpression
-from pyiceberg.table.refs import MAIN_BRANCH
-
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.savemode import SaveMode
 from ray.data.block import Block, BlockAccessor
@@ -17,8 +14,10 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow as pa
     from pyiceberg.catalog import Catalog
+    from pyiceberg.expressions import AlwaysFalse, AlwaysTrue, BooleanExpression
     from pyiceberg.manifest import DataFile
     from pyiceberg.table import Table, Transaction
+    from pyiceberg.table.refs import MAIN_BRANCH
 
     from ray.data.expressions import Expr
 
