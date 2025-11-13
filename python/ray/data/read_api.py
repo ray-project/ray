@@ -2,6 +2,7 @@ import collections
 import logging
 import os
 import warnings
+from datetime import datetime
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -42,6 +43,7 @@ from ray.data._internal.datasource.json_datasource import (
     ArrowJSONDatasource,
     PandasJSONDatasource,
 )
+from ray.data._internal.datasource.kafka_datasource import KafkaDatasource
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
@@ -4418,6 +4420,137 @@ def read_delta(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
         **arrow_parquet_args,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_kafka(
+    topics: Union[str, List[str]],
+    *,
+    bootstrap_servers: Union[str, List[str]],
+    trigger: Literal["once"] = "once",
+    start_offset: Optional[Union[int, str, datetime]] = None,
+    end_offset: Optional[Union[int, str, datetime]] = None,
+    authentication: Optional[Dict[str, Any]] = None,
+    parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Read data from Kafka topics.
+
+    This function supports bounded reads from Kafka topics, reading messages
+    between a start and end offset or timestamp. Only the "once" trigger is
+    supported for now, which performs a single bounded read.
+
+    Examples:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            from datetime import datetime, timedelta
+
+            # Read from a single topic with offset range
+            ds = ray.data.read_kafka(
+                topics="my-topic",
+                bootstrap_servers="localhost:9092",
+                start_offset=0,
+                end_offset=1000,
+            )
+
+            # Read from multiple topics with timestamp range
+            end_time = datetime.now()
+            start_time = end_time - timedelta(hours=1)
+            ds = ray.data.read_kafka(
+                topics=["topic1", "topic2"],
+                bootstrap_servers=["broker1:9092", "broker2:9092"],
+                start_offset=start_time,
+                end_offset=end_time,
+                authentication={
+                    "security_protocol": "SASL_SSL",
+                    "sasl_mechanism": "PLAIN",
+                    "sasl_username": "user",
+                    "sasl_password": "pass",
+                },
+            )
+
+    Args:
+        topics: Kafka topic name(s) to read from. Can be a single topic name
+            or a list of topic names.
+        bootstrap_servers: Kafka broker addresses. Can be a single string or
+            a list of strings.
+        trigger: Trigger mode for reading. Only "once" is supported, which
+            performs a single bounded read.
+        start_offset: Starting position for reading. Can be:
+            - int: Offset number or timestamp in milliseconds
+            - str: "earliest", "latest", or offset number as string
+            - datetime: Timestamp to convert to offset
+            If None, defaults to "earliest".
+        end_offset: Ending position for reading. Can be:
+            - int: Offset number or timestamp in milliseconds
+            - str: Offset number as string
+            - datetime: Timestamp to convert to offset
+            If None, reads until max_records_per_task is reached.
+        authentication: Authentication configuration dict. Supported keys:
+            - security_protocol: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL
+            - sasl_mechanism: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512, GSSAPI
+            - sasl_username: Username for SASL authentication
+            - sasl_password: Password for SASL authentication
+            - ssl_ca_location: Path to CA certificate file
+            - ssl_certificate_location: Path to client certificate file
+            - ssl_key_location: Path to client key file
+            - Other SSL parameters as supported by kafka-python
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A :class:`~ray.data.Dataset` containing Kafka messages with the following schema:
+        - offset: int64 - Message offset within partition
+        - key: string - Message key (if present)
+        - value: string - Message value (decoded as UTF-8)
+        - topic: string - Topic name
+        - partition: int32 - Partition ID
+        - timestamp: int64 - Message timestamp in milliseconds
+        - timestamp_type: int32 - 0=CreateTime, 1=LogAppendTime
+        - headers: map<string, string> - Message headers
+
+    Raises:
+        ValueError: If invalid parameters are provided.
+        ImportError: If kafka-python is not installed.
+    """  # noqa: E501
+    if trigger != "once":
+        raise ValueError(f"Only trigger='once' is supported. Got trigger={trigger}")
+
+    return ray.data.read_datasource(
+        KafkaDatasource(
+            topics=topics,
+            bootstrap_servers=bootstrap_servers,
+            start_offset=start_offset,
+            end_offset=end_offset,
+            authentication=authentication,
+        ),
+        parallelism=parallelism,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
