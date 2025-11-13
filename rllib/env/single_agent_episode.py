@@ -1,20 +1,20 @@
-from collections import defaultdict
 import copy
 import functools
-import numpy as np
 import time
 import uuid
-
-import gymnasium as gym
-import tree
-from gymnasium.core import ActType, ObsType
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, SupportsFloat, Union
 
+import gymnasium as gym
+import numpy as np
+import tree
+from gymnasium.core import ActType, ObsType
+
+from ray._common.deprecation import Deprecated
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
-from ray._common.deprecation import Deprecated
 from ray.rllib.utils.typing import AgentID, ModuleID
 from ray.util.annotations import PublicAPI
 

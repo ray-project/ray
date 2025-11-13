@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.config import ScalingConfig
-from ray.train.v2.api.result import Result
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -20,6 +19,7 @@ if TYPE_CHECKING:
         WorkerGroupContext,
         WorkerGroupPollStatus,
     )
+    from ray.train.v2.api.result import Result
 
 
 @DeveloperAPI
@@ -128,7 +128,7 @@ class ControllerCallback(RayTrainCallback):
         """Called before the controller executes a resize decision."""
         pass
 
-    def after_controller_finish(self, result: Result):
+    def after_controller_finish(self, result: "Result"):
         """Called after the training run completes, providing access to the final result.
 
         Args:

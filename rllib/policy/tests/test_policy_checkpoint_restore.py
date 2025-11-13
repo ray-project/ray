@@ -3,11 +3,11 @@
 import os
 import tempfile
 import unittest
+
 import gymnasium as gym
 
 import ray
 from ray.rllib.algorithms.appo.appo import APPOConfig
-
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.policy import Policy
 
@@ -144,8 +144,9 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     # One can specify the specific TestCase class to run.
     # None for all unittest.TestCase classes in this file.
