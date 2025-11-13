@@ -30,5 +30,7 @@ jobs:
           aone-bazel-api-key: ${{secrets.AONE_BAZEL_API_KEY}}
           bazelrc-path: /etc/bazel.bazelrc  # 默认 ~/.bazelrc 已配置，改用系统配置路径
           local-cache-name: ''  # do not mount local cache, image contains external dependencies
+      - id: install-pip-deps
+        run: pip install jsonpatch
       - id: unit-tests
         run: bash python/build-for-tests.sh

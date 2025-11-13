@@ -7,15 +7,26 @@ from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 
 from ray.autoscaler.v2.schema import NodeType
 
-from ray.autoscaler.v2.instance_manager.instance_manager import \
+from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceUpdatedSubscriber
+)
 from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 class CloudResourceAvailability:
+    """CloudResourceAvailability indicates the availability of a type of
+    cloud resource.
+
+    During scaling up, if resource of a node type is requested but fail to
+    allocate, that type is considered unavailable at that timestamp.
+    This class records the last timestamp at which a node type is unavailable,
+    allowing the autoscaler to skip such node types when making future scaling
+    decisions.
+    """
+
     # The node type of cloud resource.
     _node_type: NodeType
     # Timestamp of the last failed resource allocation.
-    _last_unavailability_timestamp: int
+    _last_unavailable_timestamp: int
 
     def __init__(
         self,
@@ -23,13 +34,13 @@ class CloudResourceAvailability:
         last_unavailability_timestamp: int
     ):
         self._node_type = node_type
-        self._last_unavailability_timestamp = last_unavailability_timestamp
+        self._last_unavailable_timestamp = last_unavailability_timestamp
 
     def get_last_unavailability_timestamp(self) -> int:
-        return self._last_unavailability_timestamp
+        return self._last_unavailable_timestamp
 
     def set_last_unavailability_timestamp(self, timestamp: int):
-        self._last_unavailability_timestamp = timestamp
+        self._last_unavailable_timestamp = timestamp
 
 
 class CloudResourceMonitor(InstanceUpdatedSubscriber):
