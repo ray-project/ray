@@ -1576,9 +1576,9 @@ class HashShuffleAggregator:
     def finalize(
         self, partition_id: int
     ) -> AsyncGenerator[Union[Block, "BlockMetadataWithSchema"], None]:
-        exec_stats_builder = BlockExecStats.builder()
 
         with self._lock:
+            exec_stats_builder = BlockExecStats.builder()
             # Finalize given partition id
             block = self._agg.finalize(partition_id)
             exec_stats = exec_stats_builder.build()
