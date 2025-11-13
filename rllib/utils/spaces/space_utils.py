@@ -135,12 +135,10 @@ def flatten_space(space: gym.Space) -> List[gym.Space]:
     """
 
     def _helper_flatten(space_, return_list):
-        from ray.rllib.utils.spaces.flexdict import FlexDict
-
         if isinstance(space_, Tuple):
             for s in space_:
                 _helper_flatten(s, return_list)
-        elif isinstance(space_, (Dict, FlexDict)):
+        elif isinstance(space_, Dict):
             for k in sorted(space_.spaces):
                 _helper_flatten(space_[k], return_list)
         else:
