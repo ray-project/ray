@@ -96,9 +96,13 @@ class ArrowExtensionSerializeDeserializeCache(abc.ABC):
     The deserialization cache is a class field (shared across all instances),
     so it won't be invalidated during the lifetime of the process. Based on
     our tests, each cache entry is approximately ~100 bytes, so this should
-    be fine for most use cases. However, if users have an extremely large
-    number of columns with different extension types, they can disable caching
-    by setting the environment variable ``RAY_ARROW_EXTENSION_USE_CACHE=False``.
+    be fine.
+
+    Note:
+        This cache will be used in module init stage, so static env variable
+        (for gating the cache) doesn't work here. Dynamically checking the env
+        variable causes too much overhead so we just leave this since this
+        memory consumption is minor.
 
     Attributes:
         _deserialize_cache: Class-level thread-safe cache for deserialization
