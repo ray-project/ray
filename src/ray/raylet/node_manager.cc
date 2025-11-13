@@ -3400,6 +3400,9 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
   auto timer = execute_after(
       io_service_,
       [this, send_reply_callback, worker_id, replied]() {
+        if (*replied) {
+          return;
+        }
         auto current_worker = worker_pool_.GetRegisteredWorker(worker_id);
         if (current_worker) {
           // If the worker is still alive, force kill it
@@ -3425,12 +3428,16 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
        timer,
        send_reply_callback,
        replied](const ray::Status &status, const rpc::KillActorReply &) {
-        if (!status.ok() && !*replied) {
+        if (*replied) {
+          return;
+        }
+        if (!status.ok()) {
           std::ostringstream stream;
           stream << "KillActor RPC failed for actor " << actor_id << ": "
                  << status.ToString();
           const auto &msg = stream.str();
           RAY_LOG(DEBUG) << msg;
+          *replied = true;
           timer->cancel();
           send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
         }
@@ -3478,6 +3485,9 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
       io_service_,
       [this, reply, send_reply_callback, worker_id, replied]() {
         auto current_worker = worker_pool_.GetRegisteredWorker(worker_id);
+        if (*replied) {
+          return;
+        }
         if (current_worker) {
           // If the worker is still alive, force kill it
           RAY_LOG(INFO) << "Worker with PID=" << current_worker->GetProcess().GetId()
@@ -3489,7 +3499,6 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
                         "Force-killed by ray.cancel(force=True)",
                         /*force=*/true);
         }
-
         *replied = true;
         reply->set_attempt_succeeded(true);
         reply->set_requested_task_running(false);
@@ -3502,19 +3511,21 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
       cancel_task_request,
       [task_id = request.intended_task_id(), timer, reply, send_reply_callback, replied](
           const ray::Status &status, const rpc::CancelTaskReply &cancel_task_reply) {
+        if (*replied) {
+          return;
+        }
         if (!status.ok()) {
-          RAY_LOG(DEBUG) << "CancelTask RPC failed for task " << task_id << ": "
-                         << status.ToString();
+          RAY_LOG(DEBUG) << "CancelTask RPC failed for task "
+                         << TaskID::FromBinary(task_id) << ": " << status.ToString();
           // NOTE: We'll escalate the graceful shutdown to SIGKILL which is done by the
           // timer above
           return;
         }
-        if (!*replied) {
-          reply->set_attempt_succeeded(cancel_task_reply.attempt_succeeded());
-          reply->set_requested_task_running(cancel_task_reply.requested_task_running());
-          send_reply_callback(Status::OK(), nullptr, nullptr);
-          timer->cancel();
-        }
+        *replied = true;
+        reply->set_attempt_succeeded(cancel_task_reply.attempt_succeeded());
+        reply->set_requested_task_running(cancel_task_reply.requested_task_running());
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+        timer->cancel();
       });
 }
 

@@ -1037,9 +1037,18 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
             request,
             [this, task_spec = std::move(task_spec), recursive, task_id](
                 const Status &status, const rpc::CancelLocalTaskReply &reply) mutable {
-              RAY_LOG(DEBUG).WithField(task_spec.TaskId())
-                  << "CancelTask RPC response received with status " << status.ToString();
-
+              if (!status.ok()) {
+                RAY_LOG(DEBUG) << "CancelLocalTask RPC failed for task "
+                               << task_spec.TaskId() << ": " << status.ToString()
+                               << " due to node death";
+                return;
+              } else {
+                RAY_LOG(DEBUG) << "CancelLocalTask RPC response received for "
+                               << task_spec.TaskId()
+                               << " with attempt_succeeded: " << reply.attempt_succeeded()
+                               << " requested_task_running: "
+                               << reply.requested_task_running();
+              }
               // Keep retrying every 2 seconds until a task is officially
               // finished.
               if (!task_manager_.GetTaskSpec(task_id)) {

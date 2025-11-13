@@ -755,11 +755,19 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
              recursive](const Status &status,
                         const rpc::CancelLocalTaskReply &reply) mutable {
               absl::MutexLock lock(&mu_);
-              RAY_LOG(DEBUG) << "CancelTask RPC response received for "
-                             << task_spec.TaskId() << " with status "
-                             << status.ToString();
               cancelled_tasks_.erase(task_spec.TaskId());
-
+              if (!status.ok()) {
+                RAY_LOG(DEBUG) << "CancelLocalTask RPC failed for task "
+                               << task_spec.TaskId() << ": " << status.ToString()
+                               << " due to node death";
+                return;
+              } else {
+                RAY_LOG(DEBUG) << "CancelLocalTask RPC response received for "
+                               << task_spec.TaskId()
+                               << " with attempt_succeeded: " << reply.attempt_succeeded()
+                               << " requested_task_running: "
+                               << reply.requested_task_running();
+              }
               if (!reply.attempt_succeeded()) {
                 if (reply.requested_task_running()) {
                   if (cancel_retry_timer_.expiry().time_since_epoch() <=
