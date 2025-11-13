@@ -25,6 +25,7 @@
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/gcs_rpc_client/accessor.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/fake_subscriber.h"
 
@@ -139,11 +140,15 @@ class ActorManagerTest : public ::testing::Test {
         actor_task_submitter_(new MockActorTaskSubmitter()),
         publisher_(std::make_shared<pubsub::FakePublisher>()),
         subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
+        fake_owned_object_count_gauge_(),
+        fake_owned_object_size_gauge_(),
         reference_counter_(std::make_unique<ReferenceCounter>(
             rpc::Address(),
             publisher_.get(),
             subscriber_.get(),
             [](const NodeID &node_id) { return true; },
+            fake_owned_object_count_gauge_,
+            fake_owned_object_size_gauge_,
             /*lineage_pinning_enabled=*/true)) {
     gcs_client_mock_->Init(actor_info_accessor_);
   }
@@ -195,6 +200,8 @@ class ActorManagerTest : public ::testing::Test {
   std::shared_ptr<MockActorTaskSubmitter> actor_task_submitter_;
   std::shared_ptr<pubsub::FakePublisher> publisher_;
   std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
+  ray::observability::FakeGauge fake_owned_object_count_gauge_;
+  ray::observability::FakeGauge fake_owned_object_size_gauge_;
   std::unique_ptr<ReferenceCounterInterface> reference_counter_;
   std::shared_ptr<ActorManager> actor_manager_;
 };

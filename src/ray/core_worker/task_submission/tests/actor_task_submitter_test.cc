@@ -26,6 +26,7 @@
 #include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/fake_subscriber.h"
 
@@ -97,11 +98,15 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
         io_work(io_context.get_executor()),
         publisher_(std::make_shared<pubsub::FakePublisher>()),
         subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
+        fake_owned_object_count_gauge_(),
+        fake_owned_object_size_gauge_(),
         reference_counter_(std::make_shared<ReferenceCounter>(
             rpc::Address(),
             publisher_.get(),
             subscriber_.get(),
             /*is_node_dead=*/[](const NodeID &) { return false; },
+            fake_owned_object_count_gauge_,
+            fake_owned_object_size_gauge_,
             /*lineage_pinning_enabled=*/false)),
         submitter_(
             *client_pool_,
@@ -127,6 +132,8 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
   std::shared_ptr<pubsub::FakePublisher> publisher_;
   std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
+  ray::observability::FakeGauge fake_owned_object_count_gauge_;
+  ray::observability::FakeGauge fake_owned_object_size_gauge_;
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   ActorTaskSubmitter submitter_;
 };

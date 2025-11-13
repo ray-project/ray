@@ -23,6 +23,7 @@
 #include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/fake_subscriber.h"
 
@@ -49,6 +50,8 @@ class DirectTaskTransportTest : public ::testing::Test {
         publisher.get(),
         subscriber.get(),
         /*is_node_dead=*/[](const NodeID &) { return false; },
+        fake_owned_object_count_gauge,
+        fake_owned_object_size_gauge,
         /*lineage_pinning_enabled=*/false);
     actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *client_pool,
@@ -97,6 +100,8 @@ class DirectTaskTransportTest : public ::testing::Test {
   std::shared_ptr<ray::gcs::MockGcsClient> gcs_client;
   std::shared_ptr<pubsub::FakePublisher> publisher;
   std::shared_ptr<pubsub::FakeSubscriber> subscriber;
+  ray::observability::FakeGauge fake_owned_object_count_gauge;
+  ray::observability::FakeGauge fake_owned_object_size_gauge;
   std::shared_ptr<ReferenceCounterInterface> reference_counter;
 };
 
