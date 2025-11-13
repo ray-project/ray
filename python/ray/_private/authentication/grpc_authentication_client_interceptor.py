@@ -36,7 +36,7 @@ def _get_authentication_metadata_tuple() -> Tuple[Tuple[str, str], ...]:
     return tuple((k, v) for k, v in headers.items())
 
 
-class AuthenticationMetadataClientInterceptor(
+class SyncAuthenticationMetadataClientInterceptor(
     grpc.UnaryUnaryClientInterceptor,
     grpc.UnaryStreamClientInterceptor,
     grpc.StreamUnaryClientInterceptor,
