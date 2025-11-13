@@ -76,7 +76,7 @@ class MockActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
     async_create_actor_callback_ = callback;
   }
 
-  Status AsyncSubscribe(
+  void AsyncSubscribe(
       const ActorID &actor_id,
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const gcs::StatusCallback &done) override {
@@ -84,7 +84,6 @@ class MockActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
     callback_map_.emplace(actor_id, subscribe);
     subscribe_finished_callback_map_[actor_id] = done;
     actor_subscribed_times_[actor_id]++;
-    return Status::OK();
   }
 
   Status AsyncUnsubscribe(const ActorID &) override { return Status::OK(); }
