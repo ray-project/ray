@@ -32,6 +32,7 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
                 self._pending_bundles[-1].num_rows()
                 - self._total_pending_rows % self._target_num_rows
             )
+            assert rows_needed_from_last_bundle >= 0  # This will never be negative
             pending_bundles = list(self._pending_bundles)
             remaining_bundle = None
             if (
