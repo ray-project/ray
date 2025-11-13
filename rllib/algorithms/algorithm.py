@@ -2202,7 +2202,6 @@ class Algorithm(Checkpointable, Trainable):
             state[NUM_ENV_STEPS_SAMPLED_LIFETIME] = self.metrics.peek(
                 (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
                 default=0,
-                latest_merged_only=True,
             )
             state_ref = ray.put(state)
 
@@ -3259,8 +3258,7 @@ class Algorithm(Checkpointable, Trainable):
                 config=self.config,
                 from_worker=None,
                 env_steps_sampled=self.metrics.peek(
-                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED),
-                    latest_merged_only=True,
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
                 ),
                 # connector_states=connector_states,
                 env_to_module=self.env_to_module_connector,
