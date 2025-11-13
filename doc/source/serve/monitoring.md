@@ -578,7 +578,7 @@ The following metrics are exposed by Ray Serve:
        * application
        * handle
        * actor_id
-     - The current number of requests to this deployment that have been submitted to a replica.
+     - The current number of queries to this deployment waiting to be assigned to a replica.
    * - ``ray_serve_num_ongoing_requests_at_replicas`` [*]
      - * deployment
        * application

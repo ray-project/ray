@@ -68,6 +68,7 @@ http
 HTTP
 Instacart
 JVM
+Karpenter
 KServe
 KTO
 kubectl

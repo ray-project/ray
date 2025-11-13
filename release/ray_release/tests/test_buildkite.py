@@ -2,39 +2,39 @@ import os
 import sys
 import tempfile
 import unittest
-from typing import Dict, Callable
+from typing import Callable, Dict
 from unittest.mock import patch
 
 import yaml
 from github import Repository
 
+from ray_release.bazel import bazel_runfile
 from ray_release.buildkite.concurrency import (
-    get_test_resources_from_cluster_compute,
     get_concurrency_group,
+    get_test_resources_from_cluster_compute,
 )
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import (
-    split_ray_repo_str,
-    get_default_settings,
-    update_settings_from_environment,
     Frequency,
-    update_settings_from_buildkite,
     Priority,
+    get_default_settings,
     get_test_filters,
+    split_ray_repo_str,
+    update_settings_from_buildkite,
+    update_settings_from_environment,
 )
 from ray_release.buildkite.step import (
-    get_step,
-    RELEASE_QUEUE_DEFAULT,
-    RELEASE_QUEUE_CLIENT,
     DOCKER_PLUGIN_KEY,
+    RELEASE_QUEUE_CLIENT,
+    RELEASE_QUEUE_DEFAULT,
+    get_step,
 )
-from ray_release.test import Test
+from ray_release.configs.global_config import init_global_config
 from ray_release.exception import ReleaseTestConfigError
+from ray_release.test import Test
 from ray_release.wheels import (
     DEFAULT_BRANCH,
 )
-from ray_release.configs.global_config import init_global_config
-from ray_release.bazel import bazel_runfile
 
 init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
@@ -114,16 +114,20 @@ class BuildkiteSettingsTest(unittest.TestCase):
         self.assertDictEqual(test_filters, {})
 
         test_filters = get_test_filters("name:xxx")
-        self.assertDictEqual(test_filters, {"name": "xxx"})
+        self.assertDictEqual(test_filters, {"name": ["xxx"]})
 
         test_filters = get_test_filters("name:xxx\n")
-        self.assertDictEqual(test_filters, {"name": "xxx"})
+        self.assertDictEqual(test_filters, {"name": ["xxx"]})
 
         test_filters = get_test_filters("name:xxx\n\nteam:yyy")
-        self.assertDictEqual(test_filters, {"name": "xxx", "team": "yyy"})
+        self.assertDictEqual(test_filters, {"name": ["xxx"], "team": ["yyy"]})
 
         test_filters = get_test_filters("name:xxx\n \nteam:yyy\n")
-        self.assertDictEqual(test_filters, {"name": "xxx", "team": "yyy"})
+        self.assertDictEqual(test_filters, {"name": ["xxx"], "team": ["yyy"]})
+
+        # Test multiple filters with same attribute (OR logic)
+        test_filters = get_test_filters("name:xxx\nname:yyy")
+        self.assertDictEqual(test_filters, {"name": ["xxx", "yyy"]})
 
         with self.assertRaises(ReleaseTestConfigError):
             get_test_filters("xxx")
@@ -172,8 +176,8 @@ class BuildkiteSettingsTest(unittest.TestCase):
         self.assertDictEqual(
             updated_settings["test_filters"],
             {
-                "name": "xxx",
-                "team": "yyy",
+                "name": ["xxx"],
+                "team": ["yyy"],
             },
         )
 
@@ -192,7 +196,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
             {
                 "frequency": Frequency.NIGHTLY,
                 "prefer_smoke_tests": False,
-                "test_filters": {"name": "name_filter"},
+                "test_filters": {"name": ["name_filter"]},
                 "ray_test_repo": "https://github.com/user/ray.git",
                 "ray_test_branch": "sub/branch",
                 "priority": Priority.MANUAL,
@@ -207,7 +211,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
             {
                 "frequency": Frequency.ANY,
                 "prefer_smoke_tests": True,
-                "test_filters": {"name": "name_filter"},
+                "test_filters": {"name": ["name_filter"]},
                 "ray_test_repo": "https://github.com/user/ray.git",
                 "ray_test_branch": "sub/branch",
                 "priority": Priority.MANUAL,
@@ -335,8 +339,8 @@ class BuildkiteSettingsTest(unittest.TestCase):
             self.assertDictEqual(
                 updated_settings["test_filters"],
                 {
-                    "name": "xxx",
-                    "group": "yyy",
+                    "name": ["xxx"],
+                    "group": ["yyy"],
                 },
             )
 
@@ -354,7 +358,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 {
                     "frequency": Frequency.NIGHTLY,
                     "prefer_smoke_tests": False,
-                    "test_filters": {"name": "name_filter"},
+                    "test_filters": {"name": ["name_filter"]},
                     "ray_test_repo": "https://github.com/user/ray.git",
                     "ray_test_branch": "sub/branch",
                     "priority": Priority.MANUAL,
@@ -370,7 +374,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 {
                     "frequency": Frequency.ANY,
                     "prefer_smoke_tests": True,
-                    "test_filters": {"name": "name_filter"},
+                    "test_filters": {"name": ["name_filter"]},
                     "ray_test_repo": "https://github.com/user/ray.git",
                     "ray_test_branch": "sub/branch",
                     "priority": Priority.MANUAL,
@@ -432,7 +436,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
 
         # Test filter by prefix alone
         filtered = self._filter_names(
-            tests, frequency=Frequency.ANY, test_filters={"prefix": "test"}
+            tests, frequency=Frequency.ANY, test_filters={"prefix": ["test"]}
         )
         self.assertSequenceEqual(
             filtered,
@@ -448,7 +452,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
         filtered = self._filter_names(
             tests,
             frequency=Frequency.NIGHTLY,
-            test_filters={"prefix": "test", "name": "other.*"},
+            test_filters={"prefix": ["test"], "name": ["other.*"]},
         )
         self.assertSequenceEqual(
             filtered,
@@ -522,7 +526,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
         filtered = self._filter_names(
             tests,
             frequency=Frequency.NIGHTLY,
-            test_filters={"name": "other.*"},
+            test_filters={"name": ["other.*"]},
         )
         self.assertSequenceEqual(
             filtered,
@@ -534,7 +538,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
         filtered = self._filter_names(
             tests,
             frequency=Frequency.NIGHTLY,
-            test_filters={"name": "test.*"},
+            test_filters={"name": ["test.*"]},
         )
         self.assertSequenceEqual(
             filtered,
@@ -547,7 +551,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
         )
 
         filtered = self._filter_names(
-            tests, frequency=Frequency.NIGHTLY, test_filters={"name": "test"}
+            tests, frequency=Frequency.NIGHTLY, test_filters={"name": ["test"]}
         )
         self.assertSequenceEqual(
             filtered,
@@ -562,22 +566,41 @@ class BuildkiteSettingsTest(unittest.TestCase):
         filtered = self._filter_names(
             tests,
             frequency=Frequency.NIGHTLY,
-            test_filters={"name": "test.*", "team": "team_1"},
+            test_filters={"name": ["test.*"], "team": ["team_1"]},
         )
         self.assertSequenceEqual(filtered, [("test_1", False)])
 
         filtered = self._filter_names(
             tests,
             frequency=Frequency.NIGHTLY,
-            test_filters={"name": "test_1|test_2"},
+            test_filters={"name": ["test_1|test_2"]},
         )
         self.assertSequenceEqual(filtered, [("test_1", False), ("test_2", True)])
+
+        # Test OR logic within same attribute
+        filtered = self._filter_names(
+            tests,
+            frequency=Frequency.NIGHTLY,
+            test_filters={"name": ["^test_1$", "^test_3$"]},
+        )
+        self.assertSequenceEqual(filtered, [("test_1", False), ("test_3", False)])
+
+        # Test OR logic with AND across attributes
+        filtered = self._filter_names(
+            tests,
+            frequency=Frequency.NIGHTLY,
+            test_filters={
+                "name": ["^test_1$", "^test_3$"],
+                "team": ["team_1", "team_2"],
+            },
+        )
+        self.assertSequenceEqual(filtered, [("test_1", False), ("test_3", False)])
 
         # Filter by nested properties
         filtered = self._filter_names(
             tests,
             frequency=Frequency.ANY,
-            test_filters={"run/type": "job"},
+            test_filters={"run/type": ["job"]},
         )
         self.assertSequenceEqual(
             filtered, [("test_1", False), ("other_2", False), ("test_4.kuberay", False)]
@@ -586,14 +609,14 @@ class BuildkiteSettingsTest(unittest.TestCase):
         filtered = self._filter_names(
             tests,
             frequency=Frequency.ANY,
-            test_filters={"run/type": "client"},
+            test_filters={"run/type": ["client"]},
         )
         self.assertSequenceEqual(filtered, [("test_2", False)])
 
         filtered = self._filter_names(
             tests,
             frequency=Frequency.ANY,
-            test_filters={"run/invalid": "xxx"},
+            test_filters={"run/invalid": ["xxx"]},
         )
         self.assertSequenceEqual(filtered, [])
 

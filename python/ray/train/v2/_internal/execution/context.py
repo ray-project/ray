@@ -11,7 +11,6 @@ import ray
 from ray._common.retry import retry
 from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset
-from ray.train._internal import session
 from ray.train.v2._internal.constants import AWS_RETRYABLE_TOKENS
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
@@ -20,7 +19,6 @@ from ray.train.v2._internal.execution.training_report import (
     _ValidationSpec,
 )
 from ray.train.v2._internal.util import (
-    _copy_doc,
     construct_user_exception_with_traceback,
     invoke_context_managers,
 )
@@ -126,31 +124,24 @@ class TrainContext:
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
     )
 
-    @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:
         return self.train_run_context.run_config.name
 
-    @_copy_doc(session.get_world_size)
     def get_world_size(self) -> int:
         return self.distributed_context.world_size
 
-    @_copy_doc(session.get_world_rank)
     def get_world_rank(self) -> int:
         return self.distributed_context.world_rank
 
-    @_copy_doc(session.get_local_rank)
     def get_local_rank(self) -> int:
         return self.distributed_context.local_rank
 
-    @_copy_doc(session.get_local_world_size)
     def get_local_world_size(self) -> int:
         return self.distributed_context.local_world_size
 
-    @_copy_doc(session.get_node_rank)
     def get_node_rank(self) -> int:
         return self.distributed_context.node_rank
 
-    @_copy_doc(session.get_storage)
     def get_storage(self):
         return self.storage_context
 

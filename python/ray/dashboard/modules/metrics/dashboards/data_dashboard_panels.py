@@ -3,8 +3,10 @@
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     Panel,
+    PanelTemplate,
     Row,
     Target,
+    TargetTemplate,
 )
 
 # When adding a new panels for an OpRuntimeMetric, follow this format:
@@ -328,7 +330,7 @@ OUTPUT_BYTES_BY_NODE_PANEL = Panel(
     unit="Bps",
     targets=[
         Target(
-            expr='sum(rate(ray_data_bytes_outputs_of_finished_tasks_per_node{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, node_ip)',
+            expr="sum(rate(ray_data_bytes_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
             legend="Bytes output / Second: {{dataset}}, {{node_ip}}",
         )
     ],
@@ -345,7 +347,7 @@ BLOCKS_BY_NODE_PANEL = Panel(
     unit="blocks/s",
     targets=[
         Target(
-            expr='sum(rate(ray_data_blocks_outputs_of_finished_tasks_per_node{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, node_ip)',
+            expr="sum(rate(ray_data_blocks_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
             legend="Blocks output / Second: {{dataset}}, {{node_ip}}",
         )
     ],
@@ -436,7 +438,7 @@ TASK_THROUGHPUT_BY_NODE_PANEL = Panel(
     unit="tasks/s",
     targets=[
         Target(
-            expr='sum(rate(ray_data_num_tasks_finished_per_node{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, node_ip)',
+            expr="sum(rate(ray_data_num_tasks_finished_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
             legend="Finished Tasks: {{dataset}}, {{node_ip}}",
         )
     ],
@@ -448,10 +450,10 @@ BLOCK_GENERATION_TIME_PANEL = Panel(
     id=8,
     title="Block Generation Time",
     description="Time spent generating blocks in tasks.",
-    unit="seconds",
+    unit="s",
     targets=[
         Target(
-            expr='sum(ray_data_block_generation_time{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='increase(ray_data_block_generation_time{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m])',
             legend="Block Generation Time: {{dataset}}, {{operator}}",
         )
     ],
@@ -463,10 +465,10 @@ TASK_SUBMISSION_BACKPRESSURE_PANEL = Panel(
     id=37,
     title="Task Submission Backpressure Time",
     description="Time spent in task submission backpressure.",
-    unit="seconds",
+    unit="s",
     targets=[
         Target(
-            expr='sum(ray_data_task_submission_backpressure_time{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            expr='increase(ray_data_task_submission_backpressure_time{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_submitted{{{global_filters}, operator=~"$Operator"}}[5m])',
             legend="Backpressure Time: {{dataset}}, {{operator}}",
         )
     ],
@@ -477,24 +479,77 @@ TASK_SUBMISSION_BACKPRESSURE_PANEL = Panel(
 # Task Completion Time Percentiles
 TASK_COMPLETION_TIME_PANEL = Panel(
     id=38,
-    title="Task Completion Time",
-    description="Time spent running tasks to completion w/ backpressure.",
-    unit="seconds",
+    title="Task Completion Time Histogram (s)",
+    description="Time (in seconds) spent (including backpressure) running tasks to completion. Larger bars means more tasks finished within that duration range.",
     targets=[
         Target(
-            expr='increase(ray_data_task_completion_time{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])',
-            legend="Task Completion Time: {{dataset}}, {{operator}}",
+            expr='sum by (le) (max_over_time(ray_data_task_completion_time_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
+            legend="{{le}} s",
+            template=TargetTemplate.HISTOGRAM_BAR_CHART,
         ),
     ],
+    unit="short",
     fill=0,
     stack=False,
+    template=PanelTemplate.BAR_CHART,
+)
+
+BLOCK_COMPLETION_TIME_PANEL = Panel(
+    id=61,
+    title="Block Completion Time Histogram (s)",
+    description="Time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process. Larger bars means more blocks finished within that duration range.",
+    targets=[
+        Target(
+            expr='sum by (le) (max_over_time(ray_data_block_completion_time_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
+            legend="{{le}} s",
+            template=TargetTemplate.HISTOGRAM_BAR_CHART,
+        ),
+    ],
+    unit="short",
+    fill=0,
+    stack=False,
+    template=PanelTemplate.BAR_CHART,
+)
+
+BLOCK_SIZE_BYTES_PANEL = Panel(
+    id=62,
+    title="Block Size (Bytes) Histogram",
+    description="Size (in bytes) per block. Larger bars means more blocks are within that size range.",
+    targets=[
+        Target(
+            expr='sum by (le) (max_over_time(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
+            legend="{{le}} bytes",
+            template=TargetTemplate.HISTOGRAM_BAR_CHART,
+        ),
+    ],
+    unit="short",
+    fill=0,
+    stack=False,
+    template=PanelTemplate.BAR_CHART,
+)
+
+BLOCK_SIZE_ROWS_PANEL = Panel(
+    id=63,
+    title="Block Size (Rows) Histogram",
+    description="Number of rows per block. Larger bars means more blocks are within that number of rows range.",
+    targets=[
+        Target(
+            expr='sum by (le) (max_over_time(ray_data_block_size_rows_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
+            legend="{{le}} rows",
+            template=TargetTemplate.HISTOGRAM_BAR_CHART,
+        ),
+    ],
+    unit="short",
+    fill=0,
+    stack=False,
+    template=PanelTemplate.BAR_CHART,
 )
 
 TASK_OUTPUT_BACKPRESSURE_TIME_PANEL = Panel(
     id=39,
     title="Task Output Backpressure Time",
     description="Time spent in output backpressure.",
-    unit="seconds",
+    unit="s",
     targets=[
         Target(
             expr='increase(ray_data_task_output_backpressure_time{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])',
@@ -509,7 +564,7 @@ TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL = Panel(
     id=40,
     title="Task Completion Time Without Backpressure",
     description="Time spent running tasks to completion w/o backpressure.",
-    unit="seconds",
+    unit="s",
     targets=[
         Target(
             expr='increase(ray_data_task_completion_time_without_backpressure{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_tasks_finished{{{global_filters}, operator=~"$Operator"}}[5m])',
@@ -722,7 +777,7 @@ ITERATION_INITIALIZATION_PANEL = Panel(
     id=12,
     title="Iteration Initialization Time",
     description="Seconds spent in iterator initialization code",
-    unit="seconds",
+    unit="s",
     targets=[
         Target(
             expr="sum(ray_data_iter_initialize_seconds{{{global_filters}}}) by (dataset)",
@@ -737,7 +792,7 @@ ITERATION_BLOCKED_PANEL = Panel(
     id=9,
     title="Iteration Blocked Time",
     description="Seconds user thread is blocked by iter_batches()",
-    unit="seconds",
+    unit="s",
     targets=[
         Target(
             expr="sum(ray_data_iter_total_blocked_seconds{{{global_filters}}}) by (dataset)",
@@ -752,11 +807,131 @@ ITERATION_USER_PANEL = Panel(
     id=10,
     title="Iteration User Time",
     description="Seconds spent in user code",
-    unit="seconds",
+    unit="s",
     targets=[
         Target(
             expr="sum(ray_data_iter_user_seconds{{{global_filters}}}) by (dataset)",
             legend="Seconds: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ITERATION_GET_PANEL = Panel(
+    id=70,
+    title="Iteration Get Time",
+    description="Seconds spent in ray.get() while resolving block references",
+    unit="seconds",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_get_seconds{{{global_filters}}}) by (dataset)",
+            legend="Seconds: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ITERATION_NEXT_BATCH_PANEL = Panel(
+    id=71,
+    title="Iteration Next Batch Time",
+    description="Seconds spent getting the next batch from the block buffer",
+    unit="seconds",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_next_batch_seconds{{{global_filters}}}) by (dataset)",
+            legend="Seconds: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ITERATION_FORMAT_BATCH_PANEL = Panel(
+    id=72,
+    title="Iteration Format Batch Time",
+    description="Seconds spent formatting the batch",
+    unit="seconds",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_format_batch_seconds{{{global_filters}}}) by (dataset)",
+            legend="Seconds: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ITERATION_COLLATE_BATCH_PANEL = Panel(
+    id=73,
+    title="Iteration Collate Batch Time",
+    description="Seconds spent collating the batch",
+    unit="seconds",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_collate_batch_seconds{{{global_filters}}}) by (dataset)",
+            legend="Seconds: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ITERATION_FINALIZE_BATCH_PANEL = Panel(
+    id=74,
+    title="Iteration Finalize Batch Time",
+    description="Seconds spent finalizing the batch",
+    unit="seconds",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_finalize_batch_seconds{{{global_filters}}}) by (dataset)",
+            legend="Seconds: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ITERATION_BLOCKS_LOCAL_PANEL = Panel(
+    id=75,
+    title="Iteration Blocks Local",
+    description="Number of blocks already on the local node",
+    unit="blocks",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_blocks_local{{{global_filters}}}) by (dataset)",
+            legend="Blocks: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ITERATION_BLOCKS_REMOTE_PANEL = Panel(
+    id=76,
+    title="Iteration Blocks Remote",
+    description="Number of blocks that require fetching from another node",
+    unit="blocks",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_blocks_remote{{{global_filters}}}) by (dataset)",
+            legend="Blocks: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL = Panel(
+    id=77,
+    title="Iteration Blocks Unknown Location",
+    description="Number of blocks that have unknown locations",
+    unit="blocks",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_unknown_location{{{global_filters}}}) by (dataset)",
+            legend="Blocks: {{dataset}}",
         )
     ],
     fill=0,
@@ -768,7 +943,7 @@ SCHEDULING_LOOP_DURATION_PANEL = Panel(
     id=47,
     title="Scheduling Loop Duration",
     description=("Duration of the scheduling loop in seconds."),
-    unit="seconds",
+    unit="s",
     targets=[
         Target(
             expr="sum(ray_data_sched_loop_duration_s{{{global_filters}}}) by (dataset)",
@@ -876,7 +1051,11 @@ ALL_RESOURCES_UTILIZATION_PANEL = Panel(
     stack=False,
 )
 
-OPERATOR_PANELS = [ROWS_OUTPUT_PER_SECOND_PANEL, ALL_RESOURCES_UTILIZATION_PANEL]
+OPERATOR_PANELS = [
+    ROWS_OUTPUT_PER_SECOND_PANEL,
+    ALL_RESOURCES_UTILIZATION_PANEL,
+    COMBINED_INQUEUE_BLOCKS_PANEL,
+]
 
 DATA_GRAFANA_ROWS = [
     # Overview Row
@@ -938,6 +1117,8 @@ DATA_GRAFANA_ROWS = [
         title="Outputs",
         id=103,
         panels=[
+            BLOCK_SIZE_BYTES_PANEL,
+            BLOCK_SIZE_ROWS_PANEL,
             OUTPUT_BLOCKS_TAKEN_PANEL,
             OUTPUT_BYTES_TAKEN_PANEL,
             OUTPUT_BYTES_BY_NODE_PANEL,
@@ -956,6 +1137,7 @@ DATA_GRAFANA_ROWS = [
         id=104,
         panels=[
             TASK_COMPLETION_TIME_PANEL,
+            BLOCK_COMPLETION_TIME_PANEL,
             TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL,
             TASK_OUTPUT_BACKPRESSURE_TIME_PANEL,
             TASK_SUBMISSION_BACKPRESSURE_PANEL,
@@ -1002,6 +1184,14 @@ DATA_GRAFANA_ROWS = [
             ITERATION_INITIALIZATION_PANEL,
             ITERATION_BLOCKED_PANEL,
             ITERATION_USER_PANEL,
+            ITERATION_GET_PANEL,
+            ITERATION_NEXT_BATCH_PANEL,
+            ITERATION_FORMAT_BATCH_PANEL,
+            ITERATION_COLLATE_BATCH_PANEL,
+            ITERATION_FINALIZE_BATCH_PANEL,
+            ITERATION_BLOCKS_LOCAL_PANEL,
+            ITERATION_BLOCKS_REMOTE_PANEL,
+            ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL,
         ],
         collapsed=True,
     ),
@@ -1019,6 +1209,8 @@ all_panel_ids = []
 for row in DATA_GRAFANA_ROWS:
     all_panel_ids.append(row.id)
     all_panel_ids.extend(panel.id for panel in row.panels)
+
+all_panel_ids.sort()
 
 assert len(all_panel_ids) == len(
     set(all_panel_ids)

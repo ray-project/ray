@@ -32,10 +32,9 @@ from custom_directives import (  # noqa
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-assert not os.path.exists("../../python/ray/_raylet.so"), (
-    "_raylet.so should not be imported for the purpose for doc build, "
-    "please rename the file to _raylet.so.bak and try again."
-)
+assert not os.path.exists(
+    "../../python/ray/_raylet.so"
+), "_raylet.so should not be imported for the purpose for doc build, please rename the file to _raylet.so.bak and try again."
 sys.path.insert(0, os.path.abspath("../../python/"))
 
 # -- General configuration ------------------------------------------------
@@ -130,6 +129,9 @@ nb_output_folder = "_build/jupyter_execute"
 nitpicky = True
 nitpick_ignore_regex = [
     ("py:obj", "ray.actor.T"),
+    ("py:obj", "ray.data.aggregate.AccumulatorType"),
+    ("py:obj", "ray.data.aggregate.SupportsRichComparisonType"),
+    ("py:obj", "ray.data.aggregate.AggOutputType"),
     ("py:class", ".*"),
     # Workaround for https://github.com/sphinx-doc/sphinx/issues/10974
     ("py:obj", "ray\\.data\\.datasource\\.datasink\\.WriteReturnType"),
@@ -231,6 +233,8 @@ exclude_patterns = [
     "serve/tutorials/deployment-serve-llm/README.*",
     "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
     "data/examples/**/content/README.md",
+    "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
+    "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -719,7 +723,10 @@ intersphinx_mapping = {
     "pyspark": ("https://spark.apache.org/docs/latest/api/python/", None),
     "python": ("https://docs.python.org/3", None),
     "pytorch_lightning": ("https://lightning.ai/docs/pytorch/stable/", None),
-    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+    "scipy": (
+        "https://docs.scipy.org/doc/scipy/",
+        "https://github.com/ray-project/scipy/releases/download/object-mirror-0.1.0/objects.inv",
+    ),
     "sklearn": ("https://scikit-learn.org/stable/", None),
     "tensorflow": (
         "https://www.tensorflow.org/api_docs/python",

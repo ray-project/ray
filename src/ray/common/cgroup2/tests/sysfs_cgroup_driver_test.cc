@@ -62,6 +62,15 @@ TEST(SysFsCgroupDriverTest,
   ASSERT_TRUE(s.IsInvalid()) << s.ToString();
 }
 
+TEST(SysFsCgroupDriverTest,
+     CheckCgroupv2EnabledSucceedsIfMountFileNotFoundButFallbackFileIsCorrect) {
+  TempFile temp_fallback_mount_file;
+  temp_fallback_mount_file.AppendLine("cgroup2 /sys/fs/cgroup cgroup2 rw 0 0\n");
+  SysFsCgroupDriver driver("/does/not/exist", temp_fallback_mount_file.GetPath());
+  Status s = driver.CheckCgroupv2Enabled();
+  EXPECT_TRUE(s.ok()) << s.ToString();
+}
+
 TEST(SysFsCgroupDriverTest, CheckCgroupv2EnabledSucceedsIfOnlyCgroupv2Mounted) {
   TempFile temp_mount_file;
   temp_mount_file.AppendLine("cgroup2 /sys/fs/cgroup cgroup2 rw 0 0\n");
@@ -142,7 +151,7 @@ TEST(SysFsCgroupDriver, AddConstraintFailsIfNotCgroupv2Path) {
   ASSERT_TRUE(temp_dir_or_status.ok()) << temp_dir_or_status.ToString();
   std::unique_ptr<TempDirectory> temp_dir = std::move(temp_dir_or_status.value());
   SysFsCgroupDriver driver;
-  Status s = driver.AddConstraint(temp_dir->GetPath(), "memory", "memory.min", "1");
+  Status s = driver.AddConstraint(temp_dir->GetPath(), "memory.min", "1");
   ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
 }
 

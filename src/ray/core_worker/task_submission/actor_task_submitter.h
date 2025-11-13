@@ -26,6 +26,7 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/actor_creator.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_submission/actor_submit_queue.h"
 #include "ray/core_worker/task_submission/dependency_resolver.h"
@@ -256,6 +257,18 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
           status_(std::move(status)),
           timeout_error_info_(std::move(timeout_error_info)) {}
   };
+
+  /// Handle a task that was cancelled before it could execute.
+  /// This method determines whether the cancellation was due to:
+  /// 1. Actor shutdown (worker exiting): If so, raise RayActorError.
+  /// 2. Explicit user cancellation: If so, raise TaskCancelledError.
+  ///
+  /// \param status The RPC status from PushTask.
+  /// \param reply The PushTaskReply message containing cancellation details.
+  /// \param task_spec The specification of the task that was cancelled.
+  void HandleTaskCancelledBeforeExecution(const Status &status,
+                                          const rpc::PushTaskReply &reply,
+                                          const TaskSpecification &task_spec);
 
   struct ClientQueue {
     ClientQueue(bool allow_out_of_order_execution,

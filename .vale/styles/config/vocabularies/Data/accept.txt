@@ -15,6 +15,7 @@ FLAC
 [Ii]nqueue(s)?
 [Ll]ookup(s)?
 LLM(s)?
+MCAP
 Modin
 [Mm]ultiget(s)?
 ndarray(s)?

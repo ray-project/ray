@@ -66,6 +66,7 @@ class ValidationManager(ControllerCallback, ReportCallback):
             # TODO: rate limit this by using a queue?
             # TODO: figure out where to place run_validate_fn task:
             # head node is faster but want to avoid putting too much there
+            # TODO: provide option to run this on gpu
             validate_task = run_validate_fn.remote(
                 training_report.validation_spec, training_report.checkpoint
             )
@@ -87,10 +88,9 @@ class ValidationManager(ControllerCallback, ReportCallback):
             self._finished_validations[task] = self._pending_validations[task]
             self._pending_validations.pop(task)
         if done_checkpoints:
-            # TODO: consider better logging
             logger.info(
-                f"Finished async validation task for checkpoint(s) {done_checkpoints}. "
-                f"Remaining pending validations for checkpoint(s): {self._pending_validations.values()}"
+                f"Finished async validation task(s) for checkpoint(s) {done_checkpoints}. "
+                f"Remaining pending validations for checkpoint(s): {list(self._pending_validations.values())}"
             )
 
         # Process next finished validation

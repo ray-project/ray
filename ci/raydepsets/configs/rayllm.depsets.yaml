@@ -2,9 +2,6 @@ build_arg_sets:
   cpu:
     PYTHON_VERSION: py311
     CUDA_CODE: cpu
-  cu121:
-    PYTHON_VERSION: py311
-    CUDA_CODE: cu121
   cu128:
     PYTHON_VERSION: py311
     CUDA_CODE: cu128
@@ -18,7 +15,6 @@ build_arg_sets:
     - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
   build_arg_sets:
     - cpu
-    - cu121
     - cu128
 
 depsets:

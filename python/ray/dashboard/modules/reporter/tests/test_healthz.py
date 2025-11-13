@@ -4,8 +4,8 @@ import pytest
 import requests
 
 import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import find_free_port
 from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import find_free_port
 from ray.tests.conftest import *  # noqa: F401 F403
 
 

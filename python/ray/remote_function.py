@@ -58,6 +58,7 @@ class RemoteFunction:
         _memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
         _label_selector: The label requirements on a node for scheduling of the task or actor.
+        _fallback_strategy: Soft constraints of a list of decorator options to fall back on when scheduling on a node.
         _resources: The default custom resource requirements for invocations of
             this remote function.
         _num_returns: The default number of return values for invocations
@@ -249,9 +250,6 @@ class RemoteFunction:
                 task. If set to True, task events such as (task running, finished)
                 are emitted, and available to Ray Dashboard and State API.
                 See :ref:`state-api-overview-ref` for more details.
-            _metadata: Extended options for Ray libraries. For example,
-                _metadata={"workflows.io/options": <workflow options>} for
-                Ray workflows.
             _labels: The key-value labels of a task.
 
         Examples:
@@ -474,6 +472,7 @@ class RemoteFunction:
         enable_task_events = task_options.get("enable_task_events")
         labels = task_options.get("_labels")
         label_selector = task_options.get("label_selector")
+        fallback_strategy = task_options.get("fallback_strategy")
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -506,6 +505,7 @@ class RemoteFunction:
                 enable_task_events,
                 labels,
                 label_selector,
+                fallback_strategy,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
