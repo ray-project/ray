@@ -1488,6 +1488,8 @@ class RankManager:
         if key not in self._ranks:
             raise RuntimeError(f"Rank for {key} not assigned")
         rank = self._ranks.pop(key)
+        # Add the released rank to the set of released ranks
+        # This rank can be reused for a new replica
         self._released_ranks.add(rank)
 
     def recover_rank(self, key: str, rank: int) -> None:
@@ -1538,7 +1540,6 @@ class RankManager:
             return []
 
         active_keys_set = set(active_keys)
-        keys_needs_reconfiguration = set()
 
         # Check for stale ranks - this should never happen
         stale_keys = set(self._ranks.keys()) - active_keys_set
@@ -1587,13 +1588,7 @@ class RankManager:
                 self._perform_minimal_rank_reassignment(active_keys)
             )
 
-        # Combine all keys that need reconfiguration
-        all_keys_needing_reconfiguration = list(keys_needs_reconfiguration)
-        all_keys_needing_reconfiguration.extend(
-            keys_needing_reconfiguration_from_reassignment
-        )
-
-        return all_keys_needing_reconfiguration
+        return keys_needing_reconfiguration_from_reassignment
 
     def _perform_minimal_rank_reassignment(self, active_keys: List[str]) -> List[str]:
         """Perform minimal rank reassignment to achieve contiguity.
