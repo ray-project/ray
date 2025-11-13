@@ -56,7 +56,7 @@ def test_get_preferred_locations():
     } == preferred_object_locs
 
 
-def test_ref_bundle_num_rows_with_slices():
+def test_ref_bundle_num_rows_size_bytes():
 
     block_ref_one = ObjectRef(b"1" * 28)
     block_ref_two = ObjectRef(b"2" * 28)
@@ -67,7 +67,7 @@ def test_ref_bundle_num_rows_with_slices():
     meta_two = BlockMetadata(
         num_rows=5, size_bytes=50, exec_stats=None, input_files=None
     )
-
+    # Before slice
     bundle = RefBundle(
         blocks=[
             (block_ref_one, meta_one),
@@ -75,41 +75,41 @@ def test_ref_bundle_num_rows_with_slices():
         ],
         owns_blocks=True,
         schema=None,
-        slices=[
-            BlockSlice(start_offset=2, end_offset=6),  # 4 rows
-            BlockSlice(start_offset=0, end_offset=2),  # 2 rows
-        ],
     )
+    assert bundle.num_rows() == 15
+    assert bundle.size_bytes() == 150
+    # After slice
+    bundle.slices = [
+        BlockSlice(start_offset=2, end_offset=6),  # 4 rows
+        BlockSlice(start_offset=0, end_offset=2),  # 2 rows
+    ]
 
     assert bundle.num_rows() == 6
+    assert bundle.size_bytes() == 60
 
 
-def test_ref_bundle_size_bytes_with_slices():
-
-    block_ref_one = ObjectRef(b"1" * 28)
-    block_ref_two = ObjectRef(b"2" * 28)
-
-    meta_one = BlockMetadata(
+@pytest.mark.parametrize(
+    "start_offset, end_offset",
+    [
+        (-1, 0),  # Negative start_offset
+        (0, 11),  # end_offset > num_rows
+        (1, 0),  # start_offset > end_offset
+    ],
+)
+def test_ref_bundle_with_invalid_slices(start_offset, end_offset):
+    block_ref = ObjectRef(b"1" * 28)
+    metadata = BlockMetadata(
         num_rows=10, size_bytes=100, exec_stats=None, input_files=None
     )
-    meta_two = BlockMetadata(
-        num_rows=5, size_bytes=50, exec_stats=None, input_files=None
-    )
-
-    bundle = RefBundle(
-        blocks=[
-            (block_ref_one, meta_one),
-            (block_ref_two, meta_two),
-        ],
-        owns_blocks=True,
-        schema=None,
-        slices=[
-            BlockSlice(start_offset=1, end_offset=5),  # 4 rows -> 40 bytes
-            BlockSlice(start_offset=0, end_offset=3),  # 3 rows -> 30 bytes
-        ],
-    )
-
-    assert bundle.size_bytes() == 70
+    with pytest.raises(AssertionError):
+        RefBundle(
+            blocks=[(block_ref, metadata)],
+            owns_blocks=True,
+            schema=None,
+            slices=[
+                BlockSlice(start_offset=start_offset, end_offset=end_offset),
+            ],
+        )
 
 
 def test_slice_ref_bundle_basic():
@@ -382,10 +382,10 @@ def test_merge_ref_bundles():
     block_ref_two = ObjectRef(b"2" * 28)
 
     metadata_one = BlockMetadata(
-        num_rows=4, size_bytes=40, exec_stats=None, input_files=None
+        num_rows=10, size_bytes=100, exec_stats=None, input_files=None
     )
     metadata_two = BlockMetadata(
-        num_rows=3, size_bytes=30, exec_stats=None, input_files=None
+        num_rows=10, size_bytes=10, exec_stats=None, input_files=None
     )
 
     bundle_one = RefBundle(

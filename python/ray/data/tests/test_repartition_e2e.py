@@ -323,10 +323,10 @@ def test_streaming_repartition_write_no_operator_fusion(
     [
         (128 * 4, [2, 4, 16], 128),  # testing split, exact and merge blocks
         (
-            128 * 4 + 1,
+            128 * 4 + 4,
             [2, 4, 16],
             128,
-        ),  # testing split, exact and merge blocks with one extra row
+        ),  # Four blocks of 129 rows each, requiring rows to be merged across blocks.
     ],
 )
 def test_repartition_guarantee_row_num_to_be_exact(

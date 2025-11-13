@@ -77,11 +77,24 @@ class RefBundle:
             object.__setattr__(self, "blocks", tuple(self.blocks))
 
         if self.slices is None:
-            object.__setattr__(self, "slices", [None] * len(self.blocks))
+            self.slices = [None] * len(self.blocks)
         else:
             assert len(self.blocks) == len(
                 self.slices
             ), "Number of blocks and slices must match"
+            # Validate slice ranges
+            for (_, metadata), block_slice in zip(self.blocks, self.slices):
+                if block_slice is not None:
+                    assert (
+                        block_slice.start_offset >= 0
+                    ), f"Slice start_offset must be non-negative: {block_slice.start_offset}"
+                    assert (
+                        block_slice.end_offset >= block_slice.start_offset
+                    ), f"Slice end_offset must be >= start_offset: [{block_slice.start_offset}, {block_slice.end_offset})"
+                    if metadata.num_rows is not None:
+                        assert (
+                            block_slice.end_offset <= metadata.num_rows
+                        ), f"Slice range [{block_slice.start_offset}, {block_slice.end_offset}) exceeds block num_rows: {metadata.num_rows}"
 
         for b in self.blocks:
             assert isinstance(b, tuple), b
@@ -109,7 +122,15 @@ class RefBundle:
         return [metadata for _, metadata in self.blocks]
 
     def num_rows(self) -> Optional[int]:
-        """Number of rows present in this bundle, if known."""
+        """Number of rows present in this bundle, if known.
+
+        Iterates through blocks and their corresponding slices to calculate the total.
+        Note: Block metadata always refers to the full block, not the slice.
+
+        - If block_slice is None, uses the full block's metadata.num_rows
+        - If block_slice is present, uses the slice's num_rows (partial block portion)
+        - Returns None if any full block has unknown row count (metadata.num_rows is None)
+        """
         total = 0
         for metadata, block_slice in zip(self.metadata, self.slices):
             if block_slice is None:
@@ -121,7 +142,17 @@ class RefBundle:
         return total
 
     def size_bytes(self) -> int:
-        """Size of the blocks of this bundle in bytes."""
+        """Size of the blocks of this bundle in bytes.
+
+        Iterates through blocks and their corresponding slices to calculate the total size.
+        Note: Block metadata always refers to the full block, not the slice.
+
+        - If block_slice is None, uses the full block's metadata.size_bytes
+        - If block_slice is present but num_rows is unknown or zero, uses full metadata.size_bytes
+        - If block_slice represents a partial block, estimates size proportionally based on
+          (metadata.size_bytes / metadata.num_rows) * block_slice.num_rows
+        - Otherwise, uses the full metadata.size_bytes
+        """
         total = 0
         for (_, metadata), block_slice in zip(self.blocks, self.slices):
             if block_slice is None:
@@ -229,9 +260,7 @@ class RefBundle:
         for (block_ref, metadata), block_slice in zip(self.blocks, block_slices):
             block_rows = block_slice.num_rows
             if rows_to_take >= block_rows:
-                consumed_blocks.append(
-                    (block_ref, _slice_block_metadata(metadata, block_rows))
-                )
+                consumed_blocks.append((block_ref, metadata))
                 consumed_slices.append(block_slice)
                 rows_to_take -= block_rows
             else:
@@ -243,9 +272,7 @@ class RefBundle:
                     start_offset=block_slice.start_offset,
                     end_offset=block_slice.start_offset + rows_to_take,
                 )
-                consumed_blocks.append(
-                    (block_ref, _slice_block_metadata(metadata, rows_to_take))
-                )
+                consumed_blocks.append((block_ref, metadata))
                 consumed_slices.append(consume_slice)
 
                 leftover_rows = block_rows - rows_to_take
@@ -254,9 +281,7 @@ class RefBundle:
                         start_offset=consume_slice.end_offset,
                         end_offset=block_slice.end_offset,
                     )
-                    remaining_blocks.append(
-                        (block_ref, _slice_block_metadata(metadata, leftover_rows))
-                    )
+                    remaining_blocks.append((block_ref, metadata))
                     remaining_slices.append(remainder_slice)
 
                 rows_to_take = 0
@@ -350,24 +375,6 @@ def _ref_bundles_iterator_to_block_refs_list(
     return [
         block_ref for ref_bundle in ref_bundles for block_ref in ref_bundle.block_refs
     ]
-
-
-def _slice_block_metadata(
-    metadata: BlockMetadata, num_rows_in_slice: int
-) -> BlockMetadata:
-    assert (
-        num_rows_in_slice > 0
-    ), "num_rows_in_slice must be positive for slicing block metadata."
-    size_bytes = metadata.size_bytes
-    if metadata.size_bytes is not None and metadata.num_rows:
-        per_row = metadata.size_bytes / metadata.num_rows
-        size_bytes = max(1, int(math.ceil(per_row * num_rows_in_slice)))
-    return BlockMetadata(
-        num_rows=num_rows_in_slice if metadata.num_rows is not None else None,
-        size_bytes=size_bytes,
-        exec_stats=None,
-        input_files=list(metadata.input_files),
-    )
 
 
 def _iter_sliced_blocks(

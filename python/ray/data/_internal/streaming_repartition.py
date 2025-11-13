@@ -14,12 +14,7 @@ from ray.data._internal.execution.operators.map_operator import BaseRefBundler
 
 
 class StreamingRepartitionRefBundler(BaseRefBundler):
-    """Incrementally builds task inputs to produce target-sized outputs.
-
-    Usage:
-    - Call `add_input(ref_bundle)` as upstream blocks arrive. This returns zero
-      or more `(RefBundle, task_kwargs)` tuples ready to schedule immediately.
-    """
+    """Incrementally builds task inputs to produce multiples of target-sized outputs."""
 
     def __init__(self, target_num_rows_per_block: int):
         assert (
@@ -27,15 +22,15 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
         ), "target_num_rows_per_block must be positive for streaming repartition."
         self._target_num_rows = target_num_rows_per_block
         self._pending_bundles: Deque[RefBundle] = deque()
-        self._consumed_input_bundles: List[RefBundle] = []
         self._ready_bundles: Deque[RefBundle] = deque()
+        self._consumed_input_bundles: List[RefBundle] = []
         self._total_pending_rows = 0
-        self._next_output_index = 0
 
     def _try_build_ready_bundle(self, flush_remaining: bool = False):
         if self._total_pending_rows >= self._target_num_rows or flush_remaining:
             rows_needed_from_last_bundle = (
-                self._total_pending_rows % self._target_num_rows
+                self._pending_bundles[-1].num_rows()
+                - self._total_pending_rows % self._target_num_rows
             )
             pending_bundles = list(self._pending_bundles)
             remaining_bundle = None
