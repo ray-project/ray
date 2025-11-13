@@ -1,5 +1,15 @@
+import threading
 import warnings
-from typing import TYPE_CHECKING, Any, List, Protocol, Sequence, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    List,
+    Optional,
+    Protocol,
+    Sequence,
+    Union,
+)
 
 import numpy as np
 
@@ -204,3 +214,75 @@ def create_ragged_ndarray(values: Sequence[Any]) -> np.ndarray:
     # Try to fill the 1D array of pointers with the (ragged) tensors.
     arr[:] = list(values)
     return arr
+
+
+class ThreadSafeCache:
+    """
+    A thread-safe cache with read-write locks.
+
+    This cache supports both single-value caching (when key=None) and
+    dictionary-based caching (when key is provided), with concurrent reads
+    and exclusive writes to avoid race conditions.
+
+    Examples:
+        # Single-value cache (for serialization)
+        cache = ThreadSafeCache()
+        value = cache.get_or_compute(compute_fn)
+
+        # Dictionary cache (for deserialization)
+        cache = ThreadSafeCache()
+        value = cache.get_or_compute(compute_fn, key="my_key")
+    """
+
+    def __init__(self):
+        self._cache = {}
+        self._lock = threading.RLock()
+
+    def get(self, key: Optional[Any] = None, default: Any = None) -> Any:
+        """
+        Get a cached value with read lock.
+
+        Args:
+            key: Optional cache key. If None, treats cache as single-value.
+            default: Default value to return if key not found.
+
+        Returns:
+            The cached value or default.
+        """
+        with self._lock:
+            if key is None:
+                return self._cache.get(None, default)
+            return self._cache.get(key, default)
+
+    def set(self, value: Any, key: Optional[Any] = None) -> None:
+        """
+        Set a cached value with write lock.
+
+        Args:
+            value: The value to cache.
+            key: Optional cache key. If None, treats cache as single-value.
+        """
+        with self._lock:
+            self._cache[key] = value
+
+    def get_or_compute(
+        self, compute_fn: Callable[[], Any], key: Optional[Any] = None
+    ) -> Any:
+        """
+        Get cached value or compute and cache it if not present.
+
+        Args:
+            compute_fn: A callable that computes the value if not cached.
+            key: Optional cache key. If None, treats cache as single-value.
+
+        Returns:
+            The cached or newly computed value.
+        """
+        with self._lock:
+            if key in self._cache:
+                return self._cache[key]
+
+            # Compute and cache the value
+            value = compute_fn()
+            self._cache[key] = value
+            return value

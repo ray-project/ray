@@ -306,12 +306,12 @@ def unify_schemas(
     # Deduplicate schemas. Calling this before PyArrow's unify_schemas is more efficient (100x faster).
 
     # Remove metadata for hashability
-    schemas[0].remove_metadata()
+    schemas[0] = schemas[0].remove_metadata()
     schemas_to_unify = [schemas[0]]
-    for schema in schemas[1:]:
-        schema.remove_metadata()
-        if not schema.equals(schemas[0]):
-            schemas_to_unify.append(schema)
+    for i in range(1, len(schemas)):
+        schemas[i] = schemas[i].remove_metadata()
+        if not schemas[i].equals(schemas[0]):
+            schemas_to_unify.append(schemas[i])
 
     pyarrow_exception = None
     # If there is only one schema, return it
@@ -670,9 +670,8 @@ def _concat_cols_with_native_pyarrow_types(
     # NOTE: Type promotions aren't available in Arrow < 14.0
     subset_blocks = []
     for block in blocks:
-        cols_to_select = [
-            col_name for col_name in col_names if col_name in block.schema.names
-        ]
+        block_cols = set(block.schema.names)
+        cols_to_select = [col_name for col_name in col_names if col_name in block_cols]
         subset_blocks.append(block.select(cols_to_select))
     if get_pyarrow_version() < parse_version("14.0.0"):
         table = pa.concat_tables(subset_blocks, promote=True)
