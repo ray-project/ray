@@ -46,7 +46,7 @@ class AuthenticationTokenLoaderTest : public ::testing::Test {
  protected:
   void SetUp() override {
     // Enable token authentication for tests
-    RayConfig::instance().initialize(R"({"auth_mode": "token"})");
+    RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
 
     // If HOME is not set (e.g., in Bazel sandbox), set it to a test directory
     // This ensures tests work in environments where HOME isn't provided
@@ -91,7 +91,7 @@ class AuthenticationTokenLoaderTest : public ::testing::Test {
     // Reset the singleton's cached state for test isolation
     AuthenticationTokenLoader::instance().ResetCache();
     // Disable token auth after tests
-    RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+    RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
   }
 
   void cleanup_env() {
@@ -266,7 +266,7 @@ TEST_P(AuthenticationTokenLoaderPrecedenceTest, Precedence) {
 
 TEST_F(AuthenticationTokenLoaderTest, TestNoTokenFoundWhenAuthDisabled) {
   // Disable auth for this specific test
-  RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+  RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
   AuthenticationTokenLoader::instance().ResetCache();
 
   // No token set anywhere, but auth is disabled
@@ -277,7 +277,7 @@ TEST_F(AuthenticationTokenLoaderTest, TestNoTokenFoundWhenAuthDisabled) {
   EXPECT_FALSE(loader.GetToken().has_value());
 
   // Re-enable for other tests
-  RayConfig::instance().initialize(R"({"auth_mode": "token"})");
+  RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
 }
 
 TEST_F(AuthenticationTokenLoaderTest, TestErrorWhenAuthEnabledButNoToken) {

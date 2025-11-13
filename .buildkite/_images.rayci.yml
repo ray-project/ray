@@ -28,6 +28,7 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: ""
+      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix}}.lock"
     depends_on: raycpubase
 
   - name: raycudabase
@@ -81,6 +82,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: ""
+      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix.python}}.lock"
     depends_on: raycudabase
 
   - name: ray-llmbase
@@ -114,6 +116,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-llm"
       ARCH_SUFFIX: ""
+      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix.python}}.lock"
     depends_on: ray-llmbase
 
   - name: ray-mlcpubase
@@ -141,6 +144,7 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray-ml"
       ARCH_SUFFIX: ""
+      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix}}.lock"
     depends_on: ray-mlcpubase
 
   - name: ray-mlcudabase
@@ -178,6 +182,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-ml"
       ARCH_SUFFIX: ""
+      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix.python}}.lock"
     depends_on: ray-mlcudabase
 
   - name: ray-slimcpubase
