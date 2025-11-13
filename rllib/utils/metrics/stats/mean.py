@@ -64,4 +64,4 @@ class MeanStats(SeriesStats):
         return return_stats
 
     def __repr__(self) -> str:
-        return f"MeanStats({self.peek()}; window={self._window}; len={len(self)}"
+        return f"MeanStats({self.peek()}; window={self._window}; len={len(self)})"
