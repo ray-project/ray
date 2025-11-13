@@ -150,6 +150,16 @@ assert ds._plan._logical_plan.dag.name == "FromArrow"
 ```
 ## General good practices
 
+### Prefer unit tests over integration tests
+
+Unit tests give faster feedback and make it easier to pinpoint failures. They run in 
+milliseconds, not seconds, and don’t depend on Ray clusters, external systems, or 
+timing. This keeps the test suite fast, reliable, and easy to maintain.
+
+:::{note}
+Put unit tests in `python/ray/data/tests/unit`.
+:::
+
 ### Use fixtures, skip try-finally
 
 Fixtures make tests cleaner, more reusable, and better isolated. They’re the right tool 
