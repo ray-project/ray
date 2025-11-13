@@ -305,7 +305,9 @@ class TestDownloadExpressionErrors:
             "local:///this/path/does/not/exist/file.txt",  # Invalid path
             "",  # Empty URI
             "foobar",  # Random string
-            # TODO(xyuzh): Add the tests below back once the issue is fixed.
+            # TODO(xyuzh): Currently, using the below URIs raises an exception
+            # in _resolve_paths_and_filesystem. We need to fix that issue and
+            # add the tests in.
             # "file:///\x00/null/byte",  # Null byte
             # "http://host/path\n\r",  # Line breaks
             # "foo://bar",  # Invalid scheme
