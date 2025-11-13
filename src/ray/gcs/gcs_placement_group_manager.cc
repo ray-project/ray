@@ -106,7 +106,8 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
 }
 
 void GcsPlacementGroupManager::RegisterPlacementGroup(
-    const std::shared_ptr<GcsPlacementGroup> &placement_group, StatusCallback callback) {
+    const std::shared_ptr<GcsPlacementGroup> &placement_group,
+    rpc::StatusCallback callback) {
   // NOTE: After the abnormal recovery of the network between GCS client and GCS server or
   // the GCS server is restarted, it is required to continue to register placement group
   // successfully.
@@ -399,7 +400,7 @@ void GcsPlacementGroupManager::HandleRemovePlacementGroup(
 
 void GcsPlacementGroupManager::RemovePlacementGroup(
     const PlacementGroupID &placement_group_id,
-    StatusCallback on_placement_group_removed) {
+    rpc::StatusCallback on_placement_group_removed) {
   RAY_CHECK(on_placement_group_removed);
   // If the placement group has been already removed, don't do anything.
   auto placement_group_it = registered_placement_groups_.find(placement_group_id);
@@ -599,7 +600,7 @@ void GcsPlacementGroupManager::HandleWaitPlacementGroupUntilReady(
 }
 
 void GcsPlacementGroupManager::WaitPlacementGroup(
-    const PlacementGroupID &placement_group_id, StatusCallback callback) {
+    const PlacementGroupID &placement_group_id, rpc::StatusCallback callback) {
   // If the placement group does not exist or it has been successfully created, return
   // directly.
   const auto &iter = registered_placement_groups_.find(placement_group_id);

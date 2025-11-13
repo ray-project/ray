@@ -46,7 +46,7 @@ void ObservableStoreClient::AsyncPut(const std::string &table_name,
 void ObservableStoreClient::AsyncGet(
     const std::string &table_name,
     const std::string &key,
-    ToPostable<OptionalItemCallback<std::string>> callback) {
+    ToPostable<rpc::OptionalItemCallback<std::string>> callback) {
   auto start = absl::GetCurrentTimeNanos();
   storage_operation_count_counter_.Record(1, {{"Operation", "Get"}});
   delegate_->AsyncGet(table_name, key, std::move(callback).OnInvocation([this, start]() {
