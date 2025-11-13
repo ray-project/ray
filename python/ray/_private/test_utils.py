@@ -654,8 +654,29 @@ class MetricSamplePattern:
         return True
 
 
+@dataclass
+class PrometheusTimeseries:
+    """A collection of timeseries from multiple addresses. Each timeseries is a
+    collection of samples with the same metric name and labels. Concretely:
+    - components_dict: a dictionary of addresses to the Component labels
+    - metric_descriptors: a dictionary of metric names to the Metric object
+    - metric_samples: the latest value of each label
+    """
+
+    components_dict: Dict[str, Set[str]] = field(default_factory=dict)
+    metric_descriptors: Dict[str, Metric] = field(default_factory=dict)
+    metric_samples: Dict[frozenset, Sample] = field(default_factory=dict)
+
+    def flush(self):
+        self.components_dict.clear()
+        self.metric_descriptors.clear()
+        self.metric_samples.clear()
+
+
 def get_metric_check_condition(
-    metrics_to_check: List[MetricSamplePattern], export_addr: Optional[str] = None
+    metrics_to_check: List[MetricSamplePattern],
+    timeseries: PrometheusTimeseries,
+    export_addr: Optional[str] = None,
 ) -> Callable[[], bool]:
     """A condition to check if a prometheus metrics reach a certain value.
 
@@ -665,6 +686,7 @@ def get_metric_check_condition(
     Args:
         metrics_to_check: A list of MetricSamplePattern. The fields that
             aren't `None` will be matched.
+        timeseries: A PrometheusTimeseries object to store the metrics.
         export_addr: Optional address to export metrics to.
 
     Returns:
@@ -677,7 +699,9 @@ def get_metric_check_condition(
 
     def f():
         for metric_pattern in metrics_to_check:
-            _, _, metric_samples = fetch_prometheus([prom_addr])
+            metric_samples = fetch_prometheus_timeseries(
+                [prom_addr], timeseries
+            ).metric_samples.values()
             for metric_sample in metric_samples:
                 if metric_pattern.matches(metric_sample):
                     break
@@ -991,25 +1015,6 @@ def fetch_prometheus(prom_addresses):
                 if "Component" in sample.labels:
                     components_dict[address].add(sample.labels["Component"])
     return components_dict, metric_descriptors, metric_samples
-
-
-@dataclass
-class PrometheusTimeseries:
-    """A collection of timeseries from multiple addresses. Each timeseries is a
-    collection of samples with the same metric name and labels. Concretely:
-    - components_dict: a dictionary of addresses to the Component labels
-    - metric_descriptors: a dictionary of metric names to the Metric object
-    - metric_samples: the latest value of each label
-    """
-
-    components_dict: Dict[str, Set[str]] = field(default_factory=defaultdict)
-    metric_descriptors: Dict[str, Metric] = field(default_factory=defaultdict)
-    metric_samples: Dict[frozenset, Sample] = field(default_factory=defaultdict)
-
-    def flush(self):
-        self.components_dict.clear()
-        self.metric_descriptors.clear()
-        self.metric_samples.clear()
 
 
 def fetch_prometheus_timeseries(
