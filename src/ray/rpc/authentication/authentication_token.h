@@ -26,6 +26,10 @@
 
 #include "ray/common/constants.h"
 
+extern "C" {
+#include "c/blake3.h"
+}
+
 namespace ray {
 namespace rpc {
 
@@ -110,9 +114,17 @@ class AuthenticationToken {
   /// Get token hash
   /// @return Hash of the token value
   std::size_t ToHash() const {
-    // TODO(andrewsykim): consider using a more secure hashing algorithm like SHA256
-    // before documenting this feature in Ray docs.
-    return std::hash<std::string>()(std::string(secret_.begin(), secret_.end()));
+    blake3_hasher hasher;
+    blake3_hasher_init(&hasher);
+    blake3_hasher_update(&hasher, secret_.data(), secret_.size());
+
+    uint8_t output[BLAKE3_OUT_LEN];
+    blake3_hasher_finalize(&hasher, output, BLAKE3_OUT_LEN);
+
+    std::size_t hash_value;
+    std::memcpy(&hash_value, output, sizeof(hash_value));
+
+    return hash_value;
   }
 
   /// Create AuthenticationToken from gRPC metadata value
