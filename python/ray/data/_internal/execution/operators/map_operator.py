@@ -280,7 +280,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             min_rows_per_bundle is not None and ref_bundler is not None
         ):
             raise ValueError(
-                "min_rows_per_bundle and ref_bundler cannot be used together and vice versa"
+                "min_rows_per_bundle and ref_bundler cannot be used together"
             )
 
         if compute_strategy is None:
