@@ -34,9 +34,6 @@ class SGLangServer:
         )
         return {"echo": res}
 
-    async def llm_config(self) -> Optional[LLMConfig]:
-        return self.llm_config
-
     @classmethod
     def get_deployment_options(cls, llm_config: "LLMConfig"):
         return {'autoscaling_config': {'min_replicas': 1, 'max_replicas': 1}, 
