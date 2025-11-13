@@ -5,6 +5,7 @@ import pyarrow as pa
 import pytest
 
 from python.ray.data._internal.util import KiB
+
 import ray
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
