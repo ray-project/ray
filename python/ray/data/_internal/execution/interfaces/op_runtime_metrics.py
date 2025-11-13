@@ -597,7 +597,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         if self.num_tasks_finished == 0:
             return None
         else:
-            return self.task_completion_time_s / self.num_tasks_finished
+            return self.task_completion_time_total_s / self.num_tasks_finished
 
     @metric_property(
         description="Average task's completion time in seconds (excluding throttling).",
