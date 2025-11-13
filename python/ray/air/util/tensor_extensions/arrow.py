@@ -22,7 +22,7 @@ from ray.air.util.object_extensions.arrow import (
 )
 from ray.air.util.tensor_extensions.utils import (
     ArrayLike,
-    ThreadSafeCache,
+    ThreadSafeTTLCache,
     _is_ndarray_variable_shaped_tensor,
     _should_convert_to_tensor,
     create_ragged_ndarray,
@@ -64,6 +64,7 @@ ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
     else _SerializationFormat.CLOUDPICKLE  # default
 )
 
+ARROW_EXTENSION_SERIALIZATION_CACHE_TTL = 3600  # 1 hour
 
 logger = logging.getLogger(__name__)
 
@@ -98,12 +99,6 @@ class ArrowExtensionSerializeDeserializeCache(abc.ABC):
     our tests, each cache entry is approximately ~100 bytes, so this should
     be fine.
 
-    Note:
-        This cache will be used in module init stage, so static env variable
-        (for gating the cache) doesn't work here. Dynamically checking the env
-        variable causes too much overhead so we just leave this since this
-        memory consumption is minor.
-
     Attributes:
         _deserialize_cache: Class-level thread-safe cache for deserialization
             results, keyed by (storage_type, serialized) tuple.
@@ -111,7 +106,7 @@ class ArrowExtensionSerializeDeserializeCache(abc.ABC):
             results.
     """
 
-    _deserialize_cache = ThreadSafeCache()
+    _deserialize_cache = ThreadSafeTTLCache(ttl=ARROW_EXTENSION_SERIALIZATION_CACHE_TTL)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize the extension type with caching support.
@@ -120,7 +115,8 @@ class ArrowExtensionSerializeDeserializeCache(abc.ABC):
             *args: Positional arguments passed to the parent class.
             **kwargs: Keyword arguments passed to the parent class.
         """
-        self._serialize_cache = ThreadSafeCache()
+        # Instance-level cache for serialization results, no TTL
+        self._serialize_cache = ThreadSafeTTLCache()
         super().__init__(*args, **kwargs)
 
     @abstractmethod

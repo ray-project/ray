@@ -1,5 +1,7 @@
 import threading
+import time
 import warnings
+from collections import OrderedDict
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -216,9 +218,9 @@ def create_ragged_ndarray(values: Sequence[Any]) -> np.ndarray:
     return arr
 
 
-class ThreadSafeCache:
+class ThreadSafeTTLCache:
     """
-    A thread-safe cache with read-write locks.
+    A thread-safe cache with read-write locks that supports TTL (time-to-live) eviction.
 
     This cache supports both single-value caching (when key=None) and
     dictionary-based caching (when key is provided), with concurrent reads
@@ -226,17 +228,57 @@ class ThreadSafeCache:
 
     Examples:
         # Single-value cache (for serialization)
-        cache = ThreadSafeCache()
+        cache = ThreadSafeTTLCache()
         value = cache.get_or_compute(compute_fn)
 
         # Dictionary cache (for deserialization)
-        cache = ThreadSafeCache()
+        cache = ThreadSafeTTLCache()
+        value = cache.get_or_compute(compute_fn, key="my_key")
+
+        # Cache with TTL (time-to-live) in seconds
+        cache = ThreadSafeTTLCache(ttl=3600)  # 1 hour TTL
         value = cache.get_or_compute(compute_fn, key="my_key")
     """
 
-    def __init__(self):
+    def __init__(self, ttl: Optional[float] = None):
+        """
+        Initialize the thread-safe cache.
+
+        Args:
+            ttl: Optional time-to-live in seconds. If None, entries never expire.
+        """
         self._cache = {}
+        # OrderedDict maintains insertion order (oldest first) for efficient cleanup
+        self._timestamps = OrderedDict()
+        self._ttl = ttl
         self._lock = threading.RLock()
+
+    def clean_expired_entries(self) -> None:
+        """
+        Remove expired entries from the cache.
+
+        This method efficiently removes expired entries by iterating from
+        oldest to newest and stopping when a non-expired entry is found.
+        Since entries are ordered by access time, all subsequent entries
+        will also be non-expired.
+        """
+        if self._ttl is None:
+            return
+
+        current_time = time.time()
+        # Iterate from oldest to newest, stop when we find a non-expired entry
+        # Collect keys to remove to avoid modification during iteration
+        expired_keys = []
+        for key, timestamp in self._timestamps.items():
+            if current_time - timestamp > self._ttl:
+                expired_keys.append(key)
+            else:
+                # All subsequent entries are newer, so they're all valid
+                break
+
+        for key in expired_keys:
+            self._cache.pop(key, None)
+            self._timestamps.pop(key, None)
 
     def get(self, key: Optional[Any] = None, default: Any = None) -> Any:
         """
@@ -250,9 +292,26 @@ class ThreadSafeCache:
             The cached value or default.
         """
         with self._lock:
+            self.clean_expired_entries()
+
             if key is None:
-                return self._cache.get(None, default)
-            return self._cache.get(key, default)
+                if None in self._cache:
+                    # Update timestamp on access - move to end (most recent)
+                    if self._ttl is not None:
+                        if None in self._timestamps:
+                            self._timestamps.move_to_end(None)
+                        self._timestamps[None] = time.time()
+                    return self._cache[None]
+                return default
+
+            if key in self._cache:
+                # Update timestamp on access - move to end (most recent)
+                if self._ttl is not None:
+                    if key in self._timestamps:
+                        self._timestamps.move_to_end(key)
+                    self._timestamps[key] = time.time()
+                return self._cache[key]
+            return default
 
     def set(self, value: Any, key: Optional[Any] = None) -> None:
         """
@@ -263,7 +322,13 @@ class ThreadSafeCache:
             key: Optional cache key. If None, treats cache as single-value.
         """
         with self._lock:
+            self.clean_expired_entries()
             self._cache[key] = value
+            if self._ttl is not None:
+                # Move to end (most recent) if key already exists, otherwise add to end
+                if key in self._timestamps:
+                    self._timestamps.move_to_end(key)
+                self._timestamps[key] = time.time()
 
     def get_or_compute(
         self, compute_fn: Callable[[], Any], key: Optional[Any] = None
@@ -279,10 +344,20 @@ class ThreadSafeCache:
             The cached or newly computed value.
         """
         with self._lock:
+            self.clean_expired_entries()
+
             if key in self._cache:
+                # Update timestamp on access - move to end (most recent)
+                if self._ttl is not None:
+                    if key in self._timestamps:
+                        self._timestamps.move_to_end(key)
+                    self._timestamps[key] = time.time()
                 return self._cache[key]
 
             # Compute and cache the value
             value = compute_fn()
             self._cache[key] = value
+            if self._ttl is not None:
+                # Add to end (most recent)
+                self._timestamps[key] = time.time()
             return value
