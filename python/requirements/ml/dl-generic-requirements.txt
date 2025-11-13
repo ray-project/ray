@@ -12,6 +12,7 @@ etils==1.5.2; python_version < '3.12'
 torch==2.3.0; python_version <= '3.12'
 torch==2.6.0; python_version > '3.12'
 torchmetrics==0.10.3
+torchtext==0.18.0; python_version <= '3.12'
 torchvision==0.18.0; python_version <= '3.12'
 torchvision==0.21.0; python_version > '3.12'
 

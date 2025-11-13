@@ -861,9 +861,9 @@ isoduration==20.11.0
     # via jsonschema
 itsdangerous==2.1.2
     # via flask
-jax==0.4.25
+jax==0.4.25 ; python_version <= "3.12"
     # via -r python/requirements/ml/train-test-requirements.txt
-jaxlib==0.4.25
+jaxlib==0.4.25 ; python_version <= "3.12"
     # via -r python/requirements/ml/train-test-requirements.txt
 jedi==0.19.1
     # via ipython
@@ -1332,7 +1332,7 @@ oauthlib==3.2.2
     # via requests-oauthlib
 onnx==1.15.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r python/requirements/ml/rllib-requirements.txt
-onnxruntime==1.18.0 ; sys_platform != "darwin" or platform_machine != "arm64"
+onnxruntime==1.18.0 ; platform_machine != "arm64" and python_version <= "3.12"
     # via -r python/requirements/ml/rllib-requirements.txt
 open-spiel==1.4
     # via -r python/requirements/ml/rllib-test-requirements.txt
@@ -2302,7 +2302,7 @@ toolz==0.12.1
     #   dask
     #   distributed
     #   partd
-torch==2.3.0
+torch==2.3.0 ; python_version <= "3.12"
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   accelerate
@@ -2338,9 +2338,9 @@ torchmetrics==0.10.3
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   mosaicml
     #   pytorch-lightning
-torchtext==0.18.0
+torchtext==0.18.0 ; python_version <= "3.12"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-torchvision==0.18.0
+torchvision==0.18.0 ; python_version <= "3.12"
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   mosaicml
