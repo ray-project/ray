@@ -1472,9 +1472,12 @@ class RankManager:
             raise RuntimeError(f"Rank for {key} already assigned: {self._ranks[key]}")
 
         if self._released_ranks:
+            # Reuse the smallest released rank
             rank = min(self._released_ranks)
             self._released_ranks.remove(rank)
         else:
+            # Assign the next available rank
+            # This is the first time we're assigning a rank to this replica
             rank = self._next_rank
             self._next_rank += 1
 
@@ -1658,7 +1661,7 @@ class DeploymentRankManager:
     - Global rank: Replica-level rank across all nodes (0, 1, 2, ...)
     """
 
-    def __init__(self, fail_on_rank_error: bool = False):
+    def __init__(self, fail_on_rank_error: bool = True):
         # Global rank manager (existing replica-level rank)
         self._replica_rank_manager = RankManager()
         self._fail_on_rank_error = fail_on_rank_error
@@ -1676,7 +1679,17 @@ class DeploymentRankManager:
                 return safe_default
 
     def assign_rank(self, replica_id: str) -> ReplicaRank:
-        """Assign rank to a replica."""
+        """Assign a rank to a new replica.
+
+        Args:
+            replica_id: The unique ID of the replica
+
+        Returns:
+            ReplicaRank object with the assigned rank
+
+        Raises:
+            RuntimeError: If the replica already has a rank assigned
+        """
 
         def _assign_rank_impl():
             if self.has_replica_rank(replica_id):
@@ -1737,7 +1750,17 @@ class DeploymentRankManager:
         return self._execute_with_error_handling(_recover_rank_impl, None)
 
     def has_replica_rank(self, replica_id: str) -> bool:
-        """Check if replica has a rank assigned."""
+        """Check if replica has a rank assigned.
+
+        Args:
+            replica_id: The unique ID of the replica
+
+        Returns:
+            True if the replica has a rank assigned, False otherwise
+
+        Raises:
+            RuntimeError: If the replica doesn't have ranks assigned
+        """
         return self._replica_rank_manager.has_rank(replica_id)
 
     def get_replica_rank(self, replica_id: str) -> ReplicaRank:
