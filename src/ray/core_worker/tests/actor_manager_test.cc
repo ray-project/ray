@@ -36,6 +36,63 @@ namespace core {
 
 using ::testing::_;
 
+class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
+ public:
+  explicit MockActorInfoAccessor(gcs::GcsClient *client)
+      : gcs::ActorInfoAccessor(client) {}
+
+  ~MockActorInfoAccessor() {}
+
+  void AsyncSubscribe(
+      const ActorID &actor_id,
+      const rpc::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const rpc::StatusCallback &done) {
+    auto callback_entry = std::make_pair(actor_id, subscribe);
+    callback_map_.emplace(actor_id, subscribe);
+    subscribe_finished_callback_map_[actor_id] = done;
+    actor_subscribed_times_[actor_id]++;
+  }
+
+  bool ActorStateNotificationPublished(const ActorID &actor_id,
+                                       const rpc::ActorTableData &actor_data) {
+    auto it = callback_map_.find(actor_id);
+    if (it == callback_map_.end()) return false;
+    auto actor_state_notification_callback = it->second;
+    auto copied = actor_data;
+    actor_state_notification_callback(actor_id, std::move(copied));
+    return true;
+  }
+
+  bool CheckSubscriptionRequested(const ActorID &actor_id) {
+    return callback_map_.find(actor_id) != callback_map_.end();
+  }
+
+  // Mock the logic of subscribe finished. see `ActorInfoAccessor::AsyncSubscribe`
+  bool ActorSubscribeFinished(const ActorID &actor_id,
+                              const rpc::ActorTableData &actor_data) {
+    auto subscribe_finished_callback_it = subscribe_finished_callback_map_.find(actor_id);
+    if (subscribe_finished_callback_it == subscribe_finished_callback_map_.end()) {
+      return false;
+    }
+
+    auto copied = actor_data;
+    if (!ActorStateNotificationPublished(actor_id, std::move(copied))) {
+      return false;
+    }
+
+    auto subscribe_finished_callback = subscribe_finished_callback_it->second;
+    subscribe_finished_callback(Status::OK());
+    // Erase callback when actor subscribe is finished.
+    subscribe_finished_callback_map_.erase(subscribe_finished_callback_it);
+    return true;
+  }
+
+  absl::flat_hash_map<ActorID, rpc::SubscribeCallback<ActorID, rpc::ActorTableData>>
+      callback_map_;
+  absl::flat_hash_map<ActorID, rpc::StatusCallback> subscribe_finished_callback_map_;
+  absl::flat_hash_map<ActorID, uint32_t> actor_subscribed_times_;
+};
+
 class MockGcsClient : public gcs::GcsClient {
  public:
   explicit MockGcsClient(gcs::GcsClientOptions options) : gcs::GcsClient(options) {}
