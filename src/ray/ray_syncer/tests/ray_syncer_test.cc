@@ -33,6 +33,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/test_utils.h"
 #include "ray/ray_syncer/node_state.h"
 #include "ray/ray_syncer/ray_syncer.h"
 #include "ray/ray_syncer/ray_syncer_client.h"
@@ -68,24 +69,6 @@ RaySyncMessage MakeMessage(MessageType cid, int64_t version, const NodeID &id) {
   return msg;
 }
 
-bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
-  int wait_time = 0;
-  while (true) {
-    if (condition()) {
-      return true;
-    }
-
-    // sleep 10ms.
-    const int wait_interval_ms = 10;
-    std::this_thread::sleep_for(std::chrono::milliseconds(wait_interval_ms));
-    wait_time += wait_interval_ms;
-    if (wait_time > timeout_ms) {
-      break;
-    }
-  }
-  return false;
-}
-
 class RaySyncerTest : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -111,7 +94,7 @@ class RaySyncerTest : public ::testing::Test {
     }
     thread_ = std::make_unique<std::thread>([this]() { io_context_.run(); });
     local_id_ = NodeID::FromRandom();
-    syncer_ = std::make_unique<RaySyncer>(io_context_, local_id_.Binary());
+    syncer_ = std::make_unique<RaySyncer>(io_context_, local_id_.Binary(), 1, 0);
   }
 
   MockReporterInterface *GetReporter(MessageType cid) {
@@ -315,7 +298,7 @@ struct SyncerServerTest {
     }
     // Setup syncer and grpc server
     syncer = std::make_unique<RaySyncer>(
-        io_context, node_id.Binary(), std::move(ray_sync_observer));
+        io_context, node_id.Binary(), 1, 0, std::move(ray_sync_observer));
     thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
     auto server_address = BuildAddress("0.0.0.0", port);
@@ -975,7 +958,9 @@ class SyncerReactorTest : public ::testing::Test {
             [this](RaySyncerBidiReactor *reactor, bool r) {
               client_cleanup.set_value(std::make_pair(reactor->GetRemoteNodeID(), r));
             },
-            std::move(cli_stub))
+            std::move(cli_stub),
+            /* max_batch_size */ 1,
+            /* max_batch_delay_ms */ 0)
             .release();
     cli_reactor->StartCall();
 
@@ -1105,7 +1090,8 @@ class SyncerAuthenticationTest : public ::testing::Test {
     AuthenticatedSyncerServerTest(const std::string &port, const std::string &token)
         : server_port(port), work_guard(io_context.get_executor()) {
       // Setup syncer and grpc server
-      syncer = std::make_unique<RaySyncer>(io_context, NodeID::FromRandom().Binary());
+      syncer =
+          std::make_unique<RaySyncer>(io_context, NodeID::FromRandom().Binary(), 1, 0);
       thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
       // Create service with authentication token
@@ -1146,7 +1132,8 @@ class SyncerAuthenticationTest : public ::testing::Test {
     ClientSyncer()
         : work_guard(boost::asio::make_work_guard(io_context.get_executor())),
           thread([this]() { io_context.run(); }) {
-      syncer = std::make_unique<RaySyncer>(io_context, NodeID::FromRandom().Binary());
+      syncer =
+          std::make_unique<RaySyncer>(io_context, NodeID::FromRandom().Binary(), 1, 0);
       remote_node_id = NodeID::FromRandom().Binary();
     }
 

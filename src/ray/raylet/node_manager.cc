@@ -225,7 +225,7 @@ NodeManager::NodeManager(
       cluster_lease_manager_(cluster_lease_manager),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       placement_group_resource_manager_(placement_group_resource_manager),
-      ray_syncer_(io_service_, self_node_id_.Binary()),
+      ray_syncer_(io_service_, self_node_id_.Binary(), 1, 0),
       worker_killing_policy_(std::make_shared<GroupByOwnerIdWorkerKillingPolicy>()),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,

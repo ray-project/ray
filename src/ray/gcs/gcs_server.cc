@@ -610,12 +610,12 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
   ray_syncer_ = std::make_unique<syncer::RaySyncer>(
       io_context_provider_.GetIOContext<syncer::RaySyncer>(),
       kGCSNodeID.Binary(),
-      [this](const NodeID &node_id) {
-        gcs_healthcheck_manager_->MarkNodeHealthy(node_id);
-      },
       /* batch_size */ RayConfig::instance().gcs_resource_broadcast_max_batch_size(),
       /* batch_delay_ms */
-      RayConfig::instance().gcs_resource_broadcast_max_batch_delay_ms());
+      RayConfig::instance().gcs_resource_broadcast_max_batch_delay_ms(),
+      [this](const NodeID &node_id) {
+        gcs_healthcheck_manager_->MarkNodeHealthy(node_id);
+      });
   ray_syncer_->Register(
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(

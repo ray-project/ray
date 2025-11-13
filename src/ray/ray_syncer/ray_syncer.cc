@@ -30,16 +30,16 @@ namespace ray::syncer {
 
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
                      const std::string &local_node_id,
-                     RpcCompletionCallback on_rpc_completion,
-                     size_t batch_size,
-                     int64_t batch_delay_ms)
+                     size_t max_batch_size,
+                     int64_t max_batch_delay_ms,
+                     RpcCompletionCallback on_rpc_completion)
     : io_context_(io_context),
       local_node_id_(local_node_id),
       node_state_(std::make_unique<NodeState>()),
       timer_(PeriodicalRunner::Create(io_context)),
-      on_rpc_completion_(std::move(on_rpc_completion)),
-      batch_size_(batch_size),
-      batch_delay_ms_(batch_delay_ms) {
+      max_batch_size_(max_batch_size),
+      max_batch_delay_ms_(max_batch_delay_ms),
+      on_rpc_completion_(std::move(on_rpc_completion)) {
   stopped_ = std::make_shared<bool>(false);
 }
 

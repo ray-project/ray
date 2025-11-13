@@ -99,9 +99,9 @@ class RaySyncer {
   /// batch.
   RaySyncer(instrumented_io_context &io_context,
             const std::string &node_id,
-            RpcCompletionCallback on_rpc_completion = {},
-            size_t max_batch_size = 1,
-            int64_t max_batch_delay_ms = 0);
+            size_t max_batch_size,
+            int64_t max_batch_delay_ms,
+            RpcCompletionCallback on_rpc_completion = {});
   ~RaySyncer();
 
   /// Connect to a node.
@@ -183,15 +183,15 @@ class RaySyncer {
   /// Timer is used to do broadcasting.
   std::shared_ptr<PeriodicalRunner> timer_;
 
-  /// Sync message observer, which is a callback on received message response for
-  /// [RaySyncerBidiReactor], so should be passed to each of them.
-  RpcCompletionCallback on_rpc_completion_;
-
   /// The max number of messages to be sent in a batch.
   const size_t max_batch_size_;
 
   /// The max delay in milliseconds to wait before sending a batch.
   const int64_t max_batch_delay_ms_;
+
+  /// Sync message observer, which is a callback on received message response for
+  /// [RaySyncerBidiReactor], so should be passed to each of them.
+  RpcCompletionCallback on_rpc_completion_;
 
   friend class RaySyncerService;
   /// Test purpose
