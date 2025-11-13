@@ -1,5 +1,14 @@
 """
 Plan DropNa logical operator.
+
+This module implements the physical planning for DropNa operations, which remove
+rows with missing values from Ray Data datasets. It supports multiple drop strategies:
+- any: Drop rows where any value is missing
+- all: Drop rows where all values are missing
+- thresh: Drop rows with fewer than threshold non-missing values
+
+The implementation uses PyArrow for efficient columnar operations.
+See https://arrow.apache.org/docs/python/api/compute.html for PyArrow compute functions.
 """
 
 from typing import Any, List, Optional
@@ -33,16 +42,22 @@ def plan_dropna_op(
                 return batch
 
             if op.subset:
-                columns_to_check = [col for col in op.subset if col in batch.schema.names]
+                columns_to_check = [
+                    col for col in op.subset if col in batch.schema.names
+                ]
                 if not columns_to_check:
                     return batch
             else:
                 columns_to_check = list(batch.schema.names)
 
             if op.thresh is not None:
-                mask = _create_thresh_mask(batch, columns_to_check, op.thresh, op.ignore_values)
+                mask = _create_thresh_mask(
+                    batch, columns_to_check, op.thresh, op.ignore_values
+                )
             else:
-                mask = _create_how_mask(batch, columns_to_check, op.how, op.ignore_values)
+                mask = _create_how_mask(
+                    batch, columns_to_check, op.how, op.ignore_values
+                )
 
             return _filter_with_schema_preservation(batch, mask)
         except Exception as e:
@@ -63,8 +78,27 @@ def plan_dropna_op(
 
 
 def _is_not_missing(column: pa.Array, ignore_values: List[Any]) -> pa.Array:
-    """Check if values in a column are not missing (not null, not NaN, and not in ignore_values)."""
+    """Check if values in a column are not missing.
+
+    A value is considered missing if it is:
+    - null (None)
+    - NaN (for floating point types)
+    - in the ignore_values list
+
+    Uses PyArrow compute functions for efficient null/NaN checking.
+    See https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.is_valid
+
+    Args:
+        column: PyArrow array to check.
+        ignore_values: Additional values to treat as missing.
+
+    Returns:
+        Boolean PyArrow array indicating non-missing values.
+    """
+    # Check for nulls using PyArrow is_valid
+    # See https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.is_valid
     is_not_null = pc.is_valid(column)
+    # For floating point types, also check for NaN
     if pa.types.is_floating(column.type) or pa.types.is_decimal(column.type):
         is_not_null = pc.and_(is_not_null, pc.invert(pc.is_nan(column)))
 
@@ -77,7 +111,21 @@ def _is_not_missing(column: pa.Array, ignore_values: List[Any]) -> pa.Array:
 
 
 def _create_not_ignored_mask(column: pa.Array, ignore_values: List[Any]) -> pa.Array:
-    """Create mask for values not in ignore_values list."""
+    """Create mask for values not in ignore_values list.
+
+    Uses PyArrow compute equal for efficient comparison.
+    See https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.equal
+
+    Args:
+        column: PyArrow array to check.
+        ignore_values: Values to treat as missing.
+
+    Returns:
+        Boolean PyArrow array indicating values not in ignore_values.
+
+    Raises:
+        ValueError: If ignore_value cannot be compared with column type.
+    """
     if not ignore_values:
         return pa.array([True] * len(column))
 
@@ -95,7 +143,9 @@ def _create_not_ignored_mask(column: pa.Array, ignore_values: List[Any]) -> pa.A
 
         equals_ignore = pc.equal(column, ignore_scalar)
         is_ignored_mask = (
-            equals_ignore if is_ignored_mask is None else pc.or_(is_ignored_mask, equals_ignore)
+            equals_ignore
+            if is_ignored_mask is None
+            else pc.or_(is_ignored_mask, equals_ignore)
         )
 
     if is_ignored_mask is None:
@@ -106,13 +156,27 @@ def _create_not_ignored_mask(column: pa.Array, ignore_values: List[Any]) -> pa.A
 def _create_thresh_mask(
     batch: pa.Table, columns_to_check: List[str], thresh: int, ignore_values: List[Any]
 ) -> pa.Array:
-    """Create mask for threshold-based row dropping."""
+    """Create mask for threshold-based row dropping.
+
+    Keeps rows with at least 'thresh' non-missing values across checked columns.
+
+    Args:
+        batch: PyArrow table to create mask for.
+        columns_to_check: Column names to check for missing values.
+        thresh: Minimum number of non-missing values required.
+        ignore_values: Additional values to treat as missing.
+
+    Returns:
+        Boolean PyArrow array indicating rows to keep.
+    """
     if not columns_to_check:
         return pa.array([True] * batch.num_rows)
 
     non_missing_counts: Optional[pa.Array] = None
     for col_name in columns_to_check:
-        is_not_missing_int = pc.cast(_is_not_missing(batch.column(col_name), ignore_values), pa.int32())
+        is_not_missing_int = pc.cast(
+            _is_not_missing(batch.column(col_name), ignore_values), pa.int32()
+        )
         if non_missing_counts is None:
             non_missing_counts = is_not_missing_int
         else:
@@ -123,7 +187,21 @@ def _create_thresh_mask(
 def _create_how_mask(
     batch: pa.Table, columns_to_check: List[str], how: str, ignore_values: List[Any]
 ) -> pa.Array:
-    """Create mask for how-based row dropping ('any' or 'all')."""
+    """Create mask for how-based row dropping ('any' or 'all').
+
+    Args:
+        batch: PyArrow table to create mask for.
+        columns_to_check: Column names to check for missing values.
+        how: Drop strategy - 'any' drops rows with any missing value,
+            'all' drops rows where all values are missing.
+        ignore_values: Additional values to treat as missing.
+
+    Returns:
+        Boolean PyArrow array indicating rows to keep.
+
+    Raises:
+        ValueError: If 'how' is not 'any' or 'all'.
+    """
     if not columns_to_check:
         return pa.array([True] * batch.num_rows)
 
@@ -142,7 +220,18 @@ def _create_how_mask(
 
 
 def _filter_with_schema_preservation(batch: pa.Table, mask: pa.Array) -> pa.Table:
-    """Filter table while preserving original schema."""
+    """Filter table while preserving original schema.
+
+    Uses PyArrow compute filter for efficient row filtering.
+    See https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.filter
+
+    Args:
+        batch: PyArrow table to filter.
+        mask: Boolean array indicating rows to keep.
+
+    Returns:
+        Filtered PyArrow table with original schema preserved.
+    """
     filtered_batch = pc.filter(batch, mask)
     if filtered_batch.schema != batch.schema:
         filtered_batch = filtered_batch.cast(batch.schema)
