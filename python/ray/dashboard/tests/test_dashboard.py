@@ -463,6 +463,7 @@ def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
             if time.time() > start_time + timeout_seconds:
                 raise Exception("Timed out while testing.")
 
+
 def test_deny_fetch_requests(enable_test_module, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
@@ -492,12 +493,8 @@ def test_deny_fetch_requests(enable_test_module, ray_start_with_dashboard):
                 webui_url + "/api/jobs/",
                 json={"entrypoint": "ls"},
                 headers={
-                    "User-Agent": (
-                        "Spurious User Agent"
-                    ),
-                    "Sec-Fetch-Site": (
-                        "cross-site"
-                    )
+                    "User-Agent": ("Spurious User Agent"),
+                    "Sec-Fetch-Site": ("cross-site"),
                 },
             )
             with pytest.raises(HTTPError):
