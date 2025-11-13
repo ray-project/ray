@@ -64,14 +64,18 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     }
 
     auto &node_versions = GetNodeComponentVersions(message->node_id());
-    if (node_versions[message->message_type()] < message->version()) {
-      node_versions[message->message_type()] = message->version();
-      sending_buffer_[std::make_pair(message->node_id(), message->message_type())] =
-          std::move(message);
-      StartSend();
-      return true;
+    if (node_versions[message->message_type()] >= message->version()) {
+      RAY_LOG(INFO) << "Dropping sync message with stale version. latest version: "
+                    << node_versions[message->message_type()]
+                    << ", dropped message version: " << message->version();
+      return false;
     }
-    return false;
+
+    node_versions[message->message_type()] = message->version();
+    sending_buffer_[std::make_pair(message->node_id(), message->message_type())] =
+        std::move(message);
+    StartSend();
+    return true;
   }
 
   virtual ~RaySyncerBidiReactorBase() = default;
@@ -161,7 +165,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
           if (ok) {
             SendNext();
           } else {
-            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to send the message to: "
+            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to send a message to node: "
                                          << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
           }
@@ -171,16 +175,15 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
 
   void OnReadDone(bool ok) override {
     io_context_.dispatch(
-        [this,
-         ok,
-         disconnected = IsDisconnected(),
-         msg = std::move(receiving_message_)]() mutable {
-          if (*disconnected) {
-            return;
-          }
-
+        [this, ok, msg = std::move(receiving_message_)]() mutable {
+          // NOTE: According to the grpc callback streaming api best practices 3.)
+          // https://grpc.io/docs/languages/cpp/best_practices/#callback-streaming-api
+          // The client must read all incoming data i.e. until OnReadDone(ok = false)
+          // happens for OnDone to be called. Hence even if disconnected_ is true, we
+          // still need to allow OnReadDone to repeatedly execute until StartReadData has
+          // consumed all the data for OnDone to be called.
           if (!ok) {
-            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to read the message from: "
+            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to read a message from node: "
                                          << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
             return;

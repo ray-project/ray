@@ -50,11 +50,8 @@
 #include "ray/core_worker/task_execution/task_receiver.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
-#include "ray/pubsub/publisher.h"
-#include "ray/pubsub/subscriber.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
-#include "ray/util/process.h"
 #include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
@@ -1392,7 +1389,8 @@ class CoreWorker {
       int64_t generator_backpressure_num_objects = -1,
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
-      const std::unordered_map<std::string, std::string> &label_selector = {},
+      const LabelSelector &label_selector = {},
+      const std::vector<FallbackOption> &fallback_strategy = {},
       const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE);
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
