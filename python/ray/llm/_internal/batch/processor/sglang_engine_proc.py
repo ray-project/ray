@@ -132,9 +132,15 @@ def build_sglang_engine_processor(
                     batch_size=chat_template_stage_cfg.batch_size
                     if chat_template_stage_cfg.batch_size is not None
                     else config.batch_size,
-                    runtime_env=chat_template_stage_cfg.runtime_env
-                    if chat_template_stage_cfg.runtime_env is not None
-                    else config.runtime_env,
+                    **{
+                        k: v
+                        for k, v in {
+                            "runtime_env": chat_template_stage_cfg.runtime_env,
+                            "num_cpus": chat_template_stage_cfg.num_cpus,
+                            "memory": chat_template_stage_cfg.memory,
+                        }.items()
+                        if v is not None
+                    },
                 ),
             )
         )
@@ -168,9 +174,15 @@ def build_sglang_engine_processor(
                     batch_size=tokenize_stage_cfg.batch_size
                     if tokenize_stage_cfg.batch_size is not None
                     else config.batch_size,
-                    runtime_env=tokenize_stage_cfg.runtime_env
-                    if tokenize_stage_cfg.runtime_env is not None
-                    else config.runtime_env,
+                    **{
+                        k: v
+                        for k, v in {
+                            "runtime_env": tokenize_stage_cfg.runtime_env,
+                            "num_cpus": tokenize_stage_cfg.num_cpus,
+                            "memory": tokenize_stage_cfg.memory,
+                        }.items()
+                        if v is not None
+                    },
                 ),
             )
         )
@@ -236,9 +248,15 @@ def build_sglang_engine_processor(
                     batch_size=detokenize_stage_cfg.batch_size
                     if detokenize_stage_cfg.batch_size is not None
                     else config.batch_size,
-                    runtime_env=detokenize_stage_cfg.runtime_env
-                    if detokenize_stage_cfg.runtime_env is not None
-                    else config.runtime_env,
+                    **{
+                        k: v
+                        for k, v in {
+                            "runtime_env": detokenize_stage_cfg.runtime_env,
+                            "num_cpus": detokenize_stage_cfg.num_cpus,
+                            "memory": detokenize_stage_cfg.memory,
+                        }.items()
+                        if v is not None
+                    },
                 ),
             )
         )

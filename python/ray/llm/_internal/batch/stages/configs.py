@@ -17,6 +17,14 @@ class _StageConfigBase(BaseModelExtended):
     runtime_env: Optional[Dict[str, Any]] = Field(
         default=None, description="Optional runtime env for this stage."
     )
+    num_cpus: Optional[float] = Field(
+        default=None,
+        description="Number of CPUs to reserve for each map worker in this stage.",
+    )
+    memory: Optional[float] = Field(
+        default=None,
+        description="Heap memory in bytes to reserve for each map worker in this stage.",
+    )
 
 
 class ChatTemplateStageConfig(_StageConfigBase):
