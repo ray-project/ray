@@ -22,6 +22,9 @@ def SerializablePreprocessor(version: int, identifier: str):
             in serialized data. Using an explicit identifier allows classes to be
             renamed without breaking compatibility with existing serialized data.
 
+    Returns:
+        A decorator function that registers the class and returns it unchanged.
+
     Raises:
         TypeError: If the decorated class does not inherit from SerializablePreprocessor
 

@@ -607,9 +607,6 @@ class SerializablePreprocessorBase(Preprocessor, abc.ABC):
         - **CloudPickle** (default):
         - **Pickle** (legacy): Backward compatibility for existing serialized data
 
-        Args:
-            output_format: The serialization format to use
-
         Returns:
             Serialized preprocessor data (bytes for CloudPickle, str for legacy Pickle)
 

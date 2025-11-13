@@ -144,7 +144,9 @@ class SerializationHandlerFactory:
         """Get the appropriate serialization handler for a format or serialized data.
 
         Args:
-
+            format_identifier: The format to use for serialization. If None, will detect from data.
+            data: Serialized data to detect format from (used when format_identifier is None).
+            **kwargs: Additional keyword arguments (currently unused).
 
         Returns:
             SerializationHandler instance for the format
