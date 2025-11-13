@@ -11,7 +11,8 @@ ray_cc_library(
         "gcs_client.h",
     ],
     deps = [
-        ":accessor_interfaces",
+        ":accessor_factory_interface",
+        ":actor_accessor_interface",
         ":gcs_client_context",
         ":gcs_client_defaults",
         ":rpc_client",
@@ -42,9 +43,17 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "accessor_interfaces",
+    name = "accessor_factory_interface",
     hdrs = [
         "accessor_factory_interface.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [],
+)
+
+ray_cc_library(
+    name = "actor_accessor_interface",
+    hdrs = [
         "accessors/actor_info_accessor_interface.h",
     ],
     visibility = ["//visibility:public"],
@@ -59,7 +68,7 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "accessor_implementations",
+    name = "actor_accessor_implementation",
     srcs = [
         "accessors/actor_info_accessor.cc",
     ],
@@ -68,7 +77,7 @@ ray_cc_library(
     ],
     visibility = [":__pkg__"],
     deps = [
-        ":accessor_interfaces",
+        ":actor_accessor_interface",
         ":gcs_client_context",
         ":rpc_client",
         "//src/ray/common:asio",
@@ -99,8 +108,9 @@ ray_cc_library(
     ],
     visibility = [":__pkg__"],
     deps = [
-        ":accessor_implementations",
-        ":accessor_interfaces",
+        ":accessor_factory_interface",
+        ":actor_accessor_implementation",
+        ":actor_accessor_interface",
         ":gcs_client_context",
     ],
 )
