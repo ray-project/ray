@@ -180,13 +180,22 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             else:
                 return None
 
-        # Case 2: Predicate references both sides - check if only join keys
+        # Case 2: Predicate references both sides - check if can be evaluated on ONE side
         if references_left and references_right:
-            all_join_keys = set(self._left_key_columns) | set(self._right_key_columns)
-            if predicate_columns.issubset(all_join_keys):
-                # Safe to push to preserved/output side based on join type
-                # For inner joins, push to left (arbitrary choice, either works)
-                return self._decide_push_side(can_push_left, can_push_right)
+            # Check if ALL predicate columns exist on the left side
+            left_join_keys = set(self._left_key_columns)
+            if predicate_columns.issubset(left_join_keys) and can_push_left:
+                # All columns exist on left (same-named join keys on both sides)
+                return JoinSide.LEFT
+
+            # Check if ALL predicate columns exist on the right side
+            right_join_keys = set(self._right_key_columns)
+            if predicate_columns.issubset(right_join_keys) and can_push_right:
+                # All columns exist on right (same-named join keys on both sides)
+                return JoinSide.RIGHT
+
+            # Columns span both sides with different names - cannot push
+            return None
 
         # Cannot push down
         return None

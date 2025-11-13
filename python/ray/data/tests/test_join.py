@@ -786,6 +786,75 @@ def test_join_with_predicate_pushdown(
             )
 
 
+def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_2_cpus):
+    """Test PR bug: comparing differently-named join keys from both sides.
+
+    When join keys have different names on left and right
+    sides (e.g., left.id and right.user_id), a predicate like col("id") > col("user_id")
+    references both sides but cannot be pushed to either side alone since each side
+    only has one of these columns.
+
+    Setup:
+    - Left has columns: {id, user_id, left_val} - join on "id"
+    - Right has columns: {id, user_id, right_val} - join on "user_id"
+    - Join: left.id = right.user_id
+    - Filter: col("id") > col("user_id") (with suffixes to avoid collision)
+    """
+    from ray.data._internal.logical.operators.join_operator import Join
+    from ray.data._internal.logical.operators.map_operator import Filter
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+    from ray.data._internal.util import MiB
+    from ray.data.expressions import col
+    from ray.data.tests.test_util import plan_operator_comes_before
+
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
+    # Left: has both id and user_id as columns, joins on "id"
+    left_data = [{"id": i, "user_id": i + 5, "left_val": i * 10} for i in range(10)]
+    # Right: has both id and user_id as columns, joins on "user_id"
+    right_data = [{"id": i + 20, "user_id": i, "right_val": i * 5} for i in range(10)]
+
+    left_ds = ray.data.from_items(left_data)
+    right_ds = ray.data.from_items(right_data)
+
+    # Join on left.id = right.user_id (different column names used as keys)
+    # Need suffixes to avoid column name collision
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("id",),
+        right_on=("user_id",),
+        left_suffix="_l",
+        right_suffix="_r",
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+
+    # Filter comparing non-join-key columns from both sides
+    # left_val exists only on left, right_val exists only on right
+    # Neither side can evaluate this alone
+    filtered_ds = joined.filter(expr=col("left_val") > col("right_val"))
+
+    # Verify correctness
+    result = filtered_ds.take_all()
+    # left.id = right.user_id means they match (both 0-9)
+    # left_val = id * 10, right_val = user_id * 5 = id * 5
+    # So left_val > right_val means id*10 > id*5, true for all id > 0
+    assert len(result) == 9, f"Should have 9 rows (id 1-9), got {len(result)}"
+    assert all(row["left_val"] > row["right_val"] for row in result)
+
+    # Check plan: filter should NOT be pushed down (should stay after join)
+    logical_plan = filtered_ds._plan._logical_plan
+    optimized_plan = LogicalOptimizer().optimize(logical_plan)
+
+    # Filter should come AFTER Join (not pushed down)
+    # Before join: left has left_val but not right_val, right has right_val but not left_val
+    assert not plan_operator_comes_before(optimized_plan, Filter, Join), (
+        "Filter comparing columns from both sides should NOT be pushed before Join "
+        "since neither side has both columns"
+    )
+
+
 if __name__ == "__main__":
     import sys
 
