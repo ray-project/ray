@@ -50,6 +50,7 @@ from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import Timer
+from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import (
     DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
@@ -1206,6 +1207,90 @@ def test_block_ref_bundler_uniform(
         for i in list(ray.get(block)["id"])
     ]
     assert flat_out == list(range(n))
+
+
+@pytest.mark.parametrize(
+    "target,in_bundles,expected_row_counts",
+    [
+        (
+            # Target of 2 rows per bundle
+            2,
+            [[[1]], [[2]], [[3]], [[4]]],
+            [2, 2],  # Expected output: 2 bundles of 2 rows each
+        ),
+        (
+            # Target of 3 rows with uneven inputs
+            3,
+            [[[1, 2]], [[3, 4, 5]], [[6]]],
+            [3, 3],  # Expected: [1,2,3] and [4,5,6]
+        ),
+        (
+            # Target of 4 rows with leftover
+            4,
+            [[[1, 2]], [[3, 4]], [[5, 6, 7]]],
+            [4, 3],  # Expected: [1,2,3,4] and [5,6,7]
+        ),
+        (
+            # Larger target with various input sizes
+            5,
+            [[[1, 2, 3]], [[4, 5, 6, 7]], [[8, 9]], [[10, 11, 12]]],
+            [5, 5, 2],  # Expected: [1-5], [6-10], [11-12]
+        ),
+        (
+            # Test with empty blocks
+            3,
+            [[[1]], [[]], [[2, 3]], [[]], [[4, 5]]],
+            [3, 2],  # Expected: [1,2,3] and [4,5]
+        ),
+    ],
+)
+def test_streaming_repartition_ref_bundler_basic(
+    target, in_bundles, expected_row_counts
+):
+    """Test StreamingRepartitionRefBundler with various input patterns."""
+
+    bundler = StreamingRepartitionRefBundler(target)
+    bundles = _make_ref_bundles(in_bundles)
+    out_bundles = []
+
+    for bundle in bundles:
+        bundler.add_bundle(bundle)
+        while bundler.has_bundle():
+            _, out_bundle = bundler.get_next_bundle()
+            out_bundles.append(out_bundle)
+
+    bundler.done_adding_bundles()
+
+    while bundler.has_bundle():
+        _, out_bundle = bundler.get_next_bundle()
+        out_bundles.append(out_bundle)
+
+    # Verify number of output bundles
+    assert len(out_bundles) == len(
+        expected_row_counts
+    ), f"Expected {len(expected_row_counts)} bundles, got {len(out_bundles)}"
+
+    # Verify row counts for each bundle
+    for i, (out_bundle, expected_count) in enumerate(
+        zip(out_bundles, expected_row_counts)
+    ):
+        assert (
+            out_bundle.num_rows() == expected_count
+        ), f"Bundle {i}: expected {expected_count} rows, got {out_bundle.num_rows()}"
+
+    # Verify all bundles have been ingested
+    assert bundler.num_blocks() == 0
+
+    # Verify all output bundles except the last are exact multiples of target
+    for i, out_bundle in enumerate(out_bundles[:-1]):
+        assert (
+            out_bundle.num_rows() % target == 0
+        ), f"Bundle {i} has {out_bundle.num_rows()} rows, not a multiple of {target}"
+
+    # Verify data integrity - all input data is preserved in order (bundler slicing will be in order)
+    total_input_rows = sum(sum(len(block) for block in bundle) for bundle in in_bundles)
+    total_output_rows = sum(bundle.num_rows() for bundle in out_bundles)
+    assert total_output_rows == total_input_rows
 
 
 def test_operator_metrics():

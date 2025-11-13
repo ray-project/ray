@@ -276,6 +276,13 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
             per_block_limit: Maximum number of rows to process per block, for early termination.
         """
+        if (ref_bundler is not None and min_rows_per_bundle is not None) or (
+            min_rows_per_bundle is not None and ref_bundler is not None
+        ):
+            raise ValueError(
+                "min_rows_per_bundle and ref_bundler cannot be used together and vice versa"
+            )
+
         if compute_strategy is None:
             compute_strategy = TaskPoolStrategy()
 
