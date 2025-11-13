@@ -1,11 +1,12 @@
-from typing import Any, Dict, List, Union
 import time
+from typing import Any, Dict, List, Union
 
-from ray.util.annotations import DeveloperAPI
-from ray.rllib.utils.framework import try_import_torch, try_import_tf
-from ray.rllib.utils.metrics.stats.base import StatsBase
 import numpy as np
+
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.metrics.stats.base import StatsBase
 from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
+from ray.util.annotations import DeveloperAPI
 
 torch, _ = try_import_torch()
 _, tf, _ = try_import_tf()

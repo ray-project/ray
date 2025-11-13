@@ -4,13 +4,13 @@ import numpy as np
 import pytest
 
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.metrics.stats import (
-    MeanStats,
     EmaStats,
     LifetimeSumStats,
+    MeanStats,
     SumStats,
 )
+from ray.rllib.utils.test_utils import check
 
 
 @pytest.fixture

@@ -1,25 +1,26 @@
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union, Type
-import tree  # pip install dm_tree
 import time
-import numpy as np
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
-from ray.rllib.utils import force_tuple, deep_update
+import numpy as np
+import tree  # pip install dm_tree
+
+from ray._common.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils import deep_update, force_tuple
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics.stats import (
+    EmaStats,
+    ItemSeriesStats,
+    ItemStats,
+    LifetimeSumStats,
+    MaxStats,
+    MeanStats,
+    MinStats,
+    PercentilesStats,
     StatsBase,
     SumStats,
-    MeanStats,
-    EmaStats,
-    MinStats,
-    MaxStats,
-    LifetimeSumStats,
-    PercentilesStats,
-    ItemStats,
-    ItemSeriesStats,
 )
-from ray._common.deprecation import Deprecated, deprecation_warning
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()

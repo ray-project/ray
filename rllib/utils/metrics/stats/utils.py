@@ -1,7 +1,7 @@
-from typing import Any, List, Union
 from collections import deque
+from typing import Any, List, Union
 
-from ray.rllib.utils.framework import try_import_torch, try_import_tf
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.util.annotations import DeveloperAPI
 
 torch, _ = try_import_torch()

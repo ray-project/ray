@@ -1,7 +1,8 @@
-import pytest
-import time
-import numpy as np
 import re
+import time
+
+import numpy as np
+import pytest
 
 from ray.rllib.utils.metrics.legacy_stats import Stats, merge_stats
 from ray.rllib.utils.test_utils import check

@@ -1,18 +1,17 @@
-from collections import deque
-from typing import Any, Dict, List, Union, Optional, Tuple
-
-from itertools import chain
 from abc import ABCMeta
+from collections import deque
+from itertools import chain
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
-from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
-from ray.rllib.utils.framework import try_import_torch, try_import_tf
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics.stats.base import StatsBase
 from ray.rllib.utils.metrics.stats.utils import batch_values_to_cpu
+from ray.util.annotations import DeveloperAPI
 
 torch, _ = try_import_torch()
 _, tf, _ = try_import_tf()

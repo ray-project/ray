@@ -8,11 +8,11 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils import force_list
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.util.annotations import DeveloperAPI
-from ray._common.deprecation import Deprecated
 
 torch, _ = try_import_torch()
 

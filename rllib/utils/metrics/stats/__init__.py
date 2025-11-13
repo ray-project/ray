@@ -1,14 +1,14 @@
-from .sum import SumStats
-from .mean import MeanStats
-from .lifetime_sum import LifetimeSumStats
-from .ema import EmaStats
-from .min import MinStats
-from .max import MaxStats
-from .percentiles import PercentilesStats
-from .item import ItemStats
-from .series import SeriesStats
 from .base import StatsBase
+from .ema import EmaStats
+from .item import ItemStats
 from .item_series import ItemSeriesStats
+from .lifetime_sum import LifetimeSumStats
+from .max import MaxStats
+from .mean import MeanStats
+from .min import MinStats
+from .percentiles import PercentilesStats
+from .series import SeriesStats
+from .sum import SumStats
 
 __all__ = [
     "StatsBase",

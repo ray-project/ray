@@ -1,9 +1,10 @@
 from typing import Any, Union
+
 import numpy as np
 
-from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.stats.series import SeriesStats
+from ray.util.annotations import DeveloperAPI
 
 torch, _ = try_import_torch()
 

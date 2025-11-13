@@ -1,13 +1,13 @@
+import logging
 from typing import Any, Dict, List, Union
 
-import logging
 import numpy as np
 
-from ray.util.annotations import DeveloperAPI
-from ray.rllib.utils.framework import try_import_torch, try_import_tf
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics.stats.base import StatsBase
 from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
 from ray.util import log_once
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 

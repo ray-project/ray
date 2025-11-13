@@ -1,14 +1,13 @@
-from collections import deque
 import threading
 import time
-from typing import Any, Dict, List, Optional, Union
 from abc import ABCMeta, abstractmethod
-from ray.util.annotations import DeveloperAPI
-
+from collections import deque
+from typing import Any, Dict, List, Optional, Union
 
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
