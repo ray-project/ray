@@ -8,7 +8,7 @@ import posixpath
 import sys
 import time
 from math import floor
-from typing import List
+from typing import List, Set
 
 from packaging.version import Version
 
@@ -201,12 +201,6 @@ class HttpServerDashboardHead:
 
         This endpoint accepts a token via the Authorization header, validates it,
         and if valid, sets an HttpOnly cookie for subsequent requests from the web dashboard.
-
-        Returns:
-            200: Token is valid, cookie set successfully
-            401: Token authentication is not enabled
-            403: Token is invalid
-            500: Internal server error
         """
         try:
             # Check if token authentication is enabled
@@ -287,7 +281,7 @@ class HttpServerDashboardHead:
                 raise aiohttp.web.HTTPForbidden()
         return await handler(request)
 
-    def get_browsers_no_post_put_middleware(self, whitelisted_paths):
+    def get_browsers_no_post_put_middleware(self, whitelisted_paths: Set[str]):
         """Create middleware that blocks POST/PUT requests from browsers.
 
         Args:
