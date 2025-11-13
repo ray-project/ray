@@ -49,6 +49,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data._internal.util import GiB, MiB
@@ -1335,7 +1336,12 @@ class AggregatorPool:
 
             aggregator = HashShuffleAggregator.options(
                 **self._aggregator_ray_remote_args
-            ).remote(aggregator_id, target_partition_ids, self._aggregation_factory_ref)
+            ).remote(
+                aggregator_id,
+                target_partition_ids,
+                self._aggregation_factory_ref,
+                self._data_context,
+            )
 
             self._aggregators.append(aggregator)
 
@@ -1547,10 +1553,16 @@ class HashShuffleAggregator:
         aggregator_id: int,
         target_partition_ids: List[int],
         agg_factory: StatefulShuffleAggregationFactory,
+        data_context: DataContext,
     ):
         self._lock = threading.Lock()
         self._agg: StatefulShuffleAggregation = agg_factory(
             aggregator_id, target_partition_ids
+        )
+        self._output_buffer = BlockOutputBuffer(
+            output_block_size_option=OutputBlockSizeOption(
+                target_max_block_size=data_context.target_max_block_size
+            )
         )
 
     def submit(self, input_seq_id: int, partition_id: int, partition_shard: Block):
@@ -1560,17 +1572,18 @@ class HashShuffleAggregator:
     def finalize(
         self, partition_id: int
     ) -> AsyncGenerator[Union[Block, "BlockMetadataWithSchema"], None]:
+        exec_stats_builder = BlockExecStats.builder()
         with self._lock:
             # Finalize given partition id
-            exec_stats_builder = BlockExecStats.builder()
             block = self._agg.finalize(partition_id)
             exec_stats = exec_stats_builder.build()
             # Clear any remaining state (to release resources)
             self._agg.clear(partition_id)
-
-        # TODO break down blocks to target size
-        yield block
-        yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
+            self._output_buffer.add_block(block)
+            while self._output_buffer.has_next():
+                block = self._output_buffer.next()
+                yield block
+                yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
 
 
 def _get_total_cluster_resources() -> ExecutionResources:
