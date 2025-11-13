@@ -73,8 +73,11 @@ def resolve_stage_config(
     elif isinstance(stage_cfg_value, dict):
         resolved = stage_config_cls(**stage_cfg_value)
     else:
-        # Fallback: create enabled=True config
-        resolved = stage_config_cls(enabled=True)
+        raise TypeError(
+            f"Unsupported type for stage config: {type(stage_cfg_value).__name__}. "
+            f"Expected bool, dict, or {stage_config_cls.__name__} instance. "
+            f"Got: {stage_cfg_value}"
+        )
 
     # Merge processor defaults for fields not explicitly set
     if resolved.batch_size is None and "batch_size" in processor_defaults:
