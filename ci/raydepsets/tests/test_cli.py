@@ -319,6 +319,36 @@ class TestCli(unittest.TestCase):
             output_text = output_file.read_text()
             assert "--python-version 3.10" in output_text
 
+    def test_include_setuptools(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=[],
+                requirements=["requirements_test.txt"],
+                name="general_depset",
+                output="requirements_compiled_general.txt",
+                include_setuptools=True,
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_general.txt"
+            output_text = output_file.read_text()
+            assert "--unsafe-package setuptools" not in output_text
+
+    def test_ignore_setuptools(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=[],
+                requirements=["requirements_test.txt"],
+                name="general_depset",
+                output="requirements_compiled_general.txt",
+                include_setuptools=False,
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_general.txt"
+            output_text = output_file.read_text()
+            assert "--unsafe-package setuptools" in output_text
+
     def test_override_uv_flag_single_flag(self):
         expected_flags = DEFAULT_UV_FLAGS.copy()
         expected_flags.remove("--index-strategy")
