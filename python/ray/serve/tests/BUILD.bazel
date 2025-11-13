@@ -119,6 +119,7 @@ py_test_module_list(
         "test_http_headers.py",
         "test_http_routes.py",
         "test_https_proxy.py",
+        "test_list_outbound_deployments.py",
         "test_max_replicas_per_node.py",
         "test_multiplex.py",
         "test_proxy.py",
@@ -146,6 +147,9 @@ py_test_module_list(
 # Medium tests, don't run on windows.
 py_test_module_list(
     size = "medium",
+    env = {
+        "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
+    },
     files = [
         "test_fastapi.py",
         "test_gcs_failure.py",

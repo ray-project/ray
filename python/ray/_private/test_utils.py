@@ -1850,14 +1850,6 @@ def job_hook(**kwargs):
     sys.exit(0)
 
 
-def find_free_port() -> int:
-    sock = socket.socket()
-    sock.bind(("", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return port
-
-
 def wandb_setup_api_key_hook():
     """
     Example external hook to set up W&B API key in
@@ -1870,12 +1862,13 @@ def wandb_setup_api_key_hook():
 def get_node_stats(raylet, num_retry=5, timeout=2):
     import grpc
 
+    from ray._private.grpc_utils import init_grpc_channel
     from ray.core.generated import node_manager_pb2_grpc
 
     raylet_address = build_address(
         raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
     )
-    channel = ray._private.utils.init_grpc_channel(raylet_address)
+    channel = init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     for _ in range(num_retry):
         try:
@@ -1891,12 +1884,13 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
 
 # Gets resource usage assuming gcs is local.
 def get_resource_usage(gcs_address, timeout=10):
+    from ray._private.grpc_utils import init_grpc_channel
     from ray.core.generated import gcs_service_pb2_grpc
 
     if not gcs_address:
         gcs_address = ray.worker._global_node.gcs_address
 
-    gcs_channel = ray._private.utils.init_grpc_channel(
+    gcs_channel = init_grpc_channel(
         gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=False
     )
 

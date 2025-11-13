@@ -328,6 +328,191 @@ class TestDeploymentRankManager:
             )
 
 
+class TestDeploymentRankManagerErrorHandling:
+    """Test cases for DeploymentRankManager error handling with fail_on_rank_error flag.
+
+    This test class can be easily removed in the future when the error handling
+    feature is no longer needed.
+    """
+
+    def test_assign_rank_error_with_fail_on_rank_error_true(self):
+        """Test that assign_rank raises exception when fail_on_rank_error=True."""
+        rank_manager = DeploymentRankManager(fail_on_rank_error=True)
+        rank_manager.assign_rank("replica_1")
+
+        # Should raise RuntimeError for duplicate assignment
+        with pytest.raises(RuntimeError, match="already assigned"):
+            rank_manager.assign_rank("replica_1")
+
+    def test_assign_rank_error_with_fail_on_rank_error_false(self):
+        """Test that assign_rank returns safe default when fail_on_rank_error=False."""
+        rank_manager = DeploymentRankManager(fail_on_rank_error=False)
+        rank_manager.assign_rank("replica_1")
+
+        # Should return safe default (ReplicaRank(rank=0)) instead of raising
+        result = rank_manager.assign_rank("replica_1")
+        assert result is not None
+        assert isinstance(result, ReplicaRank)
+        assert result.rank == 0
+
+    def test_release_rank_error_with_fail_on_rank_error_true(self):
+        """Test that release_rank raises exception when fail_on_rank_error=True."""
+        rank_manager = DeploymentRankManager(fail_on_rank_error=True)
+
+        # Should raise RuntimeError for non-existent replica
+        with pytest.raises(RuntimeError, match="not assigned"):
+            rank_manager.release_rank("nonexistent")
+
+    def test_release_rank_error_with_fail_on_rank_error_false(self):
+        """Test that release_rank returns safe default when fail_on_rank_error=False."""
+        rank_manager = DeploymentRankManager(fail_on_rank_error=False)
+
+        # Should return None instead of raising
+        result = rank_manager.release_rank("nonexistent")
+        assert result is None
+
+    def test_recover_rank_error_with_fail_on_rank_error_true(self):
+        """Test that recover_rank raises exception when fail_on_rank_error=True."""
+        rank_manager = DeploymentRankManager(fail_on_rank_error=True)
+        rank_manager.assign_rank("replica_1")
+
+        # Should raise RuntimeError for duplicate recovery
+        with pytest.raises(RuntimeError, match="already assigned"):
+            rank_manager.recover_rank(
+                "replica_1", ReplicaRank(rank=5, node_rank=-1, local_rank=-1)
+            )
+
+    def test_recover_rank_error_with_fail_on_rank_error_false(self):
+        """Test that recover_rank returns safe default when fail_on_rank_error=False."""
+        rank_manager = DeploymentRankManager(fail_on_rank_error=False)
+        rank_manager.assign_rank("replica_1")
+
+        # Should return None instead of raising
+        result = rank_manager.recover_rank(
+            "replica_1", ReplicaRank(rank=5, node_rank=-1, local_rank=-1)
+        )
+        assert result is None
+
+    def test_get_replica_rank_error_with_fail_on_rank_error_true(self):
+        """Test that get_replica_rank raises exception when fail_on_rank_error=True."""
+        rank_manager = DeploymentRankManager(fail_on_rank_error=True)
+
+        # Should raise RuntimeError for non-existent replica
+        with pytest.raises(RuntimeError, match="not assigned"):
+            rank_manager.get_replica_rank("nonexistent")
+
+    def test_get_replica_rank_error_with_fail_on_rank_error_false(self):
+        """Test that get_replica_rank returns safe default when fail_on_rank_error=False."""
+        rank_manager = DeploymentRankManager(fail_on_rank_error=False)
+
+        # Should return safe default (ReplicaRank(rank=0)) instead of raising
+        result = rank_manager.get_replica_rank("nonexistent")
+        assert result is not None
+        assert isinstance(result, ReplicaRank)
+        assert result.rank == 0
+
+    def test_check_rank_consistency_error_with_fail_on_rank_error_true(self):
+        """Test that check_rank_consistency raises exception when fail_on_rank_error=True."""
+        rank_manager = DeploymentRankManager(fail_on_rank_error=True)
+        replica1 = MockDeploymentReplica("replica_1")
+
+        # Set up invalid state: active replica without rank
+        with pytest.raises(RuntimeError, match="Rank system is in an invalid state"):
+            rank_manager.check_rank_consistency_and_reassign_minimally([replica1])
+
+    def test_check_rank_consistency_error_with_fail_on_rank_error_false(self):
+        """Test that check_rank_consistency returns safe default when fail_on_rank_error=False."""
+        rank_manager = DeploymentRankManager(fail_on_rank_error=False)
+        replica1 = MockDeploymentReplica("replica_1")
+
+        # Should return empty list instead of raising
+        result = rank_manager.check_rank_consistency_and_reassign_minimally([replica1])
+        assert result == []
+
+    def test_check_rank_consistency_with_stale_ranks_error_handling(self):
+        """Test check_rank_consistency with stale ranks and fail_on_rank_error=False."""
+        rank_manager = DeploymentRankManager(fail_on_rank_error=False)
+        replica1 = MockDeploymentReplica("replica_1")
+
+        # Set up stale rank (replica not in active list)
+        rank_manager.assign_rank("replica_1")
+        rank_manager.assign_rank("stale_replica")
+
+        # Should return empty list instead of raising
+        result = rank_manager.check_rank_consistency_and_reassign_minimally([replica1])
+        assert result == []
+
+    def test_check_rank_consistency_with_duplicate_ranks_error_handling(self):
+        """Test check_rank_consistency with duplicate ranks and fail_on_rank_error=False."""
+        rank_manager = DeploymentRankManager(fail_on_rank_error=False)
+        replica1 = MockDeploymentReplica("replica_1")
+        replica2 = MockDeploymentReplica("replica_2")
+
+        # Manually create duplicate ranks
+        rank_manager.recover_rank(
+            "replica_1", ReplicaRank(rank=0, node_rank=-1, local_rank=-1)
+        )
+        rank_manager.recover_rank(
+            "replica_2", ReplicaRank(rank=0, node_rank=-1, local_rank=-1)
+        )
+
+        # Should return empty list instead of raising
+        result = rank_manager.check_rank_consistency_and_reassign_minimally(
+            [replica1, replica2]
+        )
+        assert result == []
+
+    def test_normal_operations_work_with_fail_on_rank_error_false(self):
+        """Test that normal operations still work correctly with fail_on_rank_error=False."""
+        rank_manager = DeploymentRankManager(fail_on_rank_error=False)
+
+        # Test normal assign
+        rank1 = rank_manager.assign_rank("replica_1")
+        assert rank1.rank == 0
+
+        # Test normal get
+        rank = rank_manager.get_replica_rank("replica_1")
+        assert rank.rank == 0
+
+        # Test normal release
+        rank_manager.release_rank("replica_1")
+        assert not rank_manager.has_replica_rank("replica_1")
+
+        # Test normal recover
+        rank_manager.recover_rank(
+            "replica_2", ReplicaRank(rank=5, node_rank=-1, local_rank=-1)
+        )
+        assert rank_manager.get_replica_rank("replica_2").rank == 5
+
+        # Test normal consistency check
+        replica2 = MockDeploymentReplica("replica_2")
+        replica3 = MockDeploymentReplica("replica_3")
+        rank_manager.assign_rank("replica_3")
+
+        result = rank_manager.check_rank_consistency_and_reassign_minimally(
+            [replica2, replica3]
+        )
+        # Should reassign to make ranks contiguous
+        assert len(result) > 0
+
+    def test_multiple_errors_do_not_crash_with_fail_on_rank_error_false(self):
+        """Test that multiple consecutive errors don't crash when fail_on_rank_error=False."""
+        rank_manager = DeploymentRankManager(fail_on_rank_error=False)
+
+        # Multiple errors in a row should all return safe defaults
+        result1 = rank_manager.get_replica_rank("nonexistent1")
+        result2 = rank_manager.get_replica_rank("nonexistent2")
+        result3 = rank_manager.release_rank("nonexistent3")
+
+        assert result1 is not None
+        assert result2 is not None
+        assert result3 is None
+
+        # And normal operations should still work after errors
+        rank = rank_manager.assign_rank("replica_1")
+        assert rank.rank == 0
+
+
 if __name__ == "__main__":
     import sys
 

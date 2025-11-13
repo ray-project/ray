@@ -244,9 +244,17 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
         }
         RAY_LOG(INFO).WithField(NodeID::FromBinary(node_id)) << "Connection is broken.";
         syncer_.node_state_->RemoveNode(node_id);
-      });
+      },
+      /*auth_token=*/auth_token_);
   RAY_LOG(DEBUG).WithField(NodeID::FromBinary(reactor->GetRemoteNodeID()))
       << "Get connection";
+
+  // If the reactor has already called Finish() (e.g., due to authentication failure),
+  // skip registration. The reactor will clean itself up via OnDone().
+  if (reactor->IsFinished()) {
+    return reactor;
+  }
+
   // Disconnect exiting connection if there is any.
   // This can happen when there is transient network error
   // and the client reconnects.
