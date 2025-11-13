@@ -17,7 +17,6 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.compression import unpack_if_needed
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
-from ray.rllib.utils.spaces.space_utils import from_jsonable_if_needed
 from ray.rllib.utils.typing import EpisodeType, ModuleID
 from ray.util.annotations import PublicAPI
 
@@ -354,16 +353,6 @@ class OfflinePreLearner:
         # Set to empty list, if `None`.
         input_compress_columns = input_compress_columns or []
 
-        # If spaces are given, we can use the space-specific
-        # conversion method to convert space samples.
-        if observation_space and action_space:
-            convert = from_jsonable_if_needed
-        # Otherwise we use an identity function.
-        else:
-
-            def convert(sample, space):
-                return sample
-
         episodes = []
         for i, obs in enumerate(batch[schema[Columns.OBS]]):
 
@@ -390,9 +379,9 @@ class OfflinePreLearner:
             else:
                 # Unpack observations, if needed.
                 unpacked_obs = (
-                    convert(unpack_if_needed(obs), observation_space)
+                    unpack_if_needed(obs)
                     if Columns.OBS in input_compress_columns
-                    else convert(obs, observation_space)
+                    else obs
                 )
                 # Set the next observation.
                 if ignore_final_observation:
@@ -401,14 +390,9 @@ class OfflinePreLearner:
                     )
                 else:
                     unpacked_next_obs = (
-                        convert(
-                            unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i]),
-                            observation_space,
-                        )
+                        unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i])
                         if Columns.OBS in input_compress_columns
-                        else convert(
-                            batch[schema[Columns.NEXT_OBS]][i], observation_space
-                        )
+                        else batch[schema[Columns.NEXT_OBS]][i]
                     )
                 # Build a single-agent episode with a single row of the batch.
                 episode = SingleAgentEpisode(
@@ -430,12 +414,9 @@ class OfflinePreLearner:
                     # (when a composite space was used). We unserializer and then
                     # reconvert from JSONable to space sample.
                     actions=[
-                        convert(
-                            unpack_if_needed(batch[schema[Columns.ACTIONS]][i]),
-                            action_space,
-                        )
+                        unpack_if_needed(batch[schema[Columns.ACTIONS]][i])
                         if Columns.ACTIONS in input_compress_columns
-                        else convert(batch[schema[Columns.ACTIONS]][i], action_space)
+                        else batch[schema[Columns.ACTIONS]][i]
                     ],
                     rewards=[batch[schema[Columns.REWARDS]][i]],
                     terminated=batch[
@@ -486,7 +467,6 @@ class OfflinePreLearner:
         input_compress_columns: Optional[List[str]] = None,
     ) -> Dict[str, List[EpisodeType]]:
         """Maps an old stack `SampleBatch` to new stack episodes."""
-
         # Set `input_compress_columns` to an empty `list` if `None`.
         input_compress_columns = input_compress_columns or []
 
