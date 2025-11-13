@@ -39,13 +39,16 @@ def validate_authentication_token(provided_token: str) -> bool:
     Returns:
         bool: True if token is valid, False otherwise
     """
-    cdef optional[CAuthenticationToken] expected_opt = CAuthenticationTokenLoader.instance().GetToken()
+    cdef optional[CAuthenticationToken] expected_opt
+    cdef CAuthenticationToken provided
 
-    if not expected_opt.has_value() and get_authentication_mode() == CAuthenticationMode.TOKEN:
-        return False
+    if get_authentication_mode() == CAuthenticationMode.TOKEN:
+        expected_opt = CAuthenticationTokenLoader.instance().GetToken()
+        if not expected_opt.has_value():
+            return False
 
     # Parse provided token from Bearer format
-    cdef CAuthenticationToken provided = CAuthenticationToken.FromMetadata(provided_token.encode())
+    provided = CAuthenticationToken.FromMetadata(provided_token.encode())
 
     if provided.empty():
         return False
