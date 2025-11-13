@@ -27,17 +27,29 @@ class DefaultGcsClientContext : public GcsClientContext {
   DefaultGcsClientContext() = default;
   ~DefaultGcsClientContext() override = default;
 
-  /// Get the GCS subscriber for pubsub operations.
+  /**
+   Get the GCS subscriber for pubsub operations.
+  */
   pubsub::GcsSubscriber &GetGcsSubscriber() override;
 
-  /// Get the GCS RPC client for making RPC calls.
+  /**
+   Get the GCS RPC client for making RPC calls.
+  */
   rpc::GcsRpcClient &GetGcsRpcClient() override;
 
-  /// Check if the RPC client has been initialized
+  /**
+   Check if the RPC client has been initialized
+  */
   bool IsInitialized() const override;
 
-  /// Setters
+  /**
+   Set the GCS RPC client for making RPC calls.
+  */
   void SetGcsRpcClient(std::shared_ptr<rpc::GcsRpcClient> client) override;
+
+  /**
+   Set the GCS subscriber for pubsub operations.
+  */
   void SetGcsSubscriber(std::unique_ptr<pubsub::GcsSubscriber> subscriber) override;
 
   void Disconnect() override;

@@ -78,8 +78,8 @@ class ActorInfoAccessorInterface {
 
     @param name The name of the actor to look up.
     @param ray_namespace The namespace to filter to. NotFound if the name doesn't exist.
-
-    @return Status. TimedOut status if the method is timed out.
+    @return Status::OK
+    @return Status::TimedOut if the method is timed out.
    */
   virtual Status SyncGetByName(const std::string &name,
                                const std::string &ray_namespace,
@@ -93,7 +93,8 @@ class ActorInfoAccessorInterface {
     @param ray_namespace The namespace to filter to if all_namespaces is false.
     @param[out] actors The pair of list of named actors. Each pair includes the
     namespace and name of the actor.
-    @return Status. TimeOut if the method times out.
+    @return Status::OK
+    @return Status::TimedOut if the method is timed out.
    */
   virtual Status SyncListNamedActors(
       bool all_namespaces,
@@ -147,7 +148,8 @@ class ActorInfoAccessorInterface {
     The RPC will timeout after the default GCS RPC timeout is exceeded.
 
     @param task_spec The specification for the actor creation task.
-    @return Status. Timedout if actor is not registered by the global
+    @return Status::OK
+    @return Status::TimedOut if actor is not registered by the global
     GCS timeout.
    */
   virtual Status SyncRegisterActor(const ray::TaskSpecification &task_spec) = 0;

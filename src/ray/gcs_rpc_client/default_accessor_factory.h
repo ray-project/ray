@@ -19,9 +19,12 @@
 namespace ray {
 namespace gcs {
 
-/// \class DefaultAccessorFactory
-/// Default implementation of the AccessorFactoryInterface.
-/// Creates the standard implementation of each accessor.
+/**
+@interface DefaultAccessorFactory
+
+Default implementation of the AccessorFactoryInterface. Creates the standard
+implementation of each accessor.
+*/
 class DefaultAccessorFactory : public AccessorFactoryInterface {
  public:
   DefaultAccessorFactory() = default;

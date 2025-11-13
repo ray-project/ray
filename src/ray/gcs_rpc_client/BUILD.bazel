@@ -31,14 +31,12 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "gcs_client_context",
-    hdrs = [
-        "gcs_client_context.h",
-    ],
-    visibility = [":__pkg__"],
+    name = "global_state_accessor_lib",
+    srcs = ["global_state_accessor.cc"],
+    hdrs = ["global_state_accessor.h"],
     deps = [
-        ":rpc_client",
-        "//src/ray/pubsub:gcs_subscriber",
+        ":gcs_client",
+        "//src/ray/util:time",
     ],
 )
 
@@ -64,6 +62,18 @@ ray_cc_library(
         "//src/ray/common:task_common",
         "//src/ray/protobuf:autoscaler_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_client_context",
+    hdrs = [
+        "gcs_client_context.h",
+    ],
+    visibility = [":__pkg__"],
+    deps = [
+        ":rpc_client",
+        "//src/ray/pubsub:gcs_subscriber",
     ],
 )
 
@@ -112,16 +122,6 @@ ray_cc_library(
         ":actor_accessor_implementation",
         ":actor_accessor_interface",
         ":gcs_client_context",
-    ],
-)
-
-ray_cc_library(
-    name = "global_state_accessor_lib",
-    srcs = ["global_state_accessor.cc"],
-    hdrs = ["global_state_accessor.h"],
-    deps = [
-        ":gcs_client",
-        "//src/ray/util:time",
     ],
 )
 

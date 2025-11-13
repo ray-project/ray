@@ -24,11 +24,11 @@
 namespace ray {
 namespace gcs {
 
-class MockActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
+class FakeActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
  public:
-  MockActorInfoAccessor() = default;
+  FakeActorInfoAccessor() = default;
 
-  ~MockActorInfoAccessor() {}
+  ~FakeActorInfoAccessor() {}
 
   // Stub implementations for interface methods not used by this test
   void AsyncGet(const ActorID &,

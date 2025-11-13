@@ -36,7 +36,7 @@ class MockGcsClient : public gcs::GcsClient {
  public:
   explicit MockGcsClient(gcs::GcsClientOptions options) : gcs::GcsClient(options) {}
 
-  void Init(gcs::MockActorInfoAccessor *actor_info_accessor) {
+  void Init(gcs::FakeActorInfoAccessor *actor_info_accessor) {
     actor_accessor_.reset(actor_info_accessor);
   }
 };
@@ -77,7 +77,7 @@ class ActorManagerTest : public ::testing::Test {
                  /*allow_cluster_id_nil=*/true,
                  /*fetch_cluster_id_if_nil=*/false),
         gcs_client_mock_(new MockGcsClient(options_)),
-        actor_info_accessor_(new gcs::MockActorInfoAccessor()),
+        actor_info_accessor_(new gcs::FakeActorInfoAccessor()),
         actor_task_submitter_(new MockActorTaskSubmitter()),
         reference_counter_(new MockReferenceCounter()) {
     gcs_client_mock_->Init(actor_info_accessor_);
@@ -127,7 +127,7 @@ class ActorManagerTest : public ::testing::Test {
 
   gcs::GcsClientOptions options_;
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
-  gcs::MockActorInfoAccessor *actor_info_accessor_;
+  gcs::FakeActorInfoAccessor *actor_info_accessor_;
   std::shared_ptr<MockActorTaskSubmitter> actor_task_submitter_;
   std::unique_ptr<MockReferenceCounter> reference_counter_;
   std::shared_ptr<ActorManager> actor_manager_;

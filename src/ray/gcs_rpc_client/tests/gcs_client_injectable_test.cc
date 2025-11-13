@@ -45,9 +45,9 @@ class TestGcsSubscriber {
 };
 
 // Test implementation of GcsClientContext
-class TestGcsClientContext : public GcsClientContext {
+class FakeGcsClientContext : public GcsClientContext {
  public:
-  TestGcsClientContext(std::shared_ptr<TestGcsRpcClient> rpc_client,
+  FakeGcsClientContext(std::shared_ptr<TestGcsRpcClient> rpc_client,
                        std::unique_ptr<TestGcsSubscriber> subscriber)
       : rpc_client_(rpc_client), subscriber_(std::move(subscriber)) {}
 
@@ -154,14 +154,14 @@ class MixedAccessorFactory : public AccessorFactoryInterface {
   }
 };
 
-TEST(GcsClientInjectableTest, GcsClientWithMixedAccessors) {
+TEST(GcsClientInjectableTest, AccessorFactoryReturnsInjectedAccessorIfDefaultOverriden) {
   // Create mock RPC client and subscriber
   auto rpc_client = std::make_shared<TestGcsRpcClient>();
   auto subscriber = std::make_unique<TestGcsSubscriber>();
 
   // Create GCS client context
   auto context =
-      std::make_unique<TestGcsClientContext>(rpc_client, std::move(subscriber));
+      std::make_unique<FakeGcsClientContext>(rpc_client, std::move(subscriber));
 
   // Create custom accessor factory
   auto factory = std::make_unique<MixedAccessorFactory>();

@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,15 +23,22 @@ namespace gcs {
 class ActorInfoAccessorInterface;
 class GcsClientContext;
 
-/// \class AccessorFactoryInterface
-/// Factory interface for creating GCS accessor instances.
+/**
+  @interface AccessorFactoryInterface
+
+  Factory interface for creating GCS accessor instances.
+ */
 class AccessorFactoryInterface {
  public:
   virtual ~AccessorFactoryInterface() = default;
 
-  /// Create an ActorInfoAccessor instance.
-  /// \param context The GCS client implementation.
-  /// \return A unique pointer to the created ActorInfoAccessor.
+  /**
+    Create an ActorInfoAccessor instance.
+
+    @param context The GCS client implementation.
+    @return unique_ptr<ActorInfoAccessorInterface> A unique pointer to the created
+    ActorInfoAccessor.
+   */
   virtual std::unique_ptr<ActorInfoAccessorInterface> CreateActorInfoAccessor(
       GcsClientContext *context) = 0;
 };

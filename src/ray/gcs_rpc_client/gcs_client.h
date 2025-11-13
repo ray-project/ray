@@ -98,7 +98,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
  public:
   // TODO(zac): Remove the parameterless constructor.  It's only used in tests
   // https://github.com/ray-project/ray/issues/57563
-  GcsClient();
+  GcsClient() = default;
   /// Constructor of GcsClient.
   ///
   /// \param options Options for client.

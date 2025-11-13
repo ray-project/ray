@@ -20,13 +20,13 @@
 #include <utility>
 #include <vector>
 
-#include "accessor_factory_interface.h"
-#include "default_accessor_factory.h"
-#include "default_gcs_client_context.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/accessor_factory_interface.h"
 #include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
+#include "ray/gcs_rpc_client/default_accessor_factory.h"
+#include "ray/gcs_rpc_client/default_gcs_client_context.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/util/network_util.h"
 
@@ -97,10 +97,6 @@ bool GcsClientOptions::ShouldFetchClusterId(ClusterID cluster_id,
     return false;
   }
 }
-
-// TODO(zac): Remove the parameterless constructor.  It's only used in tests
-// https://github.com/ray-project/ray/issues/57563
-GcsClient::GcsClient(){};
 
 GcsClient::GcsClient(const GcsClientOptions &options,
                      std::string local_address,
