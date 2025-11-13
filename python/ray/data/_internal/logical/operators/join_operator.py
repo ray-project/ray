@@ -219,24 +219,6 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         }
         return pushdown_rules.get(self._join_type, (False, False))
 
-    def _decide_push_side(
-        self, can_push_left: bool, can_push_right: bool
-    ) -> Optional[JoinSide]:
-        """Helper to decide which side to push to based on join type rules.
-
-        Args:
-            can_push_left: Whether the join type allows pushing to left side
-            can_push_right: Whether the join type allows pushing to right side
-
-        Returns:
-            The side to push to, or None if no pushdown is allowed
-        """
-        if can_push_left:
-            return JoinSide.LEFT
-        elif can_push_right:
-            return JoinSide.RIGHT
-        return None
-
     def _get_referenced_columns(self, expr: "Expr") -> set[str]:
         """Extract all column names referenced in an expression."""
         from ray.data._internal.planner.plan_expression.expression_visitors import (
