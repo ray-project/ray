@@ -18,6 +18,10 @@ from ray.llm._internal.batch.processor.base import (
     Processor,
     ProcessorBuilder,
 )
+from ray.llm._internal.batch.processor.utils import (
+    build_cpu_stage_map_kwargs,
+    get_value_or_fallback,
+)
 from ray.llm._internal.batch.stages import (
     ChatTemplateStage,
     DetokenizeStage,
@@ -57,27 +61,6 @@ class SGLangEngineProcessorConfig(OfflineProcessorConfig):
         task_type_str = values.get("task_type", "generate")
         values["task_type"] = SGLangTaskType(task_type_str)
         return values
-
-
-def _get_value_or_fallback(value: Any, fallback: Any) -> Any:
-    """Return value if not None, otherwise return fallback."""
-    return value if value is not None else fallback
-
-
-def _extract_resource_kwargs(
-    runtime_env: Optional[Dict[str, Any]],
-    num_cpus: Optional[float],
-    memory: Optional[float],
-) -> Dict[str, Any]:
-    """Extract non-None resource kwargs for map_batches."""
-    kwargs = {}
-    if runtime_env is not None:
-        kwargs["runtime_env"] = runtime_env
-    if num_cpus is not None:
-        kwargs["num_cpus"] = num_cpus
-    if memory is not None:
-        kwargs["memory"] = memory
-    return kwargs
 
 
 def build_sglang_engine_processor(
@@ -127,34 +110,19 @@ def build_sglang_engine_processor(
         processor_defaults,
     )
     if chat_template_stage_cfg.enabled:
-        # resolve_stage_config merges processor defaults, so concurrency is always set.
-        # Normalize to tuple for CPU stages (autoscaling from 1 to n for int values).
-        stage_concurrency = chat_template_stage_cfg.concurrency
-        if isinstance(stage_concurrency, int):
-            stage_concurrency = (1, stage_concurrency)
-
         stages.append(
             ChatTemplateStage(
                 fn_constructor_kwargs=dict(
                     model=chat_template_stage_cfg.model_source,
-                    chat_template=_get_value_or_fallback(
+                    chat_template=get_value_or_fallback(
                         chat_template_stage_cfg.chat_template, config.chat_template
                     ),
-                    chat_template_kwargs=_get_value_or_fallback(
+                    chat_template_kwargs=get_value_or_fallback(
                         chat_template_stage_cfg.chat_template_kwargs,
                         chat_template_kwargs,
                     ),
                 ),
-                map_batches_kwargs=dict(
-                    zero_copy_batch=True,
-                    concurrency=stage_concurrency,
-                    batch_size=chat_template_stage_cfg.batch_size,
-                    **_extract_resource_kwargs(
-                        chat_template_stage_cfg.runtime_env,
-                        chat_template_stage_cfg.num_cpus,
-                        chat_template_stage_cfg.memory,
-                    ),
-                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(chat_template_stage_cfg),
             )
         )
 
@@ -165,27 +133,12 @@ def build_sglang_engine_processor(
         processor_defaults,
     )
     if tokenize_stage_cfg.enabled:
-        # resolve_stage_config merges processor defaults, so concurrency is always set.
-        # Normalize to tuple for CPU stages (autoscaling from 1 to n for int values).
-        stage_concurrency = tokenize_stage_cfg.concurrency
-        if isinstance(stage_concurrency, int):
-            stage_concurrency = (1, stage_concurrency)
-
         stages.append(
             TokenizeStage(
                 fn_constructor_kwargs=dict(
                     model=tokenize_stage_cfg.model_source,
                 ),
-                map_batches_kwargs=dict(
-                    zero_copy_batch=True,
-                    concurrency=stage_concurrency,
-                    batch_size=tokenize_stage_cfg.batch_size,
-                    **_extract_resource_kwargs(
-                        tokenize_stage_cfg.runtime_env,
-                        tokenize_stage_cfg.num_cpus,
-                        tokenize_stage_cfg.memory,
-                    ),
-                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(tokenize_stage_cfg),
             )
         )
 
@@ -228,27 +181,12 @@ def build_sglang_engine_processor(
         processor_defaults,
     )
     if detokenize_stage_cfg.enabled:
-        # resolve_stage_config merges processor defaults, so concurrency is always set.
-        # Normalize to tuple for CPU stages (autoscaling from 1 to n for int values).
-        stage_concurrency = detokenize_stage_cfg.concurrency
-        if isinstance(stage_concurrency, int):
-            stage_concurrency = (1, stage_concurrency)
-
         stages.append(
             DetokenizeStage(
                 fn_constructor_kwargs=dict(
                     model=detokenize_stage_cfg.model_source,
                 ),
-                map_batches_kwargs=dict(
-                    zero_copy_batch=True,
-                    concurrency=stage_concurrency,
-                    batch_size=detokenize_stage_cfg.batch_size,
-                    **_extract_resource_kwargs(
-                        detokenize_stage_cfg.runtime_env,
-                        detokenize_stage_cfg.num_cpus,
-                        detokenize_stage_cfg.memory,
-                    ),
-                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(detokenize_stage_cfg),
             )
         )
 
