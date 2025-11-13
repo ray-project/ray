@@ -52,4 +52,4 @@ examples:
     use_cases:
       - large language models
       - generative ai
-    link: examples/llm_batch_inference_text
+    link: examples/llm-batch-inference-text/content/llm_batch_inference_text
