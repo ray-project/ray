@@ -225,7 +225,7 @@ SERVE_LLM_GRAFANA_PANELS = [
             ),
             Target(
                 expr='(sum by(model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval]))\n/\nsum by(model_name, WorkerId) (rate(ray_vllm_request_prompt_tokens_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
-                legend="Avg-{{model_name}}-{{WorkerId}}",
+                legend="Average-{{model_name}}-{{WorkerId}}",
             ),
         ],
         fill=1,
