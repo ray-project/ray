@@ -130,7 +130,7 @@ def gen_expected_metrics(
             "'task_completion_time': (samples: N, avg: N)",
             "'block_completion_time': (samples: N, avg: N)",
             (
-                "'task_completion_time_without_backpressure': "
+                "'task_completion_time_excl_backpressure_s': "
                 f"{'N' if task_backpressure else 'Z'}"
             ),
             "'block_size_bytes': (samples: N, avg: N)",
@@ -759,7 +759,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      task_completion_time_total_s: N,\n"
         "      task_completion_time: (samples: N, avg: N),\n"
         "      block_completion_time: (samples: N, avg: N),\n"
-        "      task_completion_time_without_backpressure: N,\n"
+        "      task_completion_time_excl_backpressure_s: N,\n"
         "      block_size_bytes: (samples: N, avg: N),\n"
         "      block_size_rows: (samples: N, avg: N),\n"
         "      num_alive_actors: Z,\n"
@@ -901,7 +901,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      task_completion_time_total_s: N,\n"
         "      task_completion_time: (samples: N, avg: N),\n"
         "      block_completion_time: (samples: N, avg: N),\n"
-        "      task_completion_time_without_backpressure: N,\n"
+        "      task_completion_time_excl_backpressure_s: N,\n"
         "      block_size_bytes: (samples: N, avg: N),\n"
         "      block_size_rows: (samples: N, avg: N),\n"
         "      num_alive_actors: Z,\n"
@@ -997,7 +997,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            task_completion_time_total_s: N,\n"
         "            task_completion_time: (samples: N, avg: N),\n"
         "            block_completion_time: (samples: N, avg: N),\n"
-        "            task_completion_time_without_backpressure: N,\n"
+        "            task_completion_time_excl_backpressure_s: N,\n"
         "            block_size_bytes: (samples: N, avg: N),\n"
         "            block_size_rows: (samples: N, avg: N),\n"
         "            num_alive_actors: Z,\n"

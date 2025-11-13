@@ -124,6 +124,10 @@ class RuntimeMetricsHistogram:
             boundary_upper_bound = (
                 self._boundaries[i]
                 if i < len(self._bucket_counts) - 1
+                # Since choosing an exact boundary value is unreliable to if it'll
+                # end up in the upper or lower bucket, we add a small buffer to the
+                # last boundary. The amount of the value doesn't matter much
+                # since it's the last bucket and should go to infinity.
                 else self._boundaries[-1] + 100
             )
             boundary_lower_bound = self._boundaries[i - 1] if i > 0 else 0
@@ -135,9 +139,8 @@ class RuntimeMetricsHistogram:
                 if previous_bucket_counts is not None
                 else self._bucket_counts[i]
             )
-            if diff > 0:
-                for _ in range(diff):
-                    metric.observe(bucket_value, tags)
+            for _ in range(diff):
+                metric.observe(bucket_value, tags)
 
         metric.last_applied_bucket_counts_for_tags[
             tags_key
@@ -150,7 +153,12 @@ class RuntimeMetricsHistogram:
         return f"(samples: {total_samples}, avg: {average:.2f})"
 
     def _calculate_average_value(self) -> Tuple[int, float]:
-        # Calculate the average value of all samples
+        """
+        Calculate the average value of all samples.
+
+        Used to show a representative value for the histogram when
+        printing the histogram as a string.
+        """
         total_samples = sum(self._bucket_counts)
         if total_samples == 0:
             return total_samples, 0
