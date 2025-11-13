@@ -28,17 +28,23 @@ class _StageConfigBase(BaseModelExtended):
 
 
 class ChatTemplateStageConfig(_StageConfigBase):
-    model: Optional[str] = Field(default=None)
+    model_source: Optional[str] = Field(
+        default=None, description="Model source/identifier for this stage."
+    )
     chat_template: Optional[str] = Field(default=None)
     chat_template_kwargs: Optional[Dict[str, Any]] = Field(default=None)
 
 
 class TokenizerStageConfig(_StageConfigBase):
-    model: Optional[str] = Field(default=None)
+    model_source: Optional[str] = Field(
+        default=None, description="Model source/identifier for this stage."
+    )
 
 
 class DetokenizeStageConfig(_StageConfigBase):
-    model: Optional[str] = Field(default=None)
+    model_source: Optional[str] = Field(
+        default=None, description="Model source/identifier for this stage."
+    )
 
 
 class PrepareImageStageConfig(_StageConfigBase):
@@ -86,9 +92,9 @@ def resolve_stage_config(
         resolved.concurrency = processor_defaults["concurrency"]
     if resolved.runtime_env is None and "runtime_env" in processor_defaults:
         resolved.runtime_env = processor_defaults["runtime_env"]
-    # For model fields, use processor model_source if not set
-    if hasattr(resolved, "model") and resolved.model is None:
+    # For model_source fields, use processor model_source if not set
+    if hasattr(resolved, "model_source") and resolved.model_source is None:
         if "model_source" in processor_defaults:
-            resolved.model = processor_defaults["model_source"]
+            resolved.model_source = processor_defaults["model_source"]
 
     return resolved

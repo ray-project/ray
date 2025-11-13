@@ -106,22 +106,17 @@ def build_sglang_engine_processor(
         processor_defaults,
     )
     if chat_template_stage_cfg.enabled:
-        # Use stage-specific concurrency if set, otherwise processor default
-        stage_concurrency = (
-            chat_template_stage_cfg.concurrency
-            if chat_template_stage_cfg.concurrency is not None
-            else config.get_concurrency()
-        )
-        # Normalize concurrency to tuple if needed
-        # CPU stages use autoscaling (1, n) for int concurrency
+        # resolve_stage_config merges processor defaults, so concurrency is always set.
+        # Normalize to tuple for CPU stages (autoscaling from 1 to n for int values).
+        stage_concurrency = chat_template_stage_cfg.concurrency
         if isinstance(stage_concurrency, int):
             stage_concurrency = (1, stage_concurrency)
 
         stages.append(
             ChatTemplateStage(
                 fn_constructor_kwargs=dict(
-                    model=chat_template_stage_cfg.model
-                    if chat_template_stage_cfg.model is not None
+                    model=chat_template_stage_cfg.model_source
+                    if chat_template_stage_cfg.model_source is not None
                     else config.model_source,
                     chat_template=chat_template_stage_cfg.chat_template
                     if chat_template_stage_cfg.chat_template is not None
@@ -156,22 +151,17 @@ def build_sglang_engine_processor(
         processor_defaults,
     )
     if tokenize_stage_cfg.enabled:
-        # Use stage-specific concurrency if set, otherwise processor default
-        stage_concurrency = (
-            tokenize_stage_cfg.concurrency
-            if tokenize_stage_cfg.concurrency is not None
-            else config.get_concurrency()
-        )
-        # Normalize concurrency to tuple if needed
-        # CPU stages use autoscaling (1, n) for int concurrency
+        # resolve_stage_config merges processor defaults, so concurrency is always set.
+        # Normalize to tuple for CPU stages (autoscaling from 1 to n for int values).
+        stage_concurrency = tokenize_stage_cfg.concurrency
         if isinstance(stage_concurrency, int):
             stage_concurrency = (1, stage_concurrency)
 
         stages.append(
             TokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=tokenize_stage_cfg.model
-                    if tokenize_stage_cfg.model is not None
+                    model=tokenize_stage_cfg.model_source
+                    if tokenize_stage_cfg.model_source is not None
                     else config.model_source,
                 ),
                 map_batches_kwargs=dict(
