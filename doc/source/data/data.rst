@@ -12,6 +12,7 @@ Ray Data: Scalable Datasets for ML
     user-guide
     examples
     api/api
+    contributing
     comparisons
     benchmark
     data-internals
