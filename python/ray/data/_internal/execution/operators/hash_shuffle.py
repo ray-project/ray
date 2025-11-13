@@ -1559,15 +1559,7 @@ class HashShuffleAggregator:
         self._agg: StatefulShuffleAggregation = agg_factory(
             aggregator_id, target_partition_ids
         )
-        # One buffer per partition to enable concurrent finalization
-        self._output_buffers: Dict[int, BlockOutputBuffer] = {
-            partition_id: BlockOutputBuffer(
-                output_block_size_option=OutputBlockSizeOption(
-                    target_max_block_size=data_context.target_max_block_size
-                )
-            )
-            for partition_id in target_partition_ids
-        }
+        self._data_context = data_context
 
     def submit(self, input_seq_id: int, partition_id: int, partition_shard: Block):
         with self._lock:
@@ -1585,13 +1577,29 @@ class HashShuffleAggregator:
             # Clear any remaining state (to release resources)
             self._agg.clear(partition_id)
 
-        # No lock needed - each partition has its own buffer
-        output_buffer = self._output_buffers[partition_id]
+        target_max_block_size = self._data_context.target_max_block_size
+        # None means the user wants to preserve the block distribution,
+        # so we do not break the block down further.
+        if target_max_block_size is not None:
+            # Creating the block output buffer because retry finalize tasks
+            # would mean I would have to keep internal bookkeepping
+            # (like which tasks have been finalized) idempotent.
+            # Also, calling output_buffer.finalize() down below would fail
+            # because it asserts it hasn't already been finalized.
+            output_buffer = BlockOutputBuffer(
+                output_block_size_option=OutputBlockSizeOption(
+                    target_max_block_size=target_max_block_size
+                    or DEFAULT_TARGET_MAX_BLOCK_SIZE
+                )
+            )
 
-        output_buffer.add_block(block)
-        output_buffer.finalize()
-        while output_buffer.has_next():
-            block = output_buffer.next()
+            output_buffer.add_block(block)
+            output_buffer.finalize()
+            while output_buffer.has_next():
+                block = output_buffer.next()
+                yield block
+                yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
+        else:
             yield block
             yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
 
