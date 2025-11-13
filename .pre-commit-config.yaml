@@ -24,7 +24,7 @@ repos:
         exclude: |
           (?x)^(
             # Large lock files
-            python/deplocks/req_compiled/
+            python/deplocks/req_compiled/.*\.lock$
           )$
       - id: check-ast
         exclude: |
