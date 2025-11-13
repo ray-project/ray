@@ -676,7 +676,7 @@ class SerializablePreprocessorBase(Preprocessor, abc.ABC):
 
         Raises:
             ValueError: If the serialized data is corrupted or format is unrecognized
-            ray.data.preprocessors.version_support.UnknownPreprocessorError: If the preprocessor type is not registered
+            UnknownPreprocessorError: If the preprocessor type is not registered
         """
         from ray.data.preprocessors.serialization_handlers import (
             PickleSerializationHandler,
