@@ -2,7 +2,7 @@ import bisect
 import json
 from typing import Dict, List, Tuple
 
-from python.ray.data._internal.util import GiB, KiB, MiB
+from ray.data._internal.util import GiB, KiB, MiB
 from ray.util.metrics import Histogram
 
 # Node id string returned by `ray.get_runtime_context().get_node_id()`.
