@@ -3,8 +3,8 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
-    PredicatePassThrough,
-    PredicatePushdownBehavior,
+    LogicalOperatorSupportsPredicatePassThrough,
+    PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.n_ary_operator import NAry
 
@@ -34,7 +34,7 @@ class JoinSide(Enum):
     RIGHT = 1
 
 
-class Join(NAry, PredicatePassThrough):
+class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for join."""
 
     def __init__(
@@ -135,8 +135,8 @@ class Join(NAry, PredicatePassThrough):
                 f"left has {left_op_schema}, but right has {right_op_schema}"
             )
 
-    def predicate_pushdown_behavior(self) -> PredicatePushdownBehavior:
-        return PredicatePushdownBehavior.CONDITIONAL
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        return PredicatePassThroughBehavior.CONDITIONAL
 
     def which_side_to_push_predicate(
         self, predicate_expr: "Expr"

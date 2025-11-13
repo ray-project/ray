@@ -3,13 +3,12 @@ from typing import List
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
+    LogicalOperatorSupportsPredicatePassThrough,
     LogicalOperatorSupportsPredicatePushdown,
     LogicalPlan,
-    PredicatePassThrough,
-    PredicatePushdownBehavior,
+    PredicatePassThroughBehavior,
     Rule,
 )
-from ray.data._internal.logical.operators.join_operator import Join
 from ray.data._internal.logical.operators.map_operator import Filter
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
@@ -25,14 +24,13 @@ class PredicatePushdown(Rule):
     2. Pushes filter expressions through eligible operators using trait-based rules
     3. Pushes filters into data sources that support predicate pushdown
 
-    Eligibility is determined by the PredicatePassThrough trait, which operators
+    Eligibility is determined by the LogicalOperatorSupportsPredicatePassThrough trait, which operators
     implement to declare their pushdown behavior:
     - PASSTHROUGH: Filter passes through unchanged (Sort, Repartition, Shuffle, Limit)
     - PASSTHROUGH_WITH_SUBSTITUTION: Filter passes through with column rebinding (Project)
     - PUSH_INTO_BRANCHES: Filter is pushed into each branch (Union)
-    - CONDITIONAL: Filter may be pushed based on analysis (Join - supports inner, outer,
-      semi, and anti joins; only full outer joins cannot push predicates)
-    - Not implementing PredicatePassThrough: Cannot push through (Aggregate, FlatMap, UDF ops)
+    - CONDITIONAL: Filter may be pushed based on analysis (Join - analyzes which side
+      the predicate references and pushes to that side if safe for the join type)
     """
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
@@ -96,9 +94,9 @@ class PredicatePushdown(Rule):
         """Push Filter down through the operator tree."""
         if not cls._is_valid_filter_operator(op):
             return op
-
-        input_op = op.input_dependencies[0]
-        predicate_expr = op._predicate_expr
+        filter_op: Filter = op
+        input_op = filter_op.input_dependencies[0]
+        predicate_expr = filter_op._predicate_expr
 
         # Case 1: Check if operator supports predicate pushdown (e.g., Read)
         if (
@@ -119,10 +117,30 @@ class PredicatePushdown(Rule):
             return input_op.apply_predicate(predicate_expr)
 
         # Case 2: Check if operator allows predicates to pass through
-        if isinstance(input_op, PredicatePassThrough):
-            behavior = input_op.predicate_pushdown_behavior()
+        if isinstance(input_op, LogicalOperatorSupportsPredicatePassThrough):
+            behavior = input_op.predicate_passthrough_behavior()
 
-            if behavior == PredicatePushdownBehavior.PASSTHROUGH:
+            if behavior in (
+                PredicatePassThroughBehavior.PASSTHROUGH,
+                PredicatePassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION,
+            ):
+                # Both cases push through a single input with optional column rebinding
+                assert len(input_op.input_dependencies) == 1, (
+                    f"{behavior.value} operators must have exactly 1 input, "
+                    f"got {len(input_op.input_dependencies)}"
+                )
+
+                # Apply column substitution if needed
+                if (
+                    behavior
+                    == PredicatePassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
+                ):
+                    rename_map = input_op.get_column_substitutions()
+                    if rename_map:
+                        predicate_expr = cls._substitute_predicate_columns(
+                            predicate_expr, rename_map
+                        )
+
                 # Push filter through and recursively try to push further
                 new_filter = Filter(
                     input_op.input_dependencies[0],
@@ -133,23 +151,7 @@ class PredicatePushdown(Rule):
                 # Return input_op with the pushed filter as its input
                 return cls._clone_op_with_new_inputs(input_op, [pushed_filter])
 
-            elif behavior == PredicatePushdownBehavior.PASSTHROUGH_WITH_SUBSTITUTION:
-                # Rebind columns and push through
-                rename_map = input_op.get_column_substitutions()
-                if rename_map:
-                    predicate_expr = cls._substitute_predicate_columns(
-                        predicate_expr, rename_map
-                    )
-
-                new_filter = Filter(
-                    input_op.input_dependencies[0],
-                    predicate_expr=predicate_expr,
-                )
-                pushed_filter = cls._try_push_down_predicate(new_filter)
-
-                return cls._clone_op_with_new_inputs(input_op, [pushed_filter])
-
-            elif behavior == PredicatePushdownBehavior.PUSH_INTO_BRANCHES:
+            elif behavior == PredicatePassThroughBehavior.PUSH_INTO_BRANCHES:
                 # Push into each branch (e.g., Union)
                 # Apply filter to each branch and recursively push down
                 new_inputs = []
@@ -161,11 +163,11 @@ class PredicatePushdown(Rule):
                 # Return operator with filtered branches
                 return cls._clone_op_with_new_inputs(input_op, new_inputs)
 
-            elif behavior == PredicatePushdownBehavior.CONDITIONAL:
+            elif behavior == PredicatePassThroughBehavior.CONDITIONAL:
                 # Handle conditional pushdown (e.g., Join)
-                return cls._push_filter_through_conditionally(op, input_op)
+                return cls._push_filter_through_conditionally(filter_op, input_op)
 
-        return op
+        return filter_op
 
     @classmethod
     def _push_filter_through_conditionally(
@@ -173,10 +175,11 @@ class PredicatePushdown(Rule):
     ) -> LogicalOperator:
         """Handle conditional pushdown for operators like Join.
 
-        For joins, we can push predicates that reference only one side
-        of the join down to that side.
+        For operators with multiple inputs, we can push predicates that reference
+        only one side down to that side, when semantically safe.
         """
-        if not isinstance(conditional_op, Join):
+        # Check if operator supports conditional pushdown by having the required method
+        if not hasattr(conditional_op, "which_side_to_push_predicate"):
             return filter_op
 
         push_side = conditional_op.which_side_to_push_predicate(
@@ -198,7 +201,7 @@ class PredicatePushdown(Rule):
         )
         new_inputs[branch_idx] = cls._try_push_down_predicate(branch_filter)
 
-        # Return Join with updated input
+        # Return operator with updated input
         return cls._clone_op_with_new_inputs(conditional_op, new_inputs)
 
     @classmethod

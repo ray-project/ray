@@ -133,14 +133,14 @@ class LogicalOperatorSupportsPredicatePushdown(LogicalOperator):
         return None
 
 
-class PredicatePushdownBehavior(Enum):
-    """Defines how predicates can be pushed through an operator."""
+class PredicatePassThroughBehavior(Enum):
+    """Defines how predicates can be passed through through an operator."""
 
     # Predicate can be pushed through as-is (e.g., Sort, Repartition, RandomShuffle, Limit)
     PASSTHROUGH = "passthrough"
 
     # Predicate can be pushed through but needs column rebinding (e.g., Project)
-    PASSTHROUGH_WITH_SUBSTITUTION = "PASSTHROUGH_WITH_SUBSTITUTION"
+    PASSTHROUGH_WITH_SUBSTITUTION = "passthrough_with_substitution"
 
     # Predicate can be pushed into each branch (e.g., Union)
     PUSH_INTO_BRANCHES = "push_into_branches"
@@ -149,7 +149,7 @@ class PredicatePushdownBehavior(Enum):
     CONDITIONAL = "conditional"
 
 
-class PredicatePassThrough(ABC):
+class LogicalOperatorSupportsPredicatePassThrough(ABC):
     """Mixin for operators that allow predicates to be pushed through them.
 
     This is distinct from LogicalOperatorSupportsPredicatePushdown, which is for
@@ -158,8 +158,8 @@ class PredicatePassThrough(ABC):
     """
 
     @abstractmethod
-    def predicate_pushdown_behavior(self) -> PredicatePushdownBehavior:
-        """Returns the predicate pushdown behavior for this operator."""
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        """Returns the predicate passthrough behavior for this operator."""
         pass
 
     def get_column_substitutions(self) -> Optional[Dict[str, str]]:

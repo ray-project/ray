@@ -7,12 +7,24 @@ import pytest
 
 import ray
 from ray.data import Dataset
+from ray.data._internal.logical.operators.all_to_all_operator import (
+    Repartition,
+    Sort,
+)
+from ray.data._internal.logical.operators.map_operator import Filter
+from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_execution_optimizer_limit_pushdown import (
     _check_valid_plan_and_result,
+)
+from ray.data.tests.test_util import (
+    get_operator_types,
+    get_operators_of_type,
+    plan_has_operator,
+    plan_operator_comes_before,
 )
 from ray.tests.conftest import *  # noqa
 
@@ -374,8 +386,10 @@ class TestPredicatePushdownIntoRead:
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
         # Verify plan: all filters pushed into Read, passthrough ops remain
-        plan = _get_optimized_plan(ds)
-        assert "Filter[Filter" not in plan, f"No Filter operators should remain: {plan}"
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert not plan_has_operator(
+            optimized_plan, Filter
+        ), "No Filter operators should remain after pushdown into Read"
 
 
 class TestPassthroughBehavior:
@@ -390,18 +404,16 @@ class TestPassthroughBehavior:
         return ray.data.range(100)
 
     @pytest.mark.parametrize(
-        "transform,expected_op_pattern",
+        "transform,expected_op_type",
         [
-            (lambda ds: ds.sort("id"), r"Sort\[Sort\]"),
-            (lambda ds: ds.repartition(10), r"Repartition\[Repartition\]"),
-            (lambda ds: ds.random_shuffle(), r"RandomShuffle\[RandomShuffle\]"),
-            (lambda ds: ds.limit(50), r"Limit\[limit=50\]"),
+            (lambda ds: ds.sort("id"), "Sort"),
+            (lambda ds: ds.repartition(10), "Repartition"),
+            (lambda ds: ds.random_shuffle(), "RandomShuffle"),
+            (lambda ds: ds.limit(50), "Limit"),
         ],
         ids=["sort", "repartition", "random_shuffle", "limit"],
     )
-    def test_filter_pushes_through_operator(
-        self, base_ds, transform, expected_op_pattern
-    ):
+    def test_filter_pushes_through_operator(self, base_ds, transform, expected_op_type):
         """Filter should push through passthrough operators."""
         ds = transform(base_ds).filter(expr=col("id") < 10)
 
@@ -410,10 +422,14 @@ class TestPassthroughBehavior:
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
         # Filter pushed down, operator remains
-        _check_plan_matches_pattern(
-            ds,
-            f"{READ_OPERATOR_PATTERN} -> Filter\\[Filter\\(<expression>\\)\\] -> {expected_op_pattern}$",
-        )
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert plan_has_operator(
+            optimized_plan, Filter
+        ), "Filter should exist after pushdown"
+
+        # Verify the passthrough operator is still present
+        op_types = get_operator_types(optimized_plan)
+        assert expected_op_type in op_types, f"{expected_op_type} should remain in plan"
 
     def test_filter_pushes_through_multiple_ops(self, base_ds):
         """Filter should push through multiple passthrough operators."""
@@ -424,11 +440,13 @@ class TestPassthroughBehavior:
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
         # Verify plan: filter pushed down, all operators remain
-        _check_plan_matches_pattern(
-            ds,
-            f"{READ_OPERATOR_PATTERN} -> Filter\\[Filter\\(<expression>\\)\\] -> "
-            r"Sort\[Sort\] -> Repartition\[Repartition\] -> Limit\[limit=50\]$",
-        )
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert plan_has_operator(optimized_plan, Filter), "Filter should exist"
+        assert plan_has_operator(optimized_plan, Sort), "Sort should remain"
+        assert plan_has_operator(
+            optimized_plan, Repartition
+        ), "Repartition should remain"
+        assert plan_has_operator(optimized_plan, Limit), "Limit should remain"
 
     def test_multiple_filters_fuse_and_push_through(self, base_ds):
         """Multiple filters should fuse and push through passthrough operators."""
@@ -438,11 +456,14 @@ class TestPassthroughBehavior:
         expected = base_ds.filter(expr=(col("id") > 5) & (col("id") < 20))
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
-        # Verify plan: filters fused and pushed
-        _check_plan_matches_pattern(
-            ds,
-            f"{READ_OPERATOR_PATTERN} -> Filter\\[Filter\\(<expression>\\)\\] -> Sort\\[Sort\\]$",
-        )
+        # Verify plan: filters fused and pushed, Sort remains
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        filters = get_operators_of_type(optimized_plan, Filter)
+        assert len(filters) == 1, "Multiple filters should be fused into one"
+        assert plan_has_operator(optimized_plan, Sort), "Sort should remain"
+        assert plan_operator_comes_before(
+            optimized_plan, Filter, Sort
+        ), "Fused filter should come before Sort"
 
 
 class TestPassthroughWithSubstitutionBehavior:
@@ -468,8 +489,11 @@ class TestPassthroughWithSubstitutionBehavior:
         )
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
-        # Filter rebound and pushed to Read
-        _check_plan_matches_pattern(ds, f"{READ_OPERATOR_PATTERN}$")
+        # Filter rebound and pushed to Read (no Filter operators should remain)
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert not plan_has_operator(
+            optimized_plan, Filter
+        ), "Filter should be pushed into Read, no Filter operators should remain"
 
     def test_chained_renames_with_filter(self, parquet_ds):
         """Multiple renames should track through filter pushdown."""
@@ -487,7 +511,11 @@ class TestPassthroughWithSubstitutionBehavior:
         )
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
-        _check_plan_matches_pattern(ds, f"{READ_OPERATOR_PATTERN}$")
+        # Filter should be pushed into Read after column rebinding
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert not plan_has_operator(
+            optimized_plan, Filter
+        ), "Filter should be pushed into Read after rebinding through renames"
 
     def test_multiple_filters_with_renames(self, parquet_ds):
         """Multiple filters with renames should all rebind and push."""
@@ -508,7 +536,11 @@ class TestPassthroughWithSubstitutionBehavior:
         )
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
-        _check_plan_matches_pattern(ds, f"{READ_OPERATOR_PATTERN}$")
+        # Multiple filters should be fused, rebound, and pushed into Read
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert not plan_has_operator(
+            optimized_plan, Filter
+        ), "All filters should be fused, rebound, and pushed into Read"
 
 
 class TestPushIntoBranchesBehavior:

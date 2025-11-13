@@ -6,8 +6,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
-    PredicatePassThrough,
-    PredicatePushdownBehavior,
+    LogicalOperatorSupportsPredicatePassThrough,
+    PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
@@ -282,7 +282,7 @@ class Filter(AbstractUDFMap):
         return super()._get_operator_name(op_name, fn)
 
 
-class Project(AbstractMap, PredicatePassThrough):
+class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for all Projection Operations."""
 
     def __init__(
@@ -328,8 +328,8 @@ class Project(AbstractMap, PredicatePassThrough):
     def can_modify_num_rows(self) -> bool:
         return False
 
-    def predicate_pushdown_behavior(self) -> PredicatePushdownBehavior:
-        return PredicatePushdownBehavior.PASSTHROUGH_WITH_SUBSTITUTION
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        return PredicatePassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
 
     def get_column_substitutions(self) -> Optional[Dict[str, str]]:
         """Returns the column renames from this projection.

@@ -20,11 +20,14 @@ import ray
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import read_iceberg
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
-from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.map_operator import Filter, Project
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
 from ray.data.expressions import col
+from ray.data.tests.test_util import (
+    get_operator_types as _get_operator_types,
+    plan_has_operator as _has_operator_type,
+)
 
 _CATALOG_NAME = "ray_catalog"
 _DB_NAME = "ray_db"
@@ -45,14 +48,6 @@ _SCHEMA = pa.schema(
         pa.field("col_c", pa.int16()),
     ]
 )
-
-
-def _get_operator_types(plan: "LogicalPlan") -> list:
-    return [type(op).__name__ for op in plan.dag.post_order_iter()]
-
-
-def _has_operator_type(plan: "LogicalPlan", operator_class: type) -> bool:
-    return any(isinstance(op, operator_class) for op in plan.dag.post_order_iter())
 
 
 def create_pa_table():
