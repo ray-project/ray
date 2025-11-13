@@ -20,8 +20,10 @@ def is_token_auth_enabled() -> bool:
     if not _RAYLET_AVAILABLE:
         return False
 
-    auth_mode = get_authentication_mode()
-    return auth_mode == AuthenticationMode.TOKEN or auth_mode == AuthenticationMode.K8S
+    return get_authentication_mode() in {
+        AuthenticationMode.TOKEN,
+        AuthenticationMode.K8S,
+    }
 
 
 def validate_request_token(auth_header: str) -> bool:
