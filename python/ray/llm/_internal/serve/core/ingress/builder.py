@@ -134,3 +134,38 @@ def build_openai_app(builder_config: dict) -> Application:
     return serve.deployment(ingress_cls, **ingress_options).bind(
         llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs
     )
+
+
+def build_sglang_openai_app(builder_config: dict) -> Application:
+    """Build an OpenAI compatible app with the llm deployment setup from
+    the given builder configuration.
+
+    Args:
+        builder_config: The configuration for the builder. It has to conform
+            to the LLMServingArgs pydantic model.
+
+    Returns:
+        The configured Ray Serve Application router.
+    """
+
+    builder_config = LLMServingArgs.model_validate(builder_config)
+    llm_configs = builder_config.llm_configs
+
+    llm_deployments = [build_sglang_deployment(c) for c in llm_configs]
+
+    ingress_cls_config = builder_config.ingress_cls_config
+    ingress_options = ingress_cls_config.ingress_cls.get_deployment_options(llm_configs)
+
+    if builder_config.ingress_deployment_config:
+        ingress_options = deep_merge_dicts(
+            ingress_options, builder_config.ingress_deployment_config
+        )
+
+    ingress_cls = make_fastapi_ingress(ingress_cls_config.ingress_cls)
+
+    logger.info("============== Ingress Options ==============")
+    logger.info(pprint.pformat(ingress_options))
+
+    return serve.deployment(ingress_cls, **ingress_options).bind(
+        llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs
+    )
