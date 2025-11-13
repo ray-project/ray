@@ -99,6 +99,7 @@ cc_proto_library(
 proto_library(
     name = "events_actor_definition_event_proto",
     srcs = ["events_actor_definition_event.proto"],
+    deps = ["//src/ray/protobuf:common_proto"],
 )
 
 cc_proto_library(

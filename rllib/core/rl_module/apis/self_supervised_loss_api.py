@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
 
 from ray.rllib.utils.typing import ModuleID, TensorType
 from ray.util.annotations import PublicAPI

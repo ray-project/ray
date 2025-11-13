@@ -153,10 +153,11 @@ class TaskManagerTest : public ::testing::Test {
             publisher_.get(),
             subscriber_.get(),
             /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+            *std::make_shared<ray::observability::FakeGauge>(),
+            *std::make_shared<ray::observability::FakeGauge>(),
             lineage_pinning_enabled)),
         io_context_("TaskManagerTest"),
-        store_(std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(),
-                                                       reference_counter_.get())),
+        store_(std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
         manager_(
             *store_,
             *reference_counter_,
@@ -183,6 +184,7 @@ class TaskManagerTest : public ::testing::Test {
             },
             mock_gcs_client_,
             fake_task_by_state_counter_,
+            fake_total_lineage_bytes_gauge_,
             /*free_actor_object_callback=*/[](const ObjectID &object_id) {}) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
@@ -230,6 +232,7 @@ class TaskManagerTest : public ::testing::Test {
   uint32_t last_delay_ms_ = 0;
   std::unordered_set<ObjectID> stored_in_plasma;
   ray::observability::FakeGauge fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
 };
 
 class TaskManagerLineageTest : public TaskManagerTest {
@@ -281,7 +284,7 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   ASSERT_FALSE(results[0]->IsException());
   ASSERT_EQ(std::memcmp(results[0]->GetData()->Data(),
@@ -318,7 +321,7 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -360,7 +363,7 @@ TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
   std::vector<std::shared_ptr<RayObject>> results;
   // Caller of FlushObjectsToRecover is responsible for deleting the object
   // from the in-memory store and recovering the object.
-  ASSERT_TRUE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
+  ASSERT_TRUE(store_->Get({return_id}, 1, 0, ctx, &results).ok());
   auto objects_to_recover = reference_counter_->FlushObjectsToRecover();
   ASSERT_EQ(objects_to_recover.size(), 1);
   ASSERT_EQ(objects_to_recover[0], return_id);
@@ -388,7 +391,7 @@ TEST_F(TaskManagerTest, TestFailPendingTask) {
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -412,7 +415,7 @@ TEST_F(TaskManagerTest, TestFailPendingTaskAfterCancellation) {
   // Check that the error type is set to TASK_CANCELLED
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-  RAY_CHECK_OK(store_->Get({spec.ReturnId(0)}, 1, 0, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({spec.ReturnId(0)}, 1, 0, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -442,7 +445,7 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
     ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
     ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
     std::vector<std::shared_ptr<RayObject>> results;
-    ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
+    ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, &results).ok());
     ASSERT_EQ(num_retries_, i + 1);
     ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
   }
@@ -454,7 +457,7 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -483,7 +486,7 @@ TEST_F(TaskManagerTest, TestTaskKill) {
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -535,7 +538,7 @@ TEST_F(TaskManagerTest, TestTaskOomKillNoOomRetryFailsImmediately) {
 
     std::vector<std::shared_ptr<RayObject>> results;
     WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
     ASSERT_EQ(results.size(), 1);
     rpc::ErrorType stored_error;
     ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -555,7 +558,7 @@ TEST_F(TaskManagerTest, TestTaskOomKillNoOomRetryFailsImmediately) {
 
     std::vector<std::shared_ptr<RayObject>> results;
     WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
     ASSERT_EQ(results.size(), 1);
     rpc::ErrorType stored_error;
     ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -591,7 +594,7 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
 
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -633,7 +636,7 @@ TEST_F(TaskManagerTest, TestTaskNotRetriableOomFailsImmediatelyEvenWithOomRetryC
 
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -660,7 +663,7 @@ TEST_F(TaskManagerTest, TestFailsImmediatelyOverridesRetry) {
 
     std::vector<std::shared_ptr<RayObject>> results;
     WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
     ASSERT_EQ(results.size(), 1);
     rpc::ErrorType stored_error;
     ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -684,7 +687,7 @@ TEST_F(TaskManagerTest, TestFailsImmediatelyOverridesRetry) {
 
     std::vector<std::shared_ptr<RayObject>> results;
     WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
     ASSERT_EQ(results.size(), 1);
     rpc::ErrorType stored_error;
     ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -1278,7 +1281,7 @@ TEST_F(TaskManagerLineageTest, TestDynamicReturnsTask) {
 
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get(dynamic_return_ids, 3, -1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get(dynamic_return_ids, 3, -1, ctx, &results));
   ASSERT_EQ(results.size(), 3);
   for (int i = 0; i < 3; i++) {
     ASSERT_TRUE(results[i]->IsInPlasmaError());
@@ -1356,10 +1359,10 @@ TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
   // No error stored for the generator ID, which should have gone out of scope.
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
   std::vector<std::shared_ptr<RayObject>> results;
-  ASSERT_FALSE(store_->Get({generator_id}, 1, 0, ctx, false, &results).ok());
+  ASSERT_FALSE(store_->Get({generator_id}, 1, 0, ctx, &results).ok());
 
   // The internal ObjectRefs have the right error.
-  RAY_CHECK_OK(store_->Get(dynamic_return_ids, 3, -1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get(dynamic_return_ids, 3, -1, ctx, &results));
   ASSERT_EQ(results.size(), 3);
   for (int i = 0; i < 3; i++) {
     rpc::ErrorType stored_error;
@@ -1376,9 +1379,10 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      *std::make_shared<ray::observability::FakeGauge>(),
+      *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
-  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(),
-                                                             local_ref_counter.get());
+  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
 
   TaskManager failing_mgr(
       *local_store,
@@ -1404,6 +1408,7 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       },
       mock_gcs_client_,
       fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   rpc::Address caller_address;
@@ -1424,7 +1429,7 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
   ASSERT_FALSE(failing_mgr.IsTaskPending(spec.TaskId()));
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-  RAY_CHECK_OK(local_store->Get({return_id}, 1, 0, ctx, false, &results));
+  RAY_CHECK_OK(local_store->Get({return_id}, 1, 0, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   ASSERT_TRUE(results[0]->IsException());
 }
@@ -1436,9 +1441,10 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      *std::make_shared<ray::observability::FakeGauge>(),
+      *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
-  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(),
-                                                             local_ref_counter.get());
+  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
   TaskManager retry_mgr(
       *local_store,
       *local_ref_counter,
@@ -1467,6 +1473,7 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       },
       mock_gcs_client_,
       fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   rpc::Address caller_address;
@@ -1485,7 +1492,7 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
 
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-  RAY_CHECK_OK(local_store->Get({return_id}, 1, 0, ctx, false, &results));
+  RAY_CHECK_OK(local_store->Get({return_id}, 1, 0, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   ASSERT_TRUE(results[0]->IsInPlasmaError());
 }
@@ -1497,9 +1504,10 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      *std::make_shared<ray::observability::FakeGauge>(),
+      *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
-  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(),
-                                                             local_ref_counter.get());
+  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
   TaskManager dyn_mgr(
       *local_store,
       *local_ref_counter,
@@ -1528,6 +1536,7 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       },
       mock_gcs_client_,
       fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
@@ -2030,7 +2039,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 2);
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-  RAY_CHECK_OK(store_->Get({dynamic_return_id}, 1, 1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({dynamic_return_id}, 1, 1, ctx, &results));
   ASSERT_EQ(results.size(), 1);
 
   // Make sure you can read.
@@ -2059,7 +2068,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
 
   // NumObjectIDsInScope == Generator + 2 intermediate result.
   results.clear();
-  RAY_CHECK_OK(store_->Get({dynamic_return_id2}, 1, 1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({dynamic_return_id2}, 1, 1, ctx, &results));
   ASSERT_EQ(results.size(), 1);
 
   // Make sure you can read.
@@ -2122,10 +2131,10 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
   ASSERT_EQ(store_->Size(), 2);
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-  RAY_CHECK_OK(store_->Get({dynamic_return_id}, 1, 1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({dynamic_return_id}, 1, 1, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   results.clear();
-  RAY_CHECK_OK(store_->Get({dynamic_return_id2}, 1, 1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({dynamic_return_id2}, 1, 1, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   results.clear();
 
@@ -2135,9 +2144,9 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
   // All the in memory objects should be cleaned up. The generator ref returns
   // a direct result that would be GCed once it goes out of scope.
   ASSERT_EQ(store_->Size(), 1);
-  ASSERT_TRUE(store_->Get({dynamic_return_id}, 1, 1, ctx, false, &results).IsTimedOut());
+  ASSERT_TRUE(store_->Get({dynamic_return_id}, 1, 1, ctx, &results).IsTimedOut());
   results.clear();
-  ASSERT_TRUE(store_->Get({dynamic_return_id2}, 1, 1, ctx, false, &results).IsTimedOut());
+  ASSERT_TRUE(store_->Get({dynamic_return_id2}, 1, 1, ctx, &results).IsTimedOut());
   results.clear();
 
   // Clean up the generator ID. Now all lineage is safe to remove.
@@ -2169,7 +2178,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
   // All the in memory objects should be cleaned up.
   ASSERT_EQ(store_->Size(), 1);
-  ASSERT_TRUE(store_->Get({dynamic_return_id3}, 1, 1, ctx, false, &results).IsTimedOut());
+  ASSERT_TRUE(store_->Get({dynamic_return_id3}, 1, 1, ctx, &results).IsTimedOut());
   results.clear();
 }
 
@@ -2223,7 +2232,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferencesLineageInScope) {
   ASSERT_EQ(store_->Size(), 2);
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
-  RAY_CHECK_OK(store_->Get({dynamic_return_id}, 1, 1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({dynamic_return_id}, 1, 1, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   results.clear();
 
@@ -2234,7 +2243,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferencesLineageInScope) {
   ASSERT_EQ(obj_id, dynamic_return_id);
 
   // Write one ref that will stay unconsumed.
-  RAY_CHECK_OK(store_->Get({dynamic_return_id2}, 1, 1, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({dynamic_return_id2}, 1, 1, ctx, &results));
   ASSERT_EQ(results.size(), 1);
   results.clear();
 
@@ -2244,7 +2253,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferencesLineageInScope) {
   // All the unconsumed objects should be cleaned up. The generator ref returns
   // a direct result that would be GCed once it goes out of scope.
   ASSERT_EQ(store_->Size(), 2);
-  ASSERT_TRUE(store_->Get({dynamic_return_id2}, 1, 1, ctx, false, &results).IsTimedOut());
+  ASSERT_TRUE(store_->Get({dynamic_return_id2}, 1, 1, ctx, &results).IsTimedOut());
   results.clear();
 
   // Clean up the generator ID.
@@ -2258,7 +2267,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferencesLineageInScope) {
   // All the unconsumed in memory objects should be cleaned up. Check for 2
   // in-memory objects: one consumed object ref and the generator ref.
   ASSERT_EQ(store_->Size(), 2);
-  ASSERT_TRUE(store_->Get({dynamic_return_id2}, 1, 1, ctx, false, &results).IsTimedOut());
+  ASSERT_TRUE(store_->Get({dynamic_return_id2}, 1, 1, ctx, &results).IsTimedOut());
   results.clear();
 
   // NOTE: We panic if READ is called after DELETE. The
@@ -2283,7 +2292,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferencesLineageInScope) {
   // All the unconsumed in memory objects should be cleaned up. Check for 2
   // in-memory objects: one consumed object ref and the generator ref.
   ASSERT_EQ(store_->Size(), 2);
-  ASSERT_TRUE(store_->Get({dynamic_return_id3}, 1, 1, ctx, false, &results).IsTimedOut());
+  ASSERT_TRUE(store_->Get({dynamic_return_id3}, 1, 1, ctx, &results).IsTimedOut());
   results.clear();
 }
 
@@ -2991,9 +3000,10 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      *std::make_shared<ray::observability::FakeGauge>(),
+      *std::make_shared<ray::observability::FakeGauge>(),
       false);
-  auto local_store = std::make_shared<CoreWorkerMemoryStore>(
-      io_context_.GetIoService(), local_reference_counter.get());
+  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
 
   TaskManager test_manager(
       *local_store,
@@ -3016,6 +3026,7 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
       mock_gcs_client_,
       fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   // Create a task with retries enabled
@@ -3071,9 +3082,10 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      *std::make_shared<ray::observability::FakeGauge>(),
+      *std::make_shared<ray::observability::FakeGauge>(),
       false);
-  auto local_store = std::make_shared<CoreWorkerMemoryStore>(
-      io_context_.GetIoService(), local_reference_counter.get());
+  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
 
   TaskManager test_manager(
       *local_store,
@@ -3096,6 +3108,7 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
       mock_gcs_client_,
       fake_task_by_state_counter_,
+      fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
 
   // Create a task that will be retried

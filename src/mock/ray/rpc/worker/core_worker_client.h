@@ -87,9 +87,9 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
                const ClientCallback<CancelTaskReply> &callback),
               (override));
   MOCK_METHOD(void,
-              RemoteCancelTask,
-              (const RemoteCancelTaskRequest &request,
-               const ClientCallback<RemoteCancelTaskReply> &callback),
+              CancelRemoteTask,
+              (CancelRemoteTaskRequest && request,
+               const ClientCallback<CancelRemoteTaskReply> &callback),
               (override));
   MOCK_METHOD(void,
               GetCoreWorkerStats,
