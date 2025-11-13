@@ -1,16 +1,5 @@
 # cython: language_level = 3
 
-"""
-Binding of C++ ray::rpc::RayletPXIClient.
-"""
-
-from libcpp.string cimport string as c_string
-from libcpp.map cimport map as c_map
-from libcpp.memory cimport shared_ptr
-from libcpp.pair cimport pair as c_pair
-from libcpp cimport bool as c_bool
-from cython.operator cimport dereference, postincrement
-
 from asyncio import Future
 import concurrent.futures
 from libcpp.vector cimport vector as c_vector
@@ -26,6 +15,10 @@ from ray.includes.common cimport (
 )
 from ray.includes.optional cimport optional
 
+from libcpp.map cimport map as c_map
+from libcpp.pair cimport pair as c_pair
+from libcpp cimport bool as c_bool
+from cython.operator cimport dereference, postincrement
 
 cdef class RayletRPCError(Exception):
     def __init__(self, code: int, message: str):
