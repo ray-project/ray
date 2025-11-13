@@ -16,7 +16,6 @@ import ray.util
 # NOTE: The script itself does not spin up a Ray cluster, it operates on the assumption that an existing
 # Ray cluster is running and we are able to SSH into the nodes (like on Anyscale).
 
-SECONDS = 5  # failure duration (seconds)
 PARALLEL = 500  # concurrent SSH sessions
 SSH_USER = "ubuntu"  # Anyscale default
 AFFECT_WORKER_RATIO = 0.50  # failure affects 50% of worker nodes
@@ -30,7 +29,7 @@ EXTRA_SSH = [
 ]
 
 
-def iptables_cmd(self_ip: str) -> str:
+def iptables_cmd(self_ip: str, seconds: int) -> str:
     return f"""\
 nohup setsid bash -lc '
   sudo iptables -w -A INPUT  -p tcp --dport 22 -j ACCEPT
@@ -41,7 +40,7 @@ nohup setsid bash -lc '
   sudo iptables -w -A OUTPUT -s {self_ip} -d {self_ip} -j ACCEPT
   sudo iptables -w -A INPUT  -j DROP
   sudo iptables -w -A OUTPUT -j DROP
-  sleep {SECONDS}
+  sleep {seconds}
   sudo iptables -w -D OUTPUT -j DROP
   sudo iptables -w -D INPUT  -j DROP
   sudo iptables -w -D OUTPUT -s {self_ip} -d {self_ip} -j ACCEPT
@@ -65,7 +64,7 @@ def ssh_run(ip: str, cmd: str) -> tuple[bool, str]:
     return ok, msg
 
 
-def simulate_cross_az_network_failure():
+def simulate_cross_az_network_failure(seconds: int):
     if not ray.is_initialized():
         ray.init(address="auto")
 
@@ -100,9 +99,9 @@ def simulate_cross_az_network_failure():
     )
     print(", ".join(affected[:10]) + (" ..." if len(affected) > 10 else ""))
 
-    cmds = {ip: iptables_cmd(ip) for ip in affected}
+    cmds = {ip: iptables_cmd(ip, seconds) for ip in affected}
 
-    print(f"\nTriggering {SECONDS}s of transient network failure...")
+    print(f"\nTriggering {seconds}s of transient network failure...")
     successes, failures = [], {}
 
     with ThreadPoolExecutor(max_workers=PARALLEL) as ex:
@@ -126,29 +125,28 @@ def simulate_cross_az_network_failure():
             print(f"  {ip}: {msg}")
 
 
-def network_failure_loop(interval, stop_event):
+def network_failure_loop(interval, network_failure_duration):
     """
     Run the network failure loop in a background thread at regular intervals.
 
     Args:
         interval: Interval in seconds between network failure events
-        stop_event: Threading event to signal when to stop
+        network_failure_duration: Duration in seconds of each network failure
     """
     print(
         f"[NETWORK FAILURE {time.strftime('%H:%M:%S')}] Starting network failure thread with interval: {interval} seconds"
     )
 
-    while not stop_event.is_set():
-        # Sleep for the interval duration (or until stop_event is set)
-        if stop_event.wait(timeout=interval):
-            break
+    while True:
+        # Sleep for the interval duration
+        time.sleep(interval)
 
         # Simulate a network failure
         print(
             f"[NETWORK FAILURE {time.strftime('%H:%M:%S')}] Triggering network failure simulation..."
         )
         try:
-            simulate_cross_az_network_failure()
+            simulate_cross_az_network_failure(network_failure_duration)
         except Exception as e:
             print(
                 f"[NETWORK FAILURE {time.strftime('%H:%M:%S')}] ERROR: Network failure simulation failed: {e}"
@@ -161,8 +159,8 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run map_benchmark with network failures injected every 300 seconds
-  python simulate_cross_az_network_failure.py --network-failure-interval 300 --command python map_benchmark.py --api map_batches --sf 1000
+  # Run map_benchmark with network failures injected every 300 seconds, each lasting 5 seconds
+  python simulate_cross_az_network_failure.py --network-failure-interval 300 --network-failure-duration 5 --command python map_benchmark.py --api map_batches --sf 1000
         """,
     )
     parser.add_argument(
@@ -170,6 +168,12 @@ Examples:
         type=int,
         required=True,
         help="Interval in seconds between network failure events",
+    )
+    parser.add_argument(
+        "--network-failure-duration",
+        type=int,
+        required=True,
+        help="Duration in seconds of each network failure",
     )
     parser.add_argument(
         "--command",
@@ -187,7 +191,7 @@ def main():
     if not args.command:
         print("ERROR: --command requires at least one argument")
         print(
-            "Usage: python simulate_cross_az_network_failure.py --network-failure-interval <seconds> --command <command>"
+            "Usage: python simulate_cross_az_network_failure.py --network-failure-interval <seconds> --network-failure-duration <seconds> --command <command>"
         )
         sys.exit(1)
 
@@ -195,17 +199,15 @@ def main():
     print("Running with Network Failure Injection")
     print("=" * 80)
     print(f"Network failure interval: {args.network_failure_interval} seconds")
+    print(f"Network failure duration: {args.network_failure_duration} seconds")
     print(f"Command: {' '.join(args.command)}")
     print("=" * 80)
     print()
 
-    # Create stop event for network failure thread
-    stop_event = threading.Event()
-
-    # Start network failure thread
+    # Start network failure thread as daemon - it will die with the process
     network_failure_thread = threading.Thread(
         target=network_failure_loop,
-        args=(args.network_failure_interval, stop_event),
+        args=(args.network_failure_interval, args.network_failure_duration),
         daemon=True,
     )
     network_failure_thread.start()
@@ -228,21 +230,6 @@ def main():
     except Exception as e:
         print(f"[MAIN] ERROR: {e}")
         exit_code = 1
-
-    finally:
-        # Stop the network failure thread
-        print(
-            f"[MAIN {time.strftime('%H:%M:%S')}] Stopping network failure injection..."
-        )
-        stop_event.set()
-
-        # Wait for network failure thread to finish (with timeout)
-        network_failure_thread.join(timeout=5)
-
-        if network_failure_thread.is_alive():
-            print("[MAIN] Warning: Network failure thread did not stop gracefully")
-        else:
-            print("[MAIN] Network failure injection stopped")
 
     print("\n" + "=" * 80)
     print(f"Execution completed with exit code: {exit_code}")

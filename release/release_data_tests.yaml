@@ -653,16 +653,18 @@
 #################################################
 
 - name: "cross_az_map_batches_autoscaling"
-  frequency: nightly
+  frequency: manual
   env: gce
+  # Override working_dir to access simulate_cross_az_network_failure.py
+  working_dir: nightly_tests
 
   cluster:
-    cluster_compute: cross_az_250_350_compute_gce.yaml
+    cluster_compute: dataset/cross_az_250_350_compute_gce.yaml
 
   run:
     timeout: 10800
     script: >
-      python map_benchmark.py --api map_batches --batch-format numpy
+      python dataset/map_benchmark.py --api map_batches --batch-format numpy
       --compute actors --sf 1000 --repeat-inputs 1 --concurrency 1024 2048
 
   variations:
@@ -670,20 +672,22 @@
     - __suffix__: aws
       env: aws
       cluster:
-        cluster_compute: cross_az_250_350_compute_aws.yaml
+        cluster_compute: dataset/cross_az_250_350_compute_aws.yaml
     - __suffix__: gce_iptable_failure_injection
+      frequency: nightly
       run:
         script: >
-          python ../simulate_cross_az_network_failure.py --network-failure-interval 210 --command python map_benchmark.py
+          python simulate_cross_az_network_failure.py --network-failure-interval 210 --network-failure-duration 5 --command python dataset/map_benchmark.py
           --api map_batches --batch-format numpy --compute actors --sf 1000
           --repeat-inputs 1 --concurrency 1024 2048
     - __suffix__: aws_iptable_failure_injection
+      frequency: nightly
       env: aws
       cluster:
-        cluster_compute: cross_az_250_350_compute_aws.yaml
+        cluster_compute: dataset/cross_az_250_350_compute_aws.yaml
       run:
         script: >
-          python ../simulate_cross_az_network_failure.py --network-failure-interval 210 --command python map_benchmark.py
+          python simulate_cross_az_network_failure.py --network-failure-interval 210 --network-failure-duration 5 --command python dataset/map_benchmark.py
           --api map_batches --batch-format numpy --compute actors --sf 1000
           --repeat-inputs 1 --concurrency 1024 2048
  # TODO(#58246): Enable these variations once RAY_testing_rpc_failure is supported.
