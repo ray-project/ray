@@ -14,7 +14,7 @@ from packaging.version import parse as parse_version
 
 import ray.cloudpickle as cloudpickle
 from ray._private.arrow_utils import _check_pyarrow_version, get_pyarrow_version
-from ray._private.ray_constants import env_bool, env_integer
+from ray._private.ray_constants import env_integer
 from ray.air.util.object_extensions.arrow import (
     MIN_PYARROW_VERSION_SCALAR_SUBCLASS,
     ArrowPythonObjectArray,
@@ -49,8 +49,6 @@ MIN_PYARROW_VERSION_EXT_ARRAY_CONCAT_SUPPORTED = parse_version("12.0.0")
 
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
-
-PYARROW_EXTENSION_USE_CACHE = env_bool("RAY_ARROW_EXTENSION_USE_CACHE", True)
 
 
 class _SerializationFormat(Enum):
@@ -111,40 +109,43 @@ class ArrowExtensionSerializeDeserializeCache(abc.ABC):
 
     _deserialize_cache = ThreadSafeCache()
 
-    def __init__(self):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize the extension type with caching support.
+
+        Args:
+            *args: Positional arguments passed to the parent class.
+            **kwargs: Keyword arguments passed to the parent class.
+        """
         self._serialize_cache = ThreadSafeCache()
+        super().__init__(*args, **kwargs)
 
     @abstractmethod
-    def __arrow_ext_serialize_compute(self) -> bytes:
+    def _arrow_ext_serialize_compute(self) -> bytes:
+        """Subclasses must implement this method to compute serialization."""
         ...
 
     @classmethod
     @abstractmethod
-    def __arrow_ext_deserialize_compute(cls, storage_type, serialized) -> Any:
+    def _arrow_ext_deserialize_compute(cls, storage_type, serialized) -> Any:
+        """Subclasses must implement this method to compute deserialization."""
         ...
 
     def __arrow_ext_serialize__(self) -> bytes:
-        if PYARROW_EXTENSION_USE_CACHE:
-            return self._serialize_cache.get_or_compute(
-                self.__arrow_ext_serialize_compute
-            )
-        else:
-            return self.__arrow_ext_serialize_compute()
+        """Serialize the extension type using caching if enabled."""
+        return self._serialize_cache.get_or_compute(self._arrow_ext_serialize_compute)
 
-    @abstractmethod
     @classmethod
+    @abstractmethod
     def _get_deserialize_cache_key(cls, storage_type, serialized) -> Any:
         ...
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized) -> Any:
-        if PYARROW_EXTENSION_USE_CACHE:
-            return cls._deserialize_cache.get_or_compute(
-                lambda: cls.__arrow_ext_deserialize_compute(storage_type, serialized),
-                key=cls._get_deserialize_cache_key(storage_type, serialized),
-            )
-        else:
-            return cls.__arrow_ext_deserialize_compute(storage_type, serialized)
+        """Deserialize the extension type using caching if enabled."""
+        return cls._deserialize_cache.get_or_compute(
+            lambda: cls._arrow_ext_deserialize_compute(storage_type, serialized),
+            key=cls._get_deserialize_cache_key(storage_type, serialized),
+        )
 
 
 @DeveloperAPI
@@ -493,8 +494,9 @@ def get_arrow_extension_variable_shape_tensor_types():
     return (ArrowVariableShapedTensorType,)
 
 
+# ArrowExtensionSerializeDeserializeCache needs to be first in the MRO to ensure the cache is used
 class _BaseFixedShapeArrowTensorType(
-    pa.ExtensionType, ArrowExtensionSerializeDeserializeCache
+    ArrowExtensionSerializeDeserializeCache, pa.ExtensionType
 ):
     """
     Arrow ExtensionType for an array of fixed-shaped, homogeneous-typed
@@ -510,8 +512,8 @@ class _BaseFixedShapeArrowTensorType(
         self, shape: Tuple[int, ...], tensor_dtype: pa.DataType, ext_type_id: str
     ):
         self._shape = shape
-
-        super().__init__(tensor_dtype, ext_type_id)
+        ArrowExtensionSerializeDeserializeCache.__init__(self)
+        pa.ExtensionType.__init__(self, tensor_dtype, ext_type_id)
 
     @property
     def shape(self) -> Tuple[int, ...]:
@@ -542,7 +544,7 @@ class _BaseFixedShapeArrowTensorType(
             self.__arrow_ext_serialize__(),
         )
 
-    def __arrow_ext_serialize_compute(self):
+    def _arrow_ext_serialize_compute(self):
         if ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.CLOUDPICKLE:
             return cloudpickle.dumps(self._shape)
         elif ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.JSON:
@@ -631,7 +633,7 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
         return (storage_type.value_type, serialized)
 
     @classmethod
-    def __arrow_ext_deserialize_compute(cls, storage_type, serialized):
+    def _arrow_ext_deserialize_compute(cls, storage_type, serialized):
         shape = tuple(_deserialize_with_fallback(serialized, "shape"))
         return cls(shape, storage_type.value_type)
 
@@ -658,7 +660,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
         return (storage_type.value_type, serialized)
 
     @classmethod
-    def __arrow_ext_deserialize_compute(cls, storage_type, serialized):
+    def _arrow_ext_deserialize_compute(cls, storage_type, serialized):
         shape = tuple(_deserialize_with_fallback(serialized, "shape"))
         return cls(shape, storage_type.value_type)
 
@@ -950,9 +952,10 @@ class ArrowTensorArray(pa.ExtensionArray):
         return target_type.wrap_array(storage)
 
 
+# ArrowExtensionSerializeDeserializeCache needs to be first in the MRO to ensure the cache is used
 @PublicAPI(stability="alpha")
 class ArrowVariableShapedTensorType(
-    pa.ExtensionType, ArrowExtensionSerializeDeserializeCache
+    ArrowExtensionSerializeDeserializeCache, pa.ExtensionType
 ):
     """
     Arrow ExtensionType for an array of heterogeneous-shaped, homogeneous-typed
@@ -980,8 +983,9 @@ class ArrowVariableShapedTensorType(
             ndim: The number of dimensions in the tensor elements.
         """
         self._ndim = ndim
-
-        super().__init__(
+        ArrowExtensionSerializeDeserializeCache.__init__(self)
+        pa.ExtensionType.__init__(
+            self,
             pa.struct(
                 [("data", pa.large_list(dtype)), ("shape", pa.list_(self.OFFSET_DTYPE))]
             ),
@@ -1023,7 +1027,7 @@ class ArrowVariableShapedTensorType(
             self.__arrow_ext_serialize__(),
         )
 
-    def __arrow_ext_serialize_compute(self):
+    def _arrow_ext_serialize_compute(self):
         if ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.CLOUDPICKLE:
             return cloudpickle.dumps(self._ndim)
         elif ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.JSON:
@@ -1038,7 +1042,7 @@ class ArrowVariableShapedTensorType(
         return (storage_type["data"].type.value_type, serialized)
 
     @classmethod
-    def __arrow_ext_deserialize_compute(cls, storage_type, serialized):
+    def _arrow_ext_deserialize_compute(cls, storage_type, serialized):
         ndim = _deserialize_with_fallback(serialized, "ndim")
         dtype = storage_type["data"].type.value_type
         return cls(dtype, ndim)
