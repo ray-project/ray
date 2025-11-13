@@ -302,7 +302,7 @@ class TestDownloadExpressionErrors:
         """
         malformed_uris = [
             f"local://{tmp_path}/nonexistent.txt",  # File doesn't exist
-            f"local:///this/path/does/not/exist/file.txt",  # Invalid path
+            "local:///this/path/does/not/exist/file.txt",  # Invalid path
             "foo://bar",  # Invalid scheme
             "://no-scheme",  # Missing scheme
             "",  # Empty URI
