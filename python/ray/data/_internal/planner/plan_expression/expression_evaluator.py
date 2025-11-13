@@ -1,13 +1,148 @@
+from __future__ import annotations
+
 import ast
 import logging
+import operator
+from typing import Any, Callable, Dict, List, TypeVar, Union
 
+import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
-from ray.data.expressions import ColumnExpr, Expr
+from ray.data._internal.logical.rules.projection_pushdown import (
+    _extract_input_columns_renaming_mapping,
+)
+from ray.data.block import Block, BlockAccessor, BlockColumn, BlockType
+from ray.data.expressions import (
+    AliasExpr,
+    BinaryExpr,
+    ColumnExpr,
+    DownloadExpr,
+    Expr,
+    LiteralExpr,
+    Operation,
+    StarExpr,
+    UDFExpr,
+    UnaryExpr,
+    _ExprVisitor,
+    col,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _pa_is_in(left: Any, right: Any) -> Any:
+    if not isinstance(right, (pa.Array, pa.ChunkedArray)):
+        right = pa.array(right.as_py() if isinstance(right, pa.Scalar) else right)
+    return pc.is_in(left, right)
+
+
+_PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
+    Operation.ADD: operator.add,
+    Operation.SUB: operator.sub,
+    Operation.MUL: operator.mul,
+    Operation.DIV: operator.truediv,
+    Operation.FLOORDIV: operator.floordiv,
+    Operation.GT: operator.gt,
+    Operation.LT: operator.lt,
+    Operation.GE: operator.ge,
+    Operation.LE: operator.le,
+    Operation.EQ: operator.eq,
+    Operation.NE: operator.ne,
+    Operation.AND: operator.and_,
+    Operation.OR: operator.or_,
+    Operation.NOT: operator.invert,
+    Operation.IS_NULL: pd.isna,
+    Operation.IS_NOT_NULL: pd.notna,
+    Operation.IN: lambda left, right: left.isin(right),
+    Operation.NOT_IN: lambda left, right: ~left.isin(right),
+}
+
+
+def _is_pa_string_type(t: pa.DataType) -> bool:
+    return pa.types.is_string(t) or pa.types.is_large_string(t)
+
+
+def _is_pa_string_like(x: Union[pa.Array, pa.ChunkedArray]) -> bool:
+    t = x.type
+    if pa.types.is_dictionary(t):
+        t = t.value_type
+    return _is_pa_string_type(t)
+
+
+def _pa_decode_dict_string_array(x: Union[pa.Array, pa.ChunkedArray]) -> Any:
+    """Convert Arrow dictionary-encoded string arrays to regular string arrays.
+
+    Dictionary encoding stores strings as indices into a dictionary of unique values.
+    This function converts them back to regular string arrays for string operations.
+
+    Example:
+        # Input: pa.array(['a', 'b']).dictionary_encode()
+        #   -- dictionary: ["a", "b"]
+        #   -- indices: [0, 1]
+        # Output: regular string array ["a", "b"]
+    Args:
+        x: The input array to convert.
+    Returns:
+        The converted string array.
+    """
+    if pa.types.is_dictionary(x.type) and _is_pa_string_type(x.type.value_type):
+        return pc.cast(x, pa.string())
+    return x
+
+
+def _to_pa_string_input(x: Any) -> Any:
+    if isinstance(x, str):
+        return pa.scalar(x)
+    elif _is_pa_string_like(x) and isinstance(x, (pa.Array, pa.ChunkedArray)):
+        x = _pa_decode_dict_string_array(x)
+    else:
+        raise
+    return x
+
+
+def _pa_add_or_concat(left: Any, right: Any) -> Any:
+    if isinstance(left, pa.Scalar):
+        left = left.as_py()
+    if isinstance(right, pa.Scalar):
+        right = right.as_py()
+    # If either side is string-like, perform string concatenation.
+    if (
+        isinstance(left, str)
+        or isinstance(right, str)
+        or (isinstance(left, (pa.Array, pa.ChunkedArray)) and _is_pa_string_like(left))
+        or (
+            isinstance(right, (pa.Array, pa.ChunkedArray)) and _is_pa_string_like(right)
+        )
+    ):
+        left_input = _to_pa_string_input(left)
+        right_input = _to_pa_string_input(right)
+        return pc.binary_join_element_wise(left_input, right_input, "")
+    return pc.add(left, right)
+
+
+_ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
+    Operation.ADD: _pa_add_or_concat,
+    Operation.SUB: pc.subtract,
+    Operation.MUL: pc.multiply,
+    Operation.DIV: pc.divide,
+    Operation.FLOORDIV: lambda left, right: pc.floor(pc.divide(left, right)),
+    Operation.GT: pc.greater,
+    Operation.LT: pc.less,
+    Operation.GE: pc.greater_equal,
+    Operation.LE: pc.less_equal,
+    Operation.EQ: pc.equal,
+    Operation.NE: pc.not_equal,
+    Operation.AND: pc.and_kleene,
+    Operation.OR: pc.or_kleene,
+    Operation.NOT: pc.invert,
+    Operation.IS_NULL: pc.is_null,
+    Operation.IS_NOT_NULL: pc.is_valid,
+    Operation.IN: _pa_is_in,
+    Operation.NOT_IN: lambda left, right: pc.invert(_pa_is_in(left, right)),
+}
 
 
 # NOTE: (srinathk) There are 3 distinct stages of handling passed in exprs:
@@ -15,6 +150,8 @@ logger = logging.getLogger(__name__)
 # 2. Resolving unbound names (to schema)
 # 3. Converting resolved expressions to PA ones
 # Need to break up the abstraction provided by ExpressionEvaluator.
+
+ScalarType = TypeVar("ScalarType")
 
 
 class ExpressionEvaluator:
@@ -88,9 +225,9 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
 
         op = node.ops[0]
         if isinstance(op, ast.In):
-            return left_expr.is_in(comparators[0])
+            return pc.is_in(left_expr, comparators[0])
         elif isinstance(op, ast.NotIn):
-            return ~left_expr.is_in(comparators[0])
+            return ~pc.is_in(left_expr, comparators[0])
         elif isinstance(op, ast.Eq):
             return left_expr == comparators[0]
         elif isinstance(op, ast.NotEq):
@@ -233,7 +370,7 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
                 nan_is_null=nan_is_null
             ),
             "is_valid": lambda arg: arg.is_valid(),
-            "is_in": lambda arg1, arg2: arg1.is_in(arg2),
+            "is_in": lambda arg1, arg2: pc.is_in(arg1, arg2),
         }
 
         if func_name in function_map:
@@ -405,3 +542,213 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
             return BinaryExpr(Operation.IN, left, right)
         else:
             raise ValueError(f"Unsupported function: {func_name}")
+
+
+class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
+    """Visitor-based expression evaluator that uses Block and BlockColumns
+
+    This evaluator implements the visitor pattern to traverse expression trees
+    and evaluate them against Block data structures. It maintains operation
+    mappings in shared state and returns consistent BlockColumn types.
+    """
+
+    def __init__(self, block: Block):
+        """Initialize the evaluator with a block and operation mappings.
+
+        Args:
+            block: The Block to evaluate expressions against.
+        """
+        self.block = block
+        self.block_accessor = BlockAccessor.for_block(block)
+
+        # Use BlockAccessor to determine operation mappings
+        block_type = self.block_accessor.block_type()
+        if block_type == BlockType.PANDAS:
+            self.ops = _PANDAS_EXPR_OPS_MAP
+        elif block_type == BlockType.ARROW:
+            self.ops = _ARROW_EXPR_OPS_MAP
+        else:
+            raise TypeError(f"Unsupported block type: {block_type}")
+
+    def visit_column(self, expr: ColumnExpr) -> Union[BlockColumn, ScalarType]:
+        """Visit a column expression and return the column data.
+
+        Args:
+            expr: The column expression.
+
+        Returns:
+            The column data as a BlockColumn.
+        """
+        return self.block[expr.name]
+
+    def visit_literal(self, expr: LiteralExpr) -> Union[BlockColumn, ScalarType]:
+        """Visit a literal expression and return the literal value.
+
+        Args:
+            expr: The literal expression.
+
+        Returns:
+            The literal value.
+        """
+        # Given that expressions support pandas blocks, we need to return the value as is.
+        # Pandas has multiple dtype_backends, so there's no guarantee on the return type.
+        return expr.value
+
+    def visit_binary(self, expr: BinaryExpr) -> Union[BlockColumn, ScalarType]:
+        """Visit a binary expression and return the result of the operation.
+
+        Args:
+            expr: The binary expression.
+
+        Returns:
+            The result of the binary operation as a BlockColumn.
+        """
+        left_result = self.visit(expr.left)
+        right_result = self.visit(expr.right)
+
+        return self.ops[expr.op](left_result, right_result)
+
+    def visit_unary(self, expr: UnaryExpr) -> Union[BlockColumn, ScalarType]:
+        """Visit a unary expression and return the result of the operation.
+
+        Args:
+            expr: The unary expression.
+
+        Returns:
+            The result of the unary operation as a BlockColumn.
+        """
+        operand_result = self.visit(expr.operand)
+        return self.ops[expr.op](operand_result)
+
+    def visit_udf(self, expr: UDFExpr) -> Union[BlockColumn, ScalarType]:
+        """Visit a UDF expression and return the result of the function call.
+
+        Args:
+            expr: The UDF expression.
+
+        Returns:
+            The result of the UDF call as a BlockColumn.
+        """
+        args = [self.visit(arg) for arg in expr.args]
+        kwargs = {k: self.visit(v) for k, v in expr.kwargs.items()}
+        result = expr.fn(*args, **kwargs)
+
+        if not isinstance(result, (pd.Series, np.ndarray, pa.Array, pa.ChunkedArray)):
+            function_name = expr.fn.__name__
+            raise TypeError(
+                f"UDF '{function_name}' returned invalid type {type(result).__name__}. "
+                f"Expected type (pandas.Series, numpy.ndarray, pyarrow.Array, or pyarrow.ChunkedArray)"
+            )
+
+        return result
+
+    def visit_alias(self, expr: AliasExpr) -> Union[BlockColumn, ScalarType]:
+        """Visit an alias expression and return the renamed result.
+
+        Args:
+            expr: The alias expression.
+
+        Returns:
+            A Block with the data from the inner expression.
+        """
+        # Evaluate the inner expression
+        return self.visit(expr.expr)
+
+    def visit_star(self, expr: StarExpr) -> Union[BlockColumn, ScalarType]:
+        """Visit a star expression.
+
+        Args:
+            expr: The star expression.
+
+        Returns:
+            TypeError: StarExpr cannot be evaluated as a regular expression.
+        """
+        # star() should not be evaluated directly - it's handled at Project level
+        raise TypeError(
+            "StarExpr cannot be evaluated as a regular expression. "
+            "It should only be used in Project operations."
+        )
+
+    def visit_download(self, expr: DownloadExpr) -> Union[BlockColumn, ScalarType]:
+        """Visit a download expression.
+
+        Args:
+            expr: The download expression.
+
+        Returns:
+            TypeError: DownloadExpr evaluation not yet implemented.
+        """
+        raise TypeError(
+            "DownloadExpr evaluation is not yet implemented in NativeExpressionEvaluator."
+        )
+
+
+def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:
+    """Evaluate an expression against a block using the visitor pattern.
+
+    Args:
+        expr: The expression to evaluate.
+        block: The Block to evaluate against.
+
+    Returns:
+        The evaluated result as a BlockColumn or a scalar value.
+    """
+    evaluator = NativeExpressionEvaluator(block)
+    return evaluator.visit(expr)
+
+
+def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
+    """
+    Evaluate a projection (list of expressions) against a block.
+
+    Handles projection semantics including:
+    - Empty projections
+    - Star() expressions for preserving existing columns
+    - Rename detection
+    - Column ordering
+
+    Args:
+        projection_exprs: List of expressions to evaluate (may include StarExpr)
+        block: The block to project
+
+    Returns:
+        A new block with the projected schema
+    """
+    block_accessor = BlockAccessor.for_block(block)
+
+    # Skip projection only for schema-less empty blocks.
+    if block_accessor.num_rows() == 0 and len(block_accessor.column_names()) == 0:
+        return block
+
+    # Handle simple cases early.
+    if len(projection_exprs) == 0:
+        return block_accessor.select([])
+
+    input_column_names = list(block_accessor.column_names())
+    # Collect input column rename map from the projection list
+    input_column_rename_map = _extract_input_columns_renaming_mapping(projection_exprs)
+
+    # Expand star expr (if any)
+    if isinstance(projection_exprs[0], StarExpr):
+        # Cherry-pick input block's columns that aren't explicitly removed via
+        # renaming
+        input_column_ref_exprs = [
+            col(c) for c in input_column_names if c not in input_column_rename_map
+        ]
+
+        projection_exprs = input_column_ref_exprs + projection_exprs[1:]
+
+    names, output_cols = zip(*[(e.name, eval_expr(e, block)) for e in projection_exprs])
+
+    # This clumsy workaround is necessary to be able to fill in Pyarrow tables
+    # that has to be "seeded" from existing table with N rows, and couldn't be
+    # started from a truly empty table.
+    #
+    # TODO fix
+    new_block = BlockAccessor.for_block(block).fill_column("__stub__", None)
+    new_block = BlockAccessor.for_block(new_block).drop(input_column_names)
+
+    for name, output_col in zip(names, output_cols):
+        new_block = BlockAccessor.for_block(new_block).fill_column(name, output_col)
+
+    return BlockAccessor.for_block(new_block).drop(["__stub__"])

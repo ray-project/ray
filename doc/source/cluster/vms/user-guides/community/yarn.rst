@@ -83,6 +83,8 @@ Use the ``files`` option to specify files that will be copied into the YARN cont
             files:
                 # ray/doc/yarn/example.py
                 example.py: example.py
+                # ray/doc/yarn/dashboard.py
+                dashboard.py: dashboard.py
             #     # A packaged python environment using `conda-pack`. Note that Skein
             #     # doesn't require any specific way of distributing files, but this
             #     # is a good one for python projects. This is optional.
@@ -115,6 +117,12 @@ and heap memory to roughly 200 MB. This is conservative and should be set accord
 .. code-block:: bash
 
     ray start --head --port=6379 --object-store-memory=200000000 --memory 200000000 --num-cpus=1
+
+Register the ray dashboard to Skein. This exposes the dashboard link on the Skein application page.
+
+.. code-block:: bash
+
+    python dashboard.py "http://$(hostname -i):8265"
 
 Execute the user script containing the Ray program.
 
@@ -176,6 +184,10 @@ You can use the following command to launch the application as specified by the 
 Once it has been submitted, you can see the job running on the YARN dashboard.
 
 .. image:: /cluster/images/yarn-job.png
+
+If you have registered the Ray dashboard address in the Skein as shown above, you can retrieve it on Skein's application page:
+
+.. image:: /cluster/images/yarn-job-dashboard.png
 
 Cleaning Up
 -----------

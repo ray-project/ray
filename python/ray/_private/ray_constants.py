@@ -163,6 +163,9 @@ RAY_JOB_SUBMIT_HOOK = "RAY_JOB_SUBMIT_HOOK"
 # instantiate a Job SubmissionClient.
 RAY_JOB_HEADERS = "RAY_JOB_HEADERS"
 
+# Timeout waiting for the dashboard to come alive during node startup.
+RAY_DASHBOARD_STARTUP_TIMEOUT_S = env_integer("RAY_DASHBOARD_STARTUP_TIMEOUT_S", 60)
+
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
 DASHBOARD_ADDRESS = "dashboard"
@@ -459,14 +462,6 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Default max_concurrency option in @ray.remote for threaded actors.
 DEFAULT_MAX_CONCURRENCY_THREADED = 1
 
-# Prefix for namespaces which are used internally by ray.
-# Jobs within these namespaces should be hidden from users
-# and should not be considered user activity.
-# Please keep this in sync with the definition kRayInternalNamespacePrefix
-# in /src/ray/gcs/gcs_server/gcs_job_manager.h.
-RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
-RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
-
 # Ray internal flags. These flags should not be set by users, and we strip them on job
 # submission.
 # This should be consistent with src/ray/common/ray_internal_flag_def.h
@@ -580,7 +575,7 @@ RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "l
 
 # Whether enable OpenTelemetry as the metrics collection backend. The default is
 # using OpenCensus.
-RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", False)
+RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", True)
 
 # How long to wait for a fetch to complete during ray.get before timing out and raising an exception to the user.
 #

@@ -90,7 +90,8 @@ namespace gcs {
 /// will update its state to `DEAD` and remove it from `registered_actors_` and
 /// `created_actors_`.
 /// 9: A dead actor caused by out-of-scope is lineage reconstructed.
-class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
+class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
+                        public std::enable_shared_from_this<GcsActorManager> {
  public:
   /// Create a GcsActorManager
   ///
@@ -105,13 +106,14 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
       RuntimeEnvManager &runtime_env_manager,
       GCSFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
+      rpc::RayletClientPool &raylet_client_pool,
       rpc::CoreWorkerClientPool &worker_client_pool,
       observability::RayEventRecorderInterface &ray_event_recorder,
       const std::string &session_name,
       ray::observability::MetricInterface &actor_by_state_gauge,
       ray::observability::MetricInterface &gcs_actor_by_state_gauge);
 
-  ~GcsActorManager() override = default;
+  ~GcsActorManager() override;
 
   void HandleRegisterActor(rpc::RegisterActorRequest request,
                            rpc::RegisterActorReply *reply,
@@ -311,10 +313,13 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// \param[in] death_cause The reason why actor is destroyed.
   /// \param[in] force_kill Whether destory the actor forcelly.
   /// \param[in] done_callback Called when destroy finishes.
+  /// \param[in] graceful_shutdown_timeout_ms Timeout in ms for graceful shutdown.
+  ///            If graceful shutdown doesn't complete, falls back to force kill.
   void DestroyActor(const ActorID &actor_id,
                     const rpc::ActorDeathCause &death_cause,
                     bool force_kill = true,
-                    std::function<void()> done_callback = nullptr);
+                    std::function<void()> done_callback = nullptr,
+                    int64_t graceful_shutdown_timeout_ms = -1);
 
   /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>
@@ -353,14 +358,14 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// \param force_kill Whether to force kill an actor by killing the worker.
   void KillActor(const ActorID &actor_id, bool force_kill);
 
-  /// Notify CoreWorker to kill the specified actor.
+  /// Notify Raylet to kill the specified actor.
   ///
   /// \param actor The actor to be killed.
   /// \param death_cause Context about why this actor is dead.
   /// \param force_kill Whether to force kill an actor by killing the worker.
-  void NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
-                                   const rpc::ActorDeathCause &death_cause,
-                                   bool force_kill = true);
+  void NotifyRayletToKillActor(const std::shared_ptr<GcsActor> &actor,
+                               const rpc::ActorDeathCause &death_cause,
+                               bool force_kill = true);
 
   /// Add the destroyed actor to the cache. If the cache is full, one actor is randomly
   /// evicted.
@@ -479,6 +484,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   instrumented_io_context &io_context_;
   /// A publisher for publishing gcs messages.
   pubsub::GcsPublisher *gcs_publisher_;
+  /// This is used to communicate with raylets where actors are located.
+  rpc::RayletClientPool &raylet_client_pool_;
   /// This is used to communicate with actors and their owners.
   rpc::CoreWorkerClientPool &worker_client_pool_;
   /// Event recorder for emitting actor events
@@ -511,6 +518,11 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   // Make sure our unprotected maps are accessed from the same thread.
   // Currently protects actor_to_register_callbacks_.
   ThreadChecker thread_checker_;
+
+  /// Fallback timers for graceful actor shutdowns, keyed by WorkerID.
+  /// Canceled on actor restart to avoid redundant kill requests for old instances.
+  absl::flat_hash_map<WorkerID, std::unique_ptr<boost::asio::deadline_timer>>
+      graceful_shutdown_timers_;
 
   // Debug info.
   enum CountType {

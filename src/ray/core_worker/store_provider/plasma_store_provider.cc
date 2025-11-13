@@ -15,6 +15,7 @@
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -74,7 +75,8 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
       store_client_(std::move(store_client)),
       reference_counter_(reference_counter),
       check_signals_(std::move(check_signals)),
-      fetch_batch_size_(fetch_batch_size) {
+      fetch_batch_size_(fetch_batch_size),
+      get_request_counter_(0) {
   if (get_current_call_site != nullptr) {
     get_current_call_site_ = get_current_call_site;
   } else {
@@ -177,23 +179,20 @@ Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
   return store_client_->Release(object_id);
 }
 
-Status CoreWorkerPlasmaStoreProvider::PullObjectsAndGetFromPlasmaStore(
+Status CoreWorkerPlasmaStoreProvider::GetObjectsFromPlasmaStore(
     absl::flat_hash_set<ObjectID> &remaining,
-    const std::vector<ObjectID> &batch_ids,
+    const std::vector<ObjectID> &ids,
     int64_t timeout_ms,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
-  const auto owner_addresses = reference_counter_.GetOwnerAddresses(batch_ids);
-  RAY_RETURN_NOT_OK(raylet_ipc_client_->AsyncGetObjects(batch_ids, owner_addresses));
-
   std::vector<plasma::ObjectBuffer> plasma_results;
-  RAY_RETURN_NOT_OK(store_client_->Get(batch_ids, timeout_ms, &plasma_results));
+  RAY_RETURN_NOT_OK(store_client_->Get(ids, timeout_ms, &plasma_results));
 
   // Add successfully retrieved objects to the result map and remove them from
   // the set of IDs to get.
   for (size_t i = 0; i < plasma_results.size(); i++) {
     if (plasma_results[i].data != nullptr || plasma_results[i].metadata != nullptr) {
-      const auto &object_id = batch_ids[i];
+      const auto &object_id = ids[i];
       std::shared_ptr<TrackedBuffer> data = nullptr;
       std::shared_ptr<Buffer> metadata = nullptr;
       if (plasma_results[i].data && plasma_results[i].data->Size() > 0) {
@@ -216,7 +215,6 @@ Status CoreWorkerPlasmaStoreProvider::PullObjectsAndGetFromPlasmaStore(
       (*results)[object_id] = std::move(result_object);
     }
   }
-
   return Status::OK();
 }
 
@@ -258,37 +256,48 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     const absl::flat_hash_set<ObjectID> &object_ids,
     int64_t timeout_ms,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
-  std::vector<ObjectID> batch_ids;
-  absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
+  std::vector<ipc::ScopedResponse> get_request_cleanup_handlers;
 
-  // Send initial requests to pull all objects in parallel.
-  std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
-  int64_t total_size = static_cast<int64_t>(object_ids.size());
   bool got_exception = false;
-  for (int64_t start = 0; start < total_size; start += fetch_batch_size_) {
+  absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
+  std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
+  std::vector<ObjectID> batch_ids;
+
+  int64_t num_total_objects = static_cast<int64_t>(object_ids.size());
+
+  // TODO(57923): Need to understand if batching is necessary. If it's necessary,
+  // then the reason needs to be documented.
+  for (int64_t start = 0; start < num_total_objects; start += fetch_batch_size_) {
     batch_ids.clear();
-    for (int64_t i = start; i < start + fetch_batch_size_ && i < total_size; i++) {
+    for (int64_t i = start; i < start + fetch_batch_size_ && i < num_total_objects; i++) {
       batch_ids.push_back(id_vector[i]);
     }
+
+    // 1. Make the request to pull all objects into local plasma if not local already.
+    std::vector<rpc::Address> owner_addresses =
+        reference_counter_.GetOwnerAddresses(batch_ids);
+    StatusOr<ipc::ScopedResponse> status_or_cleanup = raylet_ipc_client_->AsyncGetObjects(
+        batch_ids, owner_addresses, get_request_counter_.fetch_add(1));
+    RAY_RETURN_NOT_OK(status_or_cleanup.status());
+    get_request_cleanup_handlers.emplace_back(std::move(status_or_cleanup.value()));
+
+    // 2. Try to Get all objects that are already local from the plasma store.
     RAY_RETURN_NOT_OK(
-        PullObjectsAndGetFromPlasmaStore(remaining,
-                                         batch_ids,
-                                         /*timeout_ms=*/0,
-                                         // Mutable objects must be local before ray.get.
-                                         results,
-                                         &got_exception));
+        GetObjectsFromPlasmaStore(remaining,
+                                  batch_ids,
+                                  /*timeout_ms=*/0,
+                                  // Mutable objects must be local before ray.get.
+                                  results,
+                                  &got_exception));
   }
 
-  // If all objects were fetched successfully or if any of the returned
-  // objects contain an exception, clean up the Get request in the raylet
-  // and early exit.
   if (remaining.empty() || got_exception) {
-    return raylet_ipc_client_->CancelGetRequest();
+    return Status::OK();
   }
 
-  // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct
-  // and Get from the local object store in batches. This loop will run indefinitely
-  // until the objects are all fetched if timeout is -1.
+  // 3. If not all objects were successfully fetched, repeatedly call
+  // GetObjectsFromPlasmaStore in batches. This loop will run indefinitely until the
+  // objects are all fetched if timeout is -1.
   bool should_break = false;
   bool timed_out = false;
   int64_t remaining_timeout = timeout_ms;
@@ -312,7 +321,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     size_t previous_size = remaining.size();
-    RAY_RETURN_NOT_OK(PullObjectsAndGetFromPlasmaStore(
+    RAY_RETURN_NOT_OK(GetObjectsFromPlasmaStore(
         remaining, batch_ids, batch_timeout, results, &got_exception));
     should_break = timed_out || got_exception;
 
@@ -322,7 +331,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     if (check_signals_) {
       Status status = check_signals_();
       if (!status.ok()) {
-        RAY_RETURN_NOT_OK(raylet_ipc_client_->CancelGetRequest());
         return status;
       }
     }
@@ -337,11 +345,14 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   }
 
   if (!remaining.empty() && timed_out) {
-    RAY_RETURN_NOT_OK(raylet_ipc_client_->CancelGetRequest());
-    return Status::TimedOut("Get timed out: some object(s) not ready.");
+    return Status::TimedOut(absl::StrFormat(
+        "Could not fetch %d objects within the timeout of %dms. %d objects were not "
+        "ready.",
+        object_ids.size(),
+        timeout_ms,
+        remaining.size()));
   }
-
-  return raylet_ipc_client_->CancelGetRequest();
+  return Status::OK();
 }
 
 Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,

@@ -218,12 +218,12 @@ class CoreWorkerPlasmaStoreProvider {
   std::shared_ptr<plasma::PlasmaClientInterface> &store_client() { return store_client_; }
 
  private:
-  /// Ask the raylet to pull a set of objects and then attempt to get them
-  /// from the local plasma store. Successfully fetched objects will be removed
-  /// from the input set of remaining IDs and added to the results map.
+  /// Ask the plasma store to return object objects within the timeout.
+  /// Successfully fetched objects will be removed from the input set of remaining IDs and
+  /// added to the results map.
   ///
   /// \param[in/out] remaining IDs of the remaining objects to get.
-  /// \param[in] batch_ids IDs of the objects to get.
+  /// \param[in] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds.
   /// \param[out] results Map of objects to write results into. This method will only
   /// add to this map, not clear or remove from it, so the caller can pass in a non-empty
@@ -232,10 +232,10 @@ class CoreWorkerPlasmaStoreProvider {
   /// exception.
   /// \return Status::IOError if there is an error in communicating with the raylet or the
   /// plasma store.
-  /// \return Status::OK otherwise.
-  Status PullObjectsAndGetFromPlasmaStore(
+  /// \return Status::OK if successful.
+  Status GetObjectsFromPlasmaStore(
       absl::flat_hash_set<ObjectID> &remaining,
-      const std::vector<ObjectID> &batch_ids,
+      const std::vector<ObjectID> &ids,
       int64_t timeout_ms,
       absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
       bool *got_exception);
@@ -261,6 +261,7 @@ class CoreWorkerPlasmaStoreProvider {
   // Pointer to the shared buffer tracker.
   std::shared_ptr<BufferTracker> buffer_tracker_;
   int64_t fetch_batch_size_ = 0;
+  std::atomic<int64_t> get_request_counter_;
 };
 
 }  // namespace core

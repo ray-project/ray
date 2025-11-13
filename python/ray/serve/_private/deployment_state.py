@@ -251,6 +251,7 @@ class ActorReplicaWrapper:
         self._initialization_latency_s: Optional[float] = None
         self._internal_grpc_port: Optional[int] = None
         self._docs_path: Optional[str] = None
+        self._route_patterns: Optional[List[str]] = None
         # Rank assigned to the replica.
         self._rank: Optional[int] = None
         # Populated in `on_scheduled` or `recover`.
@@ -347,6 +348,10 @@ class ActorReplicaWrapper:
     @property
     def docs_path(self) -> Optional[str]:
         return self._docs_path
+
+    @property
+    def route_patterns(self) -> Optional[List[str]]:
+        return self._route_patterns
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -768,6 +773,7 @@ class ActorReplicaWrapper:
                         self._http_port,
                         self._grpc_port,
                         self._rank,
+                        self._route_patterns,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -1073,7 +1079,7 @@ class DeploymentReplica:
             node_id=self.actor_node_id,
             node_ip=self._actor.node_ip,
             availability_zone=cluster_node_info_cache.get_node_az(self.actor_node_id),
-            actor_handle=self._actor.actor_handle,
+            actor_name=self._actor._actor_name,
             max_ongoing_requests=self._actor.max_ongoing_requests,
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
@@ -1125,6 +1131,10 @@ class DeploymentReplica:
     @property
     def docs_path(self) -> Optional[str]:
         return self._actor.docs_path
+
+    @property
+    def route_patterns(self) -> Optional[List[str]]:
+        return self._actor.route_patterns
 
     @property
     def actor_id(self) -> str:
@@ -1628,7 +1638,7 @@ class DeploymentRankManager:
         replicas_needing_reconfiguration = []
 
         if current_ranks != expected_ranks:
-            logger.info(
+            logger.debug(
                 f"Deployment at target replica count but ranks are not contiguous. "
                 f"Current: {current_ranks}, Expected: {expected_ranks}. "
                 "Performing minimal reassignment."
@@ -1684,7 +1694,7 @@ class DeploymentRankManager:
             # Store the old rank before updating
             old_rank = self._replica_ranks[replica_id]
 
-            logger.info(
+            logger.debug(
                 f"Reassigning replica {replica_id}: rank {old_rank} -> {new_rank}"
             )
 
@@ -1696,7 +1706,7 @@ class DeploymentRankManager:
             self._released_ranks.add(old_rank)
 
         # Log the reassignment summary
-        logger.info(
+        logger.debug(
             f"Minimal reassignment complete: {len(replicas_keeping_ranks)} replicas kept ranks, "
             f"{len(replicas_needing_ranks)} replicas reassigned"
         )
@@ -1773,6 +1783,7 @@ class DeploymentState:
         self._last_broadcasted_deployment_config = None
 
         self._docs_path: Optional[str] = None
+        self._route_patterns: Optional[List[str]] = None
 
     def should_autoscale(self) -> bool:
         """
@@ -1864,6 +1875,10 @@ class DeploymentState:
     @property
     def docs_path(self) -> Optional[str]:
         return self._docs_path
+
+    @property
+    def route_patterns(self) -> Optional[List[str]]:
+        return self._route_patterns
 
     @property
     def _failed_to_start_threshold(self) -> int:
@@ -2402,7 +2417,7 @@ class DeploymentState:
                     # Assign rank during replica creation (startup process)
                     assigned_rank = self._rank_manager.assign_rank(replica_id.unique_id)
 
-                    logger.info(
+                    logger.debug(
                         f"Assigned rank {assigned_rank} to new replica {replica_id.unique_id} during startup"
                     )
                     new_deployment_replica = DeploymentReplica(
@@ -2538,9 +2553,10 @@ class DeploymentState:
                 )
 
                 # if replica version is the same as the target version,
-                # we update the docs path
+                # we update the docs path and route patterns
                 if replica.version == self._target_state.version:
                     self._docs_path = replica.docs_path
+                    self._route_patterns = replica.route_patterns
 
                 # Log the startup latency.
                 e2e_replica_start_latency = time.time() - replica._start_time
@@ -2763,7 +2779,7 @@ class DeploymentState:
                 # This ensures rank is available during draining/graceful shutdown
                 replica_id = replica.replica_id.unique_id
                 self._rank_manager.release_rank(replica_id)
-                logger.info(
+                logger.debug(
                     f"Released rank from replica {replica_id} in deployment {self._id}"
                 )
                 self._autoscaling_state_manager.on_replica_stopped(replica.replica_id)
@@ -2798,7 +2814,7 @@ class DeploymentState:
         if not replicas_to_reconfigure:
             return
 
-        logger.info(
+        logger.debug(
             f"Reconfiguring {len(replicas_to_reconfigure)} replicas with rank changes in deployment {self._id}"
         )
 
@@ -2815,7 +2831,7 @@ class DeploymentState:
             )
             updated_count += 1
 
-        logger.info(
+        logger.debug(
             f"Successfully reconfigured {updated_count} replicas with new ranks in deployment {self._id}"
         )
 
@@ -3190,6 +3206,14 @@ class DeploymentStateManager:
     def get_deployment_docs_path(self, deployment_id: DeploymentID) -> Optional[str]:
         if deployment_id in self._deployment_states:
             return self._deployment_states[deployment_id].docs_path
+
+    def get_deployment_route_patterns(
+        self, deployment_id: DeploymentID
+    ) -> Optional[List[str]]:
+        """Get route patterns for a deployment if available."""
+        if deployment_id in self._deployment_states:
+            return self._deployment_states[deployment_id].route_patterns
+        return None
 
     def get_deployment_target_num_replicas(
         self, deployment_id: DeploymentID

@@ -80,6 +80,8 @@ def gen_expected_metrics(
             "'average_num_outputs_per_task': N",
             "'average_num_inputs_per_task': N",
             "'num_output_blocks_per_task_s': N",
+            "'average_total_task_completion_time_s': N",
+            "'average_task_completion_excl_backpressure_time_s': N",
             "'average_bytes_per_output': N",
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue': Z",
@@ -149,6 +151,8 @@ def gen_expected_metrics(
             "'average_num_outputs_per_task': None",
             "'average_num_inputs_per_task': None",
             "'num_output_blocks_per_task_s': None",
+            "'average_total_task_completion_time_s': None",
+            "'average_task_completion_excl_backpressure_time_s': None",
             "'average_bytes_per_output': None",
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue': Z",
@@ -197,7 +201,7 @@ def gen_expected_metrics(
             "'task_completion_time': (samples: Z, avg: Z)",
             "'block_completion_time': (samples: Z, avg: Z)",
             (
-                "'task_completion_time_without_backpressure': "
+                "'task_completion_time_excl_backpressure_s': "
                 f"{'N' if task_backpressure else 'Z'}"
             ),
             "'block_size_bytes': (samples: Z, avg: Z)",
@@ -439,6 +443,7 @@ Dataset iterator time breakdown:
     * Total time spent waiting for the first batch after starting iteration: T
     * Total execution time for user thread: T
 * Batch iteration time breakdown (summed across prefetch threads):
+    * In get RefBundles: T min, T max, T avg, T total
     * In ray.get(): T min, T max, T avg, T total
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
@@ -468,7 +473,7 @@ def test_large_args_scheduling_strategy(
     #     )
 
     map_extra_metrics = gen_extra_metrics_str(
-        LARGE_ARGS_EXTRA_METRICS_TASK_BACKPRESSURE,
+        LARGE_ARGS_EXTRA_METRICS,
         verbose_stats_logs,
     )
     # if verbose_stats_logs:
@@ -634,6 +639,7 @@ def test_dataset_stats_basic(
         f"    * Total time spent waiting for the first batch after starting iteration: T\n"
         f"    * Total execution time for user thread: T\n"
         f"* Batch iteration time breakdown (summed across prefetch threads):\n"
+        f"    * In get RefBundles: T min, T max, T avg, T total\n"
         f"    * In ray.get(): T min, T max, T avg, T total\n"
         f"    * In batch creation: T min, T max, T avg, T total\n"
         f"    * In batch formatting: T min, T max, T avg, T total\n"
@@ -678,6 +684,7 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
         f"    * Total time spent waiting for the first batch after starting iteration: T\n"
         f"    * Total execution time for user thread: T\n"
         f"* Batch iteration time breakdown (summed across prefetch threads):\n"
+        f"    * In get RefBundles: T min, T max, T avg, T total\n"
         f"    * In ray.get(): T min, T max, T avg, T total\n"
         f"    * In batch creation: T min, T max, T avg, T total\n"
         f"    * In batch formatting: T min, T max, T avg, T total\n"
@@ -709,6 +716,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_num_outputs_per_task: N,\n"
         "      average_num_inputs_per_task: N,\n"
         "      num_output_blocks_per_task_s: N,\n"
+        "      average_total_task_completion_time_s: N,\n"
+        "      average_task_completion_excl_backpressure_time_s: N,\n"
         "      average_bytes_per_output: N,\n"
         "      obj_store_mem_internal_inqueue: Z,\n"
         "      obj_store_mem_internal_outqueue: Z,\n"
@@ -781,6 +790,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   ],\n"
         "   iter_stats=IterStatsSummary(\n"
         "      wait_time=T,\n"
+        "      get_ref_bundles_time=T,\n"
         "      get_time=T,\n"
         "      iter_blocks_local=None,\n"
         "      iter_blocks_remote=None,\n"
@@ -802,6 +812,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "         operators_stats=[],\n"
         "         iter_stats=IterStatsSummary(\n"
         "            wait_time=T,\n"
+        "            get_ref_bundles_time=T,\n"
         "            get_time=T,\n"
         "            iter_blocks_local=None,\n"
         "            iter_blocks_remote=None,\n"
@@ -847,6 +858,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_num_outputs_per_task: N,\n"
         "      average_num_inputs_per_task: N,\n"
         "      num_output_blocks_per_task_s: N,\n"
+        "      average_total_task_completion_time_s: N,\n"
+        "      average_task_completion_excl_backpressure_time_s: N,\n"
         "      average_bytes_per_output: N,\n"
         "      obj_store_mem_internal_inqueue: Z,\n"
         "      obj_store_mem_internal_outqueue: Z,\n"
@@ -919,6 +932,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   ],\n"
         "   iter_stats=IterStatsSummary(\n"
         "      wait_time=T,\n"
+        "      get_ref_bundles_time=T,\n"
         "      get_time=T,\n"
         "      iter_blocks_local=None,\n"
         "      iter_blocks_remote=None,\n"
@@ -940,6 +954,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            average_num_outputs_per_task: N,\n"
         "            average_num_inputs_per_task: N,\n"
         "            num_output_blocks_per_task_s: N,\n"
+        "            average_total_task_completion_time_s: N,\n"
+        "            average_task_completion_excl_backpressure_time_s: N,\n"
         "            average_bytes_per_output: N,\n"
         "            obj_store_mem_internal_inqueue: Z,\n"
         "            obj_store_mem_internal_outqueue: Z,\n"
@@ -1012,6 +1028,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "         ],\n"
         "         iter_stats=IterStatsSummary(\n"
         "            wait_time=T,\n"
+        "            get_ref_bundles_time=T,\n"
         "            get_time=T,\n"
         "            iter_blocks_local=None,\n"
         "            iter_blocks_remote=None,\n"
@@ -1033,6 +1050,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "               operators_stats=[],\n"
         "               iter_stats=IterStatsSummary(\n"
         "                  wait_time=T,\n"
+        "                  get_ref_bundles_time=T,\n"
         "                  get_time=T,\n"
         "                  iter_blocks_local=None,\n"
         "                  iter_blocks_remote=None,\n"
@@ -1469,6 +1487,7 @@ Dataset iterator time breakdown:
     * Total time spent waiting for the first batch after starting iteration: T
     * Total execution time for user thread: T
 * Batch iteration time breakdown (summed across prefetch threads):
+    * In get RefBundles: T min, T max, T avg, T total
     * In ray.get(): T min, T max, T avg, T total
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
@@ -1625,7 +1644,7 @@ def test_runtime_metrics(ray_start_regular_shared):
     assert total_percent == 100
 
     for time_s, percent in metrics_dict.values():
-        assert time_s < total_time
+        assert time_s <= total_time
         # Check percentage, this is done with some expected loss of precision
         # due to rounding in the intital output.
         assert isclose(percent, time_s / total_time * 100, rel_tol=0.01)

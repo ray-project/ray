@@ -1,14 +1,14 @@
 import asyncio
 import concurrent.futures
 import enum
+import json
 import os
 import platform
 import subprocess
-import json
 import time
-from itertools import chain
-from typing import Awaitable, Optional, List, Dict, Set
 from dataclasses import dataclass
+from itertools import chain
+from typing import Awaitable, Dict, List, Optional, Set
 
 import aioboto3
 import boto3
@@ -17,11 +17,11 @@ from github import Repository
 
 from ray_release.aws import s3_put_rayci_test_data
 from ray_release.configs.global_config import get_global_config
-from ray_release.result import (
-    ResultStatus,
-    Result,
-)
 from ray_release.logger import logger
+from ray_release.result import (
+    Result,
+    ResultStatus,
+)
 from ray_release.util import (
     ANYSCALE_RAY_IMAGE_PREFIX,
     dict_hash,
@@ -607,6 +607,8 @@ class Test(dict):
         """
         if self.is_gce() or self.is_kuberay():
             return get_global_config()["byod_gcp_cr"]
+        if self.is_azure():
+            return get_global_config()["byod_azure_cr"]
         byod_ecr = get_global_config()["byod_aws_cr"]
         if byod_ecr:
             return byod_ecr
