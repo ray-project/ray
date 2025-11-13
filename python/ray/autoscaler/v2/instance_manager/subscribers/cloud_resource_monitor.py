@@ -69,7 +69,7 @@ class CloudResourceMonitor(InstanceUpdatedSubscriber):
                 last_unavailability_timestamp = time.time()
             self._resource_availabilities[instance.instance_type] = (
                 CloudResourceAvailability(
-                    node_type=instance.node_type,
+                    node_type=instance.instance_type,
                     last_unavailability_timestamp=last_unavailability_timestamp
                 )
             )
