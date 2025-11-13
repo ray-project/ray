@@ -129,9 +129,12 @@ def build_sglang_engine_processor(
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
                     concurrency=stage_concurrency,
-                    batch_size=chat_template_stage_cfg.batch_size or config.batch_size,
+                    batch_size=chat_template_stage_cfg.batch_size
+                    if chat_template_stage_cfg.batch_size is not None
+                    else config.batch_size,
                     runtime_env=chat_template_stage_cfg.runtime_env
-                    or config.runtime_env,
+                    if chat_template_stage_cfg.runtime_env is not None
+                    else config.runtime_env,
                 ),
             )
         )
@@ -162,8 +165,12 @@ def build_sglang_engine_processor(
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
                     concurrency=stage_concurrency,
-                    batch_size=tokenize_stage_cfg.batch_size or config.batch_size,
-                    runtime_env=tokenize_stage_cfg.runtime_env or config.runtime_env,
+                    batch_size=tokenize_stage_cfg.batch_size
+                    if tokenize_stage_cfg.batch_size is not None
+                    else config.batch_size,
+                    runtime_env=tokenize_stage_cfg.runtime_env
+                    if tokenize_stage_cfg.runtime_env is not None
+                    else config.runtime_env,
                 ),
             )
         )
@@ -226,8 +233,12 @@ def build_sglang_engine_processor(
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
                     concurrency=stage_concurrency,
-                    batch_size=detokenize_stage_cfg.batch_size or config.batch_size,
-                    runtime_env=detokenize_stage_cfg.runtime_env or config.runtime_env,
+                    batch_size=detokenize_stage_cfg.batch_size
+                    if detokenize_stage_cfg.batch_size is not None
+                    else config.batch_size,
+                    runtime_env=detokenize_stage_cfg.runtime_env
+                    if detokenize_stage_cfg.runtime_env is not None
+                    else config.runtime_env,
                 ),
             )
         )
