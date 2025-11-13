@@ -52,6 +52,12 @@ Status SysFsCgroupDriver::CheckCgroupv2Enabled() {
 
   if (fd == -1) {
     mount_file_path = fallback_mount_file_path_;
+    RAY_LOG(WARNING) << absl::StrFormat(
+        "Failed to open mount fail at %s because of error '%s'. Using fallback mount "
+        "file at %s.",
+        mount_file_path_,
+        strerror(errno),
+        fallback_mount_file_path_);
   } else {
     close(fd);
   }
