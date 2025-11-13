@@ -60,3 +60,9 @@ depsets:
     constraints:
       - requirement_constraints_expand.txt
     output: requirements_compiled_nested_expand.txt
+  - name: include_setuptools_depset
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_include_setuptools.txt
+    include_setuptools: true
