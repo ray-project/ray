@@ -575,7 +575,7 @@ RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "l
 
 # Whether enable OpenTelemetry as the metrics collection backend. The default is
 # using OpenCensus.
-RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", False)
+RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", True)
 
 # How long to wait for a fetch to complete during ray.get before timing out and raising an exception to the user.
 #

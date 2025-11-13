@@ -8,6 +8,7 @@ from ray.data._internal.actor_autoscaler import (
     create_actor_autoscaler,
 )
 from ray.data._internal.cluster_autoscaler import create_cluster_autoscaler
+from ray.data._internal.execution import create_ranker
 from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
     get_backpressure_policies,
@@ -77,6 +78,7 @@ class StreamingExecutor(Executor, threading.Thread):
         dataset_id: str = "unknown_dataset",
     ):
         self._data_context = data_context
+        self._ranker = create_ranker()
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
@@ -479,6 +481,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 # If consumer is idling (there's nothing for it to consume)
                 # enforce liveness, ie that at least a single task gets scheduled
                 ensure_liveness=self._consumer_idling(),
+                ranker=self._ranker,
             )
 
             if op is None:

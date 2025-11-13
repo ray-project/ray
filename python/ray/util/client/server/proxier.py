@@ -24,6 +24,7 @@ from ray._private.authentication.http_token_authentication import (
     get_auth_headers_if_auth_enabled,
 )
 from ray._private.client_mode_hook import disable_client_hook
+from ray._private.grpc_utils import init_grpc_channel
 from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
@@ -210,7 +211,7 @@ class ProxyManager:
             server = SpecificServer(
                 port=port,
                 process_handle_future=futures.Future(),
-                channel=ray._private.utils.init_grpc_channel(
+                channel=init_grpc_channel(
                     build_address(host, port), options=GRPC_OPTIONS
                 ),
             )
@@ -874,9 +875,13 @@ def serve_proxier(
         gcs_cli = GcsClient(address=gcs_address)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_cli)
 
-    server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
+    from ray._private.grpc_utils import create_grpc_server_with_interceptors
+
+    server = create_grpc_server_with_interceptors(
+        max_workers=CLIENT_SERVER_MAX_THREADS,
+        thread_name_prefix="ray_client_proxier",
         options=GRPC_OPTIONS,
+        asynchronous=False,
     )
     proxy_manager = ProxyManager(
         gcs_address,

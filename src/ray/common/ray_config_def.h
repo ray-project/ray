@@ -39,7 +39,7 @@ RAY_CONFIG(bool, enable_cluster_auth, true)
 /// will be converted to AuthenticationMode enum defined in
 /// rpc/authentication/authentication_mode.h
 /// use GetAuthenticationMode() to get the authentication mode enum value.
-RAY_CONFIG(std::string, auth_mode, "disabled")
+RAY_CONFIG(std::string, AUTH_MODE, "disabled")
 
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available
@@ -270,6 +270,12 @@ RAY_CONFIG(int64_t, raylet_fetch_timeout_milliseconds, 1000)
 /// The duration that we wait after sending a worker SIGTERM before sending
 /// the worker SIGKILL.
 RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 5000)
+
+/// Timeout for graceful actor shutdown (e.g. when actor goes out of scope).
+/// If an actor does not gracefully shut down within this timeout, it will be force
+/// killed. Set to -1 for infinite timeout to prevent the actor from being force killed
+/// during graceful shutdown.
+RAY_CONFIG(int64_t, actor_graceful_shutdown_timeout_ms, 30000)
 
 /// The duration that we wait after the worker is launched before the
 /// starting_worker_timeout_callback() is called.
@@ -531,7 +537,7 @@ RAY_CONFIG(std::string, metric_cardinality_level, "legacy")
 
 /// Whether enable OpenTelemetry as the metrics collection backend. The default is
 /// using OpenCensus.
-RAY_CONFIG(bool, enable_open_telemetry, false)
+RAY_CONFIG(bool, enable_open_telemetry, true)
 
 /// Whether to enable Ray Event as the event collection backend. The default is
 /// using the Export API.

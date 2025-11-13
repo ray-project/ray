@@ -10,7 +10,6 @@ import queue
 import threading
 import time
 from collections import defaultdict
-from concurrent import futures
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 import grpc
@@ -135,7 +134,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                     logger.exception("Running Ray Init failed:")
                     return ray_client_pb2.InitResponse(
                         ok=False,
-                        msg="Call to `ray.init()` on the server " f"failed with: {e}",
+                        msg=f"Call to `ray.init()` on the server failed with: {e}",
                     )
         if job_config is None:
             return ray_client_pb2.InitResponse(ok=True)
@@ -378,8 +377,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 return_exception_in_context(e, context)
         else:
             raise RuntimeError(
-                "Client requested termination without providing a valid "
-                "terminate_type"
+                "Client requested termination without providing a valid terminate_type"
             )
         return ray_client_pb2.TerminateResponse(ok=True)
 
@@ -397,7 +395,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         """
         if len(request.ids) != 1:
             raise ValueError(
-                "Async get() must have exactly 1 Object ID. " f"Actual: {request}"
+                f"Async get() must have exactly 1 Object ID. Actual: {request}"
             )
         rid = request.ids[0]
         ref = self.object_refs[client_id].get(rid, None)
@@ -479,8 +477,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                     valid=False,
                     error=cloudpickle.dumps(
                         ValueError(
-                            f"ClientObjectRef {rid} is not found for client "
-                            f"{client_id}"
+                            f"ClientObjectRef {rid} is not found for client {client_id}"
                         )
                     ),
                 )
@@ -773,13 +770,14 @@ def serve(host: str, port: int, ray_connect_handler=None):
             if not ray.is_initialized():
                 return ray.init(job_config=job_config, **ray_init_kwargs)
 
+    from ray._private.grpc_utils import create_grpc_server_with_interceptors
+
     ray_connect_handler = ray_connect_handler or default_connect_handler
-    server = grpc.server(
-        futures.ThreadPoolExecutor(
-            max_workers=CLIENT_SERVER_MAX_THREADS,
-            thread_name_prefix="ray_client_server",
-        ),
+    server = create_grpc_server_with_interceptors(
+        max_workers=CLIENT_SERVER_MAX_THREADS,
+        thread_name_prefix="ray_client_server",
         options=GRPC_OPTIONS,
+        asynchronous=False,
     )
     task_servicer = RayletServicer(ray_connect_handler)
     data_servicer = DataServicer(task_servicer)
@@ -929,7 +927,7 @@ def main():
                 )
             except Exception as e:
                 logger.error(
-                    f"[{args.mode}] Failed to put health check " f"on {args.address}"
+                    f"[{args.mode}] Failed to put health check on {args.address}"
                 )
                 logger.exception(e)
 

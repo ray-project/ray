@@ -20,20 +20,10 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
-# Hermetic python environment, currently only used for CI infra and scripts.
-
-constraint_setting(name = "hermetic")
-
-constraint_value(
+alias(
     name = "hermetic_python",
-    constraint_setting = ":hermetic",
-)
-
-platform(
-    name = "hermetic_python_platform",
-    constraint_values = [":hermetic_python"],
-    parents = ["@local_config_platform//:host"],
-    visibility = ["//visibility:private"],
+    actual = "//bazel:py39",
+    visibility = ["//visibility:public"],
 )
 
 # C/C++ toolchain constraint configs.

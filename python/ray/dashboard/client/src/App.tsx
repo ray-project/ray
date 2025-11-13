@@ -10,6 +10,7 @@ import {
 } from "./authentication/authentication";
 import { AUTHENTICATION_ERROR_EVENT } from "./authentication/constants";
 import {
+  clearAuthenticationToken,
   getAuthenticationToken,
   setAuthenticationToken,
 } from "./authentication/cookies";
@@ -252,6 +253,12 @@ const App = () => {
           }
           // If token exists, let it be used by interceptor
           // If invalid, interceptor will trigger dialog via 401/403
+        } else {
+          // Auth mode is disabled - clear any existing token from cookie
+          const existingToken = getAuthenticationToken();
+          if (existingToken) {
+            clearAuthenticationToken();
+          }
         }
       } catch (error) {
         console.error("Failed to check authentication mode:", error);

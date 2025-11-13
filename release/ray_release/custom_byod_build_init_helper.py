@@ -1,11 +1,13 @@
-from typing import List, Tuple, Dict, Optional
-import yaml
+import hashlib
 import os
+from typing import Dict, List, Optional, Tuple
+
+import yaml
+
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
 from ray_release.test import Test
-from ray_release.util import AZURE_REGISTRY_NAME, ANYSCALE_RAY_IMAGE_PREFIX
-import hashlib
+from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX, AZURE_REGISTRY_NAME
 
 
 def generate_custom_build_step_key(image: str) -> str:

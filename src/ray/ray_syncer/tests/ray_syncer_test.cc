@@ -996,13 +996,13 @@ class SyncerAuthenticationTest : public ::testing::Test {
     // Clear any existing environment variables and reset state
     ray::UnsetEnv("RAY_AUTH_TOKEN");
     ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
-    RayConfig::instance().auth_mode() = "disabled";
+    RayConfig::instance().AUTH_MODE() = "disabled";
   }
 
   void TearDown() override {
     ray::UnsetEnv("RAY_AUTH_TOKEN");
     ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
-    RayConfig::instance().auth_mode() = "disabled";
+    RayConfig::instance().AUTH_MODE() = "disabled";
   }
 
   struct AuthenticatedSyncerServerTest {
@@ -1086,7 +1086,7 @@ TEST_F(SyncerAuthenticationTest, MatchingTokens) {
   // Set client token via environment variable
   ray::SetEnv("RAY_AUTH_TOKEN", test_token);
   // Enable token authentication
-  RayConfig::instance().auth_mode() = "token";
+  RayConfig::instance().AUTH_MODE() = "token";
   ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
 
   // Create authenticated server
@@ -1113,7 +1113,7 @@ TEST_F(SyncerAuthenticationTest, MismatchedTokens) {
   // Set client token via environment variable
   ray::SetEnv("RAY_AUTH_TOKEN", client_token);
   // Enable token authentication
-  RayConfig::instance().auth_mode() = "token";
+  RayConfig::instance().AUTH_MODE() = "token";
   ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
 
   // Create authenticated server with different token
@@ -1164,7 +1164,7 @@ TEST_F(SyncerAuthenticationTest, ClientHasTokenServerDoesNotRequire) {
   // Set client token
   ray::SetEnv("RAY_AUTH_TOKEN", client_token);
   // Enable token authentication
-  RayConfig::instance().auth_mode() = "token";
+  RayConfig::instance().AUTH_MODE() = "token";
   ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
 
   // Create server without authentication (empty token)

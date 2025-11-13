@@ -30,7 +30,7 @@ steps:
     wanda: ci/docker/min.build.wanda.yaml
     matrix:
       setup:
-        python: ["3.9", "3.10"]
+        python: ["3.10"]
         extra: ["serve", "default"]
     env:
       PYTHON_VERSION: "{{matrix.python}}"

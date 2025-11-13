@@ -1624,21 +1624,7 @@ void NodeManager::HandleAsyncGetObjectsRequest(
   auto request = flatbuffers::GetRoot<protocol::AsyncGetObjectsRequest>(message_data);
   std::vector<rpc::ObjectReference> refs =
       FlatbufferToObjectReferences(*request->object_ids(), *request->owner_addresses());
-  int64_t request_id = AsyncGet(client, refs);
-  flatbuffers::FlatBufferBuilder fbb;
-  auto get_reply = protocol::CreateAsyncGetObjectsReply(fbb, request_id);
-  fbb.Finish(get_reply);
-  Status status = client->WriteMessage(
-      static_cast<int64_t>(protocol::MessageType::AsyncGetObjectsReply),
-      fbb.GetSize(),
-      fbb.GetBufferPointer());
-  if (!status.ok()) {
-    DisconnectClient(client,
-                     /*graceful=*/false,
-                     rpc::WorkerExitType::SYSTEM_ERROR,
-                     absl::StrFormat("Could not send AsyncGetObjectsReply because of %s",
-                                     status.ToString()));
-  }
+  AsyncGet(client, refs, request->get_request_id());
 }
 
 void NodeManager::ProcessWaitRequestMessage(
@@ -2373,15 +2359,16 @@ void NodeManager::HandleNotifyWorkerUnblocked(
   }
 }
 
-int64_t NodeManager::AsyncGet(const std::shared_ptr<ClientConnection> &client,
-                              std::vector<rpc::ObjectReference> &object_refs) {
+void NodeManager::AsyncGet(const std::shared_ptr<ClientConnection> &client,
+                           std::vector<rpc::ObjectReference> &object_refs,
+                           int64_t get_request_id) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     worker = worker_pool_.GetRegisteredDriver(client);
   }
   RAY_CHECK(worker);
-  return lease_dependency_manager_.StartGetRequest(worker->WorkerId(),
-                                                   std::move(object_refs));
+  lease_dependency_manager_.StartGetRequest(
+      worker->WorkerId(), std::move(object_refs), get_request_id);
 }
 
 void NodeManager::AsyncWait(const std::shared_ptr<ClientConnection> &client,

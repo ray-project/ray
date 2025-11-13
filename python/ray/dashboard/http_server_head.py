@@ -272,6 +272,10 @@ class HttpServerDashboardHead:
             "/",  # Root index.html
             "/favicon.ico",
             "/api/authentication_mode",
+            "/api/healthz",  # General healthcheck
+            "/api/gcs_healthz",  # GCS health check
+            "/api/local_raylet_healthz",  # Raylet health check
+            "/-/healthz",  # Serve health check
         }
         public_path_prefixes = ("/static/",)  # Static assets (JS, CSS, images)
 

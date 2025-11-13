@@ -529,7 +529,7 @@ void GcsServer::InitGcsActorManager(
       [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
         gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
       });
-  gcs_actor_manager_ = std::make_unique<GcsActorManager>(
+  gcs_actor_manager_ = std::make_shared<GcsActorManager>(
       std::move(scheduler),
       gcs_table_storage_.get(),
       io_context_provider_.GetDefaultIOContext(),

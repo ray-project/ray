@@ -2157,7 +2157,7 @@ def custom_excepthook(type, value, tb):
         worker_type = common_pb2.DRIVER
         worker_info = {"exception": error_message}
 
-        ray._private.state.state._check_connected()
+        ray._private.state.state._connect_and_get_accessor()
         ray._private.state.state.add_worker(worker_id, worker_type, worker_info)
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
@@ -3042,13 +3042,11 @@ def put(
     if _owner is None:
         serialize_owner_address = None
     elif isinstance(_owner, ray.actor.ActorHandle):
-        # Ensure `ray._private.state.state.global_state_accessor` is not None
-        ray._private.state.state._check_connected()
+        # Ensure GlobalState is connected
+        ray._private.state.state._connect_and_get_accessor()
         serialize_owner_address = (
             ray._raylet._get_actor_serialized_owner_address_or_none(
-                ray._private.state.state.global_state_accessor.get_actor_info(
-                    _owner._actor_id
-                )
+                ray._private.state.state.get_actor_info(_owner._actor_id)
             )
         )
         if not serialize_owner_address:

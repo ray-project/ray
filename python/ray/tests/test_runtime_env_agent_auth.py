@@ -12,12 +12,12 @@ from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
     get_auth_headers_if_auth_enabled,
 )
-from ray.core.generated import runtime_env_agent_pb2
-from ray.tests.authentication_test_utils import (
+from ray._private.authentication_test_utils import (
     reset_auth_token_state,
     set_auth_mode,
     set_env_auth_token,
 )
+from ray.core.generated import runtime_env_agent_pb2
 
 
 def _agent_url(agent_address: str, path: str) -> str:

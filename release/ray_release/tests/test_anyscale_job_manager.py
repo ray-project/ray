@@ -1,5 +1,6 @@
-import pytest
 import sys
+
+import pytest
 
 from ray_release.job_manager.anyscale_job_manager import AnyscaleJobManager
 
