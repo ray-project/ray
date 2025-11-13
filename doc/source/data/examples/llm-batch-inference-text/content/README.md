@@ -126,7 +126,7 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
                 "role": "system",
                 "content": "You are a helpful assistant that reformats dates to MM-DD-YYYY."
                             "Be concise and output only the formatted date and nothing else."
-                            "For example, if we ask to reformat 'Subscription Date': datetime.date(2020, 11, 29)' then your answer should only be '2020-11-29'"
+                            "For example, if we ask to reformat 'Subscription Date': datetime.date(2020, 11, 29)' then your answer should only be '11-29-2020'"
             },
             {
                 "role": "user",
