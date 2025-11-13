@@ -1,12 +1,14 @@
 from typing import Callable, Optional, Type, Union
+
 from typing_extensions import Self
 
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.connectors.learner import (
+    AddNextObservationsFromEpisodesToTrainBatch,
     AddObservationsFromEpisodesToBatch,
     AddOneTsToEpisodesAndTruncate,
-    AddNextObservationsFromEpisodesToTrainBatch,
     GeneralAdvantageEstimation,
 )
 from ray.rllib.core.learner.learner import Learner
@@ -21,7 +23,6 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray._common.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,

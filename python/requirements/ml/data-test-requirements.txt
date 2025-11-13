@@ -19,7 +19,7 @@ deltalake==0.9.0
 pytest-mock
 decord
 snowflake-connector-python>=3.15.0
-pyiceberg[sql-sqlite]==0.9.0
+pyiceberg[sql-sqlite]==0.10.0
 clickhouse-connect
 pybase64
 hudi==0.4.0

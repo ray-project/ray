@@ -787,17 +787,17 @@ def test_workload_placement_metrics(ray_start_regular):
     placement_metric_condition = get_metric_check_condition(
         [
             MetricSamplePattern(
-                name="ray_scheduler_placement_time_s_bucket",
+                name="ray_scheduler_placement_time_ms_bucket",
                 value=1.0,
                 partial_label_match={"WorkloadType": "Actor"},
             ),
             MetricSamplePattern(
-                name="ray_scheduler_placement_time_s_bucket",
+                name="ray_scheduler_placement_time_ms_bucket",
                 value=1.0,
                 partial_label_match={"WorkloadType": "Task"},
             ),
             MetricSamplePattern(
-                name="ray_scheduler_placement_time_s_bucket",
+                name="ray_scheduler_placement_time_ms_bucket",
                 value=1.0,
                 partial_label_match={"WorkloadType": "PlacementGroup"},
             ),

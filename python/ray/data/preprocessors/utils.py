@@ -134,11 +134,12 @@ class StatComputationPlan:
         This supports legacy use cases where arbitrary callables are needed
         and cannot be run via Dataset.aggregate().
 
-        :param post_key_fn:
-        :param stat_fn: A zero-argument callable that returns the stat.
-        :param post_process_fn: Function to apply to the result.
-        :param columns:
-        :param stat_key_fn:
+        Args:
+            stat_fn: A zero-argument callable that returns the stat.
+            post_process_fn: Function to apply to the result.
+            stat_key_fn:
+            post_key_fn:
+            columns:
         """
         self._aggregators.append(
             CallableStatSpec(

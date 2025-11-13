@@ -2,16 +2,17 @@ import json
 import os
 
 import click
-from ray_release.test import (
-    Test,
-    TestType,
-)
-from ray_release.test_automation.ci_state_machine import CITestStateMachine
 
 from ci.ray_ci.bisect.bisector import Bisector
 from ci.ray_ci.bisect.generic_validator import GenericValidator
 from ci.ray_ci.bisect.macos_validator import MacOSValidator
 from ci.ray_ci.utils import ci_init, logger
+
+from ray_release.test import (
+    Test,
+    TestType,
+)
+from ray_release.test_automation.ci_state_machine import CITestStateMachine
 
 # This is the directory where the ray repository is mounted in the container
 RAYCI_CHECKOUT_DIR_MOUNT = "/ray"

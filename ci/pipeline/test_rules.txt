@@ -155,6 +155,7 @@ doc/*/BUILD
 doc/*.rst
 .vale.ini
 .vale/
+.buildkite/doc.rayci.yml
 @ doc
 ;
 

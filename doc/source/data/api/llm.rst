@@ -34,3 +34,4 @@ Processor configs
     ~ProcessorConfig
     ~HttpRequestProcessorConfig
     ~vLLMEngineProcessorConfig
+    ~SGLangEngineProcessorConfig

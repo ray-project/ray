@@ -75,7 +75,8 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
       store_client_(std::move(store_client)),
       reference_counter_(reference_counter),
       check_signals_(std::move(check_signals)),
-      fetch_batch_size_(fetch_batch_size) {
+      fetch_batch_size_(fetch_batch_size),
+      get_request_counter_(0) {
   if (get_current_call_site != nullptr) {
     get_current_call_site_ = get_current_call_site;
   } else {
@@ -275,8 +276,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     // 1. Make the request to pull all objects into local plasma if not local already.
     std::vector<rpc::Address> owner_addresses =
         reference_counter_.GetOwnerAddresses(batch_ids);
-    StatusOr<ipc::ScopedResponse> status_or_cleanup =
-        raylet_ipc_client_->AsyncGetObjects(batch_ids, owner_addresses);
+    StatusOr<ipc::ScopedResponse> status_or_cleanup = raylet_ipc_client_->AsyncGetObjects(
+        batch_ids, owner_addresses, get_request_counter_.fetch_add(1));
     RAY_RETURN_NOT_OK(status_or_cleanup.status());
     get_request_cleanup_handlers.emplace_back(std::move(status_or_cleanup.value()));
 

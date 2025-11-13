@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import requests
 
-from ray_release.logger import logger
 from ray_release.configs.global_config import get_global_config
+from ray_release.logger import logger
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK

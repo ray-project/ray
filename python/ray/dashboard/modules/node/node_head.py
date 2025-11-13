@@ -21,6 +21,7 @@ from ray._private.gcs_pubsub import (
     GcsAioNodeInfoSubscriber,
     GcsAioResourceUsageSubscriber,
 )
+from ray._private.grpc_utils import init_grpc_channel
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS,
@@ -290,9 +291,7 @@ class NodeHead(SubprocessModule):
             node["nodeManagerAddress"], int(node["nodeManagerPort"])
         )
         options = ray_constants.GLOBAL_GRPC_OPTIONS
-        channel = ray._private.utils.init_grpc_channel(
-            address, options, asynchronous=True
-        )
+        channel = init_grpc_channel(address, options, asynchronous=True)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         self._stubs[node_id] = stub
 

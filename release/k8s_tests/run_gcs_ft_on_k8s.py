@@ -51,7 +51,7 @@ def generate_cluster_variable():
 
 def check_kuberay_installed():
     # Make sure the ray namespace exists
-    KUBERAY_VERSION = "v1.4.2"
+    KUBERAY_VERSION = "v1.5.0"
     uri = (
         "github.com/ray-project/kuberay/manifests"
         f"/base?ref={KUBERAY_VERSION}&timeout=90s"

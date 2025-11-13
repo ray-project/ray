@@ -25,7 +25,7 @@ config = vLLMEngineProcessorConfig(
     engine_kwargs={
         "enable_chunked_prefill": True,
         "max_num_batched_tokens": 4096,  # Reduce if CUDA OOM occurs
-        "max_model_len": 16384,
+        "max_model_len": 4096,  # Constrain to fit test GPU memory
     },
     concurrency=1,
     batch_size=64,
