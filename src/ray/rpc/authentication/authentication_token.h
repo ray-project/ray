@@ -110,6 +110,8 @@ class AuthenticationToken {
   /// Get token hash
   /// @return Hash of the token value
   std::size_t ToHash() const {
+    // TODO(andrewsykim): consider using a more secure hashing algorithm like SHA256
+    // before documenting this feature in Ray docs.
     return std::hash<std::string>()(std::string(secret_.begin(), secret_.end()));
   }
 
