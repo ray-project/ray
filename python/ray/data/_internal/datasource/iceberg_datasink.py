@@ -319,17 +319,6 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
 
         self._table.upsert(df=combined_table, **self._upsert_kwargs)
 
-        join_cols = self._upsert_kwargs.get("join_cols")
-        key_desc = (
-            f"join columns: {join_cols}"
-            if join_cols
-            else "table-defined identifier-field-ids"
-        )
-        logger.info(
-            f"Upserted {combined_table.num_rows} rows to {self.table_identifier} "
-            f"using {key_desc}"
-        )
-
     def _validate_overwrite_kwargs(self) -> None:
         """Warn if user passed overwrite_filter via overwrite_kwargs."""
         if "overwrite_filter" in self._overwrite_kwargs:
@@ -337,20 +326,6 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
             logger.warning(
                 "Use Ray Data's Expressions for overwrite filter instead of passing "
                 "it via PyIceberg's overwrite_filter parameter"
-            )
-
-    def _log_overwrite_result(self, data_files: List["DataFile"]) -> None:
-        """Log the result of overwrite operation."""
-        total_rows = self._get_total_row_count(data_files)
-        if self._overwrite_filter:
-            logger.info(
-                f"Overwrote {total_rows} rows in {self.table_identifier} "
-                f"matching filter: {self._overwrite_filter}"
-            )
-        else:
-            logger.info(
-                f"Overwrote entire table {self.table_identifier} "
-                f"with {total_rows} rows"
             )
 
     def _commit_transaction_with_append(
@@ -422,9 +397,6 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
             case_sensitive=case_sensitive,
         )
 
-        # Log result
-        self._log_overwrite_result(data_files)
-
     def on_write_complete(
         self, write_result: WriteResult[tuple[list["DataFile"], "pa.Schema"]]
     ) -> None:
@@ -439,11 +411,6 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
         if not data_files:
             logger.warning("No data files to commit")
             return
-
-        logger.info(
-            f"Completing write with {len(data_files)} data file(s) "
-            f"in {self._mode} mode"
-        )
 
         # Always reload the table to get the latest schema before any post-write operations
         self._reload_table()
