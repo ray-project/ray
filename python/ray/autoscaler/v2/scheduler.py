@@ -1,5 +1,6 @@
 import copy
 import logging
+import random
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -65,6 +66,8 @@ class SchedulingRequest:
     )
     # The current instances.
     current_instances: List[AutoscalerInstance] = field(default_factory=list)
+    # The cloud resource availability score
+    cloud_resource_availabilities: Dict[NodeType, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -725,11 +728,13 @@ class ResourceDemandScheduler(IResourceScheduler):
         # number of workers in the config. This takes into account any pending/running
         # nodes.
         _node_type_available: Dict[NodeType, int] = field(default_factory=dict)
+        _cloud_resource_availabilities: Dict[NodeType, float] = field(default_factory=dict)
 
         def __init__(
             self,
             nodes: List[SchedulingNode],
             node_type_configs: Dict[NodeType, NodeTypeConfig],
+            cloud_resource_availabilities: Dict[NodeType, float],
             disable_launch_config_check: bool,
             max_num_nodes: Optional[int] = None,
             idle_timeout_s: Optional[float] = None,
@@ -742,6 +747,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             self._max_num_nodes = max_num_nodes
             self._idle_timeout_s = idle_timeout_s
             self._disable_launch_config_check = disable_launch_config_check
+            self._cloud_resource_availabilities = cloud_resource_availabilities
 
         @classmethod
         def from_schedule_request(
@@ -771,6 +777,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             return cls(
                 nodes=nodes,
                 node_type_configs=node_type_configs,
+                cloud_resource_availabilities=req.cloud_resource_availabilities,
                 disable_launch_config_check=req.disable_launch_config_check,
                 max_num_nodes=req.max_num_nodes,
                 idle_timeout_s=req.idle_timeout_s,
@@ -852,6 +859,9 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         def get_idle_timeout_s(self) -> Optional[float]:
             return self._idle_timeout_s
+
+        def get_cloud_resource_availabilities(self) -> Dict[NodeType, float]:
+            return copy.deepcopy(self._cloud_resource_availabilities)
 
         def update(self, new_nodes: List[SchedulingNode]) -> None:
             """
@@ -1468,7 +1478,10 @@ class ResourceDemandScheduler(IResourceScheduler):
                 requests_to_sched,
                 existing_nodes,
             ) = ResourceDemandScheduler._sched_best_node(
-                requests_to_sched, existing_nodes, resource_request_source
+                requests_to_sched,
+                existing_nodes,
+                resource_request_source,
+                ctx.get_cloud_resource_availabilities()
             )
             if best_node is None:
                 # No existing nodes can schedule any more requests.
@@ -1529,6 +1542,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         requests: List[ResourceRequest],
         nodes: List[SchedulingNode],
         resource_request_source: ResourceRequestSource,
+        cloud_resource_availabilities: Optional[Dict[NodeType, float]] = None,
     ) -> Tuple[SchedulingNode, List[ResourceRequest], List[SchedulingNode]]:
         """
         Schedule the requests on the best node.
@@ -1593,7 +1607,16 @@ class ResourceDemandScheduler(IResourceScheduler):
             return None, requests, nodes
 
         # Sort the results by score.
-        results = sorted(results, key=lambda r: r.score, reverse=True)
+        results = sorted(
+            results,
+            key=lambda r: (
+                r.score,
+                cloud_resource_availabilities.get(r.node.node_type, 1),
+                random.random()
+            ),
+            reverse=True
+        )
+
         best_result = results[0]
 
         # Remove the best node from the nodes.

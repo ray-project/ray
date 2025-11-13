@@ -1,0 +1,34 @@
+name: Autoscaler Unit Tests
+
+triggers:
+  push:
+    branches: '**'
+
+jobs:
+  ray-data-ut:
+    name: ray unit tests
+    timeout: 30m
+    image: hub.docker.alibaba-inc.com/aidata/ray:ray_data_test_20250815_accelerated
+    runs-on:
+      - 32-128Gi
+    envs:
+      BUILDKITE_COMMIT: ${{git.commitId}}
+      BUILD_ONE_PYTHON_ONLY: py310
+    traits:
+      - type: disable-resources-autoscaling
+    steps:
+      - uses: checkout
+      - id: pull-base-image
+        run: echo "pull image"
+        container:
+          credentials:
+            username: ${{secrets.dockerhub_user}}
+            password: ${{secrets.dockerhub_password}}
+      - uses: setup-bazel
+        inputs:
+          enable-install-bazelisk: false  # 使用镜像内既有 bazel 版本，改 PATH 会导致 pytest 找不到
+          aone-bazel-api-key: ${{secrets.AONE_BAZEL_API_KEY}}
+          bazelrc-path: /etc/bazel.bazelrc  # 默认 ~/.bazelrc 已配置，改用系统配置路径
+          local-cache-name: ''  # do not mount local cache, image contains external dependencies
+      - id: unit-tests
+        run: bash python/build-for-tests.sh

@@ -21,6 +21,8 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     LaunchNodeError,
     TerminateNodeError,
 )
+from ray.autoscaler.v2.instance_manager.subscribers.cloud_resource_monitor import \
+    CloudResourceMonitor
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
 from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer import (
     RayInstallError,
@@ -62,6 +64,7 @@ class Reconciler:
         instance_manager: InstanceManager,
         scheduler: IResourceScheduler,
         cloud_provider: ICloudInstanceProvider,
+        cloud_resource_monitor: CloudResourceMonitor,
         ray_cluster_resource_state: ClusterResourceState,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         autoscaling_config: AutoscalingConfig,
@@ -122,6 +125,7 @@ class Reconciler:
             instance_manager=instance_manager,
             scheduler=scheduler,
             cloud_provider=cloud_provider,
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ray_cluster_resource_state,
             non_terminated_cloud_instances=non_terminated_cloud_instances,
             autoscaling_config=autoscaling_config,
@@ -227,6 +231,7 @@ class Reconciler:
         instance_manager: InstanceManager,
         scheduler: IResourceScheduler,
         cloud_provider: ICloudInstanceProvider,
+        cloud_resource_monitor: CloudResourceMonitor,
         ray_cluster_resource_state: ClusterResourceState,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         autoscaling_config: AutoscalingConfig,
@@ -275,6 +280,7 @@ class Reconciler:
         Reconciler._scale_cluster(
             autoscaling_state=autoscaling_state,
             instance_manager=instance_manager,
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_state=ray_cluster_resource_state,
             scheduler=scheduler,
             autoscaling_config=autoscaling_config,
@@ -415,6 +421,7 @@ class Reconciler:
             return IMInstanceUpdateEvent(
                 instance_id=im_instance.instance_id,
                 new_instance_status=IMInstance.ALLOCATION_FAILED,
+                instance_type=im_instance.instance_type,
                 details=f"launch failed with {str(launch_error)}",
             )
         # No update.
@@ -1060,6 +1067,7 @@ class Reconciler:
     def _scale_cluster(
         autoscaling_state: AutoscalingState,
         instance_manager: InstanceManager,
+        cloud_resource_monitor: CloudResourceMonitor,
         ray_state: ClusterResourceState,
         scheduler: IResourceScheduler,
         autoscaling_config: AutoscalingConfig,
@@ -1119,6 +1127,9 @@ class Reconciler:
             disable_launch_config_check=(
                 autoscaling_config.disable_launch_config_check()
             ),
+            cloud_resource_availabilities=(
+                cloud_resource_monitor.get_resource_availabilities()
+            )
         )
 
         # Ask scheduler for updates to the cluster shape.
@@ -1397,6 +1408,7 @@ class Reconciler:
             return IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.ALLOCATION_FAILED,
+                instance_type=instance.instance_type,
                 details=(
                     "failed to allocate cloud instance after "
                     f"{len(all_request_times_ns)} attempts > "
