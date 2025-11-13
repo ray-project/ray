@@ -23,6 +23,7 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/accessors/internal_kv_accessor.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/util/network_util.h"
 

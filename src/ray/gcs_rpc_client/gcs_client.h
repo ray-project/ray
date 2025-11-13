@@ -26,6 +26,8 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/accessors/internal_kv_accessor_interface.h"
+#include "ray/gcs_rpc_client/gcs_client_context.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/pubsub/gcs_subscriber.h"
 #include "ray/util/logging.h"
@@ -91,7 +93,8 @@ class GcsClientOptions {
 ///
 /// To read and write from the GCS, `Connect()` must be called and return Status::OK.
 /// Before exit, `Disconnect()` must be called.
-class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
+class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient>,
+                             public GcsClientContext {
  public:
   GcsClient() = default;
   /// Constructor of GcsClient.
@@ -133,7 +136,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Disconnect with GCS Service. Non-thread safe.
   /// Must be called without any concurrent RPC calls. After this call, the client
   /// must not be used until a next Connect() call.
-  virtual void Disconnect();
+  void Disconnect() override;
 
   virtual std::pair<std::string, int> GetGcsServerAddress() const;
 
@@ -219,13 +222,24 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   // Gets ClusterID. If it's not set in Connect(), blocks on a sync RPC to GCS to get it.
   virtual ClusterID GetClusterId() const;
 
-  /// Get the sub-interface for accessing worker information in GCS.
+  /// Get the sub-interface for accessing internal KV store in GCS.
   /// This function is thread safe.
-  virtual InternalKVAccessor &InternalKV() { return *internal_kv_accessor_; }
+  virtual InternalKVAccessorInterface &InternalKV() { return *internal_kv_accessor_; }
 
-  virtual pubsub::GcsSubscriber &GetGcsSubscriber() { return *gcs_subscriber_; }
+  // GcsClientContext interface implementation
+  pubsub::GcsSubscriber &GetGcsSubscriber() override { return *gcs_subscriber_; }
 
-  virtual rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
+  rpc::GcsRpcClient &GetGcsRpcClient() override { return *gcs_rpc_client_; }
+
+  bool IsInitialized() const override { return gcs_rpc_client_ != nullptr; }
+
+  void SetGcsRpcClient(std::shared_ptr<rpc::GcsRpcClient> client) override {
+    gcs_rpc_client_ = client;
+  }
+
+  void SetGcsSubscriber(std::unique_ptr<pubsub::GcsSubscriber> subscriber) override {
+    gcs_subscriber_ = std::move(subscriber);
+  }
 
  protected:
   GcsClientOptions options_;
@@ -237,7 +251,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<ErrorInfoAccessor> error_accessor_;
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
   std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
-  std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
+  std::unique_ptr<InternalKVAccessorInterface> internal_kv_accessor_;
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
   std::unique_ptr<RuntimeEnvAccessor> runtime_env_accessor_;
   std::unique_ptr<AutoscalerStateAccessor> autoscaler_state_accessor_;

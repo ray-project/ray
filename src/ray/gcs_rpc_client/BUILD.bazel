@@ -11,6 +11,9 @@ ray_cc_library(
         "gcs_client.h",
     ],
     deps = [
+        ":gcs_client_context",
+        ":internal_kv_accessor_implementation",
+        ":internal_kv_accessor_interface",
         ":rpc_client",
         "//src/ray/common:asio",
         "//src/ray/common:id",
@@ -33,6 +36,47 @@ ray_cc_library(
     deps = [
         ":gcs_client",
         "//src/ray/util:time",
+    ],
+)
+
+ray_cc_library(
+    name = "internal_kv_accessor_interface",
+    hdrs = [
+        "accessors/internal_kv_accessor_interface.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:gcs_callback_types",
+        "//src/ray/common:status",
+    ],
+)
+
+ray_cc_library(
+    name = "internal_kv_accessor_implementation",
+    srcs = [
+        "accessors/internal_kv_accessor.cc",
+    ],
+    hdrs = [
+        "accessors/internal_kv_accessor.h",
+    ],
+    visibility = [":__pkg__"],
+    deps = [
+        ":gcs_client_context",
+        ":internal_kv_accessor_interface",
+        ":rpc_client",
+        "//src/ray/util:container_util",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_client_context",
+    hdrs = [
+        "gcs_client_context.h",
+    ],
+    visibility = [":__pkg__"],
+    deps = [
+        ":rpc_client",
+        "//src/ray/pubsub:gcs_subscriber",
     ],
 )
 
