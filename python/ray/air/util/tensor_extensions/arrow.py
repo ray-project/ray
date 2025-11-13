@@ -512,8 +512,7 @@ class _BaseFixedShapeArrowTensorType(
         self, shape: Tuple[int, ...], tensor_dtype: pa.DataType, ext_type_id: str
     ):
         self._shape = shape
-        ArrowExtensionSerializeDeserializeCache.__init__(self)
-        pa.ExtensionType.__init__(self, tensor_dtype, ext_type_id)
+        super().__init__(tensor_dtype, ext_type_id)
 
     @property
     def shape(self) -> Tuple[int, ...]:
@@ -983,9 +982,7 @@ class ArrowVariableShapedTensorType(
             ndim: The number of dimensions in the tensor elements.
         """
         self._ndim = ndim
-        ArrowExtensionSerializeDeserializeCache.__init__(self)
-        pa.ExtensionType.__init__(
-            self,
+        super().__init__(
             pa.struct(
                 [("data", pa.large_list(dtype)), ("shape", pa.list_(self.OFFSET_DTYPE))]
             ),
