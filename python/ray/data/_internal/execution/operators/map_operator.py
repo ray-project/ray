@@ -65,7 +65,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(__name__)
 
 
-class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
+class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
 
     This operator implements the distributed map operation, supporting both task
@@ -108,7 +108,7 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
         self._block_ref_bundler = _BlockRefBundler(min_rows_per_bundle)
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
-        self._output_queue: _OutputQueue = None
+        self._output_queue: Optional[_OutputQueue] = None
         # Output metadata, added to on get_next().
         self._output_blocks_stats: List[BlockStats] = []
         # All active `DataOpTask`s.
@@ -164,6 +164,19 @@ class MapOperator(OneToOneOperator, InternalQueueOperatorMixin, ABC):
 
     def internal_output_queue_num_bytes(self) -> int:
         return self._output_queue.size_bytes()
+
+    def clear_internal_input_queue(self) -> None:
+        """Clear internal input queue (block ref bundler)."""
+        while self._block_ref_bundler.has_bundle():
+            (input_bundles, _) = self._block_ref_bundler.get_next_bundle()
+            for input_bundle in input_bundles:
+                self._metrics.on_input_dequeued(input_bundle)
+
+    def clear_internal_output_queue(self) -> None:
+        """Clear internal output queue."""
+        while self._output_queue.has_next():
+            bundle = self._output_queue.get_next()
+            self._metrics.on_output_dequeued(bundle)
 
     @property
     def name(self) -> str:
