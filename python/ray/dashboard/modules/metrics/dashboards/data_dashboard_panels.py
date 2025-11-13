@@ -1207,6 +1207,7 @@ DATA_GRAFANA_ROWS = [
             ITERATION_BLOCKS_LOCAL_PANEL,
             ITERATION_BLOCKS_REMOTE_PANEL,
             ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL,
+            TIME_TO_FIRST_BATCH_PANEL,
         ],
         collapsed=True,
     ),
