@@ -14,10 +14,9 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow as pa
     from pyiceberg.catalog import Catalog
-    from pyiceberg.expressions import AlwaysFalse, AlwaysTrue, BooleanExpression
+    from pyiceberg.expressions import BooleanExpression
     from pyiceberg.manifest import DataFile
     from pyiceberg.table import Table, Transaction
-    from pyiceberg.table.refs import MAIN_BRANCH
 
     from ray.data.expressions import Expr
 
@@ -170,8 +169,6 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
         Returns a tuple of (DataFile objects, schema of written data).
         This respects streaming semantics by writing files incrementally
         as tasks complete.
-
-        For UPSERT mode, also returns the PyArrow table data for merge operations.
         """
         import itertools
 
@@ -267,18 +264,6 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
 
         return pa.concat_tables(tables)
 
-    def _convert_ray_filter_to_iceberg(
-        self, expression: Optional["Expr"]
-    ) -> BooleanExpression:
-        """Convert Ray Data expression to PyIceberg BooleanExpression."""
-        if expression:
-            from ray.data._internal.datasource.iceberg_datasource import (
-                _IcebergExpressionVisitor,
-            )
-
-            return _IcebergExpressionVisitor().visit(expression)
-        return AlwaysTrue()
-
     def _append_data_files(
         self,
         data_files: List["DataFile"],
@@ -295,6 +280,8 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
             transaction: PyIceberg transaction to append to
             branch: Optional branch name for the snapshot
         """
+        from pyiceberg.table.refs import MAIN_BRANCH
+
         branch = branch or MAIN_BRANCH
         with transaction.update_snapshot(
             snapshot_properties=self._snapshot_properties, branch=branch
@@ -370,7 +357,7 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
         self,
         data_files: List["DataFile"],
         branch: Optional[str] = None,
-        delete_predicate: Optional[BooleanExpression] = None,
+        delete_predicate: Optional["BooleanExpression"] = None,
         case_sensitive: bool = True,
     ) -> None:
         """
@@ -382,6 +369,9 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
             delete_predicate: Optional delete predicate (for overwrite)
             case_sensitive: Whether delete predicate is case sensitive
         """
+        from pyiceberg.expressions import AlwaysFalse
+        from pyiceberg.table.refs import MAIN_BRANCH
+
         transaction = self._table.transaction()
 
         # Optional delete step (for OVERWRITE)
@@ -408,11 +398,19 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
         transaction API directly: delete by predicate (metadata operation) + append
         pre-written DataFiles.
         """
+        from pyiceberg.table.refs import MAIN_BRANCH
+
         # Validate and extract parameters
         self._validate_overwrite_kwargs()
-        iceberg_filter: BooleanExpression = self._convert_ray_filter_to_iceberg(
-            self._overwrite_filter
-        )
+        from pyiceberg.expressions import AlwaysTrue
+
+        iceberg_filter: "BooleanExpression" = AlwaysTrue()
+        if self._overwrite_filter:
+            from ray.data._internal.datasource.iceberg_datasource import (
+                _IcebergExpressionVisitor,
+            )
+
+            iceberg_filter = _IcebergExpressionVisitor().visit(self._overwrite_filter)
         branch = self._overwrite_kwargs.get("branch", MAIN_BRANCH)
         case_sensitive = self._overwrite_kwargs.get("case_sensitive", True)
 
