@@ -150,9 +150,7 @@ def test_wait_for_actor_ref_deleted_rpc_retry_and_idempotency(
     del actor
 
     def verify_actor_ref_deleted():
-        actor_info = ray._private.state.state.global_state_accessor.get_actor_info(
-            actor_id
-        )
+        actor_info = ray._private.state.state.get_actor_info(actor_id)
         if actor_info is None:
             return False
         actor_info = gcs_pb2.ActorTableData.FromString(actor_info)

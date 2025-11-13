@@ -112,13 +112,18 @@ def plan_project_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
+    # Extract op.exprs before defining the closure to prevent cloudpickle from
+    # serializing the entire op object (which may contain references to non-serializable
+    # datasources with weak references, e.g., PyIceberg tables)
+    projection_exprs = op.exprs
+
     def _project_block(block: Block) -> Block:
         try:
             from ray.data._internal.planner.plan_expression.expression_evaluator import (
                 eval_projection,
             )
 
-            return eval_projection(op.exprs, block)
+            return eval_projection(projection_exprs, block)
         except Exception as e:
             _try_wrap_udf_exception(e)
 

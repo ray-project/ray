@@ -232,7 +232,6 @@ def test_node_name_cluster(ray_start_cluster):
         else:
             assert node["NodeName"] == "worker_node"
 
-    global_state_accessor.disconnect()
     ray.shutdown()
     cluster.shutdown()
 
@@ -317,7 +316,6 @@ def test_load_report(shutdown_only, max_shapes):
             else:
                 assert demand.num_ready_requests_queued > 0
                 assert demand.num_infeasible_requests_queued == 0
-    global_state_accessor.disconnect()
 
 
 def test_placement_group_load_report(ray_start_cluster):
@@ -383,7 +381,6 @@ def test_placement_group_load_report(ray_start_cluster):
     _, unready = ray.wait([pg_infeasible_second.ready()], timeout=0)
     assert len(unready) == 1
     wait_for_condition(checker.two_infeasible_pg)
-    global_state_accessor.disconnect()
 
 
 def test_backlog_report(shutdown_only):
@@ -428,7 +425,6 @@ def test_backlog_report(shutdown_only):
     # request is sent to the raylet with backlog=7
 
     wait_for_condition(backlog_size_set, timeout=2)
-    global_state_accessor.disconnect()
 
 
 def test_default_load_reports(shutdown_only):
@@ -472,7 +468,6 @@ def test_default_load_reports(shutdown_only):
     ref = foo.remote()
 
     wait_for_condition(actor_and_task_queued_together, timeout=2)
-    global_state_accessor.disconnect()
 
     # Do something with the variables so lint is happy.
     del handle
@@ -494,7 +489,6 @@ def test_heartbeat_ip(shutdown_only):
         return resources_data.node_manager_address == self_ip
 
     wait_for_condition(self_ip_is_set, timeout=2)
-    global_state_accessor.disconnect()
 
 
 def test_next_job_id(ray_start_regular):
