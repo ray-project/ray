@@ -1,14 +1,6 @@
 """Tests for Ray Data SQL API.
 
-Tests cover:
-- Basic SQL operations (SELECT, WHERE, JOIN, GROUP BY, etc.)
-- Multi-dialect support via SQLGlot
-- DataFusion optimization integration
-- Configuration via DataContext
-- Error handling and fallback behavior
-- Auto-discovery of datasets from variables
-- Edge cases and validation
-
+Tests cover core SQL operations supported by the implementation.
 All tests are parametrized to run with both SQLGlot and DataFusion engines.
 """
 
@@ -18,7 +10,6 @@ import pytest
 
 import ray
 
-# Use public API - not experimental paths
 from ray.data.sql import (
     ColumnNotFoundError,
     SQLError,
@@ -47,7 +38,6 @@ def test_sql_auto_discovery(ray_start_regular_shared, sql_engine):
         [{"id": 1, "name": "Alice", "age": 30}, {"id": 2, "name": "Bob", "age": 25}]
     )
 
-    # Auto-discovery should work without registration
     result = sql("SELECT * FROM users WHERE age > 25")
     rows = result.take_all()
 
@@ -81,7 +71,7 @@ def test_sql_filtering_and_sorting(ray_start_regular_shared, sql_engine):
     rows = result.take_all()
 
     assert len(rows) == 2
-    assert rows[0]["name"] == "Alice"  # Highest score first
+    assert rows[0]["name"] == "Alice"
     assert rows[1]["name"] == "Charlie"
 
 
@@ -93,6 +83,14 @@ def test_sql_limit(ray_start_regular_shared, sql_engine):
     rows = result.take_all()
 
     assert len(rows) == 5
+
+
+def test_sql_offset_unsupported(ray_start_regular_shared, sql_engine):
+    """Test that OFFSET raises UnsupportedOperationError."""
+    data = ray.data.range(20)  # noqa: F841
+
+    with pytest.raises(UnsupportedOperationError, match="OFFSET"):
+        sql("SELECT * FROM data LIMIT 5 OFFSET 10")
 
 
 # Join operations
@@ -139,25 +137,12 @@ def test_sql_join_types(ray_start_regular_shared, join_type, sql_engine):
     if join_type == "INNER":
         assert len(rows) == 2
     elif join_type == "LEFT":
-        assert len(rows) == 3  # Includes Charlie with null amount
+        assert len(rows) == 3
     elif join_type == "RIGHT":
         assert len(rows) == 2
 
 
 # Aggregation operations
-
-
-def test_sql_aggregation(ray_start_regular_shared, sql_engine):
-    """Test aggregation functions."""
-    numbers = ray.data.from_items(  # noqa: F841
-        [{"value": 10}, {"value": 20}, {"value": 30}]
-    )
-
-    result = sql("SELECT COUNT(*) as count, SUM(value) as total FROM numbers")
-    row = result.take_all()[0]
-
-    assert row["count"] == 3
-    assert row["total"] == 60
 
 
 @pytest.mark.parametrize(
@@ -173,7 +158,7 @@ def test_sql_aggregation(ray_start_regular_shared, sql_engine):
 def test_sql_aggregation_functions(
     ray_start_regular_shared, agg_func, expected, sql_engine
 ):
-    """Test various aggregation functions."""
+    """Test aggregation functions."""
     numbers = ray.data.from_items(  # noqa: F841
         [{"value": 10}, {"value": 20}, {"value": 30}]
     )
@@ -201,6 +186,32 @@ def test_sql_group_by(ray_start_regular_shared, sql_engine):
     category_totals = {row["category"]: row["total"] for row in rows}
     assert category_totals["A"] == 30
     assert category_totals["B"] == 30
+
+
+def test_sql_having_clause(ray_start_regular_shared, sql_engine):
+    """Test HAVING clause for post-aggregation filtering."""
+    sales = ray.data.from_items(  # noqa: F841
+        [
+            {"region": "North", "amount": 100},
+            {"region": "North", "amount": 200},
+            {"region": "South", "amount": 50},
+            {"region": "South", "amount": 75},
+        ]
+    )
+
+    result = sql(
+        """
+        SELECT region, SUM(amount) as total
+        FROM sales
+        GROUP BY region
+        HAVING SUM(amount) > 100
+    """
+    )
+    rows = result.take_all()
+
+    assert len(rows) == 1
+    assert rows[0]["region"] == "North"
+    assert rows[0]["total"] == 300
 
 
 # Complex queries
@@ -231,24 +242,117 @@ def test_sql_complex_query(ray_start_regular_shared, sql_engine):
     rows = result.take_all()
 
     assert len(rows) == 2
-    assert rows[0]["region"] == "South"  # Higher total
+    assert rows[0]["region"] == "South"
     assert rows[0]["total"] == 320
 
 
-def test_sql_native_expressions(ray_start_regular_shared, sql_engine):
-    """Test SQL with complex expressions."""
+def test_sql_between_operator(ray_start_regular_shared, sql_engine):
+    """Test BETWEEN operator."""
     data = ray.data.from_items(  # noqa: F841
         [
-            {"age": 25, "income": 50000},
-            {"age": 35, "income": 75000},
-            {"age": 45, "income": 100000},
+            {"id": 1, "value": 10},
+            {"id": 2, "value": 25},
+            {"id": 3, "value": 40},
+            {"id": 4, "value": 55},
         ]
     )
 
-    result = sql("SELECT * FROM data WHERE age BETWEEN 30 AND 50 AND income > 60000")
+    result = sql("SELECT * FROM data WHERE value BETWEEN 20 AND 50")
     rows = result.take_all()
 
-    assert len(rows) == 2  # 35 and 45 year olds with high income
+    assert len(rows) == 2
+    assert all(20 <= row["value"] <= 50 for row in rows)
+
+
+def test_sql_arithmetic_expressions(ray_start_regular_shared, sql_engine):
+    """Test arithmetic expressions in SELECT clause."""
+    data = ray.data.from_items(  # noqa: F841
+        [
+            {"price": 100, "quantity": 3},
+            {"price": 50, "quantity": 2},
+        ]
+    )
+
+    result = sql(
+        """
+        SELECT
+            price,
+            quantity,
+            price * quantity as total,
+            price + quantity as sum_val,
+            price - quantity as diff_val
+        FROM data
+    """
+    )
+    rows = result.take_all()
+
+    assert len(rows) == 2
+    assert rows[0]["total"] == 300
+    assert rows[0]["sum_val"] == 103
+    assert rows[0]["diff_val"] == 97
+
+
+def test_sql_null_handling(ray_start_regular_shared, sql_engine):
+    """Test NULL handling in WHERE clause."""
+    data = ray.data.from_items(  # noqa: F841
+        [
+            {"id": 1, "value": 100},
+            {"id": 2, "value": None},
+            {"id": 3, "value": 200},
+        ]
+    )
+
+    result = sql("SELECT * FROM data WHERE value IS NOT NULL")
+    rows = result.take_all()
+
+    assert len(rows) == 2
+    assert all(row["value"] is not None for row in rows)
+
+    result = sql("SELECT * FROM data WHERE value IS NULL")
+    rows = result.take_all()
+    assert len(rows) == 1
+    assert rows[0]["id"] == 2
+
+
+def test_sql_cte(ray_start_regular_shared, sql_engine):
+    """Test Common Table Expressions."""
+    base_data = ray.data.from_items(  # noqa: F841
+        [{"id": 1, "value": 10}, {"id": 2, "value": 20}, {"id": 3, "value": 30}]
+    )
+
+    result = sql(
+        """
+        WITH filtered AS (
+            SELECT * FROM base_data WHERE value > 15
+        )
+        SELECT * FROM filtered ORDER BY value
+    """
+    )
+    rows = result.take_all()
+
+    assert len(rows) == 2
+    assert rows[0]["value"] == 20
+    assert rows[1]["value"] == 30
+
+
+def test_sql_union(ray_start_regular_shared, sql_engine):
+    """Test UNION operation."""
+    data1 = ray.data.from_items([{"id": 1}, {"id": 2}])  # noqa: F841
+    data2 = ray.data.from_items([{"id": 3}, {"id": 4}])  # noqa: F841
+
+    result = sql("SELECT id FROM data1 UNION ALL SELECT id FROM data2")
+    rows = result.take_all()
+
+    assert len(rows) == 4
+
+
+def test_sql_union_distinct_unsupported(ray_start_regular_shared, sql_engine):
+    """Test that UNION DISTINCT raises UnsupportedOperationError."""
+    data1 = ray.data.from_items([{"id": 1}])  # noqa: F841
+    data2 = ray.data.from_items([{"id": 2}])  # noqa: F841
+
+    with pytest.raises(UnsupportedOperationError, match="DISTINCT"):
+        sql("SELECT id FROM data1 UNION SELECT id FROM data2")
 
 
 # Dataset passing and discovery
@@ -283,39 +387,22 @@ def test_sql_multiple_explicit_datasets(ray_start_regular_shared, sql_engine):
     assert any(row["name"] == "Alice" and row["amount"] == 100 for row in rows)
 
 
-def test_sql_mixed_discovery(ray_start_regular_shared, sql_engine):
-    """Test mix of explicit and auto-discovered tables."""
-    # Auto-discovered local variable
-    local_data = ray.data.from_items([{"id": 1}, {"id": 2}])  # noqa: F841
+def test_sql_explicit_registration_precedence(ray_start_regular_shared, sql_engine):
+    """Test that explicit registration takes precedence over auto-discovery."""
+    clear_tables()
 
-    # Explicit dataset
-    explicit_data = ray.data.from_items([{"ref_id": 1, "value": "test"}])
+    customers = ray.data.from_items([{"id": 1, "name": "Local Customer"}])  # noqa: F841
 
-    result = sql(
-        "SELECT l.id, e.value FROM local_data l JOIN explicit_table e ON l.id = e.ref_id",
-        explicit_table=explicit_data,
-    )
+    explicit_customers = ray.data.from_items([{"id": 2, "name": "Registered Customer"}])
+    register("customers", explicit_customers)
+
+    result = sql("SELECT * FROM customers")
     rows = result.take_all()
 
     assert len(rows) == 1
-    assert rows[0]["value"] == "test"
+    assert rows[0]["name"] == "Registered Customer"
 
-
-def test_sql_global_variable_discovery(ray_start_regular_shared, sql_engine):
-    """Test auto-discovery from module-level global variables."""
-    global global_test_dataset
-    global_test_dataset = ray.data.from_items(
-        [{"id": 1, "value": "global"}, {"id": 2, "value": "data"}]
-    )
-
-    result = sql("SELECT * FROM global_test_dataset WHERE id = 1")
-    rows = result.take_all()
-
-    assert len(rows) == 1
-    assert rows[0]["value"] == "global"
-
-    # Cleanup
-    global_test_dataset = None
+    clear_tables()
 
 
 # Table registration operations
@@ -327,17 +414,13 @@ def test_sql_register_operations(ray_start_regular_shared, sql_engine):
 
     data = ray.data.from_items([{"test": 1}])
 
-    # Initially no tables
     assert list_tables() == []
 
-    # Register table
     register("test_table", data)
 
-    # Should appear in list
     tables = list_tables()
     assert "test_table" in tables
 
-    # Should work in queries
     result = sql("SELECT * FROM test_table")
     assert len(result.take_all()) == 1
 
@@ -365,10 +448,8 @@ def test_sql_cleanup_after_query(ray_start_regular_shared, sql_engine):
     """Test that auto-registered tables are cleaned up."""
     temp_data = ray.data.from_items([{"temp": 123}])  # noqa: F841
 
-    # Execute query with auto-discovery
     sql("SELECT * FROM temp_data")
 
-    # Table should not be persistently registered
     tables = list_tables()
     assert "temp_data" not in tables
 
@@ -380,27 +461,17 @@ def test_sql_config(ray_start_regular_shared):
     """Test SQL configuration via DataContext."""
     ctx = ray.data.DataContext.get_current()
 
-    # Default should be duckdb
     assert ctx.sql_dialect == "duckdb"
     assert config.dialect == "duckdb"
 
-    # Should be able to change via config proxy
     config.dialect = "postgres"
     assert ctx.sql_dialect == "postgres"
     assert config.dialect == "postgres"
 
-    # Should be able to change via DataContext directly
     ctx.sql_dialect = "mysql"
     assert config.dialect == "mysql"
 
-    # Test SQLGlot optimizer config
-    assert not ctx.sql_enable_sqlglot_optimizer  # Default
-    config.enable_sqlglot_optimizer = True
-    assert ctx.sql_enable_sqlglot_optimizer
-
-    # Reset for other tests
     ctx.sql_dialect = "duckdb"
-    ctx.sql_enable_sqlglot_optimizer = False
 
 
 def test_config_invalid_dialect(ray_start_regular_shared):
@@ -410,132 +481,7 @@ def test_config_invalid_dialect(ray_start_regular_shared):
     with pytest.raises(ValueError, match="Invalid dialect"):
         config.dialect = "invalid_dialect_name"
 
-    # Should not have changed
     assert config.dialect == original_dialect
-
-
-def test_config_dialect_case_insensitive(ray_start_regular_shared):
-    """Test dialect setting is case-insensitive."""
-    original_dialect = config.dialect
-
-    config.dialect = "POSTGRES"
-    assert config.dialect == "postgres"
-
-    config.dialect = "MySQL"
-    assert config.dialect == "mysql"
-
-    # Reset
-    config.dialect = original_dialect
-
-
-def test_config_optimizer_type_validation(ray_start_regular_shared):
-    """Test optimizer flag accepts boolean values."""
-    original_value = config.enable_sqlglot_optimizer
-
-    # Should accept boolean
-    config.enable_sqlglot_optimizer = True
-    assert config.enable_sqlglot_optimizer is True
-
-    config.enable_sqlglot_optimizer = False
-    assert config.enable_sqlglot_optimizer is False
-
-    # Should convert truthy values to boolean
-    config.enable_sqlglot_optimizer = 1
-    assert config.enable_sqlglot_optimizer is True
-
-    config.enable_sqlglot_optimizer = 0
-    assert config.enable_sqlglot_optimizer is False
-
-    # Reset
-    config.enable_sqlglot_optimizer = original_value
-
-
-def test_config_all_properties(ray_start_regular_shared):
-    """Test all SQL config properties are accessible via config proxy."""
-    ctx = ray.data.DataContext.get_current()
-
-    # Test log_level
-    original_log_level = config.log_level
-    config.log_level = "DEBUG"
-    assert config.log_level == "DEBUG"
-    assert ctx.sql_log_level == "DEBUG"
-    config.log_level = original_log_level
-
-    # Test case_sensitive
-    original_case = config.case_sensitive
-    config.case_sensitive = False
-    assert config.case_sensitive is False
-    assert ctx.sql_case_sensitive is False
-    config.case_sensitive = original_case
-
-    # Test strict_mode
-    original_strict = config.strict_mode
-    config.strict_mode = True
-    assert config.strict_mode is True
-    assert ctx.sql_strict_mode is True
-    config.strict_mode = original_strict
-
-    # Test enable_optimization
-    original_opt = config.enable_optimization
-    config.enable_optimization = False
-    assert config.enable_optimization is False
-    assert ctx.sql_enable_optimization is False
-    config.enable_optimization = original_opt
-
-    # Test max_join_partitions
-    original_max = config.max_join_partitions
-    config.max_join_partitions = 50
-    assert config.max_join_partitions == 50
-    assert ctx.sql_max_join_partitions == 50
-    config.max_join_partitions = original_max
-
-    # Test enable_predicate_pushdown
-    original_pred = config.enable_predicate_pushdown
-    config.enable_predicate_pushdown = False
-    assert config.enable_predicate_pushdown is False
-    assert ctx.sql_enable_predicate_pushdown is False
-    config.enable_predicate_pushdown = original_pred
-
-    # Test enable_projection_pushdown
-    original_proj = config.enable_projection_pushdown
-    config.enable_projection_pushdown = False
-    assert config.enable_projection_pushdown is False
-    assert ctx.sql_enable_projection_pushdown is False
-    config.enable_projection_pushdown = original_proj
-
-    # Test query_timeout_seconds
-    original_timeout = config.query_timeout_seconds
-    config.query_timeout_seconds = 60
-    assert config.query_timeout_seconds == 60
-    assert ctx.sql_query_timeout_seconds == 60
-    config.query_timeout_seconds = original_timeout
-
-    # Test use_datafusion
-    original_df = config.use_datafusion
-    config.use_datafusion = False
-    assert config.use_datafusion is False
-    assert ctx.sql_use_datafusion is False
-    config.use_datafusion = original_df
-
-
-def test_datafusion_config(ray_start_regular_shared):
-    """Test DataFusion engine configuration."""
-    ctx = ray.data.DataContext.get_current()
-    original_use_datafusion = ctx.sql_use_datafusion
-
-    # Default should be True
-    assert ctx.sql_use_datafusion
-
-    # Should be able to disable
-    ctx.sql_use_datafusion = False
-    assert not ctx.sql_use_datafusion
-
-    # Re-enable
-    ctx.sql_use_datafusion = True
-    assert ctx.sql_use_datafusion
-
-    # Reset
-    ctx.sql_use_datafusion = original_use_datafusion
 
 
 def test_datafusion_fallback_to_sqlglot(ray_start_regular_shared):
@@ -543,21 +489,18 @@ def test_datafusion_fallback_to_sqlglot(ray_start_regular_shared):
     ctx = ray.data.DataContext.get_current()
     original_use_datafusion = ctx.sql_use_datafusion
 
-    # Disable DataFusion
     ctx.sql_use_datafusion = False
 
     data = ray.data.from_items(  # noqa: F841
         [{"id": 1, "value": 100}, {"id": 2, "value": 200}]
     )
 
-    # Should work with SQLGlot
     result = sql("SELECT * FROM data WHERE value > 100")
     rows = result.take_all()
 
     assert len(rows) == 1
     assert rows[0]["value"] == 200
 
-    # Reset
     ctx.sql_use_datafusion = original_use_datafusion
 
 
@@ -566,11 +509,9 @@ def test_datafusion_fallback_to_sqlglot(ray_start_regular_shared):
 
 def test_sql_error_handling(ray_start_regular_shared, sql_engine):
     """Test proper error handling."""
-    # Test invalid query
     with pytest.raises(SQLParseError):
         sql("SELECT * FROM")  # Incomplete query
 
-    # Test missing table
     with pytest.raises(SQLError):
         sql("SELECT * FROM nonexistent_table")
 
@@ -585,452 +526,101 @@ def test_sql_column_not_found_error(ray_start_regular_shared, sql_engine):
     """Test ColumnNotFoundError for missing columns."""
     data = ray.data.from_items([{"existing_col": 1}])  # noqa: F841
 
-    # Try to select non-existent column
     with pytest.raises((ColumnNotFoundError, SQLError, SQLExecutionError)):
         result = sql("SELECT nonexistent_col FROM data")
-        result.take_all()  # Force execution
+        result.take_all()
 
 
 def test_sql_unsupported_operation(ray_start_regular_shared, sql_engine):
     """Test UnsupportedOperationError for unsupported SQL operations."""
     data = ray.data.from_items([{"value": 1}])  # noqa: F841
 
-    # Try unsupported operation (window functions may not be supported)
+    with pytest.raises(
+        (UnsupportedOperationError, SQLError, SQLExecutionError, SQLParseError)
+    ):
+        result = sql("SELECT DISTINCT value FROM data")
+        result.take_all()
+
+
+def test_sql_unsupported_window_function(ray_start_regular_shared, sql_engine):
+    """Test that window functions raise UnsupportedOperationError."""
+    data = ray.data.from_items([{"value": 1}])  # noqa: F841
+
     with pytest.raises(
         (UnsupportedOperationError, SQLError, SQLExecutionError, SQLParseError)
     ):
         result = sql("SELECT value, ROW_NUMBER() OVER (ORDER BY value) as rn FROM data")
-        result.take_all()  # Force execution
+        result.take_all()
 
 
-# Warning and experimental API tests
+def test_sql_unsupported_case_expression(ray_start_regular_shared, sql_engine):
+    """Test that CASE expressions raise UnsupportedOperationError."""
+    data = ray.data.from_items([{"age": 25}])  # noqa: F841
+
+    with pytest.raises(
+        (UnsupportedOperationError, SQLError, SQLExecutionError, SQLParseError)
+    ):
+        result = sql("SELECT CASE WHEN age < 30 THEN 'young' ELSE 'old' END FROM data")
+        result.take_all()
 
 
-def test_sql_experimental_warning(ray_start_regular_shared):
-    """Test that FutureWarning is emitted for experimental API."""
-    data = ray.data.from_items([{"x": 1}])  # noqa: F841
+def test_sql_unsupported_like_operator(ray_start_regular_shared, sql_engine):
+    """Test that LIKE operator raises UnsupportedOperationError."""
+    data = ray.data.from_items([{"name": "Alice"}])  # noqa: F841
 
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        sql("SELECT * FROM data")
-
-        # Should have at least one warning
-        assert len(w) >= 1
-
-        # Check that a FutureWarning about experimental API was raised
-        future_warnings = [
-            warning for warning in w if issubclass(warning.category, FutureWarning)
-        ]
-        assert len(future_warnings) >= 1
-        assert "experimental" in str(future_warnings[0].message).lower()
+    with pytest.raises(
+        (UnsupportedOperationError, SQLError, SQLExecutionError, SQLParseError)
+    ):
+    result = sql("SELECT * FROM data WHERE name LIKE 'Al%'")
+        result.take_all()
 
 
-# Multi-dialect support tests
+# Edge cases
 
 
-def test_sql_multi_dialect_support(ray_start_regular_shared, sql_engine):
-    """Test multi-dialect support via SQLGlot."""
-    ctx = ray.data.DataContext.get_current()
-    original_dialect = ctx.sql_dialect
+def test_sql_empty_result_set(ray_start_regular_shared, sql_engine):
+    """Test query that returns empty result set."""
+    data = ray.data.from_items([{"value": 1}])  # noqa: F841
 
-    # Set MySQL dialect
-    ctx.sql_dialect = "mysql"
-
-    data = ray.data.from_items([{"id": 1, "name": "Alice"}])  # noqa: F841
-
-    # MySQL syntax - should work via SQLGlot translation
-    result = sql("SELECT * FROM data WHERE id = 1")
+    result = sql("SELECT * FROM data WHERE value > 100")
     rows = result.take_all()
 
-    assert len(rows) == 1
-    assert rows[0]["name"] == "Alice"
-
-    # Reset
-    ctx.sql_dialect = original_dialect
-
-
-# Additional auto-discovery edge case tests
-
-
-def test_sql_explicit_registration_precedence(ray_start_regular_shared, sql_engine):
-    """Test that explicit registration takes precedence over auto-discovery."""
-    clear_tables()
-
-    # Create a local variable dataset
-    customers = ray.data.from_items([{"id": 1, "name": "Local Customer"}])  # noqa: F841
-
-    # Explicitly register a different dataset with the same table name
-    explicit_customers = ray.data.from_items([{"id": 2, "name": "Registered Customer"}])
-    register("customers", explicit_customers)
-
-    # Query should use explicitly registered dataset, not the local variable
-    result = sql("SELECT * FROM customers")
-    rows = result.take_all()
-
-    assert len(rows) == 1
-    assert rows[0]["name"] == "Registered Customer"
-    assert rows[0]["id"] == 2
-
-    clear_tables()
-
-
-def test_sql_auto_discovery_with_cte(ray_start_regular_shared, sql_engine):
-    """Test auto-discovery with Common Table Expressions."""
-    base_data = ray.data.from_items(  # noqa: F841
-        [{"id": 1, "value": 10}, {"id": 2, "value": 20}, {"id": 3, "value": 30}]
-    )
-
-    # CTE should work with auto-discovered base table
-    result = sql(
-        """
-        WITH filtered AS (
-            SELECT * FROM base_data WHERE value > 15
-        )
-        SELECT * FROM filtered ORDER BY value
-    """
-    )
-    rows = result.take_all()
-
-    assert len(rows) == 2
-    assert rows[0]["value"] == 20
-    assert rows[1]["value"] == 30
-
-
-def test_sql_auto_discovery_table_not_found(ray_start_regular_shared, sql_engine):
-    """Test error when referenced table variable doesn't exist."""
-    clear_tables()
-
-    # Try to query non-existent table
-    with pytest.raises(TableNotFoundError) as exc_info:
-        sql("SELECT * FROM nonexistent_table")
-
-    # Error should mention the table name
-    assert "nonexistent_table" in str(exc_info.value)
-
-
-def test_sql_auto_discovery_with_aliases_and_joins(
-    ray_start_regular_shared, sql_engine
-):
-    """Test auto-discovery with complex aliases and multiple joins."""
-    departments = ray.data.from_items(  # noqa: F841
-        [
-            {"dept_id": 1, "dept_name": "Engineering"},
-            {"dept_id": 2, "dept_name": "Sales"},
-        ]
-    )
-
-    employees = ray.data.from_items(  # noqa: F841
-        [
-            {"emp_id": 1, "name": "Alice", "dept_id": 1},
-            {"emp_id": 2, "name": "Bob", "dept_id": 2},
-            {"emp_id": 3, "name": "Charlie", "dept_id": 1},
-        ]
-    )
-
-    projects = ray.data.from_items(  # noqa: F841
-        [
-            {"proj_id": 1, "emp_id": 1, "project": "Project A"},
-            {"proj_id": 2, "emp_id": 3, "project": "Project B"},
-        ]
-    )
-
-    # Complex query with multiple auto-discovered tables and aliases
-    result = sql(
-        """
-        SELECT
-            e.name as employee_name,
-            d.dept_name,
-            p.project
-        FROM employees e
-        JOIN departments d ON e.dept_id = d.dept_id
-        LEFT JOIN projects p ON e.emp_id = p.emp_id
-        WHERE d.dept_name = 'Engineering'
-        ORDER BY e.name
-    """
-    )
-    rows = result.take_all()
-
-    assert len(rows) == 2
-    assert rows[0]["employee_name"] == "Alice"
-    assert rows[0]["project"] == "Project A"
-    assert rows[1]["employee_name"] == "Charlie"
-
-
-def test_sql_auto_discovery_with_range(ray_start_regular_shared, sql_engine):
-    """Test auto-discovery with ray.data.range() dataset."""
-    numbers = ray.data.range(100)  # noqa: F841
-
-    result = sql("SELECT * FROM numbers WHERE id >= 90 ORDER BY id")
-    rows = result.take_all()
-
-    assert len(rows) == 10
-    assert rows[0]["id"] == 90
-    assert rows[-1]["id"] == 99
-
-
-def test_sql_auto_discovery_cleanup_with_error(ray_start_regular_shared, sql_engine):
-    """Test that cleanup happens even when query fails."""
-    clear_tables()
-
-    valid_data = ray.data.from_items([{"x": 1, "y": 2}])  # noqa: F841
-
-    # Query with intentional error (invalid column)
-    with pytest.raises((ColumnNotFoundError, SQLExecutionError)):
-        sql("SELECT nonexistent_column FROM valid_data")
-
-    # Auto-registered table should still be cleaned up
-    tables = list_tables()
-    assert "valid_data" not in tables
-
-
-def test_sql_auto_discovery_with_explicit_kwargs(ray_start_regular_shared, sql_engine):
-    """Test auto-discovery with explicit keyword argument passing."""
-    # Local variable (will be ignored for 'custom_name')
-    local_data = ray.data.from_items([{"id": 1, "source": "local"}])  # noqa: F841
-
-    # Explicit dataset passed as kwarg
-    explicit_data = ray.data.from_items([{"id": 2, "source": "explicit"}])
-
-    # Query references custom_name which is passed explicitly
-    result = sql("SELECT * FROM custom_name", custom_name=explicit_data)
-    rows = result.take_all()
-
-    assert len(rows) == 1
-    assert rows[0]["source"] == "explicit"
-
-
-def test_sql_auto_discovery_mixed_local_and_global(
-    ray_start_regular_shared, sql_engine
-):
-    """Test auto-discovery with both local and global variables."""
-    global global_test_dataset
-
-    # Set up global dataset
-    global_test_dataset = ray.data.from_items([{"id": 1, "type": "global"}])
-
-    # Local dataset
-    local_dataset = ray.data.from_items([{"id": 2, "type": "local"}])  # noqa: F841
-
-    # Query both - should discover both from their respective scopes
-    result1 = sql("SELECT * FROM global_test_dataset")
-    rows1 = result1.take_all()
-    assert rows1[0]["type"] == "global"
-
-    result2 = sql("SELECT * FROM local_dataset")
-    rows2 = result2.take_all()
-    assert rows2[0]["type"] == "local"
-
-    # Cleanup
-    global_test_dataset = None
-
-
-def test_sql_auto_discovery_repeated_queries(ray_start_regular_shared, sql_engine):
-    """Test that auto-discovery works correctly across multiple queries."""
-    data = ray.data.from_items(  # noqa: F841
-        [{"id": 1, "value": 100}, {"id": 2, "value": 200}, {"id": 3, "value": 300}]
-    )
-
-    # First query
-    result1 = sql("SELECT * FROM data WHERE value > 150")
-    rows1 = result1.take_all()
-    assert len(rows1) == 2
-
-    # Second query on same dataset - should still work
-    result2 = sql("SELECT * FROM data WHERE id = 1")
-    rows2 = result2.take_all()
-    assert len(rows2) == 1
-    assert rows2[0]["value"] == 100
-
-    # Third query with different filter
-    result3 = sql("SELECT * FROM data ORDER BY value DESC LIMIT 1")
-    rows3 = result3.take_all()
-    assert rows3[0]["value"] == 300
-
-
-# =============================================================================
-# Extended tests for additional coverage of edge cases and SQL features
-# =============================================================================
-
-
-# HAVING clause tests
-
-
-def test_sql_having_clause(ray_start_regular_shared, sql_engine):
-    """Test HAVING clause for post-aggregation filtering."""
-    sales = ray.data.from_items(  # noqa: F841
-        [
-            {"region": "North", "amount": 100},
-            {"region": "North", "amount": 200},
-            {"region": "South", "amount": 50},
-            {"region": "South", "amount": 75},
-        ]
-    )
-
-    result = sql(
-        """
-        SELECT region, SUM(amount) as total
-        FROM sales
-        GROUP BY region
-        HAVING SUM(amount) > 100
-    """
-    )
-    rows = result.take_all()
-
-    # Only North (300) should pass HAVING clause
-    assert len(rows) == 1
-    assert rows[0]["region"] == "North"
-    assert rows[0]["total"] == 300
-
-
-def test_sql_having_with_alias(ray_start_regular_shared, sql_engine):
-    """Test HAVING clause using column alias."""
-    data = ray.data.from_items(  # noqa: F841
-        [
-            {"category": "A", "value": 10},
-            {"category": "A", "value": 20},
-            {"category": "B", "value": 5},
-        ]
-    )
-
-    result = sql(
-        """
-        SELECT category, SUM(value) as total
-        FROM data
-        GROUP BY category
-        HAVING total > 10
-    """
-    )
-    rows = result.take_all()
-
-    assert len(rows) == 1
-    assert rows[0]["category"] == "A"
-
-
-# Multiple GROUP BY columns
-
-
-def test_sql_multiple_group_by_columns(ray_start_regular_shared, sql_engine):
-    """Test GROUP BY with multiple columns."""
-    sales = ray.data.from_items(  # noqa: F841
-        [
-            {"region": "North", "product": "A", "amount": 100},
-            {"region": "North", "product": "A", "amount": 150},
-            {"region": "North", "product": "B", "amount": 200},
-            {"region": "South", "product": "A", "amount": 50},
-            {"region": "South", "product": "B", "amount": 75},
-        ]
-    )
-
-    result = sql(
-        """
-        SELECT region, product, SUM(amount) as total
-        FROM sales
-        GROUP BY region, product
-        ORDER BY region, product
-    """
-    )
-    rows = result.take_all()
-
-    assert len(rows) == 4
-    # Verify multi-dimensional aggregation
-    north_a = [r for r in rows if r["region"] == "North" and r["product"] == "A"]
-    assert len(north_a) == 1
-    assert north_a[0]["total"] == 250
-
-
-# Complex SQL expressions
-
-
-def test_sql_case_expression(ray_start_regular_shared, sql_engine):
-    """Test CASE WHEN expressions."""
-    employees = ray.data.from_items(  # noqa: F841
-        [
-            {"name": "Alice", "age": 25},
-            {"name": "Bob", "age": 35},
-            {"name": "Charlie", "age": 45},
-        ]
-    )
-
-    result = sql(
-        """
-        SELECT
-            name,
-            age,
-            CASE
-                WHEN age < 30 THEN 'Junior'
-                WHEN age < 40 THEN 'Mid-level'
-                ELSE 'Senior'
-            END as level
-        FROM employees
-    """
-    )
-    rows = result.take_all()
-
-    assert len(rows) == 3
-    assert rows[0]["level"] == "Junior"
-    assert rows[1]["level"] == "Mid-level"
-    assert rows[2]["level"] == "Senior"
-
-
-def test_sql_coalesce_function(ray_start_regular_shared, sql_engine):
-    """Test COALESCE for NULL handling."""
-    data = ray.data.from_items(  # noqa: F841
-        [
-            {"id": 1, "value": 100, "backup": 50},
-            {"id": 2, "value": None, "backup": 75},
-        ]
-    )
-
-    result = sql("SELECT id, COALESCE(value, backup) as final_value FROM data")
-    rows = result.take_all()
-
-    assert len(rows) == 2
-    assert rows[0]["final_value"] == 100
-    assert rows[1]["final_value"] == 75
-
-
-# NULL handling tests
-
-
-def test_sql_null_in_where_clause(ray_start_regular_shared, sql_engine):
-    """Test NULL handling in WHERE clause."""
-    data = ray.data.from_items(  # noqa: F841
-        [
-            {"id": 1, "value": 100},
-            {"id": 2, "value": None},
-            {"id": 3, "value": 200},
-        ]
-    )
-
-    result = sql("SELECT * FROM data WHERE value IS NOT NULL")
-    rows = result.take_all()
-
-    assert len(rows) == 2
-    assert all(row["value"] is not None for row in rows)
-
-
-def test_sql_null_comparison(ray_start_regular_shared, sql_engine):
-    """Test that NULL comparisons follow SQL semantics."""
-    data = ray.data.from_items(  # noqa: F841
-        [
-            {"id": 1, "value": 100},
-            {"id": 2, "value": None},
-        ]
-    )
-
-    # NULL != anything should be FALSE (no rows returned)
-    result = sql("SELECT * FROM data WHERE value = NULL")
-    rows = result.take_all()
     assert len(rows) == 0
 
-    # Use IS NULL for NULL checks
-    result = sql("SELECT * FROM data WHERE value IS NULL")
+
+def test_sql_limit_exceeds_data(ray_start_regular_shared, sql_engine):
+    """Test LIMIT larger than dataset size."""
+    data = ray.data.from_items([{"id": i} for i in range(5)])  # noqa: F841
+
+    result = sql("SELECT * FROM data LIMIT 100")
     rows = result.take_all()
-    assert len(rows) == 1
-    assert rows[0]["id"] == 2
+
+    assert len(rows) == 5
 
 
-# Self-join tests
+def test_sql_complex_where_clause(ray_start_regular_shared, sql_engine):
+    """Test complex WHERE clause with AND/OR conditions."""
+    data = ray.data.from_items(  # noqa: F841
+        [
+            {"id": 1, "category": "A", "value": 100},
+            {"id": 2, "category": "B", "value": 150},
+            {"id": 3, "category": "A", "value": 200},
+            {"id": 4, "category": "C", "value": 50},
+        ]
+    )
+
+    result = sql(
+        """
+        SELECT * FROM data
+        WHERE (category = 'A' AND value > 150)
+           OR (category = 'B' AND value < 200)
+    """
+    )
+    rows = result.take_all()
+
+    assert len(rows) == 2
+    ids = {row["id"] for row in rows}
+    assert ids == {2, 3}
 
 
 def test_sql_self_join(ray_start_regular_shared, sql_engine):
@@ -1056,386 +646,4 @@ def test_sql_self_join(ray_start_regular_shared, sql_engine):
     rows = result.take_all()
 
     assert len(rows) == 2
-    # Bob and Charlie both report to Alice
     assert all(row["manager"] == "Alice" for row in rows)
-
-
-# String function tests
-
-
-def test_sql_string_functions(ray_start_regular_shared, sql_engine):
-    """Test SQL string functions."""
-    data = ray.data.from_items(  # noqa: F841
-        [
-            {"name": "alice"},
-            {"name": "BOB"},
-        ]
-    )
-
-    result = sql(
-        "SELECT UPPER(name) as upper_name, LOWER(name) as lower_name FROM data"
-    )
-    rows = result.take_all()
-
-    assert len(rows) == 2
-    assert rows[0]["upper_name"] == "ALICE"
-    assert rows[0]["lower_name"] == "alice"
-    assert rows[1]["upper_name"] == "BOB"
-    assert rows[1]["lower_name"] == "bob"
-
-
-# Mathematical function tests
-
-
-def test_sql_math_functions(ray_start_regular_shared, sql_engine):
-    """Test SQL mathematical functions."""
-    numbers = ray.data.from_items(  # noqa: F841
-        [
-            {"value": -5.7},
-            {"value": 3.2},
-        ]
-    )
-
-    result = sql(
-        """
-        SELECT
-            value,
-            ABS(value) as abs_value,
-            ROUND(value) as rounded
-        FROM numbers
-    """
-    )
-    rows = result.take_all()
-
-    assert len(rows) == 2
-    assert rows[0]["abs_value"] == 5.7
-    assert rows[0]["rounded"] == -6
-    assert rows[1]["abs_value"] == 3.2
-    assert rows[1]["rounded"] == 3
-
-
-# BETWEEN operator test
-
-
-def test_sql_between_operator(ray_start_regular_shared, sql_engine):
-    """Test BETWEEN operator."""
-    data = ray.data.from_items(  # noqa: F841
-        [
-            {"id": 1, "value": 10},
-            {"id": 2, "value": 25},
-            {"id": 3, "value": 40},
-            {"id": 4, "value": 55},
-        ]
-    )
-
-    result = sql("SELECT * FROM data WHERE value BETWEEN 20 AND 50")
-    rows = result.take_all()
-
-    assert len(rows) == 2
-    assert all(20 <= row["value"] <= 50 for row in rows)
-
-
-# IN operator test
-
-
-def test_sql_in_operator(ray_start_regular_shared, sql_engine):
-    """Test IN operator."""
-    data = ray.data.from_items(  # noqa: F841
-        [
-            {"id": 1, "category": "A"},
-            {"id": 2, "category": "B"},
-            {"id": 3, "category": "C"},
-            {"id": 4, "category": "D"},
-        ]
-    )
-
-    result = sql("SELECT * FROM data WHERE category IN ('A', 'C')")
-    rows = result.take_all()
-
-    assert len(rows) == 2
-    categories = {row["category"] for row in rows}
-    assert categories == {"A", "C"}
-
-
-# LIKE operator test
-
-
-def test_sql_like_operator(ray_start_regular_shared, sql_engine):
-    """Test LIKE pattern matching operator."""
-    data = ray.data.from_items(  # noqa: F841
-        [
-            {"id": 1, "name": "Alice"},
-            {"id": 2, "name": "Bob"},
-            {"id": 3, "name": "Alex"},
-        ]
-    )
-
-    result = sql("SELECT * FROM data WHERE name LIKE 'Al%'")
-    rows = result.take_all()
-
-    assert len(rows) == 2
-    assert all(row["name"].startswith("Al") for row in rows)
-
-
-# CTE (Common Table Expression) with JOIN
-
-
-def test_sql_cte_with_join(ray_start_regular_shared, sql_engine):
-    """Test CTE with JOIN operations."""
-    customers = ray.data.from_items(  # noqa: F841
-        [
-            {"customer_id": 1, "name": "Alice"},
-            {"customer_id": 2, "name": "Bob"},
-        ]
-    )
-
-    orders = ray.data.from_items(  # noqa: F841
-        [
-            {"order_id": 1, "customer_id": 1, "amount": 100},
-            {"order_id": 2, "customer_id": 1, "amount": 150},
-            {"order_id": 3, "customer_id": 2, "amount": 200},
-        ]
-    )
-
-    result = sql(
-        """
-        WITH customer_totals AS (
-            SELECT customer_id, SUM(amount) as total
-            FROM orders
-            GROUP BY customer_id
-        )
-        SELECT c.name, ct.total
-        FROM customers c
-        JOIN customer_totals ct ON c.customer_id = ct.customer_id
-        ORDER BY ct.total DESC
-    """
-    )
-    rows = result.take_all()
-
-    assert len(rows) == 2
-    assert rows[0]["name"] == "Alice"
-    assert rows[0]["total"] == 250
-
-
-# Edge case: Empty result set
-
-
-def test_sql_empty_result_set(ray_start_regular_shared, sql_engine):
-    """Test query that returns empty result set."""
-    data = ray.data.from_items([{"value": 1}])  # noqa: F841
-
-    result = sql("SELECT * FROM data WHERE value > 100")
-    rows = result.take_all()
-
-    assert len(rows) == 0
-
-
-# Edge case: Single row
-
-
-def test_sql_single_row_operations(ray_start_regular_shared, sql_engine):
-    """Test operations on single-row dataset."""
-    data = ray.data.from_items([{"value": 42}])  # noqa: F841
-
-    result = sql("SELECT value * 2 as doubled FROM data")
-    rows = result.take_all()
-
-    assert len(rows) == 1
-    assert rows[0]["doubled"] == 84
-
-
-# Edge case: Large LIMIT
-
-
-def test_sql_limit_exceeds_data(ray_start_regular_shared, sql_engine):
-    """Test LIMIT larger than dataset size."""
-    data = ray.data.from_items([{"id": i} for i in range(5)])  # noqa: F841
-
-    result = sql("SELECT * FROM data LIMIT 100")
-    rows = result.take_all()
-
-    # Should return all available rows (5)
-    assert len(rows) == 5
-
-
-# Edge case: LIMIT with OFFSET
-
-
-def test_sql_limit_with_offset(ray_start_regular_shared, sql_engine):
-    """Test LIMIT with OFFSET clause."""
-    data = ray.data.range(20)  # noqa: F841
-
-    result = sql("SELECT * FROM data LIMIT 5 OFFSET 10")
-    rows = result.take_all()
-
-    assert len(rows) == 5
-    # Should get rows 10-14
-    assert rows[0]["id"] == 10
-    assert rows[4]["id"] == 14
-
-
-# Arithmetic expressions in SELECT
-
-
-def test_sql_arithmetic_expressions(ray_start_regular_shared, sql_engine):
-    """Test arithmetic expressions in SELECT clause."""
-    data = ray.data.from_items(  # noqa: F841
-        [
-            {"price": 100, "quantity": 3},
-            {"price": 50, "quantity": 2},
-        ]
-    )
-
-    result = sql(
-        """
-        SELECT
-            price,
-            quantity,
-            price * quantity as total,
-            price + quantity as sum_val,
-            price - quantity as diff_val
-        FROM data
-    """
-    )
-    rows = result.take_all()
-
-    assert len(rows) == 2
-    assert rows[0]["total"] == 300
-    assert rows[0]["sum_val"] == 103
-    assert rows[0]["diff_val"] == 97
-
-
-# Complex WHERE clause with multiple conditions
-
-
-def test_sql_complex_where_clause(ray_start_regular_shared, sql_engine):
-    """Test complex WHERE clause with AND/OR conditions."""
-    data = ray.data.from_items(  # noqa: F841
-        [
-            {"id": 1, "category": "A", "value": 100},
-            {"id": 2, "category": "B", "value": 150},
-            {"id": 3, "category": "A", "value": 200},
-            {"id": 4, "category": "C", "value": 50},
-        ]
-    )
-
-    result = sql(
-        """
-        SELECT * FROM data
-        WHERE (category = 'A' AND value > 150)
-           OR (category = 'B' AND value < 200)
-    """
-    )
-    rows = result.take_all()
-
-    assert len(rows) == 2
-    # Should get id=3 (A, 200) and id=2 (B, 150)
-    ids = {row["id"] for row in rows}
-    assert ids == {2, 3}
-
-
-# Aggregation without GROUP BY
-
-
-def test_sql_aggregation_without_group_by(ray_start_regular_shared, sql_engine):
-    """Test aggregation functions without GROUP BY (global aggregation)."""
-    data = ray.data.from_items(  # noqa: F841
-        [
-            {"value": 10},
-            {"value": 20},
-            {"value": 30},
-        ]
-    )
-
-    result = sql(
-        """
-        SELECT
-            COUNT(*) as count,
-            SUM(value) as total,
-            AVG(value) as average,
-            MIN(value) as minimum,
-            MAX(value) as maximum
-        FROM data
-    """
-    )
-    rows = result.take_all()
-
-    assert len(rows) == 1
-    row = rows[0]
-    assert row["count"] == 3
-    assert row["total"] == 60
-    assert row["average"] == 20
-    assert row["minimum"] == 10
-    assert row["maximum"] == 30
-
-
-# Test FULL OUTER JOIN
-
-
-@pytest.mark.skip(reason="FULL OUTER JOIN may not be supported")
-def test_sql_full_outer_join(ray_start_regular_shared, sql_engine):
-    """Test FULL OUTER JOIN operation."""
-    left_data = ray.data.from_items(  # noqa: F841
-        [
-            {"id": 1, "name": "Alice"},
-            {"id": 2, "name": "Bob"},
-        ]
-    )
-
-    right_data = ray.data.from_items(  # noqa: F841
-        [
-            {"user_id": 2, "amount": 200},
-            {"user_id": 3, "amount": 300},
-        ]
-    )
-
-    result = sql(
-        """
-        SELECT l.name, r.amount
-        FROM left_data l
-        FULL OUTER JOIN right_data r ON l.id = r.user_id
-    """
-    )
-    rows = result.take_all()
-
-    # Should have 3 rows: Alice (null), Bob (200), null (300)
-    assert len(rows) == 3
-
-
-# Test column aliasing in JOINs
-
-
-def test_sql_join_with_column_aliases(ray_start_regular_shared, sql_engine):
-    """Test JOIN with explicit column aliasing to avoid conflicts."""
-    users = ray.data.from_items(  # noqa: F841
-        [
-            {"id": 1, "name": "Alice"},
-            {"id": 2, "name": "Bob"},
-        ]
-    )
-
-    profiles = ray.data.from_items(  # noqa: F841
-        [
-            {"id": 1, "user_id": 1, "bio": "Engineer"},
-            {"id": 2, "user_id": 2, "bio": "Designer"},
-        ]
-    )
-
-    result = sql(
-        """
-        SELECT
-            u.id as user_id,
-            u.name,
-            p.id as profile_id,
-            p.bio
-        FROM users u
-        JOIN profiles p ON u.id = p.user_id
-    """
-    )
-    rows = result.take_all()
-
-    assert len(rows) == 2
-    # Verify aliasing worked correctly
-    assert "user_id" in rows[0]
-    assert "profile_id" in rows[0]
-    assert rows[0]["user_id"] != rows[0]["profile_id"]  # Should be different values

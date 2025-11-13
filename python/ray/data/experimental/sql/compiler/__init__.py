@@ -23,8 +23,9 @@ The compiled functions are designed for efficient distributed execution in Ray,
 handling type coercion, null propagation, and error cases according to SQL standards.
 """
 
-from ray.data.experimental.sql.compiler.expressions import ExpressionCompiler
+from ray.data.experimental.sql.compiler.expressions import ExpressionConverter, ExpressionCompiler
 
 __all__ = [
-    "ExpressionCompiler",
+    "ExpressionConverter",
+    "ExpressionCompiler",  # Backward compatibility alias
 ]

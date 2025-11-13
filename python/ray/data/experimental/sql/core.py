@@ -1,16 +1,18 @@
 """Core SQL engine implementation for Ray Data.
 
-This module provides SQL query execution for Ray Datasets using standard SQL syntax.
-It uses SQLGlot (https://github.com/tobymao/sqlglot) for SQL parsing and AST manipulation,
-and optionally Apache DataFusion (https://datafusion.apache.org/) for cost-based query optimization.
+This module provides the main RaySQL engine class that orchestrates SQL query
+parsing, optimization, and execution against Ray Datasets.
+
+SQLGlot: SQL parser, transpiler, and optimizer
+https://github.com/tobymao/sqlglot
 """
 
 import hashlib
 import logging
+import threading
 import time
 from typing import Any, Dict, List, Optional, Set
 
-# SQLGlot: SQL parser and transpiler - https://github.com/tobymao/sqlglot
 import sqlglot
 from sqlglot import exp
 
@@ -25,53 +27,39 @@ from ray.data.experimental.sql.exceptions import (
     UnsupportedOperationError,
 )
 from ray.data.experimental.sql.execution.executor import QueryExecutor
+from ray.data.experimental.sql.parser import SQLParser
 from ray.data.experimental.sql.registry.base import TableRegistry
-from ray.data.experimental.sql.validators.base import CompositeValidator
-from ray.data.experimental.sql.validators.features import FeatureValidator
-from ray.data.experimental.sql.validators.syntax import SyntaxValidator
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
 class RaySQL:
-    """Main SQL engine for Ray Data.
+    """Main SQL engine for executing SQL queries against Ray Datasets.
 
-    The RaySQL class provides the primary interface for executing SQL queries
-    against Ray Datasets. It manages table registration, query parsing,
-    optimization, and execution.
+    The RaySQL engine provides a complete SQL interface for Ray Data, supporting
+    SELECT queries, JOINs, aggregations, and other SQL operations. It uses
+    SQLGlot for parsing and validation, and can optionally use Apache DataFusion
+    for advanced query optimization.
 
     Examples:
-        Basic usage:
-            >>> engine = RaySQL()
-            >>> engine.register_table("my_table", my_dataset)
-            >>> result = engine.sql("SELECT * FROM my_table")
-
-        With configuration:
-            >>> config = SQLConfig(log_level=LogLevel.DEBUG)
-            >>> engine = RaySQL(config)
+        >>> from ray.data.experimental.sql import RaySQL
+        >>> engine = RaySQL()
+        >>> engine.register_table("users", user_dataset)
+        >>> result = engine.sql("SELECT * FROM users WHERE age > 25")
     """
 
     def __init__(self, config: Optional[SQLConfig] = None):
         """Initialize the SQL engine.
 
         Args:
-            config: SQL engine configuration. Uses default if not provided.
+            config: SQL configuration. Uses defaults if not provided.
         """
         self.config = config or SQLConfig()
         self.registry = TableRegistry()
         self.execution_engine = QueryExecutor(self.registry, self.config)
+        self.parser = SQLParser(self.config)
         self._logger = logging.getLogger(__name__)
         self._setup_logging()
-
-        # Create composite validator
-        self.validator = CompositeValidator(
-            [
-                SyntaxValidator(),
-                FeatureValidator(),
-            ]
-        )
-
-        # Simple query cache for performance
         self._query_cache: Dict[str, exp.Expression] = {}
 
     def _setup_logging(self) -> None:
@@ -84,141 +72,125 @@ class RaySQL:
         self._logger.setLevel(log_level_mapping[self.config.log_level])
 
     def register_table(self, name: str, dataset: Dataset) -> None:
-        """Register a Ray Dataset as a SQL table.
-
-        Args:
-            name: SQL table name.
-            dataset: Ray Dataset to register.
-        """
+        """Register a Ray Dataset as a SQL table."""
         self.registry.register(name, dataset)
-        # Avoid expensive count() operation during registration
 
     def unregister_table(self, name: str) -> None:
-        """Unregister a table by name.
-
-        Args:
-            name: Table name to unregister.
-        """
+        """Unregister a table by name."""
         self.registry.unregister(name)
 
     def sql(self, query: str, default_dataset: Optional[Dataset] = None) -> Dataset:
-        """Execute a SQL query with optional DataFusion optimization.
+        """Execute a SQL query against registered Ray Datasets.
 
         Args:
-            query: SQL query string.
-            default_dataset: Default dataset for queries without FROM clause.
+            query: SQL query string to execute.
+            default_dataset: Optional default dataset for queries without FROM clause.
 
         Returns:
-            Ray Dataset containing the query results.
+            Ray Dataset containing query results.
 
         Raises:
-            SQLParseError: If the query cannot be parsed.
-            UnsupportedOperationError: If the query uses unsupported features.
+            SQLParseError: If query parsing fails.
             SQLExecutionError: If query execution fails.
-            ValidationError: If query validation fails.
-            ConfigurationError: If configuration is invalid.
+            UnsupportedOperationError: If query contains unsupported operations.
         """
-        # Simple input validation
-        if not isinstance(query, str) or not query.strip():
-            raise SQLParseError("Query must be a non-empty string", query=query)
+        self._validate_query(query, default_dataset)
+        start_time = time.time()
+        query_preview = query.strip()[:100]
+        self._logger.info(
+            f"Executing SQL query: {query_preview}"
+            f"{'...' if len(query.strip()) > 100 else ''}"
+        )
+        try:
+            result = self._execute_query(query, default_dataset)
+            self._logger.info(
+                f"Query executed in {time.time() - start_time:.3f}s"
+            )
+            return result
+        except (SQLParseError, SQLExecutionError, UnsupportedOperationError):
+            raise
+        except ValueError as e:
+            raise SQLExecutionError(
+                f"Validation error: {str(e)}", query=query
+            ) from e
+        except Exception as e:
+            raise SQLExecutionError(
+                f"Unexpected error during query execution: {str(e)}",
+                query=query,
+            ) from e
 
-        if default_dataset is not None and not isinstance(default_dataset, Dataset):
+    def _validate_query(
+        self, query: str, default_dataset: Optional[Dataset]
+    ) -> None:
+        """Validate query string and default dataset."""
+        if not isinstance(query, str):
+            raise SQLParseError("Query must be a string", query=query)
+        if not query.strip():
+            raise SQLParseError("Query must be a non-empty string", query=query)
+        if len(query) > 1_000_000:
+            raise SQLParseError(
+                "Query string too long (max 1MB)", query=query[:100]
+            )
+        if default_dataset is not None and not isinstance(
+            default_dataset, Dataset
+        ):
             raise SQLExecutionError(
                 "default_dataset must be a Ray Dataset", query=query
             )
 
-        start_time = time.time()
-        self._logger.info(
-            f"Executing SQL query: {query.strip()[:100]}{'...' if len(query.strip()) > 100 else ''}"
-        )
-
+    def _execute_query(
+        self, query: str, default_dataset: Optional[Dataset]
+    ) -> Dataset:
+        """Execute query with optional DataFusion optimization."""
+        if self._should_use_datafusion():
+            result = self._execute_with_datafusion(query)
+            if result is not None:
+                return result
+        ast = self._parse_query(query)
+        cte_tables = []
+        if hasattr(ast, "with_") and ast.with_:
+            cte_tables = self._execute_ctes(ast.with_)
         try:
-            # Try DataFusion optimization if enabled
-            if self._should_use_datafusion():
-                try:
-                    result = self._execute_with_datafusion(query)
-                    if result is not None:
-                        execution_time = time.time() - start_time
-                        self._logger.info(
-                            f"Query executed with DataFusion optimization in {execution_time:.3f}s"
-                        )
-                        return result
-                except Exception as e:
-                    self._logger.info(
-                        f"DataFusion optimization failed ({e}), falling back to SQLGlot"
-                    )
-                    # Fall through to SQLGlot execution
-
-            # Standard SQLGlot execution path
-            # Check query cache first for performance
-            ast = self._get_cached_query(query)
-            if ast is None:
-                # Parse the SQL query
-                ast = sqlglot.parse_one(query)
-                if not ast:
-                    raise SQLParseError("Query could not be parsed", query=query)
-
-                # Validate the query
-                self.validator.validate(query, ast)
-
-                # Cache the parsed and validated query
-                self._cache_query(query, ast)
-            else:
-                self._logger.debug("Using cached query AST")
-
-            # Handle WITH clauses (CTEs) before main query execution
-            if hasattr(ast, "with_") and ast.with_ is not None:
-                self._execute_ctes(ast.with_)
-
-            # Execute the query using the unified executor
             if isinstance(ast, exp.Select):
-                result = self.execution_engine.execute(ast)
+                return self.execution_engine.execute(ast)
             elif isinstance(ast, exp.Union):
-                result = self._execute_union(ast, default_dataset)
+                return self._execute_union(ast, default_dataset)
             else:
                 raise UnsupportedOperationError(
                     f"{type(ast).__name__} statements",
                     suggestion="Only SELECT and UNION statements are currently supported",
                     query=query,
                 )
+        finally:
+            self._cleanup_ctes(cte_tables)
 
-            execution_time = time.time() - start_time
-            self._logger.info(f"Query executed in {execution_time:.3f}s")
-            return result
+    def _parse_query(self, query: str) -> exp.Expression:
+        """Parse query and return AST, using cache if available."""
+        ast = self._get_cached_query(query)
+        if ast is None:
+            ast = self.parser.parse(query)
+            self._cache_query(query, ast)
+        else:
+            self._logger.debug("Using cached query AST")
+        return ast
 
-        except (SQLParseError, SQLExecutionError, UnsupportedOperationError):
-            # Re-raise known SQL errors without wrapping
-            raise
-        except ValueError as e:
-            # Convert validation errors to SQL execution errors
-            raise SQLExecutionError(f"Validation error: {str(e)}", query=query) from e
-        except Exception as e:
-            # Wrap unexpected errors
-            raise SQLExecutionError(
-                f"Unexpected error during query execution: {str(e)}",
-                query=query,
-            ) from e
+    def _cleanup_ctes(self, cte_tables: List[str]) -> None:
+        """Clean up registered CTE tables."""
+        for cte_name in cte_tables:
+            try:
+                self.unregister_table(cte_name)
+            except Exception:
+                pass
 
     def _should_use_datafusion(self) -> bool:
-        """Check if DataFusion should be used for optimization.
+        """Check if DataFusion should be used for optimization."""
+        from ray.data import DataContext
 
-        Returns:
-            True if DataFusion is enabled in config and available.
-        """
-        try:
-            from ray.data import DataContext
-
-            ctx = DataContext.get_current()
-            return ctx.sql_use_datafusion and self._is_datafusion_available()
-        except Exception:
-            return False
+        ctx = DataContext.get_current()
+        return ctx.sql_use_datafusion and self._is_datafusion_available()
 
     def _is_datafusion_available(self) -> bool:
-        """Check if DataFusion is available.
-
-        Returns:
-            True if DataFusion can be imported and used.
-        """
+        """Check if DataFusion is available."""
         try:
             from ray.data.experimental.sql.engines.datafusion.datafusion_optimizer import (
                 is_datafusion_available,
@@ -229,199 +201,109 @@ class RaySQL:
             return False
 
     def _execute_with_datafusion(self, query: str) -> Optional[Dataset]:
-        """
-        Execute query using DataFusion optimization + Ray Data execution.
+        """Execute query using DataFusion optimization.
 
-        Uses DataFusion for query optimization and planning, then executes
-        with Ray Data for distributed execution with resource and backpressure
-        management.
-
-        Args:
-            query: SQL query string.
+        Apache DataFusion: https://datafusion.apache.org/
 
         Returns:
-            Dataset if DataFusion optimization succeeds, None to fallback to SQLGlot.
+            Dataset if DataFusion optimization succeeds, None otherwise.
         """
-        try:
-            from ray.data.experimental.sql.engines.datafusion.datafusion_optimizer import (
-                get_datafusion_optimizer,
-            )
+        from ray.data.experimental.sql.engines.datafusion.datafusion_optimizer import (
+            get_datafusion_optimizer,
+        )
 
-            # Get DataFusion optimizer
-            optimizer = get_datafusion_optimizer()
-            if optimizer is None or not optimizer.is_available():
-                return None
-
-            # Get registered datasets for DataFusion
-            registered_datasets = {}
-            for table_name in self.registry.list_tables():
-                registered_datasets[table_name] = self.registry.get(table_name)
-
-            # Optimize query with DataFusion
-            optimizations = optimizer.optimize_query(query, registered_datasets)
-
-            if optimizations is None:
-                self._logger.info(
-                    "DataFusion optimization returned None, using fallback"
-                )
-                return None
-
-            # Step 2: Parse SQL with SQLGlot for compatibility
-            ast = sqlglot.parse_one(query)
-            if not ast or not isinstance(ast, exp.Select):
-                return None
-
-            # Step 3: Execute with Ray Data applying DataFusion hints
-            # REUSES existing QueryExecutor (no code duplication!)
-            # DataFusion hints guide execution order and placement
-            # This preserves Ray Data's:
-            # - Distributed execution across cluster
-            # - Resource management (CPU/GPU/memory budgets)
-            # - Backpressure control (3 policies)
-            # - Streaming execution model
-            result = execute_with_datafusion_hints(
-                ast, optimizations, self.registry, self.config
-            )
-
-            if result is not None:
-                return result
-            else:
-                return None
-
-        except Exception:
+        optimizer = get_datafusion_optimizer()
+        if not optimizer or not optimizer.is_available():
             return None
 
-    def list_tables(self) -> List[str]:
-        """List all registered table names.
+        registered_datasets = {
+            name: self.registry.get(name)
+            for name in self.registry.list_tables()
+        }
+        optimizations = optimizer.optimize_query(query, registered_datasets)
 
-        Returns:
-            List of registered table names.
-        """
+        if not optimizations:
+            return None
+
+        ast = sqlglot.parse_one(query)
+        if not isinstance(ast, exp.Select):
+            return None
+
+        return execute_with_datafusion_hints(
+            ast, optimizations, self.registry, self.config
+        )
+
+    def list_tables(self) -> List[str]:
+        """List all registered table names."""
         return self.registry.list_tables()
 
     def get_schema(self, table_name: str) -> Optional[Dict[str, str]]:
-        """Get the schema for a registered table.
-
-        Args:
-            table_name: Name of the table.
-
-        Returns:
-            Dictionary mapping column names to types, or None if not available.
-        """
+        """Get the schema for a registered table."""
         return self.registry.get_schema(table_name)
 
     def clear_tables(self) -> None:
         """Clear all registered tables."""
         self.registry.clear()
-        """Get the set of supported SQL features.
 
-        Returns:
-            Set of supported feature names.
-        """
-        return self.validator.get_supported_features()
+    def get_supported_features(self) -> Set[str]:
+        """Get the set of supported SQL features."""
+        return {"SELECT statements", "FROM clause", "WHERE clause", "JOIN operations (INNER, LEFT, RIGHT, FULL)",
+                "GROUP BY with aggregation", "ORDER BY", "LIMIT clause", "Aggregate functions (COUNT, SUM, AVG, MIN, MAX)",
+                "String functions", "Mathematical functions", "Date/time functions"}
 
     def get_unsupported_features(self) -> Set[str]:
-        """Get the set of unsupported SQL features.
+        """Get the set of unsupported SQL features."""
+        return {"DISTINCT", "Window functions", "INTERSECT", "EXCEPT", "INSERT statements", "UPDATE statements",
+                "DELETE statements", "CREATE statements", "DROP statements"}
 
-        Returns:
-            Set of unsupported feature names.
-        """
-        return self.validator.get_unsupported_features()
-
-    def _execute_union(
-        self, ast: exp.Union, default_dataset: Optional[Dataset] = None
-    ) -> Dataset:
-        """Execute a UNION operation.
-
-        Args:
-            ast: UNION AST node.
-            default_dataset: Default dataset for queries without FROM clause.
-
-        Returns:
-            Dataset containing the union of all SELECT results.
-        """
-        # Execute left side
+    def _execute_union(self, ast: exp.Union, default_dataset: Optional[Dataset] = None) -> Dataset:
+        """Execute a UNION operation."""
+        if ast.args.get("distinct", True):
+            raise UnsupportedOperationError("UNION with DISTINCT", suggestion="Use UNION ALL instead, or apply deduplication manually with Ray Dataset operations")
         left_result = self.execution_engine.execute(ast.left)
-
-        # Execute right side
         right_result = self.execution_engine.execute(ast.right)
+        if left_result is None or right_result is None:
+            raise SQLExecutionError("UNION operands must return valid datasets")
+        return left_result.union(right_result)
 
-        # Use Ray Dataset union operation
-        result = left_result.union(right_result)
-
-        # Handle DISTINCT vs ALL
-        if not ast.args.get("distinct", True):  # UNION ALL
-            return result
-        else:  # UNION (with implicit DISTINCT)
-            # DISTINCT is not supported in Ray Dataset API yet
-            raise UnsupportedOperationError(
-                "UNION with DISTINCT",
-                suggestion="Use UNION ALL instead, or apply deduplication manually with Ray Dataset operations",
-            )
-
-    def _execute_ctes(self, with_clause: Any) -> None:
-        """Execute Common Table Expressions (WITH clauses).
-
-        CTEs are intermediate datasets that get registered as temporary tables.
-
-        Args:
-            with_clause: The WITH clause containing CTE definitions.
-        """
-        # Handle the case where with_ might be a method or property
+    def _execute_ctes(self, with_clause: Any) -> List[str]:
+        """Execute Common Table Expressions (WITH clauses). Returns list of registered CTE names."""
         if callable(with_clause):
-            # If it's a method, call it to get the actual WITH clause
-            try:
-                actual_with = with_clause()
-                if actual_with:
-                    with_clause = actual_with
-                else:
-                    return  # No CTEs to process
-            except Exception:
-                return  # Can't access CTEs, skip
-
-        # Process CTEs from the WITH clause
-        if hasattr(with_clause, "expressions") and with_clause.expressions:
-            for cte in with_clause.expressions:
-                if not isinstance(cte, exp.CTE):
-                    continue
-
-                # Get the CTE name and query
-                cte_name = str(cte.alias)
-                cte_query = cte.this
-
-                # Execute the CTE query to get a dataset
-                if isinstance(cte_query, exp.Select):
-                    cte_result = self.execution_engine.execute(cte_query)
-                elif isinstance(cte_query, exp.Union):
-                    cte_result = self._execute_union(cte_query)
-                else:
-                    raise UnsupportedOperationError(
-                        f"CTE with {type(cte_query).__name__} statement",
-                        suggestion="CTEs only support SELECT and UNION statements",
-                    )
-
-                # Register the CTE result as a temporary table
-                self.register_table(cte_name, cte_result)
+            with_clause = with_clause() or None
+        if not with_clause or not hasattr(with_clause, "expressions") or not with_clause.expressions:
+            return []
+        cte_names = []
+        seen_aliases = set()
+        for cte in with_clause.expressions:
+            if not isinstance(cte, exp.CTE):
+                continue
+            cte_alias = str(cte.alias)
+            if cte_alias in seen_aliases:
+                raise SQLExecutionError(f"Duplicate CTE alias: {cte_alias}")
+            seen_aliases.add(cte_alias)
+            cte_query = cte.this
+            if not isinstance(cte_query, (exp.Select, exp.Union)):
+                raise UnsupportedOperationError(f"CTE with {type(cte_query).__name__} statement", suggestion="CTEs only support SELECT and UNION statements")
+            cte_result = (self.execution_engine.execute(cte_query) if isinstance(cte_query, exp.Select) else self._execute_union(cte_query))
+            if cte_result is None:
+                raise SQLExecutionError(f"CTE '{cte_alias}' returned None result")
+            self.register_table(cte_alias, cte_result)
+            cte_names.append(cte_alias)
+        return cte_names
 
     def _get_cache_key(self, query: str) -> str:
-        """Generate a cache key for the query."""
-        # Normalize whitespace and create hash
-        normalized = " ".join(query.strip().split())
-        return hashlib.md5(normalized.encode()).hexdigest()
+        """Generate cache key for query."""
+        return hashlib.md5(" ".join(query.strip().split()).encode()).hexdigest()
 
     def _get_cached_query(self, query: str) -> Optional[exp.Expression]:
         """Get cached parsed query AST if available."""
-        cache_key = self._get_cache_key(query)
-        return self._query_cache.get(cache_key)
+        return self._query_cache.get(self._get_cache_key(query))
 
     def _cache_query(self, query: str, ast: exp.Expression) -> None:
         """Cache a parsed and validated query AST."""
+        if len(self._query_cache) >= 100:
+            self._query_cache.clear()
         cache_key = self._get_cache_key(query)
-
-        # Simple cache with size limit
-        if len(self._query_cache) >= 100:  # Keep cache reasonable
-            self._query_cache.clear()  # Simple eviction
-
         self._query_cache[cache_key] = ast
 
     def clear_query_cache(self) -> None:
@@ -431,49 +313,36 @@ class RaySQL:
 
 # Global engine instance
 _global_engine: Optional[RaySQL] = None
-
+_global_engine_lock = threading.Lock()
 
 def get_engine() -> RaySQL:
-    """Get the global SQL engine instance.
-
-    Returns:
-        Global RaySQL engine instance configured from DataContext.
-    """
+    """Get the global SQL engine instance."""
     global _global_engine
     if _global_engine is None:
-        # Build configuration from DataContext
-        config = get_global_config()
-        _global_engine = RaySQL(config)
+        with _global_engine_lock:
+            if _global_engine is None:
+                config = get_global_config()
+                _global_engine = RaySQL(config)
     return _global_engine
 
-
 def get_registry() -> TableRegistry:
-    """Get the global table registry.
-
-    Returns:
-        Global table registry instance.
-    """
+    """Get the global table registry."""
     return get_engine().registry
-
 
 def get_global_config() -> SQLConfig:
     """Get the SQL configuration from DataContext.
 
     Returns:
-        SQL configuration built from DataContext settings.
+        SQLConfig instance with current settings from DataContext.
     """
     from ray.data import DataContext
-
-    ctx = DataContext.get_current()
-
-    # Build SQLConfig from DataContext SQL settings
     from ray.data.experimental.sql.config import LogLevel, SQLDialect
 
+    ctx = DataContext.get_current()
     try:
         dialect = SQLDialect(ctx.sql_dialect.lower())
     except (ValueError, AttributeError):
         dialect = SQLDialect.DUCKDB
-
     try:
         log_level = LogLevel(ctx.sql_log_level.upper())
     except (ValueError, AttributeError):
@@ -492,18 +361,15 @@ def get_global_config() -> SQLConfig:
         enable_sqlglot_optimizer=ctx.sql_enable_sqlglot_optimizer,
     )
 
-
 def set_global_config(config: SQLConfig) -> None:
     """Set SQL configuration via DataContext.
 
     Args:
-        config: SQL configuration to apply to DataContext.
+        config: SQL configuration to apply.
     """
     from ray.data import DataContext
 
     ctx = DataContext.get_current()
-
-    # Update DataContext with SQLConfig values
     ctx.sql_dialect = config.dialect.value
     ctx.sql_log_level = config.log_level.value
     ctx.sql_case_sensitive = config.case_sensitive
@@ -514,109 +380,101 @@ def set_global_config(config: SQLConfig) -> None:
     ctx.sql_enable_projection_pushdown = config.enable_projection_pushdown
     ctx.sql_query_timeout_seconds = config.query_timeout_seconds
     ctx.sql_enable_sqlglot_optimizer = config.enable_sqlglot_optimizer
-
-    # Reset global engine to pick up new config
     global _global_engine
-    _global_engine = None
-
+    with _global_engine_lock:
+        _global_engine = None
 
 def configure(**kwargs: Any) -> None:
-    """Configure SQL settings via DataContext with keyword arguments.
-
-    This is a convenience function for setting SQL configuration options.
-    All settings are stored in ray.data.DataContext for consistency with
-    Ray Data patterns.
+    """Configure SQL settings via DataContext.
 
     Args:
-        **kwargs: Configuration options to set (prefixed with sql_ in DataContext).
-            - dialect: SQL dialect (str)
-            - log_level: Logging level (str)
-            - case_sensitive: Whether names are case-sensitive (bool)
-            - strict_mode: Whether to enable strict mode (bool)
-            - enable_optimization: Whether to enable optimization (bool)
-            - max_join_partitions: Maximum join partitions (int)
-            - enable_predicate_pushdown: Whether to enable predicate pushdown (bool)
-            - enable_projection_pushdown: Whether to enable projection pushdown (bool)
-            - query_timeout_seconds: Query timeout in seconds (int)
-            - enable_sqlglot_optimizer: Whether to enable SQLGlot optimization (bool)
+        **kwargs: Configuration options to set. Supported keys:
+            - dialect: SQL dialect (duckdb, postgres, mysql, etc.)
+            - log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
+            - case_sensitive: Whether identifiers are case-sensitive
+            - strict_mode: Whether to enforce strict validation
+            - enable_optimization: Whether to enable optimizations
+            - max_join_partitions: Maximum partitions for joins
+            - enable_predicate_pushdown: Enable predicate pushdown
+            - enable_projection_pushdown: Enable projection pushdown
+            - query_timeout_seconds: Query timeout in seconds
+            - enable_sqlglot_optimizer: Enable SQLGlot optimizer
+            - sql_use_datafusion: Use DataFusion optimizer
 
-    Examples:
-        Set dialect:
-            >>> import ray.data
-            >>> ray.data.sql.configure(dialect="postgres")
-
-        Set multiple options:
-            >>> ray.data.sql.configure(
-            ...     dialect="mysql",
-            ...     strict_mode=True,
-            ...     log_level="debug",
-            ...     enable_sqlglot_optimizer=True
-            ... )
-
-        Direct DataContext access (alternative):
-            >>> ctx = ray.data.DataContext.get_current()
-            >>> ctx.sql_dialect = "postgres"
-            >>> ctx.sql_enable_sqlglot_optimizer = True
+    Raises:
+        ValueError: If invalid configuration option or value provided.
     """
     from ray.data import DataContext
     from ray.data.experimental.sql.config import LogLevel, SQLDialect
 
     ctx = DataContext.get_current()
+    config_map = {
+        "dialect": lambda v: setattr(
+            ctx, "sql_dialect", SQLDialect(v.lower()).value
+        ),
+        "log_level": lambda v: setattr(
+            ctx, "sql_log_level", LogLevel(v.upper()).value
+        ),
+        "case_sensitive": lambda v: setattr(ctx, "sql_case_sensitive", bool(v)),
+        "strict_mode": lambda v: setattr(ctx, "sql_strict_mode", bool(v)),
+        "enable_optimization": lambda v: setattr(
+            ctx, "sql_enable_optimization", bool(v)
+        ),
+        "max_join_partitions": lambda v: setattr(
+            ctx, "sql_max_join_partitions", int(v)
+        )
+        if v > 0
+        else None,
+        "enable_predicate_pushdown": lambda v: setattr(
+            ctx, "sql_enable_predicate_pushdown", bool(v)
+        ),
+        "enable_projection_pushdown": lambda v: setattr(
+            ctx, "sql_enable_projection_pushdown", bool(v)
+        ),
+        "query_timeout_seconds": lambda v: setattr(
+            ctx,
+            "sql_query_timeout_seconds",
+            v if v is None or v > 0 else None,
+        ),
+        "enable_sqlglot_optimizer": lambda v: setattr(
+            ctx, "sql_enable_sqlglot_optimizer", bool(v)
+        ),
+        "sql_use_datafusion": lambda v: setattr(
+            ctx, "sql_use_datafusion", bool(v)
+        ),
+    }
 
     for key, value in kwargs.items():
-        if key == "dialect":
-            if isinstance(value, str):
-                try:
-                    SQLDialect(value.lower())  # Validate
-                    ctx.sql_dialect = value.lower()
-                except ValueError:
-                    raise ValueError(
-                        f"Invalid dialect '{value}'. Supported: {[d.value for d in SQLDialect]}"
-                    )
-        elif key == "log_level":
-            if isinstance(value, str):
-                try:
-                    LogLevel(value.upper())  # Validate
-                    ctx.sql_log_level = value.upper()
-                except ValueError:
-                    raise ValueError(
-                        f"Invalid log_level '{value}'. Supported: {[l.value for l in LogLevel]}"
-                    )
-        elif key == "case_sensitive":
-            ctx.sql_case_sensitive = bool(value)
-        elif key == "strict_mode":
-            ctx.sql_strict_mode = bool(value)
-        elif key == "enable_optimization":
-            ctx.sql_enable_optimization = bool(value)
-        elif key == "max_join_partitions":
-            if value <= 0:
-                raise ValueError("max_join_partitions must be positive")
-            ctx.sql_max_join_partitions = int(value)
-        elif key == "enable_predicate_pushdown":
-            ctx.sql_enable_predicate_pushdown = bool(value)
-        elif key == "enable_projection_pushdown":
-            ctx.sql_enable_projection_pushdown = bool(value)
-        elif key == "query_timeout_seconds":
-            if value is not None and value <= 0:
-                raise ValueError("query_timeout_seconds must be positive")
-            ctx.sql_query_timeout_seconds = value
-        elif key == "enable_sqlglot_optimizer":
-            ctx.sql_enable_sqlglot_optimizer = bool(value)
-        elif key == "sql_use_datafusion":
-            ctx.sql_use_datafusion = bool(value)
-        else:
+        if key not in config_map:
             raise ValueError(f"Unknown SQL configuration option: {key}")
+        try:
+            config_map[key](value)
+        except (ValueError, AttributeError):
+            if key == "dialect":
+                raise ValueError(
+                    f"Invalid dialect '{value}'. "
+                    f"Supported: {[d.value for d in SQLDialect]}"
+                )
+            elif key == "log_level":
+                raise ValueError(
+                    f"Invalid log_level '{value}'. "
+                    f"Supported: {[l.value for l in LogLevel]}"
+                )
+            elif key in ("max_join_partitions", "query_timeout_seconds"):
+                if value is not None and value <= 0:
+                    raise ValueError(f"{key} must be positive")
+            raise
 
-    # Reset global engine to pick up new config
     global _global_engine
-    _global_engine = None
+    with _global_engine_lock:
+        _global_engine = None
 
 
 def get_dialect() -> str:
     """Get the current SQL dialect from DataContext.
 
     Returns:
-        Current SQL dialect as string.
+        Current SQL dialect string.
     """
     from ray.data import DataContext
 
@@ -624,30 +482,24 @@ def get_dialect() -> str:
 
 
 def set_dialect(dialect: str) -> None:
-    """Set the SQL dialect for parsing and validation via DataContext.
+    """Set the SQL dialect for parsing and validation.
 
     Args:
-        dialect: SQL dialect to use. Supported: duckdb, postgres, mysql, sqlite, spark, bigquery, snowflake, redshift
+        dialect: SQL dialect name (duckdb, postgres, mysql, etc.).
 
-    Examples:
-        >>> import ray.data
-        >>> ctx = ray.data.DataContext.get_current()
-        >>> ctx.sql_dialect = "postgres"
-        >>> # Or use convenience function:
-        >>> ray.data.sql.set_dialect("mysql")
+    Raises:
+        ValueError: If dialect is not supported.
     """
     from ray.data import DataContext
-
-    # Validate dialect
     from ray.data.experimental.sql.config import SQLDialect
 
     try:
-        SQLDialect(dialect.lower())  # Validate it's a valid dialect
+        SQLDialect(dialect.lower())
     except ValueError:
         raise ValueError(
-            f"Invalid dialect '{dialect}'. Supported: {[d.value for d in SQLDialect]}"
+            f"Invalid dialect '{dialect}'. "
+            f"Supported: {[d.value for d in SQLDialect]}"
         )
-
     DataContext.get_current().sql_dialect = dialect.lower()
 
 
@@ -655,7 +507,7 @@ def get_log_level() -> str:
     """Get the current SQL logging level from DataContext.
 
     Returns:
-        Current logging level as string.
+        Current log level string.
     """
     from ray.data import DataContext
 
@@ -663,44 +515,32 @@ def get_log_level() -> str:
 
 
 def set_log_level(level: str) -> None:
-    """Set the logging level for SQL operations via DataContext.
+    """Set the logging level for SQL operations.
 
     Args:
-        level: Logging level. Supported: debug, info, warning, error
+        level: Log level (DEBUG, INFO, WARNING, ERROR).
 
-    Examples:
-        >>> import ray.data
-        >>> ctx = ray.data.DataContext.get_current()
-        >>> ctx.sql_log_level = "DEBUG"
-        >>> # Or use convenience function:
-        >>> ray.data.sql.set_log_level("debug")
+    Raises:
+        ValueError: If log level is not supported.
     """
     from ray.data import DataContext
     from ray.data.experimental.sql.config import LogLevel
 
-    # Validate log level
     try:
-        LogLevel(level.upper())  # Validate it's a valid level
+        LogLevel(level.upper())
     except ValueError:
         raise ValueError(
-            f"Invalid log_level '{level}'. Supported: {[l.value for l in LogLevel]}"
+            f"Invalid log_level '{level}'. "
+            f"Supported: {[l.value for l in LogLevel]}"
         )
-
     DataContext.get_current().sql_log_level = level.upper()
 
 
 def enable_optimization(enable: bool = True) -> None:
-    """Enable or disable query optimization via DataContext.
+    """Enable or disable query optimization.
 
     Args:
         enable: Whether to enable optimization.
-
-    Examples:
-        >>> import ray.data
-        >>> ctx = ray.data.DataContext.get_current()
-        >>> ctx.sql_enable_optimization = True
-        >>> # Or use convenience function:
-        >>> ray.data.sql.enable_optimization(True)
     """
     from ray.data import DataContext
 
@@ -708,17 +548,13 @@ def enable_optimization(enable: bool = True) -> None:
 
 
 def set_join_partitions(max_partitions: int) -> None:
-    """Set the maximum number of partitions for join operations via DataContext.
+    """Set the maximum number of partitions for join operations.
 
     Args:
-        max_partitions: Maximum number of partitions.
+        max_partitions: Maximum number of partitions (must be positive).
 
-    Examples:
-        >>> import ray.data
-        >>> ctx = ray.data.DataContext.get_current()
-        >>> ctx.sql_max_join_partitions = 50
-        >>> # Or use convenience function:
-        >>> ray.data.sql.set_join_partitions(50)
+    Raises:
+        ValueError: If max_partitions is not positive.
     """
     if max_partitions <= 0:
         raise ValueError("max_partitions must be positive")
@@ -728,17 +564,10 @@ def set_join_partitions(max_partitions: int) -> None:
 
 
 def enable_predicate_pushdown(enable: bool = True) -> None:
-    """Enable or disable predicate pushdown optimization via DataContext.
+    """Enable or disable predicate pushdown optimization.
 
     Args:
         enable: Whether to enable predicate pushdown.
-
-    Examples:
-        >>> import ray.data
-        >>> ctx = ray.data.DataContext.get_current()
-        >>> ctx.sql_enable_predicate_pushdown = True
-        >>> # Or use convenience function:
-        >>> ray.data.sql.enable_predicate_pushdown(True)
     """
     from ray.data import DataContext
 
@@ -746,17 +575,10 @@ def enable_predicate_pushdown(enable: bool = True) -> None:
 
 
 def enable_projection_pushdown(enable: bool = True) -> None:
-    """Enable or disable projection pushdown optimization via DataContext.
+    """Enable or disable projection pushdown optimization.
 
     Args:
         enable: Whether to enable projection pushdown.
-
-    Examples:
-        >>> import ray.data
-        >>> ctx = ray.data.DataContext.get_current()
-        >>> ctx.sql_enable_projection_pushdown = True
-        >>> # Or use convenience function:
-        >>> ray.data.sql.enable_projection_pushdown(True)
     """
     from ray.data import DataContext
 
@@ -764,17 +586,13 @@ def enable_projection_pushdown(enable: bool = True) -> None:
 
 
 def set_query_timeout(seconds: int) -> None:
-    """Set the query timeout in seconds via DataContext.
+    """Set the query timeout in seconds.
 
     Args:
-        seconds: Timeout in seconds.
+        seconds: Timeout in seconds (must be positive).
 
-    Examples:
-        >>> import ray.data
-        >>> ctx = ray.data.DataContext.get_current()
-        >>> ctx.sql_query_timeout_seconds = 300
-        >>> # Or use convenience function:
-        >>> ray.data.sql.set_query_timeout(300)  # 5 minutes
+    Raises:
+        ValueError: If seconds is not positive.
     """
     if seconds <= 0:
         raise ValueError("timeout must be positive")
@@ -784,39 +602,12 @@ def set_query_timeout(seconds: int) -> None:
 
 
 def enable_sqlglot_optimizer(enable: bool = True) -> None:
-    """Enable or disable SQLGlot query optimization via DataContext (experimental).
+    """Enable or disable SQLGlot query optimization.
 
-    When enabled, applies safe SQLGlot optimization rules to the parsed SQL AST:
-    - normalize: Normalize SQL expressions
-    - simplify: Simplify boolean and arithmetic expressions
-    - pushdown_predicates: Push WHERE clauses closer to data sources
-    - pushdown_projections: Push column selection earlier
-    - eliminate_subqueries: Flatten unnecessary subqueries
-    - merge_subqueries: Combine compatible subqueries
-
-    These optimizations can improve query performance by:
-    - Reducing data processed by filtering earlier
-    - Minimizing columns read from storage
-    - Simplifying complex expressions
-    - Flattening query structure
-
-    Note: This is experimental. Ray Data execution uses native operations
-    regardless of optimization. Defaults to False for stability.
+    SQLGlot optimizer: https://github.com/tobymao/sqlglot
 
     Args:
-        enable: Whether to enable SQLGlot optimization.
-
-    Examples:
-        >>> # Enable experimental query optimization via DataContext
-        >>> import ray.data
-        >>> ctx = ray.data.DataContext.get_current()
-        >>> ctx.sql_enable_sqlglot_optimizer = True
-        >>>
-        >>> # Or use convenience function:
-        >>> ray.data.sql.enable_sqlglot_optimizer(True)
-        >>>
-        >>> # Optimization will apply to subsequent queries
-        >>> result = ray.data.sql("SELECT * FROM users WHERE age > 25 AND age < 65")
+        enable: Whether to enable SQLGlot optimizer.
     """
     from ray.data import DataContext
 
@@ -824,50 +615,24 @@ def enable_sqlglot_optimizer(enable: bool = True) -> None:
 
 
 def reset_config() -> None:
-    """Reset all SQL configuration to default values via DataContext.
-
-    Examples:
-        >>> import ray.data
-        >>> ray.data.sql.reset_config()
-    """
+    """Reset all SQL configuration to default values."""
     from ray.data import DataContext
-
     ctx = DataContext.get_current()
-
-    # Reset all SQL configuration to defaults
-    ctx.sql_dialect = "duckdb"
-    ctx.sql_log_level = "INFO"
-    ctx.sql_case_sensitive = True
-    ctx.sql_strict_mode = False
-    ctx.sql_enable_optimization = True
-    ctx.sql_max_join_partitions = 20
-    ctx.sql_enable_predicate_pushdown = True
-    ctx.sql_enable_projection_pushdown = True
-    ctx.sql_query_timeout_seconds = None
-    ctx.sql_enable_sqlglot_optimizer = False
-    ctx.sql_use_datafusion = True  # Default to True
-
-    # Reset global engine to pick up new config
+    ctx.sql_dialect, ctx.sql_log_level = "duckdb", "INFO"
+    ctx.sql_case_sensitive, ctx.sql_strict_mode = True, False
+    ctx.sql_enable_optimization, ctx.sql_max_join_partitions = True, 20
+    ctx.sql_enable_predicate_pushdown, ctx.sql_enable_projection_pushdown = True, True
+    ctx.sql_query_timeout_seconds, ctx.sql_enable_sqlglot_optimizer = None, False
+    ctx.sql_use_datafusion = True
     global _global_engine
-    _global_engine = None
+    with _global_engine_lock:
+        _global_engine = None
 
 
 def get_config_summary() -> Dict[str, Any]:
-    """Get a summary of current SQL configuration from DataContext.
-
-    Returns:
-        Dictionary with current configuration values.
-
-    Examples:
-        >>> import ray.data
-        >>> config = ray.data.sql.get_config_summary()
-        >>> print(f"Dialect: {config['dialect']}")
-        >>> print(f"Log level: {config['log_level']}")
-    """
+    """Get a summary of current SQL configuration."""
     from ray.data import DataContext
-
     ctx = DataContext.get_current()
-
     return {
         "dialect": ctx.sql_dialect,
         "log_level": ctx.sql_log_level.lower(),
@@ -888,137 +653,71 @@ def get_config_summary() -> Dict[str, Any]:
 def sql(query: str, **datasets) -> Dataset:
     """Execute a SQL query on Ray Datasets with automatic variable discovery.
 
-    This function provides a simple, Pythonic SQL interface similar to DuckDB.
-    Ray Datasets can be referenced directly in SQL queries by their variable names,
-    or passed explicitly as keyword arguments.
+    This function automatically discovers datasets from local variables, global
+    variables, or keyword arguments, making it convenient to use without explicit
+    table registration.
 
     Args:
-        query: SQL query string.
-        **datasets: Optional explicit dataset mappings (name=dataset).
+        query: SQL query string to execute.
+        **datasets: Optional keyword arguments mapping table names to datasets.
 
     Returns:
-        Dataset containing the query results.
+        Ray Dataset containing query results.
 
     Examples:
-        Automatic dataset discovery (DuckDB-style):
-            >>> import ray.data
-            >>> users = ray.data.from_items([{"id": 1, "name": "Alice"}])
-            >>> orders = ray.data.from_items([{"id": 1, "user_id": 1, "amount": 100}])
-            >>> # Datasets automatically available by variable name
-            >>> result = ray.data.sql("SELECT * FROM users WHERE id = 1")
-            >>> result = ray.data.sql("SELECT u.name, o.amount FROM users u JOIN orders o ON u.id = o.user_id")
-
-        Explicit dataset passing:
-            >>> result = ray.data.sql("SELECT * FROM my_table", my_table=users)
-
-        Mixed usage:
-            >>> ds = ray.data.from_items([{"x": 1}, {"x": 2}])
-            >>> result = ray.data.sql("SELECT * FROM ds WHERE x > 1")
+        >>> users = ray.data.from_items([{"id": 1, "name": "Alice"}])
+        >>> result = sql("SELECT * FROM users WHERE id > 0")
     """
     import inspect
-
     from ray.data.experimental.sql.utils import extract_table_names_from_query
 
-    # Get the caller's frame to access their local variables
+    engine = get_engine()
     current_frame = inspect.currentframe()
     if current_frame is None or current_frame.f_back is None:
-        # No frame available, skip auto-discovery
-        engine = get_engine()
         return engine.sql(query, **datasets)
 
     caller_frame = current_frame.f_back
     caller_locals = caller_frame.f_locals
     caller_globals = caller_frame.f_globals
-
-    # Extract table names from the SQL query
-    try:
-        table_names = extract_table_names_from_query(query)
-    except Exception:
-        # If we can't parse table names, fall back to current behavior
-        engine = get_engine()
-        return engine.sql(query)
-
-    # Auto-register datasets from caller's namespace
-    engine = get_engine()
+    table_names = extract_table_names_from_query(query)
     auto_registered = []
 
+    def register_if_dataset(name: str, ds: Any) -> None:
+        """Register dataset if it's a Ray Dataset."""
+        if isinstance(ds, Dataset):
+            engine.register_table(name, ds)
+            auto_registered.append(name)
+
     for table_name in table_names:
-        # Skip if already registered
         if table_name in engine.registry.list_tables():
             continue
-
-        # Look for dataset in explicit kwargs first
-        if table_name in datasets:
-            dataset = datasets[table_name]
-            if isinstance(dataset, Dataset):
-                engine.register_table(table_name, dataset)
-                auto_registered.append(table_name)
-            continue
-
-        # Look for dataset in caller's local variables
-        if table_name in caller_locals:
-            var = caller_locals[table_name]
-            if isinstance(var, Dataset):
-                engine.register_table(table_name, var)
-                auto_registered.append(table_name)
-                continue
-
-        # Look for dataset in caller's global variables
-        if table_name in caller_globals:
-            var = caller_globals[table_name]
-            if isinstance(var, Dataset):
-                engine.register_table(table_name, var)
-                auto_registered.append(table_name)
+        for source in [datasets, caller_locals, caller_globals]:
+            if table_name in source:
+                register_if_dataset(table_name, source[table_name])
+                break
 
     try:
-        # Execute the query
-        result = engine.sql(query)
-        return result
+        return engine.sql(query)
     finally:
-        # Clean up auto-registered tables to avoid namespace pollution
         for table_name in auto_registered:
-            try:
-                engine.unregister_table(table_name)
-            except Exception:
-                pass  # Ignore cleanup errors
+            engine.unregister_table(table_name)
 
 
 @PublicAPI(stability="alpha")
 def register_table(name: str, dataset: Dataset) -> None:
-    """Register a Dataset as a SQL table.
-
-    Args:
-        name: Table name for SQL queries.
-        dataset: Ray Dataset to register.
-
-    Examples:
-        >>> users = ray.data.from_items([{"id": 1, "name": "Alice"}])
-        >>> ray.data.sql.register_table("users", users)
-        >>> result = ray.data.sql("SELECT * FROM users")
-    """
+    """Register a Dataset as a SQL table."""
     get_engine().register_table(name, dataset)
 
 
 @PublicAPI(stability="alpha")
 def list_tables() -> List[str]:
-    """List all registered table names.
-
-    Returns:
-        List of registered table names.
-    """
+    """List all registered table names."""
     return get_engine().list_tables()
 
 
 @PublicAPI(stability="alpha")
 def get_schema(table_name: str) -> Optional[Dict[str, str]]:
-    """Get the schema for a registered table.
-
-    Args:
-        table_name: Name of the table.
-
-    Returns:
-        Dictionary mapping column names to types, or None if not available.
-    """
+    """Get the schema for a registered table."""
     return get_engine().get_schema(table_name)
 
 
@@ -1029,11 +728,7 @@ def clear_tables() -> None:
 
 
 def get_supported_features() -> Dict[str, List[str]]:
-    """Get information about supported SQL features.
-
-    Returns:
-        Dictionary mapping feature categories to lists of supported features.
-    """
+    """Get information about supported SQL features."""
     engine = get_engine()
     return {
         "supported": list(engine.get_supported_features()),
