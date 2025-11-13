@@ -784,23 +784,6 @@ def shutdown(address: str, yes: bool):
     )
 
 
-def _convert_enums_to_strings(obj: Any) -> Any:
-    """Recursively convert Enum objects to their string values for YAML serialization.
-
-    PyYAML cannot serialize Enum objects directly. This function traverses
-    dictionaries, lists, and nested structures to convert all Enum instances
-    to their string values.
-    """
-    if isinstance(obj, Enum):
-        return obj.value
-    elif isinstance(obj, dict):
-        return {key: _convert_enums_to_strings(value) for key, value in obj.items()}
-    elif isinstance(obj, (list, tuple)):
-        return type(obj)(_convert_enums_to_strings(item) for item in obj)
-    else:
-        return obj
-
-
 @cli.command(
     short_help="Generate a config file for the specified applications.",
     help=(
@@ -888,11 +871,8 @@ def build(
     # Parse + validate the set of application configs
     ServeDeploySchema.parse_obj(deploy_config)
 
-    # Convert Enum objects to strings for YAML serialization
-    deploy_config_serializable = _convert_enums_to_strings(deploy_config)
-
     config_str += yaml.dump(
-        deploy_config_serializable,
+        deploy_config,
         Dumper=ServeDeploySchemaDumper,
         default_flow_style=False,
         sort_keys=False,
@@ -942,3 +922,12 @@ class ServeDeploySchemaDumper(yaml.SafeDumper):
         # Only add extra line breaks between top-level keys
         if len(self.indents) == 1:
             super().write_line_break()
+
+
+def enum_representer(dumper, data):
+    """Custom representer for Enum objects to serialize as their string values."""
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data.value)
+
+
+# Register Enum representer to handle enum serialization in nested structures
+ServeDeploySchemaDumper.add_multi_representer(Enum, enum_representer)
