@@ -663,9 +663,9 @@ class PrometheusTimeseries:
     - metric_samples: the latest value of each label
     """
 
-    components_dict: Dict[str, Set[str]] = field(default_factory=defaultdict)
-    metric_descriptors: Dict[str, Metric] = field(default_factory=defaultdict)
-    metric_samples: Dict[frozenset, Sample] = field(default_factory=defaultdict)
+    components_dict: Dict[str, Set[str]] = field(default_factory=dict)
+    metric_descriptors: Dict[str, Metric] = field(default_factory=dict)
+    metric_samples: Dict[frozenset, Sample] = field(default_factory=dict)
 
     def flush(self):
         self.components_dict.clear()
