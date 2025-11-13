@@ -87,11 +87,7 @@ def to_jsonable_if_needed(
         The `sample` as-is, if the `space` is composite, otherwise converts the
         composite sample to a JSONable data type.
     """
-
-    if is_composite_space(space):
-        return space.to_jsonable([sample])
-    else:
-        return sample
+    return space.to_jsonable(sample)
 
 
 @DeveloperAPI
@@ -247,7 +243,7 @@ def get_dummy_batch_for_space(
         elif isinstance(space, gym.spaces.MultiDiscrete):
             space = gym.spaces.Box(0.0, 1.0, (np.sum(space.nvec),), np.float32)
 
-    # Primivite spaces: Box, Discrete, MultiDiscrete.
+    # Primitive spaces: Box, Discrete, MultiDiscrete.
     # Random values: Use gym's sample() method.
     if fill_value == "random":
         if time_size is not None:

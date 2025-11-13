@@ -35,6 +35,9 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         # Initialize the parent.
         super().__init__(config=config, **kwargs)
 
+        # override SingleAgentEnvRunner
+        self.episodes_to_numpy = False
+
         # Get the data context for this `EnvRunner`.
         data_context = ray.data.DataContext.get_current()
         # Limit the resources for Ray Data to the CPUs given to this `EnvRunner`.
@@ -156,6 +159,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                 )
             # Note, we serialize episodes with `msgpack` and `msgpack_numpy` to
             # ensure version compatibility.
+            assert all(eps.is_numpy is False for eps in samples)
             self._samples.extend(
                 [msgpack.packb(eps.get_state(), default=mnp.encode) for eps in samples]
             )
