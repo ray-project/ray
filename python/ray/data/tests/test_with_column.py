@@ -1218,6 +1218,56 @@ def test_with_column_multiple_callable_class_udfs(ray_start_regular_shared):
     get_pyarrow_version() < parse_version("20.0.0"),
     reason="with_column requires PyArrow >= 20.0.0",
 )
+def test_with_column_same_callable_class_different_constructor_args(
+    ray_start_regular_shared,
+):
+    """Test that the same callable class with different constructor args works correctly.
+
+    This test ensures that when the same callable class is instantiated with different
+    constructor arguments, each instance maintains its own state. This is important for
+    future-proofing in case Actor->Actor fusion becomes enabled.
+    """
+    import pyarrow.compute as pc
+
+    @udf(return_dtype=DataType.int32())
+    class Multiplier:
+        def __init__(self, factor):
+            self.factor = factor
+
+        def __call__(self, x):
+            return pc.multiply(x, self.factor)
+
+    # Create dataset
+    ds = ray.data.range(5)
+
+    # Use the SAME class with DIFFERENT constructor arguments
+    times_two = Multiplier(2)
+    times_three = Multiplier(3)
+
+    result = ds.with_column("times_two", times_two(col("id"))).with_column(
+        "times_three", times_three(col("id"))
+    )
+
+    print(result.explain())
+
+    result_df = result.to_pandas()
+    expected_df = pd.DataFrame(
+        {
+            "id": [0, 1, 2, 3, 4],
+            "times_two": [0, 2, 4, 6, 8],  # id * 2
+            "times_three": [0, 3, 6, 9, 12],  # id * 3
+        }
+    )
+
+    from ray.data._internal.util import rows_same
+
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
 def test_with_column_callable_class_udf_with_compute_strategy(
     ray_start_regular_shared,
 ):
