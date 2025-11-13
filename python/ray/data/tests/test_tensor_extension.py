@@ -1,6 +1,7 @@
 import itertools
 import threading
 import time
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -1495,6 +1496,173 @@ class TestThreadSafeTTLCache:
 
         cache.set("value2", key="key1")
         assert cache.get("key1") == "value2"
+
+
+def test_arrow_extension_serialize_deserialize_cache():
+    """Test caching behavior of ArrowExtensionSerializeDeserializeCache."""
+    # Test 1: Serialization cache is instance-level
+    # Create a fresh test instance
+    tensor_type = ArrowTensorType(shape=(2, 3), dtype=pa.int64())
+
+    # Clear the instance's serialization cache to ensure fresh test
+    tensor_type._serialize_cache = type(tensor_type._serialize_cache)()
+
+    # Track calls to _arrow_ext_serialize_compute to verify caching
+    with patch.object(
+        tensor_type,
+        "_arrow_ext_serialize_compute",
+        wraps=tensor_type._arrow_ext_serialize_compute,
+    ) as mock_serialize:
+        # First serialization should call compute function
+        serialized1 = tensor_type.__arrow_ext_serialize__()
+        assert mock_serialize.call_count == 1
+        assert serialized1 is not None
+        assert isinstance(serialized1, bytes)
+
+        # Second serialization should use cache (no additional call)
+        serialized2 = tensor_type.__arrow_ext_serialize__()
+        assert mock_serialize.call_count == 1  # Still 1, proving cache hit
+        assert serialized1 == serialized2
+
+    # Test 2: Deserialization cache is class-level (shared across instances)
+    storage_type = pa.list_(pa.int64())
+
+    # Track calls to _arrow_ext_deserialize_compute to verify caching
+    with patch.object(
+        ArrowTensorType,
+        "_arrow_ext_deserialize_compute",
+        wraps=ArrowTensorType._arrow_ext_deserialize_compute,
+    ) as mock_deserialize:
+        # First deserialization should call compute function
+        deserialized1 = ArrowTensorType.__arrow_ext_deserialize__(
+            storage_type, serialized1
+        )
+        assert mock_deserialize.call_count == 1
+        assert deserialized1.shape == (2, 3)
+        assert deserialized1.scalar_type == pa.int64()
+
+        # Second deserialization with same key should use cache (no additional call)
+        deserialized2 = ArrowTensorType.__arrow_ext_deserialize__(
+            storage_type, serialized1
+        )
+        assert mock_deserialize.call_count == 1  # Still 1, proving cache hit
+        assert deserialized1.shape == deserialized2.shape
+        assert deserialized1.scalar_type == deserialized2.scalar_type
+        assert deserialized1.extension_name == deserialized2.extension_name
+
+    # Test 3: Different serialized data produces different cache entries
+    tensor_type2 = ArrowTensorType(shape=(3, 4), dtype=pa.int32())
+    tensor_type2._serialize_cache = type(tensor_type2._serialize_cache)()
+    different_serialized = tensor_type2.__arrow_ext_serialize__()
+    storage_type2 = pa.list_(pa.int32())
+
+    deserialized3 = ArrowTensorType.__arrow_ext_deserialize__(
+        storage_type2, different_serialized
+    )
+    # Should be different from previous deserialization
+    assert deserialized3.shape == (3, 4)
+    assert deserialized3.scalar_type == pa.int32()
+    assert deserialized3.shape != deserialized1.shape
+
+    # Test 4: Cache key generation works correctly
+    cache_key1 = ArrowTensorType._get_deserialize_cache_key(storage_type, serialized1)
+    cache_key2 = ArrowTensorType._get_deserialize_cache_key(storage_type, serialized1)
+    assert cache_key1 == cache_key2  # Same inputs should produce same key
+
+    cache_key3 = ArrowTensorType._get_deserialize_cache_key(
+        storage_type2, different_serialized
+    )
+    assert cache_key1 != cache_key3  # Different inputs should produce different keys
+
+    # Test 5: Multiple instances have separate serialization caches
+    tensor_type_a = ArrowTensorType(shape=(2, 3), dtype=pa.int64())
+    tensor_type_b = ArrowTensorType(shape=(2, 3), dtype=pa.int64())
+
+    # Clear caches
+    tensor_type_a._serialize_cache = type(tensor_type_a._serialize_cache)()
+    tensor_type_b._serialize_cache = type(tensor_type_b._serialize_cache)()
+
+    # Track calls to verify separate caches
+    with patch.object(
+        tensor_type_a,
+        "_arrow_ext_serialize_compute",
+        wraps=tensor_type_a._arrow_ext_serialize_compute,
+    ) as mock_a, patch.object(
+        tensor_type_b,
+        "_arrow_ext_serialize_compute",
+        wraps=tensor_type_b._arrow_ext_serialize_compute,
+    ) as mock_b:
+        # Serialize both instances
+        serialized_a = tensor_type_a.__arrow_ext_serialize__()
+        serialized_b = tensor_type_b.__arrow_ext_serialize__()
+
+        # Each should have been called once (separate caches)
+        assert mock_a.call_count == 1
+        assert mock_b.call_count == 1
+        # Both should produce the same serialized data (same shape and dtype)
+        assert serialized_a == serialized_b
+
+        # Second calls should use respective caches (no additional calls)
+        assert tensor_type_a.__arrow_ext_serialize__() == serialized_a
+        assert tensor_type_b.__arrow_ext_serialize__() == serialized_b
+        assert mock_a.call_count == 1  # Cache hit
+        assert mock_b.call_count == 1  # Cache hit
+
+    # Test 6: Deserialization cache is shared (class-level)
+    # The cache is class-level, so all instances share it
+    # Note: deserialized1 and deserialized2 were already created in Test 2,
+    # so the cache should already have this entry. Let's verify it's reused.
+    with patch.object(
+        ArrowTensorType,
+        "_arrow_ext_deserialize_compute",
+        wraps=ArrowTensorType._arrow_ext_deserialize_compute,
+    ) as mock_deserialize_shared:
+        # These should use the cache from Test 2 (no new compute calls)
+        deserialized_a = ArrowTensorType.__arrow_ext_deserialize__(
+            storage_type, serialized1
+        )
+        deserialized_b = ArrowTensorType.__arrow_ext_deserialize__(
+            storage_type, serialized1
+        )
+        # Should not call compute again (cache hit from Test 2)
+        assert mock_deserialize_shared.call_count == 0
+        # Both should be equal (cache hit)
+        assert deserialized_a.shape == deserialized_b.shape
+        assert deserialized_a.scalar_type == deserialized_b.scalar_type
+        assert deserialized_a.extension_name == deserialized_b.extension_name
+
+
+def test_arrow_extension_serialize_deserialize_cache_thread_safety():
+    """Test that ArrowExtensionSerializeDeserializeCache is thread-safe."""
+    tensor_type = ArrowTensorType(shape=(2, 3), dtype=pa.int64())
+    storage_type = pa.list_(pa.int64())
+    serialized = tensor_type.__arrow_ext_serialize__()
+
+    results = []
+    errors = []
+
+    def deserialize_worker():
+        try:
+            result = ArrowTensorType.__arrow_ext_deserialize__(storage_type, serialized)
+            results.append(result)
+        except Exception as e:
+            errors.append(e)
+
+    # Create multiple threads that deserialize simultaneously
+    threads = [threading.Thread(target=deserialize_worker) for _ in range(10)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    # Should have no errors
+    assert len(errors) == 0, f"Errors occurred: {errors}"
+
+    # All results should be equal (same deserialized type)
+    assert len(results) == 10
+    for result in results[1:]:
+        assert result.shape == results[0].shape
+        assert result.scalar_type == results[0].scalar_type
 
 
 if __name__ == "__main__":
