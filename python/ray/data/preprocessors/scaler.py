@@ -498,6 +498,7 @@ class RobustScaler(SerializablePreprocessorBase):
             "columns": self.columns,
             "output_columns": self.output_columns,
             "quantile_range": self.quantile_range,
+            "quantile_precision": self.quantile_precision,
             "_fitted": getattr(self, "_fitted", None),
         }
 
@@ -506,6 +507,7 @@ class RobustScaler(SerializablePreprocessorBase):
         self.columns = fields["columns"]
         self.output_columns = fields["output_columns"]
         self.quantile_range = fields["quantile_range"]
+        self.quantile_precision = fields["quantile_precision"]
         # optional fields
         self._fitted = fields.get("_fitted")
 
