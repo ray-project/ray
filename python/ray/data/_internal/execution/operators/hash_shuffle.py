@@ -1589,11 +1589,6 @@ class HashShuffleAggregator:
         output_buffer = self._output_buffers[partition_id]
 
         output_buffer.add_block(block)
-        while output_buffer.has_next():
-            block = output_buffer.next()
-            yield block
-            yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
-
         output_buffer.finalize()
         while output_buffer.has_next():
             block = output_buffer.next()
