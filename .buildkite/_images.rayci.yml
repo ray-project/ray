@@ -12,8 +12,10 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
+      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix}}.lock"
       ARCH_SUFFIX: ""
 
   - name: raycpubaseextra
@@ -24,6 +26,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
@@ -44,6 +47,7 @@ steps:
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
         cuda:
           - "11.7.1-cudnn8"
           - "11.8.0-cudnn8"
@@ -56,6 +60,7 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
+      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix.python}}.lock"
       ARCH_SUFFIX: ""
 
   - name: raycudabaseextra
@@ -68,6 +73,7 @@ steps:
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
         cuda:
           - "11.7.1-cudnn8"
           - "11.8.0-cudnn8"
