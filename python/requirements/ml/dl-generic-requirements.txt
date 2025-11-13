@@ -9,10 +9,11 @@ tensorflow-datasets; python_version < '3.12'
 array-record==0.5.1; python_version < '3.12' and sys_platform != 'darwin' and platform_system != 'Windows'
 etils==1.5.2; python_version < '3.12'
 
-torch==2.3.0
+torch==2.3.0; python_version <= '3.12'
+torch==2.6.0; python_version > '3.12'
 torchmetrics==0.10.3
-torchtext==0.18.0
-torchvision==0.18.0
+torchvision==0.18.0; python_version <= '3.12'
+torchvision==0.21.0; python_version > '3.12'
 
 torch-scatter==2.1.2
 torch-sparse==0.6.18
@@ -20,4 +21,5 @@ torch-cluster==1.6.3
 torch-spline-conv==1.2.2
 torch-geometric==2.5.3
 
-cupy-cuda12x==13.1.0; sys_platform != 'darwin'
+cupy-cuda12x==13.1.0; sys_platform != 'darwin' and python_version <= '3.12'
+cupy-cuda12x>=13.4.0; sys_platform != 'darwin' and python_version > '3.12'

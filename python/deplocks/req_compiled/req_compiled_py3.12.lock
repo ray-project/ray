@@ -883,7 +883,7 @@ colorama==0.4.6 \
     #   halo
     #   log-symbols
     #   semgrep
-coloredlogs==15.0.1 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
+coloredlogs==15.0.1 ; (python_full_version < '3.13' and platform_machine != 'arm64') or (python_full_version < '3.13' and sys_platform != 'darwin') \
     --hash=sha256:612ee75c546f53e92e70049c9dbfcc18c935a2b9a53b66085ce9ef6a6e5c0934 \
     --hash=sha256:7c991aa71a4577af2f82600d8f8f3a89f936baeaf9b50a9c197da014e5bf16b0
     # via onnxruntime
@@ -1195,7 +1195,7 @@ cryptography==44.0.3 \
     #   snowflake-connector-python
     #   sshpubkeys
     #   trustme
-cupy-cuda12x==13.1.0 ; sys_platform != 'darwin' \
+cupy-cuda12x==13.1.0 ; python_full_version < '3.13' and sys_platform != 'darwin' \
     --hash=sha256:230f8a8e99c81a653baa0ed00819990c0ed1f0cf0298214786b5e323461dc61a \
     --hash=sha256:2d16eaa2d086e416ac13467d4ff3184b9a081fe76b761ce51d4a46ec1c4bd28a \
     --hash=sha256:432273fd4b61a284f7d705d08b8291403548fd422bcbd945635cc155bc6a923d \
@@ -1626,7 +1626,7 @@ fastjsonschema==2.19.0 \
     --hash=sha256:b9fd1a2dd6971dbc7fee280a95bd199ae0dd9ce22beb91cc75e9c1c528a5170e \
     --hash=sha256:e25df6647e1bc4a26070b700897b07b542ec898dd4f1f6ea013e7f6a88417225
     # via nbformat
-fastrlock==0.8.2 ; sys_platform != 'darwin' \
+fastrlock==0.8.2 ; python_full_version < '3.13' and sys_platform != 'darwin' \
     --hash=sha256:067edb0a0805bf61e17a251d5046af59f6e9d2b8ad01222e0ef7a0b7937d5548 \
     --hash=sha256:07ed3c7b3867c05a3d6be4ced200c7767000f3431b9be6da66972822dd86e8be \
     --hash=sha256:08315bde19d0c2e6b06593d5a418be3dc8f9b1ee721afa96867b9853fceb45cf \
@@ -1736,7 +1736,7 @@ flask-cors==4.0.0 \
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   moto
-flatbuffers==23.5.26 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
+flatbuffers==23.5.26 ; (python_full_version < '3.13' and platform_machine != 'arm64') or (python_full_version < '3.13' and sys_platform != 'darwin') \
     --hash=sha256:9ea1144cac05ce5d86e2859f431c6cd5e66cd9c78c558317c7955fb8d4c78d89 \
     --hash=sha256:c0ff356da363087b915fde4b8b45bdda73432fc17cddb3c8157472eab1422ad1
     # via onnxruntime
@@ -2543,11 +2543,11 @@ itsdangerous==2.1.2 \
     --hash=sha256:2c2349112351b88699d8d4b6b075022c0808887cb7ad10069318a8b0bc88db44 \
     --hash=sha256:5dbbc68b317e5e42f327f9021763545dc3fc3bfe22e6deb96aaf1fc38874156a
     # via flask
-jax==0.4.25 \
+jax==0.4.25 ; python_full_version < '3.13' \
     --hash=sha256:8158c837e5ecc195074b421609e85329a962785b36f9fe5ff53e844e8ad87dbc \
     --hash=sha256:a8ee189c782de2b7b2ffb64a8916da380b882a617e2769aa429b71d79747b982
     # via -r python/requirements/ml/train-test-requirements.txt
-jaxlib==0.4.25 \
+jaxlib==0.4.25 ; python_full_version < '3.13' \
     --hash=sha256:0ce2a25263e7504d575e8ba5ba4f53aef6fe274679785bcf87ab06b0aaec0b90 \
     --hash=sha256:0df7e2193b216e195dfc7a8aa14527eb52614ec3ba4c59a199af2f17195ae1c1 \
     --hash=sha256:0e97542bbd89f4316d2feb599119d8a43440ca151b7a165eff0fc127cf4512e7 \
@@ -3307,7 +3307,7 @@ mistune==0.8.4 \
 ml-collections==0.1.1 \
     --hash=sha256:3fefcc72ec433aa1e5d32307a3e474bbb67f405be814ea52a2166bfc9dbe68cc
     # via open-spiel
-ml-dtypes==0.3.2 \
+ml-dtypes==0.3.2 ; python_full_version < '3.13' \
     --hash=sha256:2c34f2ba9660b21fe1034b608308a01be82bbef2a92fb8199f24dc6bad0d5226 \
     --hash=sha256:3a17ef2322e60858d93584e9c52a5be7dd6236b056b7fa1ec57f1bb6ba043e33 \
     --hash=sha256:533059bc5f1764fac071ef54598db358c167c51a718f68f5bb55e3dee79d2967 \
@@ -4015,7 +4015,6 @@ numpy==1.26.4 \
     #   tinyscaler
     #   torch-geometric
     #   torchmetrics
-    #   torchtext
     #   torchvision
     #   transformers
     #   triad
@@ -4118,7 +4117,7 @@ onnx==1.15.0 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
     --hash=sha256:f1ad3d77fc2f4b4296f0ac2c8cadd8c1dcf765fc586b737462d3a0fe8f7c696a \
     --hash=sha256:f277d4861729f5253a51fa41ce91bfec1c4574ee41b5637056b43500917295ce
     # via -r python/requirements/ml/rllib-requirements.txt
-onnxruntime==1.18.0 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
+onnxruntime==1.18.0 ; (python_full_version < '3.13' and platform_machine != 'arm64') or (python_full_version < '3.13' and sys_platform != 'darwin') \
     --hash=sha256:0284c579c20ec8b1b472dd190290a040cc68b6caec790edb960f065d15cf164a \
     --hash=sha256:15b944623b2cdfe7f7945690bfb71c10a4531b51997c8320b84e7b0bb59af902 \
     --hash=sha256:1f45ca2887f62a7b847d526965686b2923efa72538c89b7703c7b3fe970afd59 \
@@ -6082,7 +6081,6 @@ requests==2.32.3 \
     #   tensorboard
     #   tensorflow-datasets
     #   torch-geometric
-    #   torchtext
     #   transformers
     #   vapi-runtime
     #   wandb
@@ -7417,7 +7415,6 @@ torch==2.3.0 \
     #   tensordict
     #   timm
     #   torchmetrics
-    #   torchtext
     #   torchvision
 torch-cluster==1.6.3 \
     --hash=sha256:78d5a930a5bbd0d8788df8c6d66addd68d6dd292fe3edb401e3dacba26308152
@@ -7441,23 +7438,6 @@ torchmetrics==0.10.3 \
     # via
     #   -r python/requirements/ml/dl-generic-requirements.txt
     #   pytorch-lightning
-torchtext==0.18.0 \
-    --hash=sha256:077639a367e1f77b2c7cefd952ec83c9f830a7568fb49f10cbc100eb965da06b \
-    --hash=sha256:0d60cde93217086372e6819806298a327aaa71f1818ff9c54380bbd5995dda78 \
-    --hash=sha256:0f3855b2ada84f02298e72ad19c1a86f940df2f4ce62d89098955f3ae575d174 \
-    --hash=sha256:1e00475dbf629ba529d27903f2dd6b53c4a559f1483539b8c2a821d393bd24cf \
-    --hash=sha256:3dc446f74aaa9aebab045fbefd102752675258e72ba447982c65e010e1cfd29a \
-    --hash=sha256:5826d5bbfe84a3c533e7e97659f72dbff73e1614c00c06709607d17c8446e09c \
-    --hash=sha256:6694b823cb409706a0efe4d6b0ccf6b5be5af695fad29aa062f1f63bd296e77b \
-    --hash=sha256:6dd72c5fbca0680cfef14cb620f8edf7b01e4121916f4b45e2d50f1cdba53fe9 \
-    --hash=sha256:7ac7a392ae42d8b7675bdb31f1764bec77d4dec3a44bca5a2644c2cee3484453 \
-    --hash=sha256:8e8d847a5e359718c1a97cab363de93aef93733c102528231f3b36c9cf580ce2 \
-    --hash=sha256:99b5148f77aa5d94adb8d4d5b684181d87673b90ba266d858b1dd8812b418b95 \
-    --hash=sha256:b74b0b1e93ff852a0410bdf2b630f4b00a870ec95be6266e01cd5e19acdf3e95 \
-    --hash=sha256:d4bfe9cb7b08cf7ff3473309d9f24ed243c3a847bfbb2c932925551bf7a05892 \
-    --hash=sha256:eeebf2ec950c9f9d3b276faf6948e763836c215747354f0340746b32512d11f6 \
-    --hash=sha256:fec43696fb6fa7573e740a8175fd69681106574fd1fc840211182d941b88a2ba
-    # via -r python/requirements/ml/dl-generic-requirements.txt
 torchvision==0.18.0 \
     --hash=sha256:2115a1906c015f5da9ceedc40a983313b0fd6e2c8a17108a92991706f51f6987 \
     --hash=sha256:36efd87001c6bee2383e043e46a025affb03179747c8f4777b9918527ffce756 \
@@ -7527,7 +7507,6 @@ tqdm==4.67.1 \
     #   statsforecast
     #   tensorflow-datasets
     #   torch-geometric
-    #   torchtext
     #   transformers
 traitlets==5.14.3 \
     --hash=sha256:9ed0579d3502c94b4b3732ac120375cda96f923114522847de4b3bb98b96b6b7 \
