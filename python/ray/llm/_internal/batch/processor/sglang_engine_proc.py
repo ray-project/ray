@@ -120,11 +120,15 @@ def build_sglang_engine_processor(
         stages.append(
             ChatTemplateStage(
                 fn_constructor_kwargs=dict(
-                    model=chat_template_stage_cfg.model or config.model_source,
+                    model=chat_template_stage_cfg.model
+                    if chat_template_stage_cfg.model is not None
+                    else config.model_source,
                     chat_template=chat_template_stage_cfg.chat_template
-                    or config.chat_template,
+                    if chat_template_stage_cfg.chat_template is not None
+                    else config.chat_template,
                     chat_template_kwargs=chat_template_stage_cfg.chat_template_kwargs
-                    or chat_template_kwargs,
+                    if chat_template_stage_cfg.chat_template_kwargs is not None
+                    else chat_template_kwargs,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
@@ -166,7 +170,9 @@ def build_sglang_engine_processor(
         stages.append(
             TokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=tokenize_stage_cfg.model or config.model_source,
+                    model=tokenize_stage_cfg.model
+                    if tokenize_stage_cfg.model is not None
+                    else config.model_source,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
@@ -240,7 +246,9 @@ def build_sglang_engine_processor(
         stages.append(
             DetokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=detokenize_stage_cfg.model or config.model_source,
+                    model=detokenize_stage_cfg.model
+                    if detokenize_stage_cfg.model is not None
+                    else config.model_source,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
