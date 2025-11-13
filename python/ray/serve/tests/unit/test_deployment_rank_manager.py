@@ -482,6 +482,7 @@ class TestDeploymentRankManagerErrorHandling:
         rank_manager.recover_rank(
             "replica_2", ReplicaRank(rank=5, node_rank=-1, local_rank=-1)
         )
+
         assert rank_manager.get_replica_rank("replica_2").rank == 5
 
         # Test normal consistency check

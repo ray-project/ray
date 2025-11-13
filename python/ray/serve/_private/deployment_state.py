@@ -2417,7 +2417,7 @@ class DeploymentState:
                     replica.replica_id.unique_id
                 )
                 actor_updating = replica.reconfigure(
-                    self._target_state.version, rank=current_rank
+                    self._target_state.version, rank=current_rank.rank
                 )
                 if actor_updating:
                     self._replicas.add(ReplicaState.UPDATING, replica)
@@ -2538,7 +2538,7 @@ class DeploymentState:
                     assigned_rank = self._rank_manager.assign_rank(replica_id.unique_id)
 
                     logger.debug(
-                        f"Assigned rank {assigned_rank} to new replica {replica_id.unique_id} during startup"
+                        f"Assigned rank {assigned_rank.rank} to new replica {replica_id.unique_id} during startup"
                     )
                     new_deployment_replica = DeploymentReplica(
                         replica_id,
