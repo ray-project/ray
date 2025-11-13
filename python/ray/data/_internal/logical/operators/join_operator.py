@@ -152,9 +152,9 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         - FULL_OUTER: Cannot push (both sides can generate nulls)
 
         The predicate must reference columns from exactly one side of the join,
-        OR only reference join key columns (which exist on both sides).
+        OR reference only join key columns that all exist on one side.
         """
-        # Get predicate columns and schemas once
+        # Get predicate columns and schemas
         predicate_columns = self._get_referenced_columns(predicate_expr)
         left_schema = self.input_dependencies[0].infer_schema()
         right_schema = self.input_dependencies[1].infer_schema()
@@ -162,40 +162,29 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         if not left_schema or not right_schema:
             return None
 
-        # Determine which side(s) the predicate references
+        # Get column sets for each side
         left_columns = set(left_schema.names)
         right_columns = set(right_schema.names)
-        references_left = bool(predicate_columns & left_columns)
-        references_right = bool(predicate_columns & right_columns)
+        left_join_keys = set(self._left_key_columns)
+        right_join_keys = set(self._right_key_columns)
 
         # Get pushdown rules for this join type
         can_push_left, can_push_right = self._get_pushdown_rules()
 
-        # Case 1: Predicate references exactly one side (standard case)
-        if references_left ^ references_right:
-            if references_left and can_push_left:
-                return JoinSide.LEFT
-            elif references_right and can_push_right:
-                return JoinSide.RIGHT
-            else:
-                return None
+        # Check if predicate can be evaluated on left side
+        # Condition: ALL predicate columns must exist on left (either as regular columns or join keys)
+        can_evaluate_on_left = predicate_columns.issubset(
+            left_columns
+        ) or predicate_columns.issubset(left_join_keys)
+        if can_evaluate_on_left and can_push_left:
+            return JoinSide.LEFT
 
-        # Case 2: Predicate references both sides - check if can be evaluated on ONE side
-        if references_left and references_right:
-            # Check if ALL predicate columns exist on the left side
-            left_join_keys = set(self._left_key_columns)
-            if predicate_columns.issubset(left_join_keys) and can_push_left:
-                # All columns exist on left (same-named join keys on both sides)
-                return JoinSide.LEFT
-
-            # Check if ALL predicate columns exist on the right side
-            right_join_keys = set(self._right_key_columns)
-            if predicate_columns.issubset(right_join_keys) and can_push_right:
-                # All columns exist on right (same-named join keys on both sides)
-                return JoinSide.RIGHT
-
-            # Columns span both sides with different names - cannot push
-            return None
+        # Check if predicate can be evaluated on right side
+        can_evaluate_on_right = predicate_columns.issubset(
+            right_columns
+        ) or predicate_columns.issubset(right_join_keys)
+        if can_evaluate_on_right and can_push_right:
+            return JoinSide.RIGHT
 
         # Cannot push down
         return None
