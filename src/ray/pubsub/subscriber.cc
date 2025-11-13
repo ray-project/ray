@@ -53,7 +53,7 @@ void SubscriberChannel::Subscribe(
   }
 }
 
-bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
+void SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
                                     const std::optional<std::string> &key_id) {
   cum_unsubscribe_requests_++;
   const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
@@ -61,17 +61,16 @@ bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
   // Find subscription info.
   auto subscription_it = subscription_map_.find(publisher_id);
   if (subscription_it == subscription_map_.end()) {
-    return false;
+    return;
   }
   auto &subscription_index = subscription_it->second;
 
   // Unsubscribing from the channel.
   if (!key_id) {
     RAY_CHECK(subscription_index.per_entity_subscription.empty());
-    const bool unsubscribed = subscription_index.all_entities_subscription != nullptr;
     subscription_index.all_entities_subscription.reset();
     subscription_map_.erase(subscription_it);
-    return unsubscribed;
+    return;
   }
 
   // Unsubscribing from a single key.
@@ -80,13 +79,12 @@ bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
 
   auto subscription_callback_it = per_entity_subscription.find(*key_id);
   if (subscription_callback_it == per_entity_subscription.end()) {
-    return false;
+    return;
   }
   per_entity_subscription.erase(subscription_callback_it);
   if (per_entity_subscription.empty()) {
     subscription_map_.erase(subscription_it);
   }
-  return true;
 }
 
 bool SubscriberChannel::IsSubscribed(const rpc::Address &publisher_address,
@@ -171,10 +169,8 @@ void SubscriberChannel::HandlePublisherFailure(const rpc::Address &publisher_add
 
   for (const auto &key_id : key_ids_to_unsubscribe) {
     // If the publisher is failed, we automatically unsubscribe objects from this
-    // publishers. If the failure callback called UnsubscribeObject, this will raise
-    // check failures.
-    RAY_CHECK(Unsubscribe(publisher_address, key_id))
-        << "Calling UnsubscribeObject inside a failure callback is not allowed.";
+    // publishers.
+    Unsubscribe(publisher_address, key_id);
   }
 }
 
@@ -189,8 +185,7 @@ void SubscriberChannel::HandlePublisherFailure(const rpc::Address &publisher_add
   auto unsubscribe_needed =
       HandlePublisherFailureInternal(publisher_address, key_id, Status::OK());
   if (unsubscribe_needed) {
-    RAY_CHECK(Unsubscribe(publisher_address, key_id))
-        << "Calling UnsubscribeObject inside a failure callback is not allowed.";
+    Unsubscribe(publisher_address, key_id);
   }
 }
 
@@ -229,7 +224,7 @@ std::string SubscriberChannel::DebugString() const {
 /// Subscriber
 ///////////////////////////////////////////////////////////////////////////////
 
-bool Subscriber::Unsubscribe(rpc::ChannelType channel_type,
+void Subscriber::Unsubscribe(rpc::ChannelType channel_type,
                              const rpc::Address &publisher_address,
                              const std::optional<std::string> &key_id) {
   // Batch the unsubscribe command.
@@ -245,7 +240,7 @@ bool Subscriber::Unsubscribe(rpc::ChannelType channel_type,
   commands_[publisher_id].emplace(std::move(command));
   SendCommandBatchIfPossible(publisher_address);
 
-  return Channel(channel_type)->Unsubscribe(publisher_address, key_id);
+  Channel(channel_type)->Unsubscribe(publisher_address, key_id);
 }
 
 bool Subscriber::IsSubscribed(rpc::ChannelType channel_type,

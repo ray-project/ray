@@ -466,5 +466,34 @@ def test_iter_rows_with_na(ray_start_regular_shared):
     assert list(rows) == [{"col": None}]
 
 
+def test_empty_dataframe_with_object_columns(ray_start_regular_shared):
+    """Test that size_bytes handles empty DataFrames with object/string columns.
+
+    The warning log:
+    "Error calculating size for column 'parent': cannot call `vectorize`
+    on size 0 inputs unless `otypes` is set"
+    should not be logged in the presence of empty columns.
+    """
+    from unittest.mock import patch
+
+    # Create an empty DataFrame but with defined columns and dtypes
+    block = pd.DataFrame(
+        {
+            "parent": pd.Series([], dtype=object),
+            "child": pd.Series([], dtype="string"),
+            "data": pd.Series([], dtype=object),
+        }
+    )
+
+    block_accessor = PandasBlockAccessor.for_block(block)
+
+    # Check that NO warning is logged after calling size_bytes
+    with patch("ray.data._internal.pandas_block.logger.warning") as mock_warning:
+        bytes_size = block_accessor.size_bytes()
+        mock_warning.assert_not_called()
+
+    assert bytes_size >= 0
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

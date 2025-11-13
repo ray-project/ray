@@ -82,9 +82,11 @@ class RuntimeContext(object):
     @property
     @Deprecated(message="Use get_node_id() instead", warning=True)
     def node_id(self):
-        """Get current node ID for this worker or driver.
+        """Get the ID for the node that this process is running on.
 
-        Node ID is the id of a node that your driver, task, or actor runs.
+        This can be called from within a driver, task, or actor.
+        When called from a driver that is connected to a remote Ray cluster using
+        Ray Client, this returns the ID of the head node.
 
         Returns:
             A node id for this worker or driver.
@@ -94,10 +96,11 @@ class RuntimeContext(object):
         return node_id
 
     def get_node_id(self) -> str:
-        """Get current node ID for this worker or driver.
+        """Get the ID for the node that this process is running on.
 
-        Node ID is the id of a node that your driver, task, or actor runs.
-        The ID will be in hex format.
+        This can be called from within a driver, task, or actor.
+        When called from a driver that is connected to a remote Ray cluster using
+        Ray Client, this returns the ID of the head node.
 
         Returns:
             A node id in hex format for this worker or driver.
@@ -558,11 +561,7 @@ def get_runtime_context() -> RuntimeContext:
     """Get the runtime context of the current driver/worker.
 
     The obtained runtime context can be used to get the metadata
-    of the current task and actor.
-
-    Note: For Ray Client, ray.get_runtime_context().get_node_id() should
-    point to the head node. Also, keep in mind that ray._private.worker.global_worker
-    will create a new worker object here if global_worker doesn't point to one.
+    of the current driver, task, or actor.
 
     Example:
 

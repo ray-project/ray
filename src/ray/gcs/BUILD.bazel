@@ -103,9 +103,9 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
-        "//src/ray/common:ray_syncer",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/protobuf:ray_syncer_cc_proto",
+        "//src/ray/ray_syncer",
         "//src/ray/raylet/scheduling:cluster_lease_manager",
         "//src/ray/raylet/scheduling:cluster_resource_manager",
         "//src/ray/util:logging",
@@ -234,9 +234,9 @@ ray_cc_library(
     hdrs = ["gcs_server_io_context_policy.h"],
     deps = [
         ":gcs_task_manager",
-        "//src/ray/common:ray_syncer",
         "//src/ray/observability:ray_event_recorder",
         "//src/ray/pubsub:gcs_publisher",
+        "//src/ray/ray_syncer",
         "//src/ray/util:array",
         "//src/ray/util:type_traits",
     ],
@@ -254,6 +254,7 @@ ray_cc_library(
         "//src/ray/common:protobuf_utils",
         "//src/ray/common:runtime_env",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
+        "//src/ray/observability:metric_interface",
         "//src/ray/observability:ray_driver_job_definition_event",
         "//src/ray/observability:ray_driver_job_lifecycle_event",
         "//src/ray/observability:ray_event_recorder_interface",
@@ -272,6 +273,7 @@ ray_cc_library(
     deps = [
         "//src/ray/common:bundle_spec",
         "//src/ray/common:id",
+        "//src/ray/common:metrics",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:counter_map",
@@ -352,6 +354,7 @@ ray_cc_library(
         "//src/ray/protobuf:gcs_service_cc_grpc",
         "//src/ray/rpc:grpc_server",
         "//src/ray/rpc:rpc_callback_types",
+        "//src/ray/rpc/authentication:authentication_token",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -369,6 +372,7 @@ ray_cc_library(
         "//src/ray/common:lease",
         "//src/ray/common:task_common",
         "//src/ray/common/scheduling:cluster_resource_data",
+        "//src/ray/common/scheduling:label_selector",
         "//src/ray/observability:ray_actor_definition_event",
         "//src/ray/observability:ray_actor_lifecycle_event",
         "//src/ray/observability:ray_event_recorder_interface",
@@ -510,6 +514,7 @@ ray_cc_library(
         ":gcs_worker_manager",
         ":grpc_service_interfaces",
         ":grpc_services",
+        ":metrics",
         "//src/ray/core_worker_rpc_client:core_worker_client",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/gcs/store_client",
@@ -526,6 +531,7 @@ ray_cc_library(
         "//src/ray/raylet_rpc_client:raylet_client_pool",
         "//src/ray/rpc:grpc_server",
         "//src/ray/rpc:metrics_agent_client",
+        "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:counter_map",
         "//src/ray/util:exponential_backoff",
         "//src/ray/util:network_util",
@@ -546,6 +552,7 @@ ray_cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":gcs_server_lib",
+        "//src/ray/common:metrics",
         "//src/ray/observability:metrics",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:event",
@@ -553,5 +560,14 @@ ray_cc_binary(
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
         "@com_github_gflags_gflags//:gflags",
+    ],
+)
+
+ray_cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    deps = [
+        "//src/ray/observability:metrics",
+        "//src/ray/stats:stats_lib",
     ],
 )

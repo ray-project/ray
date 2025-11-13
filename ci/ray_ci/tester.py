@@ -4,7 +4,6 @@ from typing import List, Optional, Set, Tuple
 
 import click
 import yaml
-from ray_release.test import Test, TestState
 
 from ci.ray_ci.builder_container import BuilderContainer
 from ci.ray_ci.configs import (
@@ -18,6 +17,8 @@ from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import ci_init, ecr_docker_login
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
+
+from ray_release.test import Test, TestState
 
 CUDA_COPYRIGHT = """
 ==========
@@ -257,7 +258,7 @@ def main(
     if build_only:
         sys.exit(0)
 
-    print("--- Listing test targets")
+    print("--- Listing test targets", file=sys.stderr)
 
     if bisect_run_test_target:
         test_targets = [bisect_run_test_target]
@@ -278,10 +279,10 @@ def main(
             lookup_test_database=lookup_test_database,
         )
     if not test_targets:
-        print("--- No tests to run")
+        print("--- No tests to run", file=sys.stderr)
         sys.exit(0)
 
-    print(f"+++ Running {len(test_targets)} tests")
+    print(f"+++ Running {len(test_targets)} tests", file=sys.stderr)
     success = container.run_tests(
         team,
         test_targets,
@@ -335,6 +336,7 @@ def _get_container(
             network=network,
             skip_ray_installation=skip_ray_installation,
             build_type=build_type,
+            python_version=python_version,
             tmp_filesystem=tmp_filesystem,
             install_mask=install_mask,
             privileged=privileged,

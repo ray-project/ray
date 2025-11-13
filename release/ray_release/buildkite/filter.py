@@ -1,12 +1,12 @@
-import re
 import copy
+import re
 from collections import defaultdict
-from typing import List, Optional, Tuple, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray_release.buildkite.settings import Frequency, get_frequency
+from ray_release.configs.global_config import get_global_config
 from ray_release.test import Test
 from ray_release.test_automation.state_machine import TestStateMachine
-from ray_release.configs.global_config import get_global_config
 
 
 def _unflattened_lookup(lookup: Dict, flat_key: str, delimiter: str = "/") -> Any:
@@ -22,7 +22,7 @@ def _unflattened_lookup(lookup: Dict, flat_key: str, delimiter: str = "/") -> An
 def filter_tests(
     test_collection: List[Test],
     frequency: Frequency,
-    test_filters: Optional[Dict[str, str]] = None,
+    test_filters: Optional[Dict[str, list]] = None,
     prefer_smoke_tests: bool = False,
     run_jailed_tests: bool = False,
     run_unstable_tests: bool = False,
@@ -38,19 +38,28 @@ def filter_tests(
         if test.is_kuberay() and get_global_config()["kuberay_disabled"]:
             continue
 
-        # Check if any test attributes match filters
+        # Check if test attributes match filters
+        # Logic: OR within same attribute, AND across different attributes
         if test_filters:
-            for attr, value in test_filters.items():
-                # Only prefix filter doesn't use regex
-                if attr == "prefix":
-                    if not test.get_name().startswith(value):
-                        attr_mismatch = True
-                        break
-                else:  # Match filters using regex
-                    attr_value = _unflattened_lookup(test, attr) or ""
-                    if not re.match(value, attr_value):
-                        attr_mismatch = True
-                        break
+            for attr, values in test_filters.items():
+                # Check if at least one value matches for this attribute (OR logic)
+                attr_matched = False
+                for value in values:
+                    # Only prefix filter doesn't use regex
+                    if attr == "prefix":
+                        if test.get_name().startswith(value):
+                            attr_matched = True
+                            break
+                    else:  # Match filters using regex
+                        attr_value = _unflattened_lookup(test, attr) or ""
+                        if re.match(value, attr_value):
+                            attr_matched = True
+                            break
+
+                # If none of the values matched for this attribute, skip this test
+                if not attr_matched:
+                    attr_mismatch = True
+                    break
         if attr_mismatch:
             continue
 

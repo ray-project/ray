@@ -732,13 +732,18 @@ class ArrowTensorArray(pa.ExtensionArray):
         else:
             pa_type_ = ArrowTensorType(element_shape, scalar_dtype)
 
+        offset_dtype = pa_type_.OFFSET_DTYPE.to_pandas_dtype()
+
         # Create offsets buffer
-        offsets = np.arange(
-            0,
-            (outer_len + 1) * num_items_per_element,
-            num_items_per_element,
-            dtype=pa_type_.OFFSET_DTYPE.to_pandas_dtype(),
-        )
+        if num_items_per_element == 0:
+            offsets = np.zeros(outer_len + 1, dtype=offset_dtype)
+        else:
+            offsets = np.arange(
+                0,
+                (outer_len + 1) * num_items_per_element,
+                num_items_per_element,
+                dtype=offset_dtype,
+            )
         offset_buffer = pa.py_buffer(offsets)
 
         storage = pa.Array.from_buffers(
@@ -984,11 +989,12 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         return str(self)
 
     def __eq__(self, other):
+        # NOTE: This check is deliberately not comparing the ``ndim`` since
+        #       we allow tensor types w/ varying ``ndim``s to be combined
         return (
             isinstance(other, ArrowVariableShapedTensorType)
             and other.extension_name == self.extension_name
             and other.scalar_type == self.scalar_type
-            and other.ndim == self.ndim
         )
 
     def __ne__(self, other):
@@ -996,7 +1002,7 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         return not self.__eq__(other)
 
     def __hash__(self) -> int:
-        return hash((self.extension_name, self.scalar_type, self._ndim))
+        return hash((self.extension_name, self.scalar_type))
 
     def _extension_scalar_to_ndarray(self, scalar: "pa.ExtensionScalar") -> np.ndarray:
         """
