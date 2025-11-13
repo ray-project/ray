@@ -35,7 +35,7 @@ class TestDataTypeFactoryMethods:
 
         assert isinstance(result, DataType)
         assert result.is_arrow_type()
-        assert result._internal_type == pa_type
+        assert result._physical_dtype == pa_type
 
     @pytest.mark.parametrize(
         "method_name",
@@ -85,7 +85,7 @@ class TestDataTypeValidation:
         """Test that __post_init__ accepts valid type objects."""
         # Should not raise
         dt = DataType(valid_type)
-        assert dt._internal_type == valid_type
+        assert dt._physical_dtype == valid_type
 
     @pytest.mark.parametrize(
         "invalid_type",
@@ -94,7 +94,6 @@ class TestDataTypeValidation:
             123,
             [1, 2, 3],
             {"key": "value"},
-            None,
             object(),
         ],
     )
@@ -147,7 +146,7 @@ class TestDataTypeFactories:
 
         assert isinstance(dt, DataType)
         assert dt.is_arrow_type()
-        assert dt._internal_type == pa_type
+        assert dt._physical_dtype == pa_type
 
     @pytest.mark.parametrize(
         "numpy_input,expected_dtype",
@@ -164,7 +163,7 @@ class TestDataTypeFactories:
 
         assert isinstance(dt, DataType)
         assert dt.is_numpy_type()
-        assert dt._internal_type == expected_dtype
+        assert dt._physical_dtype == expected_dtype
 
 
 class TestDataTypeConversions:
@@ -243,7 +242,7 @@ class TestDataTypeConversions:
     )
     def test_to_python_type_failure(self, non_python_dt):
         """Test to_python_type raises ValueError for non-Python types."""
-        with pytest.raises(ValueError, match="is not a Python type"):
+        with pytest.raises(ValueError, match="is not backed by a Python type"):
             non_python_dt.to_python_type()
 
 
@@ -264,7 +263,7 @@ class TestDataTypeInference:
         dt = DataType.infer_dtype(numpy_value)
 
         assert dt.is_numpy_type()
-        assert dt._internal_type == expected_dtype
+        assert dt._physical_dtype == expected_dtype
 
     # Removed test_infer_dtype_pyarrow_scalar - no longer works with current implementation
 
@@ -348,8 +347,8 @@ class TestDataTypeEqualityAndHashing:
         # so they should not be equal
 
         # First verify they have different internal types
-        assert type(numpy_dt._internal_type) is not type(python_dt._internal_type)
-        assert numpy_dt._internal_type is not python_dt._internal_type
+        assert type(numpy_dt._physical_dtype) is not type(python_dt._physical_dtype)
+        assert numpy_dt._physical_dtype is not python_dt._physical_dtype
 
         # Test the type checkers return different results
         assert numpy_dt.is_numpy_type() and not python_dt.is_numpy_type()
@@ -386,6 +385,475 @@ class TestDataTypeEqualityAndHashing:
         # Test as dict keys
         dt_dict = {dt1: "first", dt3: "second"}
         assert dt_dict[dt2] == "first"  # dt2 should match dt1
+
+
+class TestLogicalDataTypes:
+    """Test pattern-matching DataTypes with _LogicalDataType enum."""
+
+    @pytest.mark.parametrize(
+        "factory_method,logical_dtype_value",
+        [
+            (lambda: DataType.list(), "list"),
+            (lambda: DataType.large_list(), "large_list"),
+            (lambda: DataType.struct(), "struct"),
+            (lambda: DataType.map(), "map"),
+            (lambda: DataType.tensor(), "tensor"),
+            (lambda: DataType.variable_shaped_tensor(), "tensor"),
+            (lambda: DataType.temporal(), "temporal"),
+        ],
+    )
+    def test_logical_dtype_creation(self, factory_method, logical_dtype_value):
+        """Test that logical DataTypes have correct _logical_dtype."""
+        from ray.data.datatype import _LogicalDataType
+
+        dt = factory_method()
+        assert dt._physical_dtype is None
+        assert dt._logical_dtype == _LogicalDataType(logical_dtype_value)
+        assert isinstance(dt._logical_dtype, _LogicalDataType)
+
+    @pytest.mark.parametrize(
+        "factory_method,expected_repr",
+        [
+            (lambda: DataType.list(), "DataType(logical_dtype:LIST)"),
+            (lambda: DataType.large_list(), "DataType(logical_dtype:LARGE_LIST)"),
+            (lambda: DataType.struct(), "DataType(logical_dtype:STRUCT)"),
+            (lambda: DataType.map(), "DataType(logical_dtype:MAP)"),
+            (lambda: DataType.tensor(), "DataType(logical_dtype:TENSOR)"),
+            (
+                lambda: DataType.variable_shaped_tensor(),
+                "DataType(logical_dtype:TENSOR)",
+            ),
+            (lambda: DataType.temporal(), "DataType(logical_dtype:TEMPORAL)"),
+        ],
+    )
+    def test_logical_dtype_repr(self, factory_method, expected_repr):
+        """Test __repr__ for logical DataTypes."""
+        dt = factory_method()
+        assert repr(dt) == expected_repr
+
+    @pytest.mark.parametrize(
+        "dt1_factory,dt2_factory,should_be_equal",
+        [
+            # Same logical DataTypes should be equal (including explicit ANY form)
+            (lambda: DataType.list(), lambda: DataType.list(DataType.ANY), True),
+            (lambda: DataType.list(), lambda: DataType.list(), True),
+            (lambda: DataType.struct(), lambda: DataType.struct(DataType.ANY), True),
+            (
+                lambda: DataType.tensor(),
+                lambda: DataType.variable_shaped_tensor(),
+                True,
+            ),
+            # Different logical DataTypes should not be equal
+            (lambda: DataType.list(), lambda: DataType.large_list(), False),
+            (lambda: DataType.list(), lambda: DataType.struct(), False),
+            (lambda: DataType.map(), lambda: DataType.temporal(), False),
+        ],
+    )
+    def test_logical_dtype_equality(self, dt1_factory, dt2_factory, should_be_equal):
+        """Test equality between logical DataTypes."""
+        dt1 = dt1_factory()
+        dt2 = dt2_factory()
+
+        if should_be_equal:
+            assert dt1 == dt2
+            assert hash(dt1) == hash(dt2)
+        else:
+            assert dt1 != dt2
+
+
+class TestNestedTypeFactories:
+    """Test factory methods for nested types (list, struct, map, etc.)."""
+
+    @pytest.mark.parametrize(
+        "factory_call,expected_arrow_type",
+        [
+            (lambda: DataType.list(DataType.int64()), pa.list_(pa.int64())),
+            (lambda: DataType.list(DataType.string()), pa.list_(pa.string())),
+            (
+                lambda: DataType.large_list(DataType.float32()),
+                pa.large_list(pa.float32()),
+            ),
+            (
+                lambda: DataType.fixed_size_list(DataType.int32(), 5),
+                pa.list_(pa.int32(), 5),
+            ),
+        ],
+    )
+    def test_list_type_factories(self, factory_call, expected_arrow_type):
+        """Test list-type factory methods create correct Arrow types."""
+        dt = factory_call()
+        assert dt.is_arrow_type()
+        assert dt._physical_dtype == expected_arrow_type
+
+    @pytest.mark.parametrize(
+        "fields,expected_arrow_type",
+        [
+            (
+                [("x", DataType.int64()), ("y", DataType.float64())],
+                pa.struct([("x", pa.int64()), ("y", pa.float64())]),
+            ),
+            (
+                [("name", DataType.string()), ("age", DataType.int32())],
+                pa.struct([("name", pa.string()), ("age", pa.int32())]),
+            ),
+        ],
+    )
+    def test_struct_factory(self, fields, expected_arrow_type):
+        """Test struct factory method creates correct Arrow types."""
+        dt = DataType.struct(fields)
+        assert dt.is_arrow_type()
+        assert dt._physical_dtype == expected_arrow_type
+
+    @pytest.mark.parametrize(
+        "key_type,value_type,expected_arrow_type",
+        [
+            (DataType.string(), DataType.int64(), pa.map_(pa.string(), pa.int64())),
+            (DataType.int32(), DataType.float32(), pa.map_(pa.int32(), pa.float32())),
+        ],
+    )
+    def test_map_factory(self, key_type, value_type, expected_arrow_type):
+        """Test map factory method creates correct Arrow types."""
+        dt = DataType.map(key_type, value_type)
+        assert dt.is_arrow_type()
+        assert dt._physical_dtype == expected_arrow_type
+
+    @pytest.mark.parametrize(
+        "temporal_type,unit,tz,expected_type",
+        [
+            ("timestamp", "s", None, pa.timestamp("s")),
+            ("timestamp", "us", "UTC", pa.timestamp("us", tz="UTC")),
+            ("date32", None, None, pa.date32()),
+            ("date64", None, None, pa.date64()),
+            ("time32", "s", None, pa.time32("s")),
+            ("time64", "us", None, pa.time64("us")),
+            ("duration", "ms", None, pa.duration("ms")),
+        ],
+    )
+    def test_temporal_factory(self, temporal_type, unit, tz, expected_type):
+        """Test temporal factory method creates correct Arrow types."""
+        if tz is not None:
+            dt = DataType.temporal(temporal_type, unit=unit, tz=tz)
+        elif unit is not None:
+            dt = DataType.temporal(temporal_type, unit=unit)
+        else:
+            dt = DataType.temporal(temporal_type)
+
+        assert dt.is_arrow_type()
+        assert dt._physical_dtype == expected_type
+
+    @pytest.mark.parametrize(
+        "temporal_type,unit,error_msg",
+        [
+            ("time32", "us", "time32 unit must be 's' or 'ms'"),
+            ("time64", "ms", "time64 unit must be 'us' or 'ns'"),
+            ("invalid", None, "Invalid temporal_type"),
+        ],
+    )
+    def test_temporal_factory_validation(self, temporal_type, unit, error_msg):
+        """Test temporal factory validates inputs correctly."""
+        with pytest.raises(ValueError, match=error_msg):
+            DataType.temporal(temporal_type, unit=unit)
+
+
+class TestTypePredicates:
+    """Test type predicate methods (is_list_type, is_struct_type, etc.)."""
+
+    @pytest.mark.parametrize(
+        "datatype,expected_result",
+        [
+            # List types
+            (DataType.list(DataType.int64()), True),
+            (DataType.large_list(DataType.string()), True),
+            (DataType.fixed_size_list(DataType.float32(), 3), True),
+            # Tensor types (should return False)
+            (DataType.tensor(shape=(3, 4), dtype=DataType.float32()), False),
+            (DataType.variable_shaped_tensor(dtype=DataType.float64(), ndim=2), False),
+            # Non-list types
+            (DataType.int64(), False),
+            (DataType.string(), False),
+            (DataType.struct([("x", DataType.int32())]), False),
+        ],
+    )
+    def test_is_list_type(self, datatype, expected_result):
+        """Test is_list_type predicate."""
+        assert datatype.is_list_type() == expected_result
+
+    @pytest.mark.parametrize(
+        "datatype,expected_result",
+        [
+            (DataType.tensor(shape=(3, 4), dtype=DataType.float32()), True),
+            (DataType.variable_shaped_tensor(dtype=DataType.float64(), ndim=2), True),
+        ],
+    )
+    def test_is_tensor_type(self, datatype, expected_result):
+        """Test is_tensor_type predicate."""
+        assert datatype.is_tensor_type() == expected_result
+
+    @pytest.mark.parametrize(
+        "datatype,expected_result",
+        [
+            (DataType.struct([("x", DataType.int64())]), True),
+            (
+                DataType.struct([("a", DataType.string()), ("b", DataType.float32())]),
+                True,
+            ),
+            (DataType.list(DataType.int64()), False),
+            (DataType.int64(), False),
+        ],
+    )
+    def test_is_struct_type(self, datatype, expected_result):
+        """Test is_struct_type predicate."""
+        assert datatype.is_struct_type() == expected_result
+
+    @pytest.mark.parametrize(
+        "datatype,expected_result",
+        [
+            (DataType.map(DataType.string(), DataType.int64()), True),
+            (DataType.map(DataType.int32(), DataType.float32()), True),
+            (DataType.list(DataType.int64()), False),
+            (DataType.int64(), False),
+        ],
+    )
+    def test_is_map_type(self, datatype, expected_result):
+        """Test is_map_type predicate."""
+        assert datatype.is_map_type() == expected_result
+
+    @pytest.mark.parametrize(
+        "datatype,expected_result",
+        [
+            # Nested types
+            (DataType.list(DataType.int64()), True),
+            (DataType.struct([("x", DataType.int32())]), True),
+            (DataType.map(DataType.string(), DataType.int64()), True),
+            # Non-nested types
+            (DataType.int64(), False),
+            (DataType.string(), False),
+            (DataType.float32(), False),
+        ],
+    )
+    def test_is_nested_type(self, datatype, expected_result):
+        """Test is_nested_type predicate."""
+        assert datatype.is_nested_type() == expected_result
+
+    @pytest.mark.parametrize(
+        "datatype,expected_result",
+        [
+            # Numerical Arrow types
+            (DataType.int64(), True),
+            (DataType.int32(), True),
+            (DataType.float32(), True),
+            (DataType.float64(), True),
+            # Numerical NumPy types
+            (DataType.from_numpy(np.dtype("int32")), True),
+            (DataType.from_numpy(np.dtype("float64")), True),
+            # Numerical Python types
+            (DataType(int), True),
+            (DataType(float), True),
+            # Non-numerical types
+            (DataType.string(), False),
+            (DataType.binary(), False),
+            (DataType(str), False),
+        ],
+    )
+    def test_is_numerical_type(self, datatype, expected_result):
+        """Test is_numerical_type predicate."""
+        assert datatype.is_numerical_type() == expected_result
+
+    @pytest.mark.parametrize(
+        "datatype,expected_result",
+        [
+            # String Arrow types
+            (DataType.string(), True),
+            (DataType.from_arrow(pa.large_string()), True),
+            # String NumPy types
+            (DataType.from_numpy(np.dtype("U10")), True),
+            # String Python types
+            (DataType(str), True),
+            # Non-string types
+            (DataType.int64(), False),
+            (DataType.binary(), False),
+        ],
+    )
+    def test_is_string_type(self, datatype, expected_result):
+        """Test is_string_type predicate."""
+        assert datatype.is_string_type() == expected_result
+
+    @pytest.mark.parametrize(
+        "datatype,expected_result",
+        [
+            # Binary Arrow types
+            (DataType.binary(), True),
+            (DataType.from_arrow(pa.large_binary()), True),
+            (DataType.from_arrow(pa.binary(10)), True),  # fixed_size_binary
+            # Binary Python types
+            (DataType(bytes), True),
+            (DataType(bytearray), True),
+            # Non-binary types
+            (DataType.string(), False),
+            (DataType.int64(), False),
+        ],
+    )
+    def test_is_binary_type(self, datatype, expected_result):
+        """Test is_binary_type predicate."""
+        assert datatype.is_binary_type() == expected_result
+
+    @pytest.mark.parametrize(
+        "datatype,expected_result",
+        [
+            # Temporal Arrow types
+            (DataType.temporal("timestamp", unit="s"), True),
+            (DataType.temporal("date32"), True),
+            (DataType.temporal("time64", unit="us"), True),
+            (DataType.temporal("duration", unit="ms"), True),
+            # Temporal NumPy types
+            (DataType.from_numpy(np.dtype("datetime64[D]")), True),
+            (DataType.from_numpy(np.dtype("timedelta64[s]")), True),
+            # Non-temporal types
+            (DataType.int64(), False),
+            (DataType.string(), False),
+        ],
+    )
+    def test_is_temporal_type(self, datatype, expected_result):
+        """Test is_temporal_type predicate."""
+        assert datatype.is_temporal_type() == expected_result
+
+
+class TestNestedPatternMatching:
+    """Test that pattern-matching DataTypes can be used as arguments to factory methods."""
+
+    @pytest.mark.parametrize(
+        "factory_call,expected_logical_dtype",
+        [
+            # list with pattern-matching element type
+            (lambda: DataType.list(DataType.list()), "list"),
+            (lambda: DataType.list(DataType.struct()), "list"),
+            (lambda: DataType.list(DataType.map()), "list"),
+            # large_list with pattern-matching element type
+            (lambda: DataType.large_list(DataType.list()), "large_list"),
+            (lambda: DataType.large_list(DataType.tensor()), "large_list"),
+            # struct with pattern-matching field types
+            (
+                lambda: DataType.struct(
+                    [("a", DataType.list()), ("b", DataType.int64())]
+                ),
+                "struct",
+            ),
+            (
+                lambda: DataType.struct(
+                    [("x", DataType.tensor()), ("y", DataType.map())]
+                ),
+                "struct",
+            ),
+            # map with pattern-matching key/value types
+            (lambda: DataType.map(DataType.list(), DataType.int64()), "map"),
+            (lambda: DataType.map(DataType.string(), DataType.struct()), "map"),
+            (lambda: DataType.map(DataType.list(), DataType.map()), "map"),
+            # tensor with pattern-matching dtype
+            (lambda: DataType.tensor((3, 4), DataType.list()), "tensor"),
+            (lambda: DataType.tensor((2, 2), DataType.struct()), "tensor"),
+            # variable_shaped_tensor with pattern-matching dtype
+            (
+                lambda: DataType.variable_shaped_tensor(DataType.list(), ndim=2),
+                "tensor",
+            ),
+            (lambda: DataType.variable_shaped_tensor(DataType.map(), ndim=3), "tensor"),
+        ],
+    )
+    def test_nested_pattern_matching_types(self, factory_call, expected_logical_dtype):
+        """Test that pattern-matching DataTypes work as arguments to factory methods.
+
+        When a pattern-matching DataType (one with _physical_dtype=None) is passed
+        as an argument to another factory method, it should result in a pattern-matching
+        type, not try to call to_arrow_dtype() on it.
+        """
+        from ray.data.datatype import _LogicalDataType
+
+        dt = factory_call()
+        # Should create a pattern-matching type, not a concrete type
+        assert dt._physical_dtype is None
+        assert dt._logical_dtype == _LogicalDataType(expected_logical_dtype)
+
+    def test_list_with_nested_pattern(self):
+        """Test DataType.list(DataType.list()) returns pattern-matching LIST."""
+        from ray.data.datatype import _LogicalDataType
+
+        dt = DataType.list(DataType.list())
+        assert dt._physical_dtype is None
+        assert dt._logical_dtype == _LogicalDataType.LIST
+        assert repr(dt) == "DataType(logical_dtype:LIST)"
+
+    def test_struct_with_pattern_fields(self):
+        """Test DataType.struct with pattern-matching field types."""
+        from ray.data.datatype import _LogicalDataType
+
+        dt = DataType.struct([("a", DataType.list()), ("b", DataType.tensor())])
+        assert dt._physical_dtype is None
+        assert dt._logical_dtype == _LogicalDataType.STRUCT
+
+
+class TestPatternMatchingToArrowDtype:
+    """Test that pattern-matching types cannot be converted to concrete Arrow types."""
+
+    @pytest.mark.parametrize(
+        "pattern_type_factory",
+        [
+            lambda: DataType.list(),
+            lambda: DataType.large_list(),
+            lambda: DataType.struct(),
+            lambda: DataType.map(),
+            lambda: DataType.tensor(),
+            lambda: DataType.variable_shaped_tensor(),
+            lambda: DataType.temporal(),
+        ],
+    )
+    def test_pattern_matching_to_arrow_dtype_raises(self, pattern_type_factory):
+        """Test that calling to_arrow_dtype on pattern-matching types raises an error.
+
+        Pattern-matching types represent abstract type categories (e.g., "any list")
+        and cannot be converted to concrete Arrow types.
+        """
+        dt = pattern_type_factory()
+        assert dt.is_pattern_matching()
+
+        with pytest.raises(ValueError, match="Cannot convert pattern-matching type"):
+            dt.to_arrow_dtype()
+
+    def test_pattern_matching_to_arrow_dtype_with_values_still_raises(self):
+        """Test that even with values, pattern-matching types cannot be converted."""
+        dt = DataType.list()
+        assert dt.is_pattern_matching()
+
+        # Even with values provided, pattern-matching types shouldn't convert
+        with pytest.raises(ValueError, match="Cannot convert pattern-matching type"):
+            dt.to_arrow_dtype(values=[1, 2, 3])
+
+
+class TestPatternMatchingToNumpyDtype:
+    """Test that pattern-matching types cannot be converted to concrete NumPy dtypes."""
+
+    @pytest.mark.parametrize(
+        "pattern_type_factory",
+        [
+            lambda: DataType.list(),
+            lambda: DataType.large_list(),
+            lambda: DataType.struct(),
+            lambda: DataType.map(),
+            lambda: DataType.tensor(),
+            lambda: DataType.variable_shaped_tensor(),
+            lambda: DataType.temporal(),
+        ],
+    )
+    def test_pattern_matching_to_numpy_dtype_raises(self, pattern_type_factory):
+        """Test that calling to_numpy_dtype on pattern-matching types raises an error.
+
+        Pattern-matching types represent abstract type categories (e.g., "any list")
+        and cannot be converted to concrete NumPy dtypes.
+        """
+        dt = pattern_type_factory()
+        assert dt.is_pattern_matching()
+
+        with pytest.raises(ValueError, match="Cannot convert pattern-matching type"):
+            dt.to_numpy_dtype()
 
 
 if __name__ == "__main__":
