@@ -41,7 +41,7 @@ class MockGcsClient : public GcsClient {
   MOCK_METHOD((std::pair<std::string, int>), GetGcsServerAddress, (), (const, override));
   MOCK_METHOD(std::string, DebugString, (), (const, override));
 
-  MockGcsClient() {
+  MockGcsClient() : GcsClient(MockGcsClientOptions()) {
     mock_job_accessor = new MockJobInfoAccessor();
     mock_actor_accessor = new FakeActorInfoAccessor();
     mock_node_accessor = new MockNodeInfoAccessor();

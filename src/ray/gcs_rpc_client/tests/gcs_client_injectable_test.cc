@@ -128,13 +128,11 @@ class TestActorInfoAccessor : public ActorInfoAccessorInterface {
   void AsyncCreateActor(
       const TaskSpecification &task_spec,
       const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {}
-  Status AsyncSubscribe(const ActorID &actor_id,
-                        const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-                        const StatusCallback &done) override {
-    return Status::OK();
-  }
+  void AsyncSubscribe(const ActorID &actor_id,
+                      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+                      const StatusCallback &done) override {}
   void AsyncResubscribe() override {}
-  Status AsyncUnsubscribe(const ActorID &actor_id) override { return Status::OK(); }
+  void AsyncUnsubscribe(const ActorID &actor_id) override {}
   bool IsActorUnsubscribed(const ActorID &actor_id) override { return false; }
 
  private:

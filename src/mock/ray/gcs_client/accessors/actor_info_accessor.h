@@ -86,7 +86,7 @@ class FakeActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
     actor_subscribed_times_[actor_id]++;
   }
 
-  Status AsyncUnsubscribe(const ActorID &) override { return Status::OK(); }
+  void AsyncUnsubscribe(const ActorID &) override {}
   void AsyncResubscribe() override {}
   bool IsActorUnsubscribed(const ActorID &) override { return false; }
 
