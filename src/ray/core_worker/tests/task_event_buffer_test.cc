@@ -462,7 +462,7 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
   if (to_gcs) {
     EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _))
         .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
-                      ray::gcs::StatusCallback callback) {
+                      ray::rpc::StatusCallback callback) {
           CompareTaskEventData(*actual_data, expected_task_event_data);
           return Status::OK();
         });
@@ -518,12 +518,12 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
     EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData)
         .Times(2)
         .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
-                      ray::gcs::StatusCallback callback) {
+                      ray::rpc::StatusCallback callback) {
           callback(Status::RpcError("grpc error", grpc::StatusCode::UNKNOWN));
           return Status::OK();
         })
         .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
-                      ray::gcs::StatusCallback callback) {
+                      ray::rpc::StatusCallback callback) {
           callback(Status::OK());
           return Status::OK();
         });
@@ -678,7 +678,7 @@ TEST_P(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend) {
     EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData)
         .Times(num_events / batch_size)
         .WillRepeatedly([&batch_size](std::unique_ptr<rpc::TaskEventData> actual_data,
-                                      ray::gcs::StatusCallback callback) {
+                                      ray::rpc::StatusCallback callback) {
           EXPECT_EQ(actual_data->events_by_task_size(), batch_size);
           callback(Status::OK());
           return Status::OK();
@@ -785,7 +785,7 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
   if (to_gcs) {
     EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _))
         .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
-                      ray::gcs::StatusCallback callback) {
+                      ray::rpc::StatusCallback callback) {
           // Sort and compare
           CompareTaskEventData(*actual_data, expected_data);
           return Status::OK();
@@ -860,7 +860,7 @@ TEST_F(TaskEventBufferTestLimitProfileEvents, TestBufferSizeLimitProfileEvents) 
 
   EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _))
       .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
-                    ray::gcs::StatusCallback callback) {
+                    ray::rpc::StatusCallback callback) {
         EXPECT_EQ(actual_data->num_profile_events_dropped(), num_profile_dropped);
         EXPECT_EQ(actual_data->events_by_task_size(), num_limit_profile_events);
         return Status::OK();
@@ -1107,7 +1107,7 @@ TEST_P(TaskEventBufferTestDifferentDestination,
   if (to_gcs) {
     EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _))
         .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
-                      ray::gcs::StatusCallback callback) {
+                      ray::rpc::StatusCallback callback) {
           CompareTaskEventData(*actual_data, expected_task_event_data);
           return Status::OK();
         });

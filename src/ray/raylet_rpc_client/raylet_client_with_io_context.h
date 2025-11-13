@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/common/asio/asio_util.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/rpc/grpc_client.h"
 
@@ -35,7 +36,7 @@ class RayletClientWithIoContext {
   /// Get the worker pids from raylet.
   /// \param callback The callback to set the worker pids.
   /// \param timeout_ms The timeout in milliseconds.
-  void GetWorkerPIDs(const gcs::OptionalItemCallback<std::vector<int32_t>> &callback,
+  void GetWorkerPIDs(const rpc::OptionalItemCallback<std::vector<int32_t>> &callback,
                      int64_t timeout_ms);
 
  private:
@@ -43,6 +44,7 @@ class RayletClientWithIoContext {
   /// during the whole lifetime of client.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::unique_ptr<rpc::RayletClient> raylet_client_;
+  inline static InstrumentedIOContextWithThread io_context_{"raylet_client_io_service"};
 };
 
 }  // namespace rpc
