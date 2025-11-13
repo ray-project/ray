@@ -66,7 +66,8 @@ class SchedulingRequest:
     )
     # The current instances.
     current_instances: List[AutoscalerInstance] = field(default_factory=list)
-    # The cloud resource availability score
+    # The cloud resource availability score. A low score indicates that resource
+    # allocation for this node type has recently failed.
     cloud_resource_availabilities: Dict[NodeType, float] = field(default_factory=dict)
 
 
@@ -728,6 +729,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         # number of workers in the config. This takes into account any pending/running
         # nodes.
         _node_type_available: Dict[NodeType, int] = field(default_factory=dict)
+        # The availability scores of cloud resource. A low score suggests that
+        # this type of resource has historically experienced allocation failures,
+        # and the weight of this type should be reduced during scheduling.
         _cloud_resource_availabilities: Dict[NodeType, float] = field(default_factory=dict)
 
         def __init__(
@@ -1517,7 +1521,10 @@ class ResourceDemandScheduler(IResourceScheduler):
                 requests_to_sched,
                 node_pools,
             ) = ResourceDemandScheduler._sched_best_node(
-                requests_to_sched, node_pools, resource_request_source
+                requests_to_sched,
+                node_pools,
+                resource_request_source,
+                ctx.get_cloud_resource_availabilities()
             )
             if best_node is None:
                 break
@@ -1542,13 +1549,19 @@ class ResourceDemandScheduler(IResourceScheduler):
         requests: List[ResourceRequest],
         nodes: List[SchedulingNode],
         resource_request_source: ResourceRequestSource,
-        cloud_resource_availabilities: Optional[Dict[NodeType, float]] = None,
+        cloud_resource_availabilities: Dict[NodeType, float],
     ) -> Tuple[SchedulingNode, List[ResourceRequest], List[SchedulingNode]]:
         """
         Schedule the requests on the best node.
         A simple greedy algorithm is used to schedule the requests:
             1. Try to schedule the requests on each node.
-            2. Sort the nodes by a score
+            2. Sort the nodes by a score. The sorting includes:
+                2.1. UtilizationScore: to maximize resource utilization.
+                2.2. Cloud resource availabilities: prioritize node types with
+                the most available cloud resources, in order to minimize allocation
+                failures.
+                2.3. Random number: to diversify resource requests rather than
+                always requesting for the same type.
             3. Return the node with the highest score.
 
         The highest score node is updated with the scheduled requests, and the node is
@@ -1561,6 +1574,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                 removed from the list.
             resource_request_source: The source of the resource request, i.e.
                 pending demands from ray actors/tasks or cluster resource constraints.
+            cloud_resource_availabilities: The cloud resource availability score. A low
+                score indicates that allocation for this node type has recently failed.
 
         Returns:
             best_node: The best node to schedule the requests.
@@ -1587,6 +1602,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Iterate through each node and modify the node's available resources
         # if the requests are schedulable.
         for idx, node in enumerate(nodes_copy):
+            # TODO delete xingyun
             logger.warning(f"_sched_best_node: {node.ray_node_id}, {node.node_type}, {node.status}")
 
             remaining, score = node.try_schedule(requests, resource_request_source)
@@ -1607,6 +1623,8 @@ class ResourceDemandScheduler(IResourceScheduler):
             return None, requests, nodes
 
         # Sort the results by score.
+        # TODO delete xingyun
+        logger.info(f"cloud_resource_availabilities: {cloud_resource_availabilities}")
         results = sorted(
             results,
             key=lambda r: (
@@ -1618,6 +1636,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         )
 
         best_result = results[0]
+
+        # TODO delete xingyun
+        logger.info(f"best_result: {best_result}")
 
         # Remove the best node from the nodes.
         nodes.pop(best_result.idx)

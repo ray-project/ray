@@ -1,16 +1,16 @@
+import logging
 import time
 from typing import List, Dict
 
-from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
-
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
-
-from ray.autoscaler.v2.schema import NodeType
-
 from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceUpdatedSubscriber
 )
+from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
+from ray.autoscaler.v2.schema import NodeType
+
+logger = logging.getLogger(__name__)
 
 class CloudResourceAvailability:
     """CloudResourceAvailability indicates the availability of a type of
@@ -44,7 +44,7 @@ class CloudResourceAvailability:
 
 
 class CloudResourceMonitor(InstanceUpdatedSubscriber):
-    """CloudResourceMonitor records the availability of node types.
+    """CloudResourceMonitor records the availability of all node types.
 
     In the Spot scenario, the resources in the cluster change dynamically.
     When scaling up, it is necessary to know which node types are most
@@ -62,25 +62,31 @@ class CloudResourceMonitor(InstanceUpdatedSubscriber):
             instance_ids=[failed_event.instance_id]
         )
         for instance in instances.values():
-            last_status = InstanceUtil.get_last_status_transition( instance)
+            last_status = InstanceUtil.get_last_status_transition(instance)
             if last_status:
-                self._resource_availabilities[instance.instance_type] = (
-                    CloudResourceAvailability(
-                        node_type=instance.node_type,
-                        last_unavailability_timestamp=(last_status.timestamp_ns) / 1000
-                    )
-                )
+                last_unavailability_timestamp=(last_status.timestamp_ns) / 1000
             else:
-                self._resource_availabilities[instance.instance_type] = (
-                    CloudResourceAvailability(
-                        node_type=instance.node_type,
-                        last_unavailability_timestamp=int(time.time())
-                    )
+                last_unavailability_timestamp = time.time()
+            self._resource_availabilities[instance.instance_type] = (
+                CloudResourceAvailability(
+                    node_type=instance.node_type,
+                    last_unavailability_timestamp=last_unavailability_timestamp
                 )
+            )
+            logger.debug(f"Cloud Resource Type {instance.instance_type} is "
+                        f"unavailable at timestamp={last_unavailability_timestamp}. "
+                        f"We will lower its priority in feature schedules."
+            )
 
     def allocation_succeeded(self, succeeded_event: InstanceUpdateEvent):
         if succeeded_event.instance_type in self._resource_availabilities:
-            self._resource_availabilities[succeeded_event.instance_type].set_last_unavailability_timestamp(0)
+            self._resource_availabilities[
+                succeeded_event.instance_type
+            ].set_last_unavailability_timestamp(0)
+        logger.debug(f"Cloud Resource Type {succeeded_event.instance_type} is "
+                     f"available. We will prioritize scheduling this type "
+                     f"in feature schedules."
+        )
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
         for event in events:
@@ -90,7 +96,7 @@ class CloudResourceMonitor(InstanceUpdatedSubscriber):
                 self.allocation_succeeded(event)
 
     def get_resource_availabilities(self) -> Dict[NodeType, float]:
-        """Calculate the resource availability of node types.
+        """Calculate the availability scores of node types.
         Higher values indicate a higher likelihood of resource allocation.
         """
         resource_availabilities: Dict[NodeType, float] = {}

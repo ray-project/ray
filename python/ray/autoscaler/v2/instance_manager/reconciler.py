@@ -21,8 +21,9 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     LaunchNodeError,
     TerminateNodeError,
 )
-from ray.autoscaler.v2.instance_manager.subscribers.cloud_resource_monitor import \
+from ray.autoscaler.v2.instance_manager.subscribers.cloud_resource_monitor import (
     CloudResourceMonitor
+)
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
 from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer import (
     RayInstallError,
@@ -91,6 +92,8 @@ class Reconciler:
 
         Args:
             instance_manager: The instance manager to reconcile.
+            cloud_resource_monitor: The cloud resource monitor for monitoring resource
+                availability of all node types.
             ray_cluster_resource_state: The ray cluster's resource state.
             non_terminated_cloud_instances: The non-terminated cloud instances from
                 the cloud provider.
@@ -263,6 +266,8 @@ class Reconciler:
         Args:
             instance_manager: The instance manager to reconcile.
             scheduler: The resource scheduler to make scaling decisions.
+            cloud_resource_monitor: The cloud resource monitor for monitoring resource
+                availability of all node types.
             ray_cluster_resource_state: The ray cluster's resource state.
             non_terminated_cloud_instances: The non-terminated cloud instances from
                 the cloud provider.
@@ -1083,6 +1088,8 @@ class Reconciler:
         Args:
             autoscaling_state: The autoscaling state to reconcile.
             instance_manager: The instance manager to reconcile.
+            cloud_resource_monitor: The cloud resource monitor for monitoring resource
+                availability of all node types.
             ray_state: The ray cluster's resource state.
             scheduler: The resource scheduler to make scaling decisions.
             autoscaling_config: The autoscaling config.

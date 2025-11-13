@@ -32,8 +32,9 @@ from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.autoscaler.v2.instance_manager.subscribers.cloud_instance_updater import (
     CloudInstanceUpdater,
 )
-from ray.autoscaler.v2.instance_manager.subscribers.cloud_resource_monitor import \
-    CloudResourceMonitor
+from ray.autoscaler.v2.instance_manager.subscribers.cloud_resource_monitor import (
+    CloudResourceMonitor,
+)
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopper
 from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer import (
     ThreadedRayInstaller,
@@ -163,10 +164,10 @@ class Autoscaler:
                     max_concurrent_installs=config.get_max_num_worker_nodes() or 50,
                 )
             )
-        self.cloud_resource_monitor = CloudResourceMonitor(instance_storage=instance_storage)
-        subscribers.append(
-            self.cloud_resource_monitor
+        self.cloud_resource_monitor = CloudResourceMonitor(
+            instance_storage=instance_storage
         )
+        subscribers.append(self.cloud_resource_monitor)
 
         self._instance_manager = InstanceManager(
             instance_storage=instance_storage,
