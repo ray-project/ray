@@ -15,7 +15,6 @@ jupyter nbconvert "$nb_filename" --to markdown --output "README.md"
 
 This example shows you how to run batch inference for large language models (LLMs) using [Ray Data LLM APIs](https://docs.ray.io/en/latest/data/api/llm.html). In this use case, the batch inference job reformats dates across a large customer dataset.
 
-**Note:** This tutorial runs within an Anyscale Workspace. Review the [Introduction to Workspaces](https://docs.anyscale.com/examples/intro-workspaces) template before this tutorial.
 
 ## When to use LLM batch inference
 
@@ -32,7 +31,7 @@ On contrary, if you are more interested in optimizing for latency, consider [dep
 
 Ray Data LLM runs batch inference for LLMs on Ray Data datasets. In this tutorial, you perform batch inference with an LLM to reformat dates and the source is a 2-million-row CSV file containing sample customer data.
 
-First, load the data from a remote URL. Then, to ensure the workload can be distributed across multiple GPUs, repartition the dataset. This step is crucial for achieving parallelism.
+First, load the data from a remote URL then repartition the dataset to ensure the workload can be distributed across multiple GPUs.
 
 
 ```python
@@ -94,24 +93,23 @@ from ray.data.llm import vLLMEngineProcessorConfig
 processor_config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     engine_kwargs=dict(
-        max_model_len=4096,
-        enable_chunked_prefill=True,
-        max_num_batched_tokens=1024,
-        gpu_memory_utilization=0.85,
+        max_model_len= 256, # estimate system prompt + user prompt + output tokens (+ reasoning tokens if any)
+        max_num_batched_tokens=65536, # so we can batch many rows together
+        max_num_seqs=1024, # so we can batch many rows together
     ),
     batch_size=256,
     accelerator_type="L4",
-    concurrency=4,
+    compute=4,
 )
 ```
 
-For more details on the configuration options you can pass to the vLLM engine, see the [vLLM documentation](https://docs.vllm.ai/en/latest/serving/engine_args.html).
+For more details on the configuration options you can pass to the vLLM engine, see the [vLLM Engine Arguments documentation](https://docs.vllm.ai/en/stable/configuration/engine_args.html).
 
 ### Define the preprocess and postprocess functions
 
 The task is to format the `Subscription Date` field as `MM-DD-YYYY` using an LLM.
 
-Define a preprocess function to prepare `messages` and `sampling_params` for the vLLM engine, and a postprocess function to extract and format the `generated_text`.
+Define a preprocess function to prepare `messages` and `sampling_params` for the vLLM engine, and a postprocess function to extract the `generated_text`.
 
 
 ```python
@@ -135,7 +133,7 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
         ],
         sampling_params=dict(
             temperature=0.3,
-            max_tokens=150,
+            max_tokens=32, # low max tokens because we are simply formatting a date
             detokenize=False,
         ),
     )
@@ -151,7 +149,7 @@ def postprocess(row: dict[str, Any]) -> dict[str, Any]:
 
 ### Build the processor
 
-With the configuration and functions defined, build the processor and run inference on the small dataset.
+With the configuration and functions defined, build the processor.
 
 
 ```python
@@ -168,7 +166,7 @@ processor = build_llm_processor(
 
 ## Process the dataset
 
-Run the processor on your dataset to perform batch inference. Ray Data automatically distributes the workload across available GPUs and handles batching, retries, and resource management.
+Run the processor on your small dataset to perform batch inference. Ray Data automatically distributes the workload across available GPUs and handles batching, retries, and resource management.
 
 
 ```python
@@ -195,8 +193,8 @@ Save your batch inference code as `batch_inference.py`, then create a job config
 
 ```yaml
 # job.yaml
-name: llm-batch-inference
-entrypoint: python batch_inference.py
+name: llm-batch-inference-text
+entrypoint: python batch_inference_text.py
 image_uri: anyscale/ray:2.49.0-py312-cu128
 compute_config:
   head_node:
@@ -222,10 +220,10 @@ Track your job's progress in the Anyscale Console or through the CLI:
 
 ```bash
 # Check job status
-anyscale job status --name llm-batch-inference
+anyscale job status --name llm-batch-inference-text
 
 # View logs
-anyscale job logs --name llm-batch-inference
+anyscale job logs --name llm-batch-inference-text
 ```
 
 The Ray Dashboard remains available for detailed monitoring. To access it, go over your Anyscale Job in your console.  
@@ -246,7 +244,9 @@ The dashboard shows:
 
 ## Scale up to larger datasets
 
-Your Ray Data processing pipeline can easily scale up to process more data. By default, this section processes the full 2-million-row dataset. You can control the dataset size through the `DATASET_LIMIT` environment variable.
+Your Ray Data processing pipeline can easily scale up to process more data. By default, this section processes the full 2-million-row dataset.  
+
+You can control the dataset size through the `LARGE_DATASET_LIMIT` environment variable.
 
 
 ```python
@@ -289,6 +289,12 @@ Use more partitions (blocks) than the number of workers to enable better load ba
 **Enable checkpointing**  
 For very large datasets, configure checkpointing to recover from failures.
 
+```python
+processed = processor(ds_large).materialize(
+    checkpoint_path="s3://my-bucket/checkpoints/"
+)
+```
+
 **Monitor GPU utilization**  
 Use the Ray Dashboard to identify bottlenecks and adjust parameters.
 
@@ -309,7 +315,8 @@ output_path = "local:///tmp/processed_customers"
 print(f"Saving small processed dataset to {output_path_small}...")
 processed_small.write_parquet(output_path_small)
 print("Saved successfully.")
-print(f"Saving processed dataset to {output_path}...")
+
+print(f"Saving large processed dataset to {output_path}...")
 processed_large.write_parquet(output_path)
 print("Saved successfully.")
 
