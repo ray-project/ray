@@ -14,4 +14,3 @@ typer
 meson
 pybind11
 hf_transfer
-flashinfer-python
