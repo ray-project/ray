@@ -93,3 +93,15 @@ class AuthenticationTokenLoader:
             return {}
 
         return {AUTHORIZATION_HEADER_NAME: token_opt.value().ToAuthorizationHeaderValue().decode('utf-8')}
+
+    def get_raw_token(self) -> str:
+        if not self.has_token():
+            return ""
+
+        # Get the token from C++ layer
+        cdef optional[CAuthenticationToken] token_opt = CAuthenticationTokenLoader.instance().GetToken()
+
+        if not token_opt.has_value() or token_opt.value().empty():
+            return ""
+
+        return token_opt.value().GetRawValue().decode('utf-8')
