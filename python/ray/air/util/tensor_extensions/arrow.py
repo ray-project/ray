@@ -95,9 +95,9 @@ class ArrowExtensionSerializeDeserializeCache(abc.ABC):
     so we cache the results here to improve performance.
 
     The deserialization cache is a class field (shared across all instances),
-    so it won't be invalidated during the lifetime of the process. Based on
-    our tests, each cache entry is approximately ~100 bytes, so this should
-    be fine.
+    so it won't be invalidated during the lifetime of the process. Each entry is around ~100 bytes,
+    and we periodically clean expired entries once their TTL passes, so the overall memory overhead
+    is very low.
 
     Attributes:
         _deserialize_cache: Class-level thread-safe cache for deserialization
