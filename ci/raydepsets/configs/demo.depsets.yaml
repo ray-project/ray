@@ -18,7 +18,7 @@ depsets:
     operation: compile
     requirements:
       - demo.in
-    output: demo.lock
+    output: demo_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
