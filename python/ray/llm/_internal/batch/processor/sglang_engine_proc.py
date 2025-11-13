@@ -136,9 +136,7 @@ def build_sglang_engine_processor(
         stages.append(
             ChatTemplateStage(
                 fn_constructor_kwargs=dict(
-                    model=_get_value_or_fallback(
-                        chat_template_stage_cfg.model_source, config.model_source
-                    ),
+                    model=chat_template_stage_cfg.model_source,
                     chat_template=_get_value_or_fallback(
                         chat_template_stage_cfg.chat_template, config.chat_template
                     ),
@@ -150,9 +148,7 @@ def build_sglang_engine_processor(
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
                     concurrency=stage_concurrency,
-                    batch_size=_get_value_or_fallback(
-                        chat_template_stage_cfg.batch_size, config.batch_size
-                    ),
+                    batch_size=chat_template_stage_cfg.batch_size,
                     **_extract_resource_kwargs(
                         chat_template_stage_cfg.runtime_env,
                         chat_template_stage_cfg.num_cpus,
@@ -178,16 +174,12 @@ def build_sglang_engine_processor(
         stages.append(
             TokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=_get_value_or_fallback(
-                        tokenize_stage_cfg.model_source, config.model_source
-                    ),
+                    model=tokenize_stage_cfg.model_source,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
                     concurrency=stage_concurrency,
-                    batch_size=_get_value_or_fallback(
-                        tokenize_stage_cfg.batch_size, config.batch_size
-                    ),
+                    batch_size=tokenize_stage_cfg.batch_size,
                     **_extract_resource_kwargs(
                         tokenize_stage_cfg.runtime_env,
                         tokenize_stage_cfg.num_cpus,
@@ -236,39 +228,26 @@ def build_sglang_engine_processor(
         processor_defaults,
     )
     if detokenize_stage_cfg.enabled:
-        # Use stage-specific concurrency if set, otherwise processor default
-        stage_concurrency = (
-            detokenize_stage_cfg.concurrency
-            if detokenize_stage_cfg.concurrency is not None
-            else config.get_concurrency()
-        )
-        # Normalize concurrency to tuple if needed
-        # CPU stages use autoscaling (1, n) for int concurrency
+        # resolve_stage_config merges processor defaults, so concurrency is always set.
+        # Normalize to tuple for CPU stages (autoscaling from 1 to n for int values).
+        stage_concurrency = detokenize_stage_cfg.concurrency
         if isinstance(stage_concurrency, int):
             stage_concurrency = (1, stage_concurrency)
 
         stages.append(
             DetokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=detokenize_stage_cfg.model
-                    if detokenize_stage_cfg.model is not None
-                    else config.model_source,
+                    model=detokenize_stage_cfg.model_source,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
                     concurrency=stage_concurrency,
-                    batch_size=detokenize_stage_cfg.batch_size
-                    if detokenize_stage_cfg.batch_size is not None
-                    else config.batch_size,
-                    **{
-                        k: v
-                        for k, v in {
-                            "runtime_env": detokenize_stage_cfg.runtime_env,
-                            "num_cpus": detokenize_stage_cfg.num_cpus,
-                            "memory": detokenize_stage_cfg.memory,
-                        }.items()
-                        if v is not None
-                    },
+                    batch_size=detokenize_stage_cfg.batch_size,
+                    **_extract_resource_kwargs(
+                        detokenize_stage_cfg.runtime_env,
+                        detokenize_stage_cfg.num_cpus,
+                        detokenize_stage_cfg.memory,
+                    ),
                 ),
             )
         )
