@@ -217,8 +217,8 @@ class HttpServerDashboardHead:
 
             if not auth_header:
                 return aiohttp.web.Response(
-                    status=403,
-                    text="Forbidden: Missing authentication token",
+                    status=401,
+                    text="Unauthorized: Missing authentication token",
                 )
 
             # Validate the token
@@ -230,8 +230,12 @@ class HttpServerDashboardHead:
 
             # Token is valid - extract the token value (remove "Bearer " prefix if present)
             token = auth_header
-            if auth_header.lower().startswith("bearer "):
-                token = auth_header[7:]  # Remove "Bearer " prefix
+            if auth_header.lower().startswith(
+                authentication_constants.AUTHORIZATION_BEARER_PREFIX.lower()
+            ):
+                token = auth_header[
+                    len(authentication_constants.AUTHORIZATION_BEARER_PREFIX) :
+                ]  # Remove "Bearer " prefix
 
             # Create successful response
             response = aiohttp.web.json_response(

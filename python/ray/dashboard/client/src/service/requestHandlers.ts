@@ -43,10 +43,12 @@ axiosInstance.interceptors.response.use(
     // so the App component can show the authentication dialog
     if (error.response?.status === 401 || error.response?.status === 403) {
       // Dispatch custom event for authentication error
-      // We assume hadToken is true since 401/403 typically means invalid/missing token
+      // 401 means no token was provided, 403 means the token was invalid.
+      // This distinction is used to show a more specific message in the dialog.
+      const hadToken = error.response.status === 403;
       window.dispatchEvent(
         new CustomEvent(AUTHENTICATION_ERROR_EVENT, {
-          detail: { hadToken: true },
+          detail: { hadToken },
         }),
       );
     }
