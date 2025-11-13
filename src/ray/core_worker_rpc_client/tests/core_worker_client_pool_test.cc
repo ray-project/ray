@@ -107,14 +107,14 @@ class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
 
   MOCK_METHOD(void,
               AsyncGetAll,
-              (const gcs::MultiItemCallback<rpc::GcsNodeInfo> &,
+              (const rpc::MultiItemCallback<rpc::GcsNodeInfo> &,
                int64_t,
                const std::vector<NodeID> &),
               (override));
 
   MOCK_METHOD(void,
               AsyncGetAllNodeAddressAndLiveness,
-              (const gcs::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &,
+              (const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &,
                int64_t,
                const std::vector<NodeID> &),
               (override));
@@ -182,7 +182,7 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
       [](std::vector<rpc::GcsNodeAddressAndLiveness> node_info_vector) {
         return Invoke(
             [node_info_vector](
-                const gcs::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+                const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
                 int64_t,
                 const std::vector<NodeID> &) {
               callback(Status::OK(), node_info_vector);
@@ -283,7 +283,7 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
                 AsyncGetAllNodeAddressAndLiveness(_, _, _))
         .Times(2)
         .WillRepeatedly(Invoke(
-            [&](const gcs::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+            [&](const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
                 int64_t,
                 const std::vector<NodeID> &) {
               callback(Status::OK(), {node_info_alive});

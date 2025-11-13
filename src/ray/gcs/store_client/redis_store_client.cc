@@ -159,9 +159,10 @@ void RedisStoreClient::AsyncPut(const std::string &table_name,
   SendRedisCmdWithKeys({key}, std::move(command), std::move(write_callback));
 }
 
-void RedisStoreClient::AsyncGet(const std::string &table_name,
-                                const std::string &key,
-                                ToPostable<OptionalItemCallback<std::string>> callback) {
+void RedisStoreClient::AsyncGet(
+    const std::string &table_name,
+    const std::string &key,
+    ToPostable<rpc::OptionalItemCallback<std::string>> callback) {
   auto redis_callback = [callback = std::move(callback)](
                             const std::shared_ptr<CallbackReply> &reply) mutable {
     std::optional<std::string> result;
