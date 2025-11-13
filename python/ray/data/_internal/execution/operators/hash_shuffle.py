@@ -1589,7 +1589,6 @@ class HashShuffleAggregator:
             output_buffer = BlockOutputBuffer(
                 output_block_size_option=OutputBlockSizeOption(
                     target_max_block_size=target_max_block_size
-                    or DEFAULT_TARGET_MAX_BLOCK_SIZE
                 )
             )
 
