@@ -464,6 +464,10 @@ def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
                 raise Exception("Timed out while testing.")
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_deny_fetch_requests(enable_test_module, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
