@@ -15,7 +15,7 @@ If you're unsure where to start:
 ## Get early feedback
 
 If you’re adding a new public API or making a substantial refactor, 
-**share your plan early**. Discussing changes before y  ou invest a lot of work can save 
+**share your plan early**. Discussing changes before you invest a lot of work can save 
 time and align your work with the project’s direction.
 
 You can open a draft PR, discuss on an Issue, or post in Slack for early feedback. It 
