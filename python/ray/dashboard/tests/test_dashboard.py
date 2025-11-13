@@ -419,10 +419,16 @@ def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
 
+    def dashboard_available():
+        try:
+            return requests.get(webui_url).status_code == 200
+        except Exception:
+            return False
+
     timeout_seconds = 30
     start_time = time.time()
     while True:
-        time.sleep(3)
+        wait_for_condition(dashboard_available)
         try:
             # Starting and getting jobs should be fine from API clients
             response = requests.post(
@@ -462,10 +468,16 @@ def test_deny_fetch_requests(enable_test_module, ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
 
+    def dashboard_available():
+        try:
+            return requests.get(webui_url).status_code == 200
+        except Exception:
+            return False
+
     timeout_seconds = 30
     start_time = time.time()
     while True:
-        time.sleep(3)
+        wait_for_condition(dashboard_available)
         try:
             # Starting and getting jobs should be fine from API clients
             response = requests.post(
