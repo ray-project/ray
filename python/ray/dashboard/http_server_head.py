@@ -173,6 +173,8 @@ class HttpServerDashboardHead:
             mode = get_authentication_mode()
             if mode == AuthenticationMode.TOKEN:
                 mode_str = "token"
+            elif mode == AuthenticationMode.K8S:
+                mode_str = "k8s"
             else:
                 mode_str = "disabled"
 
