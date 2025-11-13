@@ -11,10 +11,10 @@ subdirectories and try to restore the original Algo's state and continue trainin
 """
 
 import argparse
-from pathlib import Path
 import importlib
 import random
 import shutil
+from pathlib import Path
 
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec

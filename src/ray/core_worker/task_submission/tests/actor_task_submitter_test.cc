@@ -232,11 +232,11 @@ TEST_P(ActorTaskSubmitterTest, TestDependencies) {
   auto data = GenerateRandomObject();
 
   // Each Put schedules a callback onto io_context, and let's run it.
-  store_->Put(*data, obj1);
+  store_->Put(*data, obj1, reference_counter_->HasReference(obj1));
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
-  store_->Put(*data, obj2);
+  store_->Put(*data, obj2, reference_counter_->HasReference(obj2));
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
@@ -280,12 +280,12 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
     // submission.
     auto data = GenerateRandomObject();
     // task2 is submitted first as we allow out of order execution.
-    store_->Put(*data, obj2);
+    store_->Put(*data, obj2, reference_counter_->HasReference(obj2));
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 1);
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(1));
     // then task1 is submitted
-    store_->Put(*data, obj1);
+    store_->Put(*data, obj1, reference_counter_->HasReference(obj1));
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 2);
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(1, 0));
@@ -293,10 +293,10 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
     // Put the dependencies in the store in the opposite order of task
     // submission.
     auto data = GenerateRandomObject();
-    store_->Put(*data, obj2);
+    store_->Put(*data, obj2, reference_counter_->HasReference(obj2));
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 0);
-    store_->Put(*data, obj1);
+    store_->Put(*data, obj1, reference_counter_->HasReference(obj1));
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 2);
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));

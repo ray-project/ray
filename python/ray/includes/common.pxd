@@ -239,6 +239,17 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CLineageReconstructionTask()
         const c_string &SerializeAsString() const
 
+cdef extern from "ray/common/scheduling/label_selector.h" namespace "ray":
+    cdef cppclass CLabelSelector "ray::LabelSelector":
+        CLabelSelector() nogil except +
+        void AddConstraint(const c_string& key, const c_string& value) nogil except +
+
+cdef extern from "ray/common/scheduling/fallback_strategy.h" namespace "ray":
+    cdef cppclass CFallbackOption "ray::FallbackOption":
+        CLabelSelector label_selector
+
+        CFallbackOption() nogil except +
+        CFallbackOption(CLabelSelector) nogil except +
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
@@ -346,8 +357,9 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      c_string serialized_runtime_env,
                      c_bool enable_task_events,
                      const unordered_map[c_string, c_string] &labels,
-                     const unordered_map[c_string, c_string] &label_selector,
-                     CTensorTransport tensor_transport)
+                     CLabelSelector label_selector,
+                     CTensorTransport tensor_transport,
+                     c_vector[CFallbackOption] fallback_strategy)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -368,7 +380,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool enable_tensor_transport,
             c_bool enable_task_events,
             const unordered_map[c_string, c_string] &labels,
-            const unordered_map[c_string, c_string] &label_selector)
+            CLabelSelector label_selector,
+            c_vector[CFallbackOption] fallback_strategy)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
@@ -391,7 +404,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const CNodeID &GetSpilledNodeID() const
         const c_bool GetDidSpill() const
 
-cdef extern from "ray/gcs_rpc_client/python_callbacks.h" namespace "ray::gcs":
+cdef extern from "ray/common/python_callbacks.h" namespace "ray":
     cdef cppclass MultiItemPyCallback[T]:
         MultiItemPyCallback(
             object (*)(CRayStatus, c_vector[T]) nogil,
@@ -764,6 +777,12 @@ cdef extern from "src/ray/protobuf/autoscaler.pb.h" nogil:
         void ParseFromString(const c_string &serialized)
         const c_string &SerializeAsString() const
 
+cdef extern from "ray/raylet_rpc_client/raylet_client_with_io_context.h" nogil:
+    cdef cppclass CRayletClientWithIoContext "ray::rpc::RayletClientWithIoContext":
+        CRayletClientWithIoContext(const c_string &ip_address, int port)
+        CRayStatus GetWorkerPIDs(const OptionalItemPyCallback[c_vector[int32_t]] &callback,
+                                 int64_t timeout_ms)
+
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":
         CConcurrencyGroup(
@@ -797,3 +816,4 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kLabelKeyTpuSliceName
     cdef const char[] kLabelKeyTpuWorkerId
     cdef const char[] kLabelKeyTpuPodType
+    cdef const char[] kRayInternalNamespacePrefix

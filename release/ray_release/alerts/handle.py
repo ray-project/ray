@@ -1,15 +1,13 @@
-from ray_release.test import Test
-from ray_release.exception import ReleaseTestConfigError, ResultsAlert
-from ray_release.logger import logger
-from ray_release.result import Result
-
 from ray_release.alerts import (
     default,
     long_running_tests,
     tune_tests,
     xgboost_tests,
 )
-
+from ray_release.exception import ReleaseTestConfigError, ResultsAlert
+from ray_release.logger import logger
+from ray_release.result import Result
+from ray_release.test import Test
 
 # The second bit in the tuple indicates whether a result is required to pass the alert.
 # If true, the release test will throw a FetchResultError when result cannot be fetched

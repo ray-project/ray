@@ -177,7 +177,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
       scheduling_key_entry.num_busy_workers++;
 
       task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(current_sys_time_ms());
-      task_spec.EmitTaskMetrics();
+      task_spec.EmitTaskMetrics(scheduler_placement_time_ms_histogram_);
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
       PushNormalTask(
@@ -777,11 +777,17 @@ void NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
                                            bool force_kill,
                                            bool recursive) {
   auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
-  auto request = rpc::RemoteCancelTaskRequest();
+  auto request = rpc::CancelRemoteTaskRequest();
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);
   request.set_remote_object_id(object_id.Binary());
-  client->RemoteCancelTask(request, nullptr);
+  client->CancelRemoteTask(
+      std::move(request),
+      [](const Status &status, const rpc::CancelRemoteTaskReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to cancel remote task: " << status.ToString();
+        }
+      });
 }
 
 bool NormalTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {
