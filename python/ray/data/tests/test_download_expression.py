@@ -323,12 +323,12 @@ class TestDownloadExpressionErrors:
         # Second URI should fail gracefully (return None)
         assert results[1]["bytes"] is None
 
-    def test_download_expression_all_size_estimations_fail(self, tmp_path):
-        """Test download expression when all URI size estimations fail.
+    def test_download_expression_with_no_valid_uri(self, tmp_path):
+        """Test download expression when every URI is invalid.
 
         This tests the failed download does not cause division by zero error.
         """
-        # Create URIs that will fail size estimation (non-existent files).
+        # Create URI that will fail size estimation (non-existent files).
         ds = ray.data.from_items([{"uri": str(tmp_path / "nonexistent.txt")}])
         ds_with_downloads = ds.with_column("bytes", download("uri"))
 
@@ -337,7 +337,7 @@ class TestDownloadExpressionErrors:
         # and fall back to using the number of rows in the block as partition size
         results = ds_with_downloads.take_all()
 
-        # All downloads should fail gracefully (return None).
+        # The download should fail gracefully (return None).
         assert len(results) == 1
         assert results[0]["bytes"] is None
 
