@@ -1,46 +1,47 @@
 import os
-import pytest
 import shutil
 import sys
 import tempfile
 import time
-from typing import Type, Callable, Optional
 import unittest
+from typing import Callable, Optional, Type
 from unittest.mock import patch
+
+import pytest
 
 from ray_release.alerts.handle import result_to_handle_map
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.command_runner.command_runner import CommandRunner
-from ray_release.test import Test
 from ray_release.exception import (
-    ReleaseTestConfigError,
     ClusterCreationError,
+    ClusterNodesWaitTimeout,
     ClusterStartupError,
     ClusterStartupTimeout,
-    ExitCode,
-    RemoteEnvSetupError,
     CommandError,
-    PrepareCommandError,
     CommandTimeout,
-    PrepareCommandTimeout,
-    TestCommandError,
-    TestCommandTimeout,
+    ExitCode,
     FetchResultError,
     LogsError,
+    PrepareCommandError,
+    PrepareCommandTimeout,
+    ReleaseTestConfigError,
+    RemoteEnvSetupError,
     ResultsAlert,
-    ClusterNodesWaitTimeout,
+    TestCommandError,
+    TestCommandTimeout,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.glue import (
+    command_runner_to_cluster_manager,
     run_release_test,
     type_str_to_command_runner,
-    command_runner_to_cluster_manager,
 )
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result
-from ray_release.tests.utils import MockSDK, APIDict
+from ray_release.test import Test
+from ray_release.tests.utils import APIDict, MockSDK
 
 
 def _fail_on_call(error_type: Type[Exception] = RuntimeError, message: str = "Fail"):

@@ -1,7 +1,9 @@
-import sys
 import copy
+import sys
+
 import pytest
 import yaml
+
 from ray_release.config import (
     _substitute_variable,
     load_schema_file,

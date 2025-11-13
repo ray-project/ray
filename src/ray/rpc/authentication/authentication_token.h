@@ -97,6 +97,16 @@ class AuthenticationToken {
     return kBearerPrefix + std::string(secret_.begin(), secret_.end());
   }
 
+  /// Get raw token value as string (without Bearer prefix)
+  /// WARNING: This exposes the raw token. Use sparingly.
+  /// @return Raw token string, or empty string if token is empty
+  std::string GetRawValue() const {
+    if (secret_.empty()) {
+      return "";
+    }
+    return std::string(secret_.begin(), secret_.end());
+  }
+
   /// Create AuthenticationToken from gRPC metadata value
   /// Strips "Bearer " prefix and creates token object
   /// @param metadata_value The raw value from server metadata (should include "Bearer "

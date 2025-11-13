@@ -41,8 +41,11 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
   /**
    * @param mount_file_path only used for testing.
    */
-  explicit SysFsCgroupDriver(std::string mount_file_path = MOUNTED)
-      : mount_file_path_(std::move(mount_file_path)) {}
+  explicit SysFsCgroupDriver(
+      std::string mount_file_path = MOUNTED,
+      std::string fallback_mount_file_path = kFallbackMountsFilePath)
+      : mount_file_path_(std::move(mount_file_path)),
+        fallback_mount_file_path_(fallback_mount_file_path) {}
 
   ~SysFsCgroupDriver() override = default;
   SysFsCgroupDriver(const SysFsCgroupDriver &other) = delete;
@@ -286,10 +289,12 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
 
   // Used for unit testing through the constructor.
   std::string mount_file_path_;
+  std::string fallback_mount_file_path_;
 
   static constexpr std::string_view kCgroupProcsFilename = "cgroup.procs";
   static constexpr std::string_view kCgroupSubtreeControlFilename =
       "cgroup.subtree_control";
   static constexpr std::string_view kCgroupControllersFilename = "cgroup.controllers";
+  static inline std::string kFallbackMountsFilePath = "/proc/mounts";
 };
 }  // namespace ray

@@ -135,9 +135,11 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
 
   /// \param worker_id The ID of the worker that called `ray.get`.
   /// \param required_objects The objects required by the worker.
-  /// \return the request id which will be used for cleanup.
-  GetRequestId StartGetRequest(const WorkerID &worker_id,
-                               std::vector<rpc::ObjectReference> &&required_objects);
+  /// \param get_request_id The ID of the get request. It is used by the worker to clean
+  /// up a GetRequest.
+  void StartGetRequest(const WorkerID &worker_id,
+                       std::vector<rpc::ObjectReference> &&required_objects,
+                       int64_t get_request_id);
 
   /// Cleans up either an inflight or finished get request. Cancels the underlying
   /// pull if necessary.
@@ -301,9 +303,6 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
   /// A map from the ID of a queued lease to metadata about whether the lease's
   /// dependencies are all local or not.
   absl::flat_hash_map<LeaseID, std::unique_ptr<LeaseDependencies>> queued_lease_requests_;
-
-  /// Used to generate monotonically increasing get request ids.
-  GetRequestId get_request_counter_;
 
   // Maps a GetRequest to the PullRequest Id and the set of ObjectIDs.
   // Used to cleanup a finished or cancel an inflight get request.

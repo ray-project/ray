@@ -24,7 +24,6 @@ steps:
       - bash ci/ray_ci/windows/install_tools.sh
       - bazel run //ci/ray_ci:build_in_docker_windows -- wheel --python-version {{matrix}} --operating-system windows --upload
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"

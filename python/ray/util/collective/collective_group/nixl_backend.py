@@ -1,3 +1,4 @@
+import threading
 import time
 from typing import TYPE_CHECKING, Any, List, Tuple
 
@@ -31,6 +32,8 @@ class NixlBackend:
 
             actor_id = f"RAY-DRIVER-{uuid.uuid4()}"
         self._nixl_agent = nixl_agent(actor_id, agent_config)
+        self._aborted_transfer_obj_ids = set()
+        self._aborted_transfer_obj_ids_lock = threading.Lock()
 
     @classmethod
     def backend(cls):
@@ -44,6 +47,7 @@ class NixlBackend:
     def recv(
         self,
         tensors: List["torch.Tensor"],
+        obj_id: str,
         nixl_serialized_descs: bytes,
         remote_nixl_agent_meta: bytes,
     ):
@@ -51,44 +55,67 @@ class NixlBackend:
 
         Args:
             tensors: List of tensors to receive into.
+            obj_id: The object ID for related GPU object.
             nixl_serialized_descs: Serialized NIXL descriptors for the remote tensors.
             remote_nixl_agent_meta: Metadata about the remote NIXL agent.
 
         Raises:
             RuntimeError: If the NIXL transfer enters an error state.
         """
-        nixl_agent = self._nixl_agent
-        remote_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
-        local_descs = nixl_agent.register_memory(tensors)
-        remote_name = nixl_agent.add_remote_agent(remote_nixl_agent_meta)
+        with self._aborted_transfer_obj_ids_lock:
+            if obj_id in self._aborted_transfer_obj_ids:
+                self._aborted_transfer_obj_ids.remove(obj_id)
+                raise RuntimeError(f"NIXL transfer aborted for object id: {obj_id}")
 
-        xfer_handle = nixl_agent.initialize_xfer(
-            # "UUID" here is just a placeholder, can be any bytes, but without it,
-            # nixl will fail to transfer multiple times.
-            "READ",
-            local_descs.trim(),
-            remote_descs,
-            remote_name,
-            "UUID",
-        )
+        local_descs = None
+        remote_name = None
+        xfer_handle = None
+        try:
+            nixl_agent = self._nixl_agent
+            remote_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
+            local_descs = nixl_agent.register_memory(tensors)
+            remote_name = nixl_agent.add_remote_agent(remote_nixl_agent_meta)
 
-        state = nixl_agent.transfer(xfer_handle)
-        if state == "ERR":
-            raise RuntimeError("NIXL transfer got to Error state.")
-        # Since current nixl does not provide a better way, we need to check the state of
-        # the transfer continuously.
-        while True:
-            state = nixl_agent.check_xfer_state(xfer_handle)
+            xfer_handle = nixl_agent.initialize_xfer(
+                # "UUID" here is just a placeholder, can be any bytes, but without it,
+                # nixl will fail to transfer multiple times.
+                "READ",
+                local_descs.trim(),
+                remote_descs,
+                remote_name,
+                "UUID",
+            )
+
+            state = nixl_agent.transfer(xfer_handle)
             if state == "ERR":
                 raise RuntimeError("NIXL transfer got to Error state.")
-            if state == "PROC":
-                time.sleep(0.001)  # Avoid busy waiting
-            elif state == "DONE":
-                break
-
-        nixl_agent.release_xfer_handle(xfer_handle)
-        nixl_agent.deregister_memory(local_descs)
-        nixl_agent.remove_remote_agent(remote_name)
+            # Since current nixl does not provide a better way, we need to check the state of
+            # the transfer continuously.
+            while True:
+                state = nixl_agent.check_xfer_state(xfer_handle)
+                if state == "ERR":
+                    raise RuntimeError("NIXL transfer got to Error state.")
+                if state == "PROC":
+                    with self._aborted_transfer_obj_ids_lock:
+                        if obj_id in self._aborted_transfer_obj_ids:
+                            self._aborted_transfer_obj_ids.remove(obj_id)
+                            raise RuntimeError(
+                                f"NIXL transfer aborted for object id: {obj_id}"
+                            )
+                    time.sleep(0.001)  # Avoid busy waiting
+                elif state == "DONE":
+                    break
+        finally:
+            # We could raise errors or NIXL could raise errors like NIXL_ERR_REMOTE_DISCONNECT,
+            # so doing best effort cleanup.
+            with self._aborted_transfer_obj_ids_lock:
+                self._aborted_transfer_obj_ids.discard(obj_id)
+            if xfer_handle:
+                nixl_agent.release_xfer_handle(xfer_handle)
+            if remote_name:
+                nixl_agent.remove_remote_agent(remote_name)
+            if local_descs:
+                nixl_agent.deregister_memory(local_descs)
 
     def get_nixl_metadata(
         self, tensors: List["torch.Tensor"]
@@ -114,3 +141,7 @@ class NixlBackend:
 
     def deregister_memory(self, descs: Any):
         self._nixl_agent.deregister_memory(descs)
+
+    def abort(self, obj_id: str):
+        with self._aborted_transfer_obj_ids_lock:
+            self._aborted_transfer_obj_ids.add(obj_id)

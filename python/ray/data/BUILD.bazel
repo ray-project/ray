@@ -1256,6 +1256,20 @@ py_test(
 )
 
 py_test(
+    name = "test_ranker",
+    size = "small",
+    srcs = ["tests/test_ranker.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_raydp",
     size = "medium",
     srcs = ["tests/test_raydp.py"],

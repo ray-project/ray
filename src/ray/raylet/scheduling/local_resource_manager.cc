@@ -122,7 +122,7 @@ void LocalResourceManager::FreeTaskResourceInstances(
     }
   }
 }
-void LocalResourceManager::SetBusyFootprint(WorkFootprint item) {
+void LocalResourceManager::MarkFootprintAsBusy(WorkFootprint item) {
   auto prev = last_idle_times_.find(item);
   if (prev != last_idle_times_.end() && !prev->second.has_value()) {
     return;
@@ -131,7 +131,7 @@ void LocalResourceManager::SetBusyFootprint(WorkFootprint item) {
   OnResourceOrStateChanged();
 }
 
-void LocalResourceManager::SetIdleFootprint(WorkFootprint item) {
+void LocalResourceManager::MarkFootprintAsIdle(WorkFootprint item) {
   auto prev = last_idle_times_.find(item);
   bool state_change = prev == last_idle_times_.end() || !prev->second.has_value();
 
@@ -349,6 +349,9 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
         switch (std::get<WorkFootprint>(iter.first)) {
         case WorkFootprint::NODE_WORKERS:
           resource_view_sync_message.add_node_activity("Busy workers on node.");
+          break;
+        case WorkFootprint::PULLING_TASK_ARGUMENTS:
+          resource_view_sync_message.add_node_activity("Pulling task arguments.");
           break;
         default:
           UNREACHABLE;

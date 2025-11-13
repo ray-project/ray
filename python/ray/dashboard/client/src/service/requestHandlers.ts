@@ -10,7 +10,6 @@
 
 import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
 import { AUTHENTICATION_ERROR_EVENT } from "../authentication/constants";
-import { getAuthenticationToken } from "../authentication/cookies";
 
 /**
  * This function formats URLs such that the user's browser
@@ -34,20 +33,6 @@ const axiosInstance = axios.create();
 // Export the configured axios instance for direct use when needed
 export { axiosInstance };
 
-// Request interceptor: Add authentication token if available
-axiosInstance.interceptors.request.use(
-  (config) => {
-    const token = getAuthenticationToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  },
-);
-
 // Response interceptor: Handle 401/403 errors
 axiosInstance.interceptors.response.use(
   (response) => {
@@ -57,10 +42,10 @@ axiosInstance.interceptors.response.use(
     // If we get 401 (Unauthorized) or 403 (Forbidden), dispatch an event
     // so the App component can show the authentication dialog
     if (error.response?.status === 401 || error.response?.status === 403) {
-      // Check if there was a token in the request
-      const hadToken = !!getAuthenticationToken();
-
       // Dispatch custom event for authentication error
+      // 401 means no token was provided, 403 means the token was invalid.
+      // This distinction is used to show a more specific message in the dialog.
+      const hadToken = error.response.status === 403;
       window.dispatchEvent(
         new CustomEvent(AUTHENTICATION_ERROR_EVENT, {
           detail: { hadToken },

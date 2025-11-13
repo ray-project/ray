@@ -8,7 +8,7 @@ To build the documentation, make sure you have `ray` installed first.
 For building the documentation locally install the following dependencies:
 
 ```bash
-pip install -r requirements-doc.txt
+pip install -r requirements-doc.lock.txt
 ```
 
 ## Building the documentation

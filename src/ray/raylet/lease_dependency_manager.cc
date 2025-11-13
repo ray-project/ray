@@ -115,8 +115,10 @@ void LeaseDependencyManager::CancelWaitRequest(const WorkerID &worker_id) {
   wait_requests_.erase(req_iter);
 }
 
-GetRequestId LeaseDependencyManager::StartGetRequest(
-    const WorkerID &worker_id, std::vector<rpc::ObjectReference> &&required_objects) {
+void LeaseDependencyManager::StartGetRequest(
+    const WorkerID &worker_id,
+    std::vector<rpc::ObjectReference> &&required_objects,
+    int64_t get_request_id) {
   std::vector<ObjectID> object_ids;
   object_ids.reserve(required_objects.size());
 
@@ -130,16 +132,12 @@ GetRequestId LeaseDependencyManager::StartGetRequest(
   uint64_t new_pull_request_id = object_manager_.Pull(
       std::move(required_objects), BundlePriority::GET_REQUEST, {"", false});
 
-  const GetRequestId get_request_id = get_request_counter_++;
-
   const std::pair<WorkerID, GetRequestId> worker_and_request_ids =
       std::make_pair(worker_id, get_request_id);
 
   get_requests_.emplace(std::move(worker_and_request_ids),
                         std::make_pair(std::move(object_ids), new_pull_request_id));
   worker_to_requests_[worker_id].emplace(get_request_id);
-
-  return get_request_id;
 }
 
 void LeaseDependencyManager::CancelGetRequest(const WorkerID &worker_id,

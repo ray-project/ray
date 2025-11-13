@@ -2,10 +2,10 @@ import gzip
 import json
 import os
 
-from ray_release.test import Test
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result
+from ray_release.test import Test
 
 # Write to this directory. run_release_tests.sh will copy the content
 # overt to DEFAULT_ARTIFACTS_DIR_HOST

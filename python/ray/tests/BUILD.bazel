@@ -84,28 +84,6 @@ py_test_module_list(
 
 py_test_module_list(
     size = "medium",
-    env = {
-        "RAY_enable_open_telemetry": "true",
-    },
-    files = [
-        "test_metric_cardinality.py",
-        "test_metrics_agent.py",
-        "test_task_metrics.py",
-    ],
-    name_suffix = "_otel",
-    tags = [
-        "exclusive",
-        "medium_size_python_tests_a_to_j",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test_module_list(
-    size = "medium",
     files = [
         "test_global_gc.py",
         "test_job.py",
@@ -226,6 +204,7 @@ py_test_module_list(
         "test_placement_group_5.py",
         "test_scheduling.py",
         "test_scheduling_2.py",
+        "test_token_auth_integration.py",
         "test_wait.py",
     ],
     name_suffix = "_client_mode",

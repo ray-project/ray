@@ -1,20 +1,21 @@
 import sys
+
 import pytest
 
 from ray_release.alerts import (
-    handle,
     default,
     # long_running_tests,
     # rllib_tests,
     # tune_tests,
     # xgboost_tests,
+    handle,
 )
-from ray_release.test import Test
 from ray_release.exception import ReleaseTestConfigError, ResultsAlert
 from ray_release.result import (
     Result,
     ResultStatus,
 )
+from ray_release.test import Test
 
 
 def test_handle_alert():

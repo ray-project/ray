@@ -17,6 +17,7 @@ cdef extern from "ray/rpc/authentication/authentication_token.h" namespace "ray:
         c_bool empty()
         c_bool Equals(const CAuthenticationToken& other)
         string ToAuthorizationHeaderValue()
+        string GetRawValue()
         @staticmethod
         CAuthenticationToken FromMetadata(string metadata_value)
 
