@@ -938,15 +938,30 @@ ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL = Panel(
     stack=False,
 )
 
-TIME_TO_FIRST_BATCH_PANEL = Panel(
+ITERATION_TIME_TO_FIRST_BATCH_PANEL = Panel(
     id=78,
-    title="Time to First Batch",
-    description="Time spent waiting for the first batch after starting iteration",
+    title="Iteration Time to First Batch",
+    description="Seconds spent waiting for the first batch after starting iteration",
     unit="seconds",
     targets=[
         Target(
             expr="sum(ray_data_iter_time_to_first_batch_seconds{{{global_filters}}}) by (dataset)",
-            legend="Time to First Batch: {{dataset}}",
+            legend="Seconds: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ITERATION_GET_REF_BUNDLES_PANEL = Panel(
+    id=79,
+    title="Iteration Get Ref Bundles Time",
+    description="Seconds spent getting RefBundles from the dataset iterator",
+    unit="seconds",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_get_ref_bundles_seconds{{{global_filters}}}) by (dataset)",
+            legend="Seconds: {{dataset}}",
         )
     ],
     fill=0,
@@ -1207,7 +1222,8 @@ DATA_GRAFANA_ROWS = [
             ITERATION_BLOCKS_LOCAL_PANEL,
             ITERATION_BLOCKS_REMOTE_PANEL,
             ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL,
-            TIME_TO_FIRST_BATCH_PANEL,
+            ITERATION_TIME_TO_FIRST_BATCH_PANEL,
+            ITERATION_GET_REF_BUNDLES_PANEL,
         ],
         collapsed=True,
     ),
