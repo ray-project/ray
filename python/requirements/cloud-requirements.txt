@@ -12,6 +12,7 @@ smart_open[s3,gcs,azure,http]
 adlfs[abfs]
 attrs>=25.1.0
 openlineage-python>=1.36.0
+mlflow>=2.19.0
 
 # Anyscale CLI requirements
 boto3==1.29.7
