@@ -221,7 +221,7 @@ class EmaStats(StatsBase):
         )
         return (
             f"EmaStats({self.peek()}; number_of_values_to_merge=({values_to_merge_len}); "
-            f"ema_coeff={self._ema_coeff}), value={self._value}"
+            f"ema_coeff={self._ema_coeff}, value={self._value})"
         )
 
     def get_state(self) -> Dict[str, Any]:
