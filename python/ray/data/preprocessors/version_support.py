@@ -79,7 +79,7 @@ def _lookup_class(serialization_id: str):
         The registered preprocessor class
 
     Raises:
-        UnknownPreprocessorError: If the serialization ID is not registered
+        ray.data.preprocessors.version_support.UnknownPreprocessorError: If the serialization ID is not registered
     """
     if serialization_id not in _PREPROCESSOR_REGISTRY:
         raise UnknownPreprocessorError(serialization_id)
