@@ -294,11 +294,40 @@ class TestDownloadExpressionErrors:
             # If it fails, should be a reasonable error (not a crash)
             assert isinstance(e, (ValueError, KeyError, RuntimeError))
 
-    def test_download_expression_with_invalid_uris(self, tmp_path):
-        """Test download expression with URIs that fail to download.
+    def test_download_expression_with_malformed_uris(self, tmp_path):
+        """Test download expression with malformed URIs.
 
-        This tests the exception handling in load_uri_bytes
-        where OSError is caught and None is returned for failed downloads.
+        This tests that various malformed URIs are caught and return None
+        instead of crashing.
+        """
+        malformed_uris = [
+            f"local://{tmp_path}/nonexistent.txt",  # File doesn't exist
+            "local:///this/path/does/not/exist/file.txt",  # Invalid path
+            "",  # Empty URI
+            "foobar",  # Random string
+            # TODO(xyuzh): Currently, using the below URIs raises an exception
+            # in _resolve_paths_and_filesystem. We need to fix that issue and
+            # add the tests in.
+            # "file:///\x00/null/byte",  # Null byte
+            # "http://host/path\n\r",  # Line breaks
+            # "foo://bar",  # Invalid scheme
+            # "://no-scheme",  # Missing scheme
+            # "http://host/path?query=<script>",  # Injection attempts
+        ]
+
+        ds = ray.data.from_items([{"uri": uri} for uri in malformed_uris])
+        ds_with_downloads = ds.with_column("bytes", download("uri"))
+        results = ds_with_downloads.take_all()
+
+        # All malformed URIs should return None
+        assert len(results) == len(malformed_uris)
+        for result in results:
+            assert result["bytes"] is None
+
+    def test_download_expression_mixed_valid_and_invalid_uris(self, tmp_path):
+        """Test download expression when every URI is invalid.
+
+        This tests the failed download does not cause division by zero error.
         """
         # Create one valid file
         valid_file = tmp_path / "valid.txt"
@@ -322,25 +351,6 @@ class TestDownloadExpressionErrors:
 
         # Second URI should fail gracefully (return None)
         assert results[1]["bytes"] is None
-
-    def test_download_expression_with_no_valid_uri(self, tmp_path):
-        """Test download expression when every URI is invalid.
-
-        This tests the failed download does not cause division by zero error.
-        """
-        # Create URI that will fail size estimation (non-existent files).
-        ds = ray.data.from_items([{"uri": str(tmp_path / "nonexistent.txt")}])
-        ds_with_downloads = ds.with_column("bytes", download("uri"))
-
-        # Should not crash with divide-by-zero error
-        # The PartitionActor should handle all failed size estimations gracefully
-        # and fall back to using the number of rows in the block as partition size
-        results = ds_with_downloads.take_all()
-
-        # The download should fail gracefully (return None).
-        assert len(results) == 1
-        assert results[0]["bytes"] is None
-
 
 class TestDownloadExpressionIntegration:
     """Integration tests combining download expressions with other Ray Data operations."""

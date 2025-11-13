@@ -30,7 +30,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci/doc:cmd_build
     depends_on: docbuild
-    job_env: docbuild-py3.12
+    job_env: docbuild-py3.10
     tags:
       - oss
       - doc
@@ -54,7 +54,7 @@ steps:
     key: doc_api_annotations
     instance_type: medium
     depends_on: docbuild
-    job_env: docbuild-py3.12
+    job_env: docbuild-py3.10
     commands:
       - bash ci/lint/lint.sh api_annotations
 
@@ -87,7 +87,7 @@ steps:
     commands:
       - make -C doc/ linkcheck_all
     depends_on: docbuild
-    job_env: docbuild-py3.12
+    job_env: docbuild-py3.10
     tags:
       - oss
       - skip-on-premerge
