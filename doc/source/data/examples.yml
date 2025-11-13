@@ -53,3 +53,12 @@ examples:
       - large language models
       - generative ai
     link: examples/llm-batch-inference-text/content/llm_batch_inference_text
+  - title: Vision-language model batch inference with Ray Data
+    skill_level: beginner
+    frameworks:
+      - vLLM
+    use_cases:
+      - large language models
+      - generative ai
+      - computer vision
+    link: examples/llm-batch-inference-vision/content/llm_batch_inference_vision
