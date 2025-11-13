@@ -30,13 +30,13 @@ steps:
     commands:
       - bazel run //ci/ray_ci/doc:cmd_build
     depends_on: docbuild
-    job_env: docbuild-py3.12
+    job_env: docbuild-py3.10
     tags:
       - oss
       - doc
       - skip-on-premerge
 
-  - label: ":book: doc: check python API: {{matrix}}"
+  - label: ":book: doc: check API annotations"
     tags:
       - oss
       - python
@@ -51,17 +51,38 @@ steps:
       - rllib
       - rllib_gpu
       - doc
-    key: lint-medium
+    key: doc_api_annotations
     instance_type: medium
     depends_on: docbuild
+    job_env: docbuild-py3.10
+    commands:
+      - bash ci/lint/lint.sh api_annotations
+
+  - label: ":book: doc: check API doc consistency"
+    tags:
+      - oss
+      - python
+      - dashboard
+      - ray_client
+      - data
+      - serve
+      - ml
+      - tune
+      - train
+      - llm
+      - rllib
+      - rllib_gpu
+      - doc
+    key: doc_api_policy_check
+    instance_type: medium
+    depends_on: docbuild
+    # TODO(aslonnie): migrate to Python 3.12
     job_env: docbuild-py3.9
     commands:
-      - ./ci/lint/lint.sh {{matrix}}
-    matrix:
-      - api_annotations
-      - api_policy_check
+      - bash ci/lint/lint.sh api_policy_check
 
   - label: ":book: doc: linkcheck"
+    key: doc_linkcheck
     instance_type: medium
     commands:
       - make -C doc/ linkcheck_all

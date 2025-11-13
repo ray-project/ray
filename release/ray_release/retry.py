@@ -1,7 +1,7 @@
 """Utils on retry."""
 
-from functools import wraps
 import time
+from functools import wraps
 from typing import Tuple
 
 # Default configuration for retry.

@@ -1,22 +1,21 @@
 import os
-import tempfile
 import sys
-import pytest
+import tempfile
 from unittest import mock
+
+import pytest
 import yaml
 
-from ray_release.custom_byod_build_init_helper import (
-    create_custom_build_yaml,
-    get_prerequisite_step,
-    _get_step_name,
-    generate_custom_build_step_key,
-)
-from ray_release.configs.global_config import init_global_config
 from ray_release.bazel import bazel_runfile
+from ray_release.configs.global_config import get_global_config, init_global_config
+from ray_release.custom_byod_build_init_helper import (
+    _get_step_name,
+    create_custom_build_yaml,
+    generate_custom_build_step_key,
+    get_prerequisite_step,
+)
 from ray_release.test import Test
-from ray_release.configs.global_config import get_global_config
 from ray_release.util import AZURE_REGISTRY_NAME
-
 
 init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 

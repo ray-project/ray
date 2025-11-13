@@ -9,7 +9,7 @@ from typing import Optional
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import client_test_enabled, wait_for_condition
 
 try:
     from ray._raylet import AuthenticationTokenLoader
@@ -19,7 +19,7 @@ except ImportError:
     _RAYLET_AVAILABLE = False
     AuthenticationTokenLoader = None
 
-from ray.tests.authentication_test_utils import (
+from ray._private.authentication_test_utils import (
     clear_auth_token_sources,
     reset_auth_token_state,
     set_auth_mode,
@@ -118,6 +118,10 @@ def clean_token_sources(cleanup_auth_token_env):
     reset_auth_token_state()
 
 
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="This test is for starting a new local cluster, not compatible with client mode",
+)
 def test_local_cluster_generates_token():
     """Test ray.init() generates token for local cluster when auth_mode=token is set."""
     # Ensure no token exists
@@ -217,12 +221,16 @@ def test_cluster_token_authentication(tokens_match, setup_cluster_with_token_aut
                 ray.shutdown()
 
 
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
 @pytest.mark.parametrize("is_head", [True, False])
 def test_ray_start_without_token_raises_error(is_head, request):
     """Test that ray start fails when auth_mode=token but no token exists."""
     # Set up environment with token auth enabled but no token
     env = os.environ.copy()
-    env["RAY_auth_mode"] = "token"
+    env["RAY_AUTH_MODE"] = "token"
     env.pop("RAY_AUTH_TOKEN", None)
     env.pop("RAY_AUTH_TOKEN_PATH", None)
 
@@ -247,13 +255,17 @@ def test_ray_start_without_token_raises_error(is_head, request):
     _run_ray_start_and_verify_status(args, env, expect_success=False)
 
 
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
 def test_ray_start_head_with_token_succeeds():
     """Test that ray start --head succeeds when token auth is enabled with a valid token."""
     # Set up environment with token auth and a valid token
     test_token = "a" * 32
     env = os.environ.copy()
     env["RAY_AUTH_TOKEN"] = test_token
-    env["RAY_auth_mode"] = "token"
+    env["RAY_AUTH_MODE"] = "token"
 
     try:
         # Start head node - should succeed
@@ -290,6 +302,10 @@ def test_ray_start_head_with_token_succeeds():
         _cleanup_ray_start(env)
 
 
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
 @pytest.mark.parametrize("token_match", ["correct", "incorrect"])
 def test_ray_start_address_with_token(token_match, setup_cluster_with_token_auth):
     """Test ray start --address=... with correct or incorrect token."""
@@ -303,7 +319,7 @@ def test_ray_start_address_with_token(token_match, setup_cluster_with_token_auth
 
     # Set up environment for worker
     env = os.environ.copy()
-    env["RAY_auth_mode"] = "token"
+    env["RAY_AUTH_MODE"] = "token"
 
     if token_match == "correct":
         env["RAY_AUTH_TOKEN"] = cluster_token

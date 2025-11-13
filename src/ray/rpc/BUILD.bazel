@@ -21,22 +21,25 @@ ray_cc_library(
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/common:status",
-        "//src/ray/rpc/authentication:authentication_token_loader",
         "@com_google_absl//absl/synchronization",
     ],
 )
 
 ray_cc_library(
     name = "grpc_client",
+    srcs = ["grpc_client.cc"],
     hdrs = ["grpc_client.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":client_call",
         ":common",
         ":rpc_chaos",
+        "//src/ray/common:constants",
         "//src/ray/common:grpc_util",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/rpc/authentication:authentication_mode",
+        "//src/ray/rpc/authentication:token_auth_client_interceptor",
         "//src/ray/util:network_util",
     ],
 )

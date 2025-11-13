@@ -261,6 +261,7 @@ class CoreWorkerPlasmaStoreProvider {
   // Pointer to the shared buffer tracker.
   std::shared_ptr<BufferTracker> buffer_tracker_;
   int64_t fetch_batch_size_ = 0;
+  std::atomic<int64_t> get_request_counter_;
 };
 
 }  // namespace core

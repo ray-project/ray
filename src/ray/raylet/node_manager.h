@@ -344,7 +344,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   void SetIdleIfLeaseEmpty() {
     if (leased_workers_.empty()) {
-      cluster_resource_scheduler_.GetLocalResourceManager().SetIdleFootprint(
+      cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsIdle(
           WorkFootprint::NODE_WORKERS);
     }
   }
@@ -429,9 +429,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param client The client that is requesting the objects.
   /// \param object_refs The objects that are requested.
   ///
-  /// \return the request_id that will be used to cancel the get request.
-  int64_t AsyncGet(const std::shared_ptr<ClientConnection> &client,
-                   std::vector<rpc::ObjectReference> &object_refs);
+  /// \param get_request_id The ID of the get request. It is used by the worker to clean
+  /// up a GetRequest.
+  void AsyncGet(const std::shared_ptr<ClientConnection> &client,
+                std::vector<rpc::ObjectReference> &object_refs,
+                int64_t get_request_id);
 
   /// Cancel all ongoing get requests from the client.
   ///
