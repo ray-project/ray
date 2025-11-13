@@ -1,8 +1,8 @@
 from typing import Any, Dict, List, Union
 
-from ray.util.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.stats.base import StatsBase
 from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
+from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
@@ -96,10 +96,9 @@ class ItemStats(StatsBase):
         Returns:
             The internal item.
         """
-        if latest_merged_only:
-            # ItemStats doesn't support latest_merged_only since it tracks a single item
-            # Just return the current item regardless
-            pass
+        # ItemStats doesn't support latest_merged_only since it tracks a single item
+        # Just return the current item regardless
+
         item = single_value_to_cpu(self._item)
         if compile:
             return item

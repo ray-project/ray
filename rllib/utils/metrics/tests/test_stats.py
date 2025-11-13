@@ -5,24 +5,24 @@ Howver, Stats are supposed to be used to aggregate data in a tree-like structure
 Therefore, we achieve a more comprehensive test coverage by testing tree-like aggregation of Stats in the MetricsLogger tests.
 """
 
-import pytest
 import time
+
 import numpy as np
+import pytest
 
-from ray.rllib.utils.metrics.stats import (
-    ItemStats,
-    MeanStats,
-    MaxStats,
-    MinStats,
-    SumStats,
-    LifetimeSumStats,
-    EmaStats,
-    PercentilesStats,
-    ItemSeriesStats,
-    SeriesStats,
-)
 from ray.rllib.utils.framework import try_import_torch
-
+from ray.rllib.utils.metrics.stats import (
+    EmaStats,
+    ItemSeriesStats,
+    ItemStats,
+    LifetimeSumStats,
+    MaxStats,
+    MeanStats,
+    MinStats,
+    PercentilesStats,
+    SeriesStats,
+    SumStats,
+)
 from ray.rllib.utils.test_utils import check
 
 torch, _ = try_import_torch()
@@ -74,7 +74,7 @@ def test_peek_and_reduce(
             check(stats.peek(), expected_cleared)
 
         # Test with PyTorch tensors of different dtypes (for numeric stats only)
-        if torch is not None and stats_class is not ItemStats:
+        if torch is not None:
             device = get_device(use_gpu)
             dtypes_to_test = [
                 torch.float32,
@@ -116,13 +116,19 @@ def test_peek_and_reduce(
                     assert tensor_stats._lifetime_sum.device.type == device.type
 
                 result = tensor_stats.reduce(compile=True)
-                assert isinstance(result, (int, float))
+                if stats_class is ItemSeriesStats:
+                    assert isinstance(result, list)
+                    assert isinstance(result[0], (int, float))
+                else:
+                    assert isinstance(result, (int, float))
                 check(result, expected_reduced, decimals=decimals)
 
                 tensor_stats_with_nan = stats_class(**init_kwargs)
 
-                if stats_class is not LifetimeSumStats:
+                if stats_class not in (ItemSeriesStats, ItemStats):
                     # Test with some NaN values mixed in
+                    # This part of the test is not applicable to ItemSeriesStats and ItemStats because
+                    # they reduced values are explicitly expected to change when adding NaNs
                     for val in setup_values:
                         tensor_val = torch.tensor(val, dtype=dtype, device=device)
                         tensor_stats_with_nan.push(tensor_val)

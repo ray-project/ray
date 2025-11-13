@@ -1,10 +1,12 @@
-from typing import Any, List, Union, Dict, Optional
-from itertools import chain
 from collections import deque
+from itertools import chain
+from typing import Any, Dict, List, Optional, Union
 
-from ray.util.annotations import DeveloperAPI
+import numpy as np
+
 from ray.rllib.utils.metrics.stats.base import StatsBase
 from ray.rllib.utils.metrics.stats.utils import batch_values_to_cpu
+from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
@@ -26,7 +28,8 @@ class ItemSeriesStats(StatsBase):
     def __init__(self, window: Optional[int] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._window = window
-        self.items: List[Any] = []
+        self.items: Union[List[Any], deque[Any]] = []
+        self._set_items([])
 
     def _set_items(self, new_items):
         # For stats with window, use a deque with maxlen=window.
@@ -87,19 +90,21 @@ class ItemSeriesStats(StatsBase):
         """Returns the length of the internal items list."""
         return len(self.items)
 
-    def peek(self, compile: bool = True, latest_merged_only: bool = False) -> List[Any]:
+    def peek(
+        self, compile: bool = True, latest_merged_only: bool = False
+    ) -> Union[List[Any], Any]:
         """Returns the internal items list.
 
         This does not alter the internal items list.
 
         Args:
-            compile: Argument is ignored for ItemSeriesStats.
+            compile: If True and items list is empty, returns np.nan. Otherwise returns the items list.
             latest_merged_only: If True, only considers the latest merged values.
                 This parameter only works on aggregation stats (root or intermediate nodes).
                 When enabled, peek() will only use the items from the most recent merge operation.
 
         Returns:
-            The internal items list.
+            The internal items list, or np.nan if compile=True and items list is empty.
         """
         # Check latest_merged_only validity
         if latest_merged_only and self.is_leaf:
@@ -111,8 +116,10 @@ class ItemSeriesStats(StatsBase):
         # If latest_merged_only is True, use only the latest merged items
         if latest_merged_only:
             if self.latest_merged is None:
-                # No merged items yet, return empty list
-                items = []
+                # No merged items yet, return np.nan if compile=True, else empty list
+                if compile:
+                    return np.nan
+                return []
             # Use only the latest merged items
             items = self.latest_merged
         else:
@@ -120,6 +127,10 @@ class ItemSeriesStats(StatsBase):
             items = self.items
 
         items = batch_values_to_cpu(items)
+
+        # If compile=True and items list is empty, return np.nan (consistent with other stats)
+        if compile and len(items) == 0:
+            return np.nan
 
         return items
 
