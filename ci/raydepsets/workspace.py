@@ -55,7 +55,7 @@ def _dict_to_depset(depset: dict, config_name: str) -> Depset:
         append_flags=depset.get("append_flags", []),
         pre_hooks=depset.get("pre_hooks", []),
         packages=depset.get("packages", []),
-        include_setuptools=depset.get("include_setuptools", None),
+        include_setuptools=depset.get("include_setuptools", False),
         config_name=config_name,
     )
 

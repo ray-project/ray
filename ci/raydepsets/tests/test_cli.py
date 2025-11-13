@@ -398,7 +398,7 @@ class TestCli(unittest.TestCase):
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes()) == 8
+            assert len(manager.build_graph.nodes()) == 7
             assert len(manager.build_graph.edges()) == 4
             # assert that the compile depsets are first
             assert (
@@ -847,7 +847,7 @@ class TestCli(unittest.TestCase):
                 tmpdir, config_path="*.depsets.yaml", build_all_configs=True
             )
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes) == 13
+            assert len(manager.build_graph.nodes) == 12
             assert len(manager.build_graph.edges) == 8
 
 
