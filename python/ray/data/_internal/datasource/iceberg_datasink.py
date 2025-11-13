@@ -5,6 +5,9 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
+from pyiceberg.expressions import AlwaysFalse, AlwaysTrue, BooleanExpression
+from pyiceberg.table.refs import MAIN_BRANCH
+
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.savemode import SaveMode
 from ray.data.block import Block, BlockAccessor
@@ -15,12 +18,15 @@ if TYPE_CHECKING:
     import pyarrow as pa
     from pyiceberg.catalog import Catalog
     from pyiceberg.manifest import DataFile
-    from pyiceberg.table import Table
+    from pyiceberg.table import Table, Transaction
 
     from ray.data.expressions import Expr
 
 
 logger = logging.getLogger(__name__)
+
+# Multiplier for task_idx to ensure unique file names across tasks
+_FILE_NAME_COUNTER_BASE = 10000
 
 
 @DeveloperAPI
@@ -165,6 +171,8 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
         Returns a tuple of (DataFile objects, schema of written data).
         This respects streaming semantics by writing files incrementally
         as tasks complete.
+
+        For UPSERT mode, also returns the PyArrow table data for merge operations.
         """
         import itertools
 
@@ -199,7 +207,7 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
         # - Partitioned vs unpartitioned tables
         # - Proper DataFile formatting
         # Use task_idx as counter base to ensure unique file names across tasks
-        counter = itertools.count(ctx.task_idx * 10000)
+        counter = itertools.count(ctx.task_idx * _FILE_NAME_COUNTER_BASE)
         data_files = list(
             _dataframe_to_data_files(
                 table_metadata=self._table.metadata,
@@ -231,20 +239,24 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
 
         return (all_data_files, all_schemas)
 
+    def _get_total_row_count(self, data_files: List["DataFile"]) -> int:
+        """Calculate total row count across data files."""
+        return sum(df.record_count for df in data_files)
+
     def _read_data_files_as_table(self, data_files: List["DataFile"]) -> "pa.Table":
         """
         Read back written data files and combine them into a single PyArrow table.
 
-        This is used for UPSERT and OVERWRITE modes where PyIceberg's APIs
-        require the data as a DataFrame/Table rather than DataFile objects.
+        This is used for UPSERT mode where PyIceberg's API requires the data as a
+        DataFrame/Table rather than DataFile objects for row-level comparisons.
+
+        Note: OVERWRITE mode was optimized to work directly with DataFiles.
         """
         import pyarrow as pa
         import pyarrow.parquet as pq
 
-        total_rows = sum(df.record_count for df in data_files)
-        logger.info(
-            f"Reading {len(data_files)} data file(s) with " f"{total_rows} rows"
-        )
+        total_rows = self._get_total_row_count(data_files)
+        logger.info(f"Reading {len(data_files)} data file(s) with {total_rows} rows")
 
         tables = []
         for data_file in data_files:
@@ -256,56 +268,84 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
 
         return pa.concat_tables(tables)
 
+    def _convert_ray_filter_to_iceberg(
+        self, expression: Optional["Expr"]
+    ) -> BooleanExpression:
+        """Convert Ray Data expression to PyIceberg BooleanExpression."""
+        if expression:
+            from ray.data._internal.datasource.iceberg_datasource import (
+                _IcebergExpressionVisitor,
+            )
+
+            return _IcebergExpressionVisitor().visit(expression)
+        return AlwaysTrue()
+
+    def _append_data_files(
+        self,
+        data_files: List["DataFile"],
+        transaction: "Transaction",
+        branch: Optional[str] = None,
+    ) -> None:
+        """
+        Append pre-written DataFiles to a transaction using fast_append.
+
+        This is a helper method used by both APPEND and OVERWRITE modes.
+
+        Args:
+            data_files: List of DataFile objects to append
+            transaction: PyIceberg transaction to append to
+            branch: Optional branch name for the snapshot
+        """
+        branch = branch or MAIN_BRANCH
+        with transaction.update_snapshot(
+            snapshot_properties=self._snapshot_properties, branch=branch
+        ).fast_append() as update:
+            for data_file in data_files:
+                update.append_data_file(data_file)
+
     def _complete_append(self, data_files: List["DataFile"]) -> None:
         """
         Complete APPEND mode write using PyIceberg's fast_append API.
 
         This commits all the data files that were written during the write phase.
         """
-        # Create a transaction and use fast_append to commit all data files in one snapshot
-        transaction = self._table.transaction()
-        with transaction.update_snapshot(
-            snapshot_properties=self._snapshot_properties
-        ).fast_append() as update:
-            for data_file in data_files:
-                update.append_data_file(data_file)
-
-        # Commit the transaction
-        transaction.commit_transaction()
+        self._commit_transaction_with_append(data_files)
 
     def _complete_upsert(self, data_files: List["DataFile"]) -> None:
         """
         Complete UPSERT mode write using PyIceberg's upsert API.
 
-        For upsert, we need to read back the written data files and pass the
-        data to PyIceberg's upsert API, which handles the merge logic.
+        For upsert, we must read back the written data files because PyIceberg's
+        upsert operation inherently requires the actual data content to:
+        1. Compare against existing table data to identify matching rows
+        2. Determine which values have actually changed (to avoid unnecessary writes)
+        3. Separate rows to update from rows to insert
+
+        This data reload is unavoidable - it's not a limitation of our implementation,
+        but a fundamental requirement of the UPSERT operation itself. PyIceberg's
+        upsert() API only accepts DataFrame input, not DataFile objects, because
+        it needs to perform row-level comparisons.
+
+        Note: APPEND and OVERWRITE modes don't have this limitation and work
+        directly with DataFile objects without reloading data.
         """
         combined_table = self._read_data_files_as_table(data_files)
 
         self._table.upsert(df=combined_table, **self._upsert_kwargs)
 
         join_cols = self._upsert_kwargs.get("join_cols")
-        if join_cols:
-            logger.info(
-                f"Upserted {combined_table.num_rows} rows to {self.table_identifier} "
-                f"using join columns: {join_cols}"
-            )
-        else:
-            logger.info(
-                f"Upserted {combined_table.num_rows} rows to {self.table_identifier} "
-                f"using table-defined identifier-field-ids"
-            )
+        key_desc = (
+            f"join columns: {join_cols}"
+            if join_cols
+            else "table-defined identifier-field-ids"
+        )
+        logger.info(
+            f"Upserted {combined_table.num_rows} rows to {self.table_identifier} "
+            f"using {key_desc}"
+        )
 
-    def _complete_overwrite(self, data_files: List["DataFile"]) -> None:
-        """
-        Complete OVERWRITE mode write using PyIceberg's overwrite API.
-
-        For overwrite, we need to read back the written data files and pass the
-        data to PyIceberg's overwrite API, which handles the replacement logic.
-        """
-        combined_table = self._read_data_files_as_table(data_files)
-
-        # Warn if user passed overwrite_filter via overwrite_kwargs
+    def _validate_overwrite_kwargs(self) -> None:
+        """Warn if user passed overwrite_filter via overwrite_kwargs."""
         if "overwrite_filter" in self._overwrite_kwargs:
             self._overwrite_kwargs.pop("overwrite_filter")
             logger.warning(
@@ -313,34 +353,80 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
                 "it via PyIceberg's overwrite_filter parameter"
             )
 
+    def _log_overwrite_result(self, data_files: List["DataFile"]) -> None:
+        """Log the result of overwrite operation."""
+        total_rows = self._get_total_row_count(data_files)
         if self._overwrite_filter:
-            # Partial overwrite with filter
-            from ray.data._internal.datasource.iceberg_datasource import (
-                _IcebergExpressionVisitor,
-            )
-
-            iceberg_filter = _IcebergExpressionVisitor().visit(self._overwrite_filter)
-            self._table.overwrite(
-                df=combined_table,
-                overwrite_filter=iceberg_filter,
-                snapshot_properties=self._snapshot_properties,
-                **self._overwrite_kwargs,
-            )
             logger.info(
-                f"Overwrote {combined_table.num_rows} rows in {self.table_identifier} "
+                f"Overwrote {total_rows} rows in {self.table_identifier} "
                 f"matching filter: {self._overwrite_filter}"
             )
         else:
-            # Full table overwrite
-            self._table.overwrite(
-                df=combined_table,
-                snapshot_properties=self._snapshot_properties,
-                **self._overwrite_kwargs,
-            )
             logger.info(
                 f"Overwrote entire table {self.table_identifier} "
-                f"with {combined_table.num_rows} rows"
+                f"with {total_rows} rows"
             )
+
+    def _commit_transaction_with_append(
+        self,
+        data_files: List["DataFile"],
+        branch: Optional[str] = None,
+        delete_predicate: Optional[BooleanExpression] = None,
+        case_sensitive: bool = True,
+    ) -> None:
+        """
+        Create a transaction, optionally delete rows, append data files, and commit.
+
+        Args:
+            data_files: DataFiles to append
+            branch: Optional branch name
+            delete_predicate: Optional delete predicate (for overwrite)
+            case_sensitive: Whether delete predicate is case sensitive
+        """
+        transaction = self._table.transaction()
+
+        # Optional delete step (for OVERWRITE)
+        if delete_predicate is not None and delete_predicate != AlwaysFalse():
+            with transaction.update_snapshot(
+                snapshot_properties=self._snapshot_properties,
+                branch=branch or MAIN_BRANCH,
+            ).delete() as delete_snapshot:
+                delete_snapshot.delete_by_predicate(
+                    predicate=delete_predicate, case_sensitive=case_sensitive
+                )
+
+        # Append data files
+        self._append_data_files(data_files, transaction, branch)
+
+        # Commit
+        transaction.commit_transaction()
+
+    def _complete_overwrite(self, data_files: List["DataFile"]) -> None:
+        """
+        Complete OVERWRITE mode write using PyIceberg's lower-level transaction API.
+
+        This optimized implementation avoids reloading data by using PyIceberg's
+        transaction API directly: delete by predicate (metadata operation) + append
+        pre-written DataFiles.
+        """
+        # Validate and extract parameters
+        self._validate_overwrite_kwargs()
+        iceberg_filter: BooleanExpression = self._convert_ray_filter_to_iceberg(
+            self._overwrite_filter
+        )
+        branch = self._overwrite_kwargs.get("branch", MAIN_BRANCH)
+        case_sensitive = self._overwrite_kwargs.get("case_sensitive", True)
+
+        # Execute transaction
+        self._commit_transaction_with_append(
+            data_files,
+            branch=branch,
+            delete_predicate=iceberg_filter,
+            case_sensitive=case_sensitive,
+        )
+
+        # Log result
+        self._log_overwrite_result(data_files)
 
     def on_write_complete(
         self, write_result: WriteResult[tuple[list["DataFile"], "pa.Schema"]]
