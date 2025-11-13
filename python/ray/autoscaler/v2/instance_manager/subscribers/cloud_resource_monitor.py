@@ -99,18 +99,18 @@ class CloudResourceMonitor(InstanceUpdatedSubscriber):
         """Calculate the availability scores of node types.
         Higher values indicate a higher likelihood of resource allocation.
         """
-        resource_availabilities: Dict[NodeType, float] = {}
-        max_ts = max(
-            [
-                r.get_last_unavailability_timestamp()
-                for r in self._resource_availabilities.values()
-            ]
-        )
-
-        for node_type in self._resource_availabilities:
-            resource_availabilities[node_type] = (
-                1 -
-                self._resource_availabilities[node_type].get_last_unavailability_timestamp()
-                / max_ts
-            ) if max_ts > 0 else 1
-        return resource_availabilities
+        resource_availability_scores: Dict[NodeType, float] = {}
+        if self._resource_availabilities:
+            max_ts = max(
+                [
+                    r.get_last_unavailability_timestamp()
+                    for r in self._resource_availabilities.values()
+                ]
+            )
+            for node_type in self._resource_availabilities:
+                resource_availability_scores[node_type] = (
+                    1 -
+                    self._resource_availabilities[node_type].get_last_unavailability_timestamp()
+                    / max_ts
+                ) if max_ts > 0 else 1
+        return resource_availability_scores
