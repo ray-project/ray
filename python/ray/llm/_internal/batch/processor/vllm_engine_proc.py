@@ -108,6 +108,27 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         return values
 
 
+def _get_value_or_fallback(value: Any, fallback: Any) -> Any:
+    """Return value if not None, otherwise return fallback."""
+    return value if value is not None else fallback
+
+
+def _extract_resource_kwargs(
+    runtime_env: Optional[Dict[str, Any]],
+    num_cpus: Optional[float],
+    memory: Optional[float],
+) -> Dict[str, Any]:
+    """Extract non-None resource kwargs for map_batches."""
+    kwargs = {}
+    if runtime_env is not None:
+        kwargs["runtime_env"] = runtime_env
+    if num_cpus is not None:
+        kwargs["num_cpus"] = num_cpus
+    if memory is not None:
+        kwargs["memory"] = memory
+    return kwargs
+
+
 def build_vllm_engine_processor(
     config: vLLMEngineProcessorConfig,
     chat_template_kwargs: Optional[Dict[str, Any]] = None,
@@ -166,18 +187,14 @@ def build_vllm_engine_processor(
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
                     concurrency=stage_concurrency,
-                    batch_size=image_stage_cfg.batch_size
-                    if image_stage_cfg.batch_size is not None
-                    else config.batch_size,
-                    **{
-                        k: v
-                        for k, v in {
-                            "runtime_env": image_stage_cfg.runtime_env,
-                            "num_cpus": image_stage_cfg.num_cpus,
-                            "memory": image_stage_cfg.memory,
-                        }.items()
-                        if v is not None
-                    },
+                    batch_size=_get_value_or_fallback(
+                        image_stage_cfg.batch_size, config.batch_size
+                    ),
+                    **_extract_resource_kwargs(
+                        image_stage_cfg.runtime_env,
+                        image_stage_cfg.num_cpus,
+                        image_stage_cfg.memory,
+                    ),
                 ),
             )
         )
@@ -198,31 +215,28 @@ def build_vllm_engine_processor(
         stages.append(
             ChatTemplateStage(
                 fn_constructor_kwargs=dict(
-                    model=chat_template_stage_cfg.model_source
-                    if chat_template_stage_cfg.model_source is not None
-                    else config.model_source,
-                    chat_template=chat_template_stage_cfg.chat_template
-                    if chat_template_stage_cfg.chat_template is not None
-                    else config.chat_template,
-                    chat_template_kwargs=chat_template_stage_cfg.chat_template_kwargs
-                    if chat_template_stage_cfg.chat_template_kwargs is not None
-                    else chat_template_kwargs,
+                    model=_get_value_or_fallback(
+                        chat_template_stage_cfg.model_source, config.model_source
+                    ),
+                    chat_template=_get_value_or_fallback(
+                        chat_template_stage_cfg.chat_template, config.chat_template
+                    ),
+                    chat_template_kwargs=_get_value_or_fallback(
+                        chat_template_stage_cfg.chat_template_kwargs,
+                        chat_template_kwargs,
+                    ),
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
                     concurrency=stage_concurrency,
-                    batch_size=chat_template_stage_cfg.batch_size
-                    if chat_template_stage_cfg.batch_size is not None
-                    else config.batch_size,
-                    **{
-                        k: v
-                        for k, v in {
-                            "runtime_env": chat_template_stage_cfg.runtime_env,
-                            "num_cpus": chat_template_stage_cfg.num_cpus,
-                            "memory": chat_template_stage_cfg.memory,
-                        }.items()
-                        if v is not None
-                    },
+                    batch_size=_get_value_or_fallback(
+                        chat_template_stage_cfg.batch_size, config.batch_size
+                    ),
+                    **_extract_resource_kwargs(
+                        chat_template_stage_cfg.runtime_env,
+                        chat_template_stage_cfg.num_cpus,
+                        chat_template_stage_cfg.memory,
+                    ),
                 ),
             )
         )
@@ -243,25 +257,21 @@ def build_vllm_engine_processor(
         stages.append(
             TokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=tokenize_stage_cfg.model_source
-                    if tokenize_stage_cfg.model_source is not None
-                    else config.model_source,
+                    model=_get_value_or_fallback(
+                        tokenize_stage_cfg.model_source, config.model_source
+                    ),
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
                     concurrency=stage_concurrency,
-                    batch_size=tokenize_stage_cfg.batch_size
-                    if tokenize_stage_cfg.batch_size is not None
-                    else config.batch_size,
-                    **{
-                        k: v
-                        for k, v in {
-                            "runtime_env": tokenize_stage_cfg.runtime_env,
-                            "num_cpus": tokenize_stage_cfg.num_cpus,
-                            "memory": tokenize_stage_cfg.memory,
-                        }.items()
-                        if v is not None
-                    },
+                    batch_size=_get_value_or_fallback(
+                        tokenize_stage_cfg.batch_size, config.batch_size
+                    ),
+                    **_extract_resource_kwargs(
+                        tokenize_stage_cfg.runtime_env,
+                        tokenize_stage_cfg.num_cpus,
+                        tokenize_stage_cfg.memory,
+                    ),
                 ),
             )
         )
