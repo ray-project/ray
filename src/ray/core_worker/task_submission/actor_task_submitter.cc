@@ -1051,13 +1051,6 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
               }
               // Keep retrying every 2 seconds until a task is officially
               // finished.
-              if (!task_manager_.GetTaskSpec(task_id)) {
-                // Task is already finished.
-                RAY_LOG(DEBUG).WithField(task_spec.TaskId())
-                    << "Task is finished. Stop a cancel request.";
-                return;
-              }
-
               if (!reply.attempt_succeeded()) {
                 RetryCancelTask(std::move(task_spec), recursive, 2000);
               }
