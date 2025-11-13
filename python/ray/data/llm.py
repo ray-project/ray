@@ -115,14 +115,20 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             enough for batch size >= 64.
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
-            concurrency, and runtime_env. Legacy ``apply_chat_template`` and ``chat_template``
-            fields are deprecated but still supported.
+            concurrency, runtime_env, num_cpus, and memory. Legacy ``apply_chat_template``
+            and ``chat_template`` fields are deprecated but still supported.
         tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
-            Defaults to True. Legacy ``tokenize`` field is deprecated but still supported.
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
+            ``tokenize`` field is deprecated but still supported.
         detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
-            Defaults to True. Legacy ``detokenize`` field is deprecated but still supported.
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
+            ``detokenize`` field is deprecated but still supported.
         prepare_image_stage: Prepare image stage config (bool | dict | PrepareImageStageConfig).
-            Defaults to False. Legacy ``has_image`` field is deprecated but still supported.
+            Defaults to False. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, and memory. Legacy ``has_image`` field
+            is deprecated but still supported.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
@@ -210,12 +216,17 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
             or the batch processing latency is too small, but it should be good
             enough for batch size >= 64.
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
-            Defaults to True. Legacy ``apply_chat_template`` and ``chat_template``
-            fields are deprecated but still supported.
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, and memory. Legacy ``apply_chat_template``
+            and ``chat_template`` fields are deprecated but still supported.
         tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
-            Defaults to True. Legacy ``tokenize`` field is deprecated but still supported.
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
+            ``tokenize`` field is deprecated but still supported.
         detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
-            Defaults to True. Legacy ``detokenize`` field is deprecated but still supported.
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
+            ``detokenize`` field is deprecated but still supported.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
@@ -382,9 +393,11 @@ def build_llm_processor(
 
     Args:
         config: The processor config. Supports nested stage configs for per-stage
-            control (e.g., ``chat_template_stage=ChatTemplateStageConfig(batch_size=128)``).
-            Legacy boolean flags (``apply_chat_template``, ``tokenize``, etc.) are
-            deprecated but still supported.
+            control over batch_size, concurrency, runtime_env, num_cpus, and memory
+            (e.g., ``chat_template_stage=ChatTemplateStageConfig(batch_size=128)``
+            or ``tokenize_stage={"batch_size": 256, "concurrency": 2}``). Legacy
+            boolean flags (``apply_chat_template``, ``tokenize``, ``detokenize``,
+            ``has_image``) are deprecated but still supported with deprecation warnings.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages. Each row
@@ -492,7 +505,7 @@ def build_llm_processor(
 
             config = vLLMEngineProcessorConfig(
                 model_source="Qwen/Qwen3-0.6B",
-                apply_chat_template=True,
+                chat_template_stage={"enabled": True},
                 concurrency=1,
                 batch_size=64,
             )
