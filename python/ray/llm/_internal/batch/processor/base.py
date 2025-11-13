@@ -178,7 +178,6 @@ class OfflineProcessorConfig(ProcessorConfig):
     )
 
     # New nested stage configuration (bool | dict | typed config).
-    # Import deferred to avoid circulars at runtime; types used for pydantic schema only.
     chat_template_stage: Any = Field(
         default=True,
         description="Chat templating stage config (bool | dict | ChatTemplateStageConfig).",
@@ -211,7 +210,8 @@ class OfflineProcessorConfig(ProcessorConfig):
                     "or `chat_template_stage={'enabled': True, 'chat_template': '...'}`. "
                     "This will raise an error in a future version."
                 )
-            enabled = values.get("apply_chat_template", True)
+            enabled_value = values.get("apply_chat_template")
+            enabled = enabled_value if enabled_value is not None else True
             stage: Dict[str, Any] = {"enabled": enabled}
             if values.get("chat_template") is not None:
                 stage["chat_template"] = values["chat_template"]
@@ -237,9 +237,9 @@ class OfflineProcessorConfig(ProcessorConfig):
                     f"or `{stage_field}={{'enabled': True}}`. "
                     "This will raise an error in a future version."
                 )
-                values[stage_field] = {
-                    "enabled": values.get(legacy_field, default_enabled)
-                }
+                legacy_value = values.get(legacy_field)
+                enabled = default_enabled if legacy_value is None else legacy_value
+                values[stage_field] = {"enabled": enabled}
 
         return values
 
