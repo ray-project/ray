@@ -4,13 +4,12 @@ from unittest.mock import MagicMock
 import pyarrow as pa
 import pytest
 
-from python.ray.data._internal.util import KiB
-
 import ray
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     OpRuntimeMetrics,
 )
+from ray.data._internal.util import KiB
 from ray.data.block import BlockExecStats, BlockMetadata
 
 

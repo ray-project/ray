@@ -129,10 +129,7 @@ def gen_expected_metrics(
             "'task_completion_time_total_s': N",
             "'task_completion_time': (samples: N, avg: N)",
             "'block_completion_time': (samples: N, avg: N)",
-            (
-                "'task_completion_time_excl_backpressure_s': "
-                f"{'N' if task_backpressure else 'Z'}"
-            ),
+            "'task_completion_time_excl_backpressure_s': N",
             "'block_size_bytes': (samples: N, avg: N)",
             "'block_size_rows': (samples: N, avg: N)",
             "'num_alive_actors': Z",
