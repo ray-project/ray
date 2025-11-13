@@ -235,10 +235,6 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
 
         return (all_data_files, all_schemas)
 
-    def _get_total_row_count(self, data_files: List["DataFile"]) -> int:
-        """Calculate total row count across data files."""
-        return sum(df.record_count for df in data_files)
-
     def _read_data_files_as_table(self, data_files: List["DataFile"]) -> "pa.Table":
         """
         Read back written data files and combine them into a single PyArrow table.
@@ -250,9 +246,6 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
         """
         import pyarrow as pa
         import pyarrow.parquet as pq
-
-        total_rows = self._get_total_row_count(data_files)
-        logger.info(f"Reading {len(data_files)} data file(s) with {total_rows} rows")
 
         tables = []
         for data_file in data_files:
