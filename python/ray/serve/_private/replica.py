@@ -1283,6 +1283,9 @@ class ReplicaActor:
             get_component_logger_file_path(),
         )
 
+    def list_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        return self._replica_impl.list_outbound_deployments()
+
     async def initialize_and_get_metadata(
         self, deployment_config: DeploymentConfig = None, _after: Optional[Any] = None
     ) -> ReplicaMetadata:
