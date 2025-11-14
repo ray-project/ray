@@ -4436,7 +4436,6 @@ def read_kafka(
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
-    concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     timeout_ms: int = 10000,
 ) -> Dataset:
@@ -4444,7 +4443,8 @@ def read_kafka(
 
     This function supports bounded reads from Kafka topics, reading messages
     between a start and end offset or timestamp. Only the "once" trigger is
-    supported for now, which performs a single bounded read.
+    supported for now, which performs a single bounded read. Currently we only
+    have one read task for each partition.
 
     Examples:
 
@@ -4462,21 +4462,6 @@ def read_kafka(
                 end_offset=1000,
             )
 
-            # Read from multiple topics with timestamp range
-            end_time = datetime.now()
-            start_time = end_time - timedelta(hours=1)
-            ds = ray.data.read_kafka(
-                topics=["topic1", "topic2"],
-                bootstrap_servers=["broker1:9092", "broker2:9092"],
-                start_offset=start_time,
-                end_offset=end_time,
-                authentication={
-                    "security_protocol": "SASL_SSL",
-                    "sasl_mechanism": "PLAIN",
-                    "sasl_username": "user",
-                    "sasl_password": "pass",
-                },
-            )
 
     Args:
         topics: Kafka topic name(s) to read from. Can be a single topic name
@@ -4507,10 +4492,6 @@ def read_kafka(
         num_gpus: The number of GPUs to reserve for each parallel read worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
-        concurrency: The maximum number of Ray tasks to run concurrently. Set this
-            to control number of tasks to run concurrently. This doesn't change the
-            total number of tasks run or the total number of output blocks. By default,
-            concurrency is dynamically decided based on the available resources.
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
@@ -4549,7 +4530,6 @@ def read_kafka(
         num_gpus=num_gpus,
         memory=memory,
         ray_remote_args=ray_remote_args,
-        concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
 
