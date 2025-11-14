@@ -69,7 +69,15 @@ class DistinctAggregation(StatefulShuffleAggregation):
         # Determine columns to use for distinct.
         # If key_columns is empty (schema was None at planning time), use all columns.
         if not self._key_columns:
-            key_columns = tuple(accessor.schema().names)
+            block_schema = accessor.schema()
+            if block_schema is None or not block_schema.names:
+                # If block has no schema, cannot perform distinct - this should not happen
+                # as empty datasets are handled earlier, but add defensive check.
+                raise ValueError(
+                    "Cannot perform distinct: block has no inferable schema. "
+                    "Provide explicit 'keys' parameter to distinct()."
+                )
+            key_columns = tuple(block_schema.names)
         else:
             key_columns = self._key_columns
 
