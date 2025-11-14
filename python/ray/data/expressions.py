@@ -171,13 +171,18 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
             return _ARROW_EXPR_OPS_MAP[expr.op](left, right)
         raise ValueError(f"Unsupported binary operation for PyArrow: {expr.op}")
 
-    def _collect_coalesce_exprs(self, expr: "BinaryExpr") -> List["pyarrow.compute.Expression"]:
+    def _collect_coalesce_exprs(
+        self, expr: "BinaryExpr"
+    ) -> List["pyarrow.compute.Expression"]:
         """Collect all expressions in a nested COALESCE operation."""
         exprs = []
         current = expr
         while isinstance(current, BinaryExpr) and current.op == Operation.COALESCE:
             exprs.append(self.visit(current.left))
-            if isinstance(current.right, BinaryExpr) and current.right.op == Operation.COALESCE:
+            if (
+                isinstance(current.right, BinaryExpr)
+                and current.right.op == Operation.COALESCE
+            ):
                 current = current.right
             else:
                 exprs.append(self.visit(current.right))
@@ -407,18 +412,10 @@ class Expr(ABC):
         """Fill null values with a replacement value.
 
         Args:
-            fill_value: The value to use for filling null entries. Can be a literal
-                value or another expression.
+            fill_value: Literal value or expression to use for filling nulls.
 
         Returns:
             An expression that replaces null values with the specified fill value.
-
-        Example:
-            >>> from ray.data.expressions import col
-            >>> # Fill null values in a column with 0
-            >>> expr = col("value").fill_null(0)
-            >>> # Fill null values with another column's value
-            >>> expr = col("value").fill_null(col("default_value"))
         """
         if not isinstance(fill_value, Expr):
             fill_value = LiteralExpr(fill_value)
@@ -866,7 +863,9 @@ def coalesce(*exprs: Union["Expr", Any]) -> "Expr":
         raise ValueError("coalesce() requires at least 2 expressions")
 
     # Convert all arguments to expressions
-    expr_list = [expr if isinstance(expr, Expr) else LiteralExpr(expr) for expr in exprs]
+    expr_list = [
+        expr if isinstance(expr, Expr) else LiteralExpr(expr) for expr in exprs
+    ]
 
     # Build coalesce as nested fill_null operations: fill_null(expr1, fill_null(expr2, expr3))
     result = expr_list[-1]

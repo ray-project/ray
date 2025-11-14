@@ -805,31 +805,16 @@ class Dataset:
         """Fill missing values in the dataset.
 
         Args:
-            value: Value to use to fill missing values. Can be a scalar value to fill all
-                missing values, or a dictionary mapping column names to fill values for
-                specific columns. Required if method="value".
-            method: Method to use for filling missing values. Options:
-                - "value": Fill with specified values (default)
-                - "forward": Forward fill (propagate last valid observation forward)
-                - "backward": Backward fill (propagate next valid observation backward)
-                - "interpolate": Linear interpolation (numeric columns only)
-            subset: List of column names to consider for filling. If None, all columns
-                are considered.
-            limit: Maximum number of consecutive missing values to fill. If None,
-                fill all missing values.
-            inplace: Whether to modify the dataset in-place. Note: Ray Data datasets
-                are immutable, so this parameter is ignored and always returns a new dataset.
-            compute: This argument is deprecated. Use ``ray_remote_args`` to configure
-                distributed execution.
-            ray_remote_args: Additional resource requirements to request from
-                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
-                :func:`ray.remote` for details.
+            value: Scalar or dict mapping column names to fill values. Required if method="value".
+            method: Fill method: "value" (default), "forward", "backward", or "interpolate".
+            subset: Column names to fill. If None, all columns are considered.
+            limit: Maximum consecutive missing values to fill. If None, fill all.
+            inplace: Ignored (Ray Data datasets are immutable).
+            compute: Deprecated. Use ray_remote_args instead.
+            ray_remote_args: Additional Ray remote arguments.
 
         Returns:
-            A new dataset with missing values filled according to the specified method.
-
-        Raises:
-            ValueError: If method is not supported or if value is required but not provided.
+            A new dataset with missing values filled.
         """
         plan = self._plan.copy()
         fillna_op = FillNa(
@@ -860,28 +845,16 @@ class Dataset:
         """Drop rows with missing values from the dataset.
 
         Args:
-            how: Determines how to drop rows:
-                - "any": Drop rows where any value is missing (default)
-                - "all": Drop rows where all values are missing
-            subset: List of column names to consider for dropping. If None, all columns
-                are considered.
-            thresh: Minimum number of non-null values required to keep a row. If specified,
-                this overrides the 'how' parameter.
-            ignore_values: Additional values to treat as missing (beyond None and NaN).
-                Useful for treating empty strings, zeros, etc. as missing values.
-            inplace: Whether to modify the dataset in-place. Note: Ray Data datasets
-                are immutable, so this parameter is ignored and always returns a new dataset.
-            compute: This argument is deprecated. Use ``ray_remote_args`` to configure
-                distributed execution.
-            ray_remote_args: Additional resource requirements to request from
-                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
-                :func:`ray.remote` for details.
+            how: "any" (default) drops rows with any missing value, "all" drops rows where all values are missing.
+            subset: Column names to consider. If None, all columns are considered.
+            thresh: Minimum non-null values required to keep a row. Overrides 'how' if specified.
+            ignore_values: Additional values to treat as missing (e.g., empty strings, zeros).
+            inplace: Ignored (Ray Data datasets are immutable).
+            compute: Deprecated. Use ray_remote_args instead.
+            ray_remote_args: Additional Ray remote arguments.
 
         Returns:
             A new dataset with rows containing missing values removed.
-
-        Raises:
-            ValueError: If 'how' is not "any" or "all", or if thresh is negative.
         """
         plan = self._plan.copy()
         dropna_op = DropNa(
@@ -6126,9 +6099,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundle: RefBundle = self._plan.execute()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list([ref_bundle])
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list([ref_bundle])
+        )
         # Schema is safe to call since we have already triggered execution with
         # self._plan.execute(), which will cache the schema
         schema = self.schema(fetch_if_missing=True)
@@ -6793,7 +6766,7 @@ class Schema:
         from ray.data.extensions import ArrowTensorType, TensorDtype
 
         def _convert_to_pa_type(
-            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
+            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype],
         ) -> pa.DataType:
             if isinstance(dtype, pd.ArrowDtype):
                 return dtype.pyarrow_dtype
