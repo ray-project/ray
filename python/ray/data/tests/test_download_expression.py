@@ -352,6 +352,7 @@ class TestDownloadExpressionErrors:
         # Second URI should fail gracefully (return None)
         assert results[1]["bytes"] is None
 
+
 class TestDownloadExpressionIntegration:
     """Integration tests combining download expressions with other Ray Data operations."""
 
