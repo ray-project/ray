@@ -89,6 +89,7 @@ depsets:
     output: release/ray_release/byod/ray_base_extra_testdeps_gpu_py${PYTHON_VERSION}.lock
     append_flags:
       - --extra-index-url https://download.pytorch.org/whl/cu128
+      - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
     build_arg_sets:
