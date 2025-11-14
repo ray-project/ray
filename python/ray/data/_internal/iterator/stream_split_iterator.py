@@ -2,7 +2,7 @@ import logging
 import threading
 import time
 from dataclasses import replace
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
@@ -73,7 +73,12 @@ class StreamSplitDataIterator(DataIterator):
 
     def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
+    ) -> Tuple[
+        Iterator[RefBundle],
+        Optional[DatasetStats],
+        bool,
+        Optional[Callable[[int, int], None]],
+    ]:
         def gen_blocks() -> Iterator[RefBundle]:
             cur_epoch = ray.get(
                 self._coord_actor.start_epoch.remote(self._output_split_idx)
@@ -95,7 +100,15 @@ class StreamSplitDataIterator(DataIterator):
                         schema=block_ref_and_md.schema,
                     )
 
-        return gen_blocks(), self._iter_stats, False
+        # For streaming split, prefetch reporting is handled via the coordinator actor
+        # since the operator is on a different node. Create a callback that calls
+        # the coordinator actor's update_prefetch_count method with the split index.
+        def prefetch_count_update(blocks: int, bytes: int) -> None:
+            self._coord_actor.update_prefetch_count.remote(
+                self._output_split_idx, blocks, bytes
+            )
+
+        return gen_blocks(), self._iter_stats, False, prefetch_count_update
 
     def stats(self) -> str:
         """Implements DataIterator."""
@@ -159,6 +172,11 @@ class SplitCoordinator:
         self._next_bundle: Dict[int, RefBundle] = {}
         self._unfinished_clients_in_epoch = n
         self._cur_epoch = -1
+        # Track prefetch counts per split to accumulate across all splits
+        self._prefetch_counts: Dict[
+            int, Tuple[int, int]
+        ] = {}  # split_idx -> (blocks, bytes)
+        self._last_operator = None
 
         # Add a new stats field to track coordinator overhead
         self._coordinator_overhead_s = 0.0
@@ -169,6 +187,8 @@ class SplitCoordinator:
                 output_iterator = execute_to_legacy_bundle_iterator(
                     self._executor, dataset._plan
                 )
+                # Get the last operator from the executor for prefetch reporting
+                self._last_operator = self._executor._last_operator
                 yield output_iterator
 
         self._next_epoch = gen_epochs()
@@ -271,6 +291,8 @@ class SplitCoordinator:
             if self._cur_epoch == starting_epoch:
                 self._cur_epoch += 1
                 self._unfinished_clients_in_epoch = self._n
+                # Clear prefetch counts when transitioning to a new epoch
+                self._prefetch_counts.clear()
                 try:
                     self._output_iterator = next(self._next_epoch)
                 except Exception as e:
@@ -283,3 +305,35 @@ class SplitCoordinator:
 
         assert self._output_iterator is not None
         return starting_epoch + 1
+
+    def update_prefetch_count(self, split_idx: int, blocks: int, bytes: int) -> None:
+        """Update the number of outstanding prefetched blocks and their byte size.
+
+        This is called by the client iterator to report prefetch counts.
+        The coordinator actor accumulates counts across all splits and updates
+        the last operator's metrics with the total.
+
+        Args:
+            split_idx: The split index reporting the prefetch count.
+            blocks: Number of outstanding prefetched blocks for this split.
+            bytes: Total byte size of outstanding prefetched blocks for this split.
+        """
+        with self._lock:
+            # Update prefetch count for this split
+            self._prefetch_counts[split_idx] = (blocks, bytes)
+            # Accumulate counts across all splits
+            total_blocks = sum(blocks for blocks, _ in self._prefetch_counts.values())
+            total_bytes = sum(bytes for _, bytes in self._prefetch_counts.values())
+        if self._last_operator is not None:
+            self._last_operator.update_prefetch_count(total_blocks, total_bytes)
+
+    def get_prefetch_count(self) -> int:
+        """Get the current total number of outstanding prefetched blocks across all splits.
+
+        Returns:
+            Total number of outstanding prefetched blocks across all splits, or 0 if no operator.
+        """
+        with self._lock:
+            # Accumulate counts across all splits
+            total_blocks = sum(blocks for blocks, _ in self._prefetch_counts.values())
+            return total_blocks
