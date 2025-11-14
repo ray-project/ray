@@ -82,7 +82,7 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       ARCH_SUFFIX: "-aarch64"
-      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix}}.lock"
+      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix.python}}.lock"
 
   - name: raycudabaseextra-aarch64
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra (aarch64)"
