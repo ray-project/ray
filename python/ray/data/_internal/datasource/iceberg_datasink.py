@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.savemode import SaveMode
+from ray.data._internal.util import GiB
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.util.annotations import DeveloperAPI
@@ -284,7 +285,7 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         )
 
 
-@ray.remote
+@ray.remote(num_cpus=1, memory=4 * GiB)  # 4 GiB memory
 def _commit_upsert_task(
     table_identifier: str,
     catalog_name: str,
