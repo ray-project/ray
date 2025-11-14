@@ -10,11 +10,9 @@ from typing import (
     Callable,
     Dict,
     Generator,
-    Generic,
     Iterable,
     List,
     NamedTuple,
-    NoReturn,
     Optional,
     Protocol,
     Tuple,
@@ -41,9 +39,11 @@ from ray._private.async_compat import (
 )
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.custom_types import TensorTransportEnum
-from ray._private.object_ref_generator import ObjectRefGenerator,DynamicObjectRefGenerator
+from ray._private.object_ref_generator import (
+    DynamicObjectRefGenerator,
+    ObjectRefGenerator,
+)
 from ray._private.utils import DeferSigint
-from ray._private.worker import Worker
 from ray.actor import ActorHandle
 from ray.core.generated.common_pb2 import (
     ActorDiedErrorContext,
@@ -338,7 +338,7 @@ class EventLoopDict:
     thread: threading.Thread
 
 # ObjectRef Type Vars
-_R = TypeVar("_R") 
+_R = TypeVar("_R")
 _R2 = TypeVar("_R2")
 
 # Function Descriptor Type Vars

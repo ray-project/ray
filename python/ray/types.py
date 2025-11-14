@@ -1,6 +1,6 @@
 from ray import (
-    ObjectRef,
     ObjectID,
+    ObjectRef,
 )
 
 __all__ = [

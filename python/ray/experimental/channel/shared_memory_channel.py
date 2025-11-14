@@ -2,11 +2,11 @@ import io
 import logging
 import time
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, NamedTuple
+from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple, Union
 
 import ray
 import ray.exceptions
-from ray._raylet import SerializedObject, ObjectRef, ActorID
+from ray._raylet import ActorID, ObjectRef, SerializedObject
 from ray.experimental.channel import utils
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
