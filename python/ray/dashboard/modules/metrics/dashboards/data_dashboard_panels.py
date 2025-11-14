@@ -483,7 +483,7 @@ TASK_COMPLETION_TIME_PANEL = Panel(
     description="P90 time (in seconds) spent (including backpressure) running tasks to completion.",
     targets=[
         Target(
-            expr='histogram_quantile(0.9, sum by (operator, le) (ray_data_task_completion_time_bucket{{{global_filters}, operator=~"$Operator"}}))',
+            expr='histogram_quantile(0.9, sum by (operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
             legend="{{operator}}",
         ),
     ],
@@ -498,7 +498,7 @@ BLOCK_COMPLETION_TIME_PANEL = Panel(
     description="P90 time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process.",
     targets=[
         Target(
-            expr='histogram_quantile(0.9, sum by (operator, le) (ray_data_block_completion_time_bucket{{{global_filters}, operator=~"$Operator"}}))',
+            expr='histogram_quantile(0.9, sum by (operator, le) (rate(ray_data_block_completion_time_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
             legend="{{operator}}",
         ),
     ],
@@ -513,7 +513,7 @@ BLOCK_SIZE_BYTES_PANEL = Panel(
     description="P90 size (in bytes) per block.",
     targets=[
         Target(
-            expr='histogram_quantile(0.9, sum by (operator, le) (ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator"}}))',
+            expr='histogram_quantile(0.9, sum by (operator, le) (rate(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
             legend="{{operator}}",
         ),
     ],
@@ -528,7 +528,7 @@ BLOCK_SIZE_ROWS_PANEL = Panel(
     description="P90 number of rows per block.",
     targets=[
         Target(
-            expr='histogram_quantile(0.9, sum by (operator, le) (ray_data_block_size_rows_bucket{{{global_filters}, operator=~"$Operator"}}))',
+            expr='histogram_quantile(0.9, sum by (operator, le) (rate(ray_data_block_size_rows_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
             legend="{{operator}}",
         ),
     ],
