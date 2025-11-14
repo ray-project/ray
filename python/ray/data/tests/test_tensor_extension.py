@@ -1,6 +1,5 @@
 import itertools
 import threading
-import time
 from unittest.mock import patch
 
 import numpy as np
@@ -25,7 +24,6 @@ from ray.air.util.tensor_extensions.arrow import (
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.air.util.tensor_extensions.utils import (
-    ThreadSafeTTLCache,
     create_ragged_ndarray,
 )
 from ray.data import DataContext
@@ -1203,301 +1201,6 @@ def test_concat_ndarrays_strided_views():
     assert not np.shares_memory(result, base)
 
 
-class TestThreadSafeTTLCache:
-    """Test suite for ThreadSafeTTLCache."""
-
-    def test_basic_get_set(self):
-        """Test basic get and set operations."""
-        cache = ThreadSafeTTLCache()
-        assert cache.get("key1") is None
-        assert cache.get("key1", default="default") == "default"
-
-        cache.set("value1", key="key1")
-        assert cache.get("key1") == "value1"
-
-        cache.set("value2", key="key2")
-        assert cache.get("key2") == "value2"
-        assert cache.get("key1") == "value1"
-
-    def test_single_value_cache(self):
-        """Test single-value cache mode (key=None)."""
-        cache = ThreadSafeTTLCache()
-        assert cache.get() is None
-        assert cache.get(default="default") == "default"
-
-        cache.set("single_value")
-        assert cache.get() == "single_value"
-
-        cache.set("new_single_value")
-        assert cache.get() == "new_single_value"
-
-    def test_get_or_compute(self):
-        """Test get_or_compute functionality."""
-        cache = ThreadSafeTTLCache()
-        call_count = [0]
-
-        def compute_fn():
-            call_count[0] += 1
-            return f"computed_{call_count[0]}"
-
-        # First call should compute
-        result = cache.get_or_compute(compute_fn, key="key1")
-        assert result == "computed_1"
-        assert call_count[0] == 1
-
-        # Second call should use cache
-        result = cache.get_or_compute(compute_fn, key="key1")
-        assert result == "computed_1"
-        assert call_count[0] == 1
-
-        # Different key should compute again
-        result = cache.get_or_compute(compute_fn, key="key2")
-        assert result == "computed_2"
-        assert call_count[0] == 2
-
-    def test_get_or_compute_single_value(self):
-        """Test get_or_compute with single-value cache."""
-        cache = ThreadSafeTTLCache()
-        call_count = [0]
-
-        def compute_fn():
-            call_count[0] += 1
-            return f"computed_{call_count[0]}"
-
-        # First call should compute
-        result = cache.get_or_compute(compute_fn)
-        assert result == "computed_1"
-        assert call_count[0] == 1
-
-        # Second call should use cache
-        result = cache.get_or_compute(compute_fn)
-        assert result == "computed_1"
-        assert call_count[0] == 1
-
-    def test_ttl_expiration(self):
-        """Test TTL expiration of cache entries."""
-        cache = ThreadSafeTTLCache(ttl=0.1)  # 100ms TTL
-
-        cache.set("value1", key="key1")
-        assert cache.get("key1") == "value1"
-
-        # Wait for expiration
-        time.sleep(0.15)
-
-        # Entry should be expired
-        assert cache.get("key1") is None
-
-    def test_ttl_no_expiration(self):
-        """Test cache without TTL (entries never expire)."""
-        cache = ThreadSafeTTLCache(ttl=None)
-
-        cache.set("value1", key="key1")
-        assert cache.get("key1") == "value1"
-
-        # Wait a bit
-        time.sleep(0.1)
-
-        # Entry should still be there
-        assert cache.get("key1") == "value1"
-
-    def test_ttl_access_refresh(self):
-        """Test that accessing an entry refreshes its TTL."""
-        cache = ThreadSafeTTLCache(ttl=0.2)  # 200ms TTL
-
-        cache.set("value1", key="key1")
-        assert cache.get("key1") == "value1"
-
-        # Wait for half TTL
-        time.sleep(0.1)
-
-        # Access the entry to refresh TTL
-        assert cache.get("key1") == "value1"
-
-        # Wait for another half TTL
-        time.sleep(0.1)
-
-        # Entry should still be valid (was refreshed)
-        assert cache.get("key1") == "value1"
-
-        # Wait for full TTL after refresh
-        time.sleep(0.2)
-
-        # Now it should be expired
-        assert cache.get("key1") is None
-
-    def test_clean_expired_entries(self):
-        """Test manual cleanup of expired entries."""
-        cache = ThreadSafeTTLCache(ttl=0.1)
-
-        cache.set("value1", key="key1")
-        cache.set("value2", key="key2")
-
-        # Wait for expiration
-        time.sleep(0.15)
-
-        # Manually clean expired entries
-        cache.clean_expired_entries()
-
-        # Both should be gone
-        assert cache.get("key1") is None
-        assert cache.get("key2") is None
-
-    def test_clean_expired_entries_partial(self):
-        """Test that only expired entries are cleaned."""
-        cache = ThreadSafeTTLCache(ttl=0.2)
-
-        cache.set("value1", key="key1")
-        time.sleep(0.1)
-        cache.set("value2", key="key2")  # This one is newer
-
-        # Wait for key1 to expire but not key2
-        time.sleep(0.15)
-
-        cache.clean_expired_entries()
-
-        # key1 should be expired, key2 should still be there
-        assert cache.get("key1") is None
-        assert cache.get("key2") == "value2"
-
-    def test_thread_safety_concurrent_reads(self):
-        """Test thread safety with concurrent reads."""
-        cache = ThreadSafeTTLCache()
-        cache.set("value1", key="key1")
-
-        results = []
-        errors = []
-
-        def read_cache():
-            try:
-                for _ in range(100):
-                    results.append(cache.get("key1"))
-            except Exception as e:
-                errors.append(e)
-
-        threads = [threading.Thread(target=read_cache) for _ in range(10)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        assert len(errors) == 0
-        assert all(r == "value1" for r in results)
-        assert len(results) == 1000
-
-    def test_thread_safety_concurrent_writes(self):
-        """Test thread safety with concurrent writes."""
-        cache = ThreadSafeTTLCache()
-
-        def write_cache(thread_id):
-            for i in range(10):
-                cache.set(f"value_{thread_id}_{i}", key=f"key_{thread_id}_{i}")
-
-        threads = [threading.Thread(target=write_cache, args=(i,)) for i in range(10)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        # Verify all values were written correctly
-        for thread_id in range(10):
-            for i in range(10):
-                assert cache.get(f"key_{thread_id}_{i}") == f"value_{thread_id}_{i}"
-
-    def test_thread_safety_mixed_operations(self):
-        """Test thread safety with mixed read/write operations."""
-        cache = ThreadSafeTTLCache()
-        cache.set("initial", key="key1")
-
-        results = []
-        errors = []
-
-        def mixed_operations(thread_id):
-            try:
-                for i in range(20):
-                    if i % 2 == 0:
-                        # Read
-                        results.append(cache.get("key1"))
-                    else:
-                        # Write
-                        cache.set(f"value_{thread_id}_{i}", key=f"key_{thread_id}_{i}")
-            except Exception as e:
-                errors.append(e)
-
-        threads = [
-            threading.Thread(target=mixed_operations, args=(i,)) for i in range(5)
-        ]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        assert len(errors) == 0
-        # Verify reads got valid values (either "initial" or some written value)
-        assert all(r is not None for r in results)
-
-    def test_get_or_compute_thread_safety(self):
-        """Test thread safety of get_or_compute."""
-        cache = ThreadSafeTTLCache()
-        call_count = [0]
-        lock = threading.Lock()
-
-        def compute_fn():
-            with lock:
-                call_count[0] += 1
-            time.sleep(0.01)  # Simulate some computation time
-            return f"computed_{call_count[0]}"
-
-        results = []
-        errors = []
-
-        def get_or_compute_operation():
-            try:
-                result = cache.get_or_compute(compute_fn, key="shared_key")
-                results.append(result)
-            except Exception as e:
-                errors.append(e)
-
-        threads = [threading.Thread(target=get_or_compute_operation) for _ in range(10)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        assert len(errors) == 0
-        # All results should be the same (computed once)
-        assert len(set(results)) == 1
-        # Should only be computed once (or very few times due to race conditions)
-        assert call_count[0] <= 2  # Allow for 1-2 calls due to race conditions
-
-    def test_multiple_keys_independence(self):
-        """Test that different keys are independent."""
-        cache = ThreadSafeTTLCache()
-
-        cache.set("value1", key="key1")
-        cache.set("value2", key="key2")
-        cache.set("value3", key="key3")
-
-        assert cache.get("key1") == "value1"
-        assert cache.get("key2") == "value2"
-        assert cache.get("key3") == "value3"
-
-        # Update one key
-        cache.set("new_value1", key="key1")
-        assert cache.get("key1") == "new_value1"
-        assert cache.get("key2") == "value2"
-        assert cache.get("key3") == "value3"
-
-    def test_overwrite_existing_key(self):
-        """Test overwriting an existing key."""
-        cache = ThreadSafeTTLCache()
-
-        cache.set("value1", key="key1")
-        assert cache.get("key1") == "value1"
-
-        cache.set("value2", key="key1")
-        assert cache.get("key1") == "value2"
-
-
 def test_arrow_extension_serialize_deserialize_cache():
     """Test caching behavior of ArrowExtensionSerializeDeserializeCache."""
     # Test 1: Serialization cache is instance-level
@@ -1505,7 +1208,7 @@ def test_arrow_extension_serialize_deserialize_cache():
     tensor_type = ArrowTensorType(shape=(2, 3), dtype=pa.int64())
 
     # Clear the instance's serialization cache to ensure fresh test
-    tensor_type._serialize_cache = type(tensor_type._serialize_cache)()
+    tensor_type._serialize_cache = None
 
     # Track calls to _arrow_ext_serialize_compute to verify caching
     with patch.object(
@@ -1525,6 +1228,8 @@ def test_arrow_extension_serialize_deserialize_cache():
         assert serialized1 == serialized2
 
     # Test 2: Deserialization cache is class-level (shared across instances)
+    # Clear the lru_cache to ensure fresh test
+    ArrowTensorType._arrow_ext_deserialize_cache.cache_clear()
     storage_type = pa.list_(pa.int64())
 
     # Track calls to _arrow_ext_deserialize_compute to verify caching
@@ -1552,7 +1257,7 @@ def test_arrow_extension_serialize_deserialize_cache():
 
     # Test 3: Different serialized data produces different cache entries
     tensor_type2 = ArrowTensorType(shape=(3, 4), dtype=pa.int32())
-    tensor_type2._serialize_cache = type(tensor_type2._serialize_cache)()
+    tensor_type2._serialize_cache = None
     different_serialized = tensor_type2.__arrow_ext_serialize__()
     storage_type2 = pa.list_(pa.int32())
 
@@ -1564,23 +1269,23 @@ def test_arrow_extension_serialize_deserialize_cache():
     assert deserialized3.scalar_type == pa.int32()
     assert deserialized3.shape != deserialized1.shape
 
-    # Test 4: Cache key generation works correctly
-    cache_key1 = ArrowTensorType._get_deserialize_cache_key(storage_type, serialized1)
-    cache_key2 = ArrowTensorType._get_deserialize_cache_key(storage_type, serialized1)
-    assert cache_key1 == cache_key2  # Same inputs should produce same key
+    # Test 4: Cache parameter generation works correctly
+    param1 = ArrowTensorType._get_deserialize_parameter(storage_type, serialized1)
+    param2 = ArrowTensorType._get_deserialize_parameter(storage_type, serialized1)
+    assert param1 == param2  # Same inputs should produce same parameters
 
-    cache_key3 = ArrowTensorType._get_deserialize_cache_key(
+    param3 = ArrowTensorType._get_deserialize_parameter(
         storage_type2, different_serialized
     )
-    assert cache_key1 != cache_key3  # Different inputs should produce different keys
+    assert param1 != param3  # Different inputs should produce different parameters
 
     # Test 5: Multiple instances have separate serialization caches
     tensor_type_a = ArrowTensorType(shape=(2, 3), dtype=pa.int64())
     tensor_type_b = ArrowTensorType(shape=(2, 3), dtype=pa.int64())
 
     # Clear caches
-    tensor_type_a._serialize_cache = type(tensor_type_a._serialize_cache)()
-    tensor_type_b._serialize_cache = type(tensor_type_b._serialize_cache)()
+    tensor_type_a._serialize_cache = None
+    tensor_type_b._serialize_cache = None
 
     # Track calls to verify separate caches
     with patch.object(
