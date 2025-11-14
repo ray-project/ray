@@ -147,7 +147,7 @@ class ArrowExtensionSerializeDeserializeCache(abc.ABC):
 
     @classmethod
     @abstractmethod
-    def _get_deserialize_parameter(cls, storage_type, serialized) -> Tuple[Any, Any]:
+    def _get_deserialize_parameter(cls, storage_type, serialized) -> Tuple:
         """Subclasses must implement this method to return the parameters for the deserialization cache."""
         ...
 
