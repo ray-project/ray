@@ -8,6 +8,7 @@ from ray.data._internal.actor_autoscaler import (
     create_actor_autoscaler,
 )
 from ray.data._internal.cluster_autoscaler import create_cluster_autoscaler
+from ray.data._internal.execution import create_ranker
 from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
     get_backpressure_policies,
@@ -77,18 +78,12 @@ class StreamingExecutor(Executor, threading.Thread):
         dataset_id: str = "unknown_dataset",
     ):
         self._data_context = data_context
+        self._ranker = create_ranker()
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
         self._progress_manager: Optional[RichExecutionProgressManager] = None
-
-        if not self._use_rich_progress() and log_once("rich_progress_disabled"):
-            logger.info(
-                "A new progress UI is available. To enable, set "
-                "`ray.data.DataContext.get_current()."
-                "enable_rich_progress_bars = True`."
-            )
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
@@ -486,6 +481,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 # If consumer is idling (there's nothing for it to consume)
                 # enforce liveness, ie that at least a single task gets scheduled
                 ensure_liveness=self._consumer_idling(),
+                ranker=self._ranker,
             )
 
             if op is None:
@@ -669,7 +665,19 @@ class StreamingExecutor(Executor, threading.Thread):
         )
 
     def _use_rich_progress(self):
-        return self._data_context.enable_rich_progress_bars
+        rich_enabled = self._data_context.enable_rich_progress_bars
+        use_ray_tqdm = self._data_context.use_ray_tqdm
+
+        if not rich_enabled or use_ray_tqdm:
+            if log_once("ray_data_rich_progress_disabled"):
+                logger.info(
+                    "[dataset]: A new progress UI is available. To enable, "
+                    "set `ray.data.DataContext.get_current()."
+                    "enable_rich_progress_bars = True` and `ray.data."
+                    "DataContext.get_current().use_ray_tqdm = False`."
+                )
+            return False
+        return True
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
