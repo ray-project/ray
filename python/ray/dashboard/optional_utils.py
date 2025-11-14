@@ -138,7 +138,7 @@ def is_browser_request(req: Request) -> bool:
         common browsers' user agents start with 'Mozilla'.
         2) If any of the `Sec-Fetch-*` headers are present.
     """
-    return req.headers["User-Agent"].startswith("Mozilla") or any(
+    return req.headers.get("User-Agent", "").startswith("Mozilla") or any(
         h in req.headers
         for h in (
             "Sec-Fetch-Mode",
