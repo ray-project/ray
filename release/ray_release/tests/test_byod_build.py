@@ -1,17 +1,17 @@
 import sys
+from typing import List
+from unittest.mock import patch
 
 import pytest
-from unittest.mock import patch
-from typing import List
 
 from ray_release.bazel import bazel_runfile
-from ray_release.configs.global_config import init_global_config, get_global_config
-from ray_release.test import Test
 from ray_release.byod.build import (
-    build_anyscale_custom_byod_image,
-    build_anyscale_base_byod_images,
     _get_ray_commit,
+    build_anyscale_base_byod_images,
+    build_anyscale_custom_byod_image,
 )
+from ray_release.configs.global_config import get_global_config, init_global_config
+from ray_release.test import Test
 
 
 def test_get_ray_commit() -> None:

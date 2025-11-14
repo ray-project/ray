@@ -1,7 +1,7 @@
 import enum
 import os
 from dataclasses import dataclass
-from typing import Optional, Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 from ray_release.exception import ExitCode, ReleaseTestError
 

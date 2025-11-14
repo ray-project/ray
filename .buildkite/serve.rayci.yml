@@ -30,7 +30,7 @@ steps:
     wanda: ci/docker/min.build.wanda.yaml
     matrix:
       setup:
-        python: ["3.9", "3.10"]
+        python: ["3.10"]
         extra: ["serve", "default"]
     env:
       PYTHON_VERSION: "{{matrix.python}}"
@@ -48,7 +48,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servebuild-py3.9 --test-env=EXPECTED_PYTHON_VERSION=3.9
+        --build-name servebuild-py3.10 --test-env=EXPECTED_PYTHON_VERSION=3.10 --python-version 3.10
     depends_on: servebuild-multipy
 
   - label: ":ray-serve: serve: pydantic < 2.0 tests"
