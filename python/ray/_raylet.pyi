@@ -17,7 +17,10 @@ from typing import (
     Union,
 )
 
-from typing_extensions import NotRequired, ParamSpec
+try:
+    from typing import ParamSpec
+except ImportError:
+    from typing_extensions import ParamSpec
 
 from python.ray.includes.buffer import Buffer
 from python.ray.includes.function_descriptor import (
@@ -118,8 +121,8 @@ class RefCountDict(TypedDict):
     local: int
     submitted: int
 
-class FallbackStrategyDict(TypedDict):
-    label_selector: NotRequired[Dict[str,str]]
+class FallbackStrategyDict(TypedDict,total=False):
+    label_selector: Dict[str,str]
 
 class HasReadInto(Protocol):
     def readinto(self,b: Union[bytearray, memoryview],/) -> None: ...
