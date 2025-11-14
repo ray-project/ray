@@ -316,14 +316,15 @@ class OfflinePreLearner:
         # Ensure that episodes do not contain duplicates. Note, this can happen
         # if the dataset is small and pulled batches contain multiple episodes.
         unique_episode_ids = set()
-        episodes = {
-            eps
-            for eps in episodes
-            if eps.id_ not in unique_episode_ids
-            and not unique_episode_ids.add(eps.id_)
-            and eps.id_ not in self.episode_buffer.episode_id_to_index.keys()
-        }
-        return episodes
+        cleaned_episodes = []
+        for eps in episodes:
+            if (
+                eps.id_ not in unique_episode_ids
+                and eps.id_ not in self.episode_buffer.episode_id_to_index
+            ):
+                unique_episode_ids.add(eps.id_)
+                cleaned_episodes.append(eps)
+        return cleaned_episodes
 
     def _should_module_be_updated(self, module_id, multi_agent_batch=None) -> bool:
         """Checks which modules in a MultiRLModule should be updated."""
