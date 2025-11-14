@@ -695,7 +695,6 @@ read from the dataset path:
     print(ds.schema())
 
 .. testoutput::
-    :options: +MOCK
 
     Dataset count: 61614907
     Column  Type
