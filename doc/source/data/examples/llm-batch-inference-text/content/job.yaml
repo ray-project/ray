@@ -1,6 +1,6 @@
 name: llm-batch-inference-text
 entrypoint: python batch_inference_text.py
-image_uri: anyscale/ray:2.49.0-py312-cu128
+image_uri: anyscale/ray-llm:2.51.1-py311-cu128
 compute_config:
   head_node:
     instance_type: m5.2xlarge
