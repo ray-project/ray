@@ -1,8 +1,5 @@
 """
 DropNa logical operator.
-
-This module defines the DropNa logical operator for removing rows with missing
-values from Ray datasets.
 """
 
 from typing import Any, Dict, List, Literal, Optional
@@ -15,28 +12,7 @@ DropMethod = Literal["any", "all"]
 
 
 class DropNa(AbstractMap):
-    """Logical operator for dropna operation.
-
-    Args:
-        input_op: The input logical operator.
-        how: Determines which rows to drop. Options:
-            - 'any': Drop rows with any missing values (default)
-            - 'all': Drop rows where all values are missing
-        subset: Optional list of column names to consider for missing values.
-            If None, all columns will be considered.
-        thresh: Optional minimum number of non-missing values required to keep
-            a row. If specified, overrides the 'how' parameter.
-        ignore_values: Optional list of additional values to treat as missing
-            (beyond None and NaN). Useful for treating empty strings, zeros, etc.
-            as missing values.
-        inplace: Whether to modify the dataset in-place. Note: Ray Data datasets
-            are immutable, so this always returns a new dataset.
-        compute: Optional compute strategy for the operation.
-        ray_remote_args: Optional Ray remote arguments for distributed execution.
-
-    Raises:
-        ValueError: If 'how' is not "any" or "all", or if thresh is negative.
-    """
+    """Logical operator for dropna operation."""
 
     def __init__(
         self,
@@ -45,7 +21,7 @@ class DropNa(AbstractMap):
         subset: Optional[List[str]] = None,
         thresh: Optional[int] = None,
         ignore_values: Optional[List[Any]] = None,
-        inplace: bool = False,  # For pandas compatibility, ignored in Ray Data
+        inplace: bool = False,
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -56,7 +32,6 @@ class DropNa(AbstractMap):
             ray_remote_args=ray_remote_args,
         )
 
-        # Validate parameters
         if how not in ["any", "all"]:
             raise ValueError(f"'how' must be 'any' or 'all', got '{how}'")
 
@@ -72,35 +47,29 @@ class DropNa(AbstractMap):
         self._subset = subset
         self._thresh = thresh
         self._ignore_values = ignore_values or []
-        self._inplace = inplace  # Store for API compatibility
+        self._inplace = inplace
         self._batch_format = "pyarrow"
         self._zero_copy_batch = True
 
     @property
     def how(self) -> DropMethod:
-        """The strategy for determining which rows to drop."""
         return self._how
 
     @property
     def subset(self) -> Optional[List[str]]:
-        """The subset of columns to consider for missing values."""
         return self._subset
 
     @property
     def thresh(self) -> Optional[int]:
-        """The minimum number of non-missing values required to keep a row."""
         return self._thresh
 
     @property
     def ignore_values(self) -> List[Any]:
-        """Additional values to treat as missing beyond None and NaN."""
         return self._ignore_values
 
     @property
     def inplace(self) -> bool:
-        """Whether to modify the dataset in-place (always False for Ray Data)."""
         return self._inplace
 
     def can_modify_num_rows(self) -> bool:
-        """Check if this operator can modify the number of rows."""
         return True
