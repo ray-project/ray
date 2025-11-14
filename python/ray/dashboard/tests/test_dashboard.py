@@ -427,8 +427,8 @@ def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
 
     timeout_seconds = 30
     start_time = time.time()
+    wait_for_condition(dashboard_available)
     while True:
-        wait_for_condition(dashboard_available)
         try:
             # Starting and getting jobs should be fine from API clients
             response = requests.post(
@@ -481,8 +481,8 @@ def test_deny_fetch_requests(enable_test_module, ray_start_with_dashboard):
 
     timeout_seconds = 30
     start_time = time.time()
+    wait_for_condition(dashboard_available)
     while True:
-        wait_for_condition(dashboard_available)
         try:
             # Starting and getting jobs should be fine from API clients
             response = requests.post(
