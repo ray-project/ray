@@ -52,14 +52,18 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
   if (!status.ok()) {
     // The owner is unreachable. Store an error so that an exception will be
     // thrown immediately when the worker tries to get the value.
-    in_memory_store_->Put(RayObject(rpc::ErrorType::OWNER_DIED), object_id);
+    in_memory_store_->Put(RayObject(rpc::ErrorType::OWNER_DIED),
+                          object_id,
+                          reference_counter_->HasReference(object_id));
   } else if (reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE) {
     // The owner replied that the object has gone out of scope (this is an edge
     // case in the distributed ref counting protocol where a borrower dies
     // before it can notify the owner of another borrower). Store an error so
     // that an exception will be thrown immediately when the worker tries to
     // get the value.
-    in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_DELETED), object_id);
+    in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_DELETED),
+                          object_id,
+                          reference_counter_->HasReference(object_id));
   } else if (reply.status() == rpc::GetObjectStatusReply::CREATED) {
     // The object is either an indicator that the object is in Plasma, or
     // the object has been returned directly in the reply. In either
@@ -106,7 +110,8 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
                                             inlined_ref.owner_address());
     }
     in_memory_store_->Put(RayObject(data_buffer, metadata_buffer, inlined_refs),
-                          object_id);
+                          object_id,
+                          reference_counter_->HasReference(object_id));
   }
 }
 

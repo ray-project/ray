@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 namespace observability {
