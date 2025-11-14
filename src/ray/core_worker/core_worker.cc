@@ -851,10 +851,6 @@ std::vector<TaskID> CoreWorker::GetPendingChildrenTasks(const TaskID &task_id) c
 
 const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
 
-bool CoreWorker::HasOwner(const ObjectID &object_id) const {
-  return reference_counter_->HasOwner(object_id);
-}
-
 rpc::Address CoreWorker::GetOwnerAddressOrDie(const ObjectID &object_id) const {
   rpc::Address owner_address;
   auto status = GetOwnerAddress(object_id, &owner_address);
@@ -1482,36 +1478,23 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     return Status::Invalid("Duplicate object IDs not supported in wait.");
   }
 
-  size_t objs_without_owners = 0;
-  size_t objs_with_owners = 0;
-  std::ostringstream ids_stream;
+  StatusSet<StatusT::NotFound> objects_have_owners = reference_counter_->HasOwner(ids);
 
-  for (size_t i = 0; i < ids.size(); i++) {
-    if (!HasOwner(ids[i])) {
-      ids_stream << ids[i] << " ";
-      ++objs_without_owners;
-    } else {
-      ++objs_with_owners;
-    }
-    // enough owned objects to process this batch
-    if (objs_with_owners == static_cast<size_t>(num_objects)) {
-      break;
-    }
-    // not enough objects with owners to process the batch
-    if (static_cast<size_t>(num_objects) > ids.size() - objs_without_owners) {
-      std::ostringstream stream;
-      stream << "An application is trying to access a Ray object whose owner is unknown"
-             << "(" << ids_stream.str()
-             << "). "
-                "Please make sure that all Ray objects you are trying to access are part"
-                " of the current Ray session. Note that "
-                "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-                "(ObjectID.from_binary(...)) cannot be passed as a task argument because"
-                " Ray does not know which task created them. "
-                "If this was not how your object ID was generated, please file an issue "
-                "at https://github.com/ray-project/ray/issues/";
-      return Status::ObjectUnknownOwner(stream.str());
-    }
+  if (objects_have_owners.has_error()) {
+    return std::visit(
+        overloaded{[](const StatusT::NotFound &not_found) {
+          return Status::ObjectUnknownOwner(absl::StrFormat(
+              "You are trying to access Ray objects whose owner is "
+              "unknown. Please make sure that all Ray objects you are trying to access "
+              "are part of the current Ray session. Note that object IDs generated "
+              "randomly (ObjectID.from_random()) or out-of-band "
+              "(ObjectID.from_binary(...)) cannot be passed as a task argument because "
+              "Ray does not know which task created them. If this was not how your "
+              "object ID was generated, please file an issue at "
+              "https://github.com/ray-project/ray/issues/. %s",
+              not_found.message()));
+        }},
+        objects_have_owners.error());
   }
 
   int64_t start_time = current_time_ms();

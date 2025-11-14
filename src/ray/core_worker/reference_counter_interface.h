@@ -236,12 +236,6 @@ class ReferenceCounterInterface {
   virtual bool GetOwner(const ObjectID &object_id,
                         rpc::Address *owner_address = nullptr) const = 0;
 
-  /// Check if the object has an owner.
-  ///
-  /// \param[in] object_id The ID of the object.
-  /// \return if the object has an owner.
-  virtual bool HasOwner(const ObjectID &object_id) const = 0;
-
   //// Checks to see if objects have an owner.
   ///
   /// \param[in] object_ids The IDs of the objects.
