@@ -461,7 +461,7 @@ class WorkerGroup(BaseWorkerGroup):
         self,
         tpu_config: TPUAcceleratorConfig,
         worker_group_context: WorkerGroupContext,
-    ) -> (PlacementGroup, WorkerGroupContext):
+    ) -> Tuple[PlacementGroup, WorkerGroupContext]:
         """
         Reserves TPU slices using the SlicePlacementGroup utility and
         returns the resolved PG and WorkerGroupContext.
