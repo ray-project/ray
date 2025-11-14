@@ -640,7 +640,10 @@ bool NormalTaskSubmitter::HandleGetWorkerFailureCause(
         "failure, or its raylet crashed unexpectedly. To see node death information, use "
         "`ray list nodes --filter node_id=%s`, check the Ray dashboard cluster page, "
         "search the node ID in the GCS logs, or use `ray logs raylet.out -ip %s`.",
-        addr.ip_address(), node_id.Hex(), node_id.Hex(), addr.ip_address());
+        addr.ip_address(),
+        node_id.Hex(),
+        node_id.Hex(),
+        addr.ip_address());
     error_info = std::make_unique<rpc::RayErrorInfo>();
     error_info->set_error_message(error_message);
     error_info->set_error_type(rpc::ErrorType::NODE_DIED);
