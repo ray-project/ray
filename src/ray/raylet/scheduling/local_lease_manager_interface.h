@@ -19,10 +19,11 @@
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/lease/lease.h"
 #include "ray/raylet/scheduling/internal.h"
 
 namespace ray {
+class RayLease;
+
 namespace raylet {
 
 // Forward declaration
@@ -51,6 +52,12 @@ class LocalLeaseManagerInterface {
       std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message) = 0;
+
+  /// Similar to `CancelLeases`. The only difference is that this method does not send
+  /// RequestWorkerLease replies for those cancelled leases.
+  /// \return A list of cancelled leases.
+  virtual std::vector<std::shared_ptr<internal::Work>> CancelLeasesWithoutReply(
+      std::function<bool(const std::shared_ptr<internal::Work> &)> predicate) = 0;
 
   virtual const absl::flat_hash_map<SchedulingClass,
                                     std::deque<std::shared_ptr<internal::Work>>>
@@ -90,6 +97,22 @@ class LocalLeaseManagerInterface {
   virtual size_t GetNumLeaseSpilled() const = 0;
   virtual size_t GetNumWaitingLeaseSpilled() const = 0;
   virtual size_t GetNumUnschedulableLeaseSpilled() const = 0;
+  virtual bool IsLeaseQueued(const SchedulingClass &scheduling_class,
+                             const LeaseID &lease_id) const = 0;
+
+  /// Add a reply callback to the lease. We don't overwrite the existing reply callback
+  /// since due to message reordering we may receive the retry before the initial request.
+  ///
+  /// \param scheduling_class: The scheduling class of the lease.
+  /// \param lease_id: The lease id of the lease.
+  /// \param send_reply_callback: The callback used for the reply.
+  /// \param reply: The reply of the lease request.
+  ///
+  /// \return True if the reply callback is added successfully.
+  virtual bool AddReplyCallback(const SchedulingClass &scheduling_class,
+                                const LeaseID &lease_id,
+                                rpc::SendReplyCallback send_reply_callback,
+                                rpc::RequestWorkerLeaseReply *reply) = 0;
 };
 
 /// A noop local lease manager. It is a no-op class. We need this because there's no
@@ -111,6 +134,11 @@ class NoopLocalLeaseManager : public LocalLeaseManagerInterface {
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message) override {
     return false;
+  }
+
+  std::vector<std::shared_ptr<internal::Work>> CancelLeasesWithoutReply(
+      std::function<bool(const std::shared_ptr<internal::Work> &)> predicate) override {
+    return {};
   }
 
   const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
@@ -165,7 +193,16 @@ class NoopLocalLeaseManager : public LocalLeaseManagerInterface {
   size_t GetNumLeaseSpilled() const override { return 0; }
   size_t GetNumWaitingLeaseSpilled() const override { return 0; }
   size_t GetNumUnschedulableLeaseSpilled() const override { return 0; }
+  bool IsLeaseQueued(const SchedulingClass &scheduling_class,
+                     const LeaseID &lease_id) const override {
+    return false;
+  }
+  bool AddReplyCallback(const SchedulingClass &scheduling_class,
+                        const LeaseID &lease_id,
+                        rpc::SendReplyCallback send_reply_callback,
+                        rpc::RequestWorkerLeaseReply *reply) override {
+    return false;
+  }
 };
-
 }  // namespace raylet
 }  // namespace ray

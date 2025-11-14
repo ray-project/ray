@@ -22,7 +22,7 @@ import psutil
     "call_ray_start",
     [
         "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0",
+        "--max-worker-port=0 --port 0"
     ],
     indirect=True,
 )

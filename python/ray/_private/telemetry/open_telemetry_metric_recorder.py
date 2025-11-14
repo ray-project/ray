@@ -59,6 +59,8 @@ class OpenTelemetryMetricRecorder:
                 # Take snapshot of current observations.
                 with self._lock:
                     observations = self._observations_by_name[name]
+                    # Clear the observations to avoid emitting dead observations.
+                    self._observations_by_name[name] = {}
                     # Drop high cardinality from tag_set and sum up the value for
                     # same tag set after dropping
                     aggregated_observations = defaultdict(float)
@@ -162,7 +164,7 @@ class OpenTelemetryMetricRecorder:
                 if i == 0:
                     lower_bound = 0.0 if buckets[0] > 0 else buckets[0] * 2.0
                     self._histogram_bucket_midpoints[name].append(
-                        lower_bound + buckets[0] / 2.0
+                        (lower_bound + buckets[0]) / 2.0
                     )
                 else:
                     self._histogram_bucket_midpoints[name].append(

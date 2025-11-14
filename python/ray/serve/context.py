@@ -8,12 +8,12 @@ import contextvars
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, List, Optional
 
 import ray
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ReplicaID
+from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
@@ -23,6 +23,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve.exceptions import RayServeException
 from ray.serve.grpc_util import RayServegRPCContext
+from ray.serve.schema import ReplicaRank
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -48,8 +49,9 @@ class ReplicaContext:
     replica_id: ReplicaID
     servable_object: Callable
     _deployment_config: DeploymentConfig
-    rank: int
+    rank: ReplicaRank
     world_size: int
+    _handle_registration_callback: Optional[Callable[[DeploymentID], None]] = None
 
     @property
     def app_name(self) -> str:
@@ -112,8 +114,9 @@ def _set_internal_replica_context(
     replica_id: ReplicaID,
     servable_object: Callable,
     _deployment_config: DeploymentConfig,
-    rank: int,
+    rank: ReplicaRank,
     world_size: int,
+    handle_registration_callback: Optional[Callable[[str, str], None]] = None,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
@@ -122,6 +125,7 @@ def _set_internal_replica_context(
         _deployment_config=_deployment_config,
         rank=rank,
         world_size=world_size,
+        _handle_registration_callback=handle_registration_callback,
     )
 
 
@@ -195,6 +199,10 @@ _serve_request_context = contextvars.ContextVar(
     "Serve internal request context variable", default=None
 )
 
+_serve_batch_request_context = contextvars.ContextVar(
+    "Serve internal batching request context variable", default=None
+)
+
 
 def _get_serve_request_context():
     """Get the current request context.
@@ -206,6 +214,13 @@ def _get_serve_request_context():
     if _serve_request_context.get() is None:
         _serve_request_context.set(_RequestContext())
     return _serve_request_context.get()
+
+
+def _get_serve_batch_request_context():
+    """Get the list of request contexts for the current batch."""
+    if _serve_batch_request_context.get() is None:
+        _serve_batch_request_context.set([])
+    return _serve_batch_request_context.get()
 
 
 def _set_request_context(
@@ -231,6 +246,16 @@ def _set_request_context(
             or current_request_context.multiplexed_model_id,
         )
     )
+
+
+def _unset_request_context():
+    """Unset the request context."""
+    _serve_request_context.set(_RequestContext())
+
+
+def _set_batch_request_context(request_contexts: List[_RequestContext]):
+    """Add the request context to the batch request context."""
+    _serve_batch_request_context.set(request_contexts)
 
 
 # `_requests_pending_assignment` is a map from request ID to a

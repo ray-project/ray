@@ -10,7 +10,7 @@ import numpy as np
 
 import ray
 import ray.experimental.internal_kv as _internal_kv
-from ray.util.collective import types
+from . import types
 from ray.util.annotations import Deprecated
 from ray.experimental.collective.util import (
     get_address_and_port as _get_address_and_port,
@@ -77,7 +77,9 @@ def nccl_available():
 
 
 def gloo_available():
-    return _GLOO_AVAILABLE
+    # Since we use torch_gloo as the backend for Gloo,
+    # we can just return the availability of torch.distributed.
+    return _TORCH_DISTRIBUTED_AVAILABLE
 
 
 def torch_distributed_available():
@@ -102,7 +104,6 @@ class GroupManager(object):
 
     def __init__(self):
         self._name_group_map = {}
-        self._group_name_map = {}
 
     def create_collective_group(
         self, backend, world_size, rank, group_name, gloo_timeout
@@ -139,7 +140,9 @@ class GroupManager(object):
             logger.debug(
                 "Creating torch.distributed GLOO group: '{}'...".format(group_name)
             )
+            g = TorchGLOOGroup(world_size, rank, group_name, gloo_timeout)
         elif backend == types.Backend.NCCL:
+            _check_backend_availability(backend)
             logger.debug("Creating NCCL group: '{}'...".format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
         elif backend == types.Backend.NIXL:
@@ -175,8 +178,6 @@ class GroupManager(object):
             raise RuntimeError(f"Unexpected backend: {backend}")
 
         self._name_group_map[group_name] = g
-        self._group_name_map[g] = group_name
-
         return self._name_group_map[group_name]
 
     def is_group_exist(self, group_name):
@@ -198,7 +199,6 @@ class GroupManager(object):
         # release the collective group resource
         g = self._name_group_map[group_name]
         # clean up the dicts
-        del self._group_name_map[g]
         del self._name_group_map[group_name]
         # Release the communicator resources
         g.destroy_group()
@@ -213,11 +213,16 @@ class GroupManager(object):
 
 
 _group_mgr = GroupManager()
+# This lock is used to make external calls to the _group_mgr thread-safe.
+_group_mgr_lock = threading.Lock()
 
 
 def is_group_initialized(group_name):
     """Check if the group is initialized in this process by the group name."""
-    return _group_mgr.is_group_exist(group_name)
+    global _group_mgr
+    global _group_mgr_lock
+    with _group_mgr_lock:
+        return _group_mgr.is_group_exist(group_name)
 
 
 def init_collective_group(
@@ -242,19 +247,22 @@ def init_collective_group(
     backend = types.Backend(backend)
     _check_backend_availability(backend)
     global _group_mgr
+    global _group_mgr_lock
+
     # TODO(Hao): implement a group auto-counter.
     if not group_name:
         raise ValueError("group_name '{}' needs to be a string.".format(group_name))
 
-    if _group_mgr.is_group_exist(group_name):
-        raise RuntimeError("Trying to initialize a group twice.")
+    with _group_mgr_lock:
+        if _group_mgr.is_group_exist(group_name):
+            raise RuntimeError("Trying to initialize a group twice.")
 
-    assert world_size > 0
-    assert rank >= 0
-    assert rank < world_size
-    _group_mgr.create_collective_group(
-        backend, world_size, rank, group_name, gloo_timeout
-    )
+        assert world_size > 0
+        assert rank >= 0
+        assert rank < world_size
+        _group_mgr.create_collective_group(
+            backend, world_size, rank, group_name, gloo_timeout
+        )
 
 
 def create_collective_group(
@@ -327,7 +335,9 @@ def destroy_collective_group(group_name: str = "default") -> None:
     """Destroy a collective group given its group name."""
     _check_inside_actor()
     global _group_mgr
-    _group_mgr.destroy_collective_group(group_name)
+    global _group_mgr_lock
+    with _group_mgr_lock:
+        _group_mgr.destroy_collective_group(group_name)
 
 
 def get_rank(group_name: str = "default") -> int:
@@ -342,10 +352,14 @@ def get_rank(group_name: str = "default") -> int:
         not belong to the group.
     """
     _check_inside_actor()
-    if not is_group_initialized(group_name):
-        return -1
-    g = _group_mgr.get_group_by_name(group_name)
-    return g.rank
+
+    global _group_mgr
+    global _group_mgr_lock
+    with _group_mgr_lock:
+        if not _group_mgr.is_group_exist(group_name):
+            return -1
+        g = _group_mgr.get_group_by_name(group_name)
+        return g.rank
 
 
 def get_collective_group_size(group_name: str = "default") -> int:
@@ -359,10 +373,13 @@ def get_collective_group_size(group_name: str = "default") -> int:
             not exist or the process does not belong to the group.
     """
     _check_inside_actor()
-    if not is_group_initialized(group_name):
-        return -1
-    g = _group_mgr.get_group_by_name(group_name)
-    return g.world_size
+    global _group_mgr
+    global _group_mgr_lock
+    with _group_mgr_lock:
+        if not _group_mgr.is_group_exist(group_name):
+            return -1
+        g = _group_mgr.get_group_by_name(group_name)
+        return g.world_size
 
 
 def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
@@ -599,13 +616,13 @@ def reducescatter(
     _check_single_tensor_input(tensor)
     _check_tensor_list_input(tensor_list)
     g = get_group_handle(group_name)
+    opts = types.ReduceScatterOptions()
+    opts.reduceOp = op
     if len(tensor_list) != g.world_size:
         raise RuntimeError(
             "The length of the tensor list operands to reducescatter "
             "must be equal to world_size."
         )
-    opts = types.ReduceScatterOptions()
-    opts.reduceOp = op
     g.reducescatter([tensor], [tensor_list], opts)
 
 
@@ -855,49 +872,52 @@ def get_group_handle(group_name: str = "default"):
     Returns:
         The collective group handle.
     """
-    _check_inside_actor()
+    if group_name != types.NIXL_GROUP_NAME:
+        _check_inside_actor()
     global _group_mgr
-    if not is_group_initialized(group_name):
-        # try loading from remote info store
-        try:
-            if group_name == types.NIXL_GROUP_NAME:
-                _group_mgr.create_collective_group(
-                    types.Backend.NIXL, None, None, group_name, None
-                )
-            else:
-                # if the information is stored in an Info object,
-                # get and create the group.
-                name = "info_" + group_name
-                mgr = ray.get_actor(name=name)
-                ids, world_size, rank, backend, gloo_timeout = ray.get(
-                    mgr.get_info.remote()
-                )
-                worker = ray._private.worker.global_worker
-                id_ = worker.core_worker.get_actor_id()
-                r = rank[ids.index(id_)]
-                _group_mgr.create_collective_group(
-                    backend, world_size, r, group_name, gloo_timeout
-                )
-        except ValueError as exc:
-            # check if this group is initialized using options()
-            if (
-                "collective_group_name" in os.environ
-                and os.environ["collective_group_name"] == group_name
-            ):
-                rank = int(os.environ["collective_rank"])
-                world_size = int(os.environ["collective_world_size"])
-                backend = os.environ["collective_backend"]
-                gloo_timeout = os.getenv("collective_gloo_timeout", 30000)
-                _group_mgr.create_collective_group(
-                    backend, world_size, rank, group_name, gloo_timeout
-                )
-            else:
-                raise RuntimeError(
-                    "The collective group '{}' is not "
-                    "initialized in the process.".format(group_name)
-                ) from exc
-    g = _group_mgr.get_group_by_name(group_name)
-    return g
+    global _group_mgr_lock
+    with _group_mgr_lock:
+        if not _group_mgr.is_group_exist(group_name):
+            # try loading from remote info store
+            try:
+                if group_name == types.NIXL_GROUP_NAME:
+                    _group_mgr.create_collective_group(
+                        types.Backend.NIXL, None, None, group_name, None
+                    )
+                else:
+                    # if the information is stored in an Info object,
+                    # get and create the group.
+                    name = "info_" + group_name
+                    mgr = ray.get_actor(name=name)
+                    ids, world_size, rank, backend, gloo_timeout = ray.get(
+                        mgr.get_info.remote()
+                    )
+                    worker = ray._private.worker.global_worker
+                    id_ = worker.core_worker.get_actor_id()
+                    r = rank[ids.index(id_)]
+                    _group_mgr.create_collective_group(
+                        backend, world_size, r, group_name, gloo_timeout
+                    )
+            except ValueError as exc:
+                # check if this group is initialized using options()
+                if (
+                    "collective_group_name" in os.environ
+                    and os.environ["collective_group_name"] == group_name
+                ):
+                    rank = int(os.environ["collective_rank"])
+                    world_size = int(os.environ["collective_world_size"])
+                    backend = os.environ["collective_backend"]
+                    gloo_timeout = os.getenv("collective_gloo_timeout", 30000)
+                    _group_mgr.create_collective_group(
+                        backend, world_size, rank, group_name, gloo_timeout
+                    )
+                else:
+                    raise RuntimeError(
+                        "The collective group '{}' is not "
+                        "initialized in the process.".format(group_name)
+                    ) from exc
+        g = _group_mgr.get_group_by_name(group_name)
+        return g
 
 
 def _check_single_tensor_input(tensor):
@@ -919,8 +939,9 @@ def _check_single_tensor_input(tensor):
 def _check_backend_availability(backend: types.Backend):
     """Check whether the backend is available."""
     if backend == types.Backend.GLOO:
-        if not gloo_available():
-            raise RuntimeError("GLOO is not available.")
+        # Now we have deprecated pygloo, and use torch_gloo in all cases.
+        if not torch_distributed_available():
+            raise RuntimeError("torch.distributed is not available.")
     elif backend == types.Backend.NCCL:
         if not nccl_available():
             raise RuntimeError("NCCL is not available.")

@@ -12,17 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// clang-format off
+#include "ray/core_worker/actor_creator.h"
+
 #include <memory>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/core_worker/actor_creator.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/common/test_utils.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
-// clang-format on
 
 namespace ray {
 namespace core {
@@ -50,23 +49,15 @@ TEST_F(ActorCreatorTest, IsRegister) {
   auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
   ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id));
   auto task_spec = GetTaskSpec(actor_id);
-  std::function<void(Status)> cb;
-  EXPECT_CALL(*gcs_client->mock_actor_accessor,
-              AsyncRegisterActor(task_spec, ::testing::_, ::testing::_))
-      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&cb)));
   actor_creator->AsyncRegisterActor(task_spec, nullptr);
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
-  cb(Status::OK());
+  gcs_client->mock_actor_accessor->async_register_actor_callback_(Status::OK());
   ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id));
 }
 
 TEST_F(ActorCreatorTest, AsyncWaitForFinish) {
   auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
   auto task_spec = GetTaskSpec(actor_id);
-  std::function<void(Status)> cb;
-  EXPECT_CALL(*gcs_client->mock_actor_accessor,
-              AsyncRegisterActor(::testing::_, ::testing::_, ::testing::_))
-      .WillRepeatedly(::testing::DoAll(::testing::SaveArg<1>(&cb)));
   int count = 0;
   auto per_finish_cb = [&count](Status status) {
     ASSERT_TRUE(status.ok());
@@ -77,7 +68,7 @@ TEST_F(ActorCreatorTest, AsyncWaitForFinish) {
   for (int i = 0; i < 10; ++i) {
     actor_creator->AsyncWaitForActorRegisterFinish(actor_id, per_finish_cb);
   }
-  cb(Status::OK());
+  gcs_client->mock_actor_accessor->async_register_actor_callback_(Status::OK());
   ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id));
   ASSERT_EQ(11, count);
 }

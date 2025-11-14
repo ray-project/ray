@@ -10,6 +10,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Set,
     Tuple,
     TypeVar,
     Union,
@@ -32,7 +33,6 @@ from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
-from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
     ImageFileMetadataProvider,
@@ -43,6 +43,7 @@ from ray.data._internal.datasource.json_datasource import (
     PandasJSONDatasource,
 )
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
+from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
@@ -52,7 +53,7 @@ from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
 from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data._internal.datasource.torch_datasource import TorchDatasource
-from ray.data._internal.datasource.unity_catalog_datasource import UnityCatalogConnector
+from ray.data._internal.datasource.uc_datasource import UnityCatalogConnector
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -71,6 +72,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _autodetect_parallelism,
     get_table_block_metadata_schema,
+    merge_resources_to_ray_remote_args,
     ndarray_to_block,
     pandas_df_to_arrow_block,
 )
@@ -310,7 +312,10 @@ def range_tensor(
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(2, 2))
         >>> ds
-        Dataset(num_rows=1000, schema={data: numpy.ndarray(shape=(2, 2), dtype=int64)})
+        Dataset(
+           num_rows=1000,
+           schema={data: ArrowTensorTypeV2(shape=(2, 2), dtype=int64)}
+        )
         >>> ds.map_batches(lambda row: {"data": row["data"] * 2}).take(2)
         [{'data': array([[0, 0],
                [0, 0]])}, {'data': array([[2, 2],
@@ -355,6 +360,9 @@ def read_datasource(
     datasource: Datasource,
     *,
     parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -365,6 +373,11 @@ def read_datasource(
     Args:
         datasource: The :class:`~ray.data.Datasource` to read data from.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -396,6 +409,13 @@ def read_datasource(
     if "scheduling_strategy" not in ray_remote_args:
         ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
+    ray_remote_args = merge_resources_to_ray_remote_args(
+        num_cpus,
+        num_gpus,
+        memory,
+        ray_remote_args,
+    )
+
     datasource_or_legacy_reader = _get_datasource_or_legacy_reader(
         datasource,
         ctx,
@@ -403,7 +423,7 @@ def read_datasource(
     )
 
     cur_pg = ray.util.get_current_placement_group()
-    requested_parallelism, _, inmemory_size = _autodetect_parallelism(
+    requested_parallelism, _, _ = _autodetect_parallelism(
         parallelism,
         ctx.target_max_block_size,
         DataContext.get_current(),
@@ -422,11 +442,10 @@ def read_datasource(
     read_op = Read(
         datasource,
         datasource_or_legacy_reader,
-        parallelism,
-        inmemory_size,
-        len(read_tasks) if read_tasks else 0,
-        ray_remote_args,
-        concurrency,
+        parallelism=parallelism,
+        num_outputs=len(read_tasks) if read_tasks else 0,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
     )
     execution_plan = ExecutionPlan(
         stats,
@@ -453,6 +472,9 @@ def read_audio(
     shuffle: Union[Literal["files"], None] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ):
     """Creates a :class:`~ray.data.Dataset` from audio files.
@@ -466,7 +488,7 @@ def read_audio(
         >>> ds.schema()
         Column       Type
         ------       ----
-        amplitude    numpy.ndarray(shape=(1, 191760), dtype=float)
+        amplitude    ArrowTensorTypeV2(shape=(1, 191760), dtype=float)
         sample_rate  int64
 
     Args:
@@ -502,6 +524,11 @@ def read_audio(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
 
     Returns:
@@ -523,6 +550,9 @@ def read_audio(
     return read_datasource(
         datasource,
         ray_remote_args=ray_remote_args,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -543,6 +573,9 @@ def read_videos(
     shuffle: Union[Literal["files"], None] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ):
     """Creates a :class:`~ray.data.Dataset` from video files.
@@ -557,7 +590,7 @@ def read_videos(
         >>> ds.schema()
         Column       Type
         ------       ----
-        frame        numpy.ndarray(shape=(720, 1280, 3), dtype=uint8)
+        frame        ArrowTensorTypeV2(shape=(720, 1280, 3), dtype=uint8)
         frame_index  int64
 
     Args:
@@ -592,6 +625,11 @@ def read_videos(
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
 
     Returns:
         A :class:`~ray.data.Dataset` containing video frames from the video files.
@@ -612,6 +650,9 @@ def read_videos(
     return read_datasource(
         datasource,
         ray_remote_args=ray_remote_args,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -626,6 +667,9 @@ def read_mongo(
     pipeline: Optional[List[Dict]] = None,
     schema: Optional["pymongoarrow.api.Schema"] = None,
     parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -679,6 +723,11 @@ def read_mongo(
         schema: The schema used to read the collection. If None, it'll be inferred from
             the results of pipeline.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -710,6 +759,9 @@ def read_mongo(
     )
     return read_datasource(
         datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -724,6 +776,9 @@ def read_bigquery(
     query: Optional[str] = None,
     *,
     parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -768,6 +823,11 @@ def read_bigquery(
         dataset: The name of the dataset hosted in BigQuery in the format of ``dataset_id.table_id``.
             Both the dataset_id and table_id must exist otherwise an exception will be raised.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -785,6 +845,9 @@ def read_bigquery(
     datasource = BigQueryDatasource(project_id=project_id, dataset=dataset, query=query)
     return read_datasource(
         datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -799,6 +862,9 @@ def read_parquet(
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: Optional[FileMetadataProvider] = None,
@@ -806,7 +872,7 @@ def read_parquet(
     partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     include_paths: bool = False,
-    file_extensions: Optional[List[str]] = None,
+    file_extensions: Optional[List[str]] = ParquetDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     **arrow_parquet_args,
@@ -896,6 +962,11 @@ def read_parquet(
         columns: A list of column names to read. Only the specified columns are
             read during the file scan.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         tensor_column_schema: A dict of column name to PyArrow dtype and shape
             mappings for converting a Parquet column containing serialized
@@ -937,6 +1008,15 @@ def read_parquet(
     _emit_meta_provider_deprecation_warning(meta_provider)
     _validate_shuffle_arg(shuffle)
 
+    # Check for deprecated filter parameter
+    if "filter" in arrow_parquet_args:
+        warnings.warn(
+            "The `filter` argument is deprecated and will not supported in a future release. "
+            "Use `dataset.filter(expr=expr)` instead to filter rows.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     arrow_parquet_args = _resolve_parquet_args(
         tensor_column_schema,
         **arrow_parquet_args,
@@ -962,6 +1042,9 @@ def read_parquet(
     )
     return read_datasource(
         datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -975,6 +1058,9 @@ def read_images(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_file_args: Optional[Dict[str, Any]] = None,
@@ -1000,7 +1086,7 @@ def read_images(
         >>> ds.schema()
         Column  Type
         ------  ----
-        image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+        image   ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
         If you need image file paths, set ``include_paths=True``.
 
@@ -1008,7 +1094,7 @@ def read_images(
         >>> ds.schema()
         Column  Type
         ------  ----
-        image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+        image   ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
         path    string
         >>> ds.take(1)[0]["path"]
         'ray-example-data/batoidea/JPEGImages/1.jpeg'
@@ -1034,7 +1120,7 @@ def read_images(
         >>> ds.schema()
         Column  Type
         ------  ----
-        image   numpy.ndarray(shape=(224, 224, 3), dtype=uint8)
+        image   ArrowTensorTypeV2(shape=(224, 224, 3), dtype=uint8)
         class   string
 
     Args:
@@ -1048,6 +1134,11 @@ def read_images(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
             Custom metadata providers may be able to resolve file metadata more quickly
             and/or accurately. In most cases, you do not need to set this. If ``None``,
@@ -1119,6 +1210,9 @@ def read_images(
     )
     return read_datasource(
         datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -1133,6 +1227,9 @@ def read_parquet_bulk(
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_file_args: Optional[Dict[str, Any]] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
@@ -1184,6 +1281,11 @@ def read_parquet_bulk(
         columns: A list of column names to read. Only the
             specified columns are read during the file scan.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_file_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -1257,6 +1359,9 @@ def read_parquet_bulk(
     )
     return read_datasource(
         datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -1271,6 +1376,9 @@ def read_json(
     lines: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
@@ -1342,6 +1450,11 @@ def read_json(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -1430,6 +1543,9 @@ def read_json(
 
     return read_datasource(
         datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -1443,6 +1559,9 @@ def read_csv(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
@@ -1537,6 +1656,11 @@ def read_csv(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -1599,6 +1723,9 @@ def read_csv(
     )
     return read_datasource(
         datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -1614,6 +1741,9 @@ def read_text(
     drop_empty_lines: bool = True,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
@@ -1657,6 +1787,11 @@ def read_text(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks and
             in the subsequent text decoding map task.
         arrow_open_stream_args: kwargs passed to
@@ -1716,6 +1851,9 @@ def read_text(
     )
     return read_datasource(
         datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -1729,6 +1867,9 @@ def read_avro(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
@@ -1769,6 +1910,11 @@ def read_avro(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks and
             in the subsequent text decoding map task.
         arrow_open_stream_args: kwargs passed to
@@ -1825,6 +1971,9 @@ def read_avro(
     )
     return read_datasource(
         datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -1939,6 +2088,9 @@ def read_tfrecords(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
@@ -1996,6 +2148,11 @@ def read_tfrecords(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -2078,6 +2235,9 @@ def read_tfrecords(
         datasource,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -2095,6 +2255,171 @@ def read_tfrecords(
         return _infer_schema_and_transform(ds)
 
     return ds
+
+
+@PublicAPI(stability="alpha")
+def read_mcap(
+    paths: Union[str, List[str]],
+    *,
+    topics: Optional[Union[List[str], Set[str]]] = None,
+    time_range: Optional[Union[Tuple[int, int], TimeRange]] = None,
+    message_types: Optional[Union[List[str], Set[str]]] = None,
+    include_metadata: bool = True,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    meta_provider: Optional[BaseFileMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
+    file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Create a :class:`~ray.data.Dataset` from MCAP (Message Capture) files.
+
+    MCAP is a format commonly used in robotics and autonomous systems for storing
+    ROS2 messages and other time-series data. This reader provides predicate pushdown
+    optimization for efficient filtering by topics, time ranges, and message types.
+
+    Examples:
+        :noindex:
+
+        Read all MCAP files in a directory.
+
+        >>> import ray
+        >>> ds = ray.data.read_mcap("s3://bucket/mcap-data/") # doctest: +SKIP
+        >>> ds.schema() # doctest: +SKIP
+
+        Read with filtering for specific topics and time range.
+
+        >>> from ray.data.datasource import TimeRange  # doctest: +SKIP
+        >>> ds = ray.data.read_mcap( # doctest: +SKIP
+        ...     "s3://bucket/mcap-data/", # doctest: +SKIP
+        ...     topics={"/camera/image_raw", "/lidar/points"}, # doctest: +SKIP
+        ...     time_range=TimeRange(start_time=1000000000, end_time=5000000000), # doctest: +SKIP
+        ...     message_types={"sensor_msgs/Image", "sensor_msgs/PointCloud2"} # doctest: +SKIP
+        ... ) # doctest: +SKIP
+
+        Alternatively, use a tuple for time range (backwards compatible).
+
+        >>> ds = ray.data.read_mcap( # doctest: +SKIP
+        ...     "s3://bucket/mcap-data/", # doctest: +SKIP
+        ...     topics={"/camera/image_raw", "/lidar/points"}, # doctest: +SKIP
+        ...     time_range=(1000000000, 5000000000), # doctest: +SKIP
+        ... ) # doctest: +SKIP
+
+        Read multiple local files with include_paths.
+
+        >>> ray.data.read_mcap( # doctest: +SKIP
+        ...     ["local:///path/to/file1.mcap", "local:///path/to/file2.mcap"], # doctest: +SKIP
+        ...     include_paths=True # doctest: +SKIP
+        ... ) # doctest: +SKIP
+
+        Read with topic filtering and metadata inclusion.
+
+        >>> ds = ray.data.read_mcap( # doctest: +SKIP
+        ...     "data.mcap", # doctest: +SKIP
+        ...     topics={"/camera/image_raw", "/lidar/points"}, # doctest: +SKIP
+        ...     include_metadata=True, # doctest: +SKIP
+        ...     include_paths=True # doctest: +SKIP
+        ... ) # doctest: +SKIP
+
+    Args:
+        paths: A single file or directory, or a list of file or directory paths.
+            A list of paths can contain both files and directories.
+        topics: Optional list or set of topic names to include. If specified, only
+            messages from these topics will be read.
+        time_range: Optional time range for filtering messages by timestamp. Can be either
+            a tuple of (start_time, end_time) in nanoseconds (for backwards compatibility)
+            or a TimeRange object. Both values must be non-negative and start_time < end_time.
+        message_types: Optional list or set of message type names (schema names) to
+            include. Only messages with matching schema names will be read.
+        include_metadata: Whether to include MCAP metadata fields in the output.
+            Defaults to True. When True, includes schema, channel, and message metadata.
+        filesystem: The PyArrow filesystem implementation to read from.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
+            metadata providers may be able to resolve file metadata more quickly and/or
+            accurately. In most cases you do not need to set this parameter.
+        partition_filter: A :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
+            Use with a custom callback to read only selected partitions of a dataset.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
+        ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
+            found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by.
+            Defaults to ``["mcap"]``.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        :class:`~ray.data.Dataset` producing records read from the specified MCAP files.
+    """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+    _validate_shuffle_arg(shuffle)
+
+    if meta_provider is None:
+        meta_provider = DefaultFileMetadataProvider()
+
+    if file_extensions is None:
+        file_extensions = ["mcap"]
+
+    # Convert tuple time_range to TimeRange for backwards compatibility
+    if time_range is not None and isinstance(time_range, tuple):
+        if len(time_range) != 2:
+            raise ValueError(
+                "Time range must be a tuple of (start_time, end_time): got "
+                f"{time_range}"
+            )
+        time_range = TimeRange(start_time=time_range[0], end_time=time_range[1])
+
+    datasource = MCAPDatasource(
+        paths,
+        topics=topics,
+        time_range=time_range,
+        message_types=message_types,
+        include_metadata=include_metadata,
+        filesystem=filesystem,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
 
 
 @PublicAPI(stability="alpha")
@@ -2203,6 +2528,9 @@ def read_binary_files(
     include_paths: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
@@ -2252,8 +2580,13 @@ def read_binary_files(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -2306,6 +2639,9 @@ def read_binary_files(
     )
     return read_datasource(
         datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -2321,6 +2657,9 @@ def read_sql(
     shard_keys: Optional[list[str]] = None,
     shard_hash_fn: str = "MD5",
     parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -2397,6 +2736,11 @@ def read_sql(
             For other databases, common alternatives include "hash" and "SHA".
             This is applied to the shard keys.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -2428,6 +2772,9 @@ def read_sql(
 
     return read_datasource(
         datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -2441,6 +2788,10 @@ def read_snowflake(
     connection_parameters: Dict[str, Any],
     *,
     shard_keys: Optional[list[str]] = None,
+    parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -2469,6 +2820,12 @@ def read_snowflake(
             ``snowflake.connector.connect``. To view supported parameters, read
             https://docs.snowflake.com/developer-guide/python-connector/python-connector-api#functions.
         shard_keys: The keys to shard the data by.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -2493,6 +2850,10 @@ def read_snowflake(
         connection_factory=snowflake_connection_factory,
         shard_keys=shard_keys,
         shard_hash_fn="hash",
+        parallelism=parallelism,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
@@ -2508,6 +2869,9 @@ def read_databricks_tables(
     catalog: Optional[str] = None,
     schema: Optional[str] = None,
     parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -2558,6 +2922,11 @@ def read_databricks_tables(
         catalog: (Optional) The default catalog name used by the query.
         schema: (Optional) The default schema used by the query.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -2643,6 +3012,9 @@ def read_databricks_tables(
     return read_datasource(
         datasource=datasource,
         parallelism=parallelism,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
@@ -2657,6 +3029,9 @@ def read_hudi(
     filters: Optional[List[Tuple[str, str, str]]] = None,
     hudi_options: Optional[Dict[str, str]] = None,
     storage_options: Optional[Dict[str, str]] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -2695,6 +3070,11 @@ def read_hudi(
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. See more explanation
             `here <https://github.com/apache/hudi-rs?tab=readme-ov-file#work-with-cloud-storage>`_.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -2719,6 +3099,9 @@ def read_hudi(
     return read_datasource(
         datasource=datasource,
         ray_remote_args=ray_remote_args,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -2782,7 +3165,7 @@ def from_dask(df: "dask.dataframe.DataFrame") -> MaterializedDataset:
             return df
         else:
             raise ValueError(
-                "Expected a Ray object ref or a Pandas DataFrame, " f"got {type(df)}"
+                f"Expected a Ray object ref or a Pandas DataFrame, got {type(df)}"
             )
 
     ds = from_pandas_refs(
@@ -2912,12 +3295,11 @@ def from_pandas_refs(
         for df in dfs:
             if not isinstance(df, ray.ObjectRef):
                 raise ValueError(
-                    "Expected list of Ray object refs, "
-                    f"got list containing {type(df)}"
+                    f"Expected list of Ray object refs, got list containing {type(df)}"
                 )
     else:
         raise ValueError(
-            "Expected Ray object ref or list of Ray object refs, " f"got {type(df)}"
+            f"Expected Ray object ref or list of Ray object refs, got {type(df)}"
         )
 
     context = DataContext.get_current()
@@ -3177,6 +3559,9 @@ def read_delta_sharing_tables(
     timestamp: Optional[str] = None,
     json_predicate_hints: Optional[str] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
@@ -3220,6 +3605,11 @@ def read_delta_sharing_tables(
             details, see:
             https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md#json-predicates-for-filtering.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control the number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -3249,6 +3639,9 @@ def read_delta_sharing_tables(
     return ray.data.read_datasource(
         datasource=datasource,
         ray_remote_args=ray_remote_args,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -3399,6 +3792,9 @@ def from_huggingface(
                     filesystem=http,
                     concurrency=concurrency,
                     override_num_blocks=override_num_blocks,
+                    # The resolved HTTP URLs might not contain a `.parquet` suffix. So,
+                    # we override the default file extension filter and allow all files.
+                    file_extensions=None,
                     ray_remote_args={
                         "retry_exceptions": [FileNotFoundError, ClientResponseError]
                     },
@@ -3472,7 +3868,7 @@ def from_tf(
             num_rows=50000,
             schema={
                 id: binary,
-                image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8),
+                image: ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8),
                 label: int64
             }
         )
@@ -3531,6 +3927,7 @@ def from_torch(
         dataset: A `Torch Dataset`_.
         local_read: If ``True``, perform the read as a local read.
 
+
     Returns:
         A :class:`~ray.data.Dataset` containing the Torch dataset samples.
     """  # noqa: E501
@@ -3568,6 +3965,9 @@ def read_iceberg(
     scan_kwargs: Optional[Dict[str, str]] = None,
     catalog_kwargs: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from an Iceberg table.
@@ -3587,19 +3987,23 @@ def read_iceberg(
 
     Examples:
         >>> import ray
-        >>> from pyiceberg.expressions import EqualTo  #doctest: +SKIP
+        >>> from ray.data.expressions import col  #doctest: +SKIP
+        >>> # Read the table and apply filters using Ray Data expressions
         >>> ds = ray.data.read_iceberg( #doctest: +SKIP
         ...     table_identifier="db_name.table_name",
-        ...     row_filter=EqualTo("column_name", "literal_value"),
         ...     catalog_kwargs={"name": "default", "type": "glue"}
-        ... )
+        ... ).filter(col("column_name") == "literal_value")
+        >>> # Select specific columns
+        >>> ds = ds.select_columns(["col1", "col2"])  #doctest: +SKIP
 
     Args:
         table_identifier: Fully qualified table identifier (``db_name.table_name``)
-        row_filter: A PyIceberg :class:`~pyiceberg.expressions.BooleanExpression`
-            to use to filter the data *prior* to reading
+        row_filter: **Deprecated**. Use ``.filter()`` method on the dataset instead.
+            A PyIceberg :class:`~pyiceberg.expressions.BooleanExpression`
+            to use to filter the data *prior* to reading.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        selected_fields: Which columns from the data to read, passed directly to
+        selected_fields: **Deprecated**. Use ``.select_columns()`` method on the dataset instead.
+            Which columns from the data to read, passed directly to
             PyIceberg's load functions. Should be an tuple of string column names.
         snapshot_id: Optional snapshot ID for the Iceberg table, by default the latest
             snapshot is used
@@ -3612,6 +4016,11 @@ def read_iceberg(
              #pyiceberg.catalog.load_catalog>`_.
         ray_remote_args: Optional arguments to pass to :func:`ray.remote` in the
             read tasks.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources, and capped at the number of
@@ -3621,6 +4030,27 @@ def read_iceberg(
     Returns:
         :class:`~ray.data.Dataset` with rows from the Iceberg table.
     """
+    from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
+
+    # Deprecation warning for row_filter parameter
+    if row_filter is not None:
+        warnings.warn(
+            "The 'row_filter' parameter is deprecated and will be removed in a "
+            "future release. Use the .filter() method on the dataset instead. "
+            "For example: ds = ray.data.read_iceberg(...).filter(col('column') > 5)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+    # Deprecation warning for selected_fields parameter
+    if selected_fields != ("*",):
+        warnings.warn(
+            "The 'selected_fields' parameter is deprecated and will be removed in a "
+            "future release. Use the .select_columns() method on the dataset instead. "
+            "For example: ds = ray.data.read_iceberg(...).select_columns(['col1', 'col2'])",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     # Setup the Datasource
     datasource = IcebergDatasource(
@@ -3635,6 +4065,9 @@ def read_iceberg(
     dataset = read_datasource(
         datasource=datasource,
         parallelism=parallelism,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         override_num_blocks=override_num_blocks,
         ray_remote_args=ray_remote_args,
     )
@@ -3651,6 +4084,9 @@ def read_lance(
     storage_options: Optional[Dict[str, str]] = None,
     scanner_options: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
@@ -3681,6 +4117,11 @@ def read_lance(
             see `LanceDB API doc <https://lancedb.github.io\
             /lance-python-doc/all-modules.html#lance.LanceDataset.scanner>`_
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -3704,6 +4145,9 @@ def read_lance(
     return read_datasource(
         datasource=datasource,
         ray_remote_args=ray_remote_args,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -3720,6 +4164,9 @@ def read_clickhouse(
     client_settings: Optional[Dict[str, Any]] = None,
     client_kwargs: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
@@ -3761,6 +4208,11 @@ def read_clickhouse(
         client_kwargs: Optional additional arguments to pass to the ClickHouse client. For more information,
             see `ClickHouse Core Settings <https://clickhouse.com/docs/en/integrations/python#additional-options>`_.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -3786,6 +4238,9 @@ def read_clickhouse(
     return read_datasource(
         datasource=datasource,
         ray_remote_args=ray_remote_args,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -3799,73 +4254,45 @@ def read_unity_catalog(
     *,
     data_format: Optional[str] = None,
     region: Optional[str] = None,
-    reader_kwargs: Optional[dict],
+    reader_kwargs: Optional[dict] = None,
 ) -> Dataset:
-    """
-    Loads a Unity Catalog table or files into a Ray Dataset using Databricks Unity Catalog credential vending,
+    """Loads a Unity Catalog table or files into a Ray Dataset using Databricks Unity Catalog credential vending,
     with automatic short-lived cloud credential handoff for secure, parallel, distributed access from external engines.
 
     This function works by leveraging Unity Catalog's credential vending feature, which grants temporary, least-privilege
     credentials for the cloud storage location backing the requested table or data files. It authenticates via the Unity Catalog
-    REST API (`Unity Catalog credential vending for external system access`, [Databricks Docs](https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html)),
+    REST API (Unity Catalog credential vending for external system access, `Databricks Docs <https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html>`_),
     ensuring that permissions are enforced at the Databricks principal (user, group, or service principal) making the request.
     The function supports reading data directly from AWS S3, Azure Data Lake, or GCP GCS in standard formats including Delta and Parquet.
 
     .. note::
 
-       This ``read_unity_catalog`` function is currently experimental and under active development
-
-    .. warning::
-
-        The Databricks Unity Catalog credential vending feature is currently in Public Preview and there are important requirements and limitations.
-        You must read these docs carefully and ensure your workspace and principal are properly configured.
-
-    Features:
-        - **Secure Access**: Only principals with `EXTERNAL USE SCHEMA` on the containing schema, and after explicit metastore enablement, can obtain short-lived credentials.
-        - **Format Support**: Supports reading `delta` and `parquet` formats via supported Ray Dataset readers (iceberg coming soon).
-        - **Cloud Support**: AWS, Azure, and GCP supported, with automatic environment setup for the vended credentials per session.
-        - **Auto-Infer**: Data format is auto-inferred from table metadata, but can be explicitly specified.
+       This function is experimental and under active development.
 
     Examples:
-        Read a Unity Catalog managed Delta table with credential vending:
+        Read a Unity Catalog Delta table:
 
-            >>> import ray
-            >>> ds = read_unity_catalog( # doctest: +SKIP
-            ...     table="main.sales.transactions",
-            ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com", # noqa: E501
-            ...     token="XXXXXXXXXXX" # noqa: E501
-            ... )
-            >>> ds.show(3) # doctest: +SKIP
-
-        Explicitly specify the format, and pass reader options:
-
-            >>> ds = read_unity_catalog( # doctest: +SKIP
-            ...     table="main.catalog.images",
-            ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com", # noqa: E501
-            ...     token="XXXXXXXXXXX", # noqa: E501
-            ...     data_format="delta",
-            ...     region="us-west-2",
-            ...     # Reader kwargs come from the associated reader (ray.data.read_delta in this example)
-            ...     reader_kwargs={"override_num_blocks": 1000}
-            ... )
+        >>> import ray
+        >>> ds = ray.data.read_unity_catalog(  # doctest: +SKIP
+        ...     table="main.sales.transactions",
+        ...     url="https://dbc-XXXXXXX-XXXX.cloud.databricks.com",
+        ...     token="dapi...",
+        ...     region="us-west-2"
+        ... )
+        >>> ds.show(3)  # doctest: +SKIP
 
     Args:
-        table: Unity Catalog table name as `<catalog>.<schema>.<table>`. Must be a managed or external table supporting credential vending.
-        url: Databricks workspace URL, e.g. `"https://dbc-XXXXXXX-XXXX.cloud.databricks.com"`
-        token: Databricks PAT (Personal Access Token) with `EXTERNAL USE SCHEMA` on the schema containing the table, and with access to the workspace API.
-        data_format: (Optional) Data format override. If not specified, inferred from Unity Catalog metadata and file extension. Supported: `"delta"`, `"parquet"`
-        region: (Optional) For S3: AWS region for cloud credential environment setup.
-        reader_kwargs: Additional arguments forwarded to the underlying Ray Dataset reader (e.g., override_num_blocks, etc.).
+        table: Unity Catalog table path in format ``catalog.schema.table``.
+        url: Databricks workspace URL (e.g., ``"https://dbc-XXXXXXX-XXXX.cloud.databricks.com"``).
+        token: Databricks Personal Access Token with ``EXTERNAL USE SCHEMA`` permission.
+        data_format: Data format (``"delta"`` or ``"parquet"``). If not specified, inferred from table metadata.
+        region: AWS region for S3 access (e.g., ``"us-west-2"``). Required for AWS, not needed for Azure/GCP.
+        reader_kwargs: Additional arguments passed to the underlying Ray Data reader.
 
     Returns:
-        A :class:`ray.data.Dataset` containing the data from the external Unity Catalog table.
-
-    References:
-        - Databricks Credential Vending: https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html
-        - API Reference for temporary credentials: https://docs.databricks.com/api/workspace/unity-catalog/temporary-table-credentials
-
+        A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
     """
-    reader = UnityCatalogConnector(
+    connector = UnityCatalogConnector(
         base_url=url,
         token=token,
         table_full_name=table,
@@ -3873,7 +4300,7 @@ def read_unity_catalog(
         region=region,
         reader_kwargs=reader_kwargs,
     )
-    return reader.read()
+    return connector.read()
 
 
 @PublicAPI(stability="alpha")
@@ -3883,6 +4310,9 @@ def read_delta(
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     meta_provider: Optional[FileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
@@ -3914,6 +4344,11 @@ def read_delta(
         columns: A list of column names to read. Only the specified columns are
             read during the file scan.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
@@ -3968,7 +4403,6 @@ def read_delta(
 
     # Get the parquet file paths from the DeltaTable
     paths = DeltaTable(path).file_uris()
-    file_extensions = ["parquet"]
 
     return read_parquet(
         paths,
@@ -3981,7 +4415,6 @@ def read_delta(
         partitioning=partitioning,
         shuffle=shuffle,
         include_paths=include_paths,
-        file_extensions=file_extensions,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
         **arrow_parquet_args,

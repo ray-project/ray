@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from numpy import int32
 
@@ -38,6 +38,8 @@ class Backend(object):
 
     NCCL = "nccl"
     MPI = "mpi"
+    # `pygloo` is deprecated. Use gloo through torch.distributed for both
+    # `GLOO` and `TORCH_GLOO`.
     GLOO = "gloo"
     # Use gloo through torch.distributed.
     TORCH_GLOO = "torch_gloo"
@@ -79,8 +81,12 @@ class NixlTransportMetadata(TensorTransportMetadata):
         nixl_agent_meta: The additional metadata of the remote NIXL agent.
     """
 
+    nixl_reg_descs: Optional[Any] = None
     nixl_serialized_descs: Optional[bytes] = None
     nixl_agent_meta: Optional[bytes] = None
+
+    __eq__ = object.__eq__
+    __hash__ = object.__hash__
 
 
 @dataclass

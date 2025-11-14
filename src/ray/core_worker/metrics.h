@@ -19,7 +19,7 @@
 namespace ray {
 namespace core {
 
-inline ray::stats::Gauge GetTaskMetric() {
+inline ray::stats::Gauge GetTaskByStateGaugeMetric() {
   /// Tracks tasks by state, including pending, running, and finished tasks.
   /// This metric may be recorded from multiple components processing the task in Ray,
   /// including the submitting core worker, executor core worker, and pull manager.
@@ -38,6 +38,37 @@ inline ray::stats::Gauge GetTaskMetric() {
       // - IsRetry: whether the task is a retry
       // - Source: component reporting, e.g., "core_worker", "executor", or "pull_manager"
       /*tag_keys=*/{"State", "Name", "Source", "IsRetry", "JobId"},
+  };
+}
+inline ray::stats::Gauge GetOwnedObjectsByStateGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"owned_objects",
+      /*description=*/"Current number of objects owned by this worker grouped by state.",
+      /*unit=*/"count",
+      // Expected tags:
+      // - State: Spilled, InMemory, InPlasma, PendingCreation
+      /*tag_keys=*/{"State", "JobId"},
+  };
+}
+
+inline ray::stats::Gauge GetSizeOfOwnedObjectsByStateGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"owned_objects_size",
+      /*description=*/"Current size of objects owned by this worker grouped by state.",
+      /*unit=*/"bytes",
+      // Expected tags:
+      // - State: Spilled, InMemory, InPlasma, PendingCreation
+      /*tag_keys=*/{"State", "JobId"},
+  };
+}
+
+inline ray::stats::Gauge GetTotalLineageBytesGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"total_lineage_bytes",
+      /*description=*/
+      "Total amount of memory used to store task specs for lineage reconstruction.",
+      /*unit=*/"",
+      /*tag_keys=*/{},
   };
 }
 

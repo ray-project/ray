@@ -4,8 +4,6 @@ from tblib import pickling_support
 import ray
 from ray import cloudpickle
 from ray.air._internal.util import StartTraceback, exception_cause, skip_exceptions
-from ray.train import ScalingConfig
-from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune import Tuner
 
 
@@ -96,18 +94,6 @@ def test_traceback_tuner(ray_start_2_cpus):
     tuner = Tuner(failing)
     results = tuner.fit()
     assert len(str(results[0].error).split("\n")) <= 20
-
-
-def test_traceback_trainer(ray_start_2_cpus):
-    """Ensure that the Trainer's stack trace is not too long."""
-
-    def failing(config):
-        raise RuntimeError("Error")
-
-    trainer = DataParallelTrainer(failing, scaling_config=ScalingConfig(num_workers=1))
-    with pytest.raises(RuntimeError) as exc_info:
-        trainer.fit()
-    assert len(str(exc_info.value).split("\n")) <= 13
 
 
 if __name__ == "__main__":
