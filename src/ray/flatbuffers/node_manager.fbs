@@ -40,8 +40,6 @@ enum MessageType:int {
   DisconnectClientReply,
   // Request the Raylet to pull a set of objects to the local node.
   AsyncGetObjectsRequest,
-  // Reply contains the request id that will be used to clean up the request.
-  AsyncGetObjectsReply,
   // Cleanup a given get request on the raylet.
   CancelGetRequest,
   // Notify the current worker is blocked for objects to become available. The raylet
@@ -134,10 +132,7 @@ table AsyncGetObjectsRequest {
   // Object IDs that we want the Raylet to pull locally.
   object_ids: [string];
   owner_addresses: [Address];
-}
-
-table AsyncGetObjectsReply {
-  request_id: long;
+  get_request_id: long;
 }
 
 table CancelGetRequest {

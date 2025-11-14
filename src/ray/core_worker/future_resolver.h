@@ -18,6 +18,7 @@
 #include <utility>
 
 #include "ray/common/id.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "src/ray/protobuf/core_worker.pb.h"
