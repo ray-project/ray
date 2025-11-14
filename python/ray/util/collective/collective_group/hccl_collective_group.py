@@ -801,4 +801,5 @@ def _check_inputs_compatibility_for_scatter_gather(
 
 
 def get_num_npus():
+    import torch_npu
     return torch_npu.npu.device_count()
