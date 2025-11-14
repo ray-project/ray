@@ -909,7 +909,9 @@ class ReplicaBase(ABC):
     async def _on_initialized(self):
         raise NotImplementedError
 
-    async def initialize(self, deployment_config: DeploymentConfig, rank: ReplicaRank):
+    async def initialize(
+        self, deployment_config: Optional[DeploymentConfig], rank: Optional[ReplicaRank]
+    ):
         if rank is not None:
             self._rank = rank
             self._set_internal_replica_context(
@@ -945,7 +947,7 @@ class ReplicaBase(ABC):
                             record_autoscaling_stats_fn=self._user_callable_wrapper.call_record_autoscaling_stats,
                         )
 
-                if deployment_config:
+                if deployment_config is not None:
                     await self._user_callable_wrapper.set_sync_method_threadpool_limit(
                         deployment_config.max_ongoing_requests
                     )
