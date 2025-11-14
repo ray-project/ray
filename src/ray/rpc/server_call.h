@@ -29,7 +29,9 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/authentication_token.h"
+#include "ray/rpc/authentication/authentication_token_validator.h"
 #include "ray/rpc/metrics.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "ray/stats/metric.h"
@@ -342,8 +344,12 @@ class ServerCallImpl : public ServerCall {
   /// Returns true if authentication succeeds or is not required.
   /// Returns false if authentication is required but fails.
   bool ValidateAuthenticationToken() {
-    if (!auth_token_.has_value() || auth_token_->empty()) {
-      return true;  // No auth required
+    // If auth token is empty, we assume auth is not required.
+    // The only exception is when auth mode is 'k8s' where the server
+    // auth token can be empty.
+    if ((!auth_token_.has_value() || auth_token_->empty()) &&
+        GetAuthenticationMode() != AuthenticationMode::K8S) {
+      return true;
     }
 
     const auto &metadata = context_.client_metadata();
@@ -355,13 +361,8 @@ class ServerCallImpl : public ServerCall {
 
     const std::string_view header(it->second.data(), it->second.length());
     AuthenticationToken provided_token = AuthenticationToken::FromMetadata(header);
-
-    if (!auth_token_->Equals(provided_token)) {
-      RAY_LOG(WARNING) << "Invalid bearer token in request!";
-      return false;
-    }
-
-    return true;
+    return ray::rpc::AuthenticationTokenValidator::instance().ValidateToken(
+        auth_token_, provided_token);
   }
 
   /// Log the duration this query used
