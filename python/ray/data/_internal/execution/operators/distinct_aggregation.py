@@ -71,8 +71,6 @@ class DistinctAggregation(StatefulShuffleAggregation):
         if not self._key_columns:
             block_schema = accessor.schema()
             if block_schema is None or not block_schema.names:
-                # If block has no schema, cannot perform distinct - this should not happen
-                # as empty datasets are handled earlier, but add defensive check.
                 raise ValueError(
                     "Cannot perform distinct: block has no inferable schema. "
                     "Provide explicit 'keys' parameter to distinct()."
@@ -96,8 +94,14 @@ class DistinctAggregation(StatefulShuffleAggregation):
         Returns:
             A Block containing all unique rows for this partition.
         """
+        partition_data = self._partition_data[partition_id]
+        if not partition_data:
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
+
+            return ArrowBlockAccessor._empty_table()
+
         builder = ArrowBlockBuilder()
-        for row in self._partition_data[partition_id].values():
+        for row in partition_data.values():
             builder.add(row)
         return builder.build()
 
