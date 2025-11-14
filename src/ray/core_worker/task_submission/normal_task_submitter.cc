@@ -642,7 +642,8 @@ bool NormalTaskSubmitter::HandleGetWorkerFailureCause(
         << "its raylet crashed unexpectedly.\n\n"
         << "To see node death information, use `ray list nodes --filter \"node_id="
         << NodeID::FromBinary(addr.node_id())
-        << "\", check the Ray dashboard cluster page, search the node ID in the GCS logs, "
+        << "\", check the Ray dashboard cluster page, search the node ID in the GCS "
+           "logs, "
         << "or use `ray logs raylet.out -ip " << addr.ip_address() << "`.";
     error_info = std::make_unique<rpc::RayErrorInfo>();
     error_info->set_error_message(buffer.str());
