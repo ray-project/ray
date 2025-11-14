@@ -3,13 +3,11 @@ Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink A
 """
 import logging
 import uuid
+from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
-import ray
-from ray._private.ray_constants import env_integer
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.savemode import SaveMode
-from ray.data._internal.util import GiB
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.util.annotations import DeveloperAPI
@@ -25,14 +23,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Default memory allocation for Iceberg upsert commit task
-DEFAULT_ICEBERG_UPSERT_COMMIT_TASK_MEMORY = env_integer(
-    "RAY_DATA_ICEBERG_UPSERT_COMMIT_TASK_MEMORY", 4 * GiB
-)
-
 
 @DeveloperAPI
-class IcebergDatasink(Datasink[List["DataFile"]]):
+class IcebergDatasink(
+    Datasink[List["DataFile"] | tuple[List["DataFile"], Dict[str, List[Any]]]]
+):
     """
     Iceberg datasink to write a Ray Dataset into an existing Iceberg table.
     This datasink handles concurrent writes by:
@@ -64,10 +59,10 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
             overwrite_filter: Optional filter for OVERWRITE mode to perform partial overwrites.
                 Must be a Ray Data expression from `ray.data.expressions`. Only rows matching
                 this filter are replaced. If None with OVERWRITE mode, replaces all table data.
-            upsert_kwargs: Optional arguments to pass through to PyIceberg's table.upsert()
-                method. Supported parameters include join_cols (List[str]),
-                when_matched_update_all (bool), when_not_matched_insert_all (bool),
-                case_sensitive (bool), branch (str). See PyIceberg documentation for details.
+            upsert_kwargs: Optional arguments for upsert operations.
+                Supported parameters: join_cols (List[str]), case_sensitive (bool),
+                branch (str). Note: This implementation uses a copy-on-write strategy
+                that always updates all columns for matched keys and inserts all new keys.
             overwrite_kwargs: Optional arguments to pass through to PyIceberg's table.overwrite()
                 method. Supported parameters include case_sensitive (bool) and branch (str).
                 See PyIceberg documentation for details.
@@ -179,7 +174,9 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         self._table = self._get_catalog().load_table(self.table_identifier)
         self._write_uuid = uuid.uuid4()
 
-    def write(self, blocks: Iterable[Block], ctx: TaskContext) -> List["DataFile"]:
+    def write(
+        self, blocks: Iterable[Block], ctx: TaskContext
+    ) -> List["DataFile"] | tuple[List["DataFile"], Dict[str, List[Any]]]:
         """
         Write blocks to Parquet files in storage and return DataFile metadata.
 
@@ -191,7 +188,8 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
             ctx: TaskContext object containing task-specific information
 
         Returns:
-            List of DataFile objects representing the written files.
+            For APPEND/OVERWRITE: List of DataFile objects.
+            For UPSERT: Tuple of (List of DataFile objects, Dict mapping col names to key values).
         """
         from pyiceberg.io.pyarrow import _dataframe_to_data_files
 
@@ -199,12 +197,22 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
             self._reload_table()
 
         all_data_files = []
+        join_keys_dict = defaultdict(list)
+
+        # Extract join keys for copy-on-write upsert
+        extract_join_keys = self._mode == SaveMode.UPSERT
 
         for block in blocks:
             pa_table = BlockAccessor.for_block(block).to_arrow()
             if pa_table.num_rows > 0:
                 # Update schema if needed (handles concurrent schema updates)
                 self._update_schema(pa_table.schema)
+
+                # Extract join keys if needed for copy-on-write upsert
+                if extract_join_keys:
+                    join_cols = self._upsert_kwargs.get("join_cols", [])
+                    for col in join_cols:
+                        join_keys_dict[col].extend(pa_table[col].to_pylist())
 
                 # Write data files to storage (distributed!)
                 # _dataframe_to_data_files writes Parquet files and returns DataFile metadata
@@ -218,9 +226,12 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
                 )
                 all_data_files.extend(data_files)
 
+        # Return appropriate type based on whether we extracted join keys
+        if extract_join_keys:
+            return (all_data_files, join_keys_dict)
         return all_data_files
 
-    def on_write_complete(self, write_result: WriteResult[List["DataFile"]]) -> None:
+    def on_write_complete(self, write_result: WriteResult) -> None:
         """
         Complete the write by committing all data files in a single transaction.
 
@@ -231,11 +242,27 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         # Reload table to get latest metadata
         self._reload_table()
 
-        # Collect all data files from all workers
+        # Collect all data files and join keys (if applicable) from all workers
         all_data_files = []
-        for data_files_list in write_result.write_returns:
-            if data_files_list:
-                all_data_files.extend(data_files_list)
+        all_join_keys_dict = defaultdict(list)
+
+        # Check if we're in upsert mode (returns tuple with join keys)
+        use_copy_on_write_upsert = self._mode == SaveMode.UPSERT
+
+        for write_return in write_result.write_returns:
+            if not write_return:
+                continue
+
+            if use_copy_on_write_upsert:
+                # For copy-on-write upsert, write() returns (data_files, join_keys_dict)
+                data_files, join_keys_dict = write_return
+                all_data_files.extend(data_files)
+                # Merge join keys dictionaries from all workers
+                for col, values in join_keys_dict.items():
+                    all_join_keys_dict[col].extend(values)
+            else:
+                # For other modes, write() returns just data_files
+                all_data_files.extend(write_return)
 
         if not all_data_files:
             return
@@ -246,23 +273,23 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         elif self._mode == SaveMode.OVERWRITE:
             self._commit_overwrite(all_data_files)
         elif self._mode == SaveMode.UPSERT:
-            self._commit_upsert(all_data_files)
+            self._commit_upsert(all_data_files, all_join_keys_dict)
         else:
             raise ValueError(f"Unsupported mode: {self._mode}")
 
-    def _append_data_files_to_transaction(
+    def _append_and_commit(
         self, txn: "Transaction", data_files: List["DataFile"]
     ) -> None:
-        """Helper to append data files to a transaction."""
+        """Helper to append data files to a transaction and commit."""
         with txn._append_snapshot_producer(self._snapshot_properties) as append_files:
             for data_file in data_files:
                 append_files.append_data_file(data_file)
+        txn.commit_transaction()
 
     def _commit_append(self, data_files: List["DataFile"]) -> None:
         """Commit data files using APPEND mode."""
         txn = self._table.transaction()
-        self._append_data_files_to_transaction(txn, data_files)
-        txn.commit_transaction()
+        self._append_and_commit(txn, data_files)
 
     def _commit_overwrite(self, data_files: List["DataFile"]) -> None:
         """Commit data files using OVERWRITE mode."""
@@ -291,65 +318,64 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
                 **self._overwrite_kwargs,
             )
 
-        # Append new data files
-        self._append_data_files_to_transaction(txn, data_files)
-        txn.commit_transaction()
+        # Append new data files and commit
+        self._append_and_commit(txn, data_files)
 
-    def _commit_upsert(self, data_files: List["DataFile"]) -> None:
+    def _commit_upsert(
+        self, data_files: List["DataFile"], join_keys_dict: Dict[str, List[Any]]
+    ) -> None:
         """
-        Commit data files using UPSERT mode.
+        Commit data files using UPSERT mode with copy-on-write strategy.
 
-        For upsert, we need to read back the data files to perform merge logic.
-        The write I/O was still distributed (workers wrote files in parallel),
-        but the merge logic happens in a Ray task to protect the driver from OOM.
+        This approach maximizes parallelism by avoiding table scans:
+        1. Deletes existing rows matching non-NULL join keys
+        2. Appends all new data files (updates + inserts)
+
+        NULL handling: NULL values in join keys are treated as inserts only
+        (follows SQL semantics where NULL != NULL).
+
+        Args:
+            data_files: List of DataFile objects to commit
+            join_keys_dict: Dict mapping column names to lists of key values
         """
-        import ray
+        import pyarrow as pa
+        from pyiceberg.table.upsert_util import create_match_filter
 
-        # Run the upsert commit in a Ray task to protect the driver
-        ray.get(
-            _commit_upsert_task.remote(
-                table_identifier=self.table_identifier,
-                catalog_name=self._catalog_name,
-                catalog_kwargs=self._catalog_kwargs,
-                data_files=data_files,
-                upsert_kwargs=self._upsert_kwargs,
-            )
+        join_cols = self._upsert_kwargs.get("join_cols", [])
+        if not join_cols:
+            raise ValueError("join_cols must be specified for upsert operations")
+
+        num_keys = len(join_keys_dict.get(join_cols[0], [])) if join_keys_dict else 0
+        logger.debug(
+            f"Using copy-on-write upsert for {len(data_files)} files "
+            f"with {num_keys} keys"
         )
 
+        txn = self._table.transaction()
 
-@ray.remote(num_cpus=1, memory=DEFAULT_ICEBERG_UPSERT_COMMIT_TASK_MEMORY)
-def _commit_upsert_task(
-    table_identifier: str,
-    catalog_name: str,
-    catalog_kwargs: Dict[str, Any],
-    data_files: List["DataFile"],
-    upsert_kwargs: Dict[str, Any],
-) -> None:
-    """
-    Remote task to commit UPSERT operations.
+        if join_keys_dict:
+            # Create PyArrow table from join keys
+            keys_table = pa.table(join_keys_dict)
 
-    This runs in a separate Ray task to protect the driver from OOM
-    when reading back data files for upsert merge logic.
-    """
-    import pyarrow.parquet as pq
-    from pyiceberg import catalog
+            # Filter out rows with any NULL values in join columns
+            # (NULL != NULL in SQL semantics)
+            mask = None
+            for col in join_cols:
+                col_mask = pa.compute.is_valid(keys_table[col])
+                mask = col_mask if mask is None else pa.compute.and_(mask, col_mask)
 
-    # Load the catalog and table
-    loaded_catalog = catalog.load_catalog(catalog_name, **catalog_kwargs)
-    table = loaded_catalog.load_table(table_identifier)
+            if mask is not None:
+                keys_table = keys_table.filter(mask)
 
-    # Create a single transaction
-    txn = table.transaction()
+            # Only delete if we have non-NULL keys
+            if len(keys_table) > 0:
+                # Use PyIceberg's helper to build delete filter
+                delete_filter = create_match_filter(keys_table, join_cols)
 
-    # Process each data file one at a time to avoid OOM
-    for data_file in data_files:
-        # Read the parquet file from storage
-        file_path = data_file.file_path
-        with table.io.new_input(file_path).open() as f:
-            pa_table = pq.read_table(f)
+                txn.delete(
+                    delete_filter=delete_filter,
+                    snapshot_properties=self._snapshot_properties,
+                )
 
-        # Upsert this table
-        txn.upsert(df=pa_table, **upsert_kwargs)
-
-    # Single commit at the end - no concurrency conflicts!
-    txn.commit_transaction()
+        # Append new data files (includes updates and inserts) and commit
+        self._append_and_commit(txn, data_files)

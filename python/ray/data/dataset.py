@@ -4110,9 +4110,10 @@ class Dataset:
                 Must be a Ray Data expression from `ray.data.expressions`. Only rows matching
                 this filter are replaced. If None with OVERWRITE mode, replaces all table data.
                 Example: `col("date") >= "2024-01-01"` or `(col("region") == "US") & (col("status") == "active")`
-            upsert_kwargs: Optional arguments to pass through to PyIceberg's table.upsert() method.
-                Supported parameters: join_cols (List[str]), when_matched_update_all (bool), when_not_matched_insert_all (bool),
-                case_sensitive (bool), branch (str). See PyIceberg documentation for details.
+            upsert_kwargs: Optional arguments for upsert operations.
+                Supported parameters: join_cols (List[str]), case_sensitive (bool), branch (str).
+                Note: Ray Data uses a copy-on-write strategy that always updates all columns
+                for matched keys and inserts all new keys for optimal parallelism.
             overwrite_kwargs: Optional arguments to pass through to PyIceberg's table.overwrite() method.
                 Supported parameters: case_sensitive (bool), branch (str). See PyIceberg documentation
                 for details.
