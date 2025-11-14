@@ -2,7 +2,6 @@ import collections
 import logging
 import os
 import warnings
-from datetime import datetime
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -4429,8 +4428,8 @@ def read_kafka(
     *,
     bootstrap_servers: Union[str, List[str]],
     trigger: Literal["once"] = "once",
-    start_offset: Optional[Union[int, str, datetime]] = None,
-    end_offset: Optional[Union[int, str, datetime]] = None,
+    start_offset: Optional[Union[int, str]] = "earliest",
+    end_offset: Optional[Union[int, str]] = "latest",
     authentication: Optional[Dict[str, Any]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
@@ -4439,6 +4438,7 @@ def read_kafka(
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    timeout_ms: int = 10000,
 ) -> Dataset:
     """Read data from Kafka topics.
 
@@ -4488,13 +4488,11 @@ def read_kafka(
         start_offset: Starting position for reading. Can be:
             - int: Offset number or timestamp in milliseconds
             - str: "earliest", "latest", or offset number as string
-            - datetime: Timestamp to convert to offset
             If None, defaults to "earliest".
         end_offset: Ending position for reading. Can be:
             - int: Offset number or timestamp in milliseconds
             - str: Offset number as string
-            - datetime: Timestamp to convert to offset
-            If None, reads until max_records_per_task is reached.
+            If None, defaults to "latest".
         authentication: Authentication configuration dict. Supported keys:
             - security_protocol: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL
             - sasl_mechanism: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512, GSSAPI
@@ -4517,6 +4515,7 @@ def read_kafka(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        timeout_ms: Timeout in milliseconds to poll to until reaching end_offset (default 10000ms/10s).
 
     Returns:
         A :class:`~ray.data.Dataset` containing Kafka messages with the following schema:
@@ -4543,6 +4542,7 @@ def read_kafka(
             start_offset=start_offset,
             end_offset=end_offset,
             authentication=authentication,
+            timeout_ms=timeout_ms,
         ),
         parallelism=parallelism,
         num_cpus=num_cpus,

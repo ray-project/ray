@@ -1,16 +1,16 @@
 """Kafka datasource for bounded data reads.
 
 This module provides a Kafka datasource implementation for Ray Data that supports
-bounded reads with timestamp-based or offset-based range queries.
+bounded reads with offset-based range queries.
 
 Requires:
     - kafka-python: https://kafka-python.readthedocs.io/
 """
 
 import logging
+import time
 import uuid
-from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import pyarrow as pa
 
@@ -18,66 +18,12 @@ if TYPE_CHECKING:
     from kafka import KafkaConsumer, TopicPartition
 
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
-from ray.data._internal.util import _check_import, call_with_retry
+from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 
 logger = logging.getLogger(__name__)
-
-
-def _normalize_timestamp_to_ms(timestamp: Union[int, datetime]) -> int:
-    """Convert timestamp to milliseconds since epoch.
-
-    Args:
-        timestamp: Either an int (milliseconds or seconds since epoch) or datetime object.
-
-    Returns:
-        Milliseconds since epoch as int.
-
-    Raises:
-        ValueError: If timestamp is invalid or unsupported type.
-    """
-    if isinstance(timestamp, datetime):
-        # Convert datetime to milliseconds since epoch
-        return int(timestamp.timestamp() * 1000)
-    elif isinstance(timestamp, int):
-        # If timestamp is less than year 2000 in milliseconds, assume it's in seconds
-        # Year 2000 in milliseconds: 946684800000
-        if timestamp < 946684800000:
-            return timestamp * 1000
-        return timestamp
-    else:
-        raise ValueError(f"Unsupported timestamp type: {type(timestamp)}")
-
-
-def _convert_timestamp_to_offset(
-    consumer: "KafkaConsumer",
-    topic_partition: "TopicPartition",
-    timestamp_ms: int,
-) -> int:
-    """Convert a timestamp to a Kafka offset.
-
-    Args:
-        consumer: KafkaConsumer instance with partitions already assigned.
-        topic_partition: TopicPartition instance.
-        timestamp_ms: Timestamp in milliseconds since epoch.
-
-    Returns:
-        Offset for the given timestamp.
-
-    Raises:
-        ValueError: If no offset found for the timestamp (timestamp out of range).
-    """
-    # Query offsets for the given timestamp
-    offsets = consumer.offsets_for_times({topic_partition: timestamp_ms})
-    if offsets[topic_partition] is None:
-        raise ValueError(
-            f"No offset found for timestamp {timestamp_ms} in topic {topic_partition.topic}, "
-            f"partition {topic_partition.partition}. Timestamp may be before first message "
-            f"or after last message."
-        )
-    return offsets[topic_partition].offset
 
 
 def _build_consumer_config_for_discovery(
@@ -215,7 +161,7 @@ def _build_consumer_config_for_read(
 def _resolve_offset(
     consumer: "KafkaConsumer",
     topic_partition: "TopicPartition",
-    offset_value: Union[int, str, datetime],
+    offset_value: Union[int, str],
     is_end: bool = False,
 ) -> int:
     """Convert offset value to offset for a partition.
@@ -223,7 +169,7 @@ def _resolve_offset(
     Args:
         consumer: KafkaConsumer instance with partition assigned.
         topic_partition: TopicPartition instance.
-        offset_value: Offset value (int, str, or datetime).
+        offset_value: Offset value (int, str).
         is_end: Whether this is an end_offset (for validation).
 
     Returns:
@@ -232,39 +178,27 @@ def _resolve_offset(
     Raises:
         ValueError: If offset value is invalid or cannot be resolved.
     """
-    if isinstance(offset_value, datetime):
-        timestamp_ms = _normalize_timestamp_to_ms(offset_value)
-        return _convert_timestamp_to_offset(consumer, topic_partition, timestamp_ms)
-
-    if isinstance(offset_value, int):
-        # If it's a reasonable offset (< OFFSET_TIMESTAMP_THRESHOLD), treat as offset
-        # Otherwise treat as timestamp in milliseconds
-        if offset_value < KafkaDatasource.OFFSET_TIMESTAMP_THRESHOLD:
-            return offset_value
-        # Likely a timestamp in milliseconds - convert
-        return _convert_timestamp_to_offset(consumer, topic_partition, offset_value)
 
     if isinstance(offset_value, str):
         if offset_value == "earliest":
-            consumer.seek_to_beginning(topic_partition)
-            return consumer.position(topic_partition)
+            offsets = consumer.beginning_offsets([topic_partition])
+            return offsets[topic_partition]
         if offset_value == "latest":
-            if is_end:
-                raise ValueError(
-                    "end_offset cannot be 'latest'. Use a specific offset or timestamp."
-                )
-            consumer.seek_to_end(topic_partition)
-            return consumer.position(topic_partition)
+            offsets = consumer.end_offsets([topic_partition])
+            return offsets[topic_partition]
         if offset_value.isdigit():
             return int(offset_value)
         raise ValueError(
             f"Invalid {'end' if is_end else 'start'}_offset string: {offset_value}"
         )
 
+    if isinstance(offset_value, int):
+        return offset_value
+
     raise ValueError(f"Unsupported offset type: {type(offset_value)}")
 
 
-def _convert_headers_to_dict(headers) -> Dict[str, str]:
+def _convert_headers_to_dict(headers: List[Tuple[bytes, bytes]]) -> Dict[str, str]:
     """Convert Kafka message headers to dictionary.
 
     Args:
@@ -296,11 +230,6 @@ def _convert_headers_to_dict(headers) -> Dict[str, str]:
 class KafkaDatasource(Datasource):
     """Kafka datasource for reading from Kafka topics with bounded reads."""
 
-    MIN_ROWS_PER_READ_TASK = 50
-    # Threshold to distinguish between offset and timestamp in milliseconds
-    # Offsets are typically much smaller than timestamps (year 2000 in ms = 946684800000)
-    # Using 1e15 (1 quadrillion) as threshold - offsets will never reach this value
-    OFFSET_TIMESTAMP_THRESHOLD = 1e15
     # Batch size for incremental block yielding
     BATCH_SIZE_FOR_YIELD = 1000
 
@@ -308,11 +237,11 @@ class KafkaDatasource(Datasource):
         self,
         topics: Union[str, List[str]],
         bootstrap_servers: Union[str, List[str]],
-        start_offset: Optional[Union[int, str, datetime]] = None,
-        end_offset: Optional[Union[int, str, datetime]] = None,
+        start_offset: Optional[Union[int, str]] = None,
+        end_offset: Optional[Union[int, str]] = None,
         authentication: Optional[Dict[str, Any]] = None,
         max_records_per_task: int = 1000,
-        poll_timeout_ms: int = 30000,
+        timeout_ms: int = 10000,
     ):
         """Initialize Kafka datasource.
 
@@ -322,11 +251,9 @@ class KafkaDatasource(Datasource):
             start_offset: Starting position. Can be:
                 - int: Offset number or timestamp in milliseconds
                 - str: "earliest", "latest", or offset number as string
-                - datetime: Timestamp to convert to offset
             end_offset: Ending position. Can be:
                 - int: Offset number or timestamp in milliseconds
                 - str: Offset number as string
-                - datetime: Timestamp to convert to offset
             authentication: Authentication configuration dict with keys:
                 - security_protocol: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL
                 - sasl_mechanism: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512, GSSAPI
@@ -334,7 +261,7 @@ class KafkaDatasource(Datasource):
                 - sasl_password: Password for SASL authentication
                 - ssl_* parameters for SSL configuration
             max_records_per_task: Maximum records per task per batch.
-            poll_timeout_ms: Timeout in milliseconds to wait for messages (default 30000ms/30s).
+            timeout_ms: Timeout in milliseconds to poll to until reaching end_offset (default 10000ms/10s).
 
         Raises:
             ValueError: If required configuration is missing.
@@ -351,8 +278,17 @@ class KafkaDatasource(Datasource):
         if max_records_per_task <= 0:
             raise ValueError("max_records_per_task must be positive")
 
-        if poll_timeout_ms <= 0:
+        if timeout_ms <= 0:
             raise ValueError("poll_timeout_ms must be positive")
+
+        if isinstance(start_offset, int) and isinstance(end_offset, int):
+            if start_offset > end_offset:
+                raise ValueError("start_offset must be less than end_offset")
+
+        if isinstance(start_offset, str) and start_offset == "latest":
+            raise ValueError("start_offset cannot be 'latest'")
+        if isinstance(end_offset, str) and end_offset == "earliest":
+            raise ValueError("end_offset cannot be 'earliest'")
 
         # Validate bootstrap_servers format
         if isinstance(bootstrap_servers, str):
@@ -381,7 +317,7 @@ class KafkaDatasource(Datasource):
         self.end_offset = end_offset
         self.authentication = authentication or {}
         self.max_records_per_task = max_records_per_task
-        self.poll_timeout_ms = poll_timeout_ms
+        self.timeout_ms = timeout_ms
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Return an estimate of the in-memory data size, or None if unknown."""
@@ -392,18 +328,16 @@ class KafkaDatasource(Datasource):
     ) -> List[ReadTask]:
         """Create read tasks for Kafka partitions.
 
-        Creates one read task per partition for better scalability and parallelism.
+        Creates one read task per partition.
         Each task reads from a single partition of a single topic.
 
         Args:
-            parallelism: Number of parallel read tasks to create.
+            parallelism: This argument is deprecated.
             per_task_row_limit: Maximum number of rows per read task.
 
         Returns:
             List of ReadTask objects, one per partition.
         """
-        if parallelism <= 0:
-            raise ValueError(f"parallelism must be > 0, got: {parallelism}")
 
         # Discover all partitions for all topics
         # We need to create a consumer on the driver to discover partitions
@@ -434,16 +368,13 @@ class KafkaDatasource(Datasource):
         if not topic_partitions:
             return []
 
-        # Limit to parallelism
-        topic_partitions = topic_partitions[:parallelism]
-
         # Store config for use in read functions (avoid serialization issues)
         bootstrap_servers = self.bootstrap_servers
         start_offset = self.start_offset
         end_offset = self.end_offset
         authentication = self.authentication
         max_records_per_task = self.max_records_per_task
-        poll_timeout_ms = self.poll_timeout_ms
+        timeout_ms = self.timeout_ms
 
         tasks = []
         for topic_name, partition_id in topic_partitions:
@@ -452,12 +383,10 @@ class KafkaDatasource(Datasource):
                 topic_name: str = topic_name,
                 partition_id: int = partition_id,
                 bootstrap_servers: List[str] = bootstrap_servers,
-                start_offset: Optional[Union[int, str, datetime]] = start_offset,
-                end_offset: Optional[Union[int, str, datetime]] = end_offset,
+                start_offset: Optional[Union[int, str]] = start_offset,
+                end_offset: Optional[Union[int, str]] = end_offset,
                 authentication: Dict[str, Any] = authentication,
-                max_records_per_task: int = max_records_per_task,
-                poll_timeout_ms: int = poll_timeout_ms,
-                per_task_row_limit: Optional[int] = per_task_row_limit,
+                timeout_ms: int = timeout_ms,
             ):
                 """Create a Kafka read function with captured variables.
 
@@ -466,6 +395,7 @@ class KafkaDatasource(Datasource):
                 by Ray. Using default arguments ensures all needed config is available
                 in the remote task without requiring 'self' to be serialized.
                 """
+                print(f">>> create_kafka_read_fn {topic_name=} {partition_id=}")
 
                 def kafka_read_fn() -> Iterable[Block]:
                     """Read function for a single Kafka partition using kafka-python.
@@ -476,6 +406,7 @@ class KafkaDatasource(Datasource):
                     """
                     from kafka import KafkaConsumer, TopicPartition
 
+                    print(f">>> kafka_read_fn {topic_name=} {partition_id=}")
                     # Build consumer configuration
                     consumer_config = _build_consumer_config_for_read(
                         bootstrap_servers, authentication, topic_name, partition_id
@@ -483,7 +414,6 @@ class KafkaDatasource(Datasource):
 
                     # Create the Kafka consumer
                     consumer = KafkaConsumer(**consumer_config)
-
                     try:
                         # Assign only the specific partition for this task
                         topic_partition = TopicPartition(topic_name, partition_id)
@@ -495,35 +425,32 @@ class KafkaDatasource(Datasource):
                                 consumer, topic_partition, start_offset, is_end=False
                             )
                         else:
-                            # Default to earliest
-                            consumer.seek_to_beginning(topic_partition)
-                            start_off = consumer.position(topic_partition)
+                            beginning_offsets = consumer.beginning_offsets(
+                                [topic_partition]
+                            )
+                            start_off = beginning_offsets[topic_partition]
 
                         # Determine end offset for this partition
-                        end_off = None
                         if end_offset is not None:
                             end_off = _resolve_offset(
                                 consumer, topic_partition, end_offset, is_end=True
                             )
+                        else:
+                            end_offsets = consumer.end_offsets([topic_partition])
+                            end_off = end_offsets[topic_partition]
 
                         # Validate start_offset <= end_offset
-                        if end_off is not None and start_off > end_off:
+                        if start_off > end_off:
                             raise ValueError(
                                 f"start_offset ({start_off}) > end_offset ({end_off}) "
                                 f"for partition {partition_id} in topic {topic_name}"
                             )
-
                         # Seek to the requested starting position
                         consumer.seek(topic_partition, start_off)
 
                         records = []
                         records_read = 0
                         # Use per_task_row_limit if provided, otherwise use max_records_per_task
-                        effective_limit = (
-                            per_task_row_limit
-                            if per_task_row_limit is not None
-                            else max_records_per_task
-                        )
                         ctx = DataContext.get_current()
                         output_buffer = BlockOutputBuffer(
                             OutputBlockSizeOption.of(
@@ -531,22 +458,38 @@ class KafkaDatasource(Datasource):
                             )
                         )
 
-                        # Main polling loop - read messages until we hit effective_limit or end_offset
+                        # Main polling loop - read maximum 500 messages per loop
                         partition_done = False
-                        while records_read < effective_limit and not partition_done:
+                        start_time = time.time()
+                        timeout_seconds = timeout_ms / 1000.0
+
+                        while not partition_done:
+                            # Check if overall timeout has been reached
+                            elapsed_time = time.time() - start_time
+                            if elapsed_time >= timeout_seconds:
+                                break
+
+                            # Check if we've reached the end_offset before polling
+                            # This avoids waiting for timeout when no more messages are available
+                            current_position = consumer.position(topic_partition)
+                            if current_position >= end_off:
+                                break
+
+                            # Calculate remaining timeout for this poll
+                            remaining_timeout_ms = max(
+                                1000, int((timeout_seconds - elapsed_time) * 1000)
+                            )
+
                             # Poll for a batch of messages from Kafka
                             msg_batch = consumer.poll(
-                                timeout_ms=poll_timeout_ms,
-                                max_records=min(effective_limit - records_read, 500),
+                                timeout_ms=min(remaining_timeout_ms, 10000),
                             )
 
                             if not msg_batch:
                                 # No more messages available right now
                                 # Yield any accumulated records and exit the loop
-                                break
+                                continue
 
-                            # poll() returns dict of {TopicPartition: [messages]}
-                            # Since we only assigned one partition, there should be at most one entry
                             messages = msg_batch.get(topic_partition, [])
 
                             for msg in messages:
@@ -580,17 +523,6 @@ class KafkaDatasource(Datasource):
                                     if output_buffer.has_next():
                                         yield output_buffer.next()
                                     records = []  # Clear for next batch
-
-                                # Check if we've hit our total limit
-                                if records_read >= effective_limit:
-                                    # Yield final batch and finalize buffer
-                                    if records:
-                                        table = pa.Table.from_pylist(records)
-                                        output_buffer.add_block(table)
-                                    output_buffer.finalize()
-                                    if output_buffer.has_next():
-                                        yield output_buffer.next()
-                                    return
 
                         # Yield any remaining records
                         if records:
@@ -630,13 +562,10 @@ class KafkaDatasource(Datasource):
                     ("headers", pa.map_(pa.string(), pa.string())),  # Message headers
                 ]
             )
-
+            kafka_read_fn = create_kafka_read_fn(topic_name, partition_id)
             # Create read task
             task = ReadTask(
-                read_fn=call_with_retry(
-                    create_kafka_read_fn(topic_name, partition_id),
-                    description=f"read Kafka topic {topic_name} partition {partition_id}",
-                ),
+                read_fn=kafka_read_fn,
                 metadata=metadata,
                 schema=schema,
                 per_task_row_limit=per_task_row_limit,
