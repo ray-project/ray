@@ -17,19 +17,6 @@ from ray.util.annotations import DeveloperAPI
 
 @DeveloperAPI
 class InfiniteLookbackBuffer:
-    @property
-    def space(self):
-        return self._space
-
-    @space.setter
-    def space(self, value):
-        self._space = value
-        self._space_struct = get_base_struct_from_space(value)
-
-    @property
-    def space_struct(self):
-        return self._space_struct
-
     def __init__(
         self,
         data: Optional[Union[List, np.ndarray]] = None,
@@ -40,8 +27,7 @@ class InfiniteLookbackBuffer:
         self.lookback = min(lookback, len(self.data))
         self.finalized = not isinstance(self.data, list)
 
-        self._space = space
-        self._space_struct = None
+        self.space = space
 
     def __eq__(
         self,
@@ -66,6 +52,19 @@ class InfiniteLookbackBuffer:
             and self.space_struct == other.space_struct
             and self.space == other.space
         )
+
+    @property
+    def space(self):
+        return self._space
+
+    @space.setter
+    def space(self, value):
+        self._space = value
+        self._space_struct = get_base_struct_from_space(value)
+
+    @property
+    def space_struct(self):
+        return self._space_struct
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the pickable state of a buffer.
