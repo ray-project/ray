@@ -3119,7 +3119,7 @@ class DeploymentState:
                 has_outbound_deployments = True
         if not has_outbound_deployments:
             return None
-        return sorted(result)
+        return sorted(result, key=lambda d: (d.name))
 
 
 class DeploymentStateManager:
