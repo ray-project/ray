@@ -254,7 +254,7 @@ class ActorReplicaWrapper:
         self._docs_path: Optional[str] = None
         self._route_patterns: Optional[List[str]] = None
         # Rank assigned to the replica.
-        self._rank: Optional[int] = None
+        self._rank: Optional[ReplicaRank] = None
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
         self._placement_group: PlacementGroup = None
@@ -290,7 +290,7 @@ class ActorReplicaWrapper:
         return self._deployment_id.name
 
     @property
-    def rank(self) -> Optional[int]:
+    def rank(self) -> Optional[ReplicaRank]:
         return self._rank
 
     @property
@@ -442,7 +442,7 @@ class ActorReplicaWrapper:
         return self._initialization_latency_s
 
     def start(
-        self, deployment_info: DeploymentInfo, rank: int
+        self, deployment_info: DeploymentInfo, rank: ReplicaRank
     ) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
 
@@ -609,11 +609,7 @@ class ActorReplicaWrapper:
                 temp = msgpack_deserialize(temp)
         return temp
 
-    def reconfigure(
-        self,
-        version: DeploymentVersion,
-        rank: int,
-    ) -> bool:
+    def reconfigure(self, version: DeploymentVersion, rank: ReplicaRank) -> bool:
         """
         Update replica version. Also, updates the deployment config on the actor
         behind this DeploymentReplica instance if necessary.
@@ -1170,7 +1166,7 @@ class DeploymentReplica:
         return self._actor.initialization_latency_s
 
     def start(
-        self, deployment_info: DeploymentInfo, rank: int
+        self, deployment_info: DeploymentInfo, rank: ReplicaRank
     ) -> ReplicaSchedulingRequest:
         """
         Start a new actor for current DeploymentReplica instance.
@@ -1184,7 +1180,7 @@ class DeploymentReplica:
     def reconfigure(
         self,
         version: DeploymentVersion,
-        rank: int,
+        rank: ReplicaRank,
     ) -> bool:
         """
         Update replica version. Also, updates the deployment config on the actor
@@ -1211,7 +1207,7 @@ class DeploymentReplica:
         return True
 
     @property
-    def rank(self) -> Optional[int]:
+    def rank(self) -> Optional[ReplicaRank]:
         """Get the rank assigned to the replica."""
         return self._actor.rank
 
@@ -1695,9 +1691,11 @@ class DeploymentRankManager:
             # Assign global rank
             rank = self._replica_rank_manager.assign_rank(replica_id)
 
-            return ReplicaRank(rank=rank)
+            return ReplicaRank(rank=rank, node_rank=-1, local_rank=-1)
 
-        return self._execute_with_error_handling(_assign_rank_impl, ReplicaRank(rank=0))
+        return self._execute_with_error_handling(
+            _assign_rank_impl, ReplicaRank(rank=0, node_rank=-1, local_rank=-1)
+        )
 
     def release_rank(self, replica_id: str) -> None:
         """Release rank for a replica.
@@ -1776,10 +1774,10 @@ class DeploymentRankManager:
                 raise RuntimeError(f"Rank for {replica_id} not assigned")
 
             global_rank = self._replica_rank_manager.get_rank(replica_id)
-            return ReplicaRank(rank=global_rank)
+            return ReplicaRank(rank=global_rank, node_rank=-1, local_rank=-1)
 
         return self._execute_with_error_handling(
-            _get_replica_rank_impl, ReplicaRank(rank=0)
+            _get_replica_rank_impl, ReplicaRank(rank=0, node_rank=-1, local_rank=-1)
         )
 
     def check_rank_consistency_and_reassign_minimally(
@@ -2547,7 +2545,7 @@ class DeploymentState:
                         self._target_state.version,
                     )
                     scheduling_request = new_deployment_replica.start(
-                        self._target_state.info, rank=assigned_rank.rank
+                        self._target_state.info, rank=assigned_rank
                     )
 
                     upscale.append(scheduling_request)
@@ -2665,10 +2663,7 @@ class DeploymentState:
                     # data structure with RUNNING state.
                     # Recover rank from the replica actor during controller restart
                     replica_id = replica.replica_id.unique_id
-                    recovered_rank = replica.rank
-                    self._rank_manager.recover_rank(
-                        replica_id, ReplicaRank(rank=recovered_rank)
-                    )
+                    self._rank_manager.recover_rank(replica_id, replica.rank)
                 # This replica should be now be added to handle's replica
                 # set.
                 self._replicas.add(ReplicaState.RUNNING, replica)
@@ -2951,7 +2946,7 @@ class DeploymentState:
             # World size is calculated automatically from deployment config
             _ = replica.reconfigure(
                 self._target_state.version,
-                rank=new_rank.rank,
+                rank=new_rank,
             )
             updated_count += 1
 
