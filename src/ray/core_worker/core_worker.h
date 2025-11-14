@@ -178,7 +178,6 @@ class CoreWorker {
              std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
              std::unique_ptr<rpc::GrpcServer> core_worker_server,
              rpc::Address rpc_address,
-             std::string temp_dir,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
              std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
@@ -291,8 +290,6 @@ class CoreWorker {
   int64_t GetTaskDepth() const { return worker_context_->GetTaskDepth(); }
 
   NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.node_id()); }
-
-  std::string GetCurrentTempDir() const { return temp_dir_; }
 
   /// Read the next index of a ObjectRefStream of generator_id.
   /// This API always return immediately.
@@ -1750,9 +1747,6 @@ class CoreWorker {
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;
-
-  /// Temp directory for this node.
-  std::string temp_dir_;
 
   /// Whether or not this worker is connected to the raylet and GCS.
   bool connected_ = false;

@@ -106,7 +106,6 @@ table RegisterClientReply {
   failure_reason: string;
   node_id: string;
   port: int;
-  temp_dir: string;
 }
 
 table AnnounceWorkerPort {

@@ -468,12 +468,12 @@ class Node:
         # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
-        self._temp_dir = self._ray_params.temp_dir
+        self.temp_dir = self._ray_params.temp_dir
         if self.head:
-            if self._temp_dir is None:
-                self._temp_dir = ray._private.utils.get_default_ray_temp_dir()
+            if self.temp_dir is None:
+                self.temp_dir = ray._private.utils.get_default_ray_temp_dir()
         else:
-            if self._temp_dir is None:
+            if self.temp_dir is None:
                 assert not self._default_worker
                 # fetch head node info
                 try:
@@ -499,23 +499,23 @@ class Node:
                     logger.error(
                         "Head node ID not found in GCS. Using Ray's default temp dir."
                     )
-                    self._temp_dir = ray._private.utils.get_default_ray_temp_dir()
+                    self.temp_dir = ray._private.utils.get_default_ray_temp_dir()
                 else:
-                    self._temp_dir = getattr(node_info, "temp_dir", None)
-                    if not self._temp_dir:
+                    self.temp_dir = getattr(node_info, "temp_dir", None)
+                    if not self.temp_dir:
                         logger.warning(
                             "Head node temp_dir not found in NodeInfo. "
                             "Using Ray's default temp dir."
                         )
-                        self._temp_dir = ray._private.utils.get_default_ray_temp_dir()
+                        self.temp_dir = ray._private.utils.get_default_ray_temp_dir()
 
-        logger.debug(f"Setting temp dir to: {self._temp_dir}")
+        logger.debug(f"Setting temp dir to: {self.temp_dir}")
 
-        try_to_create_directory(self._temp_dir)
+        try_to_create_directory(self.temp_dir)
 
         # Assumes session_name is resolved before _init_temp is called
-        self._session_dir = os.path.join(self._temp_dir, self._session_name)
-        session_symlink = os.path.join(self._temp_dir, ray_constants.SESSION_LATEST)
+        self._session_dir = os.path.join(self.temp_dir, self._session_name)
+        session_symlink = os.path.join(self.temp_dir, ray_constants.SESSION_LATEST)
 
         # Send a warning message if the session exists.
         try_to_create_directory(self._session_dir)
@@ -743,7 +743,7 @@ class Node:
 
     def get_temp_dir_path(self):
         """Get the path of the temporary directory."""
-        return self._temp_dir
+        return self.temp_dir
 
     def get_runtime_env_dir_path(self):
         """Get the path of the runtime env."""
@@ -777,7 +777,7 @@ class Node:
                 "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
         if directory_name is None:
-            directory_name = self._temp_dir
+            directory_name = self.temp_dir
         directory_name = os.path.expanduser(directory_name)
         index = self._incremental_dict[suffix, prefix, directory_name]
         # `tempfile.TMP_MAX` could be extremely large,
@@ -1119,7 +1119,7 @@ class Node:
             self.gcs_address,
             self.cluster_id.hex(),
             self._node_ip_address,
-            self._temp_dir,
+            self.temp_dir,
             self._logs_dir,
             self._session_dir,
             port=self._ray_params.dashboard_port,
@@ -1231,7 +1231,7 @@ class Node:
             self.cluster_id.hex(),
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
-            self._temp_dir,
+            self.temp_dir,
             self._session_dir,
             self._runtime_env_dir,
             self._logs_dir,
@@ -1435,7 +1435,7 @@ class Node:
             object_store_memory,
         ) = ray._private.services.determine_plasma_store_config(
             resource_and_label_spec.object_store_memory,
-            self._temp_dir,
+            self.temp_dir,
             plasma_directory=self._ray_params.plasma_directory,
             fallback_directory=self._fallback_directory,
             huge_pages=self._ray_params.huge_pages,

@@ -575,7 +575,7 @@ class Worker:
 
     @property
     def current_temp_dir(self):
-        return self.core_worker.get_current_temp_dir()
+        return self.node.temp_dir
 
     @property
     def task_depth(self):

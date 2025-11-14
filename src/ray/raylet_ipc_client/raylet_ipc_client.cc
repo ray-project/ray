@@ -97,8 +97,7 @@ ray::Status RayletIpcClient::RegisterClient(const WorkerID &worker_id,
                                             const std::string &serialized_job_config,
                                             const StartupToken &startup_token,
                                             NodeID *node_id,
-                                            int *assigned_port,
-                                            std::string *temp_dir) {
+                                            int *assigned_port) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       protocol::CreateRegisterClientRequest(fbb,
@@ -126,7 +125,6 @@ ray::Status RayletIpcClient::RegisterClient(const WorkerID &worker_id,
 
   *node_id = NodeID::FromBinary(reply_message->node_id()->str());
   *assigned_port = reply_message->port();
-  *temp_dir = reply_message->temp_dir()->str();
   return Status::OK();
 }
 

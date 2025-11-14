@@ -285,8 +285,6 @@ NodeManager::NodeManager(
 }
 
 void NodeManager::Start(rpc::GcsNodeInfo &&self_node_info) {
-  temp_dir_ = self_node_info.temp_dir();
-
   auto register_callback =
       [this,
        object_manager_port = self_node_info.object_manager_port()](const Status &status) {
@@ -1244,8 +1242,7 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
                                                  status.ok(),
                                                  fbb.CreateString(status.ToString()),
                                                  flatbuf::to_flatbuf(fbb, self_node_id_),
-                                                 assigned_port,
-                                                 fbb.CreateString(temp_dir_));
+                                                 assigned_port);
     fbb.Finish(reply);
     client->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply),
