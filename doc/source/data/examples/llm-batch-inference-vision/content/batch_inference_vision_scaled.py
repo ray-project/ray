@@ -47,19 +47,10 @@ processor_config = vLLMEngineProcessorConfig(
 
 # Preprocess function prepares messages with image content for the VLM.
 def preprocess(row: dict[str, Any]) -> dict[str, Any]:
-    # Get the image from the row
-    image = row.get('image')
-    
-    # Convert to PIL Image if needed
-    if not isinstance(image, Image.Image):
-        if isinstance(image, dict) and 'bytes' in image:
-            image = Image.open(BytesIO(image['bytes']))
-        elif isinstance(image, bytes):
-            image = Image.open(BytesIO(image))
-    
-    # Resize for consistency
-    if image:
-        image = image.resize((224, 224), Image.Resampling.BICUBIC)
+    # Convert bytes image to PIL
+    image = row[IMAGE_COLUMN]['bytes']
+    image = Image.open(BytesIO(image))
+    image = image.resize((225, 225), Image.Resampling.BICUBIC)
     
     return dict(
         messages=[
