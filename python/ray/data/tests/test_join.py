@@ -8,7 +8,7 @@ from packaging.version import parse as parse_version
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.logical.operators.join_operator import JoinType
-from ray.data._internal.util import MiB
+from ray.data._internal.util import MiB, rows_same
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.exceptions import RayTaskError
@@ -278,7 +278,7 @@ def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_su
             rsuffix=right_suffix,
         ).reset_index(drop=True)
 
-        pd.testing.assert_frame_equal(expected_pd, joined_pd_sorted)
+        assert rows_same(expected_pd, joined_pd_sorted), "Expected contents to be same"
 
 
 def test_invalid_join_config(ray_start_regular_shared_2_cpus):
