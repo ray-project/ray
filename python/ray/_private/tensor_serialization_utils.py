@@ -10,12 +10,16 @@ class TensorObjRestoreWarning(UserWarning):
 
 warnings.filterwarnings("once", category=TensorObjRestoreWarning)
 
-# `_zero_copy_maker_key` and `_zero_copy_maker_value` identify the tensor;
-# `_zero_copy_data` stores the NumPy array, `_ZERO_COPY_PLACEMENT` the device placement.
-_ZERO_COPY_MAKER_KEY = "_ray_zc_k_"
-_ZERO_COPY_MAKER_VALUE = "_ray_zc_v_"
-_ZERO_COPY_DATA = "_ray_zc_d_"
-_ZERO_COPY_PLACEMENT = "_ray_zc_pl_"
+# Metadata keys and values used for zero-copy serialization
+# _ZERO_COPY_MARKER_KEY / _ZERO_COPY_MARKER_VALUE: Key-value pair that identifies a zero-copy tensor
+# _ZERO_COPY_DATA: Placeholder key for the tensor's NumPy array
+# _ZERO_COPY_DTYPE: Placeholder key for the original tensor's dtype (e.g., 'torch.float32')
+# _ZERO_COPY_PLACEMENT: Placeholder key for the tensor's device placement (e.g., 'cpu', 'cuda')
+_ZERO_COPY_MAKER_KEY = "_ray_zerocopy_key_"
+_ZERO_COPY_MAKER_VALUE = "_ray_zerocopy_value_"
+_ZERO_COPY_DATA = "_ray_zerocopy_data_"
+_ZERO_COPY_DTYPE = "_ray_zerocopy_dtype_"
+_ZERO_COPY_PLACEMENT = "_ray_zerocopy_placement_"
 
 
 def _is_restorable(obj) -> bool:
@@ -161,6 +165,7 @@ def _to_numpy_node(node):
         return {
             _ZERO_COPY_MAKER_KEY: _ZERO_COPY_MAKER_VALUE,
             _ZERO_COPY_DATA: node.detach().cpu().contiguous().numpy(),
+            _ZERO_COPY_DTYPE: str(node.dtype),
             _ZERO_COPY_PLACEMENT: str(node.device),
         }
     return node
@@ -190,27 +195,54 @@ def _to_tensor_node(node):
         import torch
 
         np_array = node[_ZERO_COPY_DATA]
+        original_dtype_str = node.get(_ZERO_COPY_DTYPE, None)
         device_str = node.get(_ZERO_COPY_PLACEMENT, "cpu")
+
+        # Reconstruct tensor from NumPy array
         tensor = torch.from_numpy(np_array)
+
+        # Determine target device type
         dev = torch.device(device_str)
+        if dev.type == "cuda" and torch.cuda.is_available():
+            target_device = torch.device("cuda")
+        else:
+            target_device = torch.device("cpu")
 
-        target_device = torch.device("cpu")
-
-        if dev.type == "cpu":
-            target_device = dev
-
-        elif dev.type == "cuda":
-            if torch.cuda.is_available():
-                if dev.index is None:
-                    target_device = torch.device("cuda")
-                elif dev.index < torch.cuda.device_count():
-                    target_device = dev
-                else:
-                    target_device = torch.device("cuda")
+        # Handle dtype restoration
+        if original_dtype_str is not None:
+            try:
+                dtype_name = original_dtype_str.split(".")[-1]
+                original_dtype = getattr(torch, dtype_name)
+                if tensor.dtype != original_dtype:
+                    tensor = tensor.to(dtype=original_dtype)
+            except (AttributeError, IndexError, TypeError) as e:
+                warnings.warn(
+                    f"Failed to restore original tensor dtype '{original_dtype_str}'. "
+                    f"Using dtype from NumPy array ({tensor.dtype}) instead. "
+                    f"This may affect numerical behavior or compatibility. Error: {e}",
+                    TensorObjRestoreWarning,
+                    stacklevel=3,
+                )
 
         return tensor.to(device=target_device)
 
-    except (ImportError, RuntimeError, TypeError, ValueError):
+    except Exception as e:
+        if isinstance(e, ImportError):
+            msg = "Zero-copy tensor deserialization failed because PyTorch is not installed. "
+        elif isinstance(e, (RuntimeError, TypeError, ValueError, AttributeError)):
+            msg = (
+                "Zero-copy tensor deserialization failed due to data or runtime issue. "
+            )
+        else:
+            msg = "Unexpected error during zero-copy tensor deserialization. "
+
+        warnings.warn(
+            f"{msg}Returning raw NumPy array instead of torch.Tensor. "
+            f"This may indicate missing dependencies, corrupted/misaligned data, "
+            f"non-contiguous arrays, or incompatible serialization format. Error: {e}",
+            TensorObjRestoreWarning,
+            stacklevel=3,
+        )
         return node[_ZERO_COPY_DATA]
 
 
