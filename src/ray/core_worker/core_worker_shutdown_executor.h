@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <atomic>
+#include <future>
 #include <memory>
 #include <string_view>
 
@@ -53,6 +55,12 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
 
   ~CoreWorkerShutdownExecutor() override = default;
 
+  /// Wait for shutdown to complete with timeout.
+  /// Blocks until shutdown operations finish or timeout expires.
+  /// If timeout, calls QuickExit to prevent undefined behavior.
+  /// \param timeout_ms Maximum time to wait
+  void WaitForCompletion(std::chrono::milliseconds timeout_ms) override;
+
   /// Execute graceful shutdown sequence.
   /// Stops task execution, flushes task events, stops IO/gRPC services, joins IO
   /// thread when not self, and disconnects from GCS. Best-effort cleanup.
@@ -87,6 +95,13 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
  private:
   // Weak pointer prevents use-after-free during async shutdown operations.
   std::weak_ptr<CoreWorker> core_worker_;
+
+  // Shutdown completion tracking
+  std::promise<void> shutdown_complete_promise_;
+  std::shared_future<void> shutdown_complete_future_;
+  std::atomic<bool> shutdown_notified_{false};
+
+  void NotifyComplete();
 
   void DisconnectServices(
       std::string_view exit_type,

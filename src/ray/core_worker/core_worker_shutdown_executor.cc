@@ -27,7 +27,26 @@ namespace core {
 
 CoreWorkerShutdownExecutor::CoreWorkerShutdownExecutor(
     std::shared_ptr<CoreWorker> core_worker)
-    : core_worker_(core_worker) {}
+    : core_worker_(core_worker) {
+  shutdown_complete_future_ = shutdown_complete_promise_.get_future().share();
+}
+
+void CoreWorkerShutdownExecutor::WaitForCompletion(std::chrono::milliseconds timeout_ms) {
+  auto status = shutdown_complete_future_.wait_for(timeout_ms);
+  if (status == std::future_status::timeout) {
+    RAY_LOG(ERROR) << "Shutdown did not complete within " << timeout_ms.count()
+                   << "ms. Force exiting to avoid undefined behavior.";
+    QuickExit();
+  }
+  RAY_LOG(INFO) << "Shutdown completed successfully";
+}
+
+void CoreWorkerShutdownExecutor::NotifyComplete() {
+  if (shutdown_notified_.exchange(true)) {
+    return;
+  }
+  shutdown_complete_promise_.set_value();
+}
 
 void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     std::string_view exit_type,
@@ -43,17 +62,25 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     return;
   }
 
-  core_worker->SetShutdownState(ShutdownState::kShuttingDown);
+  std::function<void()> actor_callback;
+  {
+    absl::MutexLock lock(&core_worker->mutex_);
+    core_worker->shutdown_state_ = ShutdownState::kShuttingDown;
+    
+    if (core_worker->options_.worker_type == WorkerType::WORKER &&
+        !core_worker->worker_context_->GetCurrentActorID().IsNil()) {
+      actor_callback = core_worker->actor_shutdown_callback_;
+    }
+  }
+
+  if (actor_callback) {
+    RAY_LOG(DEBUG) << "Calling actor shutdown callback";
+    actor_callback();
+  }
 
   if (core_worker->options_.worker_type == WorkerType::WORKER) {
-    if (!core_worker->worker_context_->GetCurrentActorID().IsNil()) {
-      auto callback = core_worker->GetActorShutdownCallback();
-      RAY_CHECK(callback) << "actor_shutdown_callback_ must be set for actor workers";
-      RAY_LOG(DEBUG) << "Calling actor shutdown callback";
-      callback();
-    }
 
-    core_worker->SetEventLoopsStopped();
+    core_worker->event_loops_running_ = false;
     core_worker->task_execution_service_.stop();
   }
 
@@ -61,7 +88,7 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   core_worker->task_event_buffer_->Stop();
 
   if (core_worker->options_.worker_type != WorkerType::WORKER) {
-    core_worker->SetEventLoopsStopped();
+    core_worker->event_loops_running_ = false;
   }
   core_worker->io_service_.stop();
   RAY_LOG(INFO) << "Waiting for joining a core worker io thread. If it hangs here, there "
@@ -76,7 +103,11 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     }
   }
 
-  core_worker->SetShutdownState(ShutdownState::kDisconnecting);
+  {
+    absl::MutexLock lock(&core_worker->mutex_);
+    core_worker->shutdown_state_ = ShutdownState::kDisconnecting;
+  }
+  
   core_worker->core_worker_server_->Shutdown();
 
   // GCS client is safe to disconnect now that io_service has stopped.
@@ -88,9 +119,13 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     core_worker->gcs_client_.reset();
   }
 
-  core_worker->SetShutdownState(ShutdownState::kShutdown);
+  {
+    absl::MutexLock lock(&core_worker->mutex_);
+    core_worker->shutdown_state_ = ShutdownState::kShutdown;
+  }
+  
   RAY_LOG(INFO) << "Core worker ready to be deallocated.";
-  core_worker->NotifyShutdownComplete();
+  NotifyComplete();
 }
 
 void CoreWorkerShutdownExecutor::ExecuteForceShutdown(std::string_view exit_type,
@@ -133,7 +168,7 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
       return;
     }
 
-    if (!worker->AreEventLoopsRunning()) {
+    if (!worker->event_loops_running_.load()) {
       RAY_LOG(WARNING) << "Event loops already stopped, executing shutdown directly";
       rpc::DrainServerCallExecutor();
       KillChildProcessesImmediately();
@@ -166,7 +201,7 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
       return;
     }
 
-    if (!worker->AreEventLoopsRunning()) {
+    if (!worker->event_loops_running_.load()) {
       RAY_LOG(WARNING) << "Event loops already stopped, cannot drain references";
       shutdown_callback();
       return;
@@ -325,7 +360,16 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
 
   opencensus::stats::StatsExporter::ExportNow();
 
-  if (core_worker->SetDisconnectedIfConnected()) {
+  bool should_disconnect = false;
+  {
+    absl::MutexLock lock(&core_worker->mutex_);
+    if (core_worker->connected_) {
+      core_worker->connected_ = false;
+      should_disconnect = true;
+    }
+  }
+
+  if (should_disconnect) {
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
     if (core_worker->raylet_ipc_client_) {
       rpc::WorkerExitType worker_exit_type = rpc::WorkerExitType::INTENDED_USER_EXIT;

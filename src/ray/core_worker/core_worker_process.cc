@@ -686,7 +686,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    *task_by_state_gauge_,
                                    *actor_by_state_gauge_);
 
-  core_worker->InitializeShutdownExecutor(core_worker);
+  core_worker->InitializeShutdownExecutor();
 
   return core_worker;
 }

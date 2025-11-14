@@ -17,7 +17,6 @@
 #include <gtest/gtest_prod.h>
 
 #include <deque>
-#include <future>
 #include <memory>
 #include <queue>
 #include <string>
@@ -242,8 +241,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                       &creation_task_exception_pb_bytes = nullptr);
 
   /// Initialize the shutdown executor after construction is complete.
-  /// This must be called after the CoreWorker is created as a shared_ptr.
-  void InitializeShutdownExecutor(std::shared_ptr<CoreWorker> self);
+  void InitializeShutdownExecutor();
 
   /// Shut down the worker completely.
   ///
@@ -253,26 +251,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   void Shutdown();
 
   /// Wait for shutdown to complete before destruction.
-  /// This method blocks until shutdown is complete or times out.
-  /// \param timeout_ms Maximum time to wait in milliseconds (default: 30 seconds).
+  /// Delegates to shutdown executor's completion tracking with timeout.
+  /// \param timeout_ms Maximum time to wait (default: 30 seconds)
   void WaitForShutdownComplete(
       std::chrono::milliseconds timeout_ms = std::chrono::milliseconds(30000));
-
-  /// Notify that shutdown is complete.
-  /// This method should be called by the shutdown executor when all shutdown
-  /// operations have finished.
-  void NotifyShutdownComplete();
-
-  bool IsConnected() const;
-  bool SetDisconnectedIfConnected();
-
-  ray::core::ShutdownState GetShutdownState() const;
-  void SetShutdownState(ray::core::ShutdownState state);
-
-  bool AreEventLoopsRunning() const { return event_loops_running_.load(); }
-  void SetEventLoopsStopped() { event_loops_running_.store(false); }
-
-  std::function<void()> GetActorShutdownCallback() const;
 
   /// Start receiving and executing tasks.
   void RunTaskExecutionLoop();
@@ -1975,17 +1957,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   std::function<void(const ObjectID &)> free_actor_object_callback_;
 
   // Shutdown synchronization primitives
-  mutable absl::Mutex connected_mutex_;
-  bool connected_ ABSL_GUARDED_BY(connected_mutex_) = true;
-
-  mutable absl::Mutex shutdown_state_mutex_;
-  ray::core::ShutdownState shutdown_state_ ABSL_GUARDED_BY(shutdown_state_mutex_) =
+  bool connected_ ABSL_GUARDED_BY(mutex_) = true;
+  ray::core::ShutdownState shutdown_state_ ABSL_GUARDED_BY(mutex_) =
       ray::core::ShutdownState::kRunning;
-
   std::atomic<bool> event_loops_running_{true};
-  mutable absl::Mutex actor_callback_mutex_;
-
-  std::promise<void> shutdown_complete_promise_;
-  std::shared_future<void> shutdown_complete_future_;
 };
 }  // namespace ray::core
