@@ -213,6 +213,43 @@ def test_read_kafka_with_message_headers(
     assert first_record["headers"]["header1"] == "value1"
 
 
+def test_read_kafka_offset_exceeds_available_messages(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    import time
+
+    topic = "test-offset-timeout"
+
+    # Send only 50 messages
+    for i in range(50):
+        message = {"id": i, "value": f"message-{i}"}
+        kafka_producer.send(topic, value=message)
+    kafka_producer.flush()
+    time.sleep(1)
+
+    # Try to read up to offset 200 (way beyond available messages)
+    # This should timeout and only return the 50 available messages
+
+    start_time = time.time()
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset=0,
+        end_offset=200,
+        timeout_ms=5000,  # 5 second timeout
+    )
+
+    records = ds.take_all()
+
+    elapsed_time = time.time() - start_time
+
+    # Should get all 50 available messages
+    assert len(records) == 50
+
+    # Should have waited for timeout (at least 4.5 seconds to account for some variance)
+    assert elapsed_time >= 4.5, f"Expected timeout wait, but only took {elapsed_time}s"
+
+
 def test_read_kafka_invalid_topic(bootstrap_server, ray_start_regular_shared):
     with pytest.raises(ValueError, match="has no partitions or doesn't exist"):
         ds = ray.data.read_kafka(

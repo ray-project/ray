@@ -395,7 +395,6 @@ class KafkaDatasource(Datasource):
                 by Ray. Using default arguments ensures all needed config is available
                 in the remote task without requiring 'self' to be serialized.
                 """
-                print(f">>> create_kafka_read_fn {topic_name=} {partition_id=}")
 
                 def kafka_read_fn() -> Iterable[Block]:
                     """Read function for a single Kafka partition using kafka-python.
@@ -406,7 +405,6 @@ class KafkaDatasource(Datasource):
                     """
                     from kafka import KafkaConsumer, TopicPartition
 
-                    print(f">>> kafka_read_fn {topic_name=} {partition_id=}")
                     # Build consumer configuration
                     consumer_config = _build_consumer_config_for_read(
                         bootstrap_servers, authentication, topic_name, partition_id
