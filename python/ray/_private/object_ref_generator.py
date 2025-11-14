@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 _R = TypeVar("_R") # for ObjectRefs
 
 @DeveloperAPI
-class DynamicObjectRefGenerator(Iterable["ray.ObjectRef[_R]"]):
+class DynamicObjectRefGenerator(Generic[_R], Iterable["ray.ObjectRef[_R]"]):
     def __init__(self, refs: Deque["ray.ObjectRef[_R]"]):
         # TODO(swang): As an optimization, can also store the generator
         # ObjectID so that we don't need to keep individual ref counts for the
