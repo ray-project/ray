@@ -163,6 +163,7 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
     auto worker = weak_core_worker.lock();
     if (!worker) {
       RAY_LOG(WARNING) << "CoreWorker destroyed during shutdown callback";
+      NotifyComplete();
       return;
     }
 
@@ -187,7 +188,7 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
         "CoreWorker.Shutdown");
   };
 
-  auto drain_references_callback = [weak_core_worker, shutdown_callback]() {
+  auto drain_references_callback = [this, weak_core_worker, shutdown_callback]() {
     // Post to the event loop to avoid a deadlock between the TaskManager and
     // the ReferenceCounter. The deadlock can occur because this callback may
     // get called by the TaskManager while the ReferenceCounter's lock is held,
@@ -196,6 +197,7 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
     auto worker = weak_core_worker.lock();
     if (!worker) {
       RAY_LOG(WARNING) << "CoreWorker destroyed during drain references callback";
+      NotifyComplete();
       return;
     }
 
@@ -281,6 +283,7 @@ void CoreWorkerShutdownExecutor::ExecuteExitIfIdle(std::string_view exit_type,
     ExecuteExit(exit_type, detail, actual_timeout, nullptr);
   } else {
     RAY_LOG(INFO) << "Worker not idle, ignoring exit request: " << detail;
+    NotifyComplete();
   }
 }
 

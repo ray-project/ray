@@ -532,7 +532,7 @@ CoreWorker::~CoreWorker() {
 
 void CoreWorker::InitializeShutdownExecutor() {
   auto executor = std::make_unique<CoreWorkerShutdownExecutor>(shared_from_this());
-  shutdown_coordinator_ = 
+  shutdown_coordinator_ =
       std::make_unique<ShutdownCoordinator>(std::move(executor), options_.worker_type);
 
   RAY_LOG(DEBUG) << "Initialized unified shutdown coordinator with concrete executor for "
