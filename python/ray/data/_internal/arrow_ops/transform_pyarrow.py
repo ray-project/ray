@@ -306,12 +306,12 @@ def unify_schemas(
     # Deduplicate schemas. Calling this before PyArrow's unify_schemas is more efficient (100x faster).
 
     # Remove metadata for hashability
-    schemas[0] = schemas[0].remove_metadata()
+    schemas[0].remove_metadata()
     schemas_to_unify = [schemas[0]]
-    for i in range(1, len(schemas)):
-        schemas[i] = schemas[i].remove_metadata()
-        if not schemas[i].equals(schemas[0]):
-            schemas_to_unify.append(schemas[i])
+    for schema in schemas[1:]:
+        schema.remove_metadata()
+        if not schema.equals(schemas[0]):
+            schemas_to_unify.append(schema)
 
     pyarrow_exception = None
     # If there is only one schema, return it
