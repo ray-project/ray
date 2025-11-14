@@ -3,16 +3,12 @@ import concurrent.futures
 import threading
 from typing import (
     Any,
-    AsyncGenerator,
     Awaitable,
     Callable,
     Dict,
-    Generator,
-    Generic,
     Iterable,
     List,
     NamedTuple,
-    NoReturn,
     Optional,
     Protocol,
     Tuple,
@@ -33,7 +29,6 @@ from python.ray.includes.serialization import SerializedObject
 
 from ray._private.custom_types import TensorTransportEnum
 from ray._private.object_ref_generator import ObjectRefGenerator
-from ray._private.worker import Worker
 from ray.actor import ActorHandle
 from ray.core.generated.common_pb2 import (
     JobConfig,
