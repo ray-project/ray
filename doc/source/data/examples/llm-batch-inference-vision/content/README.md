@@ -391,7 +391,7 @@ For more information, see [Saving Data](https://docs.ray.io/en/latest/data/savin
 
 ## Summary
 
-In this notebook, you built an end-to-end vision batch inference pipeline: loading the COCO image dataset into Ray Dataset, configuring a vLLM processor for the Qwen2.5-VL-3B vision-language model, and adding pre/post-processing to generate image captions. You validated the flow on 100,000 images, scaled to 100k images, monitored progress in the Ray Dashboard, and saved the results to persistent storage.
+In this notebook, you built an end-to-end vision batch inference pipeline: loading an HuggingFace image dataset into Ray Dataset, configuring a vLLM processor for the Qwen2.5-VL vision-language model, and adding pre/post-processing to generate image captions. You validated the flow on 100,000 images, scaled to 100k images, monitored progress in the Ray Dashboard, and saved the results to persistent storage.
 
 See [Anyscale batch inference optimization](https://docs.anyscale.com/llm/batch-inference) for more information on using Ray Data with Anyscale and for more advanced use cases, see [Working with LLMs](https://docs.ray.io/en/latest/data/working-with-llms.html).
 
