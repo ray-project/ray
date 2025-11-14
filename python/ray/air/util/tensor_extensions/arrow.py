@@ -94,19 +94,26 @@ class ArrowExtensionSerializeDeserializeCache(abc.ABC):
     The deserialization and serialization of Arrow extension types is frequent,
     so we cache the results here to improve performance.
 
-    The deserialization cache is a class field (shared across all instances),
-    so it won't be invalidated during the lifetime of the process. Each entry is around ~100 bytes,
-    and we periodically clean expired entries once their TTL passes, so the overall memory overhead
-    is very low.
+    The deserialization cache is a class field (one per subclass, shared across all instances
+    of that subclass), so it won't be invalidated during the lifetime of the process. Each entry
+    is around ~100 bytes, and we periodically clean expired entries once their TTL passes, so
+    the overall memory overhead is very low.
 
     Attributes:
         _deserialize_cache: Class-level thread-safe cache for deserialization
-            results, keyed by (storage_type, serialized) tuple.
+            results, keyed by (storage_type, serialized) tuple. Each subclass has
+            its own cache instance.
         _serialize_cache: Instance-level thread-safe cache for serialization
             results.
     """
 
-    _deserialize_cache = ThreadSafeTTLCache(ttl=ARROW_EXTENSION_SERIALIZATION_CACHE_TTL)
+    def __init_subclass__(cls, **kwargs):
+        """Initialize a separate cache for each subclass."""
+        super().__init_subclass__(**kwargs)
+        # Create a separate cache instance for each subclass
+        cls._deserialize_cache = ThreadSafeTTLCache(
+            ttl=ARROW_EXTENSION_SERIALIZATION_CACHE_TTL
+        )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize the extension type with caching support.
@@ -632,7 +639,7 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
 
     @classmethod
     def _get_deserialize_cache_key(cls, storage_type, serialized):
-        return (cls, storage_type.value_type, serialized)
+        return (storage_type.value_type, serialized)
 
     @classmethod
     def _arrow_ext_deserialize_compute(cls, storage_type, serialized):
@@ -659,7 +666,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
 
     @classmethod
     def _get_deserialize_cache_key(cls, storage_type, serialized):
-        return (cls, storage_type.value_type, serialized)
+        return (storage_type.value_type, serialized)
 
     @classmethod
     def _arrow_ext_deserialize_compute(cls, storage_type, serialized):
@@ -1039,7 +1046,7 @@ class ArrowVariableShapedTensorType(
 
     @classmethod
     def _get_deserialize_cache_key(cls, storage_type, serialized):
-        return (cls, storage_type["data"].type.value_type, serialized)
+        return (storage_type["data"].type.value_type, serialized)
 
     @classmethod
     def _arrow_ext_deserialize_compute(cls, storage_type, serialized):
