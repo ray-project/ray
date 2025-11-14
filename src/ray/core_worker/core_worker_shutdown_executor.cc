@@ -59,6 +59,7 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   if (!core_worker) {
     RAY_LOG(WARNING)
         << "CoreWorker already destroyed, skipping graceful shutdown operations";
+    NotifyComplete();
     return;
   }
 
@@ -146,6 +147,7 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
   auto core_worker = core_worker_.lock();
   if (!core_worker) {
     RAY_LOG(WARNING) << "CoreWorker already destroyed, skipping worker exit operations";
+    NotifyComplete();
     return;
   }
 
