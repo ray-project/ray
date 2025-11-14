@@ -1,5 +1,14 @@
 """
 Plan DropNa logical operator.
+
+This module implements physical planning for DropNa operations, which remove rows
+with missing values from Ray Data datasets.
+
+Uses PyArrow compute functions for efficient filtering:
+- pc.is_valid: https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.is_valid
+- pc.is_nan: https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.is_nan
+- pc.filter: https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.filter
+- pc.equal: https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.equal
 """
 
 from typing import Any, List, Optional
@@ -72,7 +81,12 @@ def plan_dropna_op(
 
 
 def _is_not_missing(column: pa.Array, ignore_values: List[Any]) -> pa.Array:
-    """Check if values are not missing (null, NaN, or in ignore_values)."""
+    """Check if values are not missing (null, NaN, or in ignore_values).
+
+    Uses PyArrow compute functions:
+    - pc.is_valid: https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.is_valid
+    - pc.is_nan: https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.is_nan
+    """
     is_not_null = pc.is_valid(column)
     if pa.types.is_floating(column.type) or pa.types.is_decimal(column.type):
         is_not_null = pc.and_(is_not_null, pc.invert(pc.is_nan(column)))

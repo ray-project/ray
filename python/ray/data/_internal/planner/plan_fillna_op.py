@@ -1,5 +1,17 @@
 """
 Plan FillNa logical operator.
+
+This module implements physical planning for FillNa operations, which fill missing
+values in Ray Data datasets using various methods (value, forward fill, backward fill,
+or interpolation).
+
+Uses PyArrow for efficient columnar operations:
+https://arrow.apache.org/docs/python/api/compute.html
+
+Uses pandas for directional fill and interpolation:
+https://pandas.pydata.org/docs/reference/api/pandas.Series.ffill.html
+https://pandas.pydata.org/docs/reference/api/pandas.Series.bfill.html
+https://pandas.pydata.org/docs/reference/api/pandas.Series.interpolate.html
 """
 
 from typing import Any, Callable, Dict, Iterable, List, Optional
@@ -20,6 +32,61 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 
 
+def _create_non_directional_fill_fn(op: FillNa):
+    """Create transform function for value-based or interpolate fill methods."""
+
+    def fn(batch: pa.Table) -> pa.Table:
+        try:
+            if batch.num_rows == 0:
+                return batch
+
+            columns_to_fill = op.subset if op.subset else batch.schema.names
+
+            if isinstance(op.value, dict):
+                invalid_keys = [
+                    k for k in op.value.keys() if k not in batch.schema.names
+                ]
+                if invalid_keys:
+                    raise ValueError(
+                        f"fill_value dict contains keys not in dataset: {invalid_keys}"
+                    )
+
+            if op.subset and len(op.subset) != len(set(op.subset)):
+                raise ValueError("subset parameter contains duplicate column names")
+
+            new_columns: Dict[str, pa.Array] = {}
+            for col_name in batch.schema.names:
+                column = batch.column(col_name)
+                if col_name in columns_to_fill:
+                    if op.method == "value":
+                        if isinstance(op.value, dict):
+                            fill_value = op.value.get(col_name)
+                            if fill_value is not None:
+                                new_columns[col_name] = _fill_column(column, fill_value)
+                            else:
+                                new_columns[col_name] = column
+                        else:
+                            new_columns[col_name] = _fill_column(column, op.value)
+                    elif op.method == "interpolate":
+                        new_columns[col_name] = _fill_column_interpolate(
+                            column, op.limit
+                        )
+                    else:
+                        raise ValueError(f"Unsupported fill method: {op.method}")
+                else:
+                    new_columns[col_name] = column
+
+            return pa.table(new_columns)
+        except Exception as e:
+            _try_wrap_udf_exception(e, batch)
+
+    from ray.data._internal.planner.plan_udf_map_op import (
+        _generate_transform_fn_for_map_block,
+    )
+
+    return _generate_transform_fn_for_map_block(fn)
+
+
 def plan_fillna_op(
     op: FillNa,
     physical_children: List[PhysicalOperator],
@@ -31,59 +98,7 @@ def plan_fillna_op(
     if op.method in ["forward", "backward"]:
         transform_fn = _create_stateful_directional_fill_fn(op)
     else:
-
-        def fn(batch: pa.Table) -> pa.Table:
-            try:
-                if batch.num_rows == 0:
-                    return batch
-
-                columns_to_fill = op.subset if op.subset else batch.schema.names
-
-                if isinstance(op.value, dict):
-                    invalid_keys = [
-                        k for k in op.value.keys() if k not in batch.schema.names
-                    ]
-                    if invalid_keys:
-                        raise ValueError(
-                            f"fill_value dict contains keys not in dataset: {invalid_keys}"
-                        )
-
-                if op.subset and len(op.subset) != len(set(op.subset)):
-                    raise ValueError("subset parameter contains duplicate column names")
-
-                new_columns: Dict[str, pa.Array] = {}
-                for col_name in batch.schema.names:
-                    column = batch.column(col_name)
-                    if col_name in columns_to_fill:
-                        if op.method == "value":
-                            if isinstance(op.value, dict):
-                                fill_value = op.value.get(col_name)
-                                if fill_value is not None:
-                                    new_columns[col_name] = _fill_column(
-                                        column, fill_value
-                                    )
-                                else:
-                                    new_columns[col_name] = column
-                            else:
-                                new_columns[col_name] = _fill_column(column, op.value)
-                        elif op.method == "interpolate":
-                            new_columns[col_name] = _fill_column_interpolate(
-                                column, op.limit
-                            )
-                        else:
-                            raise ValueError(f"Unsupported fill method: {op.method}")
-                    else:
-                        new_columns[col_name] = column
-
-                return pa.table(new_columns)
-            except Exception as e:
-                _try_wrap_udf_exception(e, batch)
-
-        from ray.data._internal.planner.plan_udf_map_op import (
-            _generate_transform_fn_for_map_block,
-        )
-
-        transform_fn = _generate_transform_fn_for_map_block(fn)
+        transform_fn = _create_non_directional_fill_fn(op)
 
     compute = get_compute(op._compute)
     map_transformer = _create_map_transformer_for_block_based_map_op(transform_fn)
@@ -99,7 +114,13 @@ def plan_fillna_op(
 
 
 def _fill_column(column: pa.Array, fill_value: Any) -> pa.Array:
-    """Fill missing values in a PyArrow column."""
+    """Fill missing values in a PyArrow column.
+
+    Uses PyArrow compute functions for efficient null/NaN handling:
+    - pc.fill_null: https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.fill_null
+    - pc.is_nan: https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.is_nan
+    - pc.if_else: https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.if_else
+    """
     if column.null_count == 0:
         if not (pa.types.is_floating(column.type) or pa.types.is_decimal(column.type)):
             return column
@@ -315,7 +336,12 @@ def _create_stateful_directional_fill_fn(
 def _fill_column_directional(
     column: pa.Array, method: str, limit: Optional[int] = None
 ) -> pa.Array:
-    """Fill missing values using forward or backward fill within a batch."""
+    """Fill missing values using forward or backward fill within a batch.
+
+    Uses pandas Series methods for directional fill:
+    - ffill: https://pandas.pydata.org/docs/reference/api/pandas.Series.ffill.html
+    - bfill: https://pandas.pydata.org/docs/reference/api/pandas.Series.bfill.html
+    """
     if column.null_count == 0:
         if not (pa.types.is_floating(column.type) or pa.types.is_decimal(column.type)):
             return column
@@ -330,7 +356,11 @@ def _fill_column_directional(
 
 
 def _fill_column_interpolate(column: pa.Array, limit: Optional[int] = None) -> pa.Array:
-    """Fill missing values using linear interpolation."""
+    """Fill missing values using linear interpolation.
+
+    Uses pandas Series.interpolate for linear interpolation:
+    https://pandas.pydata.org/docs/reference/api/pandas.Series.interpolate.html
+    """
     if column.null_count == 0:
         if not (pa.types.is_floating(column.type) or pa.types.is_decimal(column.type)):
             return column
