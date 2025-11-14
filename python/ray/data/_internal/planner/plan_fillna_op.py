@@ -210,7 +210,20 @@ def _create_stateful_directional_fill_fn(
                                     ):
                                         leading_nulls = pa.array(
                                             [
-                                                pc.is_null(column[i]).as_py()
+                                                (
+                                                    pc.is_null(column[i]).as_py()
+                                                    or (
+                                                        (
+                                                            pa.types.is_floating(
+                                                                column.type
+                                                            )
+                                                            or pa.types.is_decimal(
+                                                                column.type
+                                                            )
+                                                        )
+                                                        and pc.is_nan(column[i]).as_py()
+                                                    )
+                                                )
                                                 if i < first_non_null_idx
                                                 else False
                                                 for i in range(len(column))
@@ -319,7 +332,20 @@ def _create_stateful_directional_fill_fn(
                                     ):
                                         leading_nulls = pa.array(
                                             [
-                                                pc.is_null(column[i]).as_py()
+                                                (
+                                                    pc.is_null(column[i]).as_py()
+                                                    or (
+                                                        (
+                                                            pa.types.is_floating(
+                                                                column.type
+                                                            )
+                                                            or pa.types.is_decimal(
+                                                                column.type
+                                                            )
+                                                        )
+                                                        and pc.is_nan(column[i]).as_py()
+                                                    )
+                                                )
                                                 if i < first_non_null_idx
                                                 else False
                                                 for i in range(len(column))
@@ -366,17 +392,25 @@ def _fill_column_directional(
 ) -> pa.Array:
     """Fill missing values using forward or backward fill within a batch."""
     if column.null_count == 0:
-        return column
+        if not (pa.types.is_floating(column.type) or pa.types.is_decimal(column.type)):
+            return column
+        if pc.sum(pc.is_nan(column)).as_py() == 0:
+            return column
     pd_series = column.to_pandas()
-    fill_method = "ffill" if method == "forward" else "bfill"
-    filled_series = pd_series.fillna(method=fill_method, limit=limit)
+    if method == "forward":
+        filled_series = pd_series.ffill(limit=limit)
+    else:
+        filled_series = pd_series.bfill(limit=limit)
     return pa.array(filled_series, type=column.type)
 
 
 def _fill_column_interpolate(column: pa.Array, limit: Optional[int] = None) -> pa.Array:
     """Fill missing values using linear interpolation."""
     if column.null_count == 0:
-        return column
+        if not (pa.types.is_floating(column.type) or pa.types.is_decimal(column.type)):
+            return column
+        if pc.sum(pc.is_nan(column)).as_py() == 0:
+            return column
     if not (pa.types.is_integer(column.type) or pa.types.is_floating(column.type)):
         return column
     pd_series = column.to_pandas()
