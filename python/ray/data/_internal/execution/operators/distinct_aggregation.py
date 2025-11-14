@@ -58,17 +58,24 @@ class DistinctAggregation(StatefulShuffleAggregation):
             partition_id: ID of the partition this shard belongs to.
             partition_shard: Block of data to process.
         """
-        assert (
-            input_seq_id == 0
-        ), f"Distinct is unary aggregation, got sequence index {input_seq_id}"
+        assert input_seq_id == 0, (
+            f"Distinct is unary aggregation, got sequence index {input_seq_id}"
+        )
         assert partition_id in self._partition_data
 
         seen = self._partition_data[partition_id]
         accessor = BlockAccessor.for_block(partition_shard)
 
+        # Determine columns to use for distinct.
+        # If key_columns is empty (schema was None at planning time), use all columns.
+        if not self._key_columns:
+            key_columns = tuple(accessor.schema().names)
+        else:
+            key_columns = self._key_columns
+
         # Deduplicate: keep only the first occurrence of each unique key
         for row in accessor.iter_rows(public_row_format=False):
-            key = tuple(row.get(col) for col in self._key_columns)
+            key = tuple(row.get(col) for col in key_columns)
             if key not in seen:
                 seen[key] = row
 
