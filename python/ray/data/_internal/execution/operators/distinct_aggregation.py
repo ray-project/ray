@@ -7,7 +7,7 @@ local deduplication.
 
 import logging
 import math
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator
