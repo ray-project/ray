@@ -1353,52 +1353,87 @@ class TestUpsertScenarios:
         assert rows_same(result_df, expected)
 
     @pytest.mark.parametrize(
-        "join_cols,has_null_in_initial,has_null_in_upsert",
+        "join_cols,initial_data_dict,upsert_data_dict,expected_data_dict",
         [
-            (["col_a"], True, False),  # NULL in initial data
-            (["col_a"], False, True),  # NULL in upsert data
-            (["col_a", "col_b"], True, False),  # Composite key with NULL in initial
+            # NULL in initial data - row with NULL key isn't updated
+            (
+                ["col_a"],
+                {
+                    "col_a": [1, 2, None],
+                    "col_b": ["A", "B", "C"],
+                    "col_c": [10, 20, 30],
+                },  # Initial data
+                {
+                    "col_a": [2, 3],
+                    "col_b": ["B_updated", "new_3"],
+                    "col_c": [200, 300],
+                },  # Upsert data
+                {
+                    "col_a": [1, 2, 3, None],
+                    "col_b": ["A", "B_updated", "new_3", "C"],
+                    "col_c": [10, 200, 300, 30],
+                },  # Expected data
+            ),
+            # NULL in upsert data - row with NULL key is inserted
+            (
+                ["col_a"],
+                {
+                    "col_a": [1, 2, 3],
+                    "col_b": ["A", "B", "C"],
+                    "col_c": [10, 20, 30],
+                },  # Initial data
+                {
+                    "col_a": [2, None],
+                    "col_b": ["B_updated", "null_row"],
+                    "col_c": [200, 300],
+                },  # Upsert data
+                {
+                    "col_a": [1, 2, 3, None],
+                    "col_b": ["A", "B_updated", "C", "null_row"],
+                    "col_c": [10, 200, 30, 300],
+                },  # Expected data
+            ),
+            # Composite key with NULL in initial - row not updated
+            (
+                ["col_a", "col_b"],
+                {
+                    "col_a": [1, 2, None],
+                    "col_b": ["X", "Y", None],
+                    "col_c": [10, 20, 30],
+                },  # Initial data
+                {
+                    "col_a": [2, 3],
+                    "col_b": ["Y", "Z"],
+                    "col_c": [200, 300],
+                },  # Upsert data
+                {
+                    "col_a": [1, 2, 3, None],
+                    "col_b": ["X", "Y", "Z", None],
+                    "col_c": [10, 200, 300, 30],
+                },  # Expected data
+            ),
         ],
     )
     def test_upsert_null_in_join_keys(
-        self, clean_table, join_cols, has_null_in_initial, has_null_in_upsert
+        self,
+        clean_table,
+        join_cols,
+        initial_data_dict,
+        upsert_data_dict,
+        expected_data_dict,
     ):
-        """Test upsert behavior with NULL values in join key columns."""
-        # Initial data
-        initial_col_a = [1, 2, None] if has_null_in_initial else [1, 2, 3]
-        initial_col_b = (
-            ["A", "B", None]
-            if len(join_cols) > 1 and has_null_in_initial
-            else ["A", "B", "C"]
-        )
-        initial_data = _create_typed_dataframe(
-            {"col_a": initial_col_a, "col_b": initial_col_b, "col_c": [10, 20, 30]}
-        )
-        _write_to_iceberg(initial_data)
+        """Test upsert behavior with NULL values in join key columns (NULL != NULL in SQL)."""
+        initial_data = _create_typed_dataframe(initial_data_dict)
+        upsert_data = _create_typed_dataframe(upsert_data_dict)
+        expected = _create_typed_dataframe(expected_data_dict)
 
-        # Upsert data with possible NULLs
-        upsert_col_a = [2, None] if has_null_in_upsert else [2, 3]
-        upsert_col_b = (
-            ["B_updated", None]
-            if len(join_cols) > 1 and has_null_in_upsert
-            else ["B_updated", "C_updated"]
-        )
-        upsert_data = _create_typed_dataframe(
-            {"col_a": upsert_col_a, "col_b": upsert_col_b, "col_c": [200, 300]}
-        )
+        _write_to_iceberg(initial_data)
         _write_to_iceberg(
             upsert_data, mode=SaveMode.UPSERT, upsert_kwargs={"join_cols": join_cols}
         )
 
-        # Verify NULL-key rows don't match (NULL != NULL in SQL semantics)
         result_df = _read_from_iceberg(sort_by="col_a")
-
-        if has_null_in_initial and has_null_in_upsert:
-            # Both have NULL - should have 2 NULL rows (no match)
-            assert result_df["col_a"].isna().sum() == 2
-        elif has_null_in_initial or has_null_in_upsert:
-            # One has NULL - should have 1 NULL row
-            assert result_df["col_a"].isna().sum() == 1
+        assert rows_same(result_df, expected)
 
     def test_upsert_empty_table(self, clean_table):
         """Test upserting into a completely empty table (behaves like insert)."""

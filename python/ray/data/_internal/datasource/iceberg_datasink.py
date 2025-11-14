@@ -6,6 +6,7 @@ import uuid
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
+import ray
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.savemode import SaveMode
 from ray.data.block import Block, BlockAccessor
@@ -22,6 +23,97 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _append_and_commit(
+    txn: "Transaction",
+    data_files: List["DataFile"],
+    snapshot_properties: Dict[str, str],
+) -> None:
+    """Helper to append data files to a transaction and commit.
+
+    Args:
+        txn: PyIceberg transaction object
+        data_files: List of DataFile objects to append
+        snapshot_properties: Custom properties to write to snapshot summary
+    """
+    with txn._append_snapshot_producer(snapshot_properties) as append_files:
+        for data_file in data_files:
+            append_files.append_data_file(data_file)
+    txn.commit_transaction()
+
+
+@ray.remote(num_cpus=1)
+def _commit_upsert_task(
+    table_identifier: str,
+    catalog_name: str,
+    catalog_kwargs: Dict[str, Any],
+    data_files: List["DataFile"],
+    join_keys_dicts: List[Dict[str, List[Any]]],
+    join_cols: List[str],
+    snapshot_properties: Dict[str, str],
+) -> None:
+    """
+    Ray task to commit upsert transaction with copy-on-write strategy.
+
+    This runs as a Ray task to avoid OOM on the driver when:
+    - There are many join keys to merge
+    - The transaction commit is memory or time intensive
+
+    Args:
+        table_identifier: Iceberg table identifier
+        catalog_name: Catalog name
+        catalog_kwargs: Catalog initialization kwargs
+        data_files: List of DataFile objects to commit
+        join_keys_dicts: List of dictionaries mapping column names to lists of key values
+        join_cols: List of join column names
+        snapshot_properties: Custom properties to write to snapshot summary
+    """
+    from collections import defaultdict
+
+    import pyarrow as pa
+    from pyiceberg import catalog
+    from pyiceberg.table.upsert_util import create_match_filter
+
+    # Load the table
+    cat = catalog.load_catalog(catalog_name, **catalog_kwargs)
+    table = cat.load_table(table_identifier)
+
+    # Merge all join keys dictionaries
+    merged_keys_dict = defaultdict(list)
+    for join_keys_dict in join_keys_dicts:
+        for col, values in join_keys_dict.items():
+            merged_keys_dict[col].extend(values)
+
+    # Start transaction
+    txn = table.transaction()
+
+    # Create delete filter if we have join keys
+    if merged_keys_dict:
+        # Create PyArrow table from join keys
+        keys_table = pa.table(dict(merged_keys_dict))
+
+        # Filter out rows with any NULL values in join columns
+        # (NULL != NULL in SQL semantics)
+        mask = None
+        for col in join_cols:
+            col_mask = pa.compute.is_valid(keys_table[col])
+            mask = col_mask if mask is None else pa.compute.and_(mask, col_mask)
+
+        if mask is not None:
+            keys_table = keys_table.filter(mask)
+
+        # Only delete if we have non-NULL keys
+        if len(keys_table) > 0:
+            # Use PyIceberg's helper to build delete filter
+            delete_filter = create_match_filter(keys_table, join_cols)
+            txn.delete(
+                delete_filter=delete_filter,
+                snapshot_properties=snapshot_properties,
+            )
+
+    # Append new data files (includes updates and inserts) and commit
+    _append_and_commit(txn, data_files, snapshot_properties)
 
 
 @DeveloperAPI
@@ -44,6 +136,7 @@ class IcebergDatasink(
         overwrite_filter: Optional["Expr"] = None,
         upsert_kwargs: Optional[Dict[str, Any]] = None,
         overwrite_kwargs: Optional[Dict[str, Any]] = None,
+        upsert_commit_memory: Optional[int] = None,
     ):
         """
         Initialize the IcebergDatasink
@@ -66,6 +159,9 @@ class IcebergDatasink(
             overwrite_kwargs: Optional arguments to pass through to PyIceberg's table.overwrite()
                 method. Supported parameters include case_sensitive (bool) and branch (str).
                 See PyIceberg documentation for details.
+            upsert_commit_memory: [For UPSERT mode only] The heap memory in bytes
+                to reserve for the upsert commit operation. If None,
+                uses Ray's default memory allocation.
 
         Note:
             Schema evolution is automatically enabled. New columns in the incoming data
@@ -78,35 +174,33 @@ class IcebergDatasink(
         self._overwrite_filter = overwrite_filter
         self._upsert_kwargs = (upsert_kwargs or {}).copy()
         self._overwrite_kwargs = (overwrite_kwargs or {}).copy()
+        self._upsert_commit_memory = upsert_commit_memory
 
         # Validate kwargs are only set for relevant modes
         if self._upsert_kwargs and self._mode != SaveMode.UPSERT:
             raise ValueError(
-                f"upsert_kwargs can only be specified when mode is SaveMode.UPSERT, "
-                f"but mode is {self._mode}"
+                f"upsert_kwargs can only be specified when mode is SaveMode.UPSERT, but mode is {self._mode}"
             )
         if self._overwrite_kwargs and self._mode != SaveMode.OVERWRITE:
             raise ValueError(
-                f"overwrite_kwargs can only be specified when mode is SaveMode.OVERWRITE, "
-                f"but mode is {self._mode}"
+                f"overwrite_kwargs can only be specified when mode is SaveMode.OVERWRITE, but mode is {self._mode}"
             )
 
-        # Validate overwrite_kwargs doesn't contain filter parameters
-        if self._overwrite_kwargs:
-            if "overwrite_filter" in self._overwrite_kwargs:
+        # Remove invalid parameters from overwrite_kwargs if present
+        for invalid_param, reason in [
+            (
+                "overwrite_filter",
+                "should be passed as a separate parameter to write_iceberg()",
+            ),
+            (
+                "delete_filter",
+                "is an internal PyIceberg parameter; use 'overwrite_filter' instead",
+            ),
+        ]:
+            if self._overwrite_kwargs.pop(invalid_param, None) is not None:
                 logger.warning(
-                    "Found 'overwrite_filter' in overwrite_kwargs. This should be passed "
-                    "as a separate parameter to write_iceberg(), not inside overwrite_kwargs. "
-                    "Removing it from overwrite_kwargs."
+                    f"Removed '{invalid_param}' from overwrite_kwargs: {reason}"
                 )
-                self._overwrite_kwargs.pop("overwrite_filter")
-            if "delete_filter" in self._overwrite_kwargs:
-                logger.warning(
-                    "Found 'delete_filter' in overwrite_kwargs. This is an internal PyIceberg "
-                    "parameter and should not be passed. Use the 'overwrite_filter' parameter "
-                    "of write_iceberg() instead. Removing it from overwrite_kwargs."
-                )
-                self._overwrite_kwargs.pop("delete_filter")
 
         if "name" in self._catalog_kwargs:
             self._catalog_name = self._catalog_kwargs.pop("name")
@@ -135,6 +229,17 @@ class IcebergDatasink(
         """Reload the Iceberg table from the catalog."""
         catalog = self._get_catalog()
         self._table = catalog.load_table(self.table_identifier)
+
+    def _get_join_cols(self) -> List[str]:
+        """Get join columns for upsert, using table identifier fields as fallback."""
+        join_cols = self._upsert_kwargs.get("join_cols", [])
+        if not join_cols:
+            # Use table's identifier fields as fallback
+            for field_id in self._table.metadata.schema().identifier_field_ids:
+                col_name = self._table.metadata.schema().find_column_name(field_id)
+                if col_name:
+                    join_cols.append(col_name)
+        return join_cols
 
     def _update_schema(self, incoming_schema: "pa.Schema") -> None:
         """
@@ -174,6 +279,20 @@ class IcebergDatasink(
         self._table = self._get_catalog().load_table(self.table_identifier)
         self._write_uuid = uuid.uuid4()
 
+        # Validate join_cols for UPSERT mode before writing any files
+        if self._mode == SaveMode.UPSERT:
+            join_cols = self._upsert_kwargs.get("join_cols", [])
+            if not join_cols:
+                # Check if table has identifier fields as fallback
+                identifier_field_ids = (
+                    self._table.metadata.schema().identifier_field_ids
+                )
+                if not identifier_field_ids:
+                    raise ValueError(
+                        "join_cols must be specified in upsert_kwargs for UPSERT mode "
+                        "when table has no identifier fields"
+                    )
+
     def write(
         self, blocks: Iterable[Block], ctx: TaskContext
     ) -> List["DataFile"] | tuple[List["DataFile"], Dict[str, List[Any]]]:
@@ -208,9 +327,12 @@ class IcebergDatasink(
                 # Update schema if needed (handles concurrent schema updates)
                 self._update_schema(pa_table.schema)
 
-                # Extract join keys if needed for copy-on-write upsert
+                # Extract join key values for copy-on-write upsert
+                # These will be used to build a delete filter for matching rows
+                # Example: Upserting [{col_a: 2}, {col_a: 3}] extracts {col_a: [2, 3]}
+                #          which becomes filter: col_a IN (2, 3)
                 if extract_join_keys:
-                    join_cols = self._upsert_kwargs.get("join_cols", [])
+                    join_cols = self._get_join_cols()
                     for col in join_cols:
                         join_keys_dict[col].extend(pa_table[col].to_pylist())
 
@@ -244,7 +366,7 @@ class IcebergDatasink(
 
         # Collect all data files and join keys (if applicable) from all workers
         all_data_files = []
-        all_join_keys_dict = defaultdict(list)
+        join_keys_dicts = []
 
         # Check if we're in upsert mode (returns tuple with join keys)
         use_copy_on_write_upsert = self._mode == SaveMode.UPSERT
@@ -257,9 +379,8 @@ class IcebergDatasink(
                 # For copy-on-write upsert, write() returns (data_files, join_keys_dict)
                 data_files, join_keys_dict = write_return
                 all_data_files.extend(data_files)
-                # Merge join keys dictionaries from all workers
-                for col, values in join_keys_dict.items():
-                    all_join_keys_dict[col].extend(values)
+                # Collect join keys dicts (will be merged in Ray task)
+                join_keys_dicts.append(join_keys_dict)
             else:
                 # For other modes, write() returns just data_files
                 all_data_files.extend(write_return)
@@ -273,23 +394,32 @@ class IcebergDatasink(
         elif self._mode == SaveMode.OVERWRITE:
             self._commit_overwrite(all_data_files)
         elif self._mode == SaveMode.UPSERT:
-            self._commit_upsert(all_data_files, all_join_keys_dict)
+            # Execute entire commit in Ray task to avoid OOM on driver
+            join_cols = self._get_join_cols()
+
+            # Configure task options with memory if specified
+            task_options = {}
+            if self._upsert_commit_memory is not None:
+                task_options["memory"] = self._upsert_commit_memory
+
+            ray.get(
+                _commit_upsert_task.options(**task_options).remote(
+                    table_identifier=self.table_identifier,
+                    catalog_name=self._catalog_name,
+                    catalog_kwargs=self._catalog_kwargs,
+                    data_files=all_data_files,
+                    join_keys_dicts=join_keys_dicts,
+                    join_cols=join_cols,
+                    snapshot_properties=self._snapshot_properties,
+                )
+            )
         else:
             raise ValueError(f"Unsupported mode: {self._mode}")
-
-    def _append_and_commit(
-        self, txn: "Transaction", data_files: List["DataFile"]
-    ) -> None:
-        """Helper to append data files to a transaction and commit."""
-        with txn._append_snapshot_producer(self._snapshot_properties) as append_files:
-            for data_file in data_files:
-                append_files.append_data_file(data_file)
-        txn.commit_transaction()
 
     def _commit_append(self, data_files: List["DataFile"]) -> None:
         """Commit data files using APPEND mode."""
         txn = self._table.transaction()
-        self._append_and_commit(txn, data_files)
+        _append_and_commit(txn, data_files, self._snapshot_properties)
 
     def _commit_overwrite(self, data_files: List["DataFile"]) -> None:
         """Commit data files using OVERWRITE mode."""
@@ -319,63 +449,4 @@ class IcebergDatasink(
             )
 
         # Append new data files and commit
-        self._append_and_commit(txn, data_files)
-
-    def _commit_upsert(
-        self, data_files: List["DataFile"], join_keys_dict: Dict[str, List[Any]]
-    ) -> None:
-        """
-        Commit data files using UPSERT mode with copy-on-write strategy.
-
-        This approach maximizes parallelism by avoiding table scans:
-        1. Deletes existing rows matching non-NULL join keys
-        2. Appends all new data files (updates + inserts)
-
-        NULL handling: NULL values in join keys are treated as inserts only
-        (follows SQL semantics where NULL != NULL).
-
-        Args:
-            data_files: List of DataFile objects to commit
-            join_keys_dict: Dict mapping column names to lists of key values
-        """
-        import pyarrow as pa
-        from pyiceberg.table.upsert_util import create_match_filter
-
-        join_cols = self._upsert_kwargs.get("join_cols", [])
-        if not join_cols:
-            raise ValueError("join_cols must be specified for upsert operations")
-
-        num_keys = len(join_keys_dict.get(join_cols[0], [])) if join_keys_dict else 0
-        logger.debug(
-            f"Using copy-on-write upsert for {len(data_files)} files "
-            f"with {num_keys} keys"
-        )
-
-        txn = self._table.transaction()
-
-        if join_keys_dict:
-            # Create PyArrow table from join keys
-            keys_table = pa.table(join_keys_dict)
-
-            # Filter out rows with any NULL values in join columns
-            # (NULL != NULL in SQL semantics)
-            mask = None
-            for col in join_cols:
-                col_mask = pa.compute.is_valid(keys_table[col])
-                mask = col_mask if mask is None else pa.compute.and_(mask, col_mask)
-
-            if mask is not None:
-                keys_table = keys_table.filter(mask)
-
-            # Only delete if we have non-NULL keys
-            if len(keys_table) > 0:
-                # Use PyIceberg's helper to build delete filter
-                delete_filter = create_match_filter(keys_table, join_cols)
-
-                txn.delete(
-                    delete_filter=delete_filter,
-                    snapshot_properties=self._snapshot_properties,
-                )
-
-        # Append new data files (includes updates and inserts) and commit
-        self._append_and_commit(txn, data_files)
+        _append_and_commit(txn, data_files, self._snapshot_properties)
