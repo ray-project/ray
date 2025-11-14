@@ -29,7 +29,6 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.logical.operators.fillna_operator import FillNa
 from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_map_block,
-    _try_wrap_udf_exception,
     get_compute,
 )
 from ray.data.block import Block, BlockAccessor
@@ -45,49 +44,42 @@ def _create_non_directional_fill_fn(op: FillNa):
     """Create transform function for value-based or interpolate fill methods."""
 
     def fn(batch: pa.Table) -> pa.Table:
-        try:
-            if batch.num_rows == 0:
-                return batch
+        if batch.num_rows == 0:
+            return batch
 
-            columns_to_fill = op.subset if op.subset else batch.schema.names
+        columns_to_fill = op.subset if op.subset else batch.schema.names
 
-            if isinstance(op.value, dict):
-                invalid_keys = [
-                    k for k in op.value.keys() if k not in batch.schema.names
-                ]
-                if invalid_keys:
-                    raise ValueError(
-                        f"fill_value dict contains keys not in dataset: {invalid_keys}"
-                    )
+        if isinstance(op.value, dict):
+            invalid_keys = [k for k in op.value.keys() if k not in batch.schema.names]
+            if invalid_keys:
+                raise ValueError(
+                    f"fill_value dict contains keys not in dataset: {invalid_keys}"
+                )
 
-            if op.subset and len(op.subset) != len(set(op.subset)):
-                raise ValueError("subset parameter contains duplicate column names")
+        if op.subset and len(op.subset) != len(set(op.subset)):
+            raise ValueError("subset parameter contains duplicate column names")
 
-            new_columns: Dict[str, pa.Array] = {}
-            for col_name in batch.schema.names:
-                column = batch.column(col_name)
-                if col_name in columns_to_fill:
-                    if op.method == "value":
-                        if isinstance(op.value, dict):
-                            fill_value = op.value.get(col_name)
-                            if fill_value is not None:
-                                new_columns[col_name] = _fill_column(column, fill_value)
-                            else:
-                                new_columns[col_name] = column
+        new_columns: Dict[str, pa.Array] = {}
+        for col_name in batch.schema.names:
+            column = batch.column(col_name)
+            if col_name in columns_to_fill:
+                if op.method == "value":
+                    if isinstance(op.value, dict):
+                        fill_value = op.value.get(col_name)
+                        if fill_value is not None:
+                            new_columns[col_name] = _fill_column(column, fill_value)
                         else:
-                            new_columns[col_name] = _fill_column(column, op.value)
-                    elif op.method == "interpolate":
-                        new_columns[col_name] = _fill_column_interpolate(
-                            column, op.limit
-                        )
+                            new_columns[col_name] = column
                     else:
-                        raise ValueError(f"Unsupported fill method: {op.method}")
+                        new_columns[col_name] = _fill_column(column, op.value)
+                elif op.method == "interpolate":
+                    new_columns[col_name] = _fill_column_interpolate(column, op.limit)
                 else:
-                    new_columns[col_name] = column
+                    raise ValueError(f"Unsupported fill method: {op.method}")
+            else:
+                new_columns[col_name] = column
 
-            return pa.table(new_columns)
-        except Exception as e:
-            _try_wrap_udf_exception(e, batch)
+        return pa.table(new_columns)
 
     return _generate_transform_fn_for_map_block(fn)
 
@@ -320,25 +312,20 @@ def _create_stateful_directional_fill_fn(
                     result_batches.append(BlockAccessor.for_block(batch).to_block())
                     continue
 
-                try:
-                    cols_to_fill = (
-                        columns_to_fill if columns_to_fill else batch.schema.names
-                    )
-                    result_batch, new_carry_over = _process_batch_for_directional_fill(
-                        batch,
-                        op,
-                        cols_to_fill,
-                        next_first_valid,
-                        method,
-                        limit,
-                        _find_first_valid_index,
-                    )
-                    next_first_valid = new_carry_over
-                    result_batches.append(
-                        BlockAccessor.for_block(result_batch).to_block()
-                    )
-                except Exception as e:
-                    _try_wrap_udf_exception(e, batch)
+                cols_to_fill = (
+                    columns_to_fill if columns_to_fill else batch.schema.names
+                )
+                result_batch, new_carry_over = _process_batch_for_directional_fill(
+                    batch,
+                    op,
+                    cols_to_fill,
+                    next_first_valid,
+                    method,
+                    limit,
+                    _find_first_valid_index,
+                )
+                next_first_valid = new_carry_over
+                result_batches.append(BlockAccessor.for_block(result_batch).to_block())
 
             for batch in reversed(result_batches):
                 yield batch
@@ -350,23 +337,20 @@ def _create_stateful_directional_fill_fn(
                     yield BlockAccessor.for_block(batch).to_block()
                     continue
 
-                try:
-                    cols_to_fill = (
-                        columns_to_fill if columns_to_fill else batch.schema.names
-                    )
-                    result_batch, new_carry_over = _process_batch_for_directional_fill(
-                        batch,
-                        op,
-                        cols_to_fill,
-                        last_valid_values,
-                        method,
-                        limit,
-                        _find_last_valid_index,
-                    )
-                    last_valid_values = new_carry_over
-                    yield BlockAccessor.for_block(result_batch).to_block()
-                except Exception as e:
-                    _try_wrap_udf_exception(e, batch)
+                cols_to_fill = (
+                    columns_to_fill if columns_to_fill else batch.schema.names
+                )
+                result_batch, new_carry_over = _process_batch_for_directional_fill(
+                    batch,
+                    op,
+                    cols_to_fill,
+                    last_valid_values,
+                    method,
+                    limit,
+                    _find_last_valid_index,
+                )
+                last_valid_values = new_carry_over
+                yield BlockAccessor.for_block(result_batch).to_block()
 
     return transform_fn
 

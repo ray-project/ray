@@ -25,7 +25,6 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.logical.operators.dropna_operator import DropNa
 from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_map_block,
-    _try_wrap_udf_exception,
     get_compute,
 )
 from ray.data.context import DataContext
@@ -45,34 +44,27 @@ def plan_dropna_op(
     assert len(physical_children) == 1
 
     def fn(batch: pa.Table) -> pa.Table:
-        try:
-            if batch.num_rows == 0:
+        if batch.num_rows == 0:
+            return batch
+
+        if op.subset:
+            columns_to_check = [col for col in op.subset if col in batch.schema.names]
+            if not columns_to_check:
                 return batch
+        else:
+            columns_to_check = list(batch.schema.names)
 
-            if op.subset:
-                columns_to_check = [
-                    col for col in op.subset if col in batch.schema.names
-                ]
-                if not columns_to_check:
-                    return batch
-            else:
-                columns_to_check = list(batch.schema.names)
+        if op.thresh is not None:
+            mask = _create_thresh_mask(
+                batch, columns_to_check, op.thresh, op.ignore_values
+            )
+        else:
+            mask = _create_how_mask(batch, columns_to_check, op.how, op.ignore_values)
 
-            if op.thresh is not None:
-                mask = _create_thresh_mask(
-                    batch, columns_to_check, op.thresh, op.ignore_values
-                )
-            else:
-                mask = _create_how_mask(
-                    batch, columns_to_check, op.how, op.ignore_values
-                )
-
-            filtered_batch = pc.filter(batch, mask)
-            if filtered_batch.schema != batch.schema:
-                filtered_batch = filtered_batch.cast(batch.schema)
-            return filtered_batch
-        except Exception as e:
-            _try_wrap_udf_exception(e, batch)
+        filtered_batch = pc.filter(batch, mask)
+        if filtered_batch.schema != batch.schema:
+            filtered_batch = filtered_batch.cast(batch.schema)
+        return filtered_batch
 
     compute = get_compute(op._compute)
     transform_fn = _generate_transform_fn_for_map_block(fn)
