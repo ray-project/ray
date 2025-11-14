@@ -51,7 +51,7 @@ def test_dashboard_request_requires_auth_invalid_token(setup_cluster_with_token_
 
 
 def test_dashboard_auth_disabled(setup_cluster_without_token_auth):
-    """Test that auth is not enforced when auth_mode is disabled."""
+    """Test that auth is not enforced when AUTH_MODE is disabled."""
 
     cluster_info = setup_cluster_without_token_auth
 
