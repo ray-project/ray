@@ -137,6 +137,9 @@ class ArrowExtensionSerializeDeserializeCache(abc.ABC):
     @classmethod
     @abstractmethod
     def _get_deserialize_cache_key(cls, storage_type, serialized) -> Any:
+        """Note:
+            Since all child classes share one single `_deserialize_cache` instance, the cache key should include `cls`.
+        """
         ...
 
     @classmethod
