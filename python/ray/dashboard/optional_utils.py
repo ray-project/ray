@@ -127,7 +127,7 @@ def aiohttp_cache(
         return _wrapper
 
 
-def is_browser_request(req: Request) -> bool:
+def has_browser_user_agent(req: Request) -> bool:
     """Checks if a request is made by a browser like user agent.
 
     This heuristic is very weak, but hard for a browser to bypass- eg,
@@ -139,7 +139,7 @@ def is_browser_request(req: Request) -> bool:
 
 
 def has_sec_fetch_headers(req: Request) -> bool:
-    """Checks for the existance of any of the sec-fetch-* headers"""
+    """Checks for any of the sec-fetch-* headers that are populated by browsers."""
     return any(
         h in req.headers
         for h in (
