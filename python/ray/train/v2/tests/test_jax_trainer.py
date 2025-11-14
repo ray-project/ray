@@ -83,6 +83,11 @@ def test_minimal_singlehost(ray_tpu_single_host, tmp_path):
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
+                },
+            },
         ),
     )
     result = trainer.fit()
@@ -108,6 +113,11 @@ def test_minimal_multihost(ray_tpu_multi_host, tmp_path):
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
+                },
+            },
         ),
     )
     result = trainer.fit()
