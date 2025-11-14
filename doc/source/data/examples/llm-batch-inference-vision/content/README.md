@@ -296,8 +296,8 @@ processor_config_large_concurrency = vLLMEngineProcessorConfig(
         max_num_batched_tokens=2048
     ),
     batch_size=64,
-    accelerator_type="L40S",
-    concurrency=10,
+    accelerator_type="L4", # Or upgrade to larger GPU
+    concurrency=10, # Increase the number of parallel workers
     has_image=True,  # Enable image input.
 )
 processor_large_concurrency = build_llm_processor(
