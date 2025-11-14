@@ -305,14 +305,8 @@ class HttpServerDashboardHead:
                 return await handler(request)
 
             if (
-                # Deny mutating requests from browsers using two checks:
-                # - Matching against the user agent (at the time of writing, all
-                #   browsers' user agents start with 'Mozilla')
-                # - Check for sec-fetch-* headers that are populated by browsers.
-                (
-                    dashboard_optional_utils.has_browser_user_agent(request)
-                    or dashboard_optional_utils.has_sec_fetch_headers(request)
-                )
+                # Deny mutating requests from browsers.
+                dashboard_optional_utils.is_browser_request(request)
                 and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
             ):
                 return aiohttp.web.Response(

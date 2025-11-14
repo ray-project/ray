@@ -126,21 +126,18 @@ def aiohttp_cache(
     else:
         return _wrapper
 
+def is_browser_request(req: Request) -> bool:
+    """Best-effort detection if the request was made by a browser.
 
-def has_browser_user_agent(req: Request) -> bool:
-    """Checks if a request is made by a browser like user agent.
-
-    This heuristic is very weak, but hard for a browser to bypass- eg,
-    fetch/xhr and friends cannot alter the user-agent, but requests made with
-    an http library can stumble into this if they choose to user a browser like
-    user agent.
+    Uses two heuristics:
+        1) If the `User-Agent` header starts with 'Mozilla'. This heuristic is weak,
+        but hard for a browser to bypass e.g., fetch/xhr and friends cannot alter the
+        user agent, but requests made with an HTTP library can stumble into this if
+        they choose to user a browser-like user agent. At the time of writing, all
+        common browsers' user agents start with 'Mozilla'.
+        2) If any of the `Sec-Fetch-*` headers are present.
     """
-    return req.headers["User-Agent"].startswith("Mozilla")
-
-
-def has_sec_fetch_headers(req: Request) -> bool:
-    """Checks for any of the sec-fetch-* headers that are populated by browsers."""
-    return any(
+    return req.headers["User-Agent"].startswith("Mozilla") or any(
         h in req.headers
         for h in (
             "Sec-Fetch-Mode",
@@ -157,16 +154,12 @@ def deny_browser_requests() -> Callable:
     def decorator_factory(f: Callable) -> Callable:
         @functools.wraps(f)
         async def decorator(self, req: Request):
-            if has_sec_fetch_headers(req):
+            if is_browser_request(req):
                 return Response(
                     text="Browser requests not allowed",
                     status=aiohttp.web.HTTPMethodNotAllowed.status_code,
                 )
-            if has_browser_user_agent(req):
-                return Response(
-                    text="Browser requests not allowed",
-                    status=aiohttp.web.HTTPMethodNotAllowed.status_code,
-                )
+
             return await f(self, req)
 
         return decorator
