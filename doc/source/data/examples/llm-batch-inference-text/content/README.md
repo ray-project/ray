@@ -94,10 +94,10 @@ processor_config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     engine_kwargs=dict(
         max_model_len= 256, # estimate system prompt + user prompt + output tokens (+ reasoning tokens if any)
-        max_num_batched_tokens=65536, # so we can batch many rows together
-        max_num_seqs=1024, # so we can batch many rows together
+        max_num_batched_tokens=16384, # so we can batch many rows together
+        max_num_seqs=128, # so we can batch many rows together
     ),
-    batch_size=256,
+    batch_size=128,
     accelerator_type="L4",
     concurrency=4,
 )
@@ -195,14 +195,15 @@ Save your batch inference code as `batch_inference.py`, then create a job config
 # job.yaml
 name: llm-batch-inference-text
 entrypoint: python batch_inference_text.py
-image_uri: anyscale/ray:2.49.0-py312-cu128
+image_uri: anyscale/ray-llm:2.51.1-py311-cu128
 compute_config:
   head_node:
     instance_type: m5.2xlarge
   worker_nodes:
     - instance_type: g6.2xlarge
       min_nodes: 1
-      max_nodes: 4
+      max_nodes: 10
+working_dir: .
 max_retries: 2
 ```
 
