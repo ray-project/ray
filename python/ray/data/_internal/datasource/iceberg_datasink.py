@@ -230,7 +230,6 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
                 all_schemas.append(schema)
 
         if not all_data_files:
-            logger.warning("No data files written")
             return ([], [])
 
         return (all_data_files, all_schemas)
@@ -402,7 +401,6 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
         # Collect all DataFile objects and schemas from write tasks
         data_files, schemas = self._collect_data_files_and_schemas(write_result)
         if not data_files:
-            logger.warning("No data files to commit")
             return
 
         # Always reload the table to get the latest schema before any post-write operations
