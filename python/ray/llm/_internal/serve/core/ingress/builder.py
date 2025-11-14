@@ -15,6 +15,7 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 )
 from ray.llm._internal.serve.core.server.builder import (
     build_llm_deployment,
+    build_sglang_deployment,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve.deployment import Application
@@ -135,7 +136,6 @@ def build_openai_app(builder_config: dict) -> Application:
         llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs
     )
 
-
 def build_sglang_openai_app(builder_config: dict) -> Application:
     """Build an OpenAI compatible app with the llm deployment setup from
     the given builder configuration.
@@ -169,3 +169,4 @@ def build_sglang_openai_app(builder_config: dict) -> Application:
     return serve.deployment(ingress_cls, **ingress_options).bind(
         llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs
     )
+   

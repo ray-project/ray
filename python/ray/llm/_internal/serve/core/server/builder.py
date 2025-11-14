@@ -12,8 +12,7 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
-from ray.llm._internal.serve.core.server.engines.sglang.sglang_engine import SGLangServer
-
+from ray.llm._internal.serve.engines.sglang.sglang_engine import SGLangServer
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve.deployment import Application
 
@@ -106,6 +105,7 @@ def build_sglang_deployment(
     bind_kwargs = bind_kwargs or {}
 
     deployment_options = deployment_cls.get_deployment_options(llm_config)
+
     # Set the name of the deployment config to map to the model ID.
     deployment_name = deployment_options.get("name", _get_deployment_name(llm_config))
 
@@ -123,5 +123,5 @@ def build_sglang_deployment(
     logger.info(pprint.pformat(deployment_options))
 
     return serve.deployment(deployment_cls, **deployment_options).bind(
-        llm_config=llm_config, **bind_kwargs
-    )        
+        _llm_config=llm_config, **bind_kwargs
+    )
