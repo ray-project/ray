@@ -4,7 +4,7 @@ import logging
 import os
 import traceback
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
 from ray._private.ray_constants import env_float
