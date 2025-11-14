@@ -152,7 +152,7 @@ def has_sec_fetch_headers(req: Request) -> bool:
 
 
 def deny_browser_requests() -> Callable:
-    """Reject any requests that appear to be made by a browser"""
+    """Reject any requests that appear to be made by a browser."""
 
     def decorator_factory(f: Callable) -> Callable:
         @functools.wraps(f)
@@ -162,7 +162,7 @@ def deny_browser_requests() -> Callable:
                     text="Browser requests not allowed",
                     status=aiohttp.web.HTTPMethodNotAllowed.status_code,
                 )
-            if is_browser_request(req):
+            if has_browser_user_agent(req):
                 return Response(
                     text="Browser requests not allowed",
                     status=aiohttp.web.HTTPMethodNotAllowed.status_code,
