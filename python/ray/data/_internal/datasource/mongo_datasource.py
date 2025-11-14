@@ -52,7 +52,7 @@ class MongoDatasource(Datasource):
                 self._client, self._database, self._collection
             )
             self._avg_obj_size = self._client[self._database].command(
-                "collstats", self._collection
+                "collStats", self._collection
             )["avgObjSize"]
 
     def get_read_tasks(

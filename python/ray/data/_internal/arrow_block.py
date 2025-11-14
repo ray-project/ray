@@ -39,6 +39,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
+from ray.data.expressions import Expr
 
 try:
     import pyarrow
@@ -57,6 +58,7 @@ logger = logging.getLogger(__name__)
 
 
 _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
+_BATCH_SIZE_PRESERVING_STUB_COL_NAME = "__bsp_stub"
 
 
 # Set the max chunk size in bytes for Arrow to Batches conversion in
@@ -220,7 +222,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
             array = pyarrow.nulls(len(self._table), type=type)
             array = pc.fill_null(array, value)
-            return self._table.append_column(name, array)
+            return self.upsert_column(name, array)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "ArrowBlockAccessor":
@@ -231,28 +233,12 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def _build_tensor_row(
         row: ArrowRow, col_name: str = TENSOR_COLUMN_NAME
     ) -> np.ndarray:
-        from packaging.version import parse as parse_version
 
         element = row[col_name][0]
-        # TODO(Clark): Reduce this to np.asarray(element) once we only support Arrow
-        # 9.0.0+.
-        pyarrow_version = get_pyarrow_version()
-        if pyarrow_version is None or pyarrow_version >= parse_version("8.0.0"):
-            assert isinstance(element, pyarrow.ExtensionScalar)
-            if pyarrow_version is None or pyarrow_version >= parse_version("9.0.0"):
-                # For Arrow 9.0.0+, accessing an element in a chunked tensor array
-                # produces an ArrowTensorScalar, which we convert to an ndarray using
-                # .as_py().
-                element = element.as_py()
-            else:
-                # For Arrow 8.*, accessing an element in a chunked tensor array produces
-                # an ExtensionScalar, which we convert to an ndarray using our custom
-                # method.
-                element = element.type._extension_scalar_to_ndarray(element)
-        # For Arrow < 8.0.0, accessing an element in a chunked tensor array produces an
-        # ndarray, which we return directly.
-        assert isinstance(element, np.ndarray), type(element)
-        return element
+        arr = element.as_py()
+
+        assert isinstance(arr, np.ndarray), type(arr)
+        return arr
 
     def slice(self, start: int, end: int, copy: bool = False) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
@@ -375,12 +361,19 @@ class ArrowBlockAccessor(TableBlockAccessor):
         """
         return transform_pyarrow.take_table(self._table, indices)
 
+    def drop(self, columns: List[str]) -> Block:
+        return self._table.drop(columns)
+
     def select(self, columns: List[str]) -> "pyarrow.Table":
         if not all(isinstance(col, str) for col in columns):
             raise ValueError(
                 "Columns must be a list of column name strings when aggregating on "
                 f"Arrow blocks, but got: {columns}."
             )
+        if len(columns) == 0:
+            # Applicable for count which does an empty projection.
+            # Pyarrow returns a table with 0 columns and num_rows rows.
+            return self.fill_column(_BATCH_SIZE_PRESERVING_STUB_COL_NAME, None)
         return self._table.select(columns)
 
     def rename_columns(self, columns_rename: Dict[str, str]) -> "pyarrow.Table":
@@ -463,6 +456,21 @@ class ArrowBlockAccessor(TableBlockAccessor):
             for i in range(self.num_rows()):
                 yield self._get_row(i)
 
+    def filter(self, predicate_expr: "Expr") -> "pyarrow.Table":
+        """Filter rows based on a predicate expression."""
+        if self._table.num_rows == 0:
+            return self._table
+
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            eval_expr,
+        )
+
+        # Evaluate the expression to get a boolean mask
+        mask = eval_expr(predicate_expr, self._table)
+
+        # Use PyArrow's built-in filter method
+        return self._table.filter(mask)
+
 
 class ArrowBlockColumnAccessor(BlockColumnAccessor):
     def __init__(self, col: Union["pyarrow.Array", "pyarrow.ChunkedArray"]):
@@ -530,18 +538,50 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
 
         return pac.unique(self._column)
 
+    def value_counts(self) -> Optional[Dict[str, List]]:
+        import pyarrow.compute as pac
+
+        value_counts: pyarrow.StructArray = pac.value_counts(self._column)
+        if len(value_counts) == 0:
+            return None
+        return {
+            "values": value_counts.field("values").to_pylist(),
+            "counts": value_counts.field("counts").to_pylist(),
+        }
+
+    def hash(self) -> BlockColumn:
+        import polars as pl
+
+        df = pl.DataFrame({"col": self._column})
+        hashes = df.hash_rows().cast(pl.Int64, wrap_numerical=True)
+        return hashes.to_arrow()
+
     def flatten(self) -> BlockColumn:
         import pyarrow.compute as pac
 
         return pac.list_flatten(self._column)
 
+    def dropna(self) -> BlockColumn:
+        import pyarrow.compute as pac
+
+        return pac.drop_null(self._column)
+
+    def is_composed_of_lists(self, types: Optional[Tuple] = None) -> bool:
+        if not types:
+            types = (pyarrow.lib.ListType, pyarrow.lib.LargeListType)
+        return isinstance(self._column.type, types)
+
     def to_pylist(self) -> List[Any]:
         return self._column.to_pylist()
 
     def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
-        # NOTE: Pyarrow < 13.0.0 does not support ``zero_copy_only``
         if get_pyarrow_version() < _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY:
-            return self._column.to_numpy()
+            if isinstance(
+                self._column, pyarrow.ChunkedArray
+            ):  # NOTE: ChunkedArray in Pyarrow < 13.0.0 does not support ``zero_copy_only``
+                return self._column.to_numpy()
+            else:
+                return self._column.to_numpy(zero_copy_only=zero_copy_only)
 
         return self._column.to_numpy(zero_copy_only=zero_copy_only)
 

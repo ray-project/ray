@@ -168,11 +168,14 @@ def test_ordinal_encoder():
 
 def test_ordinal_encoder_no_encode_list():
     """Tests OrdinalEncoder with encode_lists=False."""
-    col_a = ["red", "green", "blue", "red"]
-    col_b = ["warm", "cold", "hot", "cold"]
-    col_c = [1, 10, 5, 10]
-    col_d = [["warm"], [], ["hot", "warm", "cold"], ["cold", "cold"]]
-    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c, "D": col_d})
+    in_df = pd.DataFrame.from_dict(
+        {
+            "A": ["red", "green", "blue", "red"],
+            "B": ["warm", "cold", "hot", "cold"],
+            "C": [1, 10, 5, 10],
+            "D": [["warm"], [], ["hot", "warm", "cold"], ["cold", "cold"]],
+        }
+    )
     ds = ray.data.from_pandas(in_df)
 
     encoder = OrdinalEncoder(["B", "C", "D"], encode_lists=False)
@@ -183,71 +186,53 @@ def test_ordinal_encoder_no_encode_list():
 
     # Fit data.
     encoder.fit(ds)
-    assert encoder.stats_ == {
-        "unique_values(B)": {"cold": 0, "hot": 1, "warm": 2},
-        "unique_values(C)": {1: 0, 5: 1, 10: 2},
-        "unique_values(D)": {
-            tuple(): 0,
-            ("cold", "cold"): 1,
-            ("hot", "warm", "cold"): 2,
-            ("warm",): 3,
-        },
-    }
+    assert encoder.stats_["unique_values(B)"] == {"cold": 0, "hot": 1, "warm": 2}
+    assert encoder.stats_["unique_values(C)"] == {1: 0, 5: 1, 10: 2}
+    hash_dict = encoder.stats_["unique_values(C)"]
+    assert len(set(hash_dict.keys())) == len(set(hash_dict.values())) == len(hash_dict)
+    assert max(hash_dict.values()) == len(hash_dict) - 1
 
     # Transform data.
     print("transform")
     transformed = encoder.transform(ds)
     out_df = transformed.to_pandas()
 
-    processed_col_a = col_a
-    processed_col_b = [2, 0, 1, 0]
-    processed_col_c = [0, 2, 1, 2]
-    processed_col_d = [3, 0, 2, 1]
-    expected_df = pd.DataFrame.from_dict(
-        {
-            "A": processed_col_a,
-            "B": processed_col_b,
-            "C": processed_col_c,
-            "D": processed_col_d,
-        }
-    )
-
-    assert out_df.equals(expected_df)
+    assert out_df["A"].equals(pd.Series(in_df["A"]))
+    assert out_df["B"].equals(pd.Series([2, 0, 1, 0]))
+    assert out_df["C"].equals(pd.Series([0, 2, 1, 2]))
+    assert set(out_df["D"].to_list()) == {3, 0, 2, 1}
 
     # Transform batch.
-    pred_col_a = ["blue", "yellow", None]
-    pred_col_b = ["cold", "warm", "other"]
-    pred_col_c = [10, 1, 20]
-    pred_col_d = [["cold", "cold"], [], ["other", "cold"]]
     pred_in_df = pd.DataFrame.from_dict(
-        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c, "D": pred_col_d}
-    )
-
-    pred_out_df = encoder.transform_batch(pred_in_df)
-
-    pred_processed_col_a = pred_col_a
-    pred_processed_col_b = [0, 2, None]
-    pred_processed_col_c = [2, 0, None]
-    pred_processed_col_d = [1, 0, None]
-    pred_expected_df = pd.DataFrame.from_dict(
         {
-            "A": pred_processed_col_a,
-            "B": pred_processed_col_b,
-            "C": pred_processed_col_c,
-            "D": pred_processed_col_d,
+            "A": ["blue", "yellow", None],
+            "B": ["cold", "warm", "other"],
+            "C": [10, 1, 20],
+            "D": [["cold", "cold"], [], ["other", "cold"]],
         }
     )
 
-    assert pred_out_df.equals(pred_expected_df)
+    pred_out_df: pd.DataFrame = encoder.transform_batch(pred_in_df)
+    assert pred_out_df["A"].equals(pred_in_df["A"])
+    assert pred_out_df["B"].equals(pd.Series([0, 2, None]))
+    assert pred_out_df["C"].equals(pd.Series([2, 0, None]))
+    assert pd.isnull(pred_out_df["D"].iloc[-1]), "Expected last value to be null"
+    assert (
+        len(pred_out_df["D"].iloc[:-1].dropna().drop_duplicates())
+        == len(pred_out_df) - 1
+    ), "All values excluding last one must be unique and non-null"
 
 
 def test_one_hot_encoder():
     """Tests basic OneHotEncoder functionality."""
-    col_a = ["red", "green", "blue", "red"]
-    col_b = ["warm", "cold", "hot", "cold"]
-    col_c = [1, 10, 5, 10]
-    col_d = [["warm"], [], ["hot", "warm", "cold"], ["cold", "cold"]]
-    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c, "D": col_d})
+    in_df = pd.DataFrame.from_dict(
+        {
+            "A": ["red", "green", "blue", "red"],
+            "B": ["warm", "cold", "hot", "cold"],
+            "C": [1, 10, 5, 10],
+            "D": [["warm"], [], ["hot", "warm", "cold"], ["cold", "cold"]],
+        }
+    )
     ds = ray.data.from_pandas(in_df)
 
     encoder = OneHotEncoder(["B", "C", "D"])
@@ -259,61 +244,71 @@ def test_one_hot_encoder():
     # Fit data.
     encoder.fit(ds)
 
-    assert encoder.stats_ == {
-        "unique_values(B)": {"cold": 0, "hot": 1, "warm": 2},
-        "unique_values(C)": {1: 0, 5: 1, 10: 2},
-        "unique_values(D)": {
-            tuple(): 0,
-            ("cold", "cold"): 1,
-            ("hot", "warm", "cold"): 2,
-            ("warm",): 3,
-        },
+    assert encoder.stats_["unique_values(B)"] == {
+        "cold": 0,
+        "hot": 1,
+        "warm": 2,
     }
+    assert encoder.stats_["unique_values(C)"] == {1: 0, 5: 1, 10: 2}
+    hash_dict = encoder.stats_["unique_values(D)"]
+    assert len(set(hash_dict.keys())) == len(set(hash_dict.values())) == len(hash_dict)
+    assert max(hash_dict.values()) == len(hash_dict) - 1
 
     # Transform data.
     transformed = encoder.transform(ds)
     out_df = transformed.to_pandas()
 
-    processed_col_a = col_a
-    processed_col_b_one_hot = [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]]
-    processed_col_c_one_hot = [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1]]
-    processed_col_d_one_hot = [[0, 0, 0, 1], [1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0]]
     expected_df = pd.DataFrame.from_dict(
         {
-            "A": processed_col_a,
-            "B": processed_col_b_one_hot,
-            "C": processed_col_c_one_hot,
-            "D": processed_col_d_one_hot,
+            "A": in_df["A"],
+            "B": [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]],
+            "C": [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1]],
         }
     )
 
-    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
+    assert out_df["A"].equals(expected_df["A"])
+    assert out_df["B"].equals(expected_df["B"])
+    assert out_df["C"].equals(expected_df["C"])
+    assert {tuple(row) for row in out_df["D"]} == {
+        tuple(row)
+        for row in pd.Series([[0, 0, 0, 1], [1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0]])
+    }
 
     # Transform batch.
-    pred_col_a = ["blue", "yellow", None]
-    pred_col_b = ["cold", "warm", "other"]
-    pred_col_c = [10, 1, 20]
-    pred_col_d = [["cold", "cold"], [], ["other", "cold"]]
     pred_in_df = pd.DataFrame.from_dict(
-        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c, "D": pred_col_d}
-    )
-
-    pred_out_df = encoder.transform_batch(pred_in_df)
-
-    pred_processed_col_a = pred_col_a
-    pred_processed_col_b_onehot = [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0, 0, 0]]
-    pred_processed_col_c_onehot = [[0, 0, 1], [1, 0, 0], [0, 0, 0]]
-    pred_processed_col_d_onehot = [[0, 1, 0, 0], [1, 0, 0, 0], [0, 0, 0, 0]]
-    pred_expected_df = pd.DataFrame.from_dict(
         {
-            "A": pred_processed_col_a,
-            "B": pred_processed_col_b_onehot,
-            "C": pred_processed_col_c_onehot,
-            "D": pred_processed_col_d_onehot,
+            "A": ["blue", "yellow", None],
+            "B": ["cold", "warm", "other"],
+            "C": [10, 1, 20],
+            "D": [["cold", "cold"], [], ["other", "cold"]],
         }
     )
 
-    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
+    pred_out_df: pd.DataFrame = encoder.transform_batch(pred_in_df.copy())
+
+    pred_expected_df = pd.DataFrame.from_dict(
+        {
+            "A": pred_in_df["A"],
+            "B": [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0, 0, 0]],
+            "C": [[0, 0, 1], [1, 0, 0], [0, 0, 0]],
+        }
+    )
+
+    assert pred_out_df["A"].equals(pred_expected_df["A"])
+    assert pred_out_df["B"].equals(pred_expected_df["B"])
+    assert pred_out_df["C"].equals(pred_expected_df["C"])
+    assert pred_out_df["D"].iloc[-1] == [0, 0, 0, 0]
+    assert (
+        len(
+            {
+                i
+                for row in pred_out_df["D"].iloc[:-1]
+                for i, val in enumerate(row)
+                if val == 1
+            }
+        )
+        == 2
+    )
 
     # append mode
     with pytest.raises(ValueError):
@@ -324,22 +319,14 @@ def test_one_hot_encoder():
         output_columns=["B_onehot_encoded", "C_onehot_encoded", "D_onehot_encoded"],
     )
     encoder.fit(ds)
-
-    pred_in_df = pd.DataFrame.from_dict(
-        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c, "D": pred_col_d}
-    )
-    pred_out_df = encoder.transform_batch(pred_in_df)
-    pred_expected_df = pd.DataFrame.from_dict(
-        {
-            "A": pred_col_a,
-            "B": pred_col_b,
-            "C": pred_col_c,
-            "D": pred_col_d,
-            "B_onehot_encoded": pred_processed_col_b_onehot,
-            "C_onehot_encoded": pred_processed_col_c_onehot,
-            "D_onehot_encoded": pred_processed_col_d_onehot,
-        }
-    )
+    pred_out_append_df: pd.DataFrame = encoder.transform_batch(pred_in_df.copy())
+    assert pred_out_append_df["A"].equals(pred_in_df["A"])
+    assert pred_out_append_df["B"].equals(pred_in_df["B"])
+    assert pred_out_append_df["C"].equals(pred_in_df["C"])
+    assert pred_out_append_df["D"].equals(pred_in_df["D"])
+    assert pred_out_append_df["B_onehot_encoded"].equals(pred_out_df["B"])
+    assert pred_out_append_df["C_onehot_encoded"].equals(pred_out_df["C"])
+    assert pred_out_append_df["D_onehot_encoded"].equals(pred_out_df["D"])
 
     # Test null behavior.
     null_col = [1, None]
@@ -368,9 +355,9 @@ def test_one_hot_encoder():
 
 def test_one_hot_encoder_with_max_categories():
     """Tests basic OneHotEncoder functionality with limit."""
-    col_a = ["red", "green", "blue", "red"]
-    col_b = ["warm", "cold", "hot", "cold"]
-    col_c = [1, 10, 5, 10]
+    col_a = ["red", "green", "blue", "red", "red"]
+    col_b = ["warm", "cold", "hot", "cold", "hot"]
+    col_c = [1, 10, 5, 10, 10]
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df)
 
@@ -383,8 +370,8 @@ def test_one_hot_encoder_with_max_categories():
     expected_df = pd.DataFrame(
         {
             "A": col_a,
-            "B": [[0, 0], [1, 0], [0, 1], [1, 0]],
-            "C": [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1]],
+            "B": [[0, 0], [1, 0], [0, 1], [1, 0], [0, 1]],
+            "C": [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1], [0, 0, 1]],
         }
     )
     pd.testing.assert_frame_equal(df_out, expected_df, check_like=True)
@@ -483,7 +470,7 @@ def test_multi_hot_encoder():
     with pytest.raises(ValueError):
         MultiHotEncoder(columns=["B", "C", "D"], output_columns=["B_encoded"])
 
-    encoder = OneHotEncoder(
+    encoder = MultiHotEncoder(
         columns=["B", "C", "D"],
         output_columns=[
             "B_multihot_encoded",
@@ -508,6 +495,7 @@ def test_multi_hot_encoder():
             "D_multihot_encoded": pred_processed_col_d,
         }
     )
+    assert pred_out_df.equals(pred_expected_df)
 
     # Test null behavior.
     null_col = [1, None]
@@ -516,7 +504,7 @@ def test_multi_hot_encoder():
     null_ds = ray.data.from_pandas(null_df)
     nonnull_df = pd.DataFrame.from_dict({"A": nonnull_col})
     nonnull_ds = ray.data.from_pandas(nonnull_df)
-    null_encoder = OneHotEncoder(["A"])
+    null_encoder = MultiHotEncoder(["A"])
 
     # Verify fit fails for null values.
     with pytest.raises(ValueError):
@@ -532,14 +520,6 @@ def test_multi_hot_encoder():
     with pytest.raises(ValueError):
         null_encoder.transform_batch(null_df)
     null_encoder.transform_batch(nonnull_df)
-
-    # Verify that `fit` and `transform` work with ndarrays.
-    df = pd.DataFrame({"column": [np.array(["A"]), np.array(["A", "B"])]})
-    ds = ray.data.from_pandas(df)
-    encoder = MultiHotEncoder(["column"])
-    transformed = encoder.fit_transform(ds)
-    encodings = [record["column"] for record in transformed.take_all()]
-    assert encodings == [[1, 0], [1, 1]]
 
 
 def test_multi_hot_encoder_with_max_categories():

@@ -17,7 +17,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/memory_store.h"
-#include "mock/ray/core_worker/reference_count.h"
+#include "mock/ray/core_worker/reference_counter.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/core_worker/actor_creator.h"

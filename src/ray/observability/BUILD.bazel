@@ -9,6 +9,7 @@ ray_cc_library(
         "open_telemetry_metric_recorder.h",
     ],
     deps = [
+        "//src/ray/common:ray_config",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@io_opentelemetry_cpp//api",
@@ -97,6 +98,7 @@ ray_cc_library(
     ],
     deps = [
         ":ray_event",
+        "//src/ray/common/scheduling:label_selector",
         "//src/ray/protobuf/public:events_actor_definition_event_cc_proto",
     ],
 )
@@ -166,12 +168,11 @@ ray_cc_library(
         ":ray_event",
         ":ray_event_recorder_interface",
         "//src/ray/common:asio",
+        "//src/ray/common:ray_config",
         "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
-        "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/rpc:event_aggregator_client",
         "//src/ray/util:logging",
         "@boost//:circular_buffer",
-        "@com_google_absl//absl/time",
     ],
 )
 

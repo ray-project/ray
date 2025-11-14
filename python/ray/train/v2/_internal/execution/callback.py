@@ -1,13 +1,12 @@
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.config import ScalingConfig
-from ray.train.v2.api.result import Result
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.train import Checkpoint
     from ray.train.v2._internal.execution.context import TrainRunContext
     from ray.train.v2._internal.execution.controller import (
         TrainControllerState,
@@ -20,6 +19,7 @@ if TYPE_CHECKING:
         WorkerGroupContext,
         WorkerGroupPollStatus,
     )
+    from ray.train.v2.api.result import Result
 
 
 @DeveloperAPI
@@ -128,7 +128,7 @@ class ControllerCallback(RayTrainCallback):
         """Called before the controller executes a resize decision."""
         pass
 
-    def after_controller_finish(self, result: Result):
+    def after_controller_finish(self, result: "Result"):
         """Called after the training run completes, providing access to the final result.
 
         Args:
@@ -137,10 +137,13 @@ class ControllerCallback(RayTrainCallback):
         pass
 
 
+# TODO: consider consolidating all metrics into one dict, possibly with UDF
 @DeveloperAPI
 class ReportCallback(RayTrainCallback):
     def after_report(
-        self, metrics: List[Dict[str, Any]], checkpoint: Optional["Checkpoint"]
+        self,
+        training_report: _TrainingReport,
+        metrics: List[Dict[str, Any]],
     ):
         """Called after all workers have reported a training result.
 

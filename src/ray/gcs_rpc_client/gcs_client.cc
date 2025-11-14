@@ -14,10 +14,8 @@
 
 #include "ray/gcs_rpc_client/gcs_client.h"
 
-#include <chrono>
 #include <memory>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -96,24 +94,30 @@ bool GcsClientOptions::ShouldFetchClusterId(ClusterID cluster_id,
   }
 }
 
-GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
-    : options_(options), gcs_client_id_(gcs_client_id) {}
+GcsClient::GcsClient(GcsClientOptions options,
+                     std::string local_address,
+                     UniqueID gcs_client_id)
+    : options_(std::move(options)),
+      gcs_client_id_(gcs_client_id),
+      local_address_(std::move(local_address)) {}
 
 Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_ms) {
   if (timeout_ms < 0) {
     timeout_ms = RayConfig::instance().gcs_rpc_server_connect_timeout_s() * 1000;
   }
   // Connect to gcs service.
-  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
-      io_service, /*record_stats=*/false, options_.cluster_id_);
+  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service,
+                                                                  /*record_stats=*/false,
+                                                                  local_address_,
+                                                                  options_.cluster_id_);
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
   resubscribe_func_ = [this]() {
+    RAY_LOG(INFO) << "Resubscribing to GCS tables.";
     job_accessor_->AsyncResubscribe();
     actor_accessor_->AsyncResubscribe();
     node_accessor_->AsyncResubscribe();
-    node_resource_accessor_->AsyncResubscribe();
     worker_accessor_->AsyncResubscribe();
   };
 
@@ -126,10 +130,12 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
   auto subscriber = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/gcs_client_id_,
       /*channels=*/
-      std::vector<rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
-                                    rpc::ChannelType::GCS_JOB_CHANNEL,
-                                    rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-                                    rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
+      std::vector<rpc::ChannelType>{
+          rpc::ChannelType::GCS_ACTOR_CHANNEL,
+          rpc::ChannelType::GCS_JOB_CHANNEL,
+          rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+          rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL,
+          rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
       /*get_client=*/
       [this](const rpc::Address &) {

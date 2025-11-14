@@ -18,7 +18,10 @@ steps:
         --only-tags doctest
         --except-tags gpu
         --parallelism-per-worker 3
-    depends_on: doctestbuild
+    depends_on:
+      - doctestbuild
+      - ray-core-build
+      - ray-dashboard-build
 
   # java
   - label: ":java: java tests"
@@ -26,7 +29,7 @@ steps:
     instance_type: medium
     commands:
       # Java tests need the C++ API for multi-langauge worker tests.
-      - bazel run //ci/ray_ci:test_in_docker -- //... core --build-type with-cpp --build-only
+      - bazel run //ci/ray_ci:test_in_docker -- //... core --build-type multi-lang --build-only
       - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
         "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
         "./java/test.sh"

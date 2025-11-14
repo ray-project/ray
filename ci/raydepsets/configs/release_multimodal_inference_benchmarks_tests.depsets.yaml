@@ -1,0 +1,84 @@
+build_arg_sets:
+  py39:
+    PYTHON_VERSION: "3.9"
+    PYTHON_SHORT: "39"
+  py310:
+    PYTHON_VERSION: "3.10"
+    PYTHON_SHORT: "310"
+
+depsets:
+  - name: audio_transcription_py${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_base_extra_testdeps_gpu_${PYTHON_SHORT}
+    requirements:
+      - release/nightly_tests/multimodal_inference_benchmarks/audio_transcription/requirements.in
+    output: release/ray_release/byod/audio_transcription_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - --python-version=${PYTHON_VERSION}
+      - --unsafe-package ray
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+  - name: document_embedding_py${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_base_extra_testdeps_gpu_${PYTHON_SHORT}
+    requirements:
+      - release/nightly_tests/multimodal_inference_benchmarks/document_embedding/requirements.in
+    output: release/ray_release/byod/document_embedding_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - --python-version=${PYTHON_VERSION}
+      - --unsafe-package ray
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+  - name: aimage_classification_py${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_base_extra_testdeps_gpu_${PYTHON_SHORT}
+    requirements:
+      - release/nightly_tests/multimodal_inference_benchmarks/image_classification/requirements.in
+    output: release/ray_release/byod/image_classification_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - --python-version=${PYTHON_VERSION}
+      - --unsafe-package ray
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+  - name: large_image_embedding_py${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_base_extra_testdeps_gpu_${PYTHON_SHORT}
+    requirements:
+      - release/nightly_tests/multimodal_inference_benchmarks/large_image_embedding/requirements.in
+    output: release/ray_release/byod/large_image_embedding_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - --python-version=${PYTHON_VERSION}
+      - --unsafe-package ray
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+  - name: video_object_detection_py${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_base_extra_testdeps_gpu_${PYTHON_SHORT}
+    requirements:
+      - release/nightly_tests/multimodal_inference_benchmarks/video_object_detection/requirements.in
+    output: release/ray_release/byod/video_object_detection_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - --python-version=${PYTHON_VERSION}
+      - --unsafe-package ray
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310

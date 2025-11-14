@@ -1,5 +1,6 @@
 import collections
 import gc
+import itertools
 import random
 import time
 from typing import Any, Callable, Iterable, List, Optional
@@ -30,8 +31,8 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import (
+    BlockRefBundler,
     MapOperator,
-    _BlockRefBundler,
     _per_block_limit_fn,
 )
 from ray.data._internal.execution.operators.map_transformer import (
@@ -43,13 +44,17 @@ from ray.data._internal.execution.operators.output_splitter import OutputSplitte
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
+from ray.data._internal.execution.progress_manager import SubProgressBar
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import Timer
 from ray.data.block import Block, BlockAccessor
-from ray.data.context import DataContext
+from ray.data.context import (
+    DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
+    DataContext,
+)
 from ray.data.tests.util import run_one_op_task, run_op_tasks_sync
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.tests.conftest import *  # noqa
@@ -158,8 +163,15 @@ def test_all_to_all_operator():
     )
 
     # Initialize progress bar.
-    num_bars = op.initialize_sub_progress_bars(0)
-    assert num_bars == 2, num_bars
+    for name in op.get_sub_progress_bar_names():
+        pg = SubProgressBar(
+            name=name,
+            total=op.num_output_rows_total(),
+            enabled=False,
+            progress=None,
+            tid=None,
+        )
+        op.set_sub_progress_bar(name, pg)
 
     # Feed data.
     op.start(ExecutionOptions())
@@ -175,7 +187,6 @@ def test_all_to_all_operator():
     stats = op.get_stats()
     assert "FooStats" in stats
     assert op.completed()
-    op.close_sub_progress_bars()
 
 
 def test_num_outputs_total():
@@ -317,7 +328,7 @@ def test_split_operator(ray_start_regular_shared, equal, chunk_size):
 
 
 @pytest.mark.parametrize("equal", [False, True])
-@pytest.mark.parametrize("random_seed", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+@pytest.mark.parametrize("random_seed", list(range(10)))
 def test_split_operator_random(ray_start_regular_shared, equal, random_seed):
     random.seed(random_seed)
     inputs = make_ref_bundles([[i] * random.randint(0, 10) for i in range(100)])
@@ -397,6 +408,133 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
 
     assert total == 10, total
     assert "all objects local" in op.progress_str()
+
+
+@pytest.mark.parametrize("equal", [False, True])
+@pytest.mark.parametrize("random_seed", list(range(10)))
+def test_split_operator_with_locality(ray_start_regular_shared, equal, random_seed):
+    """Test locality-based dispatching with equal=True and equal=False modes.
+
+    This test verifies that the OutputSplitter:
+    1. Correctly buffers data to ensure equal distribution when equal=True
+    2. Respects locality hints in both modes
+    3. Yields blocks incrementally when locality is matched (streaming behavior)
+    4. The fix ensures that _can_safely_dispatch correctly calculates remaining
+       buffer requirements.
+    """
+
+    random.seed(random_seed)
+
+    # Create bundles with varying sizes to test buffer management
+    input_bundles = make_ref_bundles([[i] * random.randint(1, 10) for i in range(100)])
+    num_inputs = sum(x.num_rows() for x in input_bundles)
+
+    input_op = InputDataBuffer(DataContext.get_current(), input_bundles)
+    op = OutputSplitter(
+        input_op,
+        3,
+        equal=equal,
+        data_context=DataContext.get_current(),
+        locality_hints=["node0", "node1", "node2"],
+    )
+
+    # Mock locality function: distribute items across 3 nodes
+    def _map_row_to_node(first_row_id_val) -> str:
+        return f"node{first_row_id_val % 3}"
+
+    def _get_fake_bundle_loc(bundle):
+        block = ray.get(bundle.block_refs[0])
+        first_row_id_val = block["id"][0]
+        return [_map_row_to_node(first_row_id_val)]
+
+    op._get_locations = _get_fake_bundle_loc
+
+    # Feed data and implement streaming exec
+    output_splits = [[] for _ in range(3)]
+    yielded_incrementally = 0
+
+    op.start(ExecutionOptions(actor_locality_enabled=True))
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+
+        # Drain some outputs to simulate streaming consumption
+        while op.has_next():
+            yielded_incrementally += 1
+
+            ref = op.get_next()
+
+            assert ref.owns_blocks, ref
+
+            for block_ref in ref.block_refs:
+                output_splits[ref.output_split_idx].extend(
+                    list(ray.get(block_ref)["id"])
+                )
+
+    op.all_inputs_done()
+
+    # Collect remaining outputs
+    while op.has_next():
+        ref = op.get_next()
+
+        assert ref.owns_blocks, ref
+
+        for block_ref in ref.block_refs:
+            output_splits[ref.output_split_idx].extend(list(ray.get(block_ref)["id"]))
+
+    # Verify streaming behavior: outputs should be yielded before all inputs are done
+    # With locality hints, we should see outputs during input phase
+    assert yielded_incrementally > 0, (
+        f"Expected incremental output with locality hints, but got 0 outputs during "
+        f"{len(input_bundles)} input blocks. This suggests buffering all data instead of streaming."
+    )
+
+    # Verify equal distribution when equal=True
+    if equal:
+        actual = [len(output_splits[i]) for i in range(3)]
+        expected = [num_inputs // 3] * 3
+        assert (
+            actual == expected
+        ), f"Expected equal distribution {expected}, got {actual}"
+    else:
+        # In non-equal mode, verify all data is output with correct row IDs
+        all_output_row_ids = set(itertools.chain.from_iterable(output_splits))
+
+        # Reconstruct expected row IDs from the input bundles
+        expected_row_ids = set()
+        for b in input_bundles:
+            id_col = ray.get(b.block_refs[0])["id"]
+            expected_row_ids.update(list(id_col))
+
+        assert all_output_row_ids == expected_row_ids
+
+    # Verify locality was respected (most items should be on their preferred node)
+    locality_hits = 0
+    total = 0
+
+    for split_idx in range(3):
+        actual_node = f"node{split_idx}"
+
+        for row_id in output_splits[split_idx]:
+            total += 1
+            expected_node = _map_row_to_node(row_id)
+
+            assert expected_node in ["node0", "node1", "node2"], expected_node
+
+            if expected_node == actual_node:
+                locality_hits += 1
+
+    # Should have excellent locality since bundles are dispatched based on locality hints.
+    # With perfect locality we'd get 100%, but buffering for equal distribution and
+    # occasional forced dispatches when buffer is full may cause some misses.
+    # We expect at least 85% locality hit rate, which validates the feature is working.
+    locality_ratio = locality_hits / total if total > 0 else 0
+
+    # NOTE: 90% is an observed locality ratio that should be fixed for this test
+    assert locality_ratio >= 0.85, (
+        f"Locality ratio {locality_ratio:.2f} too low. "
+        f"Expected >=85% with locality-aware dispatching. "
+        f"Hits: {locality_hits}/{total}"
+    )
 
 
 def test_map_operator_actor_locality_stats(ray_start_regular_shared):
@@ -645,8 +783,13 @@ def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_ove
         (3, 5, 4, 3),
         # DataContext.max_tasks_in_flight_per_actor takes precedence
         (None, 5, 4, 5),
-        # Max tasks in-flight is derived as max_concurrency x 2
-        (None, None, 4, 8),
+        # Max tasks in-flight is derived as max_concurrency x 4
+        (
+            None,
+            None,
+            4,
+            4 * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
+        ),
     ],
 )
 def test_actor_pool_map_operator_should_add_input(
@@ -662,7 +805,7 @@ def test_actor_pool_map_operator_should_add_input(
     ctx = DataContext.get_current()
     ctx.max_tasks_in_flight_per_actor = max_tasks_in_flight_ctx
 
-    input_op = InputDataBuffer(ctx, make_ref_bundles([[i] for i in range(10)]))
+    input_op = InputDataBuffer(ctx, make_ref_bundles([[i] for i in range(20)]))
 
     compute_strategy = ActorPoolStrategy(
         size=1,
@@ -1002,7 +1145,7 @@ def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
 )
 def test_block_ref_bundler_basic(target, in_bundles, expected_bundles):
     # Test that the bundler creates the expected output bundles.
-    bundler = _BlockRefBundler(target)
+    bundler = BlockRefBundler(target)
     bundles = _make_ref_bundles(in_bundles)
     out_bundles = []
     for bundle in bundles:
@@ -1020,7 +1163,7 @@ def test_block_ref_bundler_basic(target, in_bundles, expected_bundles):
     # Assert expected output
     assert out_bundles == expected_bundles
     # Assert that all bundles have been ingested
-    assert bundler.num_bundles() == 0
+    assert bundler.num_blocks() == 0
 
     for bundle, expected in zip(out_bundles, expected_bundles):
         assert bundle == expected
@@ -1039,7 +1182,7 @@ def test_block_ref_bundler_uniform(
 ):
     # Test that the bundler creates the expected number of bundles with the expected
     # size.
-    bundler = _BlockRefBundler(target)
+    bundler = BlockRefBundler(target)
     data = np.arange(n)
     pre_bundles = [arr.tolist() for arr in np.array_split(data, num_bundles)]
     bundles = make_ref_bundles(pre_bundles)
@@ -1201,7 +1344,10 @@ def test_map_estimated_blocks_split():
 
     min_rows_per_bundle = 10
     input_op = InputDataBuffer(
-        DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
+        DataContext.get_current(),
+        make_ref_bundles(
+            [[i, i + 1] for i in range(100)]
+        ),  # create 2-row blocks so split_blocks can split into 2 blocks
     )
 
     def yield_five(block_iter: Iterable[Block], ctx) -> Iterable[Block]:

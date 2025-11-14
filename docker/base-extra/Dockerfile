@@ -8,6 +8,10 @@ ENV TERM=xterm
 
 ARG SSH_PORT=5020
 
+ARG PYTHON_DEPSET
+
+COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
+
 RUN <<EOF
 #!/bin/bash
 
@@ -88,29 +92,10 @@ if [[ "$ARCH" == "x86_64" ]]; then
     rm -rf "${DYNOLOG_TMP}"
 fi
 
-# Python dependencies to install. To specify a version, please make the change
-# in OSS ray repository, but not here.
-PYTHON_REQUIREMENTS=(
-    azure-identity
-    jupyterlab
-    ipywidgets
-    grpcio
-    grpcio-tools
-
-    # Pinning jupyter_server_terminals==0.4.4 , the higher version will break the
-    # webterminal when using an older version of terminado.
-    jupyter_server_terminals==0.4.4
-
-    # [backend] is for installing anyscale CLI for use in the anyscale cloud.
-    "anyscale[backend]"
-)
-
-
 PYTHON_VERSION="$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 
-uv pip install --system --no-cache-dir --index-strategy unsafe-best-match \
-    -c /home/ray/requirements_compiled.txt \
-    "${PYTHON_REQUIREMENTS[@]}"
+uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
+    -r $HOME/python_depset.lock
 
 # Install awscli v2
 AWSCLI_TMP="$(mktemp -d)"
@@ -214,11 +199,14 @@ set -euo pipefail
 apt-get update -y
 apt-get install -y --no-install-recommends \
     build-essential \
+    ca-certificates \
     curl \
+    libc6-dev \
+    liblua5.3-dev \
     libpcre3-dev \
     libssl-dev \
-    zlib1g-dev \
-    ca-certificates
+    zlib1g-dev
+
 rm -rf /var/lib/apt/lists/*
 
 # Install HAProxy from source
@@ -226,7 +214,7 @@ HAPROXY_VERSION="2.8.12"
 HAPROXY_BUILD_DIR=$(mktemp -d)
 curl -sSfL -o "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
 tar -xzf "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" -C "${HAPROXY_BUILD_DIR}" --strip-components=1
-make -C "${HAPROXY_BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 -j$(nproc)
+make -C "${HAPROXY_BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc)
 make -C "${HAPROXY_BUILD_DIR}" install SBINDIR=/usr/local/bin
 rm -rf "${HAPROXY_BUILD_DIR}"
 
@@ -246,7 +234,7 @@ RUN <<EOF
 set -euo pipefail
 
 apt-get update -y
-apt-get install -y --no-install-recommends socat
+apt-get install -y --no-install-recommends socat liblua5.3-0
 
 mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
 chown -R ray:"$(id -gn ray)" /run/haproxy
