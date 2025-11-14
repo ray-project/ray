@@ -1602,9 +1602,6 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Iterate through each node and modify the node's available resources
         # if the requests are schedulable.
         for idx, node in enumerate(nodes_copy):
-            # TODO delete xingyun
-            logger.warning(f"_sched_best_node: {node.ray_node_id}, {node.node_type}, {node.status}")
-
             remaining, score = node.try_schedule(requests, resource_request_source)
 
             if len(remaining) == len(requests):
@@ -1623,8 +1620,6 @@ class ResourceDemandScheduler(IResourceScheduler):
             return None, requests, nodes
 
         # Sort the results by score.
-        # TODO delete xingyun
-        logger.info(f"cloud_resource_availabilities: {cloud_resource_availabilities}")
         results = sorted(
             results,
             key=lambda r: (
@@ -1636,10 +1631,6 @@ class ResourceDemandScheduler(IResourceScheduler):
         )
 
         best_result = results[0]
-
-        # TODO delete xingyun
-        logger.info(f"best_result: {best_result.node.node_type}")
-
         # Remove the best node from the nodes.
         nodes.pop(best_result.idx)
         logger.debug(
