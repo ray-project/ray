@@ -998,6 +998,9 @@ class Reconciler:
             # Ray taking time to drain. We could also have a timeout when Drain protocol
             # supports timeout.
             IMInstance.RAY_STOPPING,
+            # The cloud provider fail to allocate resource, we will terminate instances
+            # with this status in the next reconciler step.
+            IMInstance.ALLOCATION_FAILED,
             # These should just be transient, we will terminate instances with this
             # status in the next reconciler step.
             IMInstance.RAY_INSTALL_FAILED,
@@ -1217,6 +1220,8 @@ class Reconciler:
         """
         Terminate instances with the below statuses:
             - RAY_STOPPED: ray was stopped on the cloud instance.
+            - ALLOCATION_FAILED: ray request for resource but the cloud provider
+                fail to allocate.
             - RAY_INSTALL_FAILED: ray installation failed on the cloud instance,
                 we will not retry.
             - TERMINATION_FAILED: cloud provider failed to terminate the instance
@@ -1231,6 +1236,7 @@ class Reconciler:
         for instance in im_instances:
             if instance.status not in [
                 IMInstance.RAY_STOPPED,
+                IMInstance.ALLOCATION_FAILED,
                 IMInstance.RAY_INSTALL_FAILED,
                 IMInstance.TERMINATION_FAILED,
             ]:
@@ -1404,6 +1410,10 @@ class Reconciler:
             None: if there's no update.
 
         """
+        # TODO delete xingyun
+        logger.info(f"handle_stuck_requested_instance: {instance}")
+        logger.info(f"has_timeout: {InstanceUtil.has_timeout(instance, timeout_s)}")
+
         if not InstanceUtil.has_timeout(instance, timeout_s):
             # Not timeout yet, be patient.
             return None
@@ -1413,6 +1423,8 @@ class Reconciler:
                 instance, select_instance_status=IMInstance.REQUESTED
             )
         )
+
+        logger.info(f"all_request_times_ns: {all_request_times_ns}")
 
         # Fail the allocation if we have tried too many times.
         if len(all_request_times_ns) > max_num_retry_request_to_allocate:

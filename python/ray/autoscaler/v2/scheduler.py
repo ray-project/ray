@@ -1638,7 +1638,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         best_result = results[0]
 
         # TODO delete xingyun
-        logger.info(f"best_result: {best_result}")
+        logger.info(f"best_result: {best_result.node.node_type}")
 
         # Remove the best node from the nodes.
         nodes.pop(best_result.idx)
