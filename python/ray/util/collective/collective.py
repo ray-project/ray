@@ -2,13 +2,22 @@
 
 import logging
 import os
+import threading
+import time
 from typing import List
 
 import numpy as np
 
 import ray
+import ray.experimental.internal_kv as _internal_kv
 from ray.util.collective import types
 from ray.util.annotations import Deprecated
+from ray.experimental.collective.util import (
+    get_address_and_port as _get_address_and_port,
+)
+from ray.util.collective.collective_group.base_collective_group import (
+    get_master_address_metadata_key as _get_master_addr_key,
+)
 
 _NCCL_AVAILABLE = True
 _GLOO_AVAILABLE = True
@@ -106,24 +115,37 @@ class GroupManager(object):
         backend = types.Backend(backend)
         if backend == types.Backend.MPI:
             raise RuntimeError("Ray does not support MPI.")
-        elif backend == types.Backend.GLOO:
-            logger.debug("Creating GLOO group: '{}'...".format(group_name))
-            g = GLOOGroup(
-                world_size,
-                rank,
-                group_name,
-                store_type="ray_internal_kv",
-                device_type="tcp",
-                gloo_timeout=gloo_timeout,
+        elif backend == types.Backend.GLOO or backend == types.Backend.TORCH_GLOO:
+            # Rendezvous: ensure a MASTER_ADDR:MASTER_PORT is published in internal_kv.
+            metadata_key = _get_master_addr_key(group_name)
+            if rank == 0:
+                addr, port = _get_address_and_port()
+                _internal_kv._internal_kv_put(metadata_key, f"{addr}:{port}")
+            else:
+                # Wait until rank 0 publishes the metadata or timeout.
+                deadline_s = time.time() + (
+                    gloo_timeout / 1000.0 if gloo_timeout else 30.0
+                )
+                while True:
+                    meta = _internal_kv._internal_kv_get(metadata_key)
+                    if meta is not None:
+                        break
+                    if time.time() > deadline_s:
+                        raise TimeoutError(
+                            f"Timed out waiting for GLOO rendezvous metadata for group '{group_name}'."
+                        )
+                    time.sleep(0.05)
+
+            logger.debug(
+                "Creating torch.distributed GLOO group: '{}'...".format(group_name)
             )
         elif backend == types.Backend.NCCL:
             logger.debug("Creating NCCL group: '{}'...".format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
-        elif backend == types.Backend.TORCH_GLOO:
-            logger.debug(
-                "Creating torch.distributed GLOO group: '{}'...".format(group_name)
-            )
-            g = TorchGLOOGroup(world_size, rank, group_name)
+        elif backend == types.Backend.NIXL:
+            _check_backend_availability(backend)
+            logger.debug("Creating NIXL Backend: '{}'...".format(group_name))
+            g = NixlBackend()
         elif backend == types.Backend.HCCL:
             # Rendezvous: ensure a MASTER_ADDR:MASTER_PORT is published in internal_kv.
             metadata_key = _get_master_addr_key(group_name)
@@ -149,10 +171,6 @@ class GroupManager(object):
                 "Creating torch.distributed HCCL group: '{}'...".format(group_name)
             )
             g = HCCLGroup(world_size, rank, group_name)
-        elif backend == types.Backend.NIXL:
-            _check_backend_availability(backend)
-            logger.debug("Creating NIXL Backend: '{}'...".format(group_name))
-            g = NixlBackend()
         else:
             raise RuntimeError(f"Unexpected backend: {backend}")
 

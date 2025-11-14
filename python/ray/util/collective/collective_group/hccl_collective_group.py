@@ -144,7 +144,6 @@ class HCCLGroup(BaseGroup):
         master_addr, master_port = metadata.split(":")
         os.environ["MASTER_ADDR"] = master_addr
         os.environ["MASTER_PORT"] = master_port
-        dist.init_process_group(backend="hccl", rank=rank, world_size=world_size)
         
         if not dist.is_initialized():  # create new process group
             dist.init_process_group(backend="hccl", rank=rank, world_size=world_size)
