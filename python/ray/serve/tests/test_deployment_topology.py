@@ -372,9 +372,11 @@ class TestDeploymentTopology:
         # Deploy App1 that depends on App2
         @serve.deployment
         class App1Service:
+            def __init__(self):
+                self.app2_handle = get_deployment_handle("App2Service", "app2")
+
             async def __call__(self):
-                app2_handle = get_deployment_handle("App2Service", "app2")
-                result = await app2_handle.remote()
+                result = await self.app2_handle.remote()
                 return f"app1->{result}"
 
         app1_service = App1Service.bind()

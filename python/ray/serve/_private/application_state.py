@@ -273,9 +273,6 @@ class ApplicationState:
         )
         self._logging_config = logging_config
 
-        # Deployment topology (call graph)
-        self._deployment_topology: Optional[DeploymentTopology] = None
-
     @property
     def route_prefix(self) -> Optional[str]:
         return self._route_prefix
@@ -940,15 +937,14 @@ class ApplicationState:
 
         return target_state_changed
 
-    def _build_deployment_topology(self) -> None:
-        """Build the deployment topology for this application.
+    def get_deployment_topology(self) -> Optional[DeploymentTopology]:
+        """Get the deployment topology for this application.
 
-        Queries outbound deployment information from each deployment
-        and constructs a topology showing how deployments call each other.
+        Returns:
+            The deployment topology, or None if not yet built.
         """
         if not self.target_deployments:
-            self._deployment_topology = None
-            return
+            return None
 
         nodes = {}
 
@@ -974,22 +970,11 @@ class ApplicationState:
             )
             nodes[deployment_name] = node
 
-        # Create topology with nodes for each deployment
-        topology = DeploymentTopology(
+        return DeploymentTopology(
             app_name=self._name,
             ingress_deployment=self._ingress_deployment_name,
             nodes=nodes,
         )
-
-        self._deployment_topology = topology
-
-    def get_deployment_topology(self) -> Optional[DeploymentTopology]:
-        """Get the deployment topology for this application.
-
-        Returns:
-            The deployment topology, or None if not yet built.
-        """
-        return self._deployment_topology
 
     def update(self) -> Tuple[bool, bool]:
         """Attempts to reconcile this application to match its target state.
@@ -1051,9 +1036,6 @@ class ApplicationState:
             )
             status, status_msg = self._determine_app_status()
             self._update_status(status, status_msg)
-
-            # Build deployment topology based on polled outbound deployments
-            self._build_deployment_topology()
 
         # Check if app is ready to be deleted
         if self._target_state.deleting:
