@@ -281,6 +281,9 @@ class ActorReplicaWrapper:
         self._last_record_routing_stats_time: float = 0.0
         self._ingress: bool = False
 
+        # Outbound deployments polling state
+        self._outbound_deployments: Optional[List[DeploymentID]] = None
+
     @property
     def replica_id(self) -> str:
         return self._replica_id
@@ -771,6 +774,7 @@ class ActorReplicaWrapper:
                         self._grpc_port,
                         self._rank,
                         self._route_patterns,
+                        self._outbound_deployments,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -1042,6 +1046,9 @@ class ActorReplicaWrapper:
             ray.kill(ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE))
         except ValueError:
             pass
+
+    def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        return self._outbound_deployments
 
 
 class DeploymentReplica:
@@ -1322,6 +1329,9 @@ class DeploymentReplica:
         # when dumping these objects. See
         # https://github.com/ray-project/ray/issues/26210 for the issue.
         return json.dumps(required), json.dumps(available)
+
+    def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        return self._actor.get_outbound_deployments()
 
 
 class ReplicaStateContainer:
@@ -3088,6 +3098,27 @@ class DeploymentState:
     def is_ingress(self) -> bool:
         return self._target_state.info.ingress
 
+    def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        """Get the outbound deployments.
+
+        Returns:
+            Sorted list of deployment IDs that this deployment calls. None if
+            outbound deployments are not yet polled.
+        """
+        result: Set[DeploymentID] = set()
+        has_outbound_deployments = False
+        for replica in self._replicas.get([ReplicaState.RUNNING]):
+            if replica.version != self._target_state.version:
+                # Only consider replicas of the target version
+                continue
+            outbound_deployments = replica.get_outbound_deployments()
+            if outbound_deployments is not None:
+                result.update(outbound_deployments)
+                has_outbound_deployments = True
+        if not has_outbound_deployments:
+            return None
+        return sorted(result, key=lambda d: (d.name))
+
 
 class DeploymentStateManager:
     """Manages all state for deployments in the system.
@@ -3696,3 +3727,21 @@ class DeploymentStateManager:
             return {}
 
         return deployment_state._get_replica_ranks_mapping()
+
+    def get_deployment_outbound_deployments(
+        self, deployment_id: DeploymentID
+    ) -> Optional[List[DeploymentID]]:
+        """Get the cached outbound deployments for a specific deployment.
+
+        Args:
+            deployment_id: The deployment ID to get outbound deployments for.
+
+        Returns:
+            List of deployment IDs that this deployment calls, or None if
+            the deployment doesn't exist or hasn't been polled yet.
+        """
+        deployment_state = self._deployment_states.get(deployment_id)
+        if deployment_state is None:
+            return None
+
+        return deployment_state.get_outbound_deployments()
