@@ -740,6 +740,7 @@ void GcsServer::InitRuntimeEnvManager() {
 void GcsServer::InitGcsWorkerManager() {
   gcs_worker_manager_ = std::make_unique<GcsWorkerManager>(
       *gcs_table_storage_, io_context_provider_.GetDefaultIOContext(), *gcs_publisher_);
+  gcs_worker_manager_->Initialize();
   rpc_server_.RegisterService(std::make_unique<rpc::WorkerInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
       *gcs_worker_manager_,
