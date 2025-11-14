@@ -3,24 +3,28 @@ from typing import Dict
 class AuthenticationMode:
     DISABLED: int
     TOKEN: int
+    K8S: int
 
 def get_authentication_mode() -> int:
     """Get the current authentication mode.
 
     Returns:
-        AuthenticationMode enum value (DISABLED or TOKEN)
+        AuthenticationMode enum value (DISABLED or TOKEN or K8S)
     """
     ...
 
 
 def validate_authentication_token(provided_token: str) -> bool:
-    """Validate provided authentication token against expected token.
+    """Validate provided authentication token.
+
+    For TOKEN mode, compares against the expected token.
+    For K8S mode, validates against the Kubernetes API.
 
     Args:
         provided_token: Full authorization header value (e.g., "Bearer <token>")
 
     Returns:
-        bool: True if tokens match, False otherwise
+        bool: True if token is valid, False otherwise
     """
     ...
 
@@ -61,3 +65,5 @@ class AuthenticationTokenLoader:
             dict: Empty dict or {"authorization": "Bearer <token>"}
         """
         ...
+
+    def get_raw_token(self) -> str: ...
