@@ -1,5 +1,4 @@
 import threading
-import warnings
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
@@ -9,6 +8,7 @@ from ray._private.custom_types import TensorTransportEnum
 from ray.experimental.collective import get_tensor_transport_manager
 from ray.experimental.collective.util import device_match_transport
 from ray.util.collective.types import (
+    CUDA_IPC_GROUP_NAME,
     Backend,
     CommunicatorMetadata,
     TensorTransportMetadata,
@@ -26,6 +26,11 @@ TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {
     TensorTransportEnum.NCCL: Backend.NCCL,
     TensorTransportEnum.GLOO: Backend.TORCH_GLOO,
     TensorTransportEnum.NIXL: Backend.NIXL,
+    TensorTransportEnum.CUDA_IPC: Backend.CUDA_IPC,
+}
+
+COMMUNICATOR_NAME_TO_COLLECTIVE_BACKEND = {
+    CUDA_IPC_GROUP_NAME: Backend.CUDA_IPC,
 }
 
 
@@ -56,7 +61,14 @@ def __ray_send__(
 
     tensors = gpu_object_store.get_object(obj_id)
 
-    backend = collective.get_group_handle(communicator_meta.communicator_name).backend()
+    if communicator_meta.communicator_name in COMMUNICATOR_NAME_TO_COLLECTIVE_BACKEND:
+        backend = COMMUNICATOR_NAME_TO_COLLECTIVE_BACKEND[
+            communicator_meta.communicator_name
+        ]
+    else:
+        backend = collective.get_group_handle(
+            communicator_meta.communicator_name
+        ).backend()
 
     tensor_transport_manager = get_tensor_transport_manager(backend)
     if tensors and not device_match_transport(tensors[0].device, backend):
@@ -79,7 +91,14 @@ def __ray_recv__(
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
 
-    backend = collective.get_group_handle(communicator_meta.communicator_name).backend()
+    if communicator_meta.communicator_name in COMMUNICATOR_NAME_TO_COLLECTIVE_BACKEND:
+        backend = COMMUNICATOR_NAME_TO_COLLECTIVE_BACKEND[
+            communicator_meta.communicator_name
+        ]
+    else:
+        backend = collective.get_group_handle(
+            communicator_meta.communicator_name
+        ).backend()
 
     device = tensor_transport_meta.tensor_device
     tensor_meta = tensor_transport_meta.tensor_meta
@@ -137,104 +156,6 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
     ), f"obj_id={obj_id} not found in GPU object store"
     gpu_object = gpu_object_store.get_object(obj_id)
     return gpu_object
-
-
-# Helper invoked on an actor process to report the UUID of its current CUDA device.
-# Returns None if CUDA is not available or UUID cannot be retrieved.
-def __ray_get_cuda_uuid__(self) -> Optional[str]:
-    try:
-        import torch as _torch
-
-        print("loc9: _torch.cuda.is_available():", _torch.cuda.is_available())
-        if _torch.cuda.is_available():
-            device = _torch.cuda.current_device()
-            print("loc10: device:", device)
-            uuid = _torch.cuda.get_device_properties(device).uuid
-            print("loc11: uuid", uuid)
-            return str(uuid)
-    except Exception:
-        pass
-    return None
-
-
-def _extract_cuda_metadata(tensor: torch.Tensor):
-    storage = tensor._typed_storage()
-    (
-        storage_device,
-        storage_handle,
-        storage_size_bytes,
-        storage_offset_bytes,
-        ref_counter_handle,
-        ref_counter_offset,
-        event_handle,
-        event_sync_required,
-    ) = storage._share_cuda_()
-    # Fields specified in https://github.com/pytorch/pytorch/blob/1495b35d29512f303ab37780760c5e692158514b/torch/multiprocessing/reductions.py#L155
-    return {
-        "tensor_cls": type(tensor),
-        "tensor_size": tensor.size(),
-        "tensor_stride": tensor.stride(),
-        "tensor_offset": tensor.storage_offset(),
-        "storage_cls": type(storage),
-        "dtype": tensor.dtype,
-        "storage_device": storage_device,
-        "storage_handle": storage_handle,
-        "storage_size_bytes": storage_size_bytes,
-        "storage_offset_bytes": storage_offset_bytes,
-        "requires_grad": tensor.requires_grad,
-        "ref_counter_handle": ref_counter_handle,
-        "ref_counter_offset": ref_counter_offset,
-        "event_handle": event_handle,
-        "event_sync_required": event_sync_required,
-    }
-
-
-# Export CUDA IPC handles for tensors stored under obj_id.
-# Only used when tensors are CUDA tensors and source/target actors reside on the same GPU.
-# Returns a list of metadata tuples per tensor.
-def __ray_cuda_ipc_export__(self, obj_id: str):
-    from ray._private.worker import global_worker
-
-    tensors = global_worker.gpu_object_manager.gpu_object_store.get_object(obj_id)
-
-    metas = []
-    for t in tensors:
-        tensor_meta = _extract_cuda_metadata(t)
-        metas.append(tensor_meta)
-
-    return metas
-
-
-# Import CUDA IPC handles and reconstruct tensors into the local GPU object store.
-# Expects the metadata returned by __ray_cuda_ipc_export__.
-def __ray_cuda_ipc_import__(self, obj_id: str, metas):
-    from torch.multiprocessing.reductions import rebuild_cuda_tensor
-
-    tensors = []
-    for i, meta in enumerate(metas):
-        try:
-            t = rebuild_cuda_tensor(**meta)
-            # Validate tensor is accessible by trying to get its device
-            # This will trigger an error if the memory is invalid
-            _ = t.device
-            tensors.append(t)
-        except (RuntimeError, OSError, Exception) as e:
-            # TODO(avigyabb): Integrate with @dayshah's error handling
-            warnings.warn(
-                f"Failed to import CUDA IPC tensor {i+1}/{len(metas)} for object {obj_id}. "
-                f"The source actor may have crashed or been terminated. "
-                f"Error: {str(e)}. "
-                f"Falling back to network transfer if possible."
-            )
-            raise RuntimeError(
-                f"CUDA IPC import failed for object {obj_id}. "
-                f"Source actor appears to be dead or memory is invalid. "
-                f"Original error: {e}"
-            ) from e
-
-    from ray._private.worker import global_worker
-
-    global_worker.gpu_object_manager.gpu_object_store.add_object(obj_id, tensors)
 
 
 @dataclass

@@ -95,7 +95,6 @@ class GPUObjectManager:
         self._gpu_object_store: Optional["GPUObjectStore"] = None
         # Lock to ensure we only create the GPU object store once.
         self.gpu_object_store_lock = threading.Lock()
-        self.actor_uuid_cache: Dict[str, Optional[str]] = {}
 
         # Thread safe queue of transport refs that the monitor thread needs to start monitoring
         self._unmonitored_transfers: Queue[TransferMetadata] = Queue()
@@ -216,65 +215,6 @@ class GPUObjectManager:
             except ValueError:
                 # Collective group was already destroyed
                 pass
-
-    def _try_ipc_transfer_same_gpu(
-        self,
-        src_actor: "ray.actor.ActorHandle",
-        dst_actor: "ray.actor.ActorHandle",
-        obj_ref: ObjectRef,
-    ) -> bool:
-        """
-        Attempt a same-GPU transfer using CUDA IPC when both actors are on the
-        same CUDA device. Returns True on success; False to fall back to network.
-        """
-        from ray.experimental.gpu_object_manager.gpu_object_store import (
-            __ray_cuda_ipc_export__,
-            __ray_cuda_ipc_import__,
-        )
-
-        # Compare physical GPU UUIDs instead of device indices to avoid
-        # false positives due to CUDA_VISIBLE_DEVICES remapping.
-        def _get_uuid(actor):
-            if actor._actor_id in self.actor_uuid_cache:
-                return self.actor_uuid_cache[actor._actor_id]
-
-            from ray.experimental.gpu_object_manager.gpu_object_store import (
-                __ray_get_cuda_uuid__,
-            )
-
-            uuid = ray.get(
-                actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                    __ray_get_cuda_uuid__
-                )
-            )
-            self.actor_uuid_cache[actor._actor_id] = uuid
-            return uuid
-
-        src_uuid = _get_uuid(src_actor)
-        dst_uuid = _get_uuid(dst_actor)
-        if src_uuid and dst_uuid and src_uuid == dst_uuid:
-            obj_id = obj_ref.hex()
-            try:
-                metas = ray.get(
-                    src_actor.__ray_call__.options(
-                        concurrency_group="_ray_system"
-                    ).remote(__ray_cuda_ipc_export__, obj_id)
-                )
-                ray.get(
-                    dst_actor.__ray_call__.options(
-                        concurrency_group="_ray_system"
-                    ).remote(__ray_cuda_ipc_import__, obj_id, metas)
-                )
-                print("loc3: IPC transfer successful")
-                return True
-            except (ray.exceptions.RayActorError, RuntimeError) as e:
-                # Source actor died or IPC import failed
-                warnings.warn(
-                    f"CUDA IPC transfer failed for {obj_id}: {e}. "
-                    f"Falling back to network transfer."
-                )
-                return False
-        return False
 
     def is_managed_object(self, obj_id: str) -> bool:
         """
@@ -442,7 +382,6 @@ class GPUObjectManager:
             task_args: List of arguments for the target actor task that may contain ObjectRefs.
         """
 
-        print("loc7: Triggering out-of-band tensor transfer")
         gpu_object_refs = set()
         for arg in task_args:
             # If an ObjectRef is managed, it means the actual value is a list of tensors stored
@@ -468,11 +407,6 @@ class GPUObjectManager:
 
             src_actor = gpu_object_meta.src_actor
             tensor_transport_meta = gpu_object_meta.tensor_transport_meta
-
-            # Same-GPU fast path using CUDA IPC.
-            if self._try_ipc_transfer_same_gpu(src_actor, dst_actor, obj_ref):
-                # Done for this object; skip network transfer.
-                continue
 
             obj_id = obj_ref.hex()
 

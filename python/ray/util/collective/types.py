@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from numpy import int32
 
@@ -44,6 +44,7 @@ class Backend(object):
     # Use gloo through torch.distributed.
     TORCH_GLOO = "torch_gloo"
     NIXL = "nixl"
+    CUDA_IPC = "cuda_ipc"
     UNRECOGNIZED = "unrecognized"
 
     def __new__(cls, name: str):
@@ -91,6 +92,14 @@ class CollectiveTransportMetadata(TensorTransportMetadata):
 
 
 @dataclass
+class CudaIpcTransportMetadata(TensorTransportMetadata):
+    """Metadata for tensors stored in the GPU object store for CUDA IPC transport."""
+
+    cuda_ipc_meta: Optional[List[Dict[str, Any]]] = None
+    cuda_ipc_device_uuid: Optional[str] = None
+
+
+@dataclass
 class CommunicatorMetadata:
     """Metadata for the communicator.
 
@@ -119,6 +128,11 @@ class NixlCommunicatorMetadata(CommunicatorMetadata):
     """Metadata for the NIXL communicator."""
 
 
+@dataclass
+class CudaIpcCommunicatorMetadata(CommunicatorMetadata):
+    """Metadata for the CUDA IPC communicator."""
+
+
 class ReduceOp(Enum):
     SUM = 0
     PRODUCT = 1
@@ -130,6 +144,9 @@ unset_timeout_ms = timedelta(milliseconds=-1)
 
 # This is used to identify the collective group for NIXL.
 NIXL_GROUP_NAME = "ray_internal_nixl_group"
+
+# This is used to identify the collective group for CUDA IPC.
+CUDA_IPC_GROUP_NAME = "ray_internal_cuda_ipc_group"
 
 
 @dataclass

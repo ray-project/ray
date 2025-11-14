@@ -735,6 +735,8 @@ enum TensorTransport {
   GLOO = 2;
   // Use NIXL for tensor transport.
   NIXL = 3;
+  // Use CUDA IPC for tensor transport.
+  CUDA_IPC = 4;
 }
 
 // Argument in the task.
