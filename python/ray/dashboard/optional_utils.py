@@ -126,6 +126,7 @@ def aiohttp_cache(
     else:
         return _wrapper
 
+
 def is_browser_request(req: Request) -> bool:
     """Best-effort detection if the request was made by a browser.
 
