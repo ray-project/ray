@@ -35,8 +35,6 @@ from typing import (
     TypedDict
 )
 
-from typing_extensions import NotRequired
-
 import contextvars
 import concurrent.futures
 import collections
@@ -295,8 +293,8 @@ class RefCountDict(TypedDict):
     local: int
     submitted: int
 
-class FallbackStrategyDict(TypedDict):
-    label_selector: NotRequired[Dict[str,str]]
+class FallbackStrategyDict(TypedDict,total=False):
+    label_selector: Dict[str,str]
 
 # Update the type names of the extension type so they are
 # ray.{ObjectRef, ObjectRefGenerator} instead of ray._raylet.*

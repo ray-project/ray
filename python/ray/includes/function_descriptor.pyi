@@ -2,7 +2,10 @@
 from typing import Any, Callable, Generic, Protocol, TypeVar
 from uuid import UUID
 
-from typing_extensions import ParamSpec
+try:
+    from typing import ParamSpec
+except ImportError:
+    from typing_extensions import ParamSpec
 
 from ray.includes.unique_ids import FunctionID
 

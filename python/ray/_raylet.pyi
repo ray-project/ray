@@ -22,7 +22,10 @@ from typing import (
 )
 
 # for FunctionDescriptor matching
-from typing_extensions import NotRequired, ParamSpec
+try:
+    from typing import ParamSpec
+except ImportError:
+    from typing_extensions import ParamSpec
 
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
@@ -320,8 +323,8 @@ class RefCountDict(TypedDict):
     local: int
     submitted: int
 
-class FallbackStrategyDict(TypedDict):
-    label_selector: NotRequired[Dict[str,str]]
+class FallbackStrategyDict(TypedDict,total=False):
+    label_selector: Dict[str,str]
 
 
 # An empty profile event context to be used when the timeline is disabled.
