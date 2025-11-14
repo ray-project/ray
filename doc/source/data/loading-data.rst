@@ -668,7 +668,8 @@ First, install the required dependencies:
     pip install huggingface_hub
 
 Set your Hugging Face token to authenticate. While public datasets can be read without
-a token, you will suffer aggressive rate limiting without a token.
+a token, Hugging Face rate limits are more aggressive without a token. To read Hugging
+Face datasets without a token, simply set the filesystem arguemnt to ``HfFileSystem()``.
 
 .. code-block:: console
 
