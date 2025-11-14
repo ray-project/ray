@@ -202,8 +202,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
+  // Consume a RaySyncer sync message from another Raylet.
+  //
+  // The two types of messages that are received are:
+  //   - RESOURCE_VIEW: an update of the resources available on another Raylet.
+  //   - COMMANDS: a request to run the Python garbage collector globally across Raylets.
   void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
 
+  // Generate a RaySyncer sync message to be sent to other Raylets.
+  //
+  // This is currently only used to generate messages for the COMMANDS channel to request
+  // other Raylets to call the Python garbage collector, and is only called on demand
+  // (not periodically polled by the RaySyncer code).
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
 
@@ -304,6 +314,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                          rpc::DrainRayletReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleKillLocalActor(rpc::KillLocalActorRequest request,
+                            rpc::KillLocalActorReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 
@@ -330,7 +344,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   void SetIdleIfLeaseEmpty() {
     if (leased_workers_.empty()) {
-      cluster_resource_scheduler_.GetLocalResourceManager().SetIdleFootprint(
+      cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsIdle(
           WorkFootprint::NODE_WORKERS);
     }
   }
@@ -415,9 +429,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param client The client that is requesting the objects.
   /// \param object_refs The objects that are requested.
   ///
-  /// \return the request_id that will be used to cancel the get request.
-  int64_t AsyncGet(const std::shared_ptr<ClientConnection> &client,
-                   std::vector<rpc::ObjectReference> &object_refs);
+  /// \param get_request_id The ID of the get request. It is used by the worker to clean
+  /// up a GetRequest.
+  void AsyncGet(const std::shared_ptr<ClientConnection> &client,
+                std::vector<rpc::ObjectReference> &object_refs,
+                int64_t get_request_id);
 
   /// Cancel all ongoing get requests from the client.
   ///
@@ -890,12 +906,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Managers all bundle-related operations.
   PlacementGroupResourceManager &placement_group_resource_manager_;
 
-  /// Next resource broadcast seq no. Non-incrementing sequence numbers
-  /// indicate network issues (dropped/duplicated/ooo packets, etc).
-  int64_t next_resource_seq_no_;
-
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
+
+  /// `version` for the RaySyncer COMMANDS channel. Monotonically incremented each time
+  /// we issue a GC command so that none of the messages are dropped.
+  int64_t gc_command_sync_version_ = 0;
 
   /// The Policy for selecting the worker to kill when the node runs out of memory.
   std::shared_ptr<WorkerKillingPolicy> worker_killing_policy_;
