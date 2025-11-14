@@ -264,10 +264,7 @@ def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_su
         assert 'Field "double" exists 2 times' in str(exc_info.value.cause)
     else:
 
-        joined_pd = pd.DataFrame(joined.take_all())
-
-        # Sort resulting frame and reset index (to be able to compare with expected one)
-        joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
+        joined_pd = pd.DataFrame(joined.take_all()).reset_index(drop=True)
 
         # Join using Pandas (to assert against)
         expected_pd = doubles_pd.join(
@@ -278,7 +275,7 @@ def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_su
             rsuffix=right_suffix,
         ).reset_index(drop=True)
 
-        assert rows_same(expected_pd, joined_pd_sorted), "Expected contents to be same"
+        assert rows_same(expected_pd, joined_pd), "Expected contents to be same"
 
 
 def test_invalid_join_config(ray_start_regular_shared_2_cpus):
