@@ -40,8 +40,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FAIL_ON_RANK_ERROR,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
-    RAY_SERVE_OUTBOUND_DEPLOYMENTS_INITIAL_POLL_DELAY_S,
-    RAY_SERVE_OUTBOUND_DEPLOYMENTS_MAX_POLL_DELAY_S,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
@@ -940,68 +938,6 @@ class ActorReplicaWrapper:
             0.9, 1.1
         )
         return time_since_last > randomized_period
-
-    def _should_poll_outbound_deployments(self, poll_period_s: float) -> bool:
-        """Determine if a new outbound deployments poll should be kicked off.
-
-        A poll will be started if:
-            1) There's not already an active poll.
-            2) It has been more than poll_period_s since the previous poll was *started*.
-
-        This assumes that self._outbound_deployments_ref is reset to `None`
-        when an active poll succeeds or fails.
-
-        Args:
-            poll_period_s: The period between polls in seconds.
-
-        Returns:
-            True if a new poll should be kicked off, False otherwise.
-        """
-        if self._outbound_deployments_ref is not None:
-            # There's already an active poll.
-            return False
-
-        time_since_last = time.time() - self._last_outbound_deployments_poll_time
-        return time_since_last >= poll_period_s
-
-    def poll_outbound_deployments(
-        self, poll_period_s: float
-    ) -> Optional[List[DeploymentID]]:
-        """Poll the replica for its outbound deployments.
-
-        Args:
-            poll_period_s: The period between polls in seconds.
-
-        Returns:
-            The cached outbound deployments if available, None otherwise.
-        """
-        # Check if there's a pending poll result
-        if self._outbound_deployments_ref is not None:
-            if check_obj_ref_ready_nowait(self._outbound_deployments_ref):
-                try:
-                    self._outbound_deployments = ray.get(self._outbound_deployments_ref)
-                except Exception:
-                    logger.exception(
-                        f"Exception when trying to get outbound deployments from {self._replica_id}:\n"
-                        + traceback.format_exc()
-                    )
-                finally:
-                    self._outbound_deployments_ref = None
-
-        # Initiate a new poll if needed
-        if self._should_poll_outbound_deployments(poll_period_s):
-            self._last_outbound_deployments_poll_time = time.time()
-            try:
-                self._outbound_deployments_ref = (
-                    self._actor_handle.list_outbound_deployments.remote()
-                )
-            except Exception:
-                logger.exception(
-                    f"Failed to initiate outbound deployments poll for {self._replica_id}"
-                )
-                self._outbound_deployments_ref = None
-
-        return self._outbound_deployments
 
     def check_health(self) -> bool:
         """Check if the actor is healthy.
@@ -1992,15 +1928,6 @@ class DeploymentState:
         self._docs_path: Optional[str] = None
         self._route_patterns: Optional[List[str]] = None
 
-        # Outbound deployments polling state
-        self._outbound_deployments_cache: Optional[List[DeploymentID]] = None
-        self._outbound_poll_delay: float = (
-            RAY_SERVE_OUTBOUND_DEPLOYMENTS_INITIAL_POLL_DELAY_S
-        )
-        self._max_outbound_poll_delay: float = (
-            RAY_SERVE_OUTBOUND_DEPLOYMENTS_MAX_POLL_DELAY_S
-        )
-
     def should_autoscale(self) -> bool:
         """
         Check if the deployment is under autoscaling
@@ -2377,10 +2304,6 @@ class DeploymentState:
             # Otherwise, the deployment configuration has actually been updated.
             self._curr_status_info = self._curr_status_info.handle_transition(
                 trigger=DeploymentStatusInternalTrigger.CONFIG_UPDATE
-            )
-            # Reset outbound deployments poll delay to quickly poll the new version
-            self._outbound_poll_delay = (
-                RAY_SERVE_OUTBOUND_DEPLOYMENTS_INITIAL_POLL_DELAY_S
             )
 
         logger.info(
