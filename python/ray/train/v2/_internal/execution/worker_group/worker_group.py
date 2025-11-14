@@ -62,6 +62,7 @@ from ray.train.v2._internal.util import (
     ray_get_safe,
     time_monotonic,
 )
+from ray.train.v2.api.config import TPUAcceleratorConfig
 from ray.types import ObjectRef
 from ray.util.placement_group import (
     PlacementGroup,
@@ -72,6 +73,7 @@ from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
+from ray.util.tpu import SlicePlacementGroup, get_tpu_version_from_type
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +166,10 @@ class WorkerGroup(BaseWorkerGroup):
         # Maps world rank to the ongoing poll task.
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
         self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
+
+        # For multi-host accelerators, store slice PG handle for clean-up.
+        self._slice_placement_group_handle: Optional[SlicePlacementGroup] = None
+
         # Environment variables
         self._worker_group_start_timeout_s = float(
             os.environ.get(
@@ -253,6 +259,18 @@ class WorkerGroup(BaseWorkerGroup):
         self._assert_inactive()
         worker_group_context = self._worker_group_context
 
+        scaling_config = self._train_run_context.scaling_config
+        pg: Optional[PlacementGroup] = None
+
+        if isinstance(scaling_config.accelerator_config, TPUAcceleratorConfig):
+            if scaling_config.accelerator_config.topology:
+                # Utilize SlicePlacementGroup scheduling logic when a specific TPU
+                # topology is specified.
+                pg, worker_group_context = self._setup_tpu_placement_group(
+                    scaling_config.accelerator_config, worker_group_context
+                )
+                self._worker_group_context = worker_group_context
+
         WorkerGroup._check_cluster_resources_and_raise_if_insufficient(
             worker_group_context.resources_per_worker,
             worker_group_context.num_workers,
@@ -288,6 +306,7 @@ class WorkerGroup(BaseWorkerGroup):
                 ray.get(pg.ready(), timeout=self._worker_group_start_timeout_s)
             except GetTimeoutError as timeout_exc:
                 remove_placement_group(pg)
+                self._cleanup_slice_pg()
                 raise WorkerGroupStartupTimeoutError(
                     num_workers=worker_group_context.num_workers
                 ) from timeout_exc
@@ -438,9 +457,71 @@ class WorkerGroup(BaseWorkerGroup):
 
         self._decorate_worker_log_file_paths(workers)
 
+    def _setup_tpu_placement_group(
+        self,
+        tpu_config: TPUAcceleratorConfig,
+        worker_group_context: WorkerGroupContext,
+    ) -> (PlacementGroup, WorkerGroupContext):
+        """
+        Reserves TPU slices using the SlicePlacementGroup utility and
+        returns the resolved PG and WorkerGroupContext.
+
+        This method mutates `self._train_run_context.scaling_config` as side effects,
+        resolving the values of `num_workers` and `resources_per_worker` if unspecified.
+        """
+        logger.info(
+            f"Using SlicePlacementGroup utility to reserve {tpu_config.num_slices} "
+            f"slice(s) with topology '{tpu_config.topology}'..."
+        )
+
+        scaling_config = self._train_run_context.scaling_config
+        resources_per_bundle = scaling_config.resources_per_worker
+
+        try:
+            accelerator_version = get_tpu_version_from_type(tpu_config.accelerator_type)
+            spg_handle = SlicePlacementGroup(
+                topology=tpu_config.topology,
+                accelerator_version=accelerator_version,
+                num_slices=tpu_config.num_slices,
+                resources_per_bundle=resources_per_bundle,
+                strategy=worker_group_context.placement_strategy,
+            )
+
+            self._slice_placement_group_handle = spg_handle
+            self._head_pgs = spg_handle.head_placement_groups
+            pg = spg_handle.placement_group
+
+            # Use the handle's resolved properties
+            final_num_workers = spg_handle.num_bundles
+            final_resources = spg_handle.bundle_resources
+
+        except Exception as e:
+            self._cleanup_slice_pg()
+            raise ValueError(f"Failed to reserve TPU slice(s): {e}") from e
+
+        scaling_config.num_workers = final_num_workers
+        scaling_config.resources_per_worker = final_resources
+
+        new_worker_group_context = WorkerGroupContext(
+            run_attempt_id=worker_group_context.run_attempt_id,
+            train_fn_ref=worker_group_context.train_fn_ref,
+            num_workers=final_num_workers,
+            resources_per_worker=final_resources,
+            placement_strategy=worker_group_context.placement_strategy,
+            bundle_label_selector=None,
+        )
+        return pg, new_worker_group_context
+
     #####################################################################################
     # Shutdown Worker Group
     #####################################################################################
+
+    def _cleanup_slice_pg(self):
+        """Removes the internal slice placement group used to reserve slices."""
+        if self._slice_placement_group_handle:
+            self._slice_placement_group_handle.shutdown()
+            self._slice_placement_group_handle = None
+            return
 
     def shutdown(self):
         """Shutdown all the workers in this worker group."""
@@ -455,6 +536,7 @@ class WorkerGroup(BaseWorkerGroup):
 
                 self._worker_group_state.shutdown()
 
+            self._cleanup_slice_pg()
             self._clear_state()
 
             logger.debug("Worker group shutdown successful.")
