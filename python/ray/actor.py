@@ -1531,10 +1531,16 @@ class ActorClass(Generic[T]):
                 updated_options["get_if_exists"] = False  # prevent infinite loop
                 try:
                     return self._remote(args, kwargs, **updated_options)
-                except ValueError:
-                    # We lost the creation race, ignore.
-                    pass
-                return ray.get_actor(name, namespace=namespace)
+                except ValueError as e:
+                    try:
+                        # It's possible that the actor was created between the first and second get_actor calls.
+                        # Try to get it again to see if it's there.
+                        return ray.get_actor(name, namespace=namespace)
+                    except ValueError:
+                        # Raise the exception from `_remote` instead of `get_actor` because it may indicate
+                        # that the actor failed some validation. For example, scheduling an actor into a placement
+                        # group with insufficient resources.
+                        raise e
 
         # We pop the "concurrency_groups" coming from "@ray.remote" here. We no longer
         # need it in "_remote()".
