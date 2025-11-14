@@ -3,28 +3,28 @@ from typing import List, Optional
 
 import pytest
 
+from ray_release.result import (
+    Result,
+    ResultStatus,
+)
 from ray_release.test import (
     Test,
     TestResult,
     TestState,
 )
-from ray_release.result import (
-    Result,
-    ResultStatus,
-)
-from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
 from ray_release.test_automation.ci_state_machine import (
-    CITestStateMachine,
     CONTINUOUS_FAILURE_TO_FLAKY,
     CONTINUOUS_PASSING_TO_PASSING,
     FAILING_TO_FLAKY_MESSAGE,
-    JAILED_TAG,
     JAILED_MESSAGE,
+    JAILED_TAG,
+    CITestStateMachine,
 )
+from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
 from ray_release.test_automation.state_machine import (
-    TestStateMachine,
-    WEEKLY_RELEASE_BLOCKER_TAG,
     NO_TEAM,
+    WEEKLY_RELEASE_BLOCKER_TAG,
+    TestStateMachine,
 )
 
 

@@ -26,6 +26,9 @@ config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     concurrency=1,  # 1 vLLM engine replica
     batch_size=32,  # 32 samples per batch
+    engine_kwargs={
+        "max_model_len": 4096, # Fit into test GPU memory
+    }
 )
 
 # Build processor

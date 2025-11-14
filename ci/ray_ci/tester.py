@@ -4,7 +4,6 @@ from typing import List, Optional, Set, Tuple
 
 import click
 import yaml
-from ray_release.test import Test, TestState
 
 from ci.ray_ci.builder_container import BuilderContainer
 from ci.ray_ci.configs import (
@@ -18,6 +17,8 @@ from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import ci_init, ecr_docker_login
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
+
+from ray_release.test import Test, TestState
 
 CUDA_COPYRIGHT = """
 ==========

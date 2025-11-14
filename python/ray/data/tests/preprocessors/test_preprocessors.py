@@ -417,6 +417,50 @@ def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors)
     )
 
 
+def test_get_input_output_columns():
+    """Tests get_input_columns() and get_output_columns() methods."""
+    # Test with preprocessors that have columns attribute
+    scaler = StandardScaler(columns=["A", "B"])
+    assert scaler.get_input_columns() == ["A", "B"]
+    assert scaler.get_output_columns() == ["A", "B"]
+
+    # Test with output_columns specified
+    scaler_with_output = StandardScaler(
+        columns=["A", "B"], output_columns=["A_scaled", "B_scaled"]
+    )
+    assert scaler_with_output.get_input_columns() == ["A", "B"]
+    assert scaler_with_output.get_output_columns() == ["A_scaled", "B_scaled"]
+
+    # Test with encoders
+    encoder = OneHotEncoder(columns=["X", "Y"])
+    assert encoder.get_input_columns() == ["X", "Y"]
+    assert encoder.get_output_columns() == ["X", "Y"]
+
+    encoder_with_output = OneHotEncoder(
+        columns=["X", "Y"], output_columns=["X_encoded", "Y_encoded"]
+    )
+    assert encoder_with_output.get_input_columns() == ["X", "Y"]
+    assert encoder_with_output.get_output_columns() == ["X_encoded", "Y_encoded"]
+
+    # Test LabelEncoder without output_column (in-place transformation)
+    label_encoder = LabelEncoder(label_column="target")
+    assert label_encoder.get_input_columns() == ["target"]
+    assert label_encoder.get_output_columns() == ["target"]
+
+    # Test LabelEncoder with output_column (append mode)
+    label_encoder = LabelEncoder(label_column="target", output_column="target_encoded")
+    assert label_encoder.get_input_columns() == ["target"]
+    assert label_encoder.get_output_columns() == ["target_encoded"]
+
+    # Test with preprocessor without columns attribute
+    class CustomPreprocessor(Preprocessor):
+        _is_fittable = False
+
+    custom = CustomPreprocessor()
+    assert custom.get_input_columns() == []
+    assert custom.get_output_columns() == []
+
+
 if __name__ == "__main__":
     import sys
 

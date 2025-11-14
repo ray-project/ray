@@ -11,6 +11,7 @@ from ray._common.utils import get_system_memory
 from ray._private import (
     ray_constants,
 )
+from ray._private.grpc_utils import init_grpc_channel
 from ray._private.state_api_test_utils import verify_failed_task
 from ray._private.test_utils import raw_metrics
 from ray._private.utils import get_used_memory
@@ -25,7 +26,7 @@ expected_worker_eviction_message = (
 
 
 def get_local_state_client():
-    gcs_channel = ray._private.utils.init_grpc_channel(
+    gcs_channel = init_grpc_channel(
         ray.worker._global_node.gcs_address,
         ray_constants.GLOBAL_GRPC_OPTIONS,
         asynchronous=True,

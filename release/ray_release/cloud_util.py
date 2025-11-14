@@ -1,13 +1,13 @@
-import random
-import string
-from typing import Optional, Tuple
-import time
 import os
+import random
 import shutil
+import string
+import time
+from typing import Optional, Tuple
 from urllib.parse import urlparse
 
-from azure.storage.blob import BlobServiceClient
 from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobServiceClient
 
 from ray_release.logger import logger
 

@@ -8,12 +8,12 @@ from typing import Dict, Optional
 
 from ray._raylet import AuthenticationTokenLoader, Config
 
-_AUTH_ENV_VARS = ("RAY_auth_mode", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH")
+_AUTH_ENV_VARS = ("RAY_AUTH_MODE", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH")
 _DEFAULT_AUTH_TOKEN_RELATIVE_PATH = Path(".ray") / "auth_token"
 
 
 def reset_auth_token_state() -> None:
-    """Reset authentication token and auth_mode ray config."""
+    """Reset authentication token and AUTH_MODE ray config."""
 
     AuthenticationTokenLoader.instance().reset_cache()
     Config.initialize("")
@@ -22,7 +22,7 @@ def reset_auth_token_state() -> None:
 def set_auth_mode(mode: str) -> None:
     """Set the authentication mode environment variable."""
 
-    os.environ["RAY_auth_mode"] = mode
+    os.environ["RAY_AUTH_MODE"] = mode
 
 
 def set_env_auth_token(token: str) -> None:

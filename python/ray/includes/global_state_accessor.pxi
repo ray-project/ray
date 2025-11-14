@@ -44,10 +44,6 @@ cdef class GlobalStateAccessor:
             result = self.inner.get().Connect()
         return result
 
-    def disconnect(self):
-        with nogil:
-            self.inner.get().Disconnect()
-
     def get_job_table(
         self, *, skip_submission_job_info_field=False, skip_is_running_tasks_field=False
     ):

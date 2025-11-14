@@ -175,6 +175,14 @@ class TestConcatenator:
             with pytest.raises(ValueError):
                 pd_ds = prep._transform_pandas(df)
 
+    def test_concatenator_deserialize_backward_compat(self):
+        p1 = Concatenator(columns=["A"], flatten=True)
+        delattr(p1, "flatten")
+        data = p1.serialize()
+        p2 = Concatenator.deserialize(data)
+        assert isinstance(p2, Concatenator)
+        assert p2.flatten is False
+
 
 if __name__ == "__main__":
     import sys
