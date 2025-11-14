@@ -16,6 +16,7 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import run_string_as_driver
+from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
 )
@@ -28,12 +29,12 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     TaskDurationStats,
 )
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import (
     DatasetStats,
     NodeMetrics,
-    StatsManager,
-    _get_or_create_stats_actor,
     _StatsActor,
+    get_or_create_stats_actor,
 )
 from ray.data._internal.util import MemoryProfiler
 from ray.data.context import DataContext
@@ -381,7 +382,7 @@ def dummy_map_batches_sleep(n):
 @contextmanager
 def patch_update_stats_actor():
     with patch(
-        "ray.data._internal.stats.StatsManager.update_execution_metrics"
+        "ray.data._internal.stats._StatsManager.update_execution_metrics"
     ) as update_fn:
         yield update_fn
 
@@ -389,10 +390,8 @@ def patch_update_stats_actor():
 @contextmanager
 def patch_update_stats_actor_iter():
     with patch(
-        "ray.data._internal.stats.StatsManager.update_iteration_metrics"
-    ) as update_fn, patch(
-        "ray.data._internal.stats.StatsManager.clear_iteration_metrics"
-    ):
+        "ray.data._internal.stats._StatsManager.update_iteration_metrics"
+    ) as update_fn:
         yield update_fn
 
 
@@ -1659,9 +1658,7 @@ def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
                 sum_metrics[metric] += value
         return sum_metrics
 
-    with patch(
-        "ray.data._internal.stats.StatsManager._get_or_create_stats_actor"
-    ) as mock_get_actor:
+    with patch("ray.data._internal.stats.get_or_create_stats_actor") as mock_get_actor:
         mock_actor_handle = MagicMock()
         mock_get_actor.return_value = mock_actor_handle
 
@@ -1707,9 +1704,7 @@ def test_per_node_metrics_toggle(
     ctx = DataContext.get_current()
     ctx.enable_per_node_metrics = enable_metrics
 
-    with patch(
-        "ray.data._internal.stats.StatsManager._get_or_create_stats_actor"
-    ) as mock_get_actor:
+    with patch("ray.data._internal.stats.get_or_create_stats_actor") as mock_get_actor:
         mock_actor_handle = MagicMock()
         mock_get_actor.return_value = mock_actor_handle
 
@@ -2058,7 +2053,7 @@ def test_stats_actor_datasets(ray_start_cluster):
     ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
     ds.set_name("test_stats_actor_datasets")
     ds.materialize()
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
 
     datasets = ray.get(stats_actor.get_datasets.remote())
     dataset_name = list(filter(lambda x: x.startswith(ds.name), datasets))
@@ -2095,7 +2090,7 @@ def test_stats_actor_datasets_eviction(ray_start_cluster):
     # Patch the function that retrieves the stats actor to return our
     # test-specific actor instance.
     with patch(
-        "ray.data._internal.stats._get_or_create_stats_actor",
+        "ray.data._internal.stats.get_or_create_stats_actor",
         return_value=stats_actor,
     ):
 
@@ -2154,53 +2149,51 @@ def test_stats_actor_datasets_eviction(ray_start_cluster):
         wait_for_condition(check_eviction)
 
 
-@patch.object(StatsManager, "STATS_ACTOR_UPDATE_INTERVAL_SECONDS", new=0.5)
-@patch.object(StatsManager, "_stats_actor_handle")
-@patch.object(StatsManager, "UPDATE_THREAD_INACTIVITY_LIMIT", new=1)
-def test_stats_manager(shutdown_only):
+# Setting internal=10000 (super high number) value so they are only called
+# once (on cold start), and on shutdown.
+@patch.object(StreamingExecutor, "UPDATE_METRICS_INTERVAL_S", new=10000)
+@patch.object(BatchIterator, "UPDATE_METRICS_INTERVAL_S", new=10000)
+@patch("ray.data._internal.stats.get_or_create_stats_actor")
+def test_stats_manager(mock_get_or_create, shutdown_only):
+
+    # Configure what get_or_create_stats_actor() returns
+    mock_actor = MagicMock()
+    mock_get_or_create.return_value = mock_actor
+
     ray.init()
     num_threads = 10
 
     datasets = [None] * num_threads
-    # Mock clear methods so that _last_execution_stats and _last_iteration_stats
-    # are not cleared. We will assert on them afterwards.
-    with (
-        patch.object(StatsManager, "clear_last_execution_stats"),
-        patch.object(StatsManager, "clear_iteration_metrics"),
-    ):
 
-        def update_stats_manager(i):
-            datasets[i] = ray.data.range(10).map_batches(lambda x: x)
-            for _ in datasets[i].iter_batches(batch_size=1):
-                pass
+    def update_stats_manager(i):
+        datasets[i] = ray.data.range(10).map_batches(lambda x: x)
+        for _ in datasets[i].iter_batches(batch_size=1):
+            pass
 
-        threads = [
-            threading.Thread(target=update_stats_manager, args=(i,), daemon=True)
-            for i in range(num_threads)
-        ]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
+    threads = [
+        threading.Thread(target=update_stats_manager, args=(i,), daemon=True)
+        for i in range(num_threads)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
 
-    assert len(StatsManager._last_execution_stats) == num_threads
-    assert len(StatsManager._last_iteration_stats) == num_threads
+    # Count calls to register_dataset.remote()
+    register_dataset_calls = mock_actor.register_dataset.remote.call_count
+    # Count calls to update_iteration_metrics.remote()
+    iteration_calls = mock_actor.update_iteration_metrics.remote.call_count
+    # Count calls to update_execution_metrics.remote()
+    execution_calls = mock_actor.update_execution_metrics.remote.call_count
 
-    # Clear dataset tags manually.
-    for dataset in datasets:
-        dataset_tag = dataset.get_dataset_id()
-        assert dataset_tag in StatsManager._last_execution_stats
-        assert dataset_tag in StatsManager._last_iteration_stats
-        StatsManager.clear_last_execution_stats(dataset_tag)
-        StatsManager.clear_iteration_metrics(dataset_tag)
+    # Each thread handles 1 dataset.
+    assert register_dataset_calls == num_threads
 
-    wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
-    prev_thread = StatsManager._update_thread
-
-    ray.data.range(100).map_batches(lambda x: x).materialize()
-    # Check that a new different thread is spawned.
-    assert StatsManager._update_thread != prev_thread
-    wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
+    # Since interval is set to high value, the number of execution
+    # calls will update on the first update (cold start), and on shutdown,
+    # which is 2 for each thread.
+    assert execution_calls == 2 * num_threads
+    assert iteration_calls == 2 * num_threads
 
 
 def test_stats_manager_stale_actor_handle(ray_start_cluster):
