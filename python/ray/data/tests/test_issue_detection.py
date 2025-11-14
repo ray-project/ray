@@ -99,47 +99,54 @@ class TestHangingExecutionIssueDetector:
         log_output = log_capture.getvalue()
         assert re.search(warn_msg, log_output) is not None, log_output
 
-    @patch('ray.data._internal.issue_detection.detectors.hanging_detector.HangingExecutionIssueDetector._is_task_hanging')
     def test_hanging_detector_detects_issues(
-      self, mock_is_hanging, caplog, propagate_logs, restore_data_context
+        self, caplog, propagate_logs, restore_data_context
     ):
         """Test hanging detector adaptive thresholds with real Ray Data pipelines and extreme configurations."""
 
-        # Mock the hanging check to return True for the second call and False for others
-        call_count = 0
-        def mock_hanging_check(curr_time, threshold):
-            nonlocal call_count
-            call_count += 1
-            return call_count == 2
+        from ray.data._internal.issue_detection.detectors.hanging_detector import (
+            HangingExecutionState as RealHangingExecutionState,
+        )
 
-        mock_is_hanging.side_effect = mock_hanging_check
+        def mock_state_constructor(**kwargs):
+            # set start_time_hanging to 0 for task with task_idx == 1 to make
+            # time.perf_counter() - state_value.start_time_hanging large
+            if kwargs.get("task_idx") == 1:
+                kwargs["start_time_hanging"] = 0.0
+            # Call the real class with kwargs modified
+            return RealHangingExecutionState(**kwargs)
 
-        ctx = DataContext.get_current()
-        # Configure hanging detector with extreme std_factor values
-        ctx.issue_detectors_config.hanging_detector_config = (
-            HangingExecutionIssueDetectorConfig(
-                op_task_stats_min_count=1,
-                op_task_stats_std_factor=1,
-                detection_time_interval_s=0,
+        with patch(
+            "ray.data._internal.issue_detection.detectors.hanging_detector.HangingExecutionState"
+        ) as mock_state_cls:
+            mock_state_cls.side_effect = mock_state_constructor
+
+            ctx = DataContext.get_current()
+            # Configure hanging detector with extreme std_factor values
+            ctx.issue_detectors_config.hanging_detector_config = (
+                HangingExecutionIssueDetectorConfig(
+                    op_task_stats_min_count=1,
+                    op_task_stats_std_factor=1,
+                    detection_time_interval_s=0,
+                )
             )
-        )
 
-        # Create a pipeline with many small blocks to ensure concurrent tasks
-        def sleep_task(x):
-            return x
+            # Create a pipeline with many small blocks to ensure concurrent tasks
+            def sleep_task(x):
+                return x
 
-        with caplog.at_level(logging.WARNING):
-            ray.data.range(3, override_num_blocks=3).map(
-                sleep_task, concurrency=1
-            ).materialize()
+            with caplog.at_level(logging.WARNING):
+                ray.data.range(3, override_num_blocks=3).map(
+                    sleep_task, concurrency=1
+                ).materialize()
 
-        # Check if hanging detection occurred
-        hanging_detected = (
-            "has been running for" in caplog.text
-            and "longer than the average task duration" in caplog.text
-        )
+            # Check if hanging detection occurred
+            hanging_detected = (
+                "has been running for" in caplog.text
+                and "longer than the average task duration" in caplog.text
+            )
 
-        assert hanging_detected, caplog.text
+            assert hanging_detected, caplog.text
 
 
 @pytest.mark.parametrize(

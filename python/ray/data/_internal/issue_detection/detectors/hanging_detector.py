@@ -143,12 +143,12 @@ class HangingExecutionIssueDetector(IssueDetector):
             op_task_stats = op_task_stats_map[op_id]
             for task_idx, state_value in op_state_values.items():
                 curr_time = time.perf_counter() - state_value.start_time_hanging
-                if op_task_stats.count() > self._op_task_stats_min_count:
+                if op_task_stats.count() >= self._op_task_stats_min_count:
                     mean = op_task_stats.mean()
                     stddev = op_task_stats.stddev()
                     threshold = mean + self._op_task_stats_std_factor_threshold * stddev
 
-                    if self._is_task_hanging(curr_time, threshold):
+                    if curr_time > threshold:
                         hanging_op_tasks.append(state_value)
 
         # create issues for newly detected hanging tasks, then update the hanging task set
@@ -158,13 +158,6 @@ class HangingExecutionIssueDetector(IssueDetector):
         )
 
         return issues
-
-    def _is_task_hanging(self, curr_time: float, threshold: float) -> bool:
-        """Check if a task is hanging based on current time and threshold.
-
-        This method is extracted to allow mocking in tests.
-        """
-        return curr_time > threshold
 
     def detection_time_interval_s(self) -> float:
         return self._detector_cfg.detection_time_interval_s
