@@ -243,15 +243,14 @@ TEST_F(LeaseDependencyManagerTest, TestLeaseArgEviction) {
 TEST_F(LeaseDependencyManagerTest, TestCancelingSingleGetRequestForWorker) {
   WorkerID worker_id = WorkerID::FromRandom();
   int num_requests = 5;
-  std::vector<GetRequestId> requests;
-  for (int i = 0; i < num_requests; i++) {
+  for (int64_t i = 0; i < num_requests; i++) {
     ObjectID argument_id = ObjectID::FromRandom();
-    requests.emplace_back(lease_dependency_manager_.StartGetRequest(
-        worker_id, ObjectIdsToRefs({argument_id})));
+    lease_dependency_manager_.StartGetRequest(
+        worker_id, ObjectIdsToRefs({argument_id}), i);
   }
   ASSERT_EQ(object_manager_mock_.active_get_requests.size(), num_requests);
-  for (int i = 0; i < num_requests; i++) {
-    lease_dependency_manager_.CancelGetRequest(worker_id, requests[i]);
+  for (int64_t i = 0; i < num_requests; i++) {
+    lease_dependency_manager_.CancelGetRequest(worker_id, i);
     ASSERT_EQ(object_manager_mock_.active_get_requests.size(), num_requests - (i + 1));
   }
   AssertNoLeaks();
@@ -260,11 +259,10 @@ TEST_F(LeaseDependencyManagerTest, TestCancelingSingleGetRequestForWorker) {
 TEST_F(LeaseDependencyManagerTest, TestCancelingAllGetRequestsForWorker) {
   WorkerID worker_id = WorkerID::FromRandom();
   int num_requests = 5;
-  std::vector<GetRequestId> requests;
-  for (int i = 0; i < num_requests; i++) {
+  for (int64_t i = 0; i < num_requests; i++) {
     ObjectID argument_id = ObjectID::FromRandom();
-    requests.emplace_back(lease_dependency_manager_.StartGetRequest(
-        worker_id, ObjectIdsToRefs({argument_id})));
+    lease_dependency_manager_.StartGetRequest(
+        worker_id, ObjectIdsToRefs({argument_id}), i);
   }
   ASSERT_EQ(object_manager_mock_.active_get_requests.size(), num_requests);
   lease_dependency_manager_.CancelGetRequest(worker_id);

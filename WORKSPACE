@@ -66,6 +66,12 @@ python_register_toolchains(
     register_toolchains = False,
 )
 
+python_register_toolchains(
+    name = "python3_10",
+    python_version = "3.10",
+    register_toolchains = False,
+)
+
 load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
 
@@ -83,11 +89,12 @@ load("@py_deps_buildkite//:requirements.bzl", install_py_deps_buildkite = "insta
 
 install_py_deps_buildkite()
 
-register_toolchains("//:python_toolchain")
+register_toolchains("//bazel:py39_toolchain")
 
 register_execution_platforms(
     "@local_config_platform//:host",
-    "//:hermetic_python_platform",
+    "//bazel:py39_platform",
+    "//bazel:py310_platform",
 )
 
 http_archive(
