@@ -3113,6 +3113,9 @@ class DeploymentState:
         result: Set[DeploymentID] = set()
         has_outbound_deployments = False
         for replica in self._replicas.get([ReplicaState.RUNNING]):
+            if replica.version != self._target_state.version:
+                # Only consider replicas of the target version
+                continue
             outbound_deployments = replica.get_outbound_deployments()
             if outbound_deployments is not None:
                 result.update(outbound_deployments)

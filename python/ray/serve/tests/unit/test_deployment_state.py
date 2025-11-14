@@ -5603,7 +5603,7 @@ class TestDeploymentRankManagerIntegrationE2E:
         }, f"Expected ranks [0, 1, 2], got {ranks_mapping.values()}"
 
 
-class TestOutboundDeploymentsPoll:
+class TestGetOutboundDeployments:
     def test_basic_outbound_deployments(self, mock_deployment_state_manager):
         """Test that outbound deployments are returned."""
         create_dsm, _, _, _ = mock_deployment_state_manager
@@ -5681,6 +5681,64 @@ class TestOutboundDeploymentsPoll:
         dsm.update()
         outbound_deployments = ds.get_outbound_deployments()
         assert outbound_deployments == [d1, d2]
+
+    def test_only_considers_replicas_matching_target_version(
+        self, mock_deployment_state_manager
+    ):
+        """Test that only replicas with target version are considered.
+
+        When a new version is deployed, old version replicas that are still
+        running should not be included in the outbound deployments result.
+        """
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+
+        # Deploy version 1
+        b_info_1, v1 = deployment_info(version="1")
+        dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+
+        # Get v1 replica to RUNNING state
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+
+        # Set outbound deployments for v1 replica
+        d1 = DeploymentID(name="dep1", app_name="test_app")
+        d2 = DeploymentID(name="dep2", app_name="test_app")
+        ds._replicas.get()[0]._actor._outbound_deployments = [d1, d2]
+
+        # Verify v1 outbound deployments are returned
+        assert ds.get_outbound_deployments() == [d1, d2]
+
+        # Deploy version 2 - this triggers rolling update
+        b_info_2, v2 = deployment_info(version="2")
+        dsm.deploy(TEST_DEPLOYMENT_ID, b_info_2)
+        dsm.update()
+
+        # Now we have v1 stopping and v2 starting
+        check_counts(
+            ds,
+            total=2,
+            by_state=[(ReplicaState.STOPPING, 1, v1), (ReplicaState.STARTING, 1, v2)],
+        )
+
+        # Key test: Even though v1 replica exists (stopping), it should not be
+        # included because target version is v2. Since v2 is not RUNNING yet,
+        # should return None.
+        assert ds.get_outbound_deployments() is None
+
+        # Set outbound deployments for v2 replica and mark it ready
+        d3 = DeploymentID(name="dep3", app_name="test_app")
+        ds._replicas.get(states=[ReplicaState.STARTING])[
+            0
+        ]._actor._outbound_deployments = [d3]
+        ds._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        dsm.update()
+
+        # Now v2 is running. Should only return v2's outbound deployments (d3),
+        # not v1's outbound deployments (d1, d2).
+        assert ds.get_outbound_deployments() == [d3]
 
 
 if __name__ == "__main__":
