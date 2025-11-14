@@ -149,7 +149,6 @@ class HangingExecutionIssueDetector(IssueDetector):
                     threshold = mean + self._op_task_stats_std_factor_threshold * stddev
 
                     if self._is_task_hanging(curr_time, threshold):
-                        print(f"start time: {state_value.start_time_hanging}, current time: {curr_time}")
                         hanging_op_tasks.append(state_value)
 
         # create issues for newly detected hanging tasks, then update the hanging task set

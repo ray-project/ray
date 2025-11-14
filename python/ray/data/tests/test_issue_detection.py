@@ -106,10 +106,11 @@ class TestHangingExecutionIssueDetector:
         """Test hanging detector adaptive thresholds with real Ray Data pipelines and extreme configurations."""
 
         # Mock the hanging check to return True for the second call and False for others
-        call_count = [0]
+        call_count = 0
         def mock_hanging_check(curr_time, threshold):
-            call_count[0] += 1
-            return call_count[0] == 2
+            nonlocal call_count
+            call_count += 1
+            return call_count == 2
 
         mock_is_hanging.side_effect = mock_hanging_check
 
