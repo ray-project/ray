@@ -34,7 +34,7 @@ processor_config = vLLMEngineProcessorConfig(
     ),
     batch_size=256,
     accelerator_type="L4",
-    compute=4,
+    concurrency=4,
 )
 
 

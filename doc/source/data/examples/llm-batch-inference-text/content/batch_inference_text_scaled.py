@@ -36,7 +36,7 @@ processor_config = vLLMEngineProcessorConfig(
     ),
     batch_size=256,
     accelerator_type="L4",
-    compute=4,
+    concurrency=10,
 )
 
 
@@ -84,6 +84,6 @@ processor = build_llm_processor(
 processed_large = processor(ds_large)
 processed_large = processed_large.materialize()
 # Display the first 3 entries to verify the output.
-sampled = processed_small.take(3)
+sampled = processed_large.take(3)
 print("\n==================GENERATED OUTPUT===============\n")
 pprint(sampled)
