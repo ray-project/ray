@@ -667,7 +667,8 @@ First, install the required dependencies:
 
     pip install huggingface_hub
 
-Then, authenticate using your Hugging Face token:
+Set your Hugging Face token to authenticate. While public datasets can be read without
+a token, you will suffer aggressive rate limiting without a token.
 
 .. code-block:: console
 
