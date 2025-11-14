@@ -144,7 +144,6 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
             try:
                 with self._table.update_schema() as update:
                     update.union_by_name(incoming_schema)
-                return  # Success - exit after finally block reloads table
             except CommitFailedException:
                 if attempt < max_retries - 1:
                     logger.debug(
