@@ -2,7 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import collections
-from typing import TYPE_CHECKING, AsyncGenerator, Deque, Generator, Generic, Iterable, Iterator, NoReturn, Optional, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    AsyncGenerator,
+    Deque,
+    Generator,
+    Generic,
+    Iterable,
+    Iterator,
+    NoReturn,
+    Optional,
+    TypeVar,
+)
 
 import ray
 from ray.exceptions import ObjectRefStreamEndOfStreamError
@@ -12,7 +23,8 @@ if TYPE_CHECKING:
     from ray._private.worker import Worker
 
 
-_R = TypeVar("_R") # for ObjectRefs
+_R = TypeVar("_R")  # for ObjectRefs
+
 
 @DeveloperAPI
 class DynamicObjectRefGenerator(Generic[_R], Iterable["ray.ObjectRef[_R]"]):
@@ -29,9 +41,16 @@ class DynamicObjectRefGenerator(Generic[_R], Iterable["ray.ObjectRef[_R]"]):
     def __len__(self) -> int:
         return len(self._refs)
 
-_ORG = TypeVar("_ORG",bound="ObjectRefGenerator") #Self typing pre-3.11
+
+_ORG = TypeVar("_ORG", bound="ObjectRefGenerator")  # Self typing pre-3.11
+
+
 @PublicAPI
-class ObjectRefGenerator(Generic[_R],Generator["ray.ObjectRef[_R]",None,None],AsyncGenerator["ray.ObjectRef[_R]",None]):
+class ObjectRefGenerator(
+    Generic[_R],
+    Generator["ray.ObjectRef[_R]", None, None],
+    AsyncGenerator["ray.ObjectRef[_R]", None],
+):
     """A generator to obtain object references from a task in a streaming manner.
 
     The class is compatible with the Python generator and async generator interfaces.
@@ -68,7 +87,7 @@ class ObjectRefGenerator(Generic[_R],Generator["ray.ObjectRef[_R]",None,None],As
 
     # Public APIs
 
-    def __iter__(self:_ORG) -> _ORG:
+    def __iter__(self: _ORG) -> _ORG:
         return self
 
     def __next__(self) -> "ray.ObjectRef[_R]":
@@ -93,7 +112,7 @@ class ObjectRefGenerator(Generic[_R],Generator["ray.ObjectRef[_R]",None,None],As
     def close(self) -> NoReturn:
         raise NotImplementedError("`gen.close` is not supported.")
 
-    def __aiter__(self:_ORG) -> _ORG:
+    def __aiter__(self: _ORG) -> _ORG:
         return self
 
     async def __anext__(self) -> "ray.ObjectRef[_R]":
@@ -187,7 +206,9 @@ class ObjectRefGenerator(Generic[_R],Generator["ray.ObjectRef[_R]",None,None],As
         core_worker = self.worker.core_worker
         return core_worker.peek_object_ref_stream(self._generator_ref)[0]
 
-    def _next_sync(self, timeout_s: Optional[int | float] = None) -> "ray.ObjectRef[_R]":  # ObjectRef could be nil here
+    def _next_sync(
+        self, timeout_s: Optional[int | float] = None
+    ) -> "ray.ObjectRef[_R]":  # ObjectRef could be nil here
         """Waits for timeout_s and returns the object ref if available.
 
         If an object is not available within the given timeout, it
@@ -253,7 +274,9 @@ class ObjectRefGenerator(Generic[_R],Generator["ray.ObjectRef[_R]",None,None],As
         except Exception:
             pass
 
-    async def _next_async(self, timeout_s: Optional[int | float] = None) -> "ray.ObjectRef[_R]":  # ObjectRef could be nil here
+    async def _next_async(
+        self, timeout_s: Optional[int | float] = None
+    ) -> "ray.ObjectRef[_R]":  # ObjectRef could be nil here
         """Same API as _next_sync, but it is for async context."""
         core_worker = self.worker.core_worker
         ref, is_ready = core_worker.peek_object_ref_stream(self._generator_ref)
