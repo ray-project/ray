@@ -929,5 +929,7 @@ def enum_representer(dumper, data):
     return dumper.represent_scalar("tag:yaml.org,2002:str", data.value)
 
 
-# Register Enum representer to handle enum serialization in nested structures
-ServeDeploySchemaDumper.add_multi_representer(Enum, enum_representer)
+# Register Enum representer with SafeDumper to handle enum serialization
+# in all YAML dumps (config, status, build commands).
+# Since ServeDeploySchemaDumper extends SafeDumper, this also covers build command.
+yaml.SafeDumper.add_multi_representer(Enum, enum_representer)
