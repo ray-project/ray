@@ -5623,15 +5623,17 @@ class TestOutboundDeploymentsPoll:
         # Set outbound deployments on the mock replica
         running_replicas = ds._replicas.get([ReplicaState.RUNNING])
         assert len(running_replicas) == 1
-        running_replicas[0]._actor._outbound_deployments = ["dep1", "dep2"]
+        d1 = DeploymentID(name="dep1", app_name="test_app")
+        d2 = DeploymentID(name="dep2", app_name="test_app")
+        running_replicas[0]._actor._outbound_deployments = [d1, d2]
 
         outbound_deployments = ds.get_outbound_deployments()
-        assert outbound_deployments == ["dep1", "dep2"]
+        assert outbound_deployments == [d1, d2]
 
         # Verify it's accessible through DeploymentStateManager
         assert dsm.get_deployment_outbound_deployments(deployment_id) == [
-            "dep1",
-            "dep2",
+            d1,
+            d2,
         ]
 
     def test_deployment_state_manager_returns_none_for_nonexistent_deployment(
@@ -5663,8 +5665,12 @@ class TestOutboundDeploymentsPoll:
         dsm.update()
         replicas = ds._replicas.get([ReplicaState.STARTING])
         assert len(replicas) == 2
-        replicas[0]._actor._outbound_deployments = ["dep1", "dep2"]
-        replicas[1]._actor._outbound_deployments = ["dep3", "dep4"]
+        d1 = DeploymentID(name="dep1", app_name="test_app")
+        d2 = DeploymentID(name="dep2", app_name="test_app")
+        d3 = DeploymentID(name="dep3", app_name="test_app")
+        d4 = DeploymentID(name="dep4", app_name="test_app")
+        replicas[0]._actor._outbound_deployments = [d1, d2]
+        replicas[1]._actor._outbound_deployments = [d3, d4]
         dsm.update()
 
         outbound_deployments = ds.get_outbound_deployments()
@@ -5674,7 +5680,7 @@ class TestOutboundDeploymentsPoll:
         replicas[0]._actor.set_ready()
         dsm.update()
         outbound_deployments = ds.get_outbound_deployments()
-        assert outbound_deployments == ["dep1", "dep2"]
+        assert outbound_deployments == [d1, d2]
 
 
 if __name__ == "__main__":
