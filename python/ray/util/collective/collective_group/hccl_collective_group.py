@@ -145,7 +145,22 @@ class HCCLGroup(BaseGroup):
         os.environ["MASTER_ADDR"] = master_addr
         os.environ["MASTER_PORT"] = master_port
         dist.init_process_group(backend="hccl", rank=rank, world_size=world_size)
-        super(HCCLGroup, self).__init__(world_size, rank, group_name)
+        
+        if not dist.is_initialized():  # create new process group
+            dist.init_process_group(backend="hccl", rank=rank, world_size=world_size)
+            self._pg = dist.group.WORLD
+        else:  # process group exists
+            default_pg = dist.group.WORLD
+            try:
+                default_backend = dist.get_backend(default_pg)
+            except Exception:
+                default_backend = None
+
+            if default_backend == "hccl":  # if same backend, simply use existing group
+                self._pg = default_pg
+            else:  # otherwise create separate group
+                self._pg = dist.new_group(ranks=list(range(world_size)))
+
         self._dev_comm_map = {}
         self._dev_streams_map = {}
 
