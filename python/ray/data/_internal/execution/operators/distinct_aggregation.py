@@ -45,8 +45,9 @@ class DistinctAggregation(StatefulShuffleAggregation):
     ):
         super().__init__(aggregator_id)
         self._key_columns = key_columns
-        # Dictionary per partition: {key_tuple -> first_row_with_that_key}
-        self._partition_data: Dict[int, Dict[Tuple, Dict]] = {
+        # Dictionary per partition: {key_tuple -> first_row_dict}
+        # Rows are stored as materialized dicts to ensure data integrity.
+        self._partition_data: Dict[int, Dict[Tuple, Dict[str, Any]]] = {
             partition_id: {} for partition_id in target_partition_ids
         }
 
@@ -83,7 +84,10 @@ class DistinctAggregation(StatefulShuffleAggregation):
         for row in accessor.iter_rows(public_row_format=False):
             key = tuple(row.get(col) for col in key_columns)
             if key not in seen:
-                seen[key] = row
+                # Materialize row data to ensure data integrity.
+                # ArrowRow objects are lightweight views that may become invalid
+                # after the block is garbage collected.
+                seen[key] = row.as_pydict()
 
     def finalize(self, partition_id: int) -> Block:
         """Build and return the deduplicated block for a partition.
