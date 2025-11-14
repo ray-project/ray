@@ -14,6 +14,7 @@ depsets:
     output: release/ray_release/byod/e2e_xgboost_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
+      - --unsafe-package ray
       - --python-platform=linux
     build_arg_sets:
       - py311
