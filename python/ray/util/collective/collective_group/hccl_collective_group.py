@@ -139,23 +139,11 @@ class HCCLGroup(BaseGroup):
                 "Use ray.experimental.collective.create_collective_group to create the group."
             )
 
-        ASCEND_VISIBLE_DEVICES = os.getenv("ASCEND_VISIBLE_DEVICES")
-        if not ASCEND_VISIBLE_DEVICES:
-            raise RuntimeError(
-                "ASCEND_VISIBLE_DEVICES is not set. "
-                "This variable must be defined to initialize HCCL for Ascend NPUs. "
-                "Expected a comma-separated list of physical NPU IDs."
-            )
-
-        devices = [d for d in ASCEND_VISIBLE_DEVICES.split(",") if d]
-        os.environ["ASCEND_RT_VISIBLE_DEVICES"] = ",".join(
-            str(i) for i in range(len(devices))
-        )
         metadata = metadata.decode()
         master_addr, master_port = metadata.split(":")
         os.environ["MASTER_ADDR"] = master_addr
         os.environ["MASTER_PORT"] = master_port
-        torch_npu.npu.set_device(rank)
+
         if not dist.is_initialized():  # create new process group
             dist.init_process_group(backend="hccl", rank=rank, world_size=world_size)
             self._pg = dist.group.WORLD
@@ -170,6 +158,7 @@ class HCCLGroup(BaseGroup):
                 self._pg = default_pg
             else:  # otherwise create separate group
                 self._pg = dist.new_group(ranks=list(range(world_size)))
+
         super(HCCLGroup, self).__init__(world_size, rank, group_name)
         self._dev_comm_map = {}
         self._dev_streams_map = {}
@@ -397,7 +386,7 @@ class HCCLGroup(BaseGroup):
         """
 
         def p2p_fn(tensor: torch.Tensor, comm, stream, peer):
-            with torch.npu.device(dist.get_rank(group=self._pg)):
+            with torch.npu.device(tensor.device.index):
                 exec_result = self.libhccl.HcclSend(
                     buffer_type(tensor.data_ptr()),
                     tensor.numel(),
@@ -425,7 +414,7 @@ class HCCLGroup(BaseGroup):
         """
 
         def p2p_fn(tensor: torch.Tensor, comm, stream, peer):
-            with torch.npu.device(dist.get_rank(group=self._pg)):
+            with torch.npu.device(tensor.device.index):
                 exec_result = self.libhccl.HcclRecv(
                     buffer_type(tensor.data_ptr()),
                     tensor.numel(),
@@ -552,7 +541,7 @@ class HCCLGroup(BaseGroup):
 
         def comm_init_task(i, device):
             device_rank = self.rank * len(device_list) + i
-            with torch.npu.device(dist.get_rank(group=self._pg)):
+            with torch.npu.device(device):
                 comms[i] = hcclComm_t()
                 exec_result = self.libhccl.HcclCommInitRootInfo(
                     device_world_size,
@@ -625,7 +614,7 @@ class HCCLGroup(BaseGroup):
             )
             assert (
                 exec_result == 0
-            ), f"Failed to execute `HcclCommInitRootInfo`. Error code: {exec_result}."
+            ), f"Ranke {self.rank} Failed to execute `HcclCommInitRootInfo`. Error code: {exec_result}."
 
             stream = torch.npu.Stream()
 
@@ -636,8 +625,7 @@ class HCCLGroup(BaseGroup):
 
     def _collective(self, input_tensors, output_tensors, collective_func):
         tensor_devices = get_tensor_device_list(input_tensors)
-        total_devices = get_npu_device_list(pg=self._pg)
-        key = _get_comm_key_from_devices(total_devices)
+        key = _get_comm_key_from_devices(tensor_devices)
         comms = self._get_hccl_collective_communicator(key, tensor_devices)
         streams = self._dev_streams_map[key]
 
@@ -655,12 +643,11 @@ class HCCLGroup(BaseGroup):
         assert len(tensors) == 1
 
         tensor_npu_idx = get_tensor_device(tensors[0])
-        my_npu_idx = get_rank_device(self._pg)
         comm_key = _get_comm_key_send_recv(
-            self.rank, tensor_npu_idx, peer_rank, tensor_npu_idx
+            self.rank, tensor_npu_idx, peer_rank, peer_npu_idx
         )
         comms = self._get_hccl_p2p_communicator(
-            comm_key, my_npu_idx, peer_rank, peer_npu_idx
+            comm_key, tensor_npu_idx, peer_rank, peer_npu_idx
         )
         streams = self._dev_streams_map[comm_key]
 
@@ -707,14 +694,6 @@ def _get_comm_key_from_devices(devices: List[int]):
         str: a string represents the key to query the communicator cache.
     """
     return ",".join([str(d) for d in devices])
-
-
-def get_rank_device(pg):
-    return dist.get_rank(group=pg)
-
-
-def get_npu_device_list(pg):
-    return [i for i in range(dist.get_world_size(group=pg))]
 
 
 def get_tensor_device(tensor):
@@ -819,3 +798,7 @@ def _check_inputs_compatibility_for_scatter_gather(
                     "All tensor operands to scatter/gather must "
                     f"have the same shape. Got '{sl}' and '{shape}'."
                 )
+
+
+def get_num_npus():
+    return torch_npu.npu.device_count()
