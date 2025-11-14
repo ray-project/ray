@@ -96,9 +96,6 @@ class GcsClientOptions {
 /// Before exit, `Disconnect()` must be called.
 class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
  public:
-  // TODO(zac): Remove the parameterless constructor.  It's only used in tests
-  // https://github.com/ray-project/ray/issues/57563
-  // GcsClient() = default;
   /// Constructor of GcsClient.
   ///
   /// \param options Options for client.
@@ -109,7 +106,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// instance
   /// \param client_context A context which supplies lower level functionality
   /// like an rpc client and/or a subscriber
-  explicit GcsClient(const GcsClientOptions &options,
+  explicit GcsClient(GcsClientOptions options,
                      std::string local_address = "",
                      UniqueID gcs_client_id = UniqueID::FromRandom(),
                      std::unique_ptr<AccessorFactoryInterface> accessor_factory = nullptr,

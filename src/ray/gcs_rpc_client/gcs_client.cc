@@ -98,7 +98,7 @@ bool GcsClientOptions::ShouldFetchClusterId(ClusterID cluster_id,
   }
 }
 
-GcsClient::GcsClient(const GcsClientOptions &options,
+GcsClient::GcsClient(GcsClientOptions options,
                      std::string local_address,
                      UniqueID gcs_client_id,
                      std::unique_ptr<AccessorFactoryInterface> accessor_factory,
