@@ -299,6 +299,9 @@ class TestDownloadExpressionErrors:
 
         This tests that various malformed URIs are caught and return None
         instead of crashing.
+
+        All of the URIs should be malformed in order to test the ZeroDivisionError
+        described in https://github.com/ray-project/ray/issues/58462.
         """
         malformed_uris = [
             f"local://{tmp_path}/nonexistent.txt",  # File doesn't exist
@@ -325,10 +328,7 @@ class TestDownloadExpressionErrors:
             assert result["bytes"] is None
 
     def test_download_expression_mixed_valid_and_invalid_uris(self, tmp_path):
-        """Test download expression when every URI is invalid.
-
-        This tests the failed download does not cause division by zero error.
-        """
+        """Test download expression when some but not all of the URIs are invalid."""
         # Create one valid file
         valid_file = tmp_path / "valid.txt"
         valid_file.write_bytes(b"valid content")
