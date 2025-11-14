@@ -1,3 +1,5 @@
+from abc import ABC, abstractmethod
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
 from .operator import Operator
@@ -190,5 +192,43 @@ class LogicalOperatorSupportsPredicatePushdown(LogicalOperator):
         Returns:
             A dictionary mapping old column names to new column names,
             or None if no renaming has been applied.
+        """
+        return None
+
+
+class PredicatePassThroughBehavior(Enum):
+    """Defines how predicates can be passed through through an operator."""
+
+    # Predicate can be pushed through as-is (e.g., Sort, Repartition, RandomShuffle, Limit)
+    PASSTHROUGH = "passthrough"
+
+    # Predicate can be pushed through but needs column rebinding (e.g., Project)
+    PASSTHROUGH_WITH_SUBSTITUTION = "passthrough_with_substitution"
+
+    # Predicate can be pushed into each branch (e.g., Union)
+    PUSH_INTO_BRANCHES = "push_into_branches"
+
+    # Predicate can be conditionally pushed based on columns (e.g., Join)
+    CONDITIONAL = "conditional"
+
+
+class LogicalOperatorSupportsPredicatePassThrough(ABC):
+    """Mixin for operators that allow predicates to be pushed through them.
+
+    This is distinct from LogicalOperatorSupportsPredicatePushdown, which is for
+    operators that can *accept* predicates (like Read). This trait is for operators
+    that allow predicates to *pass through* them.
+    """
+
+    @abstractmethod
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        """Returns the predicate passthrough behavior for this operator."""
+        pass
+
+    def get_column_substitutions(self) -> Optional[Dict[str, str]]:
+        """Returns column renames needed when pushing through (for PASSTHROUGH_WITH_SUBSTITUTION).
+
+        Returns:
+            Dict mapping from old_name -> new_name, or None if no rebinding needed
         """
         return None

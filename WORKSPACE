@@ -51,13 +51,6 @@ load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_
 
 hedron_compile_commands_setup()
 
-http_archive(
-    name = "rules_python",
-    sha256 = "c68bdc4fbec25de5b5493b8819cfc877c4ea299c0dcb15c244c5a00208cde311",
-    strip_prefix = "rules_python-0.31.0",
-    url = "https://github.com/bazelbuild/rules_python/releases/download/0.31.0/rules_python-0.31.0.tar.gz",
-)
-
 load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
 python_register_toolchains(
@@ -73,6 +66,7 @@ python_register_toolchains(
 )
 
 load("@python3_9//:defs.bzl", python39 = "interpreter")
+load("@python3_10//:defs.bzl", python310 = "interpreter")
 load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
 
 pip_install_dependencies()
@@ -85,15 +79,25 @@ pip_parse(
     requirements_lock = "//release:requirements_buildkite.txt",
 )
 
+# For CI scripts use only; not for ray testing.
+pip_parse(
+    name = "py_deps_py310",
+    python_interpreter_target = python310,
+    requirements_lock = "//release:requirements_py310.txt",
+)
+
 load("@py_deps_buildkite//:requirements.bzl", install_py_deps_buildkite = "install_deps")
+load("@py_deps_py310//:requirements.bzl", install_py_deps_py310 = "install_deps")
 
 install_py_deps_buildkite()
+install_py_deps_py310()
 
 register_toolchains("//bazel:py39_toolchain")
 
 register_execution_platforms(
     "@local_config_platform//:host",
-    "//:hermetic_python_platform",
+    "//bazel:py39_platform",
+    "//bazel:py310_platform",
 )
 
 http_archive(

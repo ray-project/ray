@@ -4,7 +4,12 @@ import logging
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
-from ray.data._internal.logical.interfaces import LogicalOperator, SupportsPushThrough
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalOperatorSupportsPredicatePassThrough,
+    PredicatePassThroughBehavior,
+    SupportsPushThrough,
+)
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import Expr, StarExpr
@@ -278,7 +283,7 @@ class Filter(AbstractUDFMap):
         return super()._get_operator_name(op_name, fn)
 
 
-class Project(AbstractMap):
+class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for all Projection Operations."""
 
     def __init__(
@@ -323,6 +328,23 @@ class Project(AbstractMap):
 
     def can_modify_num_rows(self) -> bool:
         return False
+
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        return PredicatePassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
+
+    def get_column_substitutions(self) -> Optional[Dict[str, str]]:
+        """Returns the column renames from this projection.
+
+        Maps source_column_name -> output_column_name. This is what we need
+        to rebind predicates when pushing through.
+        """
+        # Reuse the existing logic from projection pushdown
+        from ray.data._internal.logical.rules.projection_pushdown import (
+            _extract_input_columns_renaming_mapping,
+        )
+
+        rename_map = _extract_input_columns_renaming_mapping(self._exprs)
+        return rename_map if rename_map else None
 
 
 class FlatMap(AbstractUDFMap):

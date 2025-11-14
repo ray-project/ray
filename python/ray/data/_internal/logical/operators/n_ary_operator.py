@@ -1,6 +1,11 @@
 from typing import Dict, List, Optional
 
-from ray.data._internal.logical.interfaces import LogicalOperator, SupportsPushThrough
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalOperatorSupportsPredicatePassThrough,
+    PredicatePassThroughBehavior,
+    SupportsPushThrough,
+)
 
 
 class NAry(LogicalOperator):
@@ -54,7 +59,7 @@ class Zip(NAry, SupportsPushThrough):
         return Zip(*new_input_ops)
 
 
-class Union(NAry, SupportsPushThrough):
+class Union(NAry, SupportsPushThrough, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for union."""
 
     def __init__(
@@ -88,3 +93,7 @@ class Union(NAry, SupportsPushThrough):
             new_input_ops.append(upstream_project)
 
         return Union(*new_input_ops)
+
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        # Union allows pushing filter into each branch
+        return PredicatePassThroughBehavior.PUSH_INTO_BRANCHES

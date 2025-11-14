@@ -116,7 +116,7 @@ from ray.serve.exceptions import (
     RayServeException,
 )
 from ray.serve.handle import DeploymentHandle
-from ray.serve.schema import EncodingType, LoggingConfig
+from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -129,8 +129,9 @@ ReplicaMetadata = Tuple[
     Optional[str],
     int,
     int,
-    int,  # rank
+    ReplicaRank,  # rank
     Optional[List[str]],  # route_patterns
+    Optional[List[DeploymentID]],  # outbound_deployments
 ]
 
 
@@ -510,7 +511,7 @@ class ReplicaBase(ABC):
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
-        rank: int,
+        rank: ReplicaRank,
     ):
         self._version = version
         self._replica_id = replica_id
@@ -604,13 +605,53 @@ class ReplicaBase(ABC):
             self._grpc_port,
             current_rank,
             route_patterns,
+            self.list_outbound_deployments(),
         )
 
     def get_dynamically_created_handles(self) -> Set[DeploymentID]:
         return self._dynamically_created_handles
 
+    def list_outbound_deployments(self) -> List[DeploymentID]:
+        """List all outbound deployment IDs this replica calls into.
+
+        This includes:
+        - Handles created via get_deployment_handle()
+        - Handles passed as init args/kwargs to the deployment constructor
+
+        This is used to determine which deployments are reachable from this replica.
+        The list of DeploymentIDs can change over time as new handles can be created at runtime.
+        Also its not guaranteed that the list of DeploymentIDs are identical across replicas
+        because it depends on user code.
+
+        Returns:
+            A list of DeploymentIDs that this replica calls into.
+        """
+        seen_deployment_ids: Set[DeploymentID] = set()
+
+        # First, collect dynamically created handles
+        for deployment_id in self.get_dynamically_created_handles():
+            seen_deployment_ids.add(deployment_id)
+
+        # Get the init args/kwargs
+        init_args = self._user_callable_wrapper._init_args
+        init_kwargs = self._user_callable_wrapper._init_kwargs
+
+        # Use _PyObjScanner to find all DeploymentHandle objects in:
+        # The init_args and init_kwargs (handles might be passed as init args)
+        scanner = _PyObjScanner(source_type=DeploymentHandle)
+        try:
+            handles = scanner.find_nodes((init_args, init_kwargs))
+
+            for handle in handles:
+                deployment_id = handle.deployment_id
+                seen_deployment_ids.add(deployment_id)
+        finally:
+            scanner.clear()
+
+        return list(seen_deployment_ids)
+
     def _set_internal_replica_context(
-        self, *, servable_object: Callable = None, rank: int = None
+        self, *, servable_object: Callable = None, rank: ReplicaRank = None
     ):
         # Calculate world_size from deployment config instead of storing it
         world_size = self._deployment_config.num_replicas
@@ -961,7 +1002,7 @@ class ReplicaBase(ABC):
     async def reconfigure(
         self,
         deployment_config: DeploymentConfig,
-        rank: int,
+        rank: ReplicaRank,
         route_prefix: Optional[str] = None,
     ):
         try:
@@ -1186,7 +1227,7 @@ class ReplicaActor:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
-        rank: int,
+        rank: ReplicaRank,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -1219,45 +1260,6 @@ class ReplicaActor:
         """
         return self._replica_impl.get_num_ongoing_requests()
 
-    def list_outbound_deployments(self) -> List[DeploymentID]:
-        """List all outbound deployment IDs this replica calls into.
-
-        This includes:
-        - Handles created via get_deployment_handle()
-        - Handles passed as init args/kwargs to the deployment constructor
-
-        This is used to determine which deployments are reachable from this replica.
-        The list of DeploymentIDs can change over time as new handles can be created at runtime.
-        Also its not guaranteed that the list of DeploymentIDs are identical across replicas
-        because it depends on user code.
-
-        Returns:
-            A list of DeploymentIDs that this replica calls into.
-        """
-        seen_deployment_ids: Set[DeploymentID] = set()
-
-        # First, collect dynamically created handles
-        for deployment_id in self._replica_impl.get_dynamically_created_handles():
-            seen_deployment_ids.add(deployment_id)
-
-        # Get the init args/kwargs
-        init_args = self._replica_impl._user_callable_wrapper._init_args
-        init_kwargs = self._replica_impl._user_callable_wrapper._init_kwargs
-
-        # Use _PyObjScanner to find all DeploymentHandle objects in:
-        # The init_args and init_kwargs (handles might be passed as init args)
-        scanner = _PyObjScanner(source_type=DeploymentHandle)
-        try:
-            handles = scanner.find_nodes((init_args, init_kwargs))
-
-            for handle in handles:
-                deployment_id = handle.deployment_id
-                seen_deployment_ids.add(deployment_id)
-        finally:
-            scanner.clear()
-
-        return list(seen_deployment_ids)
-
     async def is_allocated(self) -> str:
         """poke the replica to check whether it's alive.
 
@@ -1280,6 +1282,9 @@ class ReplicaActor:
             ray.util.get_node_instance_id(),
             get_component_logger_file_path(),
         )
+
+    def list_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        return self._replica_impl.list_outbound_deployments()
 
     async def initialize_and_get_metadata(
         self, deployment_config: DeploymentConfig = None, _after: Optional[Any] = None
@@ -1305,7 +1310,7 @@ class ReplicaActor:
         return await self._replica_impl.record_routing_stats()
 
     async def reconfigure(
-        self, deployment_config, rank: int, route_prefix: Optional[str] = None
+        self, deployment_config, rank: ReplicaRank, route_prefix: Optional[str] = None
     ) -> ReplicaMetadata:
         await self._replica_impl.reconfigure(deployment_config, rank, route_prefix)
         return self._replica_impl.get_metadata()
@@ -1802,7 +1807,7 @@ class UserCallableWrapper:
         return result
 
     @_run_user_code
-    async def call_reconfigure(self, user_config: Optional[Any], rank: int):
+    async def call_reconfigure(self, user_config: Optional[Any], rank: ReplicaRank):
         self._raise_if_not_initialized("call_reconfigure")
 
         # NOTE(edoakes): there is the possibility of a race condition in user code if
