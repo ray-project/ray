@@ -4141,7 +4141,7 @@
     script: >
       pytest -sv test_batch_multi_node_vllm.py
 
-- name: llm_batch_single_node_baseline_benchmark
+- name: llm_batch_single_node_baseline_benchmark #noop
   python: "3.10"
   group: llm-batch
   working_dir: llm_tests/batch
