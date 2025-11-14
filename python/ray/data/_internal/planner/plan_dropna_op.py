@@ -18,14 +18,22 @@ import pyarrow.compute as pc
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_transformer import (
+    BlockMapTransformFn,
+    MapTransformer,
+)
 from ray.data._internal.logical.operators.dropna_operator import DropNa
 from ray.data._internal.planner.plan_udf_map_op import (
-    _create_map_transformer_for_block_based_map_op,
     _generate_transform_fn_for_map_block,
     _try_wrap_udf_exception,
     get_compute,
 )
 from ray.data.context import DataContext
+
+
+def _is_floating_or_decimal(column_type: pa.DataType) -> bool:
+    """Check if column type is floating point or decimal."""
+    return pa.types.is_floating(column_type) or pa.types.is_decimal(column_type)
 
 
 def plan_dropna_op(
@@ -68,7 +76,14 @@ def plan_dropna_op(
 
     compute = get_compute(op._compute)
     transform_fn = _generate_transform_fn_for_map_block(fn)
-    map_transformer = _create_map_transformer_for_block_based_map_op(transform_fn)
+    map_transformer = MapTransformer(
+        [
+            BlockMapTransformFn(
+                transform_fn,
+                is_udf=False,
+            )
+        ]
+    )
 
     return MapOperator.create(
         map_transformer,
@@ -90,7 +105,7 @@ def _is_not_missing(column: pa.Array, ignore_values: List[Any]) -> pa.Array:
     if len(column) == 0:
         return pa.array([], type=pa.bool_())
     is_not_null = pc.is_valid(column)
-    if pa.types.is_floating(column.type) or pa.types.is_decimal(column.type):
+    if _is_floating_or_decimal(column.type):
         is_not_null = pc.and_(is_not_null, pc.invert(pc.is_nan(column)))
 
     if not ignore_values:
