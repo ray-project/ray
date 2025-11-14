@@ -65,9 +65,9 @@ ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
     else _SerializationFormat.CLOUDPICKLE  # default
 )
 
-# 1,000,000 entries, about 100MB in memory.
-# Most users tables should have less than 1M columns.
-ARROW_EXTENSION_SERIALIZATION_CACHE_MAXSIZE = 10**6
+# 100,000 entries, about 10MB in memory.
+# Most users tables should have less than 100K columns.
+ARROW_EXTENSION_SERIALIZATION_CACHE_MAXSIZE = 10**5
 
 logger = logging.getLogger(__name__)
 
