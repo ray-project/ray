@@ -54,6 +54,7 @@ from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_string,
 )
+from ray.serve.schema import ReplicaRank
 from ray.util.placement_group import validate_placement_group
 
 # Global variable that is fetched during controller recovery that
@@ -64,7 +65,7 @@ from ray.util.placement_group import validate_placement_group
 # loop, so we can't "mark" a replica dead through a method. This global
 # state is cleared after each test that uses the fixtures in this file.
 dead_replicas_context = set()
-replica_rank_context = {}
+replica_rank_context: Dict[str, ReplicaRank] = {}
 TEST_DEPLOYMENT_ID = DeploymentID(name="test_deployment", app_name="test_app")
 TEST_DEPLOYMENT_ID_2 = DeploymentID(name="test_deployment_2", app_name="test_app")
 
@@ -225,7 +226,7 @@ class MockReplicaActorWrapper:
     def set_actor_id(self, actor_id: str):
         self._actor_id = actor_id
 
-    def start(self, deployment_info: DeploymentInfo, rank: int):
+    def start(self, deployment_info: DeploymentInfo, rank: ReplicaRank):
         self.started = True
         self._rank = rank
         replica_rank_context[self._replica_id.unique_id] = rank
@@ -246,13 +247,13 @@ class MockReplicaActorWrapper:
         )
 
     @property
-    def rank(self) -> Optional[int]:
+    def rank(self) -> Optional[ReplicaRank]:
         return self._rank
 
     def reconfigure(
         self,
         version: DeploymentVersion,
-        rank: int = None,
+        rank: ReplicaRank = None,
     ):
         self.started = True
         updating = self.version.requires_actor_reconfigure(version)
@@ -5434,10 +5435,18 @@ class TestDeploymentRankManagerIntegrationE2E:
         # Simulate very scattered ranks in global context: 0, 3, 7, 10
         global replica_rank_context
         replica_rank_context.clear()
-        replica_rank_context[replica_ids[0].unique_id] = 0
-        replica_rank_context[replica_ids[1].unique_id] = 3
-        replica_rank_context[replica_ids[2].unique_id] = 7
-        replica_rank_context[replica_ids[3].unique_id] = 10
+        replica_rank_context[replica_ids[0].unique_id] = ReplicaRank(
+            rank=0, node_rank=-1, local_rank=-1
+        )
+        replica_rank_context[replica_ids[1].unique_id] = ReplicaRank(
+            rank=3, node_rank=-1, local_rank=-1
+        )
+        replica_rank_context[replica_ids[2].unique_id] = ReplicaRank(
+            rank=7, node_rank=-1, local_rank=-1
+        )
+        replica_rank_context[replica_ids[3].unique_id] = ReplicaRank(
+            rank=10, node_rank=-1, local_rank=-1
+        )
 
         # Simulate controller crashed! Create a new deployment state manager
         # with the existing replica IDs to trigger recovery

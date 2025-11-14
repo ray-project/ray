@@ -28,9 +28,16 @@ AuthenticationMode GetAuthenticationMode() {
 
   if (auth_mode_lower == "token") {
     return AuthenticationMode::TOKEN;
+  } else if (auth_mode_lower == "k8s") {
+    return AuthenticationMode::K8S;
   } else {
     return AuthenticationMode::DISABLED;
   }
+}
+
+bool RequiresTokenAuthentication() {
+  AuthenticationMode auth_mode = GetAuthenticationMode();
+  return (auth_mode == AuthenticationMode::TOKEN || auth_mode == AuthenticationMode::K8S);
 }
 
 }  // namespace rpc

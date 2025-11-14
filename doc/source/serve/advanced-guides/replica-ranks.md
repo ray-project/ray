@@ -6,7 +6,7 @@
 This API is experimental and may change between Ray minor versions.
 :::
 
-Replica ranks provide a unique identifier for **each replica within a deployment**. Each replica receives a **rank (an integer from 0 to N-1)** and **a world size (the total number of replicas)**.
+Replica ranks provide a unique identifier for **each replica within a deployment**. Each replica receives a **`ReplicaRank` object** containing rank information and **a world size (the total number of replicas)**. The rank object includes a global rank (an integer from 0 to N-1), a node rank, and a local rank on the node.
 
 ## Access replica ranks
 
@@ -28,8 +28,28 @@ The following example shows how to access replica rank information:
 
 The [`ReplicaContext`](../api/doc/ray.serve.context.ReplicaContext.rst) provides two key fields:
 
-- `rank`: An integer from 0 to N-1 representing this replica's unique identifier.
+- `rank`: A [`ReplicaRank`](../api/doc/ray.serve.schema.ReplicaRank.rst) object containing rank information for this replica. Access the integer rank value with `.rank`.
 - `world_size`: The target number of replicas for the deployment.
+
+The `ReplicaRank` object contains three fields:
+- `rank`: The global rank (an integer from 0 to N-1) representing this replica's unique identifier across all nodes.
+- `node_rank`: The rank of the node this replica runs on (an integer from 0 to M-1 where M is the number of nodes).
+- `local_rank`: The rank of this replica on its node (an integer from 0 to K-1 where K is the number of replicas on this node).
+
+:::{note}
+**Accessing rank values:**
+
+To use the rank in your code, access the `.rank` attribute to get the integer value:
+
+```python
+context = serve.get_replica_context()
+my_rank = context.rank.rank  # Get the integer rank value
+my_node_rank = context.rank.node_rank  # Get the node rank
+my_local_rank = context.rank.local_rank  # Get the local rank on this node
+```
+
+Most use cases only need the global `rank` value. The `node_rank` and `local_rank` are useful for advanced scenarios such as coordinating replicas on the same node.
+:::
 
 ## Handle rank changes with reconfigure
 
@@ -54,15 +74,15 @@ The following example shows how to implement `reconfigure` to handle rank change
 Ray Serve automatically calls your `reconfigure` method in the following situations:
 
 1. **At replica startup:** When a replica starts, if your deployment has both a `reconfigure` method and a `user_config`, Ray Serve calls `reconfigure` after running `__init__`. This lets you initialize rank-aware state without duplicating code between `__init__` and `reconfigure`.
-2. **When you update user_config:** When you redeploy with a new `user_config`, Ray Serve calls `reconfigure` on all running replicas. If your `reconfigure` method includes `rank` as a parameter, Ray Serve passes both the new `user_config` and the current rank.
-3. **When a replica's rank changes:** During downscaling, ranks may be reassigned to maintain contiguity (0 to N-1). If your `reconfigure` method includes `rank` as a parameter and your deployment has a `user_config`, Ray Serve calls `reconfigure` with the existing `user_config` and the new rank.
+2. **When you update user_config:** When you redeploy with a new `user_config`, Ray Serve calls `reconfigure` on all running replicas. If your `reconfigure` method includes `rank` as a parameter, Ray Serve passes both the new `user_config` and the current rank as a `ReplicaRank` object.
+3. **When a replica's rank changes:** During downscaling, ranks may be reassigned to maintain contiguity (0 to N-1). If your `reconfigure` method includes `rank` as a parameter and your deployment has a `user_config`, Ray Serve calls `reconfigure` with the existing `user_config` and the new rank as a `ReplicaRank` object.
 
 :::{note}
 **Requirements to receive rank updates:**
 
 To get rank changes through `reconfigure`, your deployment needs:
 - A class-based deployment (function deployments don't support `reconfigure`)
-- A `reconfigure` method with `rank` as a parameter: `def reconfigure(self, user_config, rank: int)`
+- A `reconfigure` method with `rank` as a parameter: `def reconfigure(self, user_config, rank: ReplicaRank)`
 - A `user_config` in your deployment (even if it's just an empty dict: `user_config={}`)
 
 Without a `user_config`, Ray Serve won't call `reconfigure` for rank changes.

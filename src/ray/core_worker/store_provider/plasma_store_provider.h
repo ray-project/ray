@@ -26,7 +26,6 @@
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -96,7 +95,6 @@ class CoreWorkerPlasmaStoreProvider {
   CoreWorkerPlasmaStoreProvider(
       const std::string &store_socket,
       const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
-      ReferenceCounterInterface &reference_counter,
       std::function<Status()> check_signals,
       bool warmup,
       std::shared_ptr<plasma::PlasmaClientInterface> store_client,
@@ -159,6 +157,7 @@ class CoreWorkerPlasmaStoreProvider {
   /// into the local plasma store from another node.
   ///
   /// \param[in] object_ids objects to fetch if they are not already in local plasma.
+  /// \param[in] owner_addresses owner addresses of the objects.
   /// \param[in] timeout_ms if the timeout elapses, the request will be canceled.
   /// \param[out] results objects fetched from plasma. This is only valid if the function
   ///
@@ -169,7 +168,8 @@ class CoreWorkerPlasmaStoreProvider {
   /// \return Status::IntentionalSystemExit if a SIGTERM signal was was received.
   /// \return Status::UnexpectedSystemExit if any other signal was received.
   /// \return Status::OK otherwise.
-  Status Get(const absl::flat_hash_set<ObjectID> &object_ids,
+  Status Get(const std::vector<ObjectID> &object_ids,
+             const std::vector<rpc::Address> &owner_addresses,
              int64_t timeout_ms,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results);
 
@@ -200,7 +200,8 @@ class CoreWorkerPlasmaStoreProvider {
 
   Status Contains(const ObjectID &object_id, bool *has_object);
 
-  Status Wait(const absl::flat_hash_set<ObjectID> &object_ids,
+  Status Wait(const std::vector<ObjectID> &object_ids,
+              const std::vector<rpc::Address> &owner_addresses,
               int num_objects,
               int64_t timeout_ms,
               const WorkerContext &ctx,
@@ -222,19 +223,15 @@ class CoreWorkerPlasmaStoreProvider {
   /// Successfully fetched objects will be removed from the input set of remaining IDs and
   /// added to the results map.
   ///
-  /// \param[in/out] remaining IDs of the remaining objects to get.
-  /// \param[in] ids IDs of the objects to get.
-  /// \param[in] timeout_ms Timeout in milliseconds.
-  /// \param[out] results Map of objects to write results into. This method will only
-  /// add to this map, not clear or remove from it, so the caller can pass in a non-empty
-  /// map.
-  /// \param[out] got_exception Set to true if any of the fetched objects contained an
-  /// exception.
-  /// \return Status::IOError if there is an error in communicating with the raylet or the
-  /// plasma store.
-  /// \return Status::OK if successful.
+  /// \param[in/out] remaining_object_id_to_idx map of object IDs to their indices left to
+  /// get. \param[in] ids IDs of the objects to get. \param[in] timeout_ms Timeout in
+  /// milliseconds. \param[out] results Map of objects to write results into. This method
+  /// will only add to this map, not clear or remove from it, so the caller can pass in a
+  /// non-empty map. \param[out] got_exception Set to true if any of the fetched objects
+  /// contained an exception. \return Status::IOError if there is an error in
+  /// communicating with the raylet or the plasma store. \return Status::OK if successful.
   Status GetObjectsFromPlasmaStore(
-      absl::flat_hash_set<ObjectID> &remaining,
+      absl::flat_hash_map<ObjectID, int64_t> &remaining_object_id_to_idx,
       const std::vector<ObjectID> &ids,
       int64_t timeout_ms,
       absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
@@ -242,8 +239,9 @@ class CoreWorkerPlasmaStoreProvider {
 
   /// Print a warning if we've attempted the fetch for too long and some
   /// objects are still unavailable.
-  static void WarnIfFetchHanging(int64_t fetch_start_time_ms,
-                                 const absl::flat_hash_set<ObjectID> &remaining);
+  static void WarnIfFetchHanging(
+      int64_t fetch_start_time_ms,
+      const absl::flat_hash_map<ObjectID, int64_t> &remaining_object_id_to_idx);
 
   /// Put something in the plasma store so that subsequent plasma store accesses
   /// will be faster. Currently the first access is always slow, and we don't
@@ -253,8 +251,6 @@ class CoreWorkerPlasmaStoreProvider {
 
   const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
   std::shared_ptr<plasma::PlasmaClientInterface> store_client_;
-  /// Used to look up a plasma object's owner.
-  ReferenceCounterInterface &reference_counter_;
   std::function<Status()> check_signals_;
   std::function<std::string()> get_current_call_site_;
   uint32_t object_store_full_delay_ms_;

@@ -3,48 +3,57 @@ from ray.includes.rpc_token_authentication cimport (
     GetAuthenticationMode,
     CAuthenticationToken,
     CAuthenticationTokenLoader,
+    CAuthenticationTokenValidator,
 )
 from ray._private.authentication.authentication_constants import AUTHORIZATION_HEADER_NAME
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # Authentication mode enum exposed to Python
 class AuthenticationMode:
     DISABLED = CAuthenticationMode.DISABLED
     TOKEN = CAuthenticationMode.TOKEN
+    K8S = CAuthenticationMode.K8S
 
 
 def get_authentication_mode():
     """Get the current authentication mode.
 
     Returns:
-        AuthenticationMode enum value (DISABLED or TOKEN)
+        AuthenticationMode enum value (DISABLED or TOKEN or K8S)
     """
     return GetAuthenticationMode()
 
 
 def validate_authentication_token(provided_token: str) -> bool:
-    """Validate provided authentication token against expected token.
+    """Validate provided authentication token.
+
+    For TOKEN mode, compares against the expected token.
+    For K8S mode, validates against the Kubernetes API.
 
     Args:
         provided_token: Full authorization header value (e.g., "Bearer <token>")
 
     Returns:
-        bool: True if tokens match, False otherwise
+        bool: True if token is valid, False otherwise
     """
-    # Get expected token from loader
-    cdef optional[CAuthenticationToken] expected_opt = CAuthenticationTokenLoader.instance().GetToken()
+    cdef optional[CAuthenticationToken] expected_opt
+    cdef CAuthenticationToken provided
 
-    if not expected_opt.has_value():
-        return False
+    if get_authentication_mode() == CAuthenticationMode.TOKEN:
+        expected_opt = CAuthenticationTokenLoader.instance().GetToken()
+        if not expected_opt.has_value():
+            return False
 
     # Parse provided token from Bearer format
-    cdef CAuthenticationToken provided = CAuthenticationToken.FromMetadata(provided_token.encode())
+    provided = CAuthenticationToken.FromMetadata(provided_token.encode())
 
     if provided.empty():
         return False
 
-    # Use constant-time comparison from C++
-    return expected_opt.value().Equals(provided)
+    return CAuthenticationTokenValidator.instance().ValidateToken(expected_opt, provided)
 
 
 class AuthenticationTokenLoader:
@@ -93,3 +102,15 @@ class AuthenticationTokenLoader:
             return {}
 
         return {AUTHORIZATION_HEADER_NAME: token_opt.value().ToAuthorizationHeaderValue().decode('utf-8')}
+
+    def get_raw_token(self) -> str:
+        if not self.has_token():
+            return ""
+
+        # Get the token from C++ layer
+        cdef optional[CAuthenticationToken] token_opt = CAuthenticationTokenLoader.instance().GetToken()
+
+        if not token_opt.has_value() or token_opt.value().empty():
+            return ""
+
+        return token_opt.value().GetRawValue().decode('utf-8')

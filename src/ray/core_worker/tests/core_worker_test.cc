@@ -155,8 +155,9 @@ class CoreWorkerTest : public ::testing::Test {
         fake_owned_object_size_gauge_,
         false);
 
+    // Mock reference counter as enabled
     memory_store_ = std::make_shared<CoreWorkerMemoryStore>(
-        io_service_, reference_counter_.get(), nullptr);
+        io_service_, reference_counter_ != nullptr, nullptr);
 
     auto future_resolver = std::make_unique<FutureResolver>(
         memory_store_,
@@ -349,7 +350,7 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusIdempotency) {
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
   reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
 
-  memory_store_->Put(*ray_object, object_id);
+  memory_store_->Put(*ray_object, object_id, reference_counter_->HasReference(object_id));
 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
@@ -417,7 +418,7 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectPutAfterFirstRequest) {
   // Verify that the callback hasn't been called yet since the object doesn't exist
   ASSERT_FALSE(io_service_.poll_one());
 
-  memory_store_->Put(*ray_object, object_id);
+  memory_store_->Put(*ray_object, object_id, reference_counter_->HasReference(object_id));
 
   io_service_.run_one();
 
@@ -454,7 +455,7 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectFreedBetweenRequests) {
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
   reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
 
-  memory_store_->Put(*ray_object, object_id);
+  memory_store_->Put(*ray_object, object_id, reference_counter_->HasReference(object_id));
 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
@@ -504,7 +505,7 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectOutOfScope) {
   owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
   reference_counter_->AddOwnedObject(object_id, {}, owner_address, "", 0, false, true);
 
-  memory_store_->Put(*ray_object, object_id);
+  memory_store_->Put(*ray_object, object_id, reference_counter_->HasReference(object_id));
 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
@@ -569,7 +570,9 @@ ObjectID CreateInlineObjectInMemoryStoreAndRefCounter(
                                    /*object_size=*/100,
                                    /*is_reconstructable=*/false,
                                    /*add_local_ref=*/true);
-  memory_store.Put(memory_store_object, inlined_dependency_id);
+  memory_store.Put(memory_store_object,
+                   inlined_dependency_id,
+                   reference_counter.HasReference(inlined_dependency_id));
   return inlined_dependency_id;
 }
 }  // namespace
@@ -654,7 +657,6 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   CoreWorkerPlasmaStoreProvider provider(
       /*store_socket=*/"",
       fake_raylet,
-      ref_counter,
       /*check_signals=*/[] { return Status::OK(); },
       /*warmup=*/false,
       /*store_client=*/fake_plasma,
@@ -664,11 +666,11 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   // Build a set of 5 object ids.
   std::vector<ObjectID> ids;
   for (int i = 0; i < 5; i++) ids.push_back(ObjectID::FromRandom());
-  absl::flat_hash_set<ObjectID> idset(ids.begin(), ids.end());
+  const auto owner_addresses = ref_counter.GetOwnerAddresses(ids);
 
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
 
-  ASSERT_TRUE(provider.Get(idset, /*timeout_ms=*/-1, &results).ok());
+  ASSERT_TRUE(provider.Get(ids, owner_addresses, /*timeout_ms=*/-1, &results).ok());
 
   // Assert: batches seen by plasma Get are [2,2,1].
   ASSERT_EQ(observed_batches.size(), 3U);

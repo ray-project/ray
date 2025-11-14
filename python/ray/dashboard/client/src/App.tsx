@@ -5,15 +5,10 @@ import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import {
+  authenticateWithToken,
   getAuthenticationMode,
-  testTokenValidity,
 } from "./authentication/authentication";
 import { AUTHENTICATION_ERROR_EVENT } from "./authentication/constants";
-import {
-  clearAuthenticationToken,
-  getAuthenticationToken,
-  setAuthenticationToken,
-} from "./authentication/cookies";
 import TokenAuthenticationDialog from "./authentication/TokenAuthenticationDialog";
 import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
@@ -245,20 +240,11 @@ const App = () => {
 
         if (authentication_mode === "token") {
           // Token authentication is enabled
-          const existingToken = getAuthenticationToken();
-
-          if (!existingToken) {
-            // No token found - show dialog immediately
-            setAuthenticationDialogOpen(true);
-          }
-          // If token exists, let it be used by interceptor
-          // If invalid, interceptor will trigger dialog via 401/403
+          // The HttpOnly cookie will be sent automatically with requests
+          // If no valid cookie exists, the first request will trigger 401/403
+          // and the response interceptor will show the authentication dialog
         } else {
-          // Auth mode is disabled - clear any existing token from cookie
-          const existingToken = getAuthenticationToken();
-          if (existingToken) {
-            clearAuthenticationToken();
-          }
+          // Auth mode is disabled
         }
       } catch (error) {
         console.error("Failed to check authentication mode:", error);
@@ -294,12 +280,12 @@ const App = () => {
   // Handle token submission from dialog
   const handleTokenSubmit = async (token: string) => {
     try {
-      // Test if token is valid
-      const isValid = await testTokenValidity(token);
+      // Authenticate with the server - this will validate the token
+      // and set an HttpOnly cookie if valid
+      const isValid = await authenticateWithToken(token);
 
       if (isValid) {
-        // Save token to cookie
-        setAuthenticationToken(token);
+        // Token is valid and server has set HttpOnly cookie
         setHasAttemptedAuthentication(true);
         setAuthenticationDialogOpen(false);
         setAuthenticationError(undefined);
@@ -314,9 +300,9 @@ const App = () => {
         );
       }
     } catch (error) {
-      console.error("Failed to validate token:", error);
+      console.error("Failed to authenticate:", error);
       setAuthenticationError(
-        "Failed to validate token. Please check your connection and try again.",
+        "Failed to authenticate. Please check your connection and try again.",
       );
     }
   };

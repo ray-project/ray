@@ -10,7 +10,6 @@ steps:
     matrix:
       - "3.9"
       - "3.10"
-      - "3.12"
     env:
       PYTHON: "{{matrix}}"
       REQUIREMENTS_FILE: "python/deplocks/docs/docbuild_depset_py{{matrix}}.lock"
