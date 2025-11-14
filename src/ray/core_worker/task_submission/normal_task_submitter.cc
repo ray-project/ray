@@ -631,14 +631,19 @@ bool NormalTaskSubmitter::HandleGetWorkerFailureCause(
     RAY_LOG(WARNING) << "Failed to fetch worker failure cause with status "
                      << get_worker_failure_cause_reply_status.ToString()
                      << " worker id: " << WorkerID::FromBinary(addr.worker_id())
-                     << " node id: " << node_id
-                     << " ip: " << addr.ip_address();
+                     << " node id: " << node_id << " ip: " << addr.ip_address();
     task_error_type = rpc::ErrorType::NODE_DIED;
 
     std::string error_message = absl::StrFormat(
-        "Task failed because the node it was running on is dead or unavailable. Node IP: %s, node ID: %s. This can happen if the node was preempted, had a hardware failure, or its raylet crashed unexpectedly. To see node death information, use `ray list nodes --filter node_id=%s`, check the Ray dashboard cluster page, search the node ID in the GCS logs, or use `ray logs raylet.out -ip %s`.",
-        addr.ip_address(), node_id.Hex(), node_id.Hex(), addr.ip_address()
-    );
+        "Task failed because the node it was running on is dead or unavailable. Node IP: "
+        "%s, node ID: %s. This can happen if the node was preempted, had a hardware "
+        "failure, or its raylet crashed unexpectedly. To see node death information, use "
+        "`ray list nodes --filter node_id=%s`, check the Ray dashboard cluster page, "
+        "search the node ID in the GCS logs, or use `ray logs raylet.out -ip %s`.",
+        addr.ip_address(),
+        node_id.Hex(),
+        node_id.Hex(),
+        addr.ip_address());
     error_info = std::make_unique<rpc::RayErrorInfo>();
     error_info->set_error_message(error_message);
     error_info->set_error_type(rpc::ErrorType::NODE_DIED);
