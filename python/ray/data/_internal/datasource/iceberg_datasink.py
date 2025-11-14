@@ -96,6 +96,23 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
                 f"but mode is {self._mode}"
             )
 
+        # Validate overwrite_kwargs doesn't contain filter parameters
+        if self._overwrite_kwargs:
+            if "overwrite_filter" in self._overwrite_kwargs:
+                logger.warning(
+                    "Found 'overwrite_filter' in overwrite_kwargs. This should be passed "
+                    "as a separate parameter to write_iceberg(), not inside overwrite_kwargs. "
+                    "Removing it from overwrite_kwargs."
+                )
+                self._overwrite_kwargs.pop("overwrite_filter")
+            if "delete_filter" in self._overwrite_kwargs:
+                logger.warning(
+                    "Found 'delete_filter' in overwrite_kwargs. This is an internal PyIceberg "
+                    "parameter and should not be passed. Use the 'overwrite_filter' parameter "
+                    "of write_iceberg() instead. Removing it from overwrite_kwargs."
+                )
+                self._overwrite_kwargs.pop("delete_filter")
+
         if "name" in self._catalog_kwargs:
             self._catalog_name = self._catalog_kwargs.pop("name")
         else:
