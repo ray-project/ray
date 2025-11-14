@@ -557,6 +557,7 @@ class WorkerGroup(BaseWorkerGroup):
         # TODO: Add shutdown callback hooks
 
         self._worker_group_state.shutdown()
+        self._cleanup_slice_pg()
         self._clear_state()
 
         for callback in self._callbacks:
