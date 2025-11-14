@@ -1,12 +1,12 @@
 import os
 from typing import List, Optional
 
-from ray_release.configs.global_config import get_global_config
-
 from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, PYTHON_VERSIONS
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.docker_container import RAY_REPO_MAP, DockerContainer, RayType
 from ci.ray_ci.utils import RAY_VERSION, docker_pull
+
+from ray_release.configs.global_config import get_global_config
 
 
 class RayDockerContainer(DockerContainer):

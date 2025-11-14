@@ -51,8 +51,9 @@ Signed-by: /etc/apt/keyrings/microsoft.gpg" | sudo tee /etc/apt/sources.list.d/a
 
 apt-get update
 apt-get install -y \
-  awscli docker-ce-cli nodejs build-essential python-is-python3 \
+  awscli nodejs build-essential python-is-python3 \
   python3-pip openjdk-8-jre wget jq \
+  "docker-ce-cli=5:28.5.2-1~ubuntu.22.04~jammy" \
   azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
 
 # Install uv
@@ -115,4 +116,4 @@ EOF
 CMD ["echo", "ray forge"]
 
 
-# last update: 2025-10-08
+# last update: 2025-11-12
