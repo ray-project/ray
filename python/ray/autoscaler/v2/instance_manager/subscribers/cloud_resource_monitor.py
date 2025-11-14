@@ -1,16 +1,17 @@
 import logging
 import time
-from typing import List, Dict
+from typing import Dict, List
 
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.instance_manager import (
-    InstanceUpdatedSubscriber
+    InstanceUpdatedSubscriber,
 )
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
-from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 from ray.autoscaler.v2.schema import NodeType
+from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 logger = logging.getLogger(__name__)
+
 
 class CloudResourceAvailability:
     """CloudResourceAvailability indicates the availability of a type of
@@ -28,11 +29,7 @@ class CloudResourceAvailability:
     # Timestamp of the last failed resource allocation.
     _last_unavailable_timestamp: int
 
-    def __init__(
-        self,
-        node_type: NodeType,
-        last_unavailability_timestamp: int
-    ):
+    def __init__(self, node_type: NodeType, last_unavailability_timestamp: int):
         self._node_type = node_type
         self._last_unavailable_timestamp = last_unavailability_timestamp
 
@@ -50,6 +47,7 @@ class CloudResourceMonitor(InstanceUpdatedSubscriber):
     When scaling up, it is necessary to know which node types are most
     likely to have resources, in order to decide which type of node to request.
     """
+
     def __init__(
         self,
         instance_storage: InstanceStorage,
@@ -67,15 +65,16 @@ class CloudResourceMonitor(InstanceUpdatedSubscriber):
                 last_unavailability_timestamp=(last_status.timestamp_ns) / 1000
             else:
                 last_unavailability_timestamp = time.time()
-            self._resource_availabilities[instance.instance_type] = (
-                CloudResourceAvailability(
-                    node_type=instance.instance_type,
-                    last_unavailability_timestamp=last_unavailability_timestamp
-                )
+            self._resource_availabilities[
+                instance.instance_type
+            ] = CloudResourceAvailability(
+                node_type=instance.instance_type,
+                last_unavailability_timestamp=last_unavailability_timestamp,
             )
-            logger.debug(f"Cloud Resource Type {instance.instance_type} is "
-                        f"unavailable at timestamp={last_unavailability_timestamp}. "
-                        f"We will lower its priority in feature schedules."
+            logger.debug(
+                f"Cloud Resource Type {instance.instance_type} is "
+                f"unavailable at timestamp={last_unavailability_timestamp}. "
+                f"We will lower its priority in feature schedules."
             )
 
     def allocation_succeeded(self, succeeded_event: InstanceUpdateEvent):
@@ -83,9 +82,10 @@ class CloudResourceMonitor(InstanceUpdatedSubscriber):
             self._resource_availabilities[
                 succeeded_event.instance_type
             ].set_last_unavailability_timestamp(0)
-        logger.debug(f"Cloud Resource Type {succeeded_event.instance_type} is "
-                     f"available. We will prioritize scheduling this type "
-                     f"in feature schedules."
+        logger.debug(
+            f"Cloud Resource Type {succeeded_event.instance_type} is "
+            f"available. We will prioritize scheduling this type "
+            f"in feature schedules."
         )
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
@@ -109,8 +109,14 @@ class CloudResourceMonitor(InstanceUpdatedSubscriber):
             )
             for node_type in self._resource_availabilities:
                 resource_availability_scores[node_type] = (
-                    1 -
-                    self._resource_availabilities[node_type].get_last_unavailability_timestamp()
-                    / max_ts
-                ) if max_ts > 0 else 1
+                    (
+                        1
+                        - self._resource_availabilities[
+                            node_type
+                        ].get_last_unavailability_timestamp()
+                        / max_ts
+                    )
+                    if max_ts > 0
+                    else 1
+                )
         return resource_availability_scores

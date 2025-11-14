@@ -22,7 +22,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (  # noqa
 from ray.autoscaler.v2.instance_manager.reconciler import Reconciler, logger
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.autoscaler.v2.instance_manager.subscribers.cloud_resource_monitor import (
-    CloudResourceMonitor
+    CloudResourceMonitor,
 )
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
 from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer import (
@@ -119,10 +119,8 @@ def setup():
         instance_storage=instance_storage,
         instance_status_update_subscribers=[mock_subscriber],
     )
-    
-    cloud_resource_monitor = CloudResourceMonitor(
-        instance_storage
-    )
+
+    cloud_resource_monitor = CloudResourceMonitor(instance_storage)
 
     yield instance_manager, instance_storage, mock_subscriber, cloud_resource_monitor
 

@@ -22,7 +22,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     TerminateNodeError,
 )
 from ray.autoscaler.v2.instance_manager.subscribers.cloud_resource_monitor import (
-    CloudResourceMonitor
+    CloudResourceMonitor,
 )
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
 from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer import (
@@ -1140,7 +1140,7 @@ class Reconciler:
             ),
             cloud_resource_availabilities=(
                 cloud_resource_monitor.get_resource_availabilities()
-            )
+            ),
         )
 
         # Ask scheduler for updates to the cluster shape.
