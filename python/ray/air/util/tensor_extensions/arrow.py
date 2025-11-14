@@ -97,17 +97,17 @@ class ArrowExtensionSerializeDeserializeCache(abc.ABC):
     The deserialization and serialization of Arrow extension types is frequent,
     so we cache the results here to improve performance.
 
-    The deserialization cache is a class field (one per subclass, shared across all instances
-    of that subclass), so it won't be invalidated during the lifetime of the process. Each entry
-    is around ~100 bytes, and we periodically clean expired entries once their TTL passes, so
-    the overall memory overhead is very low.
+    The deserialization cache uses functools.lru_cache as a classmethod. There is
+    a single cache instance shared across all subclasses, but the cache key includes
+    the class (cls parameter) as the first argument, so different subclasses get
+    different cache entries even when called with the same parameters. The cache is
+    thread-safe and has a maximum size limit to control memory usage. The cache key
+    is (cls, *args) where args are the parameters returned by _get_deserialize_parameter().
 
     Attributes:
-        _deserialize_cache: Class-level thread-safe cache for deserialization
-            results, keyed by (storage_type, serialized) tuple. Each subclass has
-            its own cache instance.
-        _serialize_cache: Instance-level thread-safe cache for serialization
-            results.
+        _serialize_cache: Instance-level cache for serialization results.
+            This is a simple cached value (bytes) that is computed once per
+            instance and reused.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -127,7 +127,7 @@ class ArrowExtensionSerializeDeserializeCache(abc.ABC):
         with self._cache_lock:
             if self._serialize_cache is None:
                 self._serialize_cache = self._arrow_ext_serialize_compute()
-        return self._serialize_cache
+            return self._serialize_cache
 
     @abstractmethod
     def _arrow_ext_serialize_compute(self) -> bytes:
@@ -136,7 +136,7 @@ class ArrowExtensionSerializeDeserializeCache(abc.ABC):
 
     @classmethod
     @functools.lru_cache(maxsize=ARROW_EXTENSION_SERIALIZATION_CACHE_MAXSIZE)
-    def _arrow_ext_deserialize_cache(cls, *args: Any, **kwargs: Any) -> Any:
+    def _arrow_ext_deserialize_cache(cls, *args, **kwargs) -> Any:
         return cls._arrow_ext_deserialize_compute(*args, **kwargs)
 
     @classmethod
@@ -146,10 +146,10 @@ class ArrowExtensionSerializeDeserializeCache(abc.ABC):
         ...
 
     @classmethod
+    @abstractmethod
     def _get_deserialize_parameter(cls, storage_type, serialized) -> Tuple[Any, Any]:
-        # This is the parameter that will be passed to the _arrow_ext_deserialize_compute method.
-        # It's also the key for the _arrow_ext_deserialize_cache method.
-        return (storage_type.value_type, serialized)
+        """Subclasses must implement this method to return the parameters for the deserialization cache."""
+        ...
 
     @classmethod
     def __arrow_ext_deserialize__(cls, storage_type, serialized) -> Any:
