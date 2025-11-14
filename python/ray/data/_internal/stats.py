@@ -15,6 +15,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.dataset_state import DatasetState
+from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NODE_UNKNOWN,
     MetricsGroup,
@@ -483,23 +484,8 @@ class _StatsActor:
             elif isinstance(prom_metric, Counter):
                 prom_metric.inc(value, tags)
             elif isinstance(prom_metric, Histogram):
-                # Take the list of samples per bucket and add them to the histogram metric.
-                if isinstance(value, list):
-                    for i in range(len(value)):
-                        # Pick a value between the boundaries so the sample falls into the right bucket.
-                        # We need to calculate the mid point because choosing the exact boundary value
-                        # seems to have unreliable behavior on which bucket it ends up in.
-                        boundary_upper_bound = (
-                            prom_metric.boundaries[i]
-                            if i < len(value) - 1
-                            else prom_metric.boundaries[-1] + 100
-                        )
-                        boundary_lower_bound = (
-                            prom_metric.boundaries[i - 1] if i > 0 else 0
-                        )
-                        bucket_value = (boundary_upper_bound + boundary_lower_bound) / 2
-                        for _ in range(value[i]):
-                            prom_metric.observe(bucket_value, tags)
+                if isinstance(value, RuntimeMetricsHistogram):
+                    value.export_to(prom_metric, tags)
 
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
@@ -895,8 +881,7 @@ class _StatsManager:
                                         per_node_metrics,
                                     ) in self._last_execution_stats.values():
                                         op_metrics_dicts = [
-                                            metric.as_dict(reset_histogram_metrics=True)
-                                            for metric in op_metrics
+                                            metric.as_dict() for metric in op_metrics
                                         ]
                                         args = (
                                             dataset_tag,
@@ -971,9 +956,7 @@ class _StatsManager:
     ):
         per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
         if force_update:
-            op_metrics_dicts = [
-                metric.as_dict(reset_histogram_metrics=True) for metric in op_metrics
-            ]
+            op_metrics_dicts = [metric.as_dict() for metric in op_metrics]
             args = (
                 dataset_tag,
                 op_metrics_dicts,
