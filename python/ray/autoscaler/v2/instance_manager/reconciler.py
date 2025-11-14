@@ -169,8 +169,8 @@ class Reconciler:
         More specifically, we will reconcile status transitions for:
             1.  QUEUED/REQUESTED -> ALLOCATED:
                 When a instance with launch request id (indicating a previous launch
-                request was made) could be assigned to an unassigned cloud instance
-                of the same instance type.
+                request was made) could be assigned to an unassigned running cloud
+                instance of the same instance type.
             2.  REQUESTED -> ALLOCATION_FAILED:
                 When there's an error from the cloud provider for launch failure so
                 that the instance becomes ALLOCATION_FAILED.
@@ -348,7 +348,10 @@ class Reconciler:
         ] = defaultdict(list)
 
         for cloud_instance_id, cloud_instance in non_terminated_cloud_instances.items():
-            if cloud_instance_id not in assigned_cloud_instance_ids:
+            if (
+                cloud_instance_id not in assigned_cloud_instance_ids
+                and cloud_instance.is_running
+            ):
                 unassigned_cloud_instances_by_type[cloud_instance.node_type].append(
                     cloud_instance
                 )
@@ -1532,6 +1535,8 @@ class Reconciler:
         # Find the extra cloud instances that are not managed by the instance manager.
         for cloud_instance_id, cloud_instance in non_terminated_cloud_instances.items():
             if cloud_instance_id in cloud_instance_ids_managed_by_im:
+                continue
+            if not cloud_instance.is_running:
                 continue
             updates[cloud_instance_id] = IMInstanceUpdateEvent(
                 instance_id=InstanceUtil.random_instance_id(),  # Assign a new id.
