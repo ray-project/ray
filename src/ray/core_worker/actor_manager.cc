@@ -136,12 +136,9 @@ bool ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_hand
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
 
-  // Verify that the actor handle is not already in the map.
   {
     absl::MutexLock lock(&mutex_);
-    // Assumes actor_id is unique
     if (actor_handles_.contains(actor_id)) {
-      RAY_LOG(WARNING) << "Actor handle already exists for actor id: " << actor_id;
       return false;
     }
   }

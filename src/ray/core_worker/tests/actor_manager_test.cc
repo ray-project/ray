@@ -138,8 +138,8 @@ class ActorManagerTest : public ::testing::Test {
         gcs_client_mock_(new MockGcsClient(options_)),
         actor_info_accessor_(new MockActorInfoAccessor(gcs_client_mock_.get())),
         actor_task_submitter_(new MockActorTaskSubmitter()),
-        publisher_(std::make_shared<pubsub::FakePublisher>()),
-        subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
+        publisher_(std::make_unique<pubsub::FakePublisher>()),
+        subscriber_(std::make_unique<pubsub::FakeSubscriber>()),
         fake_owned_object_count_gauge_(),
         fake_owned_object_size_gauge_(),
         reference_counter_(std::make_unique<ReferenceCounter>(
@@ -198,8 +198,8 @@ class ActorManagerTest : public ::testing::Test {
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
   MockActorInfoAccessor *actor_info_accessor_;
   std::shared_ptr<MockActorTaskSubmitter> actor_task_submitter_;
-  std::shared_ptr<pubsub::FakePublisher> publisher_;
-  std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
+  std::unique_ptr<pubsub::FakePublisher> publisher_;
+  std::unique_ptr<pubsub::FakeSubscriber> subscriber_;
   ray::observability::FakeGauge fake_owned_object_count_gauge_;
   ray::observability::FakeGauge fake_owned_object_size_gauge_;
   std::unique_ptr<ReferenceCounterInterface> reference_counter_;
@@ -230,7 +230,10 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
 
   // Add an actor handle.
   ASSERT_TRUE(actor_manager_->EmplaceNewActorHandle(
-      std::move(actor_handle), call_site, caller_address, true));
+      std::move(actor_handle), call_site, caller_address, true))
+      << "Emplacing a new actor handle with unseen actor id should add a new actor "
+         "handle, "
+         "but got actor handle already exists.";
   actor_manager_->SubscribeActorState(actor_id);
 
   // Make sure the subscription request is sent to GCS.
@@ -250,9 +253,12 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
                                                       "",
                                                       -1,
                                                       false);
-  // Make sure the same actor id adding will return false.
+  // Make sure the same actor id adding will return false (repeated emplace should not add
+  // a new actor handle)
   ASSERT_FALSE(actor_manager_->EmplaceNewActorHandle(
-      std::move(actor_handle2), call_site, caller_address, true));
+      std::move(actor_handle2), call_site, caller_address, true))
+      << "Emplacing an actor handle with an existing actor id should return false, "
+         "but the handle was added anyway.";
   actor_manager_->SubscribeActorState(actor_id);
 
   // Make sure we can get an actor handle correctly.

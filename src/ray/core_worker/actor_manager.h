@@ -106,6 +106,7 @@ class ActorManager {
   ///
   /// NOTE: Getting an actor handle from GCS (named actor) is considered as adding a new
   /// actor handle.
+  /// NOTE: Attempting to add the same actor in parallel can cause RAY CHECK failure.
   ///
   /// \param actor_handle The handle to the actor.
   /// \param[in] call_site The caller's site.

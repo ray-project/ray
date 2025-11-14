@@ -2166,7 +2166,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // WaitForActorRefDeletedRequest.
   RAY_CHECK(actor_manager_->EmplaceNewActorHandle(
       std::move(actor_handle), CurrentCallSite(), rpc_address_, /*owned=*/!is_detached))
-      << "Actor " << actor_id << " already exists";
+      << "Attempt to emplace new actor handle for the actor being created with actor id: "
+      << actor_id
+      << " failed because an actor handle with the same actor id has already been added";
   *return_actor_id = actor_id;
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor creation task " << task_spec.DebugString();

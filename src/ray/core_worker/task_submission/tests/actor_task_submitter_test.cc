@@ -96,8 +96,8 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
         store_(std::make_shared<CoreWorkerMemoryStore>(io_context)),
         task_manager_(std::make_shared<MockTaskManagerInterface>()),
         io_work(io_context.get_executor()),
-        publisher_(std::make_shared<pubsub::FakePublisher>()),
-        subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
+        publisher_(std::make_unique<pubsub::FakePublisher>()),
+        subscriber_(std::make_unique<pubsub::FakeSubscriber>()),
         fake_owned_object_count_gauge_(),
         fake_owned_object_size_gauge_(),
         reference_counter_(std::make_shared<ReferenceCounter>(
@@ -130,8 +130,8 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
   std::shared_ptr<MockTaskManagerInterface> task_manager_;
   instrumented_io_context io_context;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
-  std::shared_ptr<pubsub::FakePublisher> publisher_;
-  std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
+  std::unique_ptr<pubsub::FakePublisher> publisher_;
+  std::unique_ptr<pubsub::FakeSubscriber> subscriber_;
   ray::observability::FakeGauge fake_owned_object_count_gauge_;
   ray::observability::FakeGauge fake_owned_object_size_gauge_;
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
