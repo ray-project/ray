@@ -26,7 +26,80 @@ from ray.tests.conftest import *  # noqa
 
 
 # Data source generates random bytes data
+class RandomBytesDatasource(Datasource):
+    def __init__(
+        self,
+        num_tasks: int,
+        num_batches_per_task: int,
+        row_size: int,
+        num_rows_per_batch=None,
+        use_bytes=True,
+        use_arrow=False,
+    ):
+        self.num_tasks = num_tasks
+        self.num_batches_per_task = num_batches_per_task
+        self.row_size = row_size
+        if num_rows_per_batch is None:
+            num_rows_per_batch = 1
+        self.num_rows_per_batch = num_rows_per_batch
+        self.use_bytes = use_bytes
+        self.use_arrow = use_arrow
 
+    def estimate_inmemory_data_size(self):
+        return None
+
+    def get_read_tasks(
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
+    ) -> List[ReadTask]:
+        def _blocks_generator():
+            for _ in range(self.num_batches_per_task):
+                if self.use_bytes:
+                    # NOTE(swang): Each np object has some metadata bytes, so
+                    # actual size can be much more than num_rows_per_batch * row_size
+                    # if row_size is small.
+                    yield pd.DataFrame(
+                        {
+                            "one": [
+                                np.random.bytes(self.row_size)
+                                for _ in range(self.num_rows_per_batch)
+                            ]
+                        }
+                    )
+                elif self.use_arrow:
+                    batch = {
+                        "one": np.ones(
+                            (self.num_rows_per_batch, self.row_size), dtype=np.uint8
+                        )
+                    }
+                    block = ArrowBlockBuilder._table_from_pydict(batch)
+                    yield block
+                else:
+                    yield pd.DataFrame(
+                        {
+                            "one": [
+                                np.array2string(np.ones(self.row_size, dtype=int))
+                                for _ in range(self.num_rows_per_batch)
+                            ]
+                        }
+                    )
+
+        return self.num_tasks * [
+            ReadTask(
+                lambda: _blocks_generator(),
+                BlockMetadata(
+                    num_rows=self.num_batches_per_task * self.num_rows_per_batch,
+                    size_bytes=self.num_batches_per_task
+                    * self.num_rows_per_batch
+                    * self.row_size,
+                    input_files=None,
+                    exec_stats=None,
+                ),
+                per_task_row_limit=per_task_row_limit,
+            )
+        ]
+
+    def num_rows(self) -> int:
+        return self.num_tasks * self.num_batches_per_task * self.num_rows_per_batch
 
 
 class SlowCSVDatasource(CSVDatasource):
@@ -118,81 +191,6 @@ def test_dataset(
     @ray.remote
     def warmup():
         return np.zeros(ctx.target_max_block_size, dtype=np.uint8)
-
-    class RandomBytesDatasource(Datasource):
-        def __init__(
-            self,
-            num_tasks: int,
-            num_batches_per_task: int,
-            row_size: int,
-            num_rows_per_batch=None,
-            use_bytes=True,
-            use_arrow=False,
-        ):
-            self.num_tasks = num_tasks
-            self.num_batches_per_task = num_batches_per_task
-            self.row_size = row_size
-            if num_rows_per_batch is None:
-                num_rows_per_batch = 1
-            self.num_rows_per_batch = num_rows_per_batch
-            self.use_bytes = use_bytes
-            self.use_arrow = use_arrow
-
-        def estimate_inmemory_data_size(self):
-            return None
-
-        def get_read_tasks(
-            self, parallelism: int, per_task_row_limit: Optional[int] = None
-        ) -> List[ReadTask]:
-            def _blocks_generator():
-                for _ in range(self.num_batches_per_task):
-                    if self.use_bytes:
-                        # NOTE(swang): Each np object has some metadata bytes, so
-                        # actual size can be much more than num_rows_per_batch * row_size
-                        # if row_size is small.
-                        yield pd.DataFrame(
-                            {
-                                "one": [
-                                    np.random.bytes(self.row_size)
-                                    for _ in range(self.num_rows_per_batch)
-                                ]
-                            }
-                        )
-                    elif self.use_arrow:
-                        batch = {
-                            "one": np.ones(
-                                (self.num_rows_per_batch, self.row_size), dtype=np.uint8
-                            )
-                        }
-                        block = ArrowBlockBuilder._table_from_pydict(batch)
-                        yield block
-                    else:
-                        yield pd.DataFrame(
-                            {
-                                "one": [
-                                    np.array2string(np.ones(self.row_size, dtype=int))
-                                    for _ in range(self.num_rows_per_batch)
-                                ]
-                            }
-                        )
-
-            return self.num_tasks * [
-                ReadTask(
-                    lambda: _blocks_generator(),
-                    BlockMetadata(
-                        num_rows=self.num_batches_per_task * self.num_rows_per_batch,
-                        size_bytes=self.num_batches_per_task
-                        * self.num_rows_per_batch
-                        * self.row_size,
-                        input_files=None,
-                        exec_stats=None,
-                    ),
-                    per_task_row_limit=per_task_row_limit,
-                )
-            ]
-
-        def num_rows(self) -> int:
-            return self.num_tasks * self.num_batches_per_task * self.num_rows_per_batch
 
     last_snapshot = get_initial_core_execution_metrics_snapshot()
     ds = ray.data.read_datasource(
