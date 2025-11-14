@@ -1014,12 +1014,8 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
   }
 
   auto do_cancel_local_task =
-      [this,
-       task_spec = std::move(task_spec),
-       task_id,
-       force_kill,
-       recursive,
-       executor_worker_id](const rpc::GcsNodeAddressAndLiveness &node_info) mutable {
+      [this, task_spec = std::move(task_spec), force_kill, recursive, executor_worker_id](
+          const rpc::GcsNodeAddressAndLiveness &node_info) mutable {
         rpc::Address raylet_address;
         raylet_address.set_node_id(node_info.node_id());
         raylet_address.set_ip_address(node_info.node_manager_address());
