@@ -1,4 +1,4 @@
-import axios from "axios";
+import { axiosInstance } from "./requestHandlers";
 
 type CMDRsp = {
   result: boolean;
@@ -9,7 +9,7 @@ type CMDRsp = {
 };
 
 export const getJstack = (ip: string, pid: string) => {
-  return axios.get<CMDRsp>("utils/jstack", {
+  return axiosInstance.get<CMDRsp>("utils/jstack", {
     params: {
       ip,
       pid,
@@ -18,7 +18,7 @@ export const getJstack = (ip: string, pid: string) => {
 };
 
 export const getJmap = (ip: string, pid: string) => {
-  return axios.get<CMDRsp>("utils/jmap", {
+  return axiosInstance.get<CMDRsp>("utils/jmap", {
     params: {
       ip,
       pid,
@@ -27,7 +27,7 @@ export const getJmap = (ip: string, pid: string) => {
 };
 
 export const getJstat = (ip: string, pid: string, options: string) => {
-  return axios.get<CMDRsp>("utils/jstat", {
+  return axiosInstance.get<CMDRsp>("utils/jstat", {
     params: {
       ip,
       pid,
@@ -48,5 +48,5 @@ type NamespacesRsp = {
 };
 
 export const getNamespaces = () => {
-  return axios.get<NamespacesRsp>("namespaces");
+  return axiosInstance.get<NamespacesRsp>("namespaces");
 };
