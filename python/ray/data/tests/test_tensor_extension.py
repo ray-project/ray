@@ -1337,6 +1337,88 @@ def test_arrow_extension_serialize_deserialize_cache():
         assert deserialized_a.extension_name == deserialized_b.extension_name
 
 
+def test_arrow_extension_deserialize_cache_per_class():
+    """Test that different classes have separate deserialization caches."""
+    # Create instances of different classes with the same shape and dtype
+    tensor_type_v1 = ArrowTensorType(shape=(2, 3), dtype=pa.int64())
+    tensor_type_v2 = ArrowTensorTypeV2(shape=(2, 3), dtype=pa.int64())
+
+    # Serialize both (they should produce the same serialized data since shape is the same)
+    serialized_v1 = tensor_type_v1.__arrow_ext_serialize__()
+    serialized_v2 = tensor_type_v2.__arrow_ext_serialize__()
+    # They should have the same serialized representation (same shape)
+    assert serialized_v1 == serialized_v2
+
+    # Clear both caches to ensure fresh test
+    ArrowTensorType._arrow_ext_deserialize_cache.cache_clear()
+    ArrowTensorTypeV2._arrow_ext_deserialize_cache.cache_clear()
+
+    # Get storage types for each class
+    storage_type_v1 = pa.list_(pa.int64())  # ArrowTensorType uses list_
+    storage_type_v2 = pa.large_list(pa.int64())  # ArrowTensorTypeV2 uses large_list
+
+    # Track calls to verify each class has its own cache
+    with patch.object(
+        ArrowTensorType,
+        "_arrow_ext_deserialize_compute",
+        wraps=ArrowTensorType._arrow_ext_deserialize_compute,
+    ) as mock_v1, patch.object(
+        ArrowTensorTypeV2,
+        "_arrow_ext_deserialize_compute",
+        wraps=ArrowTensorTypeV2._arrow_ext_deserialize_compute,
+    ) as mock_v2:
+        # Deserialize using ArrowTensorType
+        deserialized_v1_1 = ArrowTensorType.__arrow_ext_deserialize__(
+            storage_type_v1, serialized_v1
+        )
+        assert mock_v1.call_count == 1
+        assert mock_v2.call_count == 0  # V2 cache not affected
+
+        # Deserialize using ArrowTensorTypeV2 with compatible parameters
+        # Note: We use the same serialized data but different storage type
+        deserialized_v2_1 = ArrowTensorTypeV2.__arrow_ext_deserialize__(
+            storage_type_v2, serialized_v2
+        )
+        assert mock_v1.call_count == 1  # V1 cache not affected
+        assert mock_v2.call_count == 1
+
+        # Verify they are different instances (different classes)
+        assert type(deserialized_v1_1) is not type(deserialized_v2_1)
+        assert isinstance(deserialized_v1_1, ArrowTensorType)
+        assert isinstance(deserialized_v2_1, ArrowTensorTypeV2)
+        assert not isinstance(deserialized_v1_1, ArrowTensorTypeV2)
+        assert not isinstance(deserialized_v2_1, ArrowTensorType)
+
+        # Verify they have the same shape and dtype (same logical content)
+        assert deserialized_v1_1.shape == deserialized_v2_1.shape
+        assert deserialized_v1_1.scalar_type == deserialized_v2_1.scalar_type
+
+        # But different extension names (different classes)
+        assert deserialized_v1_1.extension_name != deserialized_v2_1.extension_name
+        assert deserialized_v1_1.extension_name == "ray.data.arrow_tensor"
+        assert deserialized_v2_1.extension_name == "ray.data.arrow_tensor_v2"
+
+        # Verify each class uses its own cache (second calls should hit cache)
+        deserialized_v1_2 = ArrowTensorType.__arrow_ext_deserialize__(
+            storage_type_v1, serialized_v1
+        )
+        deserialized_v2_2 = ArrowTensorTypeV2.__arrow_ext_deserialize__(
+            storage_type_v2, serialized_v2
+        )
+
+        # Both should use cache (no additional compute calls)
+        assert mock_v1.call_count == 1  # Cache hit for V1
+        assert mock_v2.call_count == 1  # Cache hit for V2
+
+        # Verify cache returns same instances for same class
+        assert deserialized_v1_1 is deserialized_v1_2  # Same instance from V1 cache
+        assert deserialized_v2_1 is deserialized_v2_2  # Same instance from V2 cache
+
+        # But instances from different classes are different
+        assert deserialized_v1_1 is not deserialized_v2_1
+        assert deserialized_v1_2 is not deserialized_v2_2
+
+
 def test_arrow_extension_serialize_deserialize_cache_thread_safety():
     """Test that ArrowExtensionSerializeDeserializeCache is thread-safe."""
     tensor_type = ArrowTensorType(shape=(2, 3), dtype=pa.int64())
