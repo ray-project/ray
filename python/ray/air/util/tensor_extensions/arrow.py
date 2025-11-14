@@ -629,7 +629,7 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
 
     @classmethod
     def _get_deserialize_cache_key(cls, storage_type, serialized):
-        return (storage_type.value_type, serialized)
+        return (cls, storage_type.value_type, serialized)
 
     @classmethod
     def _arrow_ext_deserialize_compute(cls, storage_type, serialized):
@@ -656,7 +656,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
 
     @classmethod
     def _get_deserialize_cache_key(cls, storage_type, serialized):
-        return (storage_type.value_type, serialized)
+        return (cls, storage_type.value_type, serialized)
 
     @classmethod
     def _arrow_ext_deserialize_compute(cls, storage_type, serialized):
@@ -1036,7 +1036,7 @@ class ArrowVariableShapedTensorType(
 
     @classmethod
     def _get_deserialize_cache_key(cls, storage_type, serialized):
-        return (storage_type["data"].type.value_type, serialized)
+        return (cls, storage_type["data"].type.value_type, serialized)
 
     @classmethod
     def _arrow_ext_deserialize_compute(cls, storage_type, serialized):
