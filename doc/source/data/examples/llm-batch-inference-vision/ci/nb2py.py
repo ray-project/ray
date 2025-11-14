@@ -27,8 +27,8 @@ def convert_notebook(
             ):
                 continue
 
-            # Detect a %%bash cell
-            if lines and lines[0].strip().startswith("%%bash"):
+            # Detect a %%bash cell or % command cell
+            if lines and (lines[0].strip().startswith("%%bash") or lines[0].strip().startswith("%")):
                 if ignore_cmds:
                     continue
                 bash_script = "\n".join(lines[1:]).rstrip()
