@@ -16,7 +16,7 @@ from ray._common.pydantic_compat import (
     PrivateAttr,
     validator,
 )
-from ray._common.utils import import_attr
+from ray._common.utils import import_attr, import_module_and_attr
 
 # Import types needed for AutoscalingContext
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
@@ -192,8 +192,30 @@ class RequestRouterConfig(BaseModel):
         Args:
             **kwargs: Keyword arguments to pass to BaseModel.
         """
+        serialized_request_router_cls = kwargs.pop(
+            "_serialized_request_router_cls", None
+        )
         super().__init__(**kwargs)
-        self._serialize_request_router_cls()
+        if serialized_request_router_cls:
+            self._serialized_request_router_cls = serialized_request_router_cls
+        else:
+            self._serialize_request_router_cls()
+
+    def set_serialized_request_router_cls(
+        self, serialized_request_router_cls: bytes
+    ) -> None:
+        self._serialized_request_router_cls = serialized_request_router_cls
+
+    @classmethod
+    def from_serialized_request_router_cls(
+        cls, request_router_config: dict, serialized_request_router_cls: bytes
+    ) -> "RequestRouterConfig":
+        config = request_router_config.copy()
+        config["_serialized_request_router_cls"] = serialized_request_router_cls
+        return cls(**config)
+
+    def get_serialized_request_router_cls(self) -> Optional[bytes]:
+        return self._serialized_request_router_cls
 
     def _serialize_request_router_cls(self) -> None:
         """Import and serialize request router class with cloudpickle.
@@ -209,15 +231,31 @@ class RequestRouterConfig(BaseModel):
             )
 
         request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
-        request_router_class = import_attr(request_router_path)
+        request_router_module, request_router_class = import_module_and_attr(
+            request_router_path
+        )
+        cloudpickle.register_pickle_by_value(request_router_module)
+        self.set_serialized_request_router_cls(cloudpickle.dumps(request_router_class))
+        cloudpickle.unregister_pickle_by_value(request_router_module)
 
-        self._serialized_request_router_cls = cloudpickle.dumps(request_router_class)
         # Update the request_router_class field to be the string path
         self.request_router_class = request_router_path
 
     def get_request_router_class(self) -> Callable:
         """Deserialize the request router from cloudpickled bytes."""
-        return cloudpickle.loads(self._serialized_request_router_cls)
+        try:
+            return cloudpickle.loads(self._serialized_request_router_cls)
+        except (ModuleNotFoundError, ImportError) as e:
+            raise ImportError(
+                f"Failed to deserialize custom request router: {e}\n\n"
+                "This typically happens when the router depends on external modules "
+                "that aren't available in the current environment. To fix this:\n"
+                "  - Ensure all dependencies are installed in your Docker image or environment\n"
+                "  - Package your router as a Python package and install it\n"
+                "  - Place the router module in PYTHONPATH\n\n"
+                "For more details, see: https://docs.ray.io/en/latest/serve/advanced-guides/"
+                "custom-request-router.html#gotchas-and-limitations"
+            ) from e
 
 
 DEFAULT_METRICS_INTERVAL_S = 10.0
@@ -242,8 +280,26 @@ class AutoscalingPolicy(BaseModel):
     )
 
     def __init__(self, **kwargs):
+        serialized_policy_def = kwargs.pop("_serialized_policy_def", None)
         super().__init__(**kwargs)
-        self.serialize_policy()
+        if serialized_policy_def:
+            self._serialized_policy_def = serialized_policy_def
+        else:
+            self.serialize_policy()
+
+    def set_serialized_policy_def(self, serialized_policy_def: bytes) -> None:
+        self._serialized_policy_def = serialized_policy_def
+
+    @classmethod
+    def from_serialized_policy_def(
+        cls, policy_config: dict, serialized_policy_def: bytes
+    ) -> "AutoscalingPolicy":
+        config = policy_config.copy()
+        config["_serialized_policy_def"] = serialized_policy_def
+        return cls(**config)
+
+    def get_serialized_policy_def(self) -> Optional[bytes]:
+        return self._serialized_policy_def
 
     def serialize_policy(self) -> None:
         """Serialize policy with cloudpickle.
@@ -257,7 +313,10 @@ class AutoscalingPolicy(BaseModel):
             policy_path = f"{policy_path.__module__}.{policy_path.__name__}"
 
         if not self._serialized_policy_def:
-            self._serialized_policy_def = cloudpickle.dumps(import_attr(policy_path))
+            policy_module, policy_function = import_module_and_attr(policy_path)
+            cloudpickle.register_pickle_by_value(policy_module)
+            self.set_serialized_policy_def(cloudpickle.dumps(policy_function))
+            cloudpickle.unregister_pickle_by_value(policy_module)
 
         self.policy_function = policy_path
 
@@ -266,7 +325,19 @@ class AutoscalingPolicy(BaseModel):
 
     def get_policy(self) -> Callable:
         """Deserialize policy from cloudpickled bytes."""
-        return cloudpickle.loads(self._serialized_policy_def)
+        try:
+            return cloudpickle.loads(self._serialized_policy_def)
+        except (ModuleNotFoundError, ImportError) as e:
+            raise ImportError(
+                f"Failed to deserialize custom autoscaling policy: {e}\n\n"
+                "This typically happens when the policy depends on external modules "
+                "that aren't available in the current environment. To fix this:\n"
+                "  - Ensure all dependencies are installed in your Docker image or environment\n"
+                "  - Package your policy as a Python package and install it\n"
+                "  - Place the policy module in PYTHONPATH\n\n"
+                "For more details, see: https://docs.ray.io/en/latest/serve/advanced-guides/"
+                "advanced-autoscaling.html#gotchas-and-limitations"
+            ) from e
 
 
 @PublicAPI(stability="stable")

@@ -14,6 +14,8 @@
 
 #include "ray/observability/ray_actor_definition_event.h"
 
+#include "ray/common/scheduling/label_selector.h"
+
 namespace ray {
 namespace observability {
 
