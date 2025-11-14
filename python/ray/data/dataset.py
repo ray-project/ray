@@ -69,6 +69,7 @@ from ray.data._internal.logical.operators.count_operator import Count
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.join_operator import Join
 from ray.data._internal.logical.operators.map_operator import (
+    BatcherAndCollate,
     Filter,
     FlatMap,
     MapBatches,
@@ -1244,9 +1245,39 @@ class Dataset:
     def batcher_and_collate(
         self,
         batch_size: int,
-        collate_fn: Callable["pyarrow.Table", "pyarrow.Table"],
-        
+        collate_fn: Callable[["pyarrow.Table"], "pyarrow.Table"],
+        compute: Optional[ComputeStrategy],
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        **ray_remote_args,
     ) -> "Dataset":
+        compute = get_compute_strategy(
+            collate_fn,
+            compute=compute,
+            concurrency=concurrency,
+        )
+
+        if num_cpus is not None:
+            ray_remote_args["num_cpus"] = num_cpus
+
+        if num_gpus is not None:
+            ray_remote_args["num_gpus"] = num_gpus
+
+        if memory is not None:
+            ray_remote_args["memory"] = memory
+
+        plan = self._plan.copy()
+        batcher_and_collate_op = BatcherAndCollate(
+            input_op=self._logical_plan.dag,
+            batch_size=batch_size,
+            collate_fn=collate_fn,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(batcher_and_collate_op, self.context)
+        return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(

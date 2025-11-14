@@ -1,7 +1,7 @@
 import functools
 import inspect
 import logging
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -9,6 +9,9 @@ from ray.data._internal.logical.operators.one_to_one_operator import AbstractOne
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import Expr, StarExpr
 from ray.data.preprocessor import Preprocessor
+
+if TYPE_CHECKING:
+    import pyarrow
 
 logger = logging.getLogger(__name__)
 
@@ -394,7 +397,9 @@ class BatcherAndCollate(AbstractMap):
         collate_fn: Callable["pyarrow.Table", "pyarrow.Table"],
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__("BatcherAndCollate", input_op, collate_fn, ray_remote_args=ray_remote_args)
+        super().__init__(
+            "BatcherAndCollate", input_op, collate_fn, ray_remote_args=ray_remote_args
+        )
         self._batch_size = batch_size
         self._collate_fn = collate_fn
 

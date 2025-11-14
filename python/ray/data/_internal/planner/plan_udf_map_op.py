@@ -39,6 +39,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.execution.util import make_callable_class_concurrent
 from ray.data._internal.logical.operators.map_operator import (
     AbstractUDFMap,
+    BatcherAndCollate,
     Filter,
     FlatMap,
     MapBatches,
@@ -185,11 +186,17 @@ def plan_batcher_and_collate_op(
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> MapOperator:
+    def get_block_iterator(
+        blocks: Iterable[Block], ctx: TaskContext
+    ) -> Iterable[Block]:
+        for block in blocks:
+            yield op.collate_fn(block)
+
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
     compute = get_compute(op._compute)
     transform_fn = BlockMapTransformFn(
-        lambda blocks, ctx: op.collate_fn(blocks),
+        get_block_iterator,
         output_block_size_option=OutputBlockSizeOption.of(
             target_num_rows_per_block=op.target_num_rows_per_block,  # To split n*target_max_block_size row into n blocks
         ),
@@ -204,7 +211,7 @@ def plan_batcher_and_collate_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
-        ref_bundler=StreamingRepartitionRefBundler(op.target_num_rows_per_block),
+        ref_bundler=StreamingRepartitionRefBundler(op.batch_size),
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
         supports_fusion=False,
