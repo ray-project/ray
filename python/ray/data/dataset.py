@@ -1241,6 +1241,14 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
+    def batcher_and_collate(
+        self,
+        batch_size: int,
+        collate_fn: Callable["pyarrow.Table", "pyarrow.Table"],
+        
+    ) -> "Dataset":
+
+    @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(
         self,
         fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
