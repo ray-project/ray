@@ -69,6 +69,7 @@ def _commit_upsert_task(
         join_cols: List of join column names
         snapshot_properties: Custom properties to write to snapshot summary
     """
+    import functools
     from collections import defaultdict
 
     import pyarrow as pa
@@ -95,13 +96,9 @@ def _commit_upsert_task(
 
         # Filter out rows with any NULL values in join columns
         # (NULL != NULL in SQL semantics)
-        mask = None
-        for col in join_cols:
-            col_mask = pa.compute.is_valid(keys_table[col])
-            mask = col_mask if mask is None else pa.compute.and_(mask, col_mask)
-
-        if mask is not None:
-            keys_table = keys_table.filter(mask)
+        masks = (pa.compute.is_valid(keys_table[col]) for col in join_cols)
+        mask = functools.reduce(pa.compute.and_, masks)
+        keys_table = keys_table.filter(mask)
 
         # Only delete if we have non-NULL keys
         if len(keys_table) > 0:
@@ -249,6 +246,11 @@ class IcebergDatasink(
         - Adding new columns from the incoming schema
         - Type promotion (e.g., int32 -> int64) where compatible
         - Preserving existing columns not in the incoming schema
+        - Concurrent schema updates from multiple workers (with retry logic)
+
+        Note:
+            Each worker calls this once with the first block's schema. All blocks
+            within a worker are validated to have the same schema before calling this.
 
         Args:
             incoming_schema: The PyArrow schema from the incoming data
@@ -261,18 +263,22 @@ class IcebergDatasink(
             try:
                 with self._table.update_schema() as update:
                     update.union_by_name(incoming_schema)
+                # Succeeded, reload to get latest table version and exit.
+                self._reload_table()
+                return
             except CommitFailedException:
                 if attempt < max_retries - 1:
                     logger.debug(
                         f"Schema update conflict - another worker modified schema, "
                         f"reloading and retrying (attempt {attempt + 1}/{max_retries})"
                     )
+                    self._reload_table()
                 else:
-                    logger.debug(
-                        "Schema update conflict - another worker modified schema, reloading"
+                    logger.error(
+                        "Failed to update schema after %d retries due to conflicts.",
+                        max_retries,
                     )
-            finally:
-                self._reload_table()
+                    raise
 
     def on_write_start(self) -> None:
         """Initialize table for writing and create a shared write UUID."""
@@ -317,6 +323,7 @@ class IcebergDatasink(
 
         all_data_files = []
         join_keys_dict = defaultdict(list)
+        first_schema = None
 
         # Extract join keys for copy-on-write upsert
         extract_join_keys = self._mode == SaveMode.UPSERT
@@ -324,8 +331,19 @@ class IcebergDatasink(
         for block in blocks:
             pa_table = BlockAccessor.for_block(block).to_arrow()
             if pa_table.num_rows > 0:
-                # Update schema if needed (handles concurrent schema updates)
-                self._update_schema(pa_table.schema)
+                # Schema validation and update strategy:
+                # 1. Each worker validates all its blocks have the same schema
+                # 2. Schema is updated once per worker (not per block) to minimize conflicts
+                # 3. Concurrent updates from different workers are handled by retry logic
+                if first_schema is None:
+                    first_schema = pa_table.schema
+                    # Update schema once per worker (handles concurrent updates from other workers)
+                    self._update_schema(first_schema)
+                elif not pa_table.schema.equals(first_schema):
+                    raise ValueError(
+                        f"Schema mismatch within worker: expected {first_schema}, "
+                        f"got {pa_table.schema}. All blocks must have the same schema."
+                    )
 
                 # Extract join key values for copy-on-write upsert
                 # These will be used to build a delete filter for matching rows
