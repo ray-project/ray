@@ -388,7 +388,8 @@ class Reconciler:
 
         Args:
             im_instance: The instance to allocate or fail.
-            unassigned_cloud_instances_by_type: The unassigned cloud instances by type.
+            unassigned_cloud_instances_by_type: The unassigned running cloud
+                instances by type.
             launch_errors: The launch errors from the cloud provider.
 
         Returns:
@@ -1500,7 +1501,7 @@ class Reconciler:
             ray_nodes: The ray cluster's states of ray nodes.
         """
         Reconciler._handle_extra_cloud_instances_from_ray_nodes(
-            instance_manager, ray_nodes
+            instance_manager, ray_nodes, non_terminated_cloud_instances
         )
         Reconciler._handle_extra_cloud_instances_from_cloud_provider(
             instance_manager, non_terminated_cloud_instances
@@ -1555,7 +1556,9 @@ class Reconciler:
 
     @staticmethod
     def _handle_extra_cloud_instances_from_ray_nodes(
-        instance_manager: InstanceManager, ray_nodes: List[NodeState]
+        instance_manager: InstanceManager,
+        ray_nodes: List[NodeState],
+        non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
     ):
         """
         For extra cloud instances reported by Ray but not managed by the instance
@@ -1564,6 +1567,8 @@ class Reconciler:
         Args:
             instance_manager: The instance manager to reconcile.
             ray_nodes: The ray cluster's states of ray nodes.
+            non_terminated_cloud_instances: The non-terminated cloud instances from
+                the cloud provider.
         """
         updates = {}
 
@@ -1592,20 +1597,23 @@ class Reconciler:
             if cloud_instance_id in cloud_instance_ids_managed_by_im:
                 continue
 
-            is_head = is_head_node(ray_node)
-            updates[ray_node_id] = IMInstanceUpdateEvent(
-                instance_id=InstanceUtil.random_instance_id(),  # Assign a new id.
-                cloud_instance_id=cloud_instance_id,
-                new_instance_status=IMInstance.ALLOCATED,
-                node_kind=NodeKind.HEAD if is_head else NodeKind.WORKER,
-                ray_node_id=ray_node_id,
-                instance_type=ray_node.ray_node_type_name,
-                details=(
-                    "allocated unmanaged worker cloud instance from ray node: "
-                    f"{ray_node_id}"
-                ),
-                upsert=True,
-            )
+            if cloud_instance_id in non_terminated_cloud_instances:
+                cloud_instance = non_terminated_cloud_instances[cloud_instance_id]
+                if cloud_instance.is_running:
+                    is_head = is_head_node(ray_node)
+                    updates[ray_node_id] = IMInstanceUpdateEvent(
+                        instance_id=InstanceUtil.random_instance_id(),  # Assign a new id.
+                        cloud_instance_id=cloud_instance_id,
+                        new_instance_status=IMInstance.ALLOCATED,
+                        node_kind=NodeKind.HEAD if is_head else NodeKind.WORKER,
+                        ray_node_id=ray_node_id,
+                        instance_type=ray_node.ray_node_type_name,
+                        details=(
+                            "allocated unmanaged worker cloud instance from ray node: "
+                            f"{ray_node_id}"
+                        ),
+                        upsert=True,
+                    )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
 
