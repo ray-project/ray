@@ -1018,4 +1018,4 @@ RAY_CONFIG(size_t, gcs_resource_broadcast_max_batch_size, 1)
 // broadcasting the batch. If `gcs_resource_broadcast_max_batch_size` messages arrive
 // before the timeout, the batch will be broadcasted eagerly. This flag only applies if
 // `gcs_resource_broadcast_max_batch_size != 1`.
-RAY_CONFIG(int64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
+RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)

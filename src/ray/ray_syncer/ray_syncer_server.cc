@@ -40,7 +40,7 @@ RayServerBidiReactor::RayServerBidiReactor(
     std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
     const std::optional<ray::rpc::AuthenticationToken> &auth_token,
     size_t max_batch_size,
-    int64_t max_batch_delay_ms)
+    uint64_t max_batch_delay_ms)
     : RaySyncerBidiReactorBase<ServerBidiReactor>(
           io_context,
           GetNodeIDFromServerContext(server_context),

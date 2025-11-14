@@ -100,7 +100,7 @@ class RaySyncer {
   RaySyncer(instrumented_io_context &io_context,
             const std::string &node_id,
             size_t max_batch_size,
-            int64_t max_batch_delay_ms,
+            uint64_t max_batch_delay_ms,
             RpcCompletionCallback on_rpc_completion = {});
   ~RaySyncer();
 
@@ -187,7 +187,7 @@ class RaySyncer {
   const size_t max_batch_size_;
 
   /// The max delay in milliseconds to wait before sending a batch.
-  const int64_t max_batch_delay_ms_;
+  const uint64_t max_batch_delay_ms_;
 
   /// Sync message observer, which is a callback on received message response for
   /// [RaySyncerBidiReactor], so should be passed to each of them.

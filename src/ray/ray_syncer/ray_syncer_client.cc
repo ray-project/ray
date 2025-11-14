@@ -30,7 +30,7 @@ RayClientBidiReactor::RayClientBidiReactor(
     std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
     std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub,
     size_t max_batch_size,
-    int64_t max_batch_delay_ms)
+    uint64_t max_batch_delay_ms)
     : RaySyncerBidiReactorBase<ClientBidiReactor>(
           io_context,
           remote_node_id,

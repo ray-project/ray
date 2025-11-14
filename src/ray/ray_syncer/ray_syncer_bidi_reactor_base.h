@@ -48,7 +48,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       std::string remote_node_id,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
       size_t max_batch_size,
-      int64_t max_batch_delay_ms)
+      uint64_t max_batch_delay_ms)
       : RaySyncerBidiReactor(std::move(remote_node_id)),
         io_context_(io_context),
         message_processor_(std::move(message_processor)),

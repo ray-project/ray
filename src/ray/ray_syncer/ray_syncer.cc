@@ -31,7 +31,7 @@ namespace ray::syncer {
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
                      const std::string &local_node_id,
                      size_t max_batch_size,
-                     int64_t max_batch_delay_ms,
+                     uint64_t max_batch_delay_ms,
                      RpcCompletionCallback on_rpc_completion)
     : io_context_(io_context),
       local_node_id_(local_node_id),
