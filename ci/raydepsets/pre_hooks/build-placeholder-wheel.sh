@@ -10,6 +10,7 @@ PYTHON_VERSION=$1
 
 export RAY_DEBUG_BUILD=deps-only
 
+UV_BUILD_COMMAND="uv build --wheel --directory python/ -o ../.whl/ --python \"$PYTHON_VERSION\""
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
   docker run --rm \
@@ -18,7 +19,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
   bash -lc '
   set -e
   export RAY_DEBUG_BUILD=deps-only
-  uv build --wheel --directory python/ -o ../.whl/ --python "$PYTHON_VERSION"'
+  eval "$UV_BUILD_COMMAND"'
 else
-  uv build --wheel --directory python/ -o ../.whl/ --python "$PYTHON_VERSION"
+  eval "$UV_BUILD_COMMAND"
 fi
