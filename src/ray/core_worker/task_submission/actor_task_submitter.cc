@@ -1035,7 +1035,7 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
         auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(raylet_address);
         raylet_client->CancelLocalTask(
             request,
-            [this, task_spec = std::move(task_spec), recursive, task_id](
+            [this, task_spec = std::move(task_spec), recursive](
                 const Status &status, const rpc::CancelLocalTaskReply &reply) mutable {
               if (!status.ok()) {
                 RAY_LOG(DEBUG) << "CancelLocalTask RPC failed for task "
