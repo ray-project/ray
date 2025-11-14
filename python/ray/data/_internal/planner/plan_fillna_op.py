@@ -121,30 +121,48 @@ def _fill_column(column: pa.Array, fill_value: Any) -> pa.Array:
     - pc.is_nan: https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.is_nan
     - pc.if_else: https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.if_else
     """
+    if len(column) == 0:
+        return column
+
     if column.null_count == 0:
         if not (pa.types.is_floating(column.type) or pa.types.is_decimal(column.type)):
             return column
-        if pc.sum(pc.is_nan(column)).as_py() == 0:
+        nan_count = pc.sum(pc.is_nan(column))
+        if nan_count is None or nan_count.as_py() == 0:
             return column
 
     if pa.types.is_null(column.type):
-        return pa.array([fill_value] * len(column))
+        try:
+            return pa.array([fill_value] * len(column))
+        except (pa.ArrowInvalid, pa.ArrowTypeError) as e:
+            raise ValueError(
+                f"Cannot create array with fill_value {fill_value!r} for null type column"
+            ) from e
 
-    if pa.types.is_string(column.type):
-        fill_scalar = pa.scalar(str(fill_value), type=column.type)
+    if pa.types.is_string(column.type) or pa.types.is_large_string(column.type):
+        try:
+            fill_scalar = pa.scalar(str(fill_value), type=column.type)
+        except (pa.ArrowInvalid, pa.ArrowTypeError) as e:
+            raise ValueError(
+                f"Cannot convert fill_value {fill_value!r} to string type {column.type}"
+            ) from e
     else:
         try:
             fill_scalar = pa.scalar(fill_value, type=column.type)
         except (pa.ArrowInvalid, pa.ArrowTypeError):
             try:
-                fill_scalar = pa.scalar(fill_value).cast(column.type)
-            except (pa.ArrowInvalid, pa.ArrowNotImplementedError):
+                inferred_scalar = pa.scalar(fill_value)
+                fill_scalar = inferred_scalar.cast(column.type)
+            except (pa.ArrowInvalid, pa.ArrowNotImplementedError) as e:
                 raise ValueError(
-                    f"Cannot convert fill_value {fill_value!r} to column type {column.type}"
-                ) from None
+                    f"Cannot convert fill_value {fill_value!r} (type: {type(fill_value).__name__}) "
+                    f"to column type {column.type}. Consider using a compatible type."
+                ) from e
 
     filled_column = pc.fill_null(column, fill_scalar)
-    if pa.types.is_floating(filled_column.type):
+    if pa.types.is_floating(filled_column.type) or pa.types.is_decimal(
+        filled_column.type
+    ):
         nan_mask = pc.is_nan(filled_column)
         filled_column = pc.if_else(nan_mask, fill_scalar, filled_column)
 
@@ -167,18 +185,27 @@ def _validate_batch(batch: pa.Table, op: FillNa) -> None:
 def _create_fill_scalar(
     fill_value: Any, column_type: pa.DataType
 ) -> Optional[pa.Scalar]:
-    """Create PyArrow scalar from fill value."""
+    """Create PyArrow scalar from fill value.
+
+    Returns None if conversion fails, indicating the fill value cannot be used
+    for this column type.
+    """
+    if fill_value is None:
+        return None
     try:
         return pa.scalar(fill_value, type=column_type)
     except (pa.ArrowInvalid, pa.ArrowTypeError):
         try:
-            return pa.scalar(fill_value).cast(column_type)
+            inferred_scalar = pa.scalar(fill_value)
+            return inferred_scalar.cast(column_type)
         except (pa.ArrowInvalid, pa.ArrowNotImplementedError):
             return None
 
 
 def _find_first_valid_index(column: pa.Array) -> Optional[int]:
     """Find first non-null, non-NaN index."""
+    if len(column) == 0:
+        return None
     for i in range(len(column)):
         if not pc.is_null(column[i]).as_py():
             if pa.types.is_floating(column.type) or pa.types.is_decimal(column.type):
@@ -191,6 +218,8 @@ def _find_first_valid_index(column: pa.Array) -> Optional[int]:
 
 def _find_last_valid_index(column: pa.Array) -> Optional[int]:
     """Find last non-null, non-NaN index."""
+    if len(column) == 0:
+        return None
     for i in range(len(column) - 1, -1, -1):
         if not pc.is_null(column[i]).as_py():
             if pa.types.is_floating(column.type) or pa.types.is_decimal(column.type):
@@ -205,6 +234,8 @@ def _fill_leading_nulls(
     column: pa.Array, fill_scalar: pa.Scalar, first_valid_idx: int
 ) -> pa.Array:
     """Fill leading nulls/NaNs up to first valid index."""
+    if len(column) == 0 or first_valid_idx <= 0:
+        return column
     is_floating = pa.types.is_floating(column.type) or pa.types.is_decimal(column.type)
     leading_nulls = pa.array(
         [
@@ -342,11 +373,16 @@ def _fill_column_directional(
     - ffill: https://pandas.pydata.org/docs/reference/api/pandas.Series.ffill.html
     - bfill: https://pandas.pydata.org/docs/reference/api/pandas.Series.bfill.html
     """
+    if len(column) == 0:
+        return column
     if column.null_count == 0:
         if not (pa.types.is_floating(column.type) or pa.types.is_decimal(column.type)):
             return column
-        if pc.sum(pc.is_nan(column)).as_py() == 0:
+        nan_count = pc.sum(pc.is_nan(column))
+        if nan_count is None or nan_count.as_py() == 0:
             return column
+    if limit is not None and limit <= 0:
+        return column
     pd_series = column.to_pandas()
     if method == "forward":
         filled_series = pd_series.ffill(limit=limit)
@@ -361,12 +397,17 @@ def _fill_column_interpolate(column: pa.Array, limit: Optional[int] = None) -> p
     Uses pandas Series.interpolate for linear interpolation:
     https://pandas.pydata.org/docs/reference/api/pandas.Series.interpolate.html
     """
+    if len(column) == 0:
+        return column
     if column.null_count == 0:
         if not (pa.types.is_floating(column.type) or pa.types.is_decimal(column.type)):
             return column
-        if pc.sum(pc.is_nan(column)).as_py() == 0:
+        nan_count = pc.sum(pc.is_nan(column))
+        if nan_count is None or nan_count.as_py() == 0:
             return column
     if not (pa.types.is_integer(column.type) or pa.types.is_floating(column.type)):
+        return column
+    if limit is not None and limit <= 0:
         return column
     pd_series = column.to_pandas()
     filled_series = pd_series.interpolate(method="linear", limit=limit)

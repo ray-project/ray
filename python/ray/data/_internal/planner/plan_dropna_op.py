@@ -87,6 +87,8 @@ def _is_not_missing(column: pa.Array, ignore_values: List[Any]) -> pa.Array:
     - pc.is_valid: https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.is_valid
     - pc.is_nan: https://arrow.apache.org/docs/python/api/compute.html#arrow.compute.is_nan
     """
+    if len(column) == 0:
+        return pa.array([], type=pa.bool_())
     is_not_null = pc.is_valid(column)
     if pa.types.is_floating(column.type) or pa.types.is_decimal(column.type):
         is_not_null = pc.and_(is_not_null, pc.invert(pc.is_nan(column)))
@@ -96,14 +98,18 @@ def _is_not_missing(column: pa.Array, ignore_values: List[Any]) -> pa.Array:
 
     is_ignored_mask: Optional[pa.Array] = None
     for ignore_val in set(ignore_values):
+        if ignore_val is None:
+            continue
         try:
             ignore_scalar = pa.scalar(ignore_val, type=column.type)
         except (pa.ArrowInvalid, pa.ArrowTypeError):
             try:
-                ignore_scalar = pa.scalar(ignore_val).cast(column.type)
+                inferred_scalar = pa.scalar(ignore_val)
+                ignore_scalar = inferred_scalar.cast(column.type)
             except (pa.ArrowInvalid, pa.ArrowNotImplementedError) as e:
                 raise ValueError(
-                    f"Cannot compare ignore_value {ignore_val!r} with column type {column.type}"
+                    f"Cannot compare ignore_value {ignore_val!r} (type: {type(ignore_val).__name__}) "
+                    f"with column type {column.type}"
                 ) from e
 
         equals_ignore = pc.equal(column, ignore_scalar)
@@ -114,7 +120,7 @@ def _is_not_missing(column: pa.Array, ignore_values: List[Any]) -> pa.Array:
         )
 
     if is_ignored_mask is None:
-        return pa.array([True] * len(column))
+        return is_not_null
     return pc.and_(is_not_null, pc.invert(is_ignored_mask))
 
 

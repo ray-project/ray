@@ -815,6 +815,10 @@ class Dataset:
 
         Returns:
             A new dataset with missing values filled.
+
+        Note:
+            Backward fill requires loading all batches into memory. For large datasets,
+            consider using forward fill or value-based filling instead.
         """
         plan = self._plan.copy()
         fillna_op = FillNa(

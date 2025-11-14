@@ -35,6 +35,11 @@ class FillNa(AbstractMap):
         if method == "value" and value is None:
             raise ValueError("'value' parameter is required when method='value'")
 
+        if method in ["forward", "backward", "interpolate"] and value is not None:
+            raise ValueError(
+                f"'value' parameter should not be provided when method='{method}'"
+            )
+
         if method not in ["value", "forward", "backward", "interpolate"]:
             raise ValueError(
                 f"Unsupported method '{method}'. Must be one of: value, forward, backward, interpolate"
@@ -42,6 +47,12 @@ class FillNa(AbstractMap):
 
         if limit is not None and limit < 0:
             raise ValueError("'limit' must be non-negative")
+
+        if subset is not None and len(subset) != len(set(subset)):
+            duplicates = [x for x in subset if subset.count(x) > 1]
+            raise ValueError(
+                f"'subset' contains duplicate column names: {list(set(duplicates))}"
+            )
 
         self._value = value
         self._method = method

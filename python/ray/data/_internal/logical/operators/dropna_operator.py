@@ -40,7 +40,14 @@ class DropNa(AbstractMap):
 
         if thresh is not None and subset is not None and thresh > len(subset):
             raise ValueError(
-                "'thresh' cannot be greater than the number of columns in 'subset'"
+                f"'thresh' ({thresh}) cannot be greater than the number of columns "
+                f"in 'subset' ({len(subset)})"
+            )
+
+        if subset is not None and len(subset) != len(set(subset)):
+            duplicates = [x for x in subset if subset.count(x) > 1]
+            raise ValueError(
+                f"'subset' contains duplicate column names: {list(set(duplicates))}"
             )
 
         self._how = how
