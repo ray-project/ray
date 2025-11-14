@@ -182,10 +182,17 @@ class HttpServerDashboardHead:
 
     @aiohttp.web.middleware
     async def browsers_no_post_put_middleware(self, request, handler):
+        # Allow whitelisted paths
+        if request.path in whitelisted_paths:
+            return await handler(request)
+
         if (
             # A best effort test for browser traffic. All common browsers
             # start with Mozilla at the time of writing.
-            dashboard_optional_utils.is_browser_request(request)
+            (
+                dashboard_optional_utils.is_browser_request(request)
+                or dashboard_optional_utils.has_sec_fetch_headers(request)
+            )
             and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
         ):
             return aiohttp.web.Response(
