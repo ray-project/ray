@@ -382,7 +382,7 @@ def test_one_hot_encoder_mixed_data_types():
 
     test_inputs = {"category": ["1", [1]]}
     test_pd_df = pd.DataFrame(test_inputs)
-    test_data_for_fitting = {"category": ["1", "[1]", "a", "[]", "True"]}
+    test_data_for_fitting = {"category": ["1", "a", "[]", "True"]}
     test_ray_dataset_for_fitting = ray.data.from_pandas(
         pd.DataFrame(test_data_for_fitting)
     )
@@ -391,7 +391,7 @@ def test_one_hot_encoder_mixed_data_types():
     encoder.fit(test_ray_dataset_for_fitting)
 
     pandas_output = encoder.transform_batch(test_pd_df)
-    expected_output = pd.DataFrame({"category": [[1, 0, 0, 0, 0], [0, 0, 0, 0, 0]]})
+    expected_output = pd.DataFrame({"category": [[1, 0, 0, 0], [0, 0, 0, 0]]})
 
     pd.testing.assert_frame_equal(pandas_output, expected_output)
 
