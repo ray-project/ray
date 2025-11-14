@@ -6,6 +6,7 @@ import uuid
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 import ray
+from ray._private.ray_constants import env_integer
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.savemode import SaveMode
 from ray.data._internal.util import GiB
@@ -23,6 +24,11 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+# Default memory allocation for Iceberg upsert commit task
+DEFAULT_ICEBERG_UPSERT_COMMIT_TASK_MEMORY = env_integer(
+    "RAY_DATA_ICEBERG_UPSERT_COMMIT_TASK_MEMORY", 4 * GiB
+)
 
 
 @DeveloperAPI
@@ -132,15 +138,25 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         """
         from pyiceberg.exceptions import CommitFailedException
 
-        try:
-            with self._table.update_schema() as update:
-                update.union_by_name(incoming_schema)
-        except CommitFailedException:
-            logger.debug(
-                "Schema update conflict - another worker modified schema, reloading"
-            )
-        finally:
-            self._reload_table()
+        max_retries = 3
+
+        for attempt in range(max_retries):
+            try:
+                with self._table.update_schema() as update:
+                    update.union_by_name(incoming_schema)
+                return  # Success - exit after finally block reloads table
+            except CommitFailedException:
+                if attempt < max_retries - 1:
+                    logger.debug(
+                        f"Schema update conflict - another worker modified schema, "
+                        f"reloading and retrying (attempt {attempt + 1}/{max_retries})"
+                    )
+                else:
+                    logger.debug(
+                        "Schema update conflict - another worker modified schema, reloading"
+                    )
+            finally:
+                self._reload_table()
 
     def on_write_start(self) -> None:
         """Initialize table for writing and create a shared write UUID."""
@@ -285,7 +301,7 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         )
 
 
-@ray.remote(num_cpus=1, memory=4 * GiB)  # 4 GiB memory
+@ray.remote(num_cpus=1, memory=DEFAULT_ICEBERG_UPSERT_COMMIT_TASK_MEMORY)
 def _commit_upsert_task(
     table_identifier: str,
     catalog_name: str,
