@@ -28,6 +28,14 @@ class TestOfflinePreLearner(unittest.TestCase):
         "n_step",
     ]
 
+    @classmethod
+    def setUpClass(cls):
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def setUp(self) -> None:
         data_path = "tests/data/cartpole/cartpole-v1_large"
         self.base_path = Path(__file__).parents[2]
@@ -55,10 +63,6 @@ class TestOfflinePreLearner(unittest.TestCase):
                 train_batch_size_per_learner=256,
             )
         )
-        ray.init()
-
-    def tearDown(self) -> None:
-        ray.shutdown()
 
     def test_offline_prelearner_buffer_class(self):
         """Tests using a user-defined buffer class with kwargs."""
