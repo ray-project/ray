@@ -252,7 +252,9 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
         RAY_LOG(INFO).WithField(NodeID::FromBinary(node_id)) << "Connection is broken.";
         syncer_.node_state_->RemoveNode(node_id);
       },
-      /*auth_token=*/auth_token_);
+      /*auth_token=*/auth_token_,
+      /*max_batch_size=*/syncer_.max_batch_size_,
+      /*max_batch_delay_ms=*/syncer_.max_batch_delay_ms_);
   RAY_LOG(DEBUG).WithField(NodeID::FromBinary(reactor->GetRemoteNodeID()))
       << "Get connection";
 

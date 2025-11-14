@@ -1010,7 +1010,7 @@ RAY_CONFIG(bool, enable_output_error_log_if_still_retry, true)
 
 // The maximum batch size for ray_syncer_bidi_reactor to sync messages to other nodes.
 // If `gcs_resource_broadcast_max_batch_size == 1`, the ray_syncer_bidi_reactor will
-// do optimistic batching. Otherwise, it will start send with maximum of
+// disable batching. Otherwise, it will start send with maximum of
 // `gcs_resource_broadcast_max_batch_size` messages before timeout.
 RAY_CONFIG(size_t, gcs_resource_broadcast_max_batch_size, 1)
 

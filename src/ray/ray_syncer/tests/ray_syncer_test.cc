@@ -918,7 +918,9 @@ struct MockRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackServic
                                        node_id.Binary(),
                                        message_processor,
                                        cleanup_cb,
-                                       std::nullopt);
+                                       std::nullopt,
+                                       /*max_batch_size=*/1,
+                                       /*max_batch_delay_ms=*/0);
     return reactor;
   }
 

@@ -40,7 +40,9 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
       const std::string &local_node_id,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
       std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
-      const std::optional<ray::rpc::AuthenticationToken> &auth_token);
+      const std::optional<ray::rpc::AuthenticationToken> &auth_token,
+      size_t max_batch_size,
+      int64_t max_batch_delay_ms);
 
   ~RayServerBidiReactor() override = default;
 
