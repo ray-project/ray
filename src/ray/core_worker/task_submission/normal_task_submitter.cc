@@ -635,15 +635,15 @@ bool NormalTaskSubmitter::HandleGetWorkerFailureCause(
     task_error_type = rpc::ErrorType::NODE_DIED;
     std::stringstream buffer;
     buffer
-        << "Task failed because the node it was running on is dead or unavailable."
+        << "Task failed because the node it was running on is dead or unavailable. "
         << "Node IP: " << addr.ip_address()
         << ", node ID: " << NodeID::FromBinary(addr.node_id())
         << ".\n\nThis can happen if the node was preempted, had a hardware failure, or "
         << "its raylet crashed unexpectedly.\n\n"
         << "To see node death information, use `ray list nodes --filter \"node_id="
         << NodeID::FromBinary(addr.node_id())
-        << "\", check Ray dashboard cluster page, search the node ID in the GCS logs, "
-        << "or use `ray logs raylet.out -ip " << addr.ip_address() << "`";
+        << "\", check the Ray dashboard cluster page, search the node ID in the GCS logs, "
+        << "or use `ray logs raylet.out -ip " << addr.ip_address() << "`.";
     error_info = std::make_unique<rpc::RayErrorInfo>();
     error_info->set_error_message(buffer.str());
     error_info->set_error_type(rpc::ErrorType::NODE_DIED);
