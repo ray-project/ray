@@ -23,6 +23,7 @@ from ray._common.test_utils import (
     async_wait_for_condition,
     wait_for_condition,
 )
+from ray._private.grpc_utils import init_grpc_channel
 from ray._private.state_api_test_utils import (
     create_api_options,
     get_state_api_manager,
@@ -144,7 +145,7 @@ def state_source_client(gcs_address):
         ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
         ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
     )
-    gcs_channel = ray._private.utils.init_grpc_channel(
+    gcs_channel = init_grpc_channel(
         gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
     gcs_client = GcsClient(address=gcs_address)
