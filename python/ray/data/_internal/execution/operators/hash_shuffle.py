@@ -494,11 +494,15 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         finalize_progress_bar_name: Optional[str] = None,
     ):
         input_logical_ops = [
-            input_physical_op._logical_operators[0] for input_physical_op in input_ops
+            input_physical_op._logical_operators[0]
+            if input_physical_op._logical_operators
+            else None
+            for input_physical_op in input_ops
         ]
 
         estimated_input_blocks = [
-            input_op.estimated_num_outputs() for input_op in input_logical_ops
+            input_op.estimated_num_outputs() if input_op is not None else None
+            for input_op in input_logical_ops
         ]
 
         # Derive target num partitions as either of
@@ -1593,12 +1597,14 @@ def _try_estimate_output_bytes(
     input_logical_ops: List[LogicalOperator],
 ) -> Optional[int]:
     inferred_op_output_bytes = [
-        op.infer_metadata().size_bytes for op in input_logical_ops
+        op.infer_metadata().size_bytes for op in input_logical_ops if op is not None
     ]
 
     # Return sum of input ops estimated output byte sizes,
     # if all are well defined
-    if all(nbs is not None for nbs in inferred_op_output_bytes):
+    if inferred_op_output_bytes and all(
+        nbs is not None for nbs in inferred_op_output_bytes
+    ):
         return sum(inferred_op_output_bytes)
 
     return None
