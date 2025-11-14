@@ -24,7 +24,7 @@ watchfiles
 grpcio >= 1.32.0; python_version < '3.10'
 grpcio >= 1.42.0; python_version >= '3.10'
 # Version used in mac CI; needs upgrade.
-grpcio == 1.54.2; sys_platform == "darwin"
+grpcio >= 1.54.2; sys_platform == "darwin"
 
 numpy>=1.20
 
