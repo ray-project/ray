@@ -531,6 +531,7 @@ ray_cc_library(
         "//src/ray/raylet_rpc_client:raylet_client_pool",
         "//src/ray/rpc:grpc_server",
         "//src/ray/rpc:metrics_agent_client",
+        "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:counter_map",
         "//src/ray/util:exponential_backoff",
         "//src/ray/util:network_util",
