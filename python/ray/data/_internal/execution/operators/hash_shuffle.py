@@ -837,9 +837,6 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             self.reduce_metrics.on_task_output_generated(
                 task_index=partition_id, output=bundle
             )
-            self.reduce_metrics.on_task_finished(
-                task_index=partition_id, exception=None
-            )
             _, num_outputs, num_rows = estimate_total_num_of_blocks(
                 partition_id + 1,
                 self.upstream_op_num_outputs(),
@@ -857,6 +854,11 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         def _on_aggregation_done(partition_id: int, exc: Optional[Exception]):
             if partition_id in self._finalizing_tasks:
                 self._finalizing_tasks.pop(partition_id)
+
+                # Update Finalize Metrics on task completion
+                self.reduce_metrics.on_task_finished(
+                    task_index=partition_id, exception=exc
+                )
 
                 if exc:
                     logger.error(
