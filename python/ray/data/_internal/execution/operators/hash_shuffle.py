@@ -1583,11 +1583,10 @@ class HashShuffleAggregator:
         # None means the user wants to preserve the block distribution,
         # so we do not break the block down further.
         if target_max_block_size is not None:
-            # Creating a block output buffer per partition because
-            # retry finalize tasks would mean I would have to keep
-            # internal bookkeepping (like which tasks have been finalized)
-            # idempotent. Also, calling output_buffer.finalize() down
-            # below would fail because it asserts it hasn't already been finalized.
+            # Creating a block output buffer per partition finalize task because:
+            # 1. Need to keep track of which tasks have already been finalized
+            # 2. Retrying finalize tasks cause stateful output_bufer to be
+            # fragmented (ie, adding duplicated blocks, calling finalize 2x)
             output_buffer = BlockOutputBuffer(
                 output_block_size_option=OutputBlockSizeOption(
                     target_max_block_size=target_max_block_size
