@@ -7,8 +7,8 @@ from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
-    SupportsPushThrough,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
@@ -379,7 +379,7 @@ class FlatMap(AbstractUDFMap):
         return True
 
 
-class StreamingRepartition(AbstractMap, SupportsPushThrough):
+class StreamingRepartition(AbstractMap, LogicalOperatorSupportsProjectionPassThrough):
     """Logical operator for streaming repartition operation.
     Args:
         target_num_rows_per_block: The target number of rows per block granularity for

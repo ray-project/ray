@@ -109,7 +109,7 @@ class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
         return self
 
 
-class SupportsPushThrough(LogicalOperator):
+class LogicalOperatorSupportsProjectionPassThrough(LogicalOperator):
     """Mixin for operators supporting projection pushthrough"""
 
     def supports_projection_pushthrough(self) -> bool:

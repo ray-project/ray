@@ -2,10 +2,10 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorSupportsProjectionPushdown,
     LogicalPlan,
     Rule,
-    SupportsPushThrough,
 )
 from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.planner.plan_expression.expression_visitors import (
@@ -396,7 +396,7 @@ class ProjectionPushdown(Rule):
         # Step 2: Push projection into the data source if supported
         input_op = current_project.input_dependency
         if (
-            isinstance(input_op, SupportsPushThrough)
+            isinstance(input_op, LogicalOperatorSupportsProjectionPassThrough)
             and input_op.supports_projection_pushthrough()
             and not current_project.has_star_expr()
         ):

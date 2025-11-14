@@ -3,8 +3,8 @@ from typing import Dict, List, Optional
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
-    SupportsPushThrough,
 )
 
 
@@ -23,7 +23,7 @@ class NAry(LogicalOperator):
         super().__init__(self.__class__.__name__, list(input_ops), num_outputs)
 
 
-class Zip(NAry, SupportsPushThrough):
+class Zip(NAry, LogicalOperatorSupportsProjectionPassThrough):
     """Logical operator for zip."""
 
     def __init__(
@@ -59,7 +59,11 @@ class Zip(NAry, SupportsPushThrough):
         return Zip(*new_input_ops)
 
 
-class Union(NAry, SupportsPushThrough, LogicalOperatorSupportsPredicatePassThrough):
+class Union(
+    NAry,
+    LogicalOperatorSupportsProjectionPassThrough,
+    LogicalOperatorSupportsPredicatePassThrough,
+):
     """Logical operator for union."""
 
     def __init__(

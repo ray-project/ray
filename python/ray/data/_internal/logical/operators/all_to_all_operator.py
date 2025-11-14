@@ -3,8 +3,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
-    SupportsPushThrough,
 )
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
@@ -77,7 +77,9 @@ class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThro
 
 
 class RandomShuffle(
-    AbstractAllToAll, SupportsPushThrough, LogicalOperatorSupportsPredicatePassThrough
+    AbstractAllToAll,
+    LogicalOperatorSupportsProjectionPassThrough,
+    LogicalOperatorSupportsPredicatePassThrough,
 ):
     """Logical operator for random_shuffle."""
 
@@ -136,7 +138,9 @@ class RandomShuffle(
 
 
 class Repartition(
-    AbstractAllToAll, SupportsPushThrough, LogicalOperatorSupportsPredicatePassThrough
+    AbstractAllToAll,
+    LogicalOperatorSupportsProjectionPassThrough,
+    LogicalOperatorSupportsPredicatePassThrough,
 ):
     """Logical operator for repartition."""
 
@@ -222,7 +226,9 @@ class Repartition(
 
 
 class Sort(
-    AbstractAllToAll, SupportsPushThrough, LogicalOperatorSupportsPredicatePassThrough
+    AbstractAllToAll,
+    LogicalOperatorSupportsProjectionPassThrough,
+    LogicalOperatorSupportsPredicatePassThrough,
 ):
     """Logical operator for sort."""
 
