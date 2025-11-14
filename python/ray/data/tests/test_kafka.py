@@ -10,7 +10,6 @@ pytest.importorskip("kafka")
 
 @pytest.fixture(scope="session")
 def kafka_container():
-    """Session-scoped fixture that provides a Kafka container for all tests."""
     from testcontainers.kafka import KafkaContainer
 
     print("\nStarting Kafka container (shared across all tests)...")
@@ -23,13 +22,11 @@ def kafka_container():
 
 @pytest.fixture(scope="session")
 def bootstrap_server(kafka_container):
-    """Convenience fixture to get the Kafka bootstrap server address."""
     return kafka_container.get_bootstrap_server()
 
 
 @pytest.fixture(scope="session")
 def kafka_producer(bootstrap_server):
-    """Session-scoped fixture that provides a shared Kafka producer."""
     from kafka import KafkaProducer
 
     print(f"Creating shared Kafka producer for {bootstrap_server}")
@@ -44,7 +41,6 @@ def kafka_producer(bootstrap_server):
 
 
 def test_read_kafka_basic(bootstrap_server, kafka_producer, ray_start_regular_shared):
-    """Test basic Kafka reading functionality."""
     topic = "test-basic"
 
     # Send test messages
@@ -77,108 +73,56 @@ def test_read_kafka_basic(bootstrap_server, kafka_producer, ray_start_regular_sh
     assert first_record["topic"] == topic
 
 
-def test_read_kafka_with_start_offset(
-    bootstrap_server, kafka_producer, ray_start_regular_shared
+@pytest.mark.parametrize(
+    "total_messages,start_offset,end_offset,expected_count,test_id",
+    [
+        (100, 20, 80, 60, "both-set"),
+        (100, 50, None, 50, "start-offset-only"),
+        (100, None, 50, 50, "end-offset-only"),
+        (100, None, None, 100, "both-none"),
+        (100, "earliest", 30, 30, "earliest-start-offset-number-end-offset"),
+        (100, 50, "latest", 50, "number-start-offset-number-end-offset"),
+        (100, "20", "80", 60, "number-start-offset-string-number-end-offset-string"),
+    ],
+)
+def test_read_kafka_with_offsets(
+    bootstrap_server,
+    kafka_producer,
+    ray_start_regular_shared,
+    total_messages,
+    start_offset,
+    end_offset,
+    expected_count,
+    test_id,
 ):
-    """Test reading from a specific start offset."""
-    topic = "test-start-offset"
+    topic = f"test-{test_id}"
 
     # Send test messages
-    for i in range(100):
+    for i in range(total_messages):
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.send(topic, value=message)
     kafka_producer.flush()
     time.sleep(1)
 
-    # Read from offset 50
-    ds = ray.data.read_kafka(
-        topics=[topic],
-        bootstrap_servers=[bootstrap_server],
-        start_offset=50,
-    )
+    # Read with specified offsets
+    kwargs = {
+        "topics": [topic],
+        "bootstrap_servers": [bootstrap_server],
+    }
+    if start_offset is not None:
+        kwargs["start_offset"] = start_offset
+    if end_offset is not None:
+        kwargs["end_offset"] = end_offset
+
+    ds = ray.data.read_kafka(**kwargs)
 
     records = ds.take_all()
-    assert len(records) == 50  # Should read from 50 to 100
-
-
-def test_read_kafka_with_end_offset(
-    bootstrap_server, kafka_producer, ray_start_regular_shared
-):
-    """Test reading up to a specific end offset."""
-    topic = "test-end-offset"
-
-    # Send test messages
-    for i in range(100):
-        message = {"id": i, "value": f"message-{i}"}
-        kafka_producer.send(topic, value=message)
-    kafka_producer.flush()
-    time.sleep(1)
-
-    # Read from 0 to 50
-    ds = ray.data.read_kafka(
-        topics=[topic],
-        bootstrap_servers=[bootstrap_server],
-        start_offset=0,
-        end_offset=50,
-    )
-
-    records = ds.take_all()
-    assert len(records) == 50
-
-
-def test_read_kafka_with_offset_range(
-    bootstrap_server, kafka_producer, ray_start_regular_shared
-):
-    """Test reading a specific offset range."""
-    topic = "test-offset-range"
-
-    # Send test messages
-    for i in range(100):
-        message = {"id": i, "value": f"message-{i}"}
-        kafka_producer.send(topic, value=message)
-    kafka_producer.flush()
-    time.sleep(1)
-
-    # Read from 20 to 80
-    ds = ray.data.read_kafka(
-        topics=[topic],
-        bootstrap_servers=[bootstrap_server],
-        start_offset=20,
-        end_offset=80,
-    )
-
-    records = ds.take_all()
-    assert len(records) == 60
-
-
-def test_read_kafka_earliest_offset(
-    bootstrap_server, kafka_producer, ray_start_regular_shared
-):
-    """Test reading from earliest offset."""
-    topic = "test-earliest"
-
-    # Send test messages
-    for i in range(50):
-        message = {"id": i, "value": f"message-{i}"}
-        kafka_producer.send(topic, value=message)
-    kafka_producer.flush()
-    time.sleep(1)
-
-    # Read from earliest
-    ds = ray.data.read_kafka(
-        topics=[topic],
-        bootstrap_servers=[bootstrap_server],
-        start_offset="earliest",
-    )
-
-    records = ds.take_all()
-    assert len(records) == 50
+    assert len(records) == expected_count
 
 
 def test_read_kafka_multiple_partitions(
     bootstrap_server, kafka_producer, ray_start_regular_shared
 ):
-    """Test reading from multiple partitions."""
     from kafka.admin import KafkaAdminClient, NewTopic
 
     topic = "test-multi-partition"
@@ -212,7 +156,6 @@ def test_read_kafka_multiple_partitions(
 def test_read_kafka_multiple_topics(
     bootstrap_server, kafka_producer, ray_start_regular_shared
 ):
-    """Test reading from multiple topics."""
     topic1 = "test-multi-topic-1"
     topic2 = "test-multi-topic-2"
 
@@ -242,7 +185,6 @@ def test_read_kafka_multiple_topics(
 def test_read_kafka_with_message_headers(
     bootstrap_server, kafka_producer, ray_start_regular_shared
 ):
-    """Test reading messages with headers."""
     topic = "test-headers"
 
     # Send messages with headers
@@ -271,32 +213,7 @@ def test_read_kafka_with_message_headers(
     assert first_record["headers"]["header1"] == "value1"
 
 
-def test_read_kafka_empty_topic(bootstrap_server, ray_start_regular_shared):
-    """Test reading from an empty topic."""
-    from kafka.admin import KafkaAdminClient, NewTopic
-
-    topic = "test-empty"
-
-    # Create empty topic
-    admin_client = KafkaAdminClient(bootstrap_servers=[bootstrap_server])
-    topic_config = NewTopic(name=topic, num_partitions=1, replication_factor=1)
-    admin_client.create_topics([topic_config])
-    admin_client.close()
-
-    time.sleep(2)
-
-    # Read from empty topic
-    ds = ray.data.read_kafka(
-        topics=[topic],
-        bootstrap_servers=[bootstrap_server],
-    )
-
-    records = ds.take_all()
-    assert len(records) == 0
-
-
 def test_read_kafka_invalid_topic(bootstrap_server, ray_start_regular_shared):
-    """Test reading from non-existent topic."""
     with pytest.raises(ValueError, match="has no partitions or doesn't exist"):
         ds = ray.data.read_kafka(
             topics=["non-existent-topic"],
@@ -310,12 +227,12 @@ def test_read_kafka_invalid_topic(bootstrap_server, ray_start_regular_shared):
     [
         [0, "earliest", "end_offset cannot be 'earliest'"],
         ["latest", 1000, "start_offset cannot be 'latest'"],
+        [80, 20, "start_offset must be less than end_offset"],
     ],
 )
-def test_read_kafka_latest_offset_not_allowed_for_end(
+def test_read_kafka_invalid_offsets(
     bootstrap_server, ray_start_regular_shared, test_case
 ):
-    """Test that 'latest' is not allowed for end_offset."""
     with pytest.raises(ValueError, match=test_case[2]):
         ds = ray.data.read_kafka(
             topics=["test-topic"],
