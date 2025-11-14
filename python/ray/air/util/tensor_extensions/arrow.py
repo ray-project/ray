@@ -67,7 +67,9 @@ ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
 
 # 100,000 entries, about 10MB in memory.
 # Most users tables should have less than 100K columns.
-ARROW_EXTENSION_SERIALIZATION_CACHE_MAXSIZE = 10**5
+ARROW_EXTENSION_SERIALIZATION_CACHE_MAXSIZE = env_integer(
+    "RAY_EXTENSION_SERIALIZATION_CACHE_MAXSIZE", 10**5
+)
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +138,20 @@ class ArrowExtensionSerializeDeserializeCache(abc.ABC):
 
     @classmethod
     @functools.lru_cache(maxsize=ARROW_EXTENSION_SERIALIZATION_CACHE_MAXSIZE)
-    def _arrow_ext_deserialize_cache(cls, *args, **kwargs) -> Any:
+    def _arrow_ext_deserialize_cache(cls: type, *args: Any, **kwargs: Any) -> Any:
+        """Deserialize the extension type using the class-level cache.
+
+        This method is cached using functools.lru_cache to improve performance
+        when deserializing extension types. The cache key includes the class (cls)
+        as the first argument, ensuring different subclasses get separate cache entries.
+
+        Args:
+            *args: Positional arguments passed to _arrow_ext_deserialize_compute.
+            **kwargs: Keyword arguments passed to _arrow_ext_deserialize_compute.
+
+        Returns:
+            The deserialized extension type instance.
+        """
         return cls._arrow_ext_deserialize_compute(*args, **kwargs)
 
     @classmethod
