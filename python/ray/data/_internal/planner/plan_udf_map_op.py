@@ -180,6 +180,39 @@ def plan_streaming_repartition_op(
     return operator
 
 
+def plan_batcher_and_collate_op(
+    op: BatcherAndCollate,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> MapOperator:
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
+    compute = get_compute(op._compute)
+    transform_fn = BlockMapTransformFn(
+        lambda blocks, ctx: op.collate_fn(blocks),
+        output_block_size_option=OutputBlockSizeOption.of(
+            target_num_rows_per_block=op.target_num_rows_per_block,  # To split n*target_max_block_size row into n blocks
+        ),
+    )
+
+    map_transformer = MapTransformer([transform_fn])
+
+    # Disable fusion for streaming repartition with the downstream op.
+    operator = MapOperator.create(
+        map_transformer,
+        input_physical_dag,
+        data_context,
+        name=op.name,
+        compute_strategy=compute,
+        ref_bundler=StreamingRepartitionRefBundler(op.target_num_rows_per_block),
+        ray_remote_args=op._ray_remote_args,
+        ray_remote_args_fn=op._ray_remote_args_fn,
+        supports_fusion=False,
+    )
+
+    return operator
+
+
 def plan_filter_op(
     op: Filter,
     physical_children: List[PhysicalOperator],

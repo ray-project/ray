@@ -378,3 +378,33 @@ class StreamingRepartition(AbstractMap):
 
     def can_modify_num_rows(self) -> bool:
         return False
+
+
+class BatcherAndCollate(AbstractMap):
+    """Logical operator for batcher and collate operation.
+    Args:
+        batch_size: The batch size.
+        collate_fn: The collate function. Currently only supports pyarrow.Table to pyarrow.Table.
+    """
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        batch_size: int,
+        collate_fn: Callable["pyarrow.Table", "pyarrow.Table"],
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__("BatcherAndCollate", input_op, collate_fn, ray_remote_args=ray_remote_args)
+        self._batch_size = batch_size
+        self._collate_fn = collate_fn
+
+    @property
+    def batch_size(self) -> int:
+        return self._batch_size
+
+    @property
+    def collate_fn(self) -> Callable["pyarrow.Table", "pyarrow.Table"]:
+        return self._collate_fn
+
+    def can_modify_num_rows(self) -> bool:
+        return False
