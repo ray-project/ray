@@ -925,7 +925,9 @@ class ServeDeploySchemaDumper(yaml.SafeDumper):
 
 
 def enum_representer(dumper: yaml.Dumper, data: Enum):
-    """Custom representer for Enum objects to serialize as their string values."""
+    """Custom representer for Enum objects to serialize as their string values.
+    This tells PyYAML when it encounters an Enum object, serialize it as
+    a string scalar using its .value attribute."""
     return dumper.represent_scalar("tag:yaml.org,2002:str", str(data.value))
 
 
