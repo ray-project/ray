@@ -291,7 +291,7 @@ class WorkerGroup(BaseWorkerGroup):
                 * worker_group_context.num_workers,
                 strategy=worker_group_context.placement_strategy,
                 bundle_label_selector=worker_group_context.bundle_label_selector,
-            ) if pg is None
+            ) if pg is None else pg
             logger.info(
                 f"Attempting to start training worker group of size {worker_group_context.num_workers} with "
                 f"the following resources: [{worker_group_context.resources_per_worker}] * {worker_group_context.num_workers}"
