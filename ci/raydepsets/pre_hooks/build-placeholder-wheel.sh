@@ -10,4 +10,15 @@ PYTHON_VERSION=$1
 
 export RAY_DEBUG_BUILD=deps-only
 
-uv build --wheel --directory python/ -o ../.whl/ --python "$PYTHON_VERSION"
+
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  docker run --rm \
+  -v "$PWD":/ray -w /ray --platform linux/x86_64 \
+  quay.io/pypa/manylinux2014_x86_64 \
+  bash -lc '
+  set -e
+  export RAY_DEBUG_BUILD=deps-only
+  uv build --wheel --directory python/ -o ../.whl/ --python "$PYTHON_VERSION"'
+else
+  uv build --wheel --directory python/ -o ../.whl/ --python "$PYTHON_VERSION"
+fi
