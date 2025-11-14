@@ -5,8 +5,10 @@ compute_config:
   head_node:
     instance_type: m5.2xlarge
   worker_nodes:
-    - instance_type: g6e.2xlarge
+    - instance_type: g6.2xlarge
       min_nodes: 1
       max_nodes: 10
+requirements: # Python dependencies - can be list or path to requirements.txt
+  - datasets==4.4.1
+working_dir: .
 max_retries: 2
-

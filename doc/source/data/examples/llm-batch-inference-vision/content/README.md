@@ -136,9 +136,10 @@ from io import BytesIO
 
 # Preprocess function prepares messages with image content for the VLM.
 def preprocess(row: dict[str, Any]) -> dict[str, Any]:
-    # Convert bytes image to PIL
+    # Convert bytes image to PIL 
     image = row[IMAGE_COLUMN]['bytes']
     image = Image.open(BytesIO(image))
+    # Resize for consistency + predictable vision-token budget
     image = image.resize((225, 225), Image.Resampling.BICUBIC)
     
     return dict(
@@ -227,7 +228,7 @@ Save your batch inference code as `batch_vision_inference.py`, then create a job
 # job.yaml
 name: llm-batch-inference-vision
 entrypoint: python batch_inference_vision.py
-image_uri: anyscale/ray:2.49.0-py311-cu128
+image_uri: anyscale/ray-llm:2.51.1-py311-cu128
 compute_config:
   head_node:
     instance_type: m5.2xlarge
@@ -235,7 +236,12 @@ compute_config:
     - instance_type: g6.2xlarge
       min_nodes: 1
       max_nodes: 10
+requirements: # Python dependencies - can be list or path to requirements.txt
+  - datasets==4.4.1
+working_dir: .
 max_retries: 2
+
+
 ```
 
 ### Submit
@@ -306,14 +312,11 @@ The following example processes a configurable number of images from the dataset
 
 ```python
 import os
-import pprint
 
 # The BLIP3o/BLIP3o-Pretrain-Short-Caption dataset has ~5M images
 # Configure how many images to process (default: 1M for demonstration).
 dataset_limit = int(os.environ.get("LARGE_DATASET_LIMIT", 1_000_000))
 print(f"Processing {dataset_limit:,} images... (or the whole dataset if you picked >5M)")
-
-# Apply the limit to the dataset.
 ds_large = ds.limit(dataset_limit)
 
 # Repartition for better parallelism.
@@ -321,7 +324,7 @@ num_partitions_large = 128
 print(f"Repartitioning dataset into {num_partitions_large} blocks for parallelism...")
 ds_large = ds_large.repartition(num_blocks=num_partitions_large)
 
-# Run the same processor on the larger dataset.
+# Run the compute-scaled processor on the larger dataset.
 processed_large = processor_large_concurrency(ds_large)
 processed_large = processed_large.materialize()
 
@@ -370,20 +373,20 @@ After processing, save the results to a persistent storage location such as S3 o
 ```python
 # Save the processed dataset to JSON format (better for text outputs).
 # Replace this path with your desired output location.
-output_path_small = "local:///tmp/small_processed_captions"
-output_path = "local:///tmp/processed_captions"
+output_path_small = "local:///tmp/processed_captions_small"
+output_path_large = "local:///tmp/processed_captions_large"
 
 print(f"Saving small processed dataset to {output_path_small}...")
 processed_small.write_json(output_path_small)
 print("Saved successfully.")
 
-print(f"Saving large processed dataset to {output_path}...")
-processed_large.write_json(output_path)
+print(f"Saving large processed dataset to {output_path_large}...")
+processed_large.write_json(output_path_large)
 print("Saved successfully.")
 
 # Alternatively, save as Parquet for better compression:
 # processed_small.write_parquet(output_path_small)
-# processed_large.write_parquet(output_path)
+# processed_large.write_parquet(output_path_large)
 ```
 
 For more information, see [Saving Data](https://docs.ray.io/en/latest/data/saving-data.html).

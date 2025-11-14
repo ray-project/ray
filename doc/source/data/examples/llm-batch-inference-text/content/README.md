@@ -154,7 +154,6 @@ With the configuration and functions defined, build the processor.
 
 ```python
 from ray.data.llm import build_llm_processor
-from pprint import pprint
 
 # Build the LLM processor with the configuration and functions.
 processor = build_llm_processor(
@@ -170,6 +169,8 @@ Run the processor on your small dataset to perform batch inference. Ray Data aut
 
 
 ```python
+from pprint import pprint
+
 # Run the processor on the small dataset.
 processed_small = processor(ds_small)
 
@@ -310,20 +311,20 @@ After processing, save the results to a persistent storage location such as S3 o
 ```python
 # Save the processed dataset to Parquet format.
 # Replace this path with your desired output location.
-output_path_small = "local:///tmp/small_processed_customers"
-output_path = "local:///tmp/processed_customers"
+output_path_small = "local:///tmp/processed_customers_small"
+output_path_large = "local:///tmp/processed_customers_large"
 
 print(f"Saving small processed dataset to {output_path_small}...")
 processed_small.write_parquet(output_path_small)
 print("Saved successfully.")
 
-print(f"Saving large processed dataset to {output_path}...")
-processed_large.write_parquet(output_path)
+print(f"Saving large processed dataset to {output_path_large}...")
+processed_large.write_parquet(output_path_large)
 print("Saved successfully.")
 
 # Alternatively, save as CSV:
 # processed_small.write_csv(output_path_small)
-# processed_large.write_csv(output_path)
+# processed_large.write_csv(output_path_large)
 ```
 
 For more information, see [Saving Data](https://docs.ray.io/en/latest/data/saving-data.html)
