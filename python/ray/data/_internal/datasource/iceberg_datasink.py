@@ -198,6 +198,10 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
         # We handle concurrent schema updates with retry logic.
         self._update_schema(combined_table.schema)
 
+        if self._mode == SaveMode.UPSERT:
+            self._table.upsert(df=combined_table, **self._upsert_kwargs)
+            return ([], combined_table.schema)
+
         # Use PyIceberg's _dataframe_to_data_files which properly handles:
         # - Schema conversion with name mapping
         # - Partitioned vs unpartitioned tables
@@ -288,28 +292,6 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
         This commits all the data files that were written during the write phase.
         """
         self._commit_transaction_with_append(data_files)
-
-    def _complete_upsert(self, data_files: List["DataFile"]) -> None:
-        """
-        Complete UPSERT mode write using PyIceberg's upsert API.
-
-        For upsert, we must read back the written data files because PyIceberg's
-        upsert operation inherently requires the actual data content to:
-        1. Compare against existing table data to identify matching rows
-        2. Determine which values have actually changed (to avoid unnecessary writes)
-        3. Separate rows to update from rows to insert
-
-        This data reload is unavoidable - it's not a limitation of our implementation,
-        but a fundamental requirement of the UPSERT operation itself. PyIceberg's
-        upsert() API only accepts DataFrame input, not DataFile objects, because
-        it needs to perform row-level comparisons.
-
-        Note: APPEND and OVERWRITE modes don't have this limitation and work
-        directly with DataFile objects without reloading data.
-        """
-        combined_table = self._read_data_files_as_table(data_files)
-
-        self._table.upsert(df=combined_table, **self._upsert_kwargs)
 
     def _validate_overwrite_kwargs(self) -> None:
         """Warn if user passed overwrite_filter via overwrite_kwargs."""
@@ -419,10 +401,10 @@ class IcebergDatasink(Datasink[tuple[list["DataFile"], "pa.Schema"]]):
         # Execute the appropriate write operation
         if self._mode == SaveMode.APPEND:
             self._complete_append(data_files)
-        elif self._mode == SaveMode.UPSERT:
-            self._complete_upsert(data_files)
         elif self._mode == SaveMode.OVERWRITE:
             self._complete_overwrite(data_files)
+        elif self._mode == SaveMode.UPSERT:
+            pass
         else:
             raise ValueError(
                 f"Unsupported write mode: {self._mode}. "
