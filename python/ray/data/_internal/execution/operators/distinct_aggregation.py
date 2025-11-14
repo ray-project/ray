@@ -7,9 +7,9 @@ local deduplication.
 
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Tuple
 
-from ray.data._internal.arrow_block import ArrowBlockBuilder
+from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
@@ -96,8 +96,6 @@ class DistinctAggregation(StatefulShuffleAggregation):
         """
         partition_data = self._partition_data[partition_id]
         if not partition_data:
-            from ray.data._internal.arrow_block import ArrowBlockAccessor
-
             return ArrowBlockAccessor._empty_table()
 
         builder = ArrowBlockBuilder()
