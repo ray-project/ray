@@ -1820,6 +1820,8 @@ python-dateutil==2.8.2
     #   pandas
     #   segment-analytics-python
     #   strictyaml
+python-dotenv==1.2.1
+    # via testcontainers
 python-jose==3.3.0
     # via moto
 python-json-logger==2.0.7
