@@ -973,6 +973,42 @@ class TestBasicWriteModes:
         )
         assert rows_same(result_df, expected)
 
+    def test_overwrite_full_table_missing_columns(self, clean_table):
+        """Test full table overwrite when new data is missing columns - they become NULL."""
+        # Initial data with 3 columns
+        initial_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3],
+                "col_b": ["alice", "bob", "charlie"],
+                "col_c": [10, 20, 30],
+            }
+        )
+        _write_to_iceberg(initial_data)
+
+        # Overwrite with data that's missing col_b (non-partition column)
+        # Note: col_c must be present since table is partitioned by col_c
+        new_data = _create_typed_dataframe(
+            {
+                "col_a": [10, 20],
+                # col_b is intentionally missing (non-partition column)
+                "col_c": [100, 200],
+            }
+        )
+        _write_to_iceberg(new_data, mode=SaveMode.OVERWRITE)
+
+        # Read back and verify
+        result_df = _read_from_iceberg(sort_by="col_a")
+
+        # All old data should be gone
+        assert len(result_df) == 2
+        assert result_df["col_a"].tolist() == [10, 20]
+        assert result_df["col_c"].tolist() == [100, 200]
+
+        # col_b should still exist in schema but be NULL for new rows
+        assert "col_b" in result_df.columns
+        assert pd.isna(result_df["col_b"].iloc[0])
+        assert pd.isna(result_df["col_b"].iloc[1])
+
 
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("14.0.0"),
