@@ -370,7 +370,6 @@ CoreWorker::CoreWorker(
                               object_id]() { free_actor_object_callback(object_id); },
                              "CoreWorker.FreeActorObjectCallback");
           }) {
-
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -533,8 +532,8 @@ CoreWorker::~CoreWorker() {
 
 void CoreWorker::InitializeShutdownExecutor() {
   auto executor = std::make_unique<CoreWorkerShutdownExecutor>(shared_from_this());
-  shutdown_coordinator_ = std::make_unique<ShutdownCoordinator>(
-      std::move(executor), options_.worker_type);
+  shutdown_coordinator_ = 
+      std::make_unique<ShutdownCoordinator>(std::move(executor), options_.worker_type);
 
   RAY_LOG(DEBUG) << "Initialized unified shutdown coordinator with concrete executor for "
                     "worker type: "

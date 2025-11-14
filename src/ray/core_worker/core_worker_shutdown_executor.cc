@@ -67,7 +67,6 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   {
     absl::MutexLock lock(&core_worker->mutex_);
     core_worker->shutdown_state_ = ShutdownState::kShuttingDown;
-    
     if (core_worker->options_.worker_type == WorkerType::WORKER &&
         !core_worker->worker_context_->GetCurrentActorID().IsNil()) {
       actor_callback = core_worker->actor_shutdown_callback_;
@@ -80,7 +79,6 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   }
 
   if (core_worker->options_.worker_type == WorkerType::WORKER) {
-
     core_worker->event_loops_running_ = false;
     core_worker->task_execution_service_.stop();
   }
@@ -108,7 +106,6 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     absl::MutexLock lock(&core_worker->mutex_);
     core_worker->shutdown_state_ = ShutdownState::kDisconnecting;
   }
-  
   core_worker->core_worker_server_->Shutdown();
 
   // GCS client is safe to disconnect now that io_service has stopped.
@@ -124,7 +121,6 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     absl::MutexLock lock(&core_worker->mutex_);
     core_worker->shutdown_state_ = ShutdownState::kShutdown;
   }
-  
   RAY_LOG(INFO) << "Core worker ready to be deallocated.";
   NotifyComplete();
 }

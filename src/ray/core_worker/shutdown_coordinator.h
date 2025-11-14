@@ -215,7 +215,7 @@ class ShutdownCoordinator {
 
   /// Get the executor for accessing completion tracking.
   /// \return Pointer to executor (nullptr if not initialized)
-  ShutdownExecutorInterface* GetExecutor() const { return executor_.get(); }
+  ShutdownExecutorInterface *GetExecutor() const { return executor_.get(); }
 
  private:
   /// Attempt to transition to disconnecting state.
