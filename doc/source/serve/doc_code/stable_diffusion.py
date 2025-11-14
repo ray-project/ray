@@ -36,7 +36,7 @@ class APIIngress:
     ray_actor_options={"num_gpus": 1},
     autoscaling_config={"min_replicas": 0, "max_replicas": 2},
 )
-class StableDiffusionXLBase:
+class StableDiffusionXL:
     def __init__(self):
         from diffusers import DiffusionPipeline
 
@@ -55,34 +55,34 @@ class StableDiffusionXLBase:
             return image
 
 
-entrypoint = APIIngress.bind(StableDiffusionXLBase.bind())
+entrypoint = APIIngress.bind(StableDiffusionXL.bind())
 
 # __example_code_end__
 
 
-if __name__ == "__main__":
-    import ray
-    import os
-    import requests
+# if __name__ == "__main__":
+#     import ray
+#     import os
+#     import requests
 
-    ray.init(
-        runtime_env={
-            "pip": [
-                "diffusers==0.33.1",
-                "transformers==4.51.3",
-            ]
-        }
-    )
+#     ray.init(
+#         runtime_env={
+#             "pip": [
+#                 "diffusers==0.33.1",
+#                 "transformers==4.51.3",
+#             ]
+#         }
+#     )
 
-    handle = serve.run(entrypoint)
-    handle.generate.remote("hi").result()
+#     handle = serve.run(entrypoint)
+#     handle.generate.remote("hi").result()
 
-    prompt = "a cute cat is dancing on the grass."
-    prompt_query = "%20".join(prompt.split(" "))
-    resp = requests.get(f"http://127.0.0.1:8000/imagine?prompt={prompt_query}")
+#     prompt = "a cute cat is dancing on the grass."
+#     prompt_query = "%20".join(prompt.split(" "))
+#     resp = requests.get(f"http://127.0.0.1:8000/imagine?prompt={prompt_query}")
 
-    with open("output.png", "wb") as f:
-        f.write(resp.content)
+#     with open("output.png", "wb") as f:
+#         f.write(resp.content)
 
-    assert os.path.exists("output.png")
-    os.remove("output.png")
+#     assert os.path.exists("output.png")
+#     os.remove("output.png")
