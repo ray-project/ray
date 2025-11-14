@@ -8,7 +8,7 @@ import posixpath
 import sys
 import time
 from math import floor
-from typing import List
+from typing import List, Set
 
 from packaging.version import Version
 
@@ -20,6 +20,10 @@ from ray import ray_constants
 from ray._common.network_utils import build_address, parse_address
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._common.utils import get_or_create_event_loop
+from ray._private.authentication import (
+    authentication_constants,
+    authentication_utils as auth_utils,
+)
 from ray._private.authentication.http_token_authentication import (
     get_token_auth_middleware,
 )
@@ -169,12 +173,95 @@ class HttpServerDashboardHead:
             mode = get_authentication_mode()
             if mode == AuthenticationMode.TOKEN:
                 mode_str = "token"
+            elif mode == AuthenticationMode.K8S:
+                mode_str = "k8s"
             else:
                 mode_str = "disabled"
 
-            return aiohttp.web.json_response({"authentication_mode": mode_str})
+            response = aiohttp.web.json_response({"authentication_mode": mode_str})
+
+            # If auth is disabled, clear any existing authentication cookie
+            if mode_str == "disabled":
+                response.set_cookie(
+                    authentication_constants.AUTHENTICATION_TOKEN_COOKIE_NAME,
+                    "",
+                    max_age=0,
+                    path="/",
+                )
+
+            return response
         except Exception as e:
             logger.error(f"Error getting authentication mode: {e}")
+            return aiohttp.web.Response(
+                status=500, text="Internal Server Error: " + str(e)
+            )
+
+    @routes.post("/api/authenticate")
+    async def authenticate(self, req) -> aiohttp.web.Response:
+        """
+        Authenticate a user by validating their token and setting a secure HttpOnly cookie.
+
+        This endpoint accepts a token via the Authorization header, validates it,
+        and if valid, sets an HttpOnly cookie for subsequent requests from the web dashboard.
+        """
+        try:
+            # Check if token authentication is enabled
+            if not auth_utils.is_token_auth_enabled():
+                return aiohttp.web.Response(
+                    status=401,
+                    text="Unauthorized: Token authentication is not enabled",
+                )
+
+            # Get token from Authorization header
+            auth_header = req.headers.get(
+                authentication_constants.AUTHORIZATION_HEADER_NAME, ""
+            )
+
+            if not auth_header:
+                return aiohttp.web.Response(
+                    status=401,
+                    text="Unauthorized: Missing authentication token",
+                )
+
+            # Validate the token
+            if not auth_utils.validate_request_token(auth_header):
+                return aiohttp.web.Response(
+                    status=403,
+                    text="Forbidden: Invalid authentication token",
+                )
+
+            # Token is valid - extract the token value (remove "Bearer " prefix if present)
+            token = auth_header
+            if auth_header.lower().startswith(
+                authentication_constants.AUTHORIZATION_BEARER_PREFIX.lower()
+            ):
+                token = auth_header[
+                    len(authentication_constants.AUTHORIZATION_BEARER_PREFIX) :
+                ]  # Remove "Bearer " prefix
+
+            # Create successful response
+            response = aiohttp.web.json_response(
+                {"status": "authenticated", "message": "Token is valid"}
+            )
+
+            # Set secure HttpOnly cookie
+            # Check if the connection is secure (HTTPS)
+            is_secure = req.scheme == "https"
+
+            response.set_cookie(
+                authentication_constants.AUTHENTICATION_TOKEN_COOKIE_NAME,
+                token,
+                max_age=authentication_constants.AUTHENTICATION_TOKEN_COOKIE_MAX_AGE,  # 30 days (matching previous behavior)
+                path="/",
+                httponly=True,  # Prevents JavaScript access (XSS protection)
+                samesite="Strict",  # Prevents CSRF attacks
+                secure=is_secure,  # Only send over HTTPS if connection is secure
+            )
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error during authentication: {e}")
             return aiohttp.web.Response(
                 status=500, text="Internal Server Error: " + str(e)
             )
@@ -200,19 +287,36 @@ class HttpServerDashboardHead:
                 raise aiohttp.web.HTTPForbidden()
         return await handler(request)
 
-    @aiohttp.web.middleware
-    async def browsers_no_post_put_middleware(self, request, handler):
-        if (
-            # A best effort test for browser traffic. All common browsers
-            # start with Mozilla at the time of writing.
-            dashboard_optional_utils.is_browser_request(request)
-            and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
-        ):
-            return aiohttp.web.Response(
-                status=405, text="Method Not Allowed for browser traffic."
-            )
+    def get_browsers_no_post_put_middleware(self, whitelisted_paths: Set[str]):
+        """Create middleware that blocks POST/PUT requests from browsers.
 
-        return await handler(request)
+        Args:
+            whitelisted_paths: Set of paths that are allowed to accept POST/PUT
+                              from browsers (e.g., {"/api/authenticate"})
+
+        Returns:
+            An aiohttp middleware function
+        """
+
+        @aiohttp.web.middleware
+        async def browsers_no_post_put_middleware(request, handler):
+            # Allow whitelisted paths
+            if request.path in whitelisted_paths:
+                return await handler(request)
+
+            if (
+                # A best effort test for browser traffic. All common browsers
+                # start with Mozilla at the time of writing.
+                dashboard_optional_utils.is_browser_request(request)
+                and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
+            ):
+                return aiohttp.web.Response(
+                    status=405, text="Method Not Allowed for browser traffic."
+                )
+
+            return await handler(request)
+
+        return browsers_no_post_put_middleware
 
     @aiohttp.web.middleware
     async def metrics_middleware(self, request, handler):
@@ -272,12 +376,18 @@ class HttpServerDashboardHead:
             "/",  # Root index.html
             "/favicon.ico",
             "/api/authentication_mode",
+            "/api/authenticate",  # Token authentication endpoint
             "/api/healthz",  # General healthcheck
             "/api/gcs_healthz",  # GCS health check
             "/api/local_raylet_healthz",  # Raylet health check
             "/-/healthz",  # Serve health check
         }
         public_path_prefixes = ("/static/",)  # Static assets (JS, CSS, images)
+
+        # Paths that are allowed to accept POST/PUT requests from browsers
+        browser_post_put_allowed_paths = {
+            "/api/authenticate",  # Token authentication endpoint
+        }
 
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
@@ -290,7 +400,9 @@ class HttpServerDashboardHead:
                     aiohttp, public_exact_paths, public_path_prefixes
                 ),
                 self.path_clean_middleware,
-                self.browsers_no_post_put_middleware,
+                self.get_browsers_no_post_put_middleware(
+                    browser_post_put_allowed_paths
+                ),
                 self.cache_control_static_middleware,
             ],
         )
