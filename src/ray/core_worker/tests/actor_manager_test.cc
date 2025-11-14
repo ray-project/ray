@@ -39,8 +39,8 @@ class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
 
   void AsyncSubscribe(
       const ActorID &actor_id,
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const gcs::StatusCallback &done) {
+      const rpc::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const rpc::StatusCallback &done) {
     auto callback_entry = std::make_pair(actor_id, subscribe);
     callback_map_.emplace(actor_id, subscribe);
     subscribe_finished_callback_map_[actor_id] = done;
@@ -81,9 +81,9 @@ class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
     return true;
   }
 
-  absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
+  absl::flat_hash_map<ActorID, rpc::SubscribeCallback<ActorID, rpc::ActorTableData>>
       callback_map_;
-  absl::flat_hash_map<ActorID, gcs::StatusCallback> subscribe_finished_callback_map_;
+  absl::flat_hash_map<ActorID, rpc::StatusCallback> subscribe_finished_callback_map_;
   absl::flat_hash_map<ActorID, uint32_t> actor_subscribed_times_;
 };
 

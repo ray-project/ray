@@ -35,7 +35,7 @@ class RayletClientWithIoContext {
   /// Get the worker pids from raylet.
   /// \param callback The callback to set the worker pids.
   /// \param timeout_ms The timeout in milliseconds.
-  void GetWorkerPIDs(const gcs::OptionalItemCallback<std::vector<int32_t>> &callback,
+  void GetWorkerPIDs(const rpc::OptionalItemCallback<std::vector<int32_t>> &callback,
                      int64_t timeout_ms);
 
  private:

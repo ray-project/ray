@@ -472,7 +472,7 @@ void RayletClient::GetNodeStats(
 }
 
 void RayletClient::GetWorkerPIDs(
-    const gcs::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
+    const rpc::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
   rpc::GetWorkerPIDsRequest request;
   auto client_callback = [callback](const Status &status,
                                     rpc::GetWorkerPIDsReply &&reply) {

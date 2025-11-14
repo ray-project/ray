@@ -38,17 +38,17 @@ class ActorCreatorInterface {
   /// \param callback Callback that will be called after the actor info is registered to
   /// GCS
   virtual void AsyncRegisterActor(const TaskSpecification &task_spec,
-                                  gcs::StatusCallback callback) = 0;
+                                  rpc::StatusCallback callback) = 0;
 
   virtual void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
-      gcs::StatusCallback callback) = 0;
+      rpc::StatusCallback callback) = 0;
 
   virtual void AsyncReportActorOutOfScope(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
-      gcs::StatusCallback callback) = 0;
+      rpc::StatusCallback callback) = 0;
 
   /// Asynchronously request GCS to create the actor.
   ///
@@ -63,7 +63,7 @@ class ActorCreatorInterface {
   /// \param actor_id The actor id to wait
   /// \param callback The callback that will be called after actor registered
   virtual void AsyncWaitForActorRegisterFinish(const ActorID &actor_id,
-                                               gcs::StatusCallback callback) = 0;
+                                               rpc::StatusCallback callback) = 0;
 
   /// Check whether actor is activately under registering
   ///
@@ -80,21 +80,21 @@ class ActorCreator : public ActorCreatorInterface {
   Status RegisterActor(const TaskSpecification &task_spec) const override;
 
   void AsyncRegisterActor(const TaskSpecification &task_spec,
-                          gcs::StatusCallback callback) override;
+                          rpc::StatusCallback callback) override;
 
   void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
-      gcs::StatusCallback callback) override;
+      rpc::StatusCallback callback) override;
 
   void AsyncReportActorOutOfScope(const ActorID &actor_id,
                                   uint64_t num_restarts_due_to_lineage_reconstruction,
-                                  gcs::StatusCallback callback) override;
+                                  rpc::StatusCallback callback) override;
 
   bool IsActorInRegistering(const ActorID &actor_id) const override;
 
   void AsyncWaitForActorRegisterFinish(const ActorID &actor_id,
-                                       gcs::StatusCallback callback) override;
+                                       rpc::StatusCallback callback) override;
 
   void AsyncCreateActor(
       const TaskSpecification &task_spec,
@@ -103,7 +103,7 @@ class ActorCreator : public ActorCreatorInterface {
  private:
   gcs::ActorInfoAccessor &actor_client_;
   using RegisteringActorType =
-      absl::flat_hash_map<ActorID, std::vector<ray::gcs::StatusCallback>>;
+      absl::flat_hash_map<ActorID, std::vector<rpc::StatusCallback>>;
   ThreadPrivate<RegisteringActorType> registering_actors_;
 };
 

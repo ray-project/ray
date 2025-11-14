@@ -1075,7 +1075,7 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
   actor_creation_spec->set_max_task_retries(0);
   TaskSpecification task_spec(task_spec_msg);
 
-  gcs::StatusCallback register_callback;
+  rpc::StatusCallback register_callback;
   EXPECT_CALL(*mock_gcs_client_->mock_actor_accessor,
               AsyncRegisterActor(::testing::_, ::testing::_, ::testing::_))
       .WillOnce(::testing::SaveArg<1>(&register_callback));

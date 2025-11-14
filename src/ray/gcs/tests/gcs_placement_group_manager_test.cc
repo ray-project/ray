@@ -33,7 +33,7 @@ namespace ray {
 namespace gcs {
 
 using ::testing::_;
-using StatusCallback = std::function<void(Status status)>;
+using rpc::StatusCallback = std::function<void(Status status)>;
 
 class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterface {
  public:
@@ -113,7 +113,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
 
   // Make placement group registration sync.
   void RegisterPlacementGroup(const ray::rpc::CreatePlacementGroupRequest &request,
-                              StatusCallback callback) {
+                              rpc::StatusCallback callback) {
     std::promise<void> promise;
     JobID job_id = JobID::FromBinary(request.placement_group_spec().creator_job_id());
     std::string ray_namespace = job_namespace_table_[job_id];
