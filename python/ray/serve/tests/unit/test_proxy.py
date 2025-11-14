@@ -95,6 +95,8 @@ class FakeProxyRouter(ProxyRouter):
         self.handle = None
         self.app_is_cross_language = None
         self._ready_for_traffic = False
+        self.route_patterns = {}
+        self._route_pattern_apps = {}
 
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.endpoints = endpoints
@@ -792,6 +794,149 @@ async def test_worker_http_unhealthy_until_replicas_populated():
     assert messages[0]["headers"] is not None
     assert messages[0]["status"] == 200
     assert messages[1]["body"].decode("utf-8") == HEALTHY_MESSAGE
+
+
+class TestProxyRouterMatchRoutePattern:
+    """Test ProxyRouter.match_route_pattern functionality."""
+
+    @pytest.fixture
+    def mock_get_handle(self):
+        def _get_handle(endpoint: DeploymentID, info: EndpointInfo):
+            return MockDeploymentHandle(deployment_name=endpoint.name)
+
+        return _get_handle
+
+    def test_match_route_pattern_no_patterns(self, mock_get_handle):
+        """Test that match_route_pattern returns route_prefix when no patterns exist."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api", route_patterns=None
+                )
+            }
+        )
+
+        scope = {"type": "http", "path": "/api/users/123", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        assert result == "/api"
+
+    def test_match_route_pattern_with_patterns(self, mock_get_handle):
+        """Test that match_route_pattern matches specific route patterns."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api",
+                    route_patterns=[
+                        "/api/",
+                        "/api/users/{user_id}",
+                        "/api/items/{item_id}/details",
+                    ],
+                )
+            }
+        )
+
+        # Test matching parameterized route
+        scope = {"type": "http", "path": "/api/users/123", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        assert result == "/api/users/{user_id}"
+
+        # Test matching nested parameterized route
+        scope = {"type": "http", "path": "/api/items/abc/details", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        assert result == "/api/items/{item_id}/details"
+
+        # Test matching root
+        scope = {"type": "http", "path": "/api/", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        assert result == "/api/"
+
+    def test_match_route_pattern_caching(self, mock_get_handle):
+        """Test that mock Starlette apps are cached for performance."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api",
+                    route_patterns=["/api/users/{user_id}"],
+                )
+            }
+        )
+
+        scope = {"type": "http", "path": "/api/users/123", "method": "GET"}
+
+        # First call should create and cache the mock app
+        assert "/api" not in router._route_pattern_apps
+        result1 = router.match_route_pattern("/api", scope)
+        assert result1 == "/api/users/{user_id}"
+        assert "/api" in router._route_pattern_apps
+
+        # Second call should use cached app
+        cached_app = router._route_pattern_apps["/api"]
+        result2 = router.match_route_pattern("/api", scope)
+        assert result2 == "/api/users/{user_id}"
+        assert router._route_pattern_apps["/api"] is cached_app
+
+    def test_match_route_pattern_cache_invalidation(self, mock_get_handle):
+        """Test that cache is cleared when routes are updated."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api",
+                    route_patterns=["/api/users/{user_id}"],
+                )
+            }
+        )
+
+        scope = {"type": "http", "path": "/api/users/123", "method": "GET"}
+        router.match_route_pattern("/api", scope)
+        assert "/api" in router._route_pattern_apps
+
+        # Update routes should clear cache
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api",
+                    route_patterns=["/api/items/{item_id}"],
+                )
+            }
+        )
+        assert len(router._route_pattern_apps) == 0
+
+    def test_match_route_pattern_empty_patterns(self, mock_get_handle):
+        """Test that empty pattern list returns route_prefix."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api", route_patterns=[]
+                )
+            }
+        )
+
+        scope = {"type": "http", "path": "/api/users/123", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        assert result == "/api"
+
+    def test_match_route_pattern_no_match_fallback(self, mock_get_handle):
+        """Test that unmatched requests fall back to route_prefix."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api",
+                    route_patterns=["/api/users/{user_id}"],
+                )
+            }
+        )
+
+        # Request to path not in patterns
+        scope = {"type": "http", "path": "/api/admin/settings", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        # Should fall back to prefix since no pattern matches
+        assert result == "/api"
 
 
 if __name__ == "__main__":

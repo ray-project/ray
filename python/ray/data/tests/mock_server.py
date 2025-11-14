@@ -21,7 +21,6 @@ def _is_port_available(host, port):
     """Check if a port is available for use."""
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind((host, port))
             return True
     except OSError:
@@ -44,7 +43,6 @@ def _find_available_port(host, preferred_port, max_attempts=10):
     # If all else fails, let the OS pick a port
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind((host, 0))  # Let OS pick port
             _, port = s.getsockname()
             return port

@@ -538,6 +538,13 @@ class ApplicationState:
 
         if deployment_info.route_prefix is not None:
             config = deployment_info.deployment_config
+            # Try to get route_patterns from deployment state first (most up-to-date),
+            # otherwise fall back to existing endpoint patterns
+            route_patterns = (
+                self._deployment_state_manager.get_deployment_route_patterns(
+                    deployment_id
+                )
+            )
             self._endpoint_state.update_endpoint(
                 deployment_id,
                 # The current meaning of the "is_cross_language" field is ambiguous.
@@ -550,6 +557,7 @@ class ApplicationState:
                     route=deployment_info.route_prefix,
                     app_is_cross_language=config.deployment_language
                     != DeploymentLanguage.PYTHON,
+                    route_patterns=route_patterns,
                 ),
             )
         else:

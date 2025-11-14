@@ -133,6 +133,10 @@ SEPARATOR REQUIREMENT:
 @click.argument("ray_args_and_entrypoint", nargs=-1, type=click.UNPROCESSED)
 def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
     all_args = sys.argv[1:]
+
+    if all_args and all_args[0] == "symmetric-run":
+        all_args = all_args[1:]
+
     try:
         separator = all_args.index("--")
     except ValueError:

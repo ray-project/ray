@@ -863,6 +863,8 @@ class WorkerPool : public WorkerPoolInterface {
   const NodeID node_id_;
   /// Address of the current node.
   const std::string node_address_;
+  /// Address family for the node IP address (AF_INET or AF_INET6).
+  const int node_address_family_;
   /// A callback to get the number of CPUs available. We use this to determine
   /// how many idle workers to keep around.
   std::function<int64_t()> get_num_cpus_available_;

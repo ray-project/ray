@@ -1,13 +1,14 @@
-import sys
 import os
+import sys
+import tempfile
 from unittest.mock import patch
 
 import pytest
-import tempfile
+
 from ray_release.cloud_util import (
+    _parse_abfss_uri,
     upload_file_to_azure,
     upload_working_dir_to_azure,
-    _parse_abfss_uri,
 )
 
 

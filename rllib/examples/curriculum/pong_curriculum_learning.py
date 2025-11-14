@@ -39,8 +39,9 @@ For logging to your WandB account, use:
 """
 
 import functools
-import gymnasium as gym
 from typing import Callable
+
+import gymnasium as gym
 
 from ray import tune
 from ray.rllib.algorithms.algorithm import Algorithm
@@ -52,7 +53,6 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, EPISODE_RETURN_MEAN
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
-
 
 parser = add_rllib_example_script_args(
     default_reward=float("inf"),

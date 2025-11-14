@@ -25,10 +25,12 @@
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/fallback_strategy.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_class_util.h"
 #include "ray/common/task/task_common.h"
+#include "ray/observability/metric_interface.h"
 
 extern "C" {
 #include "ray/thirdparty/sha256.h"
@@ -229,6 +231,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The labels that are required for the execution of this task on a node.
   const LabelSelector &GetLabelSelector() const;
 
+  /// Return the list of fallback strategies for scheduling.
+  ///
+  /// \return Fallback strategies to fall back on when scheduling a task on a node.
+  const std::vector<FallbackOption> &GetFallbackStrategy() const;
+
   const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
 
   bool IsNodeAffinitySchedulingStrategy() const;
@@ -357,7 +364,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return true if the task or actor is retriable.
   bool IsRetriable() const;
 
-  void EmitTaskMetrics() const;
+  void EmitTaskMetrics(
+      ray::observability::MetricInterface &scheduler_placement_time_ms_histogram) const;
 
   /// \return true if task events from this task should be reported.
   bool EnableTaskEvents() const;
@@ -382,6 +390,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // Field storing label selector for scheduling Task on a node. Initialized in constuctor
   // in ComputeResources() call.
   std::shared_ptr<LabelSelector> label_selector_;
+  // Field storing the fallback scheduling strategy. This is a list of
+  // strategies to try in-order.
+  std::shared_ptr<std::vector<FallbackOption>> fallback_strategy_;
 };
 
 }  // namespace ray

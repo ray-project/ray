@@ -135,7 +135,7 @@ class AcceleratorContext:
             for accelerator_id in accelerator_ids:
                 try:
                     device_ids.append(accelerator_visible_list.index(accelerator_id))
-                except IndexError:
+                except ValueError:
                     raise RuntimeError(
                         f"{accelerator_manager.get_visible_accelerator_ids_env_var()} set incorrectly. "
                         f"expected to include {accelerator_id}. "

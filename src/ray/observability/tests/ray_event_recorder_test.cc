@@ -78,6 +78,37 @@ class RayEventRecorderTest : public ::testing::Test {
   size_t max_buffer_size_ = 5;
 };
 
+TEST_F(RayEventRecorderTest, TestMergeEvents) {
+  RayConfig::instance().initialize(
+      R"(
+{
+"enable_ray_event": true
+}
+)");
+  recorder_->StartExportingEvents();
+  rpc::JobTableData data;
+  data.set_job_id("test_job_id");
+
+  std::vector<std::unique_ptr<RayEventInterface>> events;
+  events.push_back(std::make_unique<RayDriverJobLifecycleEvent>(
+      data, rpc::events::DriverJobLifecycleEvent::CREATED, "test_session_name"));
+  events.push_back(std::make_unique<RayDriverJobLifecycleEvent>(
+      data, rpc::events::DriverJobLifecycleEvent::FINISHED, "test_session_name"));
+  recorder_->AddEvents(std::move(events));
+  io_service_.run_one();
+
+  std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
+  // Only one event should be recorded because the two events are merged into one.
+  ASSERT_EQ(recorded_events.size(), 1);
+  ASSERT_EQ(recorded_events[0].source_type(), rpc::events::RayEvent::GCS);
+  ASSERT_EQ(recorded_events[0].session_name(), "test_session_name");
+  auto state_transitions =
+      recorded_events[0].driver_job_lifecycle_event().state_transitions();
+  ASSERT_EQ(state_transitions.size(), 2);
+  ASSERT_EQ(state_transitions[0].state(), rpc::events::DriverJobLifecycleEvent::CREATED);
+  ASSERT_EQ(state_transitions[1].state(), rpc::events::DriverJobLifecycleEvent::FINISHED);
+}
+
 TEST_F(RayEventRecorderTest, TestRecordEvents) {
   RayConfig::instance().initialize(
       R"(

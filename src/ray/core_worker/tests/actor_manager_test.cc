@@ -37,7 +37,7 @@ class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
 
   ~MockActorInfoAccessor() {}
 
-  Status AsyncSubscribe(
+  void AsyncSubscribe(
       const ActorID &actor_id,
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const gcs::StatusCallback &done) {
@@ -45,7 +45,6 @@ class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
     callback_map_.emplace(actor_id, subscribe);
     subscribe_finished_callback_map_[actor_id] = done;
     actor_subscribed_times_[actor_id]++;
-    return Status::OK();
   }
 
   bool ActorStateNotificationPublished(const ActorID &actor_id,

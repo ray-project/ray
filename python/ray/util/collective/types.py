@@ -84,6 +84,9 @@ class NixlTransportMetadata(TensorTransportMetadata):
     nixl_serialized_descs: Optional[bytes] = None
     nixl_agent_meta: Optional[bytes] = None
 
+    __eq__ = object.__eq__
+    __hash__ = object.__hash__
+
 
 @dataclass
 class CollectiveTransportMetadata(TensorTransportMetadata):

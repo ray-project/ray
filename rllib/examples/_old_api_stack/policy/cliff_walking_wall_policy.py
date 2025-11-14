@@ -1,14 +1,15 @@
 # @OldAPIStack
+from typing import Dict, List, Optional, Tuple, Union
+
 import gymnasium as gym
-from typing import Dict, Union, List, Tuple, Optional
 import numpy as np
 
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy, ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.utils.typing import AlgorithmConfigDict, TensorStructType, TensorType
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import update_global_seed_if_necessary
+from ray.rllib.utils.typing import AlgorithmConfigDict, TensorStructType, TensorType
 
 
 class CliffWalkingWallPolicy(Policy):

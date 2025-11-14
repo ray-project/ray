@@ -1,7 +1,7 @@
 import unittest
 
-from ray.rllib.env.wrappers.group_agents_wrapper import GroupAgentsWrapper
 from ray.rllib.env.multi_agent_env import make_multi_agent
+from ray.rllib.env.wrappers.group_agents_wrapper import GroupAgentsWrapper
 
 
 class TestGroupAgentsWrapper(unittest.TestCase):
@@ -20,6 +20,7 @@ class TestGroupAgentsWrapper(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

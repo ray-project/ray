@@ -1,23 +1,23 @@
 import copy
 import os
-from typing import Any, Dict, Optional, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
-from ray_release.test import Test, TestState
 from ray_release.config import (
     DEFAULT_ANYSCALE_PROJECT,
     DEFAULT_CLOUD_ID,
     as_smoke_test,
     get_test_project_id,
 )
-from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
-from ray_release.template import get_test_env_var
-from ray_release.util import DeferredEnvVar
 from ray_release.custom_byod_build_init_helper import (
     generate_custom_build_step_key,
     get_prerequisite_step,
 )
+from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
+from ray_release.template import get_test_env_var
+from ray_release.test import Test, TestState
+from ray_release.util import DeferredEnvVar
 
 DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 

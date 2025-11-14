@@ -933,8 +933,6 @@ def test_actor_resource_demand(shutdown_only):
         == 2
     )
 
-    global_state_accessor.disconnect()
-
 
 def test_kill_pending_actor_with_no_restart_true():
     cluster = ray.init()
@@ -964,7 +962,6 @@ def test_kill_pending_actor_with_no_restart_true():
     # Actor is dead, so the infeasible task queue length is 0.
     wait_for_condition(condition1, timeout=10)
 
-    global_state_accessor.disconnect()
     ray.shutdown()
 
 
@@ -1072,7 +1069,6 @@ def test_kill_pending_actor_with_no_restart_false():
 
     wait_for_condition(condition2, timeout=10)
 
-    global_state_accessor.disconnect()
     ray.shutdown()
 
 

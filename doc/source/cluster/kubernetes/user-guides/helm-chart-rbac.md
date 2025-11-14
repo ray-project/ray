@@ -69,9 +69,9 @@ kubectl get role
 #kuberay-operator-leader-election   2023-10-15T04:54:28Z
 
 # Install RayCluster in the `default`, `n1`, and `n2` namespaces.
-helm install raycluster kuberay/ray-cluster --version 1.4.2
-helm install raycluster kuberay/ray-cluster --version 1.4.2 -n n1
-helm install raycluster kuberay/ray-cluster --version 1.4.2 -n n2
+helm install raycluster kuberay/ray-cluster --version 1.5.0
+helm install raycluster kuberay/ray-cluster --version 1.5.0 -n n1
+helm install raycluster kuberay/ray-cluster --version 1.5.0 -n n2
 
 # You should create a RayCluster in these 3 namespaces.
 kubectl get raycluster -A
@@ -117,9 +117,9 @@ kubectl get role --all-namespaces | grep kuberay
 #default       kuberay-operator-leader-election                 2023-10-15T05:18:03Z
 
 # Install RayCluster in the `default`, `n1`, and `n2` namespaces.
-helm install raycluster kuberay/ray-cluster --version 1.4.2
-helm install raycluster kuberay/ray-cluster --version 1.4.2 -n n1
-helm install raycluster kuberay/ray-cluster --version 1.4.2 -n n2
+helm install raycluster kuberay/ray-cluster --version 1.5.0
+helm install raycluster kuberay/ray-cluster --version 1.5.0 -n n1
+helm install raycluster kuberay/ray-cluster --version 1.5.0 -n n2
 
 # KubeRay only creates a RayCluster in the `default` namespace.
 kubectl get raycluster -A
@@ -173,9 +173,9 @@ kubectl get role --all-namespaces | grep kuberay
 #n2            kuberay-operator                                 2023-10-15T05:34:27Z
 
 # Install RayCluster in the `default`, `n1`, and `n2` namespaces.
-helm install raycluster kuberay/ray-cluster --version 1.4.2
-helm install raycluster kuberay/ray-cluster --version 1.4.2 -n n1
-helm install raycluster kuberay/ray-cluster --version 1.4.2 -n n2
+helm install raycluster kuberay/ray-cluster --version 1.5.0
+helm install raycluster kuberay/ray-cluster --version 1.5.0 -n n1
+helm install raycluster kuberay/ray-cluster --version 1.5.0 -n n2
 
 # KubeRay creates a RayCluster only in the `n1` and `n2` namespaces.
 kubectl get raycluster -A

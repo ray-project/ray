@@ -23,7 +23,6 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -82,6 +81,10 @@ void TaskSpecification::ComputeResources() {
   // from proto to LabelSelector data type.
   label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 
+  // Parse fallback strategy from proto to list of fallback options if specified.
+  // FallbackOption parses the map of label selectors to the LabelSelector type.
+  fallback_strategy_ = ParseFallbackStrategy(message_->fallback_strategy().options());
+
   if (!IsActorTask()) {
     // There is no need to compute `SchedulingClass` for actor tasks since
     // the actor tasks need not be scheduled.
@@ -95,11 +98,13 @@ void TaskSpecification::ComputeResources() {
     const auto &function_descriptor = FunctionDescriptor();
     auto depth = GetDepth();
     auto label_selector = GetLabelSelector();
+    auto fallback_strategy = GetFallbackStrategy();
     auto sched_cls_desc = SchedulingClassDescriptor(resource_set,
                                                     label_selector,
                                                     function_descriptor,
                                                     depth,
-                                                    GetSchedulingStrategy());
+                                                    GetSchedulingStrategy(),
+                                                    fallback_strategy);
     // Map the scheduling class descriptor to an integer for performance.
     sched_cls_id_ = SchedulingClassToIds::GetSchedulingClass(sched_cls_desc);
   }
@@ -319,6 +324,10 @@ const ResourceSet &TaskSpecification::GetRequiredResources() const {
 
 const LabelSelector &TaskSpecification::GetLabelSelector() const {
   return *label_selector_;
+}
+
+const std::vector<FallbackOption> &TaskSpecification::GetFallbackStrategy() const {
+  return *fallback_strategy_;
 }
 
 const rpc::SchedulingStrategy &TaskSpecification::GetSchedulingStrategy() const {
@@ -602,17 +611,16 @@ bool TaskSpecification::IsRetriable() const {
   return true;
 }
 
-void TaskSpecification::EmitTaskMetrics() const {
-  double duration_s = (GetMessage().lease_grant_timestamp_ms() -
-                       GetMessage().dependency_resolution_timestamp_ms()) /
-                      1000;
+void TaskSpecification::EmitTaskMetrics(
+    ray::observability::MetricInterface &scheduler_placement_time_ms_histogram) const {
+  double duration_ms = GetMessage().lease_grant_timestamp_ms() -
+                       GetMessage().dependency_resolution_timestamp_ms();
 
   if (IsActorCreationTask()) {
-    stats::STATS_scheduler_placement_time_s.Record(duration_s,
-                                                   {{"WorkloadType", "Actor"}});
+    scheduler_placement_time_ms_histogram.Record(duration_ms,
+                                                 {{"WorkloadType", "Actor"}});
   } else {
-    stats::STATS_scheduler_placement_time_s.Record(duration_s,
-                                                   {{"WorkloadType", "Task"}});
+    scheduler_placement_time_ms_histogram.Record(duration_ms, {{"WorkloadType", "Task"}});
   }
 }
 

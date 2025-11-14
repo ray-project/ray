@@ -53,6 +53,8 @@ class RayEventRecorder : public RayEventRecorderInterface {
   void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list);
 
  private:
+  using RayEventKey = std::pair<std::string, rpc::events::RayEvent::EventType>;
+
   rpc::EventAggregatorClient &event_aggregator_client_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   // Lock for thread safety when modifying the buffer.

@@ -110,7 +110,7 @@
           "value": ["$__all"]
         },
         "datasource": "${datasource}",
-        "definition": "label_values(ray_serve_num_grpc_requests{{{global_filters}}}, method)",
+        "definition": "label_values(ray_serve_num_grpc_requests_total{{{global_filters}}}, method)",
         "description": null,
         "error": null,
         "hide": 0,
@@ -120,7 +120,7 @@
         "name": "gRPC_Method",
         "options": [],
         "query": {
-          "query": "label_values(ray_serve_num_grpc_requests{{{global_filters}}}, method)",
+          "query": "label_values(ray_serve_num_grpc_requests_total{{{global_filters}}}, method)",
           "refId": "Prometheus-Instance-Variable-Query"
         },
         "refresh": 1,

@@ -1,11 +1,11 @@
 import sys
 
 from ray.rllib.examples.multi_agent.utils.self_play_callback import SelfPlayCallback
-from ray.rllib.examples.multi_agent.utils.self_play_league_based_callback import (
-    SelfPlayLeagueBasedCallback,
-)
 from ray.rllib.examples.multi_agent.utils.self_play_callback_old_api_stack import (
     SelfPlayCallbackOldAPIStack,
+)
+from ray.rllib.examples.multi_agent.utils.self_play_league_based_callback import (
+    SelfPlayLeagueBasedCallback,
 )
 from ray.rllib.examples.multi_agent.utils.self_play_league_based_callback_old_api_stack import (  # noqa
     SelfPlayLeagueBasedCallbackOldAPIStack,

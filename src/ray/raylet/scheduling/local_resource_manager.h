@@ -21,9 +21,9 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
+#include "ray/ray_syncer/ray_syncer.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
@@ -32,6 +32,7 @@ namespace ray {
 /// Encapsulates non-resource artifacts that evidence work when present.
 enum WorkFootprint {
   NODE_WORKERS = 1,
+  PULLING_TASK_ARGUMENTS = 2,
 };
 
 // Represents artifacts of a node that can be busy or idle.
@@ -117,9 +118,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
   // Removes idle time for a WorkFootprint, thereby marking it busy.
-  void SetBusyFootprint(WorkFootprint item);
+  void MarkFootprintAsBusy(WorkFootprint item);
   // Sets the idle time for a WorkFootprint to now.
-  void SetIdleFootprint(WorkFootprint item);
+  void MarkFootprintAsIdle(WorkFootprint item);
 
   double GetLocalAvailableCpus() const;
 

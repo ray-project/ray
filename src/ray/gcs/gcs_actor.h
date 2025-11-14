@@ -150,9 +150,9 @@ class GcsActor {
     if (task_spec_->call_site().size() > 0) {
       actor_table_data_.set_call_site(task_spec_->call_site());
     }
-    if (task_spec_->label_selector().size() > 0) {
-      actor_table_data_.mutable_label_selector()->insert(
-          task_spec_->label_selector().begin(), task_spec_->label_selector().end());
+    if (task_spec_->label_selector().label_constraints_size() > 0) {
+      *actor_table_data_.mutable_label_selector() =
+          ray::LabelSelector(task_spec_->label_selector()).ToStringMap();
     }
     lease_spec_ = std::make_unique<LeaseSpecification>(*task_spec_);
     RefreshMetrics();
@@ -180,7 +180,10 @@ class GcsActor {
   NodeID GetOwnerNodeID() const;
   /// Get the address of the actor's owner.
   const rpc::Address &GetOwnerAddress() const;
-
+  /// Get the address of the local raylet for this actor
+  const std::optional<rpc::Address> &LocalRayletAddress() const;
+  /// Update the address of the local raylet for this actor
+  void UpdateLocalRayletAddress(const rpc::Address &address);
   /// Update the `Address` of this actor (see gcs.proto).
   void UpdateAddress(const rpc::Address &address);
   /// Get the `Address` of this actor.
@@ -307,6 +310,8 @@ class GcsActor {
   /// Event recorder and session name for Ray events
   observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
+  /// Address of the local raylet of the worker where this actor is running
+  std::optional<rpc::Address> local_raylet_address_;
 };
 
 using RestartActorForLineageReconstructionCallback =

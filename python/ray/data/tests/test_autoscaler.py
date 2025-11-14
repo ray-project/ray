@@ -151,7 +151,7 @@ def test_actor_pool_scaling():
     # Should scale down only once all inputs have been already dispatched AND
     # no new inputs ar expected
     with patch(op_state.input_queues[0], "num_blocks", 0, is_method=False):
-        with patch(op, "internal_queue_num_blocks", 0):
+        with patch(op, "internal_input_queue_num_blocks", 0):
             with patch(op, "_inputs_complete", True, is_method=False):
                 assert_autoscaling_action(
                     delta=-1,

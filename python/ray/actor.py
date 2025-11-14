@@ -302,13 +302,6 @@ class _RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, 
 
 @overload
 def method(
-    __method: Callable[[Any], _Ret],
-) -> _RemoteMethodNoArgs[_Ret]:
-    ...
-
-
-@overload
-def method(
     __method: Callable[[Any, _T0], _Ret],
 ) -> _RemoteMethod0[_Ret, _T0]:
     ...
@@ -374,6 +367,13 @@ def method(
 def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9], _Ret],
 ) -> _RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any], _Ret],
+) -> _RemoteMethodNoArgs[_Ret]:
     ...
 
 
@@ -1180,6 +1180,7 @@ def _process_option_dict(actor_options, has_tensor_transport_methods):
         if _filled_options.get("concurrency_groups", None) is None:
             _filled_options["concurrency_groups"] = {}
         _filled_options["concurrency_groups"]["_ray_system"] = 1
+        _filled_options["concurrency_groups"]["_ray_system_error"] = 1
 
     return _filled_options
 
@@ -1685,6 +1686,20 @@ class ActorClass(Generic[T]):
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args, kwargs)
 
+        use_placement_group = scheduling_strategy is not None and isinstance(
+            scheduling_strategy, PlacementGroupSchedulingStrategy
+        )
+        is_restartable = max_restarts > 0 or max_restarts == -1
+        if use_placement_group and detached and is_restartable:
+            # TODO(kevin85421): Checking `max_restarts > 0` is because Ray Serve currently schedules detached actors with
+            # placement groups. Adding the check avoids printing this warning for all Ray Serve applications. In the future,
+            # we should consider raising an error instead of a warning, but this is a breaking change.
+            logger.warning(
+                "Scheduling a restartable detached actor with a placement group is not recommended "
+                "because Ray will kill the actor when the placement group is removed and the actor will "
+                "not be able to be restarted."
+            )
+
         if scheduling_strategy is None or isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
         ):
@@ -1807,6 +1822,7 @@ class ActorClass(Generic[T]):
             enable_task_events=enable_task_events,
             labels=actor_options.get("_labels"),
             label_selector=actor_options.get("label_selector"),
+            fallback_strategy=actor_options.get("fallback_strategy"),
             allow_out_of_order_execution=allow_out_of_order_execution,
             enable_tensor_transport=meta.enable_tensor_transport,
         )

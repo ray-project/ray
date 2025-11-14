@@ -72,7 +72,7 @@ gsutil iam ch serviceAccount:my-iam-sa@my-project-id.iam.gserviceaccount.com:rol
 You can download the RayCluster YAML manifest for this tutorial with `curl` as follows:
 
 ```bash
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.4.2/ray-operator/config/samples/ray-cluster.gke-bucket.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.5.0/ray-operator/config/samples/ray-cluster.gke-bucket.yaml
 ```
 
 The key parts are the following lines:

@@ -13,7 +13,6 @@ available_node_types:
         max_workers: 0
 head_node_type: ray.head.default
 upscaling_speed: 1.0
-idle_timeout_minutes: 0
 #
 # !!! Configurations below are not supported in fake cluster mode !!!
 #

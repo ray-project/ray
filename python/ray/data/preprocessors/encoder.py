@@ -789,10 +789,13 @@ def unique_post_fn(drop_na_values: bool = False) -> Callable[[Set], Dict[str, in
     Returns a post-processing function that generates an encoding map by
     sorting the unique values produced during aggregation or stats computation.
 
-    :param drop_na_values: If True, NA/null values will be silently dropped from the encoding map.
-                           If False, raises an error if any NA/null values are present.
-    :return: A callable that takes a set of unique values and returns a dictionary
-             mapping each value to a unique integer index.
+    Args:
+        drop_na_values: If True, NA/null values will be silently dropped from the
+            encoding map. If False, raises an error if any NA/null values are present.
+
+    Returns:
+        A callable that takes a set of unique values and returns a dictionary
+        mapping each value to a unique integer index.
     """
 
     def gen_value_index(values: Set) -> Dict[str, int]:

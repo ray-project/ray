@@ -8,6 +8,8 @@ import sys
 import threading
 import time
 
+from ray._common.network_utils import is_ipv6
+
 _logger = logging.getLogger("ray.util.spark.utils")
 
 
@@ -99,7 +101,11 @@ def is_port_in_use(host, port):
     import socket
     from contextlib import closing
 
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+    with closing(
+        socket.socket(
+            socket.AF_INET6 if is_ipv6(host) else socket.AF_INET, socket.SOCK_STREAM
+        )
+    ) as sock:
         return sock.connect_ex((host, port)) == 0
 
 

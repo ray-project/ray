@@ -34,6 +34,7 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     HashShuffleProgressBarMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.ranker import Ranker
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
@@ -307,7 +308,7 @@ class OpState:
         """
         external_queue_size = sum(q.num_blocks for q in self.input_queues)
         internal_queue_size = (
-            self.op.internal_queue_num_blocks()
+            self.op.internal_input_queue_num_blocks()
             if isinstance(self.op, InternalQueueOperatorMixin)
             else 0
         )
@@ -322,7 +323,7 @@ class OpState:
         2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
         """
         internal_queue_size_bytes = (
-            self.op.internal_queue_num_bytes()
+            self.op.internal_input_queue_num_bytes()
             if isinstance(self.op, InternalQueueOperatorMixin)
             else 0
         )
@@ -387,7 +388,9 @@ class OpState:
             self.progress_bar.set_description(self.summary_str(resource_manager))
             self.progress_bar.refresh()
 
-    def summary_str(self, resource_manager: ResourceManager) -> str:
+    def summary_str(
+        self, resource_manager: ResourceManager, verbose: bool = False
+    ) -> str:
         # Active tasks
         active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: Tasks: {active}"
@@ -409,7 +412,7 @@ class OpState:
 
         # Queued blocks
         desc += f"; Queued blocks: {self.total_enqueued_input_blocks()} ({memory_string(self.total_enqueued_input_blocks_bytes())})"
-        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op)}"
+        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op, verbose=verbose)}"
 
         # Any additional operator specific information.
         suffix = self.op.progress_str()
@@ -638,14 +641,6 @@ def update_operator_states(topology: Topology) -> None:
     Should be called after `process_completed_tasks()`."""
 
     for op, op_state in topology.items():
-        # Drain upstream output queue if current operator is execution finished.
-        # This is needed when the limit is reached, and `mark_execution_finished`
-        # is called manually.
-        if op.execution_finished():
-            for idx, dep in enumerate(op.input_dependencies):
-                upstream_state = topology[dep]
-                # Drain upstream output queue
-                upstream_state.output_queue.clear()
 
         # Call inputs_done() on ops where no more inputs are coming.
         if op_state.inputs_done_called:
@@ -667,13 +662,20 @@ def update_operator_states(topology: Topology) -> None:
     # For each op, if all of its downstream operators have completed.
     # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
-        if op.completed():
-            continue
+
         dependents_completed = len(op.output_dependencies) > 0 and all(
             dep.completed() for dep in op.output_dependencies
         )
         if dependents_completed:
             op.mark_execution_finished()
+
+        # Drain external input queue if current operator is execution finished.
+        # This is needed when the limit is reached, and `mark_execution_finished`
+        # is called manually.
+        if op.execution_finished():
+            for input_queue in op_state.input_queues:
+                # Drain input queue
+                input_queue.clear()
 
 
 def get_eligible_operators(
@@ -745,6 +747,7 @@ def select_operator_to_run(
     resource_manager: ResourceManager,
     backpressure_policies: List[BackpressurePolicy],
     ensure_liveness: bool,
+    ranker: "Ranker",
 ) -> Optional[PhysicalOperator]:
     """Select next operator to launch new tasks.
 
@@ -768,55 +771,13 @@ def select_operator_to_run(
     if not eligible_ops:
         return None
 
-    ranks = _rank_operators(eligible_ops, resource_manager)
+    ranks = ranker.rank_operators(eligible_ops, topology, resource_manager)
 
     assert len(eligible_ops) == len(ranks), (eligible_ops, ranks)
 
     next_op, _ = min(zip(eligible_ops, ranks), key=lambda t: t[1])
 
     return next_op
-
-
-def _rank_operators(
-    ops: List[PhysicalOperator], resource_manager: ResourceManager
-) -> List[Tuple]:
-    """Picks operator to run according to the following semantic:
-
-    Operator to run next is selected as the one with the *smallest* value
-    of the lexicographically ordered ranks composed of (in order):
-
-        1. Whether operator's could be throttled (bool)
-        2. Operators' object store utilization
-
-    Consider following examples:
-
-    Example 1:
-
-        Operator 1 with rank (True, 1024 bytes)
-        Operator 2 with rank (False, 2048 bytes)
-
-    In that case Operator 2 will be selected.
-
-    Example 2:
-
-        Operator 1 with rank (True, 1024 bytes)
-        Operator 2 with rank (True, 2048 bytes)
-
-    In that case Operator 1 will be selected.
-    """
-
-    assert len(ops) > 0, ops
-
-    def _ranker(op):
-        # Rank composition:
-        #   1. Whether throttling is enabled
-        #   2. Estimated Object Store usage
-        return (
-            not op.throttling_disabled(),
-            resource_manager.get_op_usage(op).object_store_memory,
-        )
-
-    return [_ranker(op) for op in ops]
 
 
 def _actor_info_summary_str(info: _ActorPoolInfo) -> str:

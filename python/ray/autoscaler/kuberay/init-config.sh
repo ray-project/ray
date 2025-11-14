@@ -4,8 +4,8 @@ set -euo pipefail
 
 # Clone pinned KubeRay commit to temporary directory, copy the CRD definitions
 # into the autoscaler folder.
-KUBERAY_BRANCH="v1.4.2"
-OPERATOR_TAG="v1.4.2"
+KUBERAY_BRANCH="v1.5.0"
+OPERATOR_TAG="v1.5.0"
 
 # Requires Kustomize
 if ! command -v kustomize &> /dev/null

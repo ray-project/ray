@@ -1,6 +1,7 @@
 from collections import OrderedDict
-import gymnasium as gym
 from typing import Dict, List, Optional
+
+import gymnasium as gym
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import DeveloperAPI

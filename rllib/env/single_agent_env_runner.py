@@ -22,9 +22,9 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
-from ray.rllib.env import INPUT_ENV_SPACES, INPUT_ENV_SINGLE_SPACES
+from ray.rllib.env import INPUT_ENV_SINGLE_SPACES, INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
+from ray.rllib.env.env_runner import ENV_STEP_FAILURE, EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils import force_list

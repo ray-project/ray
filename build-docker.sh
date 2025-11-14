@@ -5,9 +5,9 @@
 
 GPU=""
 BASE_IMAGE="ubuntu:22.04"
-WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl"
-CPP_WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray_cpp-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl"
-PYTHON_VERSION="3.9"
+WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"
+CPP_WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray_cpp-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"
+PYTHON_VERSION="3.10"
 
 BUILD_ARGS=()
 
@@ -15,7 +15,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --gpu)
             GPU="-gpu"
-            BASE_IMAGE="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04"
+            BASE_IMAGE="nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04"
         ;;
         --base-image)
             # Override for the base image.
