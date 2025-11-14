@@ -75,6 +75,7 @@ kubectl
 Kubernetes
 Kueue
 Lakehouse
+LLMServer
 LMs
 LSH
 MCP
@@ -101,8 +102,9 @@ pretraining
 productionize
 Pythonic
 QPS
-Qwen
 Quantizing
+Quickstarts
+Qwen
 retrigger
 RISECamp
 RLHF
@@ -119,6 +121,7 @@ streamable
 subprocess
 TPC
 teardown
+tiktoken
 uncaptured
 URI(s)?
 UUID
