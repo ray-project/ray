@@ -1,8 +1,9 @@
-import gymnasium as gym
 from typing import Any, Dict, Optional
 
+import gymnasium as gym
+
 from ray.rllib.algorithms.iql.default_iql_rl_module import DefaultIQLRLModule
-from ray.rllib.algorithms.iql.iql_learner import VF_PREDS_NEXT, QF_TARGET_PREDS
+from ray.rllib.algorithms.iql.iql_learner import QF_TARGET_PREDS, VF_PREDS_NEXT
 from ray.rllib.algorithms.sac.torch.default_sac_torch_rl_module import (
     DefaultSACTorchRLModule,
 )

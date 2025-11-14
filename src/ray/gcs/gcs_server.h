@@ -272,7 +272,7 @@ class GcsServer {
   /// The gcs placement group manager.
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   /// The gcs actor manager.
-  std::unique_ptr<GcsActorManager> gcs_actor_manager_;
+  std::shared_ptr<GcsActorManager> gcs_actor_manager_;
   /// The gcs placement group scheduler.
   /// [gcs_placement_group_scheduler_] depends on [raylet_client_pool_].
   std::unique_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
