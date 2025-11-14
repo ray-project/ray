@@ -1293,19 +1293,6 @@ class DeploymentReplica:
         """
         return self._actor.get_routing_stats()
 
-    def poll_outbound_deployments(
-        self, poll_period_s: float
-    ) -> Optional[List[DeploymentID]]:
-        """Poll the replica for its outbound deployments.
-
-        Args:
-            poll_period_s: The period between polls in seconds.
-
-        Returns:
-            The cached outbound deployments if available, None otherwise.
-        """
-        return self._actor.poll_outbound_deployments(poll_period_s)
-
     def update_state(self, state: ReplicaState) -> None:
         """Updates state in actor details."""
         self.update_actor_details(state=state)
