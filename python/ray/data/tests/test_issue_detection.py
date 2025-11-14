@@ -99,10 +99,19 @@ class TestHangingExecutionIssueDetector:
         log_output = log_capture.getvalue()
         assert re.search(warn_msg, log_output) is not None, log_output
 
+    @patch('ray.data._internal.issue_detection.detectors.hanging_detector.HangingExecutionIssueDetector._is_task_hanging')
     def test_hanging_detector_detects_issues(
-        self, caplog, propagate_logs, restore_data_context
+      self, mock_is_hanging, caplog, propagate_logs, restore_data_context
     ):
         """Test hanging detector adaptive thresholds with real Ray Data pipelines and extreme configurations."""
+
+        # Mock the hanging check to return True for the second call and False for others
+        call_count = [0]
+        def mock_hanging_check(curr_time, threshold):
+            call_count[0] += 1
+            return call_count[0] == 2
+
+        mock_is_hanging.side_effect = mock_hanging_check
 
         ctx = DataContext.get_current()
         # Configure hanging detector with extreme std_factor values
@@ -116,10 +125,6 @@ class TestHangingExecutionIssueDetector:
 
         # Create a pipeline with many small blocks to ensure concurrent tasks
         def sleep_task(x):
-            if x["id"] == 2:
-                # Issue detection is based on the mean + stdev. One of the tasks must take
-                # awhile, so doing it just for one of the rows.
-                time.sleep(1)
             return x
 
         with caplog.at_level(logging.WARNING):
