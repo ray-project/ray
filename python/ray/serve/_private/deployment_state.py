@@ -576,38 +576,11 @@ class ActorReplicaWrapper:
         self._actor_handle = actor_handle
         self._placement_group = placement_group
 
-        # Perform auto method name translation for java handles.
-        # See https://github.com/ray-project/ray/issues/21474
-        deployment_config = copy(self._version.deployment_config)
-        deployment_config.user_config = self._format_user_config(
-            deployment_config.user_config
-        )
         if self._is_cross_language:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-
-            def on_completed(args):
-                self._rank = self._assign_rank_callback(self._replica_id.unique_id)
-                self._ready_obj_ref = self._actor_handle.is_initialized.remote(
-                    deployment_config.to_proto_bytes()
-                )
-
-            self._allocated_obj_ref._on_completed(on_completed)
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-
-            def on_completed(args):
-                self._rank = self._assign_rank_callback(self._replica_id.unique_id)
-
-                replica_ready_check_func = (
-                    self._actor_handle.initialize_and_get_metadata
-                )
-                self._ready_obj_ref = replica_ready_check_func.remote(
-                    deployment_config,
-                    self._rank,
-                )
-
-            self._allocated_obj_ref._on_completed(on_completed)
 
     def _format_user_config(self, user_config: Any):
         temp = copy(user_config)
@@ -753,6 +726,25 @@ class ActorReplicaWrapper:
                 return ReplicaStartupStatus.FAILED, msg
 
         if self._ready_obj_ref is None:
+            # Perform auto method name translation for java handles.
+            # See https://github.com/ray-project/ray/issues/21474
+            deployment_config = copy(self._version.deployment_config)
+            deployment_config.user_config = self._format_user_config(
+                deployment_config.user_config
+            )
+            if self._is_cross_language:
+                self._ready_obj_ref = self._actor_handle.is_initialized.remote(
+                    deployment_config.to_proto_bytes()
+                )
+            else:
+                replica_ready_check_func = (
+                    self._actor_handle.initialize_and_get_metadata
+                )
+                self._rank = self._assign_rank_callback(self._replica_id.unique_id)
+                self._ready_obj_ref = replica_ready_check_func.remote(
+                    deployment_config, self._rank
+                )
+
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
 
         # Check whether replica initialization has completed.
