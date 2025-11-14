@@ -468,16 +468,6 @@ DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S = 30
 # Name of deployment request routing stats method implemented by user.
 REQUEST_ROUTING_STATS_METHOD = "record_routing_stats"
 
-# Initial delay for polling outbound deployments from replicas.
-RAY_SERVE_OUTBOUND_DEPLOYMENTS_INITIAL_POLL_DELAY_S = get_env_float_positive(
-    "RAY_SERVE_OUTBOUND_DEPLOYMENTS_INITIAL_POLL_DELAY_S", 1.0
-)
-
-# Maximum delay for polling outbound deployments from replicas (caps exponential backoff).
-RAY_SERVE_OUTBOUND_DEPLOYMENTS_MAX_POLL_DELAY_S = get_env_float_positive(
-    "RAY_SERVE_OUTBOUND_DEPLOYMENTS_MAX_POLL_DELAY_S", 600.0
-)
-
 # By default, we run user code in a separate event loop.
 # This flag can be set to 0 to run user code in the same event loop as the
 # replica's main event loop.
