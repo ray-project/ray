@@ -1,18 +1,26 @@
 import logging
 from types import ModuleType
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
-from ray._private.authentication import authentication_constants
-from ray.dashboard import authentication_utils as auth_utils
+from ray._private.authentication import (
+    authentication_constants,
+    authentication_utils as auth_utils,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def get_token_auth_middleware(aiohttp_module: ModuleType):
+def get_token_auth_middleware(
+    aiohttp_module: ModuleType,
+    whitelisted_exact_paths: Optional[List[str]] = None,
+    whitelisted_path_prefixes: Optional[List[str]] = None,
+):
     """Internal helper to create token auth middleware with provided modules.
 
     Args:
         aiohttp_module: The aiohttp module to use
+        whitelisted_exact_paths: List of exact paths that don't require authentication
+        whitelisted_path_prefixes: List of path prefixes that don't require authentication
     Returns:
         An aiohttp middleware function
     """
@@ -28,9 +36,29 @@ def get_token_auth_middleware(aiohttp_module: ModuleType):
         if not auth_utils.is_token_auth_enabled():
             return await handler(request)
 
+        # skip authentication for whitelisted paths
+        if (whitelisted_exact_paths and request.path in whitelisted_exact_paths) or (
+            whitelisted_path_prefixes
+            and request.path.startswith(tuple(whitelisted_path_prefixes))
+        ):
+            return await handler(request)
+
+        # Check Authorization header first (for API clients)
         auth_header = request.headers.get(
             authentication_constants.AUTHORIZATION_HEADER_NAME, ""
         )
+
+        # If no Authorization header, check cookie (for web dashboard)
+        if not auth_header:
+            token = request.cookies.get(
+                authentication_constants.AUTHENTICATION_TOKEN_COOKIE_NAME
+            )
+            if token:
+                # Format as Bearer token for validation
+                auth_header = (
+                    authentication_constants.AUTHORIZATION_BEARER_PREFIX + token
+                )
+
         if not auth_header:
             return aiohttp_module.web.Response(
                 status=401, text="Unauthorized: Missing authentication token"

@@ -17,8 +17,6 @@ from ci.raydepsets.workspace import Depset, Workspace
 
 DEFAULT_UV_FLAGS = """
     --generate-hashes
-    --strip-extras
-    --unsafe-package setuptools
     --index-url https://pypi.org/simple
     --index-strategy unsafe-best-match
     --no-strip-markers
@@ -276,6 +274,7 @@ class DependencySetManager:
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
                 packages=depset.packages,
+                include_setuptools=depset.include_setuptools,
             )
         elif depset.operation == "subset":
             self.subset(
@@ -285,6 +284,7 @@ class DependencySetManager:
                 override_flags=depset.override_flags,
                 name=depset.name,
                 output=depset.output,
+                include_setuptools=depset.include_setuptools,
             )
         elif depset.operation == "expand":
             self.expand(
@@ -295,6 +295,7 @@ class DependencySetManager:
                 override_flags=depset.override_flags,
                 name=depset.name,
                 output=depset.output,
+                include_setuptools=depset.include_setuptools,
             )
         click.echo(f"Dependency set {depset.name} compiled successfully")
 
@@ -307,10 +308,13 @@ class DependencySetManager:
         override_flags: Optional[List[str]] = None,
         packages: Optional[List[str]] = None,
         requirements: Optional[List[str]] = None,
+        include_setuptools: Optional[bool] = False,
     ):
         """Compile a dependency set."""
         args = DEFAULT_UV_FLAGS.copy()
         stdin = None
+        if not include_setuptools:
+            args.extend(_flatten_flags(["--unsafe-package setuptools"]))
         if self._uv_cache_dir:
             args.extend(["--cache-dir", self._uv_cache_dir])
         if override_flags:
@@ -339,6 +343,7 @@ class DependencySetManager:
         output: str = None,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
+        include_setuptools: Optional[bool] = False,
     ):
         """Subset a dependency set."""
         source_depset = _get_depset(self.config.depsets, source_depset)
@@ -350,6 +355,7 @@ class DependencySetManager:
             output=output,
             append_flags=append_flags,
             override_flags=override_flags,
+            include_setuptools=include_setuptools,
         )
 
     def expand(
@@ -361,6 +367,7 @@ class DependencySetManager:
         output: str = None,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
+        include_setuptools: Optional[bool] = False,
     ):
         """Expand a dependency set."""
         # handle both depsets and requirements
@@ -378,6 +385,7 @@ class DependencySetManager:
             output=output,
             append_flags=append_flags,
             override_flags=override_flags,
+            include_setuptools=include_setuptools,
         )
 
     def read_lock_file(self, file_path: Path) -> List[str]:
