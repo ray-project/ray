@@ -329,7 +329,6 @@ CoreWorker::CoreWorker(
       periodical_runner_(std::move(periodical_runner)),
       core_worker_server_(std::move(core_worker_server)),
       rpc_address_(std::move(rpc_address)),
-      connected_(true),
       gcs_client_(std::move(gcs_client)),
       raylet_ipc_client_(std::move(raylet_ipc_client)),
       local_raylet_rpc_client_(std::move(local_raylet_rpc_client)),
@@ -524,23 +523,32 @@ CoreWorker::CoreWorker(
   // NOTE: This also marks the worker as available in Raylet. We do this at the very end
   // in case there is a problem during construction.
   ConnectToRayletInternal();
+}
 
-  // Initialize shutdown coordinator last - after all services are ready
-  // Create concrete shutdown executor that implements real shutdown operations
-  auto shutdown_executor = std::make_unique<CoreWorkerShutdownExecutor>(this);
-  shutdown_coordinator_ = std::make_unique<ShutdownCoordinator>(
-      std::move(shutdown_executor), options_.worker_type);
+CoreWorker::~CoreWorker() {
+  WaitForShutdownComplete();
+  RAY_LOG(INFO) << "Core worker is destructed";
+}
+
+void CoreWorker::InitializeShutdownExecutor() {
+  auto executor = std::make_unique<CoreWorkerShutdownExecutor>(shared_from_this());
+  shutdown_coordinator_ =
+      std::make_unique<ShutdownCoordinator>(std::move(executor), options_.worker_type);
 
   RAY_LOG(DEBUG) << "Initialized unified shutdown coordinator with concrete executor for "
                     "worker type: "
                  << WorkerTypeString(options_.worker_type);
-}  // NOLINT(readability/fn_size)
-
-CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
+}
 
 void CoreWorker::Shutdown() {
   shutdown_coordinator_->RequestShutdown(
       /*force_shutdown=*/false, ShutdownReason::kGracefulExit, "ray.shutdown() called");
+}
+
+void CoreWorker::WaitForShutdownComplete(std::chrono::milliseconds timeout_ms) {
+  if (shutdown_coordinator_ && shutdown_coordinator_->IsShuttingDown()) {
+    shutdown_coordinator_->GetExecutor()->WaitForCompletion(timeout_ms);
+  }
 }
 
 void CoreWorker::ConnectToRayletInternal() {
@@ -580,9 +588,18 @@ void CoreWorker::Disconnect(
   }
 
   opencensus::stats::StatsExporter::ExportNow();
-  if (connected_) {
+
+  bool should_disconnect = false;
+  {
+    absl::MutexLock lock(&mutex_);
+    if (connected_) {
+      connected_ = false;
+      should_disconnect = true;
+    }
+  }
+
+  if (should_disconnect) {
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
-    connected_ = false;
     Status status = raylet_ipc_client_->Disconnect(
         exit_type, exit_detail, creation_task_exception_pb_bytes);
     if (status.ok()) {
@@ -590,6 +607,8 @@ void CoreWorker::Disconnect(
     } else {
       RAY_LOG(WARNING) << "Failed to disconnect from the local raylet: " << status;
     }
+  } else {
+    RAY_LOG(DEBUG) << "Already disconnected, skipping disconnect message";
   }
 }
 
@@ -824,13 +843,25 @@ void CoreWorker::InternalHeartbeat() {
 }
 
 void CoreWorker::RecordMetrics() {
-  // Record metrics for owned tasks.
-  task_manager_->RecordMetrics();
-  // Record metrics for executed tasks.
-  task_counter_.RecordMetrics();
-  // Record worker heap memory metrics.
-  memory_store_->RecordMetrics();
-  reference_counter_->RecordMetrics();
+  {
+    absl::MutexLock lock(&mutex_);
+    if (shutdown_state_ != ray::core::ShutdownState::kRunning) {
+      return;
+    }
+  }
+
+  try {
+    if (task_manager_) {
+      task_manager_->RecordMetrics();
+    }
+    task_counter_.RecordMetrics();
+    if (memory_store_) {
+      memory_store_->RecordMetrics();
+    }
+    reference_counter_->RecordMetrics();
+  } catch (const std::exception &e) {
+    RAY_LOG(WARNING) << "Failed to record metrics: " << e.what();
+  }
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
