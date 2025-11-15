@@ -7,6 +7,8 @@ COPY python/deplocks/llm/rayllm_*.lock ./
 
 ARG KVER="5.15.0-139-generic"
 
+RUN uv pip install flashinfer-python --system --no-build-isolation
+
 RUN <<EOF
 #!/bin/bash
 
