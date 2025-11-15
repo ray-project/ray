@@ -490,34 +490,6 @@ class Expr(ABC):
         return self
 
 
-def _create_str_udf(
-    pc_func: Callable[..., pyarrow.Array], return_dtype: DataType
-) -> Callable[..., "UDFExpr"]:
-    """Helper to create a string UDF that wraps a PyArrow compute function.
-
-    This helper handles all types of PyArrow compute operations:
-    - Unary operations (no args): upper(), lower(), reverse()
-    - Pattern operations (pattern + args): starts_with(), contains()
-    - Multi-argument operations: replace(), replace_slice()
-
-    Args:
-        pc_func: PyArrow compute function that takes (array, *positional, **kwargs)
-        return_dtype: The return data type
-
-    Returns:
-        A callable that creates UDFExpr instances
-    """
-
-    def wrapper(expr: Expr, *positional: Any, **kwargs: Any) -> "UDFExpr":
-        @pyarrow_udf(return_dtype=return_dtype)
-        def udf(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc_func(arr, *positional, **kwargs)
-
-        return udf(expr)
-
-    return wrapper
-
-
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
 class ColumnExpr(Expr):
