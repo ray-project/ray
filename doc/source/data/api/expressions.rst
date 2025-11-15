@@ -7,7 +7,7 @@ Expressions API
 
 Expressions provide a way to specify column-based operations on datasets.
 Use :func:`col` to reference columns and :func:`lit` to create literal values.
-These can be combined with operators to create complex expressions for filtering,
+You can combine these with operators to create complex expressions for filtering,
 transformations, and computations.
 
 Public API
@@ -65,7 +65,7 @@ The following example shows how to use the string namespace to transform text co
     # Use the string namespace to uppercase the names
     ds = ds.with_column("upper_name", col("name").str.upper())
 
-This produces a dataset with both the original and uppercased names:
+This produces a dataset with both the original and uppercase names:
 
 .. code-block:: text
 
