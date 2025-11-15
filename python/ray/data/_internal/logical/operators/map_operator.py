@@ -11,7 +11,7 @@ from ray.data.expressions import Expr, StarExpr
 from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
-    import pyarrow
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +175,7 @@ class MapBatches(AbstractUDFMap):
         udf_modifying_row_count: bool = False,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        enforce_input_output_block_size: bool = False,
     ):
         super().__init__(
             "MapBatches",
@@ -193,6 +194,7 @@ class MapBatches(AbstractUDFMap):
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
         self._udf_modifying_row_count = udf_modifying_row_count
+        self._enforce_input_output_block_size = enforce_input_output_block_size
 
     def can_modify_num_rows(self) -> bool:
         return self._udf_modifying_row_count
@@ -378,38 +380,6 @@ class StreamingRepartition(AbstractMap):
     @property
     def target_num_rows_per_block(self) -> int:
         return self._target_num_rows_per_block
-
-    def can_modify_num_rows(self) -> bool:
-        return False
-
-
-class BatcherAndCollate(AbstractMap):
-    """Logical operator for batcher and collate operation.
-    Args:
-        batch_size: The batch size.
-        collate_fn: The collate function. Currently only supports pyarrow.Table to pyarrow.Table.
-    """
-
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        batch_size: int,
-        collate_fn: Callable["pyarrow.Table", "pyarrow.Table"],
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-    ):
-        super().__init__(
-            "BatcherAndCollate", input_op, collate_fn, ray_remote_args=ray_remote_args
-        )
-        self._batch_size = batch_size
-        self._collate_fn = collate_fn
-
-    @property
-    def batch_size(self) -> int:
-        return self._batch_size
-
-    @property
-    def collate_fn(self) -> Callable["pyarrow.Table", "pyarrow.Table"]:
-        return self._collate_fn
 
     def can_modify_num_rows(self) -> bool:
         return False

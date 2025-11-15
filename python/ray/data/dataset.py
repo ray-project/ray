@@ -69,7 +69,6 @@ from ray.data._internal.logical.operators.count_operator import Count
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.join_operator import Join
 from ray.data._internal.logical.operators.map_operator import (
-    BatcherAndCollate,
     Filter,
     FlatMap,
     MapBatches,
@@ -730,6 +729,7 @@ class Dataset:
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]],
         udf_modifying_row_count: bool,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
+        enforce_input_output_block_size: bool = False,
         **ray_remote_args,
     ):
         # NOTE: The `map_groups` implementation calls `map_batches` with
@@ -776,7 +776,9 @@ class Dataset:
             batch_size=batch_size,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
-            min_rows_per_bundled_input=batch_size,
+            min_rows_per_bundled_input=batch_size
+            if enforce_input_output_block_size
+            else None,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
@@ -785,6 +787,7 @@ class Dataset:
             udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
+            enforce_input_output_block_size=enforce_input_output_block_size,
         )
         logical_plan = LogicalPlan(map_batches_op, self.context)
         return Dataset(plan, logical_plan)
@@ -1244,40 +1247,48 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP)
     def batcher_and_collate(
         self,
+        fn: UserDefinedFunction[DataBatch, DataBatch],
+        *,
         batch_size: int,
-        collate_fn: Callable[["pyarrow.Table"], "pyarrow.Table"],
-        compute: Optional[ComputeStrategy],
+        compute: Optional[ComputeStrategy] = None,
+        batch_format: Optional[str] = "default",
+        zero_copy_batch: bool = True,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        udf_modifying_row_count: bool = False,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        compute = get_compute_strategy(
-            collate_fn,
-            compute=compute,
-            concurrency=concurrency,
-        )
+        if batch_size <= 0:
+            raise ValueError(
+                "`batch_size` must be a positive integer for `batcher_and_collate`."
+            )
 
-        if num_cpus is not None:
-            ray_remote_args["num_cpus"] = num_cpus
-
-        if num_gpus is not None:
-            ray_remote_args["num_gpus"] = num_gpus
-
-        if memory is not None:
-            ray_remote_args["memory"] = memory
-
-        plan = self._plan.copy()
-        batcher_and_collate_op = BatcherAndCollate(
-            input_op=self._logical_plan.dag,
+        return self._map_batches_without_batch_size_validation(
+            fn,
             batch_size=batch_size,
-            collate_fn=collate_fn,
             compute=compute,
-            ray_remote_args=ray_remote_args,
+            batch_format=batch_format,
+            zero_copy_batch=zero_copy_batch,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            concurrency=concurrency,
+            udf_modifying_row_count=udf_modifying_row_count,
+            ray_remote_args_fn=ray_remote_args_fn,
+            enforce_input_output_block_size=True,
+            **ray_remote_args,
         )
-        logical_plan = LogicalPlan(batcher_and_collate_op, self.context)
-        return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(
