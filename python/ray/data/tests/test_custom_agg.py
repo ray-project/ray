@@ -6,6 +6,7 @@ from ray.data.aggregate import (
     ApproximateQuantile,
     ApproximateTopK,
     MissingValuePercentage,
+    Unique,
     ZeroPercentage,
 )
 from ray.data.tests.conftest import *  # noqa
@@ -458,6 +459,66 @@ class TestApproximateTopK:
         for result in [result_small, result_large]:
             assert result["approx_topk(id)"][0] == {"id": "frequent", "count": 100}
             assert result["approx_topk(id)"][1] == {"id": "common", "count": 50}
+
+    def test_approximate_topk_list_encode(self, ray_start_regular_shared_2_cpus):
+        """Test that aggregator correctly encodes list values."""
+        data = [{"id": ["a", "b", "c"]}, {"id": ["a", "a", "a", "b"]}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(ApproximateTopK(on="id", k=2, encode_lists=True))
+
+        # Should encode list items, so "a" should be most frequent
+        assert result["approx_topk(id)"][0] == {"id": "a", "count": 4}
+        assert result["approx_topk(id)"][1] == {"id": "b", "count": 2}
+
+    def test_approximate_topk_list_encode_with_none(
+        self, ray_start_regular_shared_2_cpus
+    ):
+        """Test that aggregator correctly ignores None when encoding list values."""
+        data = [{"id": [None, None, None]}, {"id": ["a", None, None]}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(ApproximateTopK(on="id", k=2, encode_lists=True))
+
+        # Should encode list items, so "a" should be most frequent
+        assert len(result["approx_topk(id)"]) == 1
+        assert result["approx_topk(id)"][0] == {"id": "a", "count": 1}
+
+
+class TestUnique:
+    """Test cases for Unique aggregation."""
+
+    def test_unique_for_list_elements(self, ray_start_regular_shared_2_cpus):
+        """Test that aggregator correctly serializes lists to string to support
+        list values."""
+        data = [{"id": ["a", "b", "c"]}, {"id": ["a", "a", "a", "b"]}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(Unique(on="id", encode_lists=False))
+
+        assert sorted(result["unique(id)"])[0] == "['a', 'a', 'a', 'b']"
+
+    def test_unique_list_encode(self, ray_start_regular_shared_2_cpus):
+        """Test that aggregator correctly encodes list values."""
+        data = [{"id": ["a", "b", "c"]}, {"id": ["a", "a", "a", "b"]}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(Unique(on="id", encode_lists=True))
+
+        assert sorted(result["unique(id)"])[0] == "a"
+
+    def test_unique_list_encode_with_none(self, ray_start_regular_shared_2_cpus):
+        """Test that aggregator correctly handles None when encoding list values."""
+        data = [{"id": [None, None, None]}, {"id": ["a", None, None]}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(Unique(on="id", encode_lists=True, ignore_nulls=True))
+
+        assert len(result["unique(id)"]) == 1
+        assert result["unique(id)"][0] == "a"
+
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(Unique(on="id", encode_lists=True, ignore_nulls=False))
+
+        assert len(result["unique(id)"]) == 2
+        assert result["unique(id)"][0] is None or result["unique(id)"][0] == "a"
+        assert result["unique(id)"][1] is None or result["unique(id)"][1] == "a"
+        assert result["unique(id)"][0] != result["unique(id)"][1]
 
 
 if __name__ == "__main__":
