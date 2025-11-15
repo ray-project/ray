@@ -4142,7 +4142,7 @@
       pytest -sv test_batch_multi_node_vllm.py
 
 - name: llm_batch_single_node_baseline_benchmark
-  python: "3.10"
+  python: "3.11"
   group: llm-batch
   working_dir: llm_tests/batch
   frequency: weekly
