@@ -6,6 +6,7 @@ import sys
 import time
 import traceback
 from dataclasses import asdict
+from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 import click
@@ -921,3 +922,16 @@ class ServeDeploySchemaDumper(yaml.SafeDumper):
         # Only add extra line breaks between top-level keys
         if len(self.indents) == 1:
             super().write_line_break()
+
+
+def enum_representer(dumper: yaml.Dumper, data: Enum):
+    """Custom representer for Enum objects to serialize as their string values.
+    This tells PyYAML when it encounters an Enum object, serialize it as
+    a string scalar using its .value attribute."""
+    return dumper.represent_scalar("tag:yaml.org,2002:str", str(data.value))
+
+
+# Register Enum representer with SafeDumper to handle enum serialization
+# in all YAML dumps (config, status, build commands).
+# Since ServeDeploySchemaDumper extends SafeDumper, this also covers build command.
+yaml.SafeDumper.add_multi_representer(Enum, enum_representer)
