@@ -312,7 +312,7 @@ Error handling
    * Errors internal to the third-party transport, e.g., NCCL network errors
    * Actor or node failures
    * Transport errors due to tensor device / transport mismatches, e.g., a CPU tensor when using NCCL
-   * Ray object fetch timeouts (can be overridden by setting the ``RAY_fetch_fail_timeout_milliseconds`` environment variable)
+   * Ray RDT object fetch timeouts (can be overridden by setting the ``RAY_rdt_fetch_fail_timeout_milliseconds`` environment variable)
    * Any unexpected system bugs
 
 

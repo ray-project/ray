@@ -859,14 +859,14 @@ except Exception as e:
                 expected_task_id_error_info_dict = {
                     (normal_task_id, 0): {
                         "error_type": "NODE_DIED",
-                        "error_message": "Task failed due to the node (where this task was running)  was dead or unavailable",
+                        "error_message": "Task failed because the node it was running on is dead or unavailable",
                     }
                 }
             else:
                 expected_task_id_error_info_dict = {
                     (normal_task_id, 0): {
                         "errorType": "NODE_DIED",
-                        "errorMessage": "Task failed due to the node (where this task was running)  was dead or unavailable",
+                        "errorMessage": "Task failed because the node it was running on is dead or unavailable",
                     }
                 }
             check_task_lifecycle_event_states_and_error_info(

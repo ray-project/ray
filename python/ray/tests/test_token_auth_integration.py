@@ -20,6 +20,7 @@ except ImportError:
     AuthenticationTokenLoader = None
 
 from ray._private.authentication_test_utils import (
+    authentication_env_guard,
     clear_auth_token_sources,
     reset_auth_token_state,
     set_auth_mode,
@@ -412,6 +413,112 @@ def test_e2e_operations_with_token_auth(setup_cluster_with_token_auth):
     assert (
         final_status == "SUCCEEDED"
     ), f"Job should succeed, got status: {final_status}"
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray CLI, not compatible with client mode",
+)
+@pytest.mark.parametrize("use_generate", [True, False])
+def test_get_auth_token_cli(use_generate):
+    """Test ray get-auth-token CLI command."""
+    test_token = "a" * 32
+
+    with authentication_env_guard():
+        set_auth_mode("token")
+        if use_generate:
+            # Test --generate flag (no token set)
+            clear_auth_token_sources(remove_default=True)
+            args = ["ray", "get-auth-token", "--generate"]
+        else:
+            # Test with existing token from env var
+            set_env_auth_token(test_token)
+            reset_auth_token_state()
+            args = ["ray", "get-auth-token"]
+
+        env = os.environ.copy()
+        result = subprocess.run(
+            args,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        assert result.returncode == 0, (
+            f"ray get-auth-token should succeed. "
+            f"stdout: {result.stdout}, stderr: {result.stderr}"
+        )
+
+        # Verify token is printed to stdout
+        token = result.stdout.strip()
+        assert len(token) == 32, f"Token should be 32 chars, got {len(token)}"
+        assert all(c in "0123456789abcdef" for c in token), "Token should be hex"
+
+        if not use_generate:
+            # When using env var, should get exact token back
+            assert token == test_token
+
+        # Verify logs went to stderr (if --generate was used)
+        if use_generate:
+            assert (
+                "generating new authentication token..." in result.stderr.lower()
+            ), "Should log generation to stderr"
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray CLI, not compatible with client mode",
+)
+def test_get_auth_token_cli_no_token_no_generate():
+    """Test ray get-auth-token fails without token and without --generate."""
+    with authentication_env_guard():
+        set_auth_mode("token")
+        reset_auth_token_state()
+        clear_auth_token_sources(remove_default=True)
+        env = os.environ.copy()
+
+        result = subprocess.run(
+            ["ray", "get-auth-token"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        assert result.returncode != 0, "Should fail when no token and no --generate"
+        assert "error" in result.stderr.lower(), "Should print error to stderr"
+        assert "no" in result.stderr.lower() and "token" in result.stderr.lower()
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray CLI, not compatible with client mode",
+)
+def test_get_auth_token_cli_piping():
+    """Test that ray get-auth-token output can be piped."""
+    test_token = "b" * 32
+
+    with authentication_env_guard():
+        set_auth_mode("token")
+        set_env_auth_token(test_token)
+        reset_auth_token_state()
+        env = os.environ.copy()
+
+        # Test piping: use token in shell pipeline
+        result = subprocess.run(
+            "ray get-auth-token | wc -c",
+            shell=True,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        assert result.returncode == 0
+        # Should be 32 chars (no newline with nl=False)
+        char_count = int(result.stdout.strip())
+        assert char_count == 32, f"Expected 32 chars (no newline), got {char_count}"
 
 
 if __name__ == "__main__":

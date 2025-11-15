@@ -1,7 +1,9 @@
 from .logical_operator import (
     LogicalOperator,
+    LogicalOperatorSupportsPredicatePassThrough,
     LogicalOperatorSupportsPredicatePushdown,
     LogicalOperatorSupportsProjectionPushdown,
+    PredicatePassThroughBehavior,
 )
 from .logical_plan import LogicalPlan
 from .operator import Operator
@@ -21,4 +23,6 @@ __all__ = [
     "SourceOperator",
     "LogicalOperatorSupportsProjectionPushdown",
     "LogicalOperatorSupportsPredicatePushdown",
+    "LogicalOperatorSupportsPredicatePassThrough",
+    "PredicatePassThroughBehavior",
 ]

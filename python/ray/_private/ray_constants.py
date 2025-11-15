@@ -577,12 +577,11 @@ RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "l
 # using OpenCensus.
 RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", True)
 
-# How long to wait for a fetch to complete during ray.get before timing out and raising an exception to the user.
+# How long to wait for a fetch for an RDT object to complete during ray.get before timing out and raising an exception to the user.
 #
-# NOTE: This must be kept in sync with the C++ definition of
-# `RayConfig::fetch_fail_timeout_milliseconds`.
-FETCH_FAIL_TIMEOUT_SECONDS = (
-    env_integer("RAY_fetch_fail_timeout_milliseconds", 60000) / 1000
+# NOTE: This is a tenth of `RayConfig::fetch_fail_timeout_milliseconds` by default as RDT transfers are expected to be much faster.
+RDT_FETCH_FAIL_TIMEOUT_SECONDS = (
+    env_integer("RAY_rdt_fetch_fail_timeout_milliseconds", 60000) / 1000
 )
 
 RAY_GC_MIN_COLLECT_INTERVAL = env_float("RAY_GC_MIN_COLLECT_INTERVAL_S", 5)

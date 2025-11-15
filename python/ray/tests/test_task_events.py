@@ -7,13 +7,12 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.state_api_test_utils import (
     verify_failed_task,
 )
 from ray._private.test_utils import (
     raw_metrics,
-    run_string_as_driver_nonblocking,
 )
 from ray._private.worker import RayContext
 from ray.exceptions import RuntimeEnvSetupError
@@ -167,40 +166,32 @@ def test_failed_task_error(shutdown_only):
 
 def test_failed_task_failed_due_to_node_failure(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1)
+    head_node_id = cluster.add_node(num_cpus=1).node_id
     ray.init(address=cluster.address)
     node = cluster.add_node(num_cpus=2)
 
-    driver_script = """
-import ray
-ray.init("auto")
+    signal = SignalActor.options(
+        label_selector={"ray.io/node-id": head_node_id}
+    ).remote()
 
-@ray.remote(num_cpus=2, max_retries=0)
-def sleep():
-    import time
-    time.sleep(999)
+    @ray.remote(num_cpus=2, max_retries=0)
+    def sleep():
+        ray.get(signal.send.remote())
+        while True:
+            time.sleep(1)
 
-x = sleep.options(name="node-killed").remote()
-ray.get(x)
-    """
+    obj_ref = sleep.options(name="node-killed").remote()
+    ray.get(signal.wait.remote())
 
-    run_string_as_driver_nonblocking(driver_script)
-
-    def driver_running():
-        t = list_tasks(filters=[("name", "=", "node-killed")])
-        return len(t) > 0
-
-    wait_for_condition(driver_running)
-
-    # Kill the node
     cluster.remove_node(node)
+    with pytest.raises(ray.exceptions.NodeDiedError):
+        ray.get(obj_ref)
 
     wait_for_condition(
         verify_failed_task,
         name="node-killed",
         error_type="NODE_DIED",
-        error_message="Task failed due to the node (where this task was running) "
-        " was dead or unavailable",
+        error_message="Task failed because the node it was running on is dead or unavailable",
     )
 
 
@@ -232,40 +223,6 @@ def test_failed_task_unschedulable(shutdown_only):
             " doesn't exist any more or is infeasible"
         ),
     )
-
-
-# TODO(rickyx): Make this work.
-# def test_failed_task_removed_placement_group(shutdown_only, monkeypatch):
-#     ray.init(num_cpus=2, _system_config=_SYSTEM_CONFIG)
-#     from ray.util.placement_group import placement_group, remove_placement_group
-#     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-#
-#     pg = placement_group([{"CPU": 2}])
-#     ray.get(pg.ready())
-#
-#     @ray.remote(num_cpus=2)
-#     def sleep():
-#         time.sleep(999)
-#
-#     with monkeypatch.context() as m:
-#         m.setenv(
-#             "RAY_testing_asio_delay_us",
-#             "NodeManagerService.grpc_server.RequestWorkerLease=3000000:3000000",
-#         )
-#
-#         sleep.options(
-#             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
-#             name="task-pg-removed",
-#             max_retries=0,
-#         ).remote()
-#
-#     remove_placement_group(pg)
-#
-#     wait_for_condition(
-#         verify_failed_task,
-#         name="task-pg-removed",
-#         error_type="TASK_PLACEMENT_GROUP_REMOVED",
-#     )
 
 
 def test_failed_task_runtime_env_setup(shutdown_only):
