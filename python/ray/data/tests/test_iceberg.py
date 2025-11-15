@@ -756,9 +756,11 @@ def _create_typed_dataframe(data_dict: Dict[str, List[Any]]) -> pd.DataFrame:
     """Create a pandas DataFrame with proper int32 dtypes for col_a and col_c."""
     df = pd.DataFrame(data_dict)
     if "col_a" in df.columns:
-        df["col_a"] = df["col_a"].astype(np.int32)
+        # Use nullable Int32 to support NaN values
+        df["col_a"] = df["col_a"].astype("Int32")
     if "col_c" in df.columns:
-        df["col_c"] = df["col_c"].astype(np.int32)
+        # Use nullable Int32 to support NaN values
+        df["col_c"] = df["col_c"].astype("Int32")
     return df
 
 
@@ -968,6 +970,42 @@ class TestBasicWriteModes:
         )
         assert rows_same(result_df, expected)
 
+    def test_overwrite_full_table_missing_columns(self, clean_table):
+        """Test full table overwrite when new data is missing columns - they become NULL."""
+        # Initial data with 3 columns
+        initial_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3],
+                "col_b": ["alice", "bob", "charlie"],
+                "col_c": [10, 20, 30],
+            }
+        )
+        _write_to_iceberg(initial_data)
+
+        # Overwrite with data that's missing col_b (non-partition column)
+        # Note: col_c must be present since table is partitioned by col_c
+        new_data = _create_typed_dataframe(
+            {
+                "col_a": [10, 20],
+                # col_b is intentionally missing (non-partition column)
+                "col_c": [100, 200],
+            }
+        )
+        _write_to_iceberg(new_data, mode=SaveMode.OVERWRITE)
+
+        # Read back and verify
+        result_df = _read_from_iceberg(sort_by="col_a")
+
+        # All old data should be gone
+        assert len(result_df) == 2
+        assert result_df["col_a"].tolist() == [10, 20]
+        assert result_df["col_c"].tolist() == [100, 200]
+
+        # col_b should still exist in schema but be NULL for new rows
+        assert "col_b" in result_df.columns
+        assert pd.isna(result_df["col_b"].iloc[0])
+        assert pd.isna(result_df["col_b"].iloc[1])
+
 
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("14.0.0"),
@@ -1171,6 +1209,248 @@ class TestUpsertScenarios:
 
         result_df = _read_from_iceberg(sort_by="col_a")
         expected = _create_typed_dataframe(expected_data)
+        assert rows_same(result_df, expected)
+
+    @pytest.mark.parametrize(
+        "join_cols,initial_data_dict,upsert_data_dict,sort_by",
+        [
+            # Single column join key
+            (
+                ["col_a"],
+                {
+                    "col_a": [1, 2, 3, 4, 5],
+                    "col_b": ["A", "B", "C", "D", "E"],
+                    "col_c": [10, 20, 30, 40, 50],
+                },
+                {
+                    "col_a": [2, 3, 4, 6],
+                    "col_b": ["B_updated", "C_updated", "D_updated", "F_new"],
+                    "col_c": [200, 300, 400, 600],
+                },
+                "col_a",
+            ),
+            # Composite join key
+            (
+                ["col_a", "col_b"],
+                {
+                    "col_a": [1, 1, 2, 2, 3],
+                    "col_b": ["X", "Y", "X", "Y", "X"],
+                    "col_c": [10, 20, 30, 40, 50],
+                },
+                {
+                    "col_a": [1, 2, 3, 4],
+                    "col_b": ["Y", "X", "Y", "X"],
+                    "col_c": [999, 888, 777, 666],
+                },
+                ["col_a", "col_b"],
+            ),
+        ],
+    )
+    def test_upsert_matches_pyiceberg_native(
+        self, clean_table, join_cols, initial_data_dict, upsert_data_dict, sort_by
+    ):
+        """Test that Ray Data's upsert produces identical results to PyIceberg's native upsert."""
+        catalog, table = clean_table
+
+        initial_data = _create_typed_dataframe(initial_data_dict)
+        upsert_data = _create_typed_dataframe(upsert_data_dict)
+
+        # Apply upsert with Ray Data
+        _write_to_iceberg(initial_data)
+        _write_to_iceberg(
+            upsert_data, mode=SaveMode.UPSERT, upsert_kwargs={"join_cols": join_cols}
+        )
+        ray_result = _read_from_iceberg(sort_by=sort_by)
+
+        # Reset table and apply same operations with PyIceberg native
+        catalog.drop_table(f"{_DB_NAME}.{_TABLE_NAME}")
+        table = catalog.create_table(
+            f"{_DB_NAME}.{_TABLE_NAME}",
+            schema=pyi_schema.Schema(
+                pyi_types.NestedField(
+                    field_id=1,
+                    name="col_a",
+                    field_type=pyi_types.IntegerType(),
+                    required=False,
+                ),
+                pyi_types.NestedField(
+                    field_id=2,
+                    name="col_b",
+                    field_type=pyi_types.StringType(),
+                    required=False,
+                ),
+                pyi_types.NestedField(
+                    field_id=3,
+                    name="col_c",
+                    field_type=pyi_types.IntegerType(),
+                    required=False,
+                ),
+            ),
+        )
+        table.append(pa.Table.from_pandas(initial_data))
+        table.upsert(df=pa.Table.from_pandas(upsert_data), join_cols=join_cols)
+
+        # Read with PyIceberg native
+        pyiceberg_result = table.scan().to_pandas()
+        if isinstance(sort_by, list):
+            pyiceberg_result = pyiceberg_result.sort_values(by=sort_by).reset_index(
+                drop=True
+            )
+        else:
+            pyiceberg_result = pyiceberg_result.sort_values(by=sort_by).reset_index(
+                drop=True
+            )
+
+        # Results should be identical
+        assert rows_same(ray_result, pyiceberg_result)
+
+    def test_upsert_schema_evolution(self, clean_table):
+        """Test that upsert supports automatic schema evolution (adding new columns)."""
+        # Initial data with 3 columns
+        initial_data = _create_typed_dataframe(
+            {"col_a": [1, 2], "col_b": ["row_1", "row_2"], "col_c": [10, 20]}
+        )
+        _write_to_iceberg(initial_data)
+
+        # Upsert with new column col_d
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [2, 3],
+                "col_b": ["updated_2", "new_3"],
+                "col_c": [200, 30],
+                "col_d": ["extra_2", "extra_3"],
+            }
+        )
+        _write_to_iceberg(
+            upsert_data, mode=SaveMode.UPSERT, upsert_kwargs={"join_cols": ["col_a"]}
+        )
+
+        # Verify schema has col_d
+        _verify_schema(
+            {
+                "col_a": pyi_types.IntegerType,
+                "col_b": pyi_types.StringType,
+                "col_c": pyi_types.IntegerType,
+                "col_d": pyi_types.StringType,
+            }
+        )
+
+        # Verify data
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3],
+                "col_b": ["row_1", "updated_2", "new_3"],
+                "col_c": [10, 200, 30],
+                "col_d": [None, "extra_2", "extra_3"],
+            }
+        )
+        assert rows_same(result_df, expected)
+
+    @pytest.mark.parametrize(
+        "join_cols,initial_data_dict,upsert_data_dict,expected_data_dict",
+        [
+            # NULL in initial data - row with NULL key isn't updated
+            (
+                ["col_a"],
+                {
+                    "col_a": [1, 2, None],
+                    "col_b": ["A", "B", "C"],
+                    "col_c": [10, 20, 30],
+                },  # Initial data
+                {
+                    "col_a": [2, 3],
+                    "col_b": ["B_updated", "new_3"],
+                    "col_c": [200, 300],
+                },  # Upsert data
+                {
+                    "col_a": [1, 2, 3, None],
+                    "col_b": ["A", "B_updated", "new_3", "C"],
+                    "col_c": [10, 200, 300, 30],
+                },  # Expected data
+            ),
+            # NULL in upsert data - row with NULL key is inserted
+            (
+                ["col_a"],
+                {
+                    "col_a": [1, 2, 3],
+                    "col_b": ["A", "B", "C"],
+                    "col_c": [10, 20, 30],
+                },  # Initial data
+                {
+                    "col_a": [2, None],
+                    "col_b": ["B_updated", "null_row"],
+                    "col_c": [200, 300],
+                },  # Upsert data
+                {
+                    "col_a": [1, 2, 3, None],
+                    "col_b": ["A", "B_updated", "C", "null_row"],
+                    "col_c": [10, 200, 30, 300],
+                },  # Expected data
+            ),
+            # Composite key with NULL in initial - row not updated
+            (
+                ["col_a", "col_b"],
+                {
+                    "col_a": [1, 2, None],
+                    "col_b": ["X", "Y", None],
+                    "col_c": [10, 20, 30],
+                },  # Initial data
+                {
+                    "col_a": [2, 3],
+                    "col_b": ["Y", "Z"],
+                    "col_c": [200, 300],
+                },  # Upsert data
+                {
+                    "col_a": [1, 2, 3, None],
+                    "col_b": ["X", "Y", "Z", None],
+                    "col_c": [10, 200, 300, 30],
+                },  # Expected data
+            ),
+        ],
+    )
+    def test_upsert_null_in_join_keys(
+        self,
+        clean_table,
+        join_cols,
+        initial_data_dict,
+        upsert_data_dict,
+        expected_data_dict,
+    ):
+        """Test upsert behavior with NULL values in join key columns (NULL != NULL in SQL)."""
+        initial_data = _create_typed_dataframe(initial_data_dict)
+        upsert_data = _create_typed_dataframe(upsert_data_dict)
+        expected = _create_typed_dataframe(expected_data_dict)
+
+        _write_to_iceberg(initial_data)
+        _write_to_iceberg(
+            upsert_data, mode=SaveMode.UPSERT, upsert_kwargs={"join_cols": join_cols}
+        )
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        assert rows_same(result_df, expected)
+
+    def test_upsert_empty_table(self, clean_table):
+        """Test upserting into a completely empty table (behaves like insert)."""
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3],
+                "col_b": ["new_1", "new_2", "new_3"],
+                "col_c": [10, 20, 30],
+            }
+        )
+        _write_to_iceberg(
+            upsert_data, mode=SaveMode.UPSERT, upsert_kwargs={"join_cols": ["col_a"]}
+        )
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3],
+                "col_b": ["new_1", "new_2", "new_3"],
+                "col_c": [10, 20, 30],
+            }
+        )
         assert rows_same(result_df, expected)
 
 
