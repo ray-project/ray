@@ -30,11 +30,15 @@ namespace ray::syncer {
 
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
                      const std::string &local_node_id,
+                     size_t max_batch_size,
+                     uint64_t max_batch_delay_ms,
                      RpcCompletionCallback on_rpc_completion)
     : io_context_(io_context),
       local_node_id_(local_node_id),
       node_state_(std::make_unique<NodeState>()),
       timer_(PeriodicalRunner::Create(io_context)),
+      max_batch_size_(max_batch_size),
+      max_batch_delay_ms_(max_batch_delay_ms),
       on_rpc_completion_(std::move(on_rpc_completion)) {
   stopped_ = std::make_shared<bool>(false);
 }
@@ -109,7 +113,9 @@ void RaySyncer::Connect(const std::string &node_id,
                 node_state_->RemoveNode(remote_node_id);
               }
             },
-            /* stub */ std::move(stub));
+            /* stub */ std::move(stub),
+            /* max_batch_size */ max_batch_size_,
+            /* max_batch_delay_ms */ max_batch_delay_ms_);
         Connect(reactor);
         reactor->StartCall();
       }))
@@ -221,7 +227,8 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
       context,
       syncer_.GetIOContext(),
       syncer_.GetLocalNodeID(),
-      /*message_processor=*/[this](auto msg) mutable { syncer_.BroadcastMessage(msg); },
+      /*message_processor=*/
+      [this](auto msg) mutable { syncer_.BroadcastMessage(msg); },
       /*cleanup_cb=*/
       [this](RaySyncerBidiReactor *bidi_reactor, bool reconnect) mutable {
         // No need to reconnect for server side.
@@ -245,7 +252,9 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
         RAY_LOG(INFO).WithField(NodeID::FromBinary(node_id)) << "Connection is broken.";
         syncer_.node_state_->RemoveNode(node_id);
       },
-      /*auth_token=*/auth_token_);
+      /*auth_token=*/auth_token_,
+      /*max_batch_size=*/syncer_.max_batch_size_,
+      /*max_batch_delay_ms=*/syncer_.max_batch_delay_ms_);
   RAY_LOG(DEBUG).WithField(NodeID::FromBinary(reactor->GetRemoteNodeID()))
       << "Get connection";
 

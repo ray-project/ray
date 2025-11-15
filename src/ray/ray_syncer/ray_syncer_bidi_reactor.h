@@ -28,6 +28,7 @@ namespace ray::syncer {
 using ray::rpc::syncer::CommandsSyncMessage;
 using ray::rpc::syncer::MessageType;
 using ray::rpc::syncer::RaySyncMessage;
+using ray::rpc::syncer::RaySyncMessageBatch;
 using ray::rpc::syncer::ResourceViewSyncMessage;
 
 /// This is the base class for the bidi-streaming call and defined the method

@@ -16,6 +16,7 @@ ray_cc_library(
     hdrs = ["test_utils.h"],
     deps = [
         ":asio",
+        ":function_descriptor",
         ":id",
         ":placement_group",
         ":ray_object",
