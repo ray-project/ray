@@ -274,8 +274,8 @@ counts either over the lifetime or over some particular phase, use the ``reduce=
 
     logger = MetricsLogger()
 
-    logger.log_value("my_temp_counter", 50, reduce="sum")
-    logger.log_value("my_temp_counter", 25, reduce="sum")
+    logger.log_value("my_counter", 50, reduce="sum")
+    logger.log_value("my_counter", 25, reduce="sum")
     logger.peek("my_counter")  # expect: 75
     logger.reduce()
     logger.peek("my_counter")  # expect: 0 (upon reduction, all values are cleared)
