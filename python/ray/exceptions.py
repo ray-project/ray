@@ -933,6 +933,21 @@ class UnserializableException(RayError):
         )
 
 
+@DeveloperAPI
+class ActorAlreadyExistsError(RayError):
+    """Raised when a named actor already exists.
+
+    Args:
+        error_message: The error message that contains information about the actor name and namespace.
+    """
+
+    def __init__(self, error_message: str):
+        self.error_message = error_message
+
+    def __str__(self):
+        return self.error_message
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
