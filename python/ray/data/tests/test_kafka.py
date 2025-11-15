@@ -73,9 +73,10 @@ def test_read_kafka_basic(bootstrap_server, kafka_producer, ray_start_regular_sh
     assert first_record["topic"] == topic
 
     # Verify data types: key is string, value is binary
-    assert isinstance(first_record["key"], str)
+    assert isinstance(first_record["key"], bytes)
     assert isinstance(first_record["value"], bytes)
-    assert first_record["key"].startswith("key-")
+    key_str = first_record["key"].decode("utf-8")
+    assert key_str.startswith("key-")
     value_obj = json.loads(first_record["value"].decode("utf-8"))
     assert "id" in value_obj
     assert "value" in value_obj

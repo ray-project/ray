@@ -95,21 +95,14 @@ def _build_consumer_config_for_read(
         Consumer configuration dict for reading.
     """
     # Value: keep as raw bytes, Key: decode as UTF-8 string (common case)
-    def deserialize_value(v):
-        return v  # Return raw bytes
-
-    def deserialize_key(k):
-        if k is None:
-            return None
-        return k.decode("utf-8")
 
     config = {
         "bootstrap_servers": bootstrap_servers,
         "enable_auto_commit": False,
         "auto_offset_reset": "latest",  # Default, will be overridden by seek
         "group_id": f"ray-data-kafka-{topic_name}-{partition_id}-{uuid.uuid4().hex[:8]}",
-        "value_deserializer": deserialize_value,
-        "key_deserializer": deserialize_key,
+        "value_deserializer": lambda v: v,
+        "key_deserializer": lambda k: k,
     }
 
     if not authentication:
@@ -546,13 +539,13 @@ class KafkaDatasource(Datasource):
             schema = pa.schema(
                 [
                     ("offset", pa.int64()),
-                    ("key", pa.string()),
+                    ("key", pa.binary()),
                     ("value", pa.binary()),
                     ("topic", pa.string()),
                     ("partition", pa.int32()),
                     ("timestamp", pa.int64()),  # Kafka timestamp in milliseconds
                     ("timestamp_type", pa.int32()),  # 0=CreateTime, 1=LogAppendTime
-                    ("headers", pa.map_(pa.string(), pa.binary())),  # Message headers
+                    ("headers", pa.map_(pa.binary(), pa.binary())),  # Message headers
                 ]
             )
             kafka_read_fn = create_kafka_read_fn(topic_name, partition_id)
