@@ -32,6 +32,7 @@ from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
+from ray.data._internal.datasource.hive_datasource import read_hive_table
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
@@ -2779,6 +2780,166 @@ def read_sql(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_hive(
+    table: str,
+    *,
+    host: str,
+    port: int = 10000,
+    database: str = "default",
+    auth: str = "NONE",
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    configuration: Optional[dict] = None,
+    kerberos_service_name: str = "hive",
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    **reader_kwargs,
+) -> Dataset:
+    """Read a Hive table by querying metastore and reading files directly from storage.
+
+    This function uses PyHive to connect to the Hive metastore, determines the table's
+    storage location and file format, then uses Ray Data's native readers
+    (``read_parquet``, ``read_avro``, etc.) to read directly from S3, HDFS, or other
+    storage. This is much more efficient than reading through HiveServer2.
+
+    .. note::
+
+        This function requires the ``pyhive`` package. Install it with:
+
+        .. code-block:: bash
+
+            pip install pyhive
+
+    .. note::
+
+        Supported file formats: Parquet, Avro, Text. ORC format is not currently supported.
+        If you need to read ORC tables, consider converting them to Parquet format.
+
+    .. tip::
+
+        For reading with SQL queries instead of full tables, use :func:`~ray.data.read_sql`
+        with PyHive as the connection factory.
+
+    Examples:
+        Read a Hive table with default authentication:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            # Read entire table directly from storage (S3, HDFS, etc.)
+            ds = ray.data.read_hive(
+                table="sales",
+                host="hive.example.com",
+                database="analytics"
+            )
+
+        Read with LDAP authentication:
+
+        .. testcode::
+            :skipif: True
+
+            ds = ray.data.read_hive(
+                table="events",
+                host="hive.example.com",
+                auth="LDAP",
+                username="analyst",
+                password="secret"
+            )
+
+        Read with column selection and partitioning:
+
+        .. testcode::
+            :skipif: True
+
+            # Read specific columns from a partitioned Parquet table
+            ds = ray.data.read_hive(
+                table="transactions",
+                host="hive.example.com",
+                columns=["user_id", "amount", "timestamp"],
+                override_num_blocks=100
+            )
+
+        Read with Kerberos authentication:
+
+        .. testcode::
+            :skipif: True
+
+            ds = ray.data.read_hive(
+                table="secure_data",
+                host="hive.example.com",
+                auth="KERBEROS",
+                kerberos_service_name="hive"
+            )
+
+        Read with custom PyArrow filesystem:
+
+        .. testcode::
+            :skipif: True
+
+            import pyarrow.fs as pafs
+
+            # Use custom S3 filesystem with credentials
+            s3_fs = pafs.S3FileSystem(
+                access_key="...",
+                secret_key="...",
+                region="us-west-2"
+            )
+
+            ds = ray.data.read_hive(
+                table="data",
+                host="hive.example.com",
+                filesystem=s3_fs
+            )
+
+    Args:
+        table: Hive table name to read.
+        host: HiveServer2 host address for metastore access.
+        port: HiveServer2 port. Defaults to 10000.
+        database: Hive database name. Defaults to "default".
+        auth: Authentication mechanism. Options: "NONE", "NOSASL", "KERBEROS", "LDAP",
+            or "CUSTOM". Defaults to "NONE".
+        username: Username for LDAP authentication.
+        password: Password for LDAP authentication.
+        configuration: Optional Hive configuration parameters as a dictionary.
+        kerberos_service_name: Kerberos service name. Defaults to "hive".
+        filesystem: Optional PyArrow filesystem for accessing storage. If not provided,
+            Ray Data will infer the filesystem from the storage location URL.
+        **reader_kwargs: Additional arguments passed to the underlying Ray Data reader
+            (e.g., ``read_parquet``, ``read_avro``). Common arguments include:
+
+            - ``columns``: List of column names to read
+            - ``override_num_blocks``: Number of blocks to create
+            - ``filter``: PyArrow filter expression
+            - ``partitioning``: PyArrow partitioning scheme
+
+            See the specific reader documentation for supported arguments.
+
+    Returns:
+        A :class:`Dataset` containing the table data read directly from storage.
+
+    References:
+        - PyHive: https://github.com/dropbox/PyHive
+        - Hive Metastore: https://cwiki.apache.org/confluence/display/Hive/LanguageManual+DDL
+        - Ray Data Parquet Reader: https://docs.ray.io/en/latest/data/api/doc/ray.data.read_parquet.html
+    """
+    return read_hive_table(
+        table=table,
+        host=host,
+        port=port,
+        database=database,
+        auth=auth,
+        username=username,
+        password=password,
+        configuration=configuration,
+        kerberos_service_name=kerberos_service_name,
+        filesystem=filesystem,
+        timeout=None,  # Can be added to public API in future if needed
+        **reader_kwargs,
     )
 
 
