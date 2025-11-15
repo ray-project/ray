@@ -68,7 +68,7 @@ from ray.train.v2.api.exceptions import (
     ControllerError,
     TrainingFailedError,
 )
-from ray.train.v2.api.report_config import CheckpointView
+from ray.train.v2.api.report_config import ConsistencyMode
 from ray.train.v2.api.result import Result
 
 if TYPE_CHECKING:
@@ -584,8 +584,10 @@ class TrainController:
         return None
 
     async def get_all_reported_checkpoints(
-        self, current_report_index: int, view: CheckpointView = CheckpointView.VALIDATED
+        self,
+        current_report_index: int,
+        consistency_mode: ConsistencyMode = ConsistencyMode.VALIDATED,
     ) -> List["ReportedCheckpoint"]:
         return await self._checkpoint_manager.get_all_reported_checkpoints(
-            current_report_index, view
+            current_report_index, consistency_mode
         )

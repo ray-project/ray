@@ -22,7 +22,7 @@ class CheckpointUploadMode(Enum):
 
 
 @PublicAPI(stability="alpha")
-class CheckpointView(Enum):
+class ConsistencyMode(Enum):
     """Read semantics for checkpoint retrieval.
 
     Args:

@@ -20,7 +20,7 @@ from ray.train.v2._internal.execution.context import StorageContext
 from ray.train.v2._internal.execution.storage import _exists_at_fs_path, delete_fs_path
 from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2._internal.execution.worker_group import Worker
-from ray.train.v2.api.report_config import CheckpointView
+from ray.train.v2.api.report_config import ConsistencyMode
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 logger = logging.getLogger(__name__)
@@ -370,31 +370,33 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     # --------------------------------
 
     async def get_all_reported_checkpoints(
-        self, current_report_index: int, view: CheckpointView = CheckpointView.VALIDATED
+        self,
+        current_report_index: int,
+        consistency_mode: ConsistencyMode = ConsistencyMode.VALIDATED,
     ) -> List[ReportedCheckpoint]:
         """Get all the reported checkpoints so far.
 
         Args:
             current_report_index: The current report index.
-            view: Read semantics for checkpoint retrieval. Defaults to VALIDATED.
+            consistency_mode: Read semantics for checkpoint retrieval. Defaults to VALIDATED.
 
         Returns:
             A list of ReportedCheckpoint objects that represent the checkpoints and
             corresponding metrics reported by the workers.
         """
-        if view == CheckpointView.UPLOADED:
+        if consistency_mode == ConsistencyMode.UPLOADED:
             async with self._condition:
                 await self._condition.wait_for(
                     lambda: self._current_report_index == current_report_index
                 )
-        elif view == CheckpointView.VALIDATED:
+        elif consistency_mode == ConsistencyMode.VALIDATED:
             async with self._condition:
                 await self._condition.wait_for(
                     lambda: self._current_report_index == current_report_index
                     and not self._pending_training_results
                 )
-        elif view != CheckpointView.LIVE:
-            raise ValueError(f"Unexpected CheckpointView: {view}")
+        elif consistency_mode != ConsistencyMode.LIVE:
+            raise ValueError(f"Unexpected ConsistencyMode: {consistency_mode}")
         # TODO: might be nice for CheckpointManager to manage ReportedCheckpoint
         # instead of _TrainingResult but that is a large refactor.
         return [

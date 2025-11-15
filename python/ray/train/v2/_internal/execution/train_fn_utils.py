@@ -14,7 +14,7 @@ from ray.train.v2.api.context import (
     LocalTrainContext,
     TrainContext as ExternalTrainContext,
 )
-from ray.train.v2.api.report_config import CheckpointUploadMode, CheckpointView
+from ray.train.v2.api.report_config import CheckpointUploadMode, ConsistencyMode
 
 logger = logging.getLogger(__name__)
 
@@ -79,12 +79,12 @@ class TrainFnUtils(ABC):
 
     @abstractmethod
     def get_all_reported_checkpoints(
-        self, view: CheckpointView = CheckpointView.VALIDATED
+        self, consistency_mode: ConsistencyMode = ConsistencyMode.VALIDATED
     ) -> List["ReportedCheckpoint"]:
         """Get all the checkpoints reported by the workers.
 
         Args:
-            view: Read semantics for checkpoint retrieval. Defaults to VALIDATED.
+            consistency_mode: Read semantics for checkpoint retrieval. Defaults to VALIDATED.
 
         Returns:
             A list of ReportedCheckpoint objects that represent the checkpoints and
@@ -183,9 +183,11 @@ class DistributedTrainFnUtils(TrainFnUtils):
         return collective_impl.broadcast_from_rank_zero(data)
 
     def get_all_reported_checkpoints(
-        self, view: CheckpointView = CheckpointView.VALIDATED
+        self, consistency_mode: ConsistencyMode = ConsistencyMode.VALIDATED
     ) -> List["ReportedCheckpoint"]:
-        return get_internal_train_context().get_all_reported_checkpoints(view=view)
+        return get_internal_train_context().get_all_reported_checkpoints(
+            consistency_mode=consistency_mode
+        )
 
 
 class LocalTrainFnUtils(TrainFnUtils):
@@ -257,7 +259,7 @@ class LocalTrainFnUtils(TrainFnUtils):
         return self._last_metrics
 
     def get_all_reported_checkpoints(
-        self, view: CheckpointView = CheckpointView.VALIDATED
+        self, consistency_mode: ConsistencyMode = ConsistencyMode.VALIDATED
     ) -> List["ReportedCheckpoint"]:
         return []
 

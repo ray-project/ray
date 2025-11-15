@@ -12,7 +12,7 @@ from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import WorkerGroupError
-from ray.train.v2.api.report_config import CheckpointUploadMode, CheckpointView
+from ray.train.v2.api.report_config import CheckpointUploadMode, ConsistencyMode
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -418,7 +418,9 @@ def test_get_all_reported_checkpoints_all_checkpoint_views():
                     checkpoint=cp1,
                 )
             # Dummy barrier to ensure checkpoint 1 uploaded
-            ray.train.get_all_reported_checkpoints(view=CheckpointView.UPLOADED)
+            ray.train.get_all_reported_checkpoints(
+                consistency_mode=ConsistencyMode.UPLOADED
+            )
             tmpdir = tempfile.mkdtemp()
             cp2 = Checkpoint.from_directory(tmpdir)
             ray.train.report(
@@ -431,14 +433,14 @@ def test_get_all_reported_checkpoints_all_checkpoint_views():
             assert [
                 reported_checkpoint.metrics
                 for reported_checkpoint in ray.train.get_all_reported_checkpoints(
-                    view=CheckpointView.LIVE
+                    consistency_mode=ConsistencyMode.LIVE
                 )
             ] == [{"training_score": 1}]
             state_actor.set_called_live.remote()
             assert [
                 reported_checkpoint.metrics
                 for reported_checkpoint in ray.train.get_all_reported_checkpoints(
-                    view=CheckpointView.UPLOADED
+                    consistency_mode=ConsistencyMode.UPLOADED
                 )
             ] == [
                 {"training_score": 1},
@@ -448,7 +450,7 @@ def test_get_all_reported_checkpoints_all_checkpoint_views():
             assert [
                 reported_checkpoint.metrics
                 for reported_checkpoint in ray.train.get_all_reported_checkpoints(
-                    view=CheckpointView.VALIDATED
+                    consistency_mode=ConsistencyMode.VALIDATED
                 )
             ] == [
                 {"training_score": 1},

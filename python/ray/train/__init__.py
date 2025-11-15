@@ -50,7 +50,7 @@ if is_v2_enabled():
     )
     from ray.train.v2.api.report_config import (  # noqa: F811
         CheckpointUploadMode,
-        CheckpointView,
+        ConsistencyMode,
     )
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint  # noqa: F811
     from ray.train.v2.api.result import Result  # noqa: F811
@@ -103,7 +103,7 @@ if is_v2_enabled():
     __all__.extend(
         [
             "CheckpointUploadMode",
-            "CheckpointView",
+            "ConsistencyMode",
             "ControllerError",
             "ReportedCheckpoint",
             "UserCallback",
@@ -113,7 +113,7 @@ if is_v2_enabled():
     )
 
     CheckpointUploadMode.__module__ = "ray.train"
-    CheckpointView.__module__ = "ray.train"
+    ConsistencyMode.__module__ = "ray.train"
     ControllerError.__module__ = "ray.train"
     ReportedCheckpoint.__module__ = "ray.train"
     UserCallback.__module__ = "ray.train"

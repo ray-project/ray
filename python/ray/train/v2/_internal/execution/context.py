@@ -23,7 +23,7 @@ from ray.train.v2._internal.util import (
     invoke_context_managers,
 )
 from ray.train.v2.api.config import RunConfig, ScalingConfig
-from ray.train.v2.api.report_config import CheckpointUploadMode, CheckpointView
+from ray.train.v2.api.report_config import CheckpointUploadMode, ConsistencyMode
 
 if TYPE_CHECKING:
     from ray.train import BackendConfig, Checkpoint, DataConfig
@@ -157,12 +157,12 @@ class TrainContext:
             return self.checkpoint
 
     def get_all_reported_checkpoints(
-        self, view: CheckpointView = CheckpointView.VALIDATED
+        self, consistency_mode: ConsistencyMode = ConsistencyMode.VALIDATED
     ) -> List["ReportedCheckpoint"]:
         return ray.get(
             self.controller_actor.get_all_reported_checkpoints.remote(
                 self.report_call_index,
-                view,
+                consistency_mode,
             )
         )
 
