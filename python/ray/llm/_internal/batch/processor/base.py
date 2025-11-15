@@ -2,7 +2,7 @@ import logging
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 import ray
 from ray.data import Dataset
@@ -175,8 +175,18 @@ class OfflineProcessorConfig(ProcessorConfig):
     )
     has_image: bool = Field(
         default=False,
-        description="Whether the input messages have images.",
+        description="[DEPRECATED] Whether the input messages have images.",
     )
+
+    @model_validator(mode="after")
+    def _warn_deprecated_has_image(self):
+        """Warn if has_image is explicitly set by the user."""
+        if "has_image" in self.model_fields_set:
+            logger.warning(
+                "OfflineProcessorConfig's 'has_image' field is deprecated and will be removed in a future version. "
+                "Please use MultimodalProcessor to process multimodal data instead."
+            )
+        return self
 
 
 @PublicAPI(stability="alpha")

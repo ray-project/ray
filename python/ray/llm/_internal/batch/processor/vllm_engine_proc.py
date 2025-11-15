@@ -1,5 +1,4 @@
 """The vLLM engine processor."""
-
 from typing import Any, Dict, List, Literal, Optional
 
 import transformers
@@ -21,7 +20,6 @@ from ray.llm._internal.batch.processor.base import (
 from ray.llm._internal.batch.stages import (
     ChatTemplateStage,
     DetokenizeStage,
-    PrepareImageStage,
     TokenizeStage,
     vLLMEngineStage,
 )
@@ -133,16 +131,6 @@ def build_vllm_engine_processor(
 
     stages = []
 
-    if config.has_image:
-        stages.append(
-            PrepareImageStage(
-                map_batches_kwargs=dict(
-                    zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
-                    batch_size=config.batch_size,
-                ),
-            )
-        )
     if config.apply_chat_template:
         stages.append(
             ChatTemplateStage(
