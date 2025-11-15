@@ -60,7 +60,7 @@ fi
   --incompatible_use_python_toolchains=false \
   //release:custom_image_build_and_test_init
 
-BAZEL_WORKSPACE_DIR="${PWD}" bazel-bin/release/custom_image_build_and_test_init \
+BUILD_WORKSPACE_DIRECTORY="${PWD}" bazel-bin/release/custom_image_build_and_test_init \
   "${RUN_FLAGS[@]}" \
   --custom-build-jobs-output-file .buildkite/release/custom_build_jobs.rayci.yaml \
   --test-jobs-output-file .buildkite/release/release_tests.json
