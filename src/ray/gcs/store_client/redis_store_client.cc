@@ -272,6 +272,11 @@ void RedisStoreClient::SendRedisCmdArgsAsKeys(RedisCommand command,
 void RedisStoreClient::SendRedisCmdWithKeys(std::vector<std::string> keys,
                                             RedisCommand command,
                                             RedisCallback redis_callback) {
+  // When duplicate elements appear in the keys array, the following code will fail
+  // to be executed. Therefore, duplicate elements in keys need to be removed.
+  std::set<std::string> uniqueKeys(keys.begin(), keys.end());
+  keys.assign(uniqueKeys.begin(), uniqueKeys.end());
+
   RAY_CHECK(!keys.empty());
   auto concurrency_keys =
       ray::move_mapped(std::move(keys), [&command](std::string &&key) {
