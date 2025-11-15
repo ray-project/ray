@@ -36,7 +36,7 @@ echo "--- Install uv"
 wget -qO- https://astral.sh/uv/install.sh | sh
 UV_BIN="${HOME}/.local/bin/uv"
 "${UV_BIN}" python install 3.10
-UV_PYTHON_BIN="$("${UV_BIN}" python find 3.10)"
+UV_PYTHON_BIN="$("${UV_BIN}" python find --no-project 3.10)"
 
 
 echo "--- Generate custom build steps"
@@ -60,9 +60,9 @@ fi
   --python_path="${UV_PYTHON_BIN}" \
   //release:custom_image_build_and_test_init
 
-bazel-bin/release/custom_image_build_and_test_init --
-  -- "${RUN_FLAGS[@]}" \
+bazel-bin/release/custom_image_build_and_test_init
+  "${RUN_FLAGS[@]}" \
   --custom-build-jobs-output-file .buildkite/release/custom_build_jobs.rayci.yaml \
-  --test-jobs-output-file .buildkite/release/release_tests.json \
+  --test-jobs-output-file .buildkite/release/release_tests.json
 
 buildkite-agent pipeline upload .buildkite/release/release_tests.json
