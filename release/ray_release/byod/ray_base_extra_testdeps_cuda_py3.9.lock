@@ -543,6 +543,7 @@ celery==5.5.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
+    #   flower
     #   ray
 certifi==2025.1.31 \
     --hash=sha256:3d5da6925056f6f18f119200434a4780a94263f10d1c21d032a6f6b2baa20651 \
@@ -1263,6 +1264,13 @@ flatbuffers==23.5.26 \
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r docker/base-deps/requirements.in
     #   tensorflow
+flower==2.0.1 \
+    --hash=sha256:5ab717b979530770c16afb48b50d2a98d23c3e9fe39851dcf6bc4d01845a02a0 \
+    --hash=sha256:9db2c621eeefbc844c8dd88be64aef61e84e2deb29b271e02ab2b5b9f01068e2
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   ray
 fqdn==1.5.1 \
     --hash=sha256:105ed3677e767fb5ca086a0c1f4bb66ebc3c100be518f0e0d755d9eae164d89f \
     --hash=sha256:3a179af3761e4df6eb2e026ff9e1a3033d3587bf980a0b1b2e1e5d08d7358014
@@ -2120,6 +2128,7 @@ humanize==4.12.1 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   anyscale
+    #   flower
 idna==3.7 \
     --hash=sha256:028ff3aadf0609c1fd278d8ea3089299412a7a8b9bd005dd08b9f8285bcb5cfc \
     --hash=sha256:82fee1fc78add43492d3a1898bfa6d8a904cc97d8427f683ed8e798d07761aa0
@@ -3314,6 +3323,7 @@ prometheus-client==0.19.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
+    #   flower
     #   jupyter-server
     #   nbclassic
     #   notebook
@@ -3800,6 +3810,7 @@ pytz==2022.7.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
+    #   flower
     #   pandas
 pyu2f==0.1.5 \
     --hash=sha256:a3caa3a11842fc7d5746376f37195e6af5f17c0a15737538bb1cebf656fb306b
@@ -4509,6 +4520,7 @@ tornado==6.1 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   anyscale
+    #   flower
     #   ipykernel
     #   jupyter-client
     #   jupyter-server

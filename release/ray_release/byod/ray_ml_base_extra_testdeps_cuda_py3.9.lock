@@ -530,6 +530,7 @@ celery==5.5.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
+    #   flower
     #   ray
 certifi==2025.1.31 \
     --hash=sha256:3d5da6925056f6f18f119200434a4780a94263f10d1c21d032a6f6b2baa20651 \
@@ -1389,6 +1390,13 @@ flatbuffers==23.5.26 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r docker/base-deps/requirements.in
+flower==2.0.1 \
+    --hash=sha256:5ab717b979530770c16afb48b50d2a98d23c3e9fe39851dcf6bc4d01845a02a0 \
+    --hash=sha256:9db2c621eeefbc844c8dd88be64aef61e84e2deb29b271e02ab2b5b9f01068e2
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   ray
 fonttools==4.45.1 \
     --hash=sha256:03ed3bda541e86725f6b4e1b94213f13ed1ae51a5a1f167028534cedea38c010 \
     --hash=sha256:0dc7617d96b1e668eea9250e1c1fe62d0c78c3f69573ce7e3332cc40e6d84356 \
@@ -2275,6 +2283,7 @@ humanize==4.12.1 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   anyscale
+    #   flower
 idna==3.7 \
     --hash=sha256:028ff3aadf0609c1fd278d8ea3089299412a7a8b9bd005dd08b9f8285bcb5cfc \
     --hash=sha256:82fee1fc78add43492d3a1898bfa6d8a904cc97d8427f683ed8e798d07761aa0
@@ -3947,6 +3956,7 @@ prometheus-client==0.19.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
+    #   flower
     #   jupyter-server
     #   nbclassic
     #   notebook
@@ -4473,6 +4483,7 @@ pytz==2022.7.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
+    #   flower
     #   pandas
     #   typepy
 pyu2f==0.1.5 \
@@ -6022,6 +6033,7 @@ tornado==6.1 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   anyscale
+    #   flower
     #   ipykernel
     #   jupyter-client
     #   jupyter-server

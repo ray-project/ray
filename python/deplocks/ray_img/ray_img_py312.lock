@@ -150,6 +150,7 @@ celery==5.5.3 \
     --hash=sha256:6c972ae7968c2b5281227f01c3a3f984037d21c5129d07bf3550cc2afc6b10a5
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   flower
     #   ray
 certifi==2025.1.31 \
     --hash=sha256:3d5da6925056f6f18f119200434a4780a94263f10d1c21d032a6f6b2baa20651 \
@@ -557,6 +558,12 @@ filelock==3.17.0 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ray
     #   virtualenv
+flower==2.0.1 \
+    --hash=sha256:5ab717b979530770c16afb48b50d2a98d23c3e9fe39851dcf6bc4d01845a02a0 \
+    --hash=sha256:9db2c621eeefbc844c8dd88be64aef61e84e2deb29b271e02ab2b5b9f01068e2
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   ray
 frozenlist==1.4.1 \
     --hash=sha256:04ced3e6a46b4cfffe20f9ae482818e34eba9b5fb0ce4056e4cc9b6e212d09b7 \
     --hash=sha256:0633c8d5337cb5c77acbccc6357ac49a1770b8c487e5b3505c57b949b4b82e98 \
@@ -775,6 +782,12 @@ httptools==0.6.4 \
     --hash=sha256:f9eb89ecf8b290f2e293325c646a211ff1c2493222798bb80a530c5e7502494f \
     --hash=sha256:fc411e1c0a7dcd2f902c7c48cf079947a7e65b5485dea9decb82b9105ca71a43
     # via uvicorn
+humanize==4.12.1 \
+    --hash=sha256:1338ba97415c96556758a6e2f65977ed406dddf4620d4c6db9bbdfd07f0f1232 \
+    --hash=sha256:86014ca5c52675dffa1d404491952f1f5bf03b07c175a51891a343daebf01fea
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   flower
 idna==3.7 \
     --hash=sha256:028ff3aadf0609c1fd278d8ea3089299412a7a8b9bd005dd08b9f8285bcb5cfc \
     --hash=sha256:82fee1fc78add43492d3a1898bfa6d8a904cc97d8427f683ed8e798d07761aa0
@@ -1271,6 +1284,7 @@ prometheus-client==0.19.0 \
     --hash=sha256:c88b1e6ecf6b41cd8fb5731c7ae919bf66df6ec6fafa555cd6c0e16ca169ae92
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   flower
     #   opentelemetry-exporter-prometheus
     #   ray
 prompt-toolkit==3.0.41 \
@@ -1621,6 +1635,7 @@ pytz==2022.7.1 \
     --hash=sha256:78f4f37d8198e0627c5f1143240bb0206b8691d8d7ac6d78fee88b78733f8c4a
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   flower
     #   pandas
 pyyaml==6.0.1 \
     --hash=sha256:04ac92ad1925b2cff1db0cfebffb6ffc43457495c9b3c39d3fcae417d7125dc5 \
@@ -1873,6 +1888,20 @@ tensorboardx==2.6.2.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ray
+tornado==6.5.2 \
+    --hash=sha256:06ceb1300fd70cb20e43b1ad8aaee0266e69e7ced38fa910ad2e03285009ce7c \
+    --hash=sha256:2436822940d37cde62771cff8774f4f00b3c8024fe482e16ca8387b8a2724db6 \
+    --hash=sha256:583a52c7aa94ee046854ba81d9ebb6c81ec0fd30386d96f7640c96dad45a03ef \
+    --hash=sha256:74db443e0f5251be86cbf37929f84d8c20c27a355dd452a5cfa2aada0d001ec4 \
+    --hash=sha256:ab53c8f9a0fa351e2c0741284e06c7a45da86afb544133201c5cc8578eb076a0 \
+    --hash=sha256:b0fe179f28d597deab2842b86ed4060deec7388f1fd9c1b4a41adf8af058907e \
+    --hash=sha256:b186e85d1e3536d69583d2298423744740986018e393d0321df7340e71898882 \
+    --hash=sha256:b5e735ab2889d7ed33b32a459cac490eda71a1ba6857b0118de476ab6c366c04 \
+    --hash=sha256:c6f29e94d9b37a95013bb669616352ddb82e3bfe8326fccee50583caebc8a5f0 \
+    --hash=sha256:d6c33dc3672e3a1f3618eb63b7ef4683a7688e7b9e6e8f0d9aa5726360a004af \
+    --hash=sha256:e56a5af51cc30dd2cae649429af65ca2f6571da29504a07995175df14c18f35f \
+    --hash=sha256:e792706668c87709709c18b353da1f7662317b563ff69f00bab83595940c7108
+    # via flower
 typing-extensions==4.12.2 \
     --hash=sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d
     # via
