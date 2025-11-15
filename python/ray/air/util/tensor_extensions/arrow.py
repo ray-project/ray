@@ -93,6 +93,7 @@ def _deserialize_with_fallback(serialized: bytes, field_name: str = "data"):
             )
 
 
+@DeveloperAPI(stability="beta")
 class ArrowExtensionSerializeDeserializeCache(abc.ABC):
     """Base class for caching Arrow extension type serialization and deserialization.
 
