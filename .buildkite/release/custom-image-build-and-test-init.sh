@@ -20,25 +20,32 @@ fi
 export RAYCI_BUILD_ID="${BUILD_ID}"
 echo "RAYCI_BUILD_ID: ${RAYCI_BUILD_ID}"
 
-
 aws ecr get-login-password --region us-west-2 | \
     docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com
 
 bash release/gcloud_docker_login.sh release/aws2gce_iam.json
 export PATH="${PWD}/google-cloud-sdk/bin:$PATH"
 
-echo "Generate custom build steps"
-echo "Downloading Bazel"
+
+echo "---- Install Bazel"
 curl -sSfLo /tmp/bazel https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64
-echo "Making Bazel executable"
 chmod +x /tmp/bazel
+
+
+echo "---- Install uv"
+wget -qO- https://astral.sh/uv/install.sh | sh
+uv python install 3.10
+uv python pin 3.10
+UV_PYTHON_BIN="$(uv python find 3.10)"
+
+
+echo "---- Generate custom build steps"
 
 if [[ "${AUTOMATIC:-0}" == "1" && "${BUILDKITE_BRANCH}" == "master" ]]; then
   export REPORT_TO_RAY_TEST_DB=1
 fi
 
 RUN_FLAGS=()
-
 if [[ "${AUTOMATIC:-0}" == "0" || "${BUILDKITE_BRANCH}" == "releases/"* ]]; then
   RUN_FLAGS+=(--run-jailed-tests)
 fi
@@ -46,8 +53,14 @@ if [[ "${BUILDKITE_BRANCH}" != "releases/"* ]]; then
   RUN_FLAGS+=(--run-unstable-tests)
 fi
 
-echo "---- Build test steps"
-/tmp/bazel run //release:custom_image_build_and_test_init\
+/tmp/bazel build \
+  --build_python_zip \
+  --enable_runfiles \
+  --incompatible_use_python_toolchains=false \
+  --python_path=python \
+  //release:custom_image_build_and_test_init
+
+"${UV_PYTHON_BIN}" bazel-bin/release/custom_image_build_and_test_init.zip --
   -- "${RUN_FLAGS[@]}" \
   --custom-build-jobs-output-file .buildkite/release/custom_build_jobs.rayci.yaml \
   --test-jobs-output-file .buildkite/release/release_tests.json \
