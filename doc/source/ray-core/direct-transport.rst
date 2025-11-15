@@ -321,3 +321,9 @@ Advanced: RDT Internals
 
 .. note::
     Under construction.
+
+
+Advanced: Add a new tensor transport to RDT
+===========================================
+
+See :ref:`Add a new tensor transport to RDT <add-tensor-transport-to-rdt>` for more details.
