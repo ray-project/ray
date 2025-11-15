@@ -1,4 +1,4 @@
-name: "windowsbuild"
+name: "windowsbuild-py$PYTHON"
 froms: ["@rayproject/buildenv:windows"]
 dockerfile: ci/docker/windows.build.Dockerfile
 srcs:
@@ -9,5 +9,7 @@ srcs:
   - ci/ray_ci/windows/build_base.sh
   - ci/ray_ci/windows/install_bazelisk.ps1
   - ci/ray_ci/windows/cleanup.ps1
+build_args:
+  - PYTHON
 tags:
-  - cr.ray.io/rayproject/windowsbuild
+  - cr.ray.io/rayproject/windowsbuild-py$PYTHON
