@@ -15,7 +15,6 @@ from typing import Any, Coroutine, Dict, Optional, Tuple
 
 import ray
 from ray._raylet import GcsClient
-from ray.core.generated import gcs_pb2
 
 import psutil
 
@@ -231,7 +230,10 @@ def resolve_user_ray_temp_dir(gcs_address: str, node_id: str):
 
     Args:
         gcs_address: The address of the GCS server.
+                     E.g.: "127.0.0.1:6379"
         node_id: The ID of the node to fetch the temp dir for.
+                 E.g.: "1a9904d8aa3de65367830e2aef6313a5b2e9d4b0e3725e0dceeacb1b"
+                        (hex string representation of the node ID)
 
     Returns:
         The path to the ray temp directory.
@@ -243,16 +245,16 @@ def resolve_user_ray_temp_dir(gcs_address: str, node_id: str):
     # Attempt to fetch temp dir as specified by --temp-dir at creation time.
     if gcs_address is not None and node_id is not None:
         gcs_client = GcsClient(gcs_address)
-        node_info = None
-        for id, node_info in gcs_client.get_all_node_info(
-            filters=[
-                ("node_id", "=", node_id),
-                ("state", "=", gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE),
-            ]
-        ).items():
-            if id.hex() == node_id:
-                node_info = node_info
-                break
+        node_info = next(
+            iter(
+                gcs_client.get_all_node_info(
+                    filters=[
+                        ("node_id", "=", node_id),
+                        ("state", "=", "ALIVE"),
+                    ]
+                ).values()
+            )
+        )
         if node_info is not None:
             temp_dir = getattr(node_info, "temp_dir", None)
             if temp_dir is not None:
@@ -283,16 +285,30 @@ def get_user_temp_dir():
     """
     get_user_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead.
 
+    Get the ray temp directory for the current user.
+
     Note: There should not be a notion of user temp dir. Instead,
     user specified temp directories for ray should overwrite /tmp/ray.
     """
+    logger.warning(
+        "get_user_temp_dir is deprecated, and will be removed in a future release."
+        " Please use resolve_user_ray_temp_dir instead."
+    )
+
     return resolve_user_ray_temp_dir(None, None)
 
 
 def get_ray_temp_dir():
     """
     get_ray_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead.
+
+    Get the ray temp directory for the current user.
     """
+    logger.warning(
+        "get_ray_temp_dir is deprecated, and will be removed in a future release."
+        " Please use resolve_user_ray_temp_dir instead."
+    )
+
     return resolve_user_ray_temp_dir(None, None)
 
 
@@ -430,23 +446,3 @@ def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
     if not isinstance(byte_str, bytes):
         raise ValueError(f"The argument {byte_str} must be a bytes object.")
     return byte_str.decode(encode_type)
-
-
-# Apply decorators lazily to avoid circular imports
-try:
-    from ray.util.annotations import Deprecated, DeveloperAPI
-
-    # Apply DeveloperAPI decorator
-    globals()["resolve_user_ray_temp_dir"] = DeveloperAPI(resolve_user_ray_temp_dir)
-
-    # Apply Deprecated decorators
-    globals()["get_user_temp_dir"] = Deprecated(
-        message="get_user_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead."
-    )(get_user_temp_dir)
-
-    globals()["get_ray_temp_dir"] = Deprecated(
-        message="get_ray_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead."
-    )(get_ray_temp_dir)
-except ImportError:
-    # If we still can't import (shouldn't happen), skip annotations
-    pass

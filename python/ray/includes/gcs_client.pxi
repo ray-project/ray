@@ -326,7 +326,7 @@ cdef class InnerGcsClient:
 
     def get_all_node_info(
         self, timeout: Optional[int | float] = None,
-        filters: Optional[List[Tuple[str, str, Any]]] = None,
+        filters: Optional[List[Tuple[str, str, str]]] = None,
     ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
         """Get all node info with optional filters.
 
@@ -369,13 +369,11 @@ cdef class InnerGcsClient:
                     node_selector.set_node_id(node_id.binary())
                     c_node_selectors.push_back(node_selector)
                 elif key == "state":
-                    # Verify that value is a valid integer (enum value)
-                    if not isinstance(value, int):
-                        raise TypeError(
-                            f"state filter value must be an integer enum value, got {type(value).__name__}"
-                        )
-                    # Cast to CGcsNodeState and wrap in optional
-                    c_state_filter = make_optional[CGcsNodeState](<CGcsNodeState>value)
+                    value = value.upper()
+                    if value not in GcsNodeInfo.GcsNodeState.keys():
+                        raise ValueError(f"Invalid node state for filtering: {value}")
+                    enum_value = GcsNodeInfo.GcsNodeState.Value(value)
+                    c_state_filter = make_optional[CGcsNodeState](<CGcsNodeState>enum_value)
                 elif key == "node_name":
                     node_selector = CNodeSelector()
                     node_selector.set_node_name(value.encode('utf-8'))

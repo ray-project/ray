@@ -368,6 +368,7 @@ def test_resolve_user_ray_temp_dir_from_gcs(delete_default_temp_dir):
         ray.shutdown()
 
         # test WITHOUT ray.init() (fetch temp_dir from GCS)
+        print(f"cached_gcs_address: {cached_gcs_address}, node_id: {node_id}")
         resolved_temp_dir = ray._common.utils.resolve_user_ray_temp_dir(
             gcs_address=cached_gcs_address, node_id=node_id
         )

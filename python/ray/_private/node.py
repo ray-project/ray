@@ -41,7 +41,6 @@ from ray._private.utils import (
     validate_socket_filepath,
 )
 from ray._raylet import GcsClient, get_session_key_from_storage
-from ray.core.generated import gcs_pb2
 
 import psutil
 
@@ -481,35 +480,27 @@ class Node:
                         self.get_gcs_client(),
                         filters=[
                             ("is_head_node", "=", True),
-                            ("state", "=", gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE),
                         ],
                         timeout=3.0,
                         num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                     )
                 except Exception as e:
                     logger.error(f"Failed to get head node info: {e}")
-                    head_nodes = None
+                    raise e
 
-                head_node_id = None
-                node_info = None  # type: ignore
-                if head_nodes:
-                    head_node_id, node_info = next(iter(head_nodes.items()))
-
-                if head_node_id is None:
-                    logger.error(
-                        "Head node ID not found in GCS. Using Ray's default temp dir."
+                if head_nodes is None or not head_nodes:
+                    raise Exception(
+                        "Head node not found in GCS when trying to get temp dir, did GCS start successfully?"
                     )
-                    self.temp_dir = ray._private.utils.get_default_ray_temp_dir()
-                else:
-                    self.temp_dir = getattr(node_info, "temp_dir", None)
-                    if not self.temp_dir:
-                        logger.warning(
-                            "Head node temp_dir not found in NodeInfo. "
-                            "Using Ray's default temp dir."
-                        )
-                        self.temp_dir = ray._private.utils.get_default_ray_temp_dir()
+                node_info = next(iter(head_nodes.values()))
+                self.temp_dir = getattr(node_info, "temp_dir", None)
+                if self.temp_dir is None:
+                    raise Exception(
+                        "Head node temp_dir not found in NodeInfo, "
+                        "either GCS or head node's raylet may not have started successfully."
+                    )
 
-        logger.debug(f"Setting temp dir to: {self.temp_dir}")
+        logger.info(f"Setting temp dir to: {self.temp_dir}")
 
         try_to_create_directory(self.temp_dir)
 

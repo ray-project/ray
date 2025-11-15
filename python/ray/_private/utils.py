@@ -1136,7 +1136,7 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
 
 def get_all_node_info_with_retry(
     gcs_client: GcsClient,
-    filters: list[tuple[str, str, Any]],
+    filters: list[tuple[str, str, str]],
     timeout: float = 3.0,
     num_retries: int = ray_constants.NUM_REDIS_GET_RETRIES,
 ):
