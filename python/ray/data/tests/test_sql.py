@@ -307,14 +307,16 @@ def test_databricks_uc_datasource():
 
             assert False, "Invalid request."
 
-        with mock.patch("requests.get", request_get_mock), mock.patch(
-            "requests.post", request_post_mock
-        ), mock.patch.dict(
-            os.environ,
-            {
-                "DATABRICKS_HOST": "test_shard",
-                "DATABRICKS_TOKEN": token,
-            },
+        with (
+            mock.patch("requests.get", request_get_mock),
+            mock.patch("requests.post", request_post_mock),
+            mock.patch.dict(
+                os.environ,
+                {
+                    "DATABRICKS_HOST": "test_shard",
+                    "DATABRICKS_TOKEN": token,
+                },
+            ),
         ):
             yield
 
@@ -379,9 +381,10 @@ def test_databricks_uc_datasource():
 
 
 def test_databricks_uc_datasource_empty_result():
-    with mock.patch("requests.get") as mock_get, mock.patch(
-        "requests.post"
-    ) as mock_post:
+    with (
+        mock.patch("requests.get") as mock_get,
+        mock.patch("requests.post") as mock_post,
+    ):
         #  Mock the POST request starting the query
         def post_mock(url, *args, **kwargs):
             class Resp:
