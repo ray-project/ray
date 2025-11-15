@@ -56,4 +56,8 @@ config = (
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
+    args.wandb_key = "5960fb95a4d58ad124fc21567c8d3dc36ad0c6f0"
+    args.wandb_project = "pendulum-sac-learning-tests"
+    args.wandb_run_name = "fixed"
+
     run_rllib_example_script_experiment(config, args)

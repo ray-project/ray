@@ -447,3 +447,24 @@ Use the Algorithm's own ``self.metrics`` attribute for this.
 
 See this running
 `end-to-end example for logging inside training_step() <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_algorithm_training_step.py>`__.
+
+
+Migrating to Ray 2.52
+---------------------
+
+If you have been using the MetricsLogger API before Ray 2.52, the following needs your attention:
+
+Most importantly:
+- Metrics are now cleared once per MetricsLogger.reduce() call. Peeking them thereafter returns the zero-element for the respective reduce type (np.nan, None or an empty list).
+- Control flow should be based on other variables, rather than peeking metrics.
+
+For MetricsLogger's logging methods (log_value, log_time, etc.):
+- The ``clear_on_reduce`` argument is deprecated. (see point above)
+- Using ``reduce="sum"`` and ``clear_on_reduce=False`` is now equivalent to ``reduce="lifetime_sum"``.
+- The ``throughput_ema_coeff`` is deprecated (we don't use EMA for throughputs anymore).
+- The ``reduce_per_index_on_aggregate`` argument is deprecated. All metrics are now aggregated over all values collected from leafs of any reduction cycle.
+
+Other changes:
+- Many metrics look more noisy after upgrading to 2.52. This is mostly because they are not smoothed anymore. Smoothing should happen downstream if desired.
+- :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.merge_and_log_n_dicts` is deprecated. :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.aggregate` is now the only way to aggregate metrics.
+- You can now pass a custom stats class to (AlgorithmConfig.reporting(custom_stats_cls_lookup={...})). This enables you to write your own stats class with its own reduction logic. If your own stats class constitutes a fix or a valuable addition to RLlib, please consider contributing it to the project through a PR.

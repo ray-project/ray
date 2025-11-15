@@ -5,6 +5,7 @@ from collections import deque
 from typing import Any, Dict, List, Optional, Union
 
 from ray.rllib.utils.annotations import (
+    OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.util.annotations import DeveloperAPI
@@ -63,6 +64,7 @@ class StatsBase(metaclass=ABCMeta):
         """
         return False
 
+    @OverrideToImplementCustomLogic
     def initialize_throughput_reference_time(self, time: float) -> None:
         """Sets the reference time for this Stats object.
 
@@ -237,7 +239,6 @@ class StatsBase(metaclass=ABCMeta):
         Args:
             incoming_stats: The list of StatsBase objects to merge.
         """
-        ...
 
     @abstractmethod
     def push(self, value: Any) -> None:
@@ -250,7 +251,6 @@ class StatsBase(metaclass=ABCMeta):
         assert (
             self.is_leaf
         ), "Cannot push values to non-leaf Stats. Non-leaf Stats can only receive values via merge()."
-        ...
 
     @abstractmethod
     def peek(
@@ -288,4 +288,3 @@ class StatsBase(metaclass=ABCMeta):
         Returns:
             The reduced value or a Stats object similar to itself, but with the internal values reduced.
         """
-        ...
