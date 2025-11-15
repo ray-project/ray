@@ -1058,4 +1058,24 @@ __all__ = [
     "lit",
     "download",
     "star",
+    "_ListNamespace",
+    "_StringNamespace",
+    "_StructNamespace",
 ]
+
+
+def __getattr__(name: str):
+    """Lazy import of namespace classes to avoid circular imports."""
+    if name == "_ListNamespace":
+        from ray.data.namespace_expressions.list_namespace import _ListNamespace
+
+        return _ListNamespace
+    elif name == "_StringNamespace":
+        from ray.data.namespace_expressions.string_namespace import _StringNamespace
+
+        return _StringNamespace
+    elif name == "_StructNamespace":
+        from ray.data.namespace_expressions.struct_namespace import _StructNamespace
+
+        return _StructNamespace
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
