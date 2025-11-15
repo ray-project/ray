@@ -44,6 +44,7 @@ class Backend(object):
     # Use gloo through torch.distributed.
     TORCH_GLOO = "torch_gloo"
     NIXL = "nixl"
+    HCCL = "hccl"
     UNRECOGNIZED = "unrecognized"
 
     def __new__(cls, name: str):
@@ -94,6 +95,11 @@ class CollectiveTransportMetadata(TensorTransportMetadata):
 
 
 @dataclass
+class HcclTransportMetadata(TensorTransportMetadata):
+    """Metadata for tensors stored in the NPU object store for HCCL transport."""
+
+
+@dataclass
 class CommunicatorMetadata:
     """Metadata for the communicator.
 
@@ -107,6 +113,19 @@ class CommunicatorMetadata:
 @dataclass
 class CollectiveCommunicatorMetadata(CommunicatorMetadata):
     """Metadata for the collective communicator (e.g. NCCL, GLOO).
+
+    Args:
+        src_rank: The rank of the source actor.
+        dst_rank: The rank of the destination actor.
+    """
+
+    src_rank: Optional[int32] = None
+    dst_rank: Optional[int32] = None
+
+
+@dataclass
+class HcclCommunicatorMetadata(CommunicatorMetadata):
+    """Metadata for the HCCL communicator
 
     Args:
         src_rank: The rank of the source actor.
