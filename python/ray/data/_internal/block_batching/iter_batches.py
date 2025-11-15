@@ -179,7 +179,7 @@ class BatchIterator:
             stats=self._stats,
             batch_format=self._batch_format,
             collate_fn=self._collate_fn,
-            num_threadpool_workers=self._prefetch_batches,
+            prefetch_batches=self._prefetch_batches,
         )
 
     def _finalize_batches(
@@ -226,6 +226,7 @@ class BatchIterator:
             fn=self._pipeline,
             num_workers=1,
             preserve_ordering=False,
+            buffer_size=max(self._prefetch_batches, 1),
         )
 
         self.before_epoch_start()
@@ -290,7 +291,7 @@ def _format_in_threadpool(
     stats: DatasetStats,
     batch_format: Optional[str],
     collate_fn: Optional[Callable[[DataBatch], Any]],
-    num_threadpool_workers: int,
+    prefetch_batches: int,
 ) -> Iterator[Batch]:
     """Executes the batching, formatting, and collation logic in a threadpool.
 
@@ -304,7 +305,11 @@ def _format_in_threadpool(
             ``pyarrow.Table``, or None to use entire blocks
             as batches.
         collate_fn: A function to apply to each data batch before returning it.
-        num_threadpool_workers: The number of threads to use in the threadpool.
+        prefetch_batches: The number of batches to fetch ahead of the current batch to
+            process. If set to greater than 0, a separate thread will be used to fetch
+            the specified amount of formatted batches from blocks. This improves
+            performance for non-CPU bound UDFs, allowing batch fetching compute and
+            formatting to be overlapped with the UDF. Defaults to 1.
     """
 
     def threadpool_computations_format_collate(
@@ -322,12 +327,13 @@ def _format_in_threadpool(
             )
         yield from formatted_batch_iter
 
-    if num_threadpool_workers > 0:
+    if prefetch_batches > 0:
         collated_iter = make_async_gen(
             base_iterator=batch_iter,
             fn=threadpool_computations_format_collate,
             preserve_ordering=False,
-            num_workers=num_threadpool_workers,
+            num_workers=1,
+            buffer_size=max(prefetch_batches, 1),
         )
     else:
         collated_iter = threadpool_computations_format_collate(batch_iter)
