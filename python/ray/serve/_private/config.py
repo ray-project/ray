@@ -476,6 +476,7 @@ class ReplicaConfig:
         ray_actor_options: Dict,
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
+        bundle_label_selector: Optional[List[Dict[str, str]]] = None,
         max_replicas_per_node: Optional[int] = None,
         needs_pickle: bool = True,
     ):
@@ -501,6 +502,7 @@ class ReplicaConfig:
 
         self.placement_group_bundles = placement_group_bundles
         self.placement_group_strategy = placement_group_strategy
+        self.bundle_label_selector = bundle_label_selector
 
         self.max_replicas_per_node = max_replicas_per_node
 
@@ -531,12 +533,14 @@ class ReplicaConfig:
         ray_actor_options: dict,
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
+        bundle_label_selector: Optional[List[Dict[str, str]]] = None,
         max_replicas_per_node: Optional[int] = None,
     ):
         self.ray_actor_options = ray_actor_options
 
         self.placement_group_bundles = placement_group_bundles
         self.placement_group_strategy = placement_group_strategy
+        self.bundle_label_selector = bundle_label_selector
 
         self.max_replicas_per_node = max_replicas_per_node
 
@@ -553,6 +557,7 @@ class ReplicaConfig:
         ray_actor_options: Optional[Dict] = None,
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
+        bundle_label_selector: Optional[List[Dict[str, str]]] = None,
         max_replicas_per_node: Optional[int] = None,
         deployment_def_name: Optional[str] = None,
     ):
@@ -603,6 +608,7 @@ class ReplicaConfig:
             ray_actor_options,
             placement_group_bundles,
             placement_group_strategy,
+            bundle_label_selector,
             max_replicas_per_node,
         )
 
@@ -629,6 +635,7 @@ class ReplicaConfig:
             "resources",
             # Other options
             "runtime_env",
+            "label_selector",
         }
 
         for option in self.ray_actor_options:
@@ -675,6 +682,7 @@ class ReplicaConfig:
                 bundles=self.placement_group_bundles,
                 strategy=self.placement_group_strategy or "PACK",
                 lifetime="detached",
+                bundle_label_selector=self.bundle_label_selector,
             )
 
             resource_error_prefix = (
@@ -779,6 +787,9 @@ class ReplicaConfig:
             proto.placement_group_strategy
             if proto.placement_group_strategy != ""
             else None,
+            json.loads(proto.bundle_label_selector)
+            if proto.bundle_label_selector
+            else None,
             proto.max_replicas_per_node if proto.max_replicas_per_node else None,
             needs_pickle,
         )
@@ -799,6 +810,9 @@ class ReplicaConfig:
             if self.placement_group_bundles is not None
             else "",
             placement_group_strategy=self.placement_group_strategy,
+            bundle_label_selector=json.dumps(self.bundle_label_selector)
+            if self.bundle_label_selector is not None
+            else "",
             max_replicas_per_node=self.max_replicas_per_node
             if self.max_replicas_per_node is not None
             else 0,
