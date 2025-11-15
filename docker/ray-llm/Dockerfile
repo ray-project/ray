@@ -7,6 +7,13 @@ COPY python/deplocks/llm/rayllm_*.lock ./
 
 ARG KVER="5.15.0-139-generic"
 
+ENV NVSHMEM_HOME=/usr/local/nvshmem
+ENV LD_LIBRARY_PATH=/usr/local/nvshmem/lib:${LD_LIBRARY_PATH}
+ENV PATH=/usr/local/nvshmem/bin:${PATH}
+ENV RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so:${LD_PRELOAD}
+ENV CUDA_HOME=/usr/local/cuda
+
 RUN <<EOF
 #!/bin/bash
 
@@ -31,53 +38,50 @@ $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
 sudo apt-get update -y && sudo apt-get install -y kmod pkg-config librdmacm-dev cmake
 
-# Install DeepEP kernels
-EP_TEMP_DIR=$(pwd)/"ep_temp_dir"
-mkdir -p "${EP_TEMP_DIR}"
+# The following roughly matches vllm/tools/ep_kernels/install_python_libraries.sh
+# with the addition of DeepGEMM and updated NVSHMEM version
 
-NVSHMEM_VERSION="3.2.5-1"
+# Install DeepEP kernels
+ROOT_DIR="/home/ray"
+EP_DIR="${ROOT_DIR}/ep"
+mkdir -p "${EP_DIR}"
+
+# disable all features except IBGDA
+export NVSHMEM_IBGDA_SUPPORT=1
+export NVSHMEM_SHMEM_SUPPORT=0
+export NVSHMEM_UCX_SUPPORT=0
+export NVSHMEM_USE_NCCL=0
+export NVSHMEM_PMIX_SUPPORT=0
+export NVSHMEM_TIMEOUT_DEVICE_POLLING=0
+export NVSHMEM_USE_GDRCOPY=0
+export NVSHMEM_IBRC_SUPPORT=0
+export NVSHMEM_BUILD_TESTS=0
+export NVSHMEM_BUILD_EXAMPLES=0
+export NVSHMEM_MPI_SUPPORT=0
+export NVSHMEM_BUILD_HYDRA_LAUNCHER=0
+export NVSHMEM_BUILD_TXZ_PACKAGE=0
+
+NVSHMEM_VERSION="3.4.5"
 (
     echo "Installing NVSHMEM ${NVSHMEM_VERSION}"
 
-    cd "${EP_TEMP_DIR}"
+    cd "${EP_DIR}"
     mkdir -p nvshmem_src
-    wget https://developer.download.nvidia.com/compute/redist/nvshmem/3.2.5/source/nvshmem_src_${NVSHMEM_VERSION}.txz
-    tar -xvf nvshmem_src_${NVSHMEM_VERSION}.txz -C nvshmem_src --strip-components=1
+    wget https://developer.download.nvidia.com/compute/redist/nvshmem/${NVSHMEM_VERSION}/source/nvshmem_src_cuda12-all-all-${NVSHMEM_VERSION}.tar.gz
+    tar -xvf nvshmem_src_cuda12-all-all-${NVSHMEM_VERSION}.tar.gz -C nvshmem_src --strip-components=1
     cd nvshmem_src
-    # using a specific commit to make the build deterministic:
-    # https://github.com/deepseek-ai/DeepEP/commit/bdd119f8b249953cab366f4d737ad39d4246fd7e
-    wget https://github.com/deepseek-ai/DeepEP/raw/bdd119f8b249953cab366f4d737ad39d4246fd7e/third-party/nvshmem.patch
-    git init
-    git apply -vvv nvshmem.patch
-    wget https://github.com/vllm-project/vllm/raw/releases/v0.10.0/tools/ep_kernels/elastic_ep/eep_nvshmem.patch
-    git apply --reject --whitespace=fix eep_nvshmem.patch
 
-    # disable all features except IBGDA
-    export NVSHMEM_IBGDA_SUPPORT=1
-    export NVSHMEM_SHMEM_SUPPORT=0
-    export NVSHMEM_UCX_SUPPORT=0
-    export NVSHMEM_USE_NCCL=0
-    export NVSHMEM_PMIX_SUPPORT=0
-    export NVSHMEM_TIMEOUT_DEVICE_POLLING=0
-    export NVSHMEM_USE_GDRCOPY=0
-    export NVSHMEM_IBRC_SUPPORT=0
-    export NVSHMEM_BUILD_TESTS=0
-    export NVSHMEM_BUILD_EXAMPLES=0
-    export NVSHMEM_MPI_SUPPORT=0
-    export NVSHMEM_BUILD_HYDRA_LAUNCHER=0
-    export NVSHMEM_BUILD_TXZ_PACKAGE=0
-
-    cmake -G Ninja -S . -B "${EP_TEMP_DIR}/nvshmem_build" -DCMAKE_INSTALL_PREFIX="${EP_TEMP_DIR}/nvshmem_install"
-    cmake --build "${EP_TEMP_DIR}/nvshmem_build" --target install
+    cmake -G Ninja -S . -B "${EP_DIR}/nvshmem_build" -DCMAKE_INSTALL_PREFIX="${EP_DIR}/nvshmem_install"
+    cmake --build "${EP_DIR}/nvshmem_build" --target install
 )
 
 # Install PPLX Kernels
 (
     echo "Installing PPLX Kernels"
 
-    cd "${EP_TEMP_DIR}"
+    cd "${EP_DIR}"
 
-    export CMAKE_PREFIX_PATH="${EP_TEMP_DIR}/nvshmem_install"
+    export CMAKE_PREFIX_PATH="${EP_DIR}/nvshmem_install"
 
     # build and install pplx, require pytorch installed
     git clone --depth 1 --no-checkout https://github.com/ppl-ai/pplx-kernels
@@ -91,7 +95,31 @@ NVSHMEM_VERSION="3.2.5-1"
     PIP_NO_BUILD_ISOLATION=0 TORCH_CUDA_ARCH_LIST=9.0a+PTX pip install . --no-deps -v
 )
 
-rm -rf "${EP_TEMP_DIR}"
+# Install DeepEP Kernels
+{
+    echo "Installing DeepEP Kernels"
+
+    cd "${EP_DIR}"
+
+    git clone https://github.com/deepseek-ai/DeepEP.git
+    cd DeepEP
+    git checkout 73b6ea4
+    export NVSHMEM_DIR="${EP_DIR}/nvshmem_install"
+    TORCH_CUDA_ARCH_LIST=9.0 pip install --no-build-isolation -vvv -e .
+}
+
+# Install DeepGEMM
+(
+    echo "Installing DeepGEMM"
+
+    cd "${EP_DIR}"
+
+    git clone --recursive https://github.com/deepseek-ai/DeepGEMM.git
+    cd DeepGEMM
+
+    cat install.sh
+    ./install.sh
+)
 
 sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get clean
