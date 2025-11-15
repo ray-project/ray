@@ -1501,6 +1501,17 @@ class TaskProcessorAdapter(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_queue_lengths_sync(self) -> Dict[str, int]:
+        """
+        Get the lengths of all queues synchronously.
+
+        Returns:
+            Dict[str, int]: A dictionary mapping queue names to their lengths.
+                Returns empty dict if queue length information is unavailable.
+        """
+        pass
+
     async def enqueue_task_async(
         self,
         task_name: str,
