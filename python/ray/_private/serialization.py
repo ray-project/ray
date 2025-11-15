@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 import traceback
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
@@ -11,7 +12,10 @@ import google.protobuf.message
 import ray._private.utils
 import ray.cloudpickle as pickle
 import ray.exceptions
-from ray._private import ray_constants
+from ray._private import (
+    ray_constants,
+    tensor_serialization_utils,
+)
 from ray._raylet import (
     DynamicObjectRefGenerator,
     MessagePackSerializedObject,
@@ -158,6 +162,10 @@ class SerializationContext:
         # (e.g. gloo, nccl, etc.) for tensor communication between actors,
         # instead of the normal serialize -> object store -> deserialize codepath.
         self._torch_custom_serializer_registered = False
+        # Enable zero-copy serialization of tensors if the environment variable is set.
+        self._enable_zero_copy_tensors = (
+            os.environ.get("RAY_ENABLE_ZERO_COPY_TORCH_TENSORS") == "1"
+        )
 
         def actor_handle_reducer(obj):
             ray._private.worker.global_worker.check_connected()
@@ -579,6 +587,10 @@ class SerializationContext:
                 # Must clear ObjectRef to not hold a reference.
                 if self._thread_local.object_ref_stack:
                     self._thread_local.object_ref_stack.pop()
+            # Restore PyTorch tensors from marked NumPy arrays if
+            # zero-copy mode is enabled.
+            if self._enable_zero_copy_tensors:
+                obj = tensor_serialization_utils.deserialize_tensor_from_numpy(obj)
             results.append(obj)
         return results
 
@@ -633,6 +645,10 @@ class SerializationContext:
             value = serialized + (b"1" if weak_ref else b"0")
         else:
             metadata = ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE
+
+        # Enable zero-copy by converting tensors to NumPy (if enabled).
+        if self._enable_zero_copy_tensors:
+            value = tensor_serialization_utils.serialize_tensor_to_numpy(value)
 
         python_objects = []
 
