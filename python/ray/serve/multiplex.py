@@ -3,8 +3,10 @@ import inspect
 import logging
 import time
 from collections import OrderedDict
-from typing import Any, Callable, List, Set
+from typing import Any, Callable, List, Optional, Set
 
+import ray.serve.context as context
+from ray._common.signature import DUMMY_TYPE
 from ray.serve import metrics
 from ray.serve._private.common import ReplicaID, RequestRoutingInfo
 from ray.serve._private.constants import (
@@ -14,6 +16,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.metrics_utils import MetricsPusher
 from ray.serve._private.usage import ServeUsageTag
+from ray.serve.batching import _LazyBatchQueueWrapper, _SingleRequest
 from ray.serve.context import _get_global_client, _get_internal_replica_context
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -39,16 +42,28 @@ class _ModelMultiplexWrapper:
     def __init__(
         self,
         model_load_func: Callable[[str], Any],
-        self_arg: Any,
-        max_num_models_per_replica: int,
+        self_arg: Any = None,
+        max_num_models_per_replica: int = 3,
+        enable_batching: bool = False,
+        max_batch_size: int = 10,
+        batch_wait_timeout_s: float = 0.01,
+        max_concurrent_batches: int = 1,
     ):
         """Initialize the model multiplexer.
         Args:
             model_load_func: the model load async function.
             self_arg: self argument when model_load_func is class method.
+                Default is None for standalone functions.
             max_num_models_per_replica: the maximum number of models to be loaded on the
                 current replica. If it is -1, there is no limit for the number of models
-                per replica.
+                per replica. Default is 3.
+            enable_batching: whether to enable batching for model inference calls.
+                Default is False.
+            max_batch_size: maximum batch size for batched inference calls.
+                Default is 10.
+            batch_wait_timeout_s: timeout for batching inference calls.
+                Default is 0.01s.
+            max_concurrent_batches: maximum number of concurrent batches. Default is 1.
         """
 
         ServeUsageTag.MULTIPLEXED_API_USED.record("1")
@@ -57,6 +72,15 @@ class _ModelMultiplexWrapper:
         self._func: Callable = model_load_func
         self.self_arg: Any = self_arg
         self.max_num_models_per_replica: int = max_num_models_per_replica
+
+        # Batching configuration
+        self.enable_batching = enable_batching
+        self.max_batch_size = max_batch_size
+        self.batch_wait_timeout_s = batch_wait_timeout_s
+        self.max_concurrent_batches = max_concurrent_batches
+
+        # Model-specific batch queues for inference batching
+        self._model_batch_queues: dict[str, _LazyBatchQueueWrapper] = {}
 
         # log MODEL_LOAD_LATENCY_BUCKET_MS
         logger.debug(f"MODEL_LOAD_LATENCY_BUCKET_MS: {MODEL_LOAD_LATENCY_BUCKETS_MS}")
@@ -123,6 +147,262 @@ class _ModelMultiplexWrapper:
         )
         self.metrics_pusher.start()
 
+    def _get_or_create_batch_queue(
+        self, model_id: str
+    ) -> Optional[_LazyBatchQueueWrapper]:
+        """Get or create a batch queue for a specific model."""
+        if not self.enable_batching:
+            return None
+
+        if model_id not in self._model_batch_queues:
+            # Create a batch handler for this specific model
+            async def model_batch_handler(batch_requests: List[Any]) -> List[Any]:
+                """Handle batched inference for a specific model.
+
+                Args:
+                    batch_requests: List of input data items to process as a batch.
+
+                Returns:
+                    List of results corresponding to each input.
+                """
+                # Re-check model availability at processing time to handle
+                # race conditions
+                model = self.models.get(model_id)
+                if model is None:
+                    # Model was evicted, raise an exception that will cancel
+                    # pending requests
+                    raise RuntimeError(
+                        f"Model {model_id} was evicted during batch processing"
+                    )
+
+                # Try to use batch_predict method if available
+                if hasattr(model, "batch_predict"):
+                    results = await model.batch_predict(batch_requests)
+                else:
+                    # Fallback to individual prediction calls
+                    results = []
+                    for request_data in batch_requests:
+                        if hasattr(model, "predict"):
+                            result = await model.predict(request_data)
+                        elif callable(model):
+                            result = await model(request_data)
+                        else:
+                            raise RuntimeError(
+                                f"Model {model_id} is not callable and has no "
+                                f"predict method"
+                            )
+                        results.append(result)
+
+                return results
+
+            self._model_batch_queues[model_id] = _LazyBatchQueueWrapper(
+                max_batch_size=self.max_batch_size,
+                batch_wait_timeout_s=self.batch_wait_timeout_s,
+                max_concurrent_batches=self.max_concurrent_batches,
+                handle_batch_func=model_batch_handler,
+            )
+
+        return self._model_batch_queues[model_id]
+
+    async def _shutdown_batch_queue(
+        self, batch_queue_wrapper: _LazyBatchQueueWrapper, model_id: str
+    ):
+        """Gracefully shutdown a batch queue by canceling pending requests
+        and background tasks."""
+        if batch_queue_wrapper._queue is None:
+            # Queue was never initialized, nothing to clean up
+            return
+
+        batch_queue = batch_queue_wrapper._queue
+
+        # Cancel the background processing task if it exists
+        if (
+            hasattr(batch_queue, "_handle_batch_task")
+            and batch_queue._handle_batch_task
+        ):
+            batch_queue._handle_batch_task.cancel()
+            try:
+                await batch_queue._handle_batch_task
+            except asyncio.CancelledError:
+                pass  # Expected when cancelling
+
+        # Cancel all pending requests in the queue
+        pending_requests = []
+        try:
+            while True:
+                try:
+                    request = batch_queue.queue.get_nowait()
+                    pending_requests.append(request)
+                except asyncio.QueueEmpty:
+                    break
+        except Exception:
+            pass  # Queue might be closed or corrupted
+
+        # Handle pending requests gracefully - try to reassign rather than fail
+        reassigned_count = 0
+        failed_count = 0
+
+        for request in pending_requests:
+            if not request.future.done():
+                try:
+                    # Try to reassign the request back to the routing system
+                    if await self._try_reassign_request(request, model_id):
+                        reassigned_count += 1
+                    else:
+                        # If reassignment fails, set a descriptive error
+                        request.future.set_exception(
+                            RuntimeError(
+                                f"Model {model_id} was evicted and could not be "
+                                f"reassigned"
+                            )
+                        )
+                        failed_count += 1
+                except Exception:
+                    # Future might already be done or other error, count as failed
+                    failed_count += 1
+
+        logger.info(
+            f"Shutdown batch queue for model {model_id}: "
+            f"reassigned {reassigned_count}, failed {failed_count} pending requests"
+        )
+
+    async def _try_reassign_request(
+        self, request: _SingleRequest, model_id: str
+    ) -> bool:
+        """Try to reassign a pending request back to the routing system.
+
+        Args:
+            request: The pending request to reassign
+            model_id: The model ID that was evicted
+
+        Returns:
+            True if request was successfully reassigned, False otherwise
+        """
+        try:
+            # Extract the original input from the flattened args
+            if (
+                len(request.flattened_args) >= 2
+                and request.flattened_args[0] == DUMMY_TYPE
+            ):
+                original_input = request.flattened_args[1]
+            else:
+                # Fallback if format is unexpected
+                return False
+
+            # Check if we have retry attempts left (prevent infinite loops)
+            retry_count = getattr(request, "_retry_count", 0)
+            if retry_count >= 2:  # Max 2 retries
+                return False
+
+            # Create a new async task to retry the request with backoff
+            async def retry_request():
+                try:
+                    # Add retry count to track attempts
+                    request._retry_count = retry_count + 1
+
+                    # Exponential backoff: wait longer for each retry
+                    backoff_time = 0.01 * (2**retry_count)
+                    await asyncio.sleep(backoff_time)
+
+                    # Try to process the request again - this will go through the full
+                    # model loading process, potentially reloading on this replica
+                    # Note: We call predict directly rather than batched_inference to
+                    # avoid potential batching complications during retry
+                    if self.enable_batching:
+                        # For batching case, try individual prediction as fallback
+                        model = await self.load_model(model_id)
+                        if hasattr(model, "predict"):
+                            result = await model.predict(original_input)
+                        elif callable(model):
+                            result = await model(original_input)
+                        else:
+                            raise RuntimeError(
+                                f"Model {model_id} is not callable and has no "
+                                f"predict method"
+                            )
+                    else:
+                        result = await self.predict(original_input, model_id)
+
+                    # Set the result on the original future
+                    if not request.future.done():
+                        request.future.set_result(result)
+
+                except Exception as e:
+                    # If retry fails, set the exception on the original future
+                    if not request.future.done():
+                        request.future.set_exception(
+                            RuntimeError(
+                                f"Model {model_id} evicted, retry failed: {str(e)}"
+                            )
+                        )
+
+            # Start the retry task in the background
+            asyncio.create_task(retry_request())
+            return True
+
+        except Exception as e:
+            logger.debug(f"Failed to reassign request for model {model_id}: {e}")
+            return False
+
+    async def batched_inference(self, model_id: str, request: Any) -> Any:
+        """Perform batched inference on a specific model."""
+        if not self.enable_batching:
+            raise RuntimeError("Batching is not enabled for this multiplexer")
+
+        # Ensure model is loaded first
+        await self.load_model(model_id)
+
+        # Get the batch queue for this model
+        batch_queue = self._get_or_create_batch_queue(model_id)
+        if batch_queue is None:
+            raise RuntimeError("Failed to create batch queue")
+
+        # Submit request to the batch queue using _SingleRequest format
+        future = asyncio.get_event_loop().create_future()
+        request_context = context._get_serve_request_context()
+
+        # Create _SingleRequest with flattened args using DUMMY_TYPE for positional args
+        # Format: [DUMMY_TYPE, arg1, DUMMY_TYPE, arg2, ...] for positional args
+        single_request = _SingleRequest(
+            self_arg=None,
+            flattened_args=[DUMMY_TYPE, request],
+            future=future,
+            request_context=request_context,
+        )
+
+        batch_queue.queue.put(single_request)
+
+        return await future
+
+    async def predict(self, input_data: Any, model_id: str) -> Any:
+        """Convenience method for model prediction with optional batching.
+
+        Args:
+            input_data: The input data to predict on.
+            model_id: The model ID to use for prediction.
+
+        Returns:
+            The prediction result.
+        """
+        if self.enable_batching:
+            # Use batched inference
+            return await self.batched_inference(model_id, input_data)
+        else:
+            # Load model and call directly
+            model = await self.load_model(model_id)
+
+            # Try different prediction methods
+            if hasattr(model, "predict"):
+                result = await model.predict(input_data)
+            elif callable(model):
+                result = await model(input_data)
+            else:
+                raise RuntimeError(
+                    f"Model {model_id} is not callable and has no predict method"
+                )
+
+            return result
+
     def _get_loading_and_loaded_model_ids(self) -> List[str]:
         """Get the model IDs of the loaded models & loading models in the replica.
         This is to push the model id information early to the controller, so that
@@ -163,6 +443,16 @@ class _ModelMultiplexWrapper:
                 logger.exception(
                     f"Failed to unload model. Error: {e}",
                 )
+
+        # Clean up any remaining batch queues
+        for model_id, batch_queue_wrapper in list(self._model_batch_queues.items()):
+            try:
+                await self._shutdown_batch_queue(batch_queue_wrapper, model_id)
+            except Exception as e:
+                logger.exception(
+                    f"Failed to shutdown batch queue for model {model_id}. Error: {e}"
+                )
+        self._model_batch_queues.clear()
 
     async def load_model(self, model_id: str) -> Any:
         """Load the model if it is not loaded yet, and return
@@ -243,6 +533,12 @@ class _ModelMultiplexWrapper:
         unload_start_time = time.time()
         model_id, model = self.models.popitem(last=False)
         logger.info(f"Unloading model '{model_id}'.")
+
+        # Gracefully shutdown the batch queue for this model if it exists
+        if model_id in self._model_batch_queues:
+            batch_queue_wrapper = self._model_batch_queues[model_id]
+            await self._shutdown_batch_queue(batch_queue_wrapper, model_id)
+            del self._model_batch_queues[model_id]
 
         # If the model has __del__ attribute, call it.
         # This is to clean up the model resources eagerly.
