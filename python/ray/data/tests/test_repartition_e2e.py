@@ -92,7 +92,7 @@ def test_repartition_noshuffle(
     assert ds4._plan.initial_num_blocks() == 40
 
     assert ds4.sum() == 190
-    assert ds4._block_num_rows() == [1] * 20 + [0] * 20
+    assert ds4._block_num_rows() == [1] * 20
 
     ds5 = ray.data.range(22).repartition(4)
     assert ds5._plan.initial_num_blocks() == 4
@@ -228,12 +228,7 @@ def test_repartition_empty_datasets(ray_start_regular_shared_2_cpus, shuffle):
     ds_repartitioned = ds_empty.repartition(num_partitions, shuffle=shuffle)
 
     ref_bundles = list(ds_repartitioned.iter_internal_ref_bundles())
-    assert len(ref_bundles) == num_partitions
-    for ref_bundle in ref_bundles:
-        assert len(ref_bundle.blocks) == 1
-        metadata = ref_bundle.blocks[0][1]
-        assert metadata.num_rows == 0
-        assert metadata.size_bytes == 0
+    assert len(ref_bundles) == 0
 
 
 def test_streaming_repartition_write_no_operator_fusion(

@@ -1,6 +1,5 @@
 from typing import Any, Dict, List, Optional, Tuple
 
-import ray
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
 from ray.data._internal.execution.interfaces.transform_fn import (
     AllToAllTransformFnResult,
@@ -105,45 +104,6 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
             "BlockMetadataWithSchema"
         ] = reduce_bar.fetch_until_complete(list(reduce_metadata_schema))
         reduce_block_refs = list(reduce_block_refs)
-
-        # Handle empty blocks.
-        if len(reduce_block_refs) < output_num_blocks:
-            import pyarrow as pa
-
-            from ray.data._internal.arrow_block import ArrowBlockBuilder
-            from ray.data._internal.pandas_block import (
-                PandasBlockBuilder,
-                PandasBlockSchema,
-            )
-
-            num_empty_blocks = output_num_blocks - len(reduce_block_refs)
-            if len(reduce_metadata_schema) > 0:
-                first_block_schema = reduce_metadata_schema[0].schema
-                if isinstance(first_block_schema, pa.Schema):
-                    builder = ArrowBlockBuilder()
-                elif isinstance(first_block_schema, PandasBlockSchema):
-                    builder = PandasBlockBuilder()
-                else:
-                    raise ValueError(
-                        "Cannot split partition on blocks with unknown block schema:"
-                        f" {first_block_schema}."
-                    )
-            else:
-                # If the result is empty, default to Arrow format for the empty blocks.
-                builder = ArrowBlockBuilder()
-
-            empty_block = builder.build()
-            empty_meta_with_schema = BlockMetadataWithSchema.from_block(
-                empty_block
-            )  # No stats for empty block.
-            empty_block_refs, empty_metadata = zip(
-                *[
-                    (ray.put(empty_block), empty_meta_with_schema)
-                    for _ in range(num_empty_blocks)
-                ]
-            )
-            reduce_block_refs.extend(empty_block_refs)
-            reduce_metadata_schema.extend(empty_metadata)
 
         output = []
         assert len(reduce_block_refs) == len(reduce_metadata_schema), (

@@ -104,6 +104,8 @@ class LimitOperator(OneToOneOperator):
             )
 
     def has_next(self) -> bool:
+        while len(self._buffer) > 0 and self._buffer[0].num_rows() <= 0:
+            self._buffer.popleft()
         return len(self._buffer) > 0
 
     def _get_next_inner(self) -> RefBundle:
