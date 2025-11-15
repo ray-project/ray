@@ -44,6 +44,8 @@ class DQNLearner(Learner):
     def build(self) -> None:
         super().build()
 
+        self._last_update_ts = 0
+
         # Make target networks.
         self.module.foreach_module(
             lambda mid, mod: (
@@ -91,11 +93,9 @@ class DQNLearner(Learner):
         #  method per module?
         for module_id, module in self.module._rl_modules.items():
             config = self.config.get_config_for_module(module_id)
-            last_update_ts_key = (module_id, LAST_TARGET_UPDATE_TS)
-            if timestep - self.metrics.peek(
-                last_update_ts_key, default=0
-            ) >= config.target_network_update_freq and isinstance(
-                module.unwrapped(), TargetNetworkAPI
+            if (
+                timestep - self._last_update_ts >= config.target_network_update_freq
+                and isinstance(module.unwrapped(), TargetNetworkAPI)
             ):
                 for (
                     main_net,
@@ -107,9 +107,14 @@ class DQNLearner(Learner):
                         tau=config.tau,
                     )
                 # Increase lifetime target network update counter by one.
-                self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
+                self.metrics.log_value(
+                    (module_id, NUM_TARGET_UPDATES), 1, reduce="lifetime_sum"
+                )
                 # Update the (single-value -> window=1) last updated timestep metric.
-                self.metrics.log_value(last_update_ts_key, timestep, window=1)
+                self._last_update_ts = timestep
+                self.metrics.log_value(
+                    (module_id, LAST_TARGET_UPDATE_TS), timestep, reduce="max"
+                )
 
     @classmethod
     @override(Learner)
