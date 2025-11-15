@@ -172,7 +172,6 @@ def test_invalid_build_arg_set_in_config():
         workspace = Workspace(dir=tmpdir)
         with unittest.TestCase().assertRaises(KeyError) as e:
             workspace.load_config(config_path=Path(tmpdir) / "test.depsets.yaml")
-        print(str(e.exception))
         assert (
             "Build arg set invalid_build_arg_set not found in config test.depsets.yaml"
             in str(e.exception)
