@@ -22,6 +22,7 @@
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 
 namespace ray {
 namespace core {
@@ -38,10 +39,16 @@ class DirectTaskTransportTest : public ::testing::Test {
     task_manager = std::make_shared<MockTaskManagerInterface>();
     client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
         [&](const rpc::Address &) { return nullptr; });
+    raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
+        [](const rpc::Address &) -> std::shared_ptr<RayletClientInterface> {
+          return nullptr;
+        });
     memory_store = DefaultCoreWorkerMemoryStoreWithThread::Create();
     reference_counter = std::make_shared<MockReferenceCounter>();
     actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *client_pool,
+        *raylet_client_pool,
+        gcs_client,
         *memory_store,
         *task_manager,
         *actor_creator,
@@ -81,6 +88,7 @@ class DirectTaskTransportTest : public ::testing::Test {
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
   std::unique_ptr<ActorTaskSubmitter> actor_task_submitter;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
+  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool;
   std::unique_ptr<CoreWorkerMemoryStore> memory_store;
   std::shared_ptr<MockTaskManagerInterface> task_manager;
   std::unique_ptr<ActorCreator> actor_creator;

@@ -34,6 +34,11 @@
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 
 namespace ray {
+
+namespace gcs {
+class GcsClient;
+}  // namespace gcs
+
 namespace core {
 
 // The task queues are keyed on resource shape & function descriptor
@@ -85,6 +90,7 @@ class NormalTaskSubmitter {
       std::shared_ptr<RayletClientInterface> local_raylet_client,
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
       std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
+      std::shared_ptr<gcs::GcsClient> gcs_client,
       std::unique_ptr<LeasePolicyInterface> lease_policy,
       std::shared_ptr<CoreWorkerMemoryStore> store,
       TaskManagerInterface &task_manager,
@@ -100,6 +106,7 @@ class NormalTaskSubmitter {
       : rpc_address_(std::move(rpc_address)),
         local_raylet_client_(std::move(local_raylet_client)),
         raylet_client_pool_(std::move(raylet_client_pool)),
+        gcs_client_(std::move(gcs_client)),
         lease_policy_(std::move(lease_policy)),
         resolver_(*store, task_manager, *actor_creator, tensor_transport_getter),
         task_manager_(task_manager),
@@ -126,10 +133,10 @@ class NormalTaskSubmitter {
   /// It is used when a object ID is not owned by the current process.
   /// We cannot cancel the task in this case because we don't have enough
   /// information to cancel a task.
-  void CancelRemoteTask(const ObjectID &object_id,
-                        const rpc::Address &worker_addr,
-                        bool force_kill,
-                        bool recursive);
+  void RequestOwnerToCancelTask(const ObjectID &object_id,
+                                const rpc::Address &worker_addr,
+                                bool force_kill,
+                                bool recursive);
 
   /// Queue the streaming generator up for resubmission.
   /// \return true if the task is still executing and the submitter agrees to resubmit
@@ -243,6 +250,9 @@ class NormalTaskSubmitter {
 
   /// Raylet client pool for producing new clients to request leases from remote nodes.
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
+
+  /// GCS client for checking node liveness.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   /// Provider of worker leasing decisions for the first lease request (not on
   /// spillback).

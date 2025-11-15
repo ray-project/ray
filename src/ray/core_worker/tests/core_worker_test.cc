@@ -216,6 +216,7 @@ class CoreWorkerTest : public ::testing::Test {
         fake_local_raylet_rpc_client,
         core_worker_client_pool,
         raylet_client_pool,
+        mock_gcs_client_,
         std::move(lease_policy),
         memory_store_,
         *task_manager_,
@@ -231,6 +232,8 @@ class CoreWorkerTest : public ::testing::Test {
 
     auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *core_worker_client_pool,
+        *raylet_client_pool,
+        mock_gcs_client_,
         *memory_store_,
         *task_manager_,
         *actor_creator_,

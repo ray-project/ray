@@ -419,6 +419,26 @@ message KillLocalActorRequest {
 
 message KillLocalActorReply {}
 
+message CancelLocalTaskRequest {
+  // ID of task that should be killed.
+  bytes intended_task_id = 1;
+  // Whether to kill the worker.
+  bool force_kill = 2;
+  // Whether to recursively cancel tasks.
+  bool recursive = 3;
+  // The worker ID of the caller.
+  bytes caller_worker_id = 4;
+  // The worker ID of the executor.
+  bytes executor_worker_id = 5;
+}
+
+message CancelLocalTaskReply {
+  // Whether the requested task is the currently running task.
+  bool requested_task_running = 1;
+  // Whether the task is canceled.
+  bool attempt_succeeded = 2;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Handle the case when GCS restarted.
@@ -542,4 +562,7 @@ service NodeManagerService {
   // without completing outstanding work.
   // Failure: Retries, it's idempotent.
   rpc KillLocalActor(KillLocalActorRequest) returns (KillLocalActorReply);
+  // Forwards the CancelTask request from the caller core worker to the executor
+  // Failure: Retries, it's idempotent.
+  rpc CancelLocalTask(CancelLocalTaskRequest) returns (CancelLocalTaskReply);
 }

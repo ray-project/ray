@@ -499,6 +499,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 
   auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
       *core_worker_client_pool,
+      *raylet_client_pool,
+      gcs_client,
       *memory_store,
       *task_manager,
       *actor_creator,
@@ -537,6 +539,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       local_raylet_rpc_client,
       core_worker_client_pool,
       raylet_client_pool,
+      gcs_client,
       std::move(lease_policy),
       memory_store,
       *task_manager,

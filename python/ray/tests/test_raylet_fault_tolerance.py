@@ -4,8 +4,9 @@ import sys
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.core.generated import autoscaler_pb2
+from ray.exceptions import GetTimeoutError, TaskCancelledError
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -237,6 +238,59 @@ def test_kill_local_actor_rpc_retry_and_idempotency(monkeypatch, shutdown_only):
         return not psutil.pid_exists(worker_pid)
 
     wait_for_condition(verify_process_killed, timeout=30)
+
+
+@pytest.fixture
+def inject_cancel_local_task_rpc_failure(monkeypatch, request):
+    deterministic_failure = request.param
+    monkeypatch.setenv(
+        "RAY_testing_rpc_failure",
+        "NodeManagerService.grpc_client.CancelLocalTask=1:"
+        + ("100:0" if deterministic_failure == "request" else "0:100"),
+    )
+
+
+@pytest.mark.parametrize(
+    "inject_cancel_local_task_rpc_failure", ["request", "response"], indirect=True
+)
+@pytest.mark.parametrize("force_kill", [True, False])
+def test_cancel_local_task_rpc_retry_and_idempotency(
+    inject_cancel_local_task_rpc_failure, force_kill, shutdown_only
+):
+    """Test that CancelLocalTask RPC retries work correctly.
+
+    Verify that the RPC is idempotent when network failures occur.
+    When force_kill=True, verify the worker process is actually killed using psutil.
+    """
+    ray.init(num_cpus=2)
+    signaler = SignalActor.remote()
+
+    @ray.remote(num_cpus=1)
+    def get_pid():
+        return os.getpid()
+
+    @ray.remote(num_cpus=1)
+    def blocking_task():
+        return ray.get(signaler.wait.remote())
+
+    worker_pid = ray.get(get_pid.remote())
+
+    blocking_ref = blocking_task.remote()
+
+    with pytest.raises(GetTimeoutError):
+        ray.get(blocking_ref, timeout=1)
+
+    ray.cancel(blocking_ref, force=force_kill)
+
+    with pytest.raises(TaskCancelledError):
+        ray.get(blocking_ref, timeout=10)
+
+    if force_kill:
+
+        def verify_process_killed():
+            return not psutil.pid_exists(worker_pid)
+
+        wait_for_condition(verify_process_killed, timeout=30)
 
 
 if __name__ == "__main__":
