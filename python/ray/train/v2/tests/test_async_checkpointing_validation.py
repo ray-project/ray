@@ -367,7 +367,7 @@ def test_report_checkpoint_upload_fn(tmp_path):
     }
 
 
-def test_get_all_reported_checkpoints_all_checkpoint_views():
+def test_get_all_reported_checkpoints_all_consistency_modes():
     @ray.remote
     class StateActor:
         def __init__(self):
