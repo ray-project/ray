@@ -33,10 +33,12 @@ chmod +x /tmp/bazel
 
 
 echo "--- Install uv"
+
+UV_PYTHON_VERSION=3.10
 wget -qO- https://astral.sh/uv/install.sh | sh
 UV_BIN="${HOME}/.local/bin/uv"
-"${UV_BIN}" python install 3.10
-UV_PYTHON_BIN="$("${UV_BIN}" python find --no-project 3.10)"
+"${UV_BIN}" python install "${UV_PYTHON_VERSION}"
+UV_PYTHON_BIN="$("${UV_BIN}" python find --no-project "${UV_PYTHON_VERSION}")"
 
 
 echo "--- Generate custom build steps"
