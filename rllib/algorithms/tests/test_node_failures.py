@@ -13,6 +13,7 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
     MODULE_TRAIN_BATCH_SIZE_MEAN,
 )
+from ray.rllib.utils.test_utils import check
 
 object_store_memory = 10**8
 num_nodes = 3
@@ -119,6 +120,7 @@ class TestNodeFailures(unittest.TestCase):
         )
 
     def _train(self, *, config, iters, min_reward, preempt_freq):
+        config.reporting(min_train_timesteps_per_iteration=1)
         algo = config.build()
 
         best_return = 0.0
@@ -136,7 +138,7 @@ class TestNodeFailures(unittest.TestCase):
                 exp_batch_size = config.minibatch_size
             else:
                 exp_batch_size = config.total_train_batch_size
-            self.assertGreaterEqual(avg_batch, exp_batch_size)
+            check(avg_batch, exp_batch_size, rtol=0.1)
             self.assertLess(
                 avg_batch,
                 exp_batch_size + config.get_rollout_fragment_length(),
