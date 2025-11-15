@@ -1,11 +1,16 @@
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple
 
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalOperatorSupportsPredicatePassThrough,
+    PredicatePassThroughBehavior,
+)
 from ray.data._internal.logical.operators.n_ary_operator import NAry
 
 if TYPE_CHECKING:
     from ray.data.dataset import Schema
+    from ray.data.expressions import Expr
 
 
 class JoinType(Enum):
@@ -19,7 +24,17 @@ class JoinType(Enum):
     RIGHT_ANTI = "right_anti"
 
 
-class Join(NAry):
+class JoinSide(Enum):
+    """Represents which side of a join to push a predicate to.
+
+    The enum values correspond to branch indices (0 for left, 1 for right).
+    """
+
+    LEFT = 0
+    RIGHT = 1
+
+
+class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for join."""
 
     def __init__(
@@ -119,3 +134,86 @@ class Join(NAry):
                 "in both left and right operands of the join operation: "
                 f"left has {left_op_schema}, but right has {right_op_schema}"
             )
+
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        return PredicatePassThroughBehavior.CONDITIONAL
+
+    def which_side_to_push_predicate(
+        self, predicate_expr: "Expr"
+    ) -> Optional[JoinSide]:
+        """Determine which side of the join to push a predicate to.
+
+        Returns the side to push to, or None if pushdown is not safe.
+
+        Predicate pushdown is safe for:
+        - INNER: Can push to either side
+        - LEFT_OUTER/SEMI/ANTI: Can push to left side (preserved/output side)
+        - RIGHT_OUTER/SEMI/ANTI: Can push to right side (preserved/output side)
+        - FULL_OUTER: Cannot push (both sides can generate nulls)
+
+        The predicate must reference columns from exactly one side of the join,
+        OR reference only join key columns that all exist on one side.
+        """
+        # Get predicate columns and schemas
+        predicate_columns = self._get_referenced_columns(predicate_expr)
+        left_schema = self.input_dependencies[0].infer_schema()
+        right_schema = self.input_dependencies[1].infer_schema()
+
+        if not left_schema or not right_schema:
+            return None
+
+        # Get column sets for each side
+        left_columns = set(left_schema.names)
+        right_columns = set(right_schema.names)
+        left_join_keys = set(self._left_key_columns)
+        right_join_keys = set(self._right_key_columns)
+
+        # Get pushdown rules for this join type
+        can_push_left, can_push_right = self._get_pushdown_rules()
+
+        # Check if predicate can be evaluated on left side
+        # Condition: ALL predicate columns must exist on left (either as regular columns or join keys)
+        can_evaluate_on_left = predicate_columns.issubset(
+            left_columns
+        ) or predicate_columns.issubset(left_join_keys)
+        if can_evaluate_on_left and can_push_left:
+            return JoinSide.LEFT
+
+        # Check if predicate can be evaluated on right side
+        can_evaluate_on_right = predicate_columns.issubset(
+            right_columns
+        ) or predicate_columns.issubset(right_join_keys)
+        if can_evaluate_on_right and can_push_right:
+            return JoinSide.RIGHT
+
+        # Cannot push down
+        return None
+
+    def _get_pushdown_rules(self) -> Tuple[bool, bool]:
+        """Get pushdown rules for the current join type.
+
+        Returns:
+            Tuple of (can_push_left, can_push_right) indicating which sides
+            can accept predicate pushdown for this join type.
+        """
+        pushdown_rules = {
+            JoinType.INNER: (True, True),
+            JoinType.LEFT_OUTER: (True, False),
+            JoinType.RIGHT_OUTER: (False, True),
+            JoinType.LEFT_SEMI: (True, False),
+            JoinType.RIGHT_SEMI: (False, True),
+            JoinType.LEFT_ANTI: (True, False),
+            JoinType.RIGHT_ANTI: (False, True),
+            JoinType.FULL_OUTER: (False, False),
+        }
+        return pushdown_rules.get(self._join_type, (False, False))
+
+    def _get_referenced_columns(self, expr: "Expr") -> set[str]:
+        """Extract all column names referenced in an expression."""
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _ColumnReferenceCollector,
+        )
+
+        visitor = _ColumnReferenceCollector()
+        visitor.visit(expr)
+        return set(visitor.get_column_refs())

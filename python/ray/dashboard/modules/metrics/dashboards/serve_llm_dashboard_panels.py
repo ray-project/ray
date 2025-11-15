@@ -247,6 +247,14 @@ SERVE_LLM_GRAFANA_PANELS = [
                 expr='histogram_quantile(0.90, sum by(le, model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_bucket{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))',
                 legend="P90-{{model_name}}-{{WorkerId}}",
             ),
+            Target(
+                expr=(
+                    '(sum by(model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_sum{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))'
+                    "\n/\n"
+                    '(sum by(model_name, WorkerId) (rate(ray_vllm_request_generation_tokens_count{{model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}}}[$interval])))'
+                ),
+                legend="Average-{{model_name}}-{{WorkerId}}",
+            ),
         ],
         fill=1,
         linewidth=1,

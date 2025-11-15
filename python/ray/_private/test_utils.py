@@ -1065,20 +1065,6 @@ def fetch_prometheus_metric_timeseries(
     return samples_by_name
 
 
-def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
-    """Return prometheus metrics from a RayContext
-
-    Args:
-        info: Ray context returned from ray.init()
-
-    Returns:
-        Dict from metric name to a list of samples for the metrics
-    """
-    metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
-    print("Fetch metrics from", metrics_page)
-    return fetch_prometheus_metrics([metrics_page])
-
-
 def raw_metric_timeseries(
     info: RayContext, result: PrometheusTimeseries
 ) -> Dict[str, List[Any]]:
