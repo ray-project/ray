@@ -134,6 +134,17 @@ py_test(
 )
 
 py_test(
+    name = "test_dashboard_auth",
+    size = "large",
+    srcs = ["tests/test_dashboard_auth.py"],
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "test_metrics_integration",
     size = "medium",
     srcs = ["modules/tests/test_metrics_integration.py"],

@@ -20,17 +20,18 @@
 #include <utility>
 #include <vector>
 
-#include "fakes/ray/pubsub/subscriber.h"
-#include "fakes/ray/rpc/raylet/raylet_client.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "ray/common/task/task_spec.h"
-#include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/rpc/raylet/raylet_client_interface.h"
+#include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_subscriber.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
 
 namespace ray {
 namespace core {
@@ -65,7 +66,7 @@ class MockTaskManager : public MockTaskManagerInterface {
   int num_tasks_resubmitted = 0;
 };
 
-class MockRayletClient : public FakeRayletClient {
+class MockRayletClient : public rpc::FakeRayletClient {
  public:
   void PinObjectIDs(
       const rpc::Address &caller_address,
@@ -137,6 +138,8 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
             publisher_.get(),
             subscriber_.get(),
             /*is_node_dead=*/[](const NodeID &) { return false; },
+            *std::make_shared<ray::observability::FakeGauge>(),
+            *std::make_shared<ray::observability::FakeGauge>(),
             /*lineage_pinning_enabled=*/lineage_enabled)),
         manager_(
             rpc::Address(),
@@ -159,7 +162,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
                   std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
               auto data =
                   RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-              memory_store_->Put(data, object_id);
+              memory_store_->Put(data, object_id, ref_counter_->HasReference(object_id));
             }) {
     ref_counter_->SetReleaseLineageCallback(
         [](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
@@ -183,7 +186,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::shared_ptr<MockRayletClient> raylet_client_;
   std::shared_ptr<MockTaskManager> task_manager_;
-  std::shared_ptr<ReferenceCounter> ref_counter_;
+  std::shared_ptr<ReferenceCounterInterface> ref_counter_;
   ObjectRecoveryManager manager_;
 };
 

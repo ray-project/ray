@@ -12,6 +12,7 @@ import logging
 from typing import Any, Dict, Optional, Union
 
 import gymnasium as gym
+from typing_extensions import Self
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -32,8 +33,7 @@ from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
-from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.numpy import one_hot
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     LEARN_ON_BATCH_TIMER,
@@ -47,9 +47,9 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
     TIMERS,
 )
+from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils.typing import LearningRateOrSchedule
-
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +200,7 @@ class DreamerV3Config(AlgorithmConfig):
         replay_buffer_config: Optional[dict] = NotProvided,
         use_curiosity: Optional[bool] = NotProvided,
         **kwargs,
-    ) -> "DreamerV3Config":
+    ) -> Self:
         """Sets the training related configuration.
 
         Args:
@@ -473,7 +473,7 @@ class DreamerV3(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> DreamerV3Config:
         return DreamerV3Config()
 
     @override(Algorithm)

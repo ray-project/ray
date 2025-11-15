@@ -1,6 +1,7 @@
 """ Code adapted from https://github.com/ikostrikov/pytorch-a3c"""
+from typing import Any, List, Tuple, Union
+
 import numpy as np
-from typing import Union, Tuple, Any, List
 
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.annotations import DeveloperAPI

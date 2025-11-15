@@ -6,7 +6,6 @@ from typing import List
 import pytest
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 import ray.experimental.internal_kv as internal_kv
 from ray import ObjectRef
@@ -16,7 +15,6 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
 )
 from ray._private.test_utils import (
-    convert_actor_state,
     generate_system_config_map,
     is_placement_group_removed,
     kill_actor_and_wait_for_failure,
@@ -55,7 +53,6 @@ def get_ray_status_output(address):
         generate_system_config_map(
             health_check_initial_delay_ms=0,
             health_check_failure_threshold=10,
-            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -86,7 +83,6 @@ def test_create_placement_group_during_gcs_server_restart(
         generate_system_config_map(
             health_check_initial_delay_ms=0,
             health_check_failure_threshold=10,
-            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -150,6 +146,15 @@ def test_schedule_placement_groups_at_the_same_time(shutdown_only):
     wait_for_condition(is_all_placement_group_removed)
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "include_dashboard": True,
+        }
+    ],
+    indirect=True,
+)
 def test_detached_placement_group(ray_start_cluster):
     cluster = ray_start_cluster
     for _ in range(2):
@@ -202,10 +207,8 @@ ray.shutdown()
 
     def assert_alive_num_actor(expected_num_actor):
         alive_num_actor = 0
-        for actor_info in ray._private.state.actors().values():
-            if actor_info["State"] == convert_actor_state(
-                gcs_utils.ActorTableData.ALIVE
-            ):
+        for actor_info in ray.util.state.list_actors():
+            if actor_info.state == "ALIVE":
                 alive_num_actor += 1
         return alive_num_actor == expected_num_actor
 

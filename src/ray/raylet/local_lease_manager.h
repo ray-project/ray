@@ -29,7 +29,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_lease_manager_interface.h"
-#include "ray/raylet/worker.h"
+#include "ray/raylet/worker_interface.h"
 #include "ray/raylet/worker_pool.h"
 
 namespace ray {
@@ -122,6 +122,9 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message) override;
 
+  std::vector<std::shared_ptr<internal::Work>> CancelLeasesWithoutReply(
+      std::function<bool(const std::shared_ptr<internal::Work> &)> predicate) override;
+
   /// Return with an exemplar if any leases are pending resource acquisition.
   ///
   /// \param[in,out] num_pending_actor_creation: Number of pending actor creation leases.
@@ -186,6 +189,14 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
     return num_unschedulable_lease_spilled_;
   }
 
+  bool IsLeaseQueued(const SchedulingClass &scheduling_class,
+                     const LeaseID &lease_id) const override;
+
+  bool AddReplyCallback(const SchedulingClass &scheduling_class,
+                        const LeaseID &lease_id,
+                        rpc::SendReplyCallback send_reply_callback,
+                        rpc::RequestWorkerLeaseReply *reply) override;
+
  private:
   struct SchedulingClassInfo;
 
@@ -202,11 +213,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
                            const std::string &runtime_env_setup_error_message);
 
   /// Cancels a lease in leases_to_grant_. Does not remove it from leases_to_grant_.
-  void CancelLeaseToGrant(
-      const std::shared_ptr<internal::Work> &work,
-      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-      const std::string &scheduling_failure_message = "");
+  void CancelLeaseToGrantWithoutReply(const std::shared_ptr<internal::Work> &work);
 
   /// Attempts to grant all leases which are ready to run. A lease
   /// will be granted if it is on `leases_to_grant_` and there are still
@@ -249,8 +256,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
       absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers_,
       const std::shared_ptr<TaskResourceInstances> &allocated_instances,
       const RayLease &lease,
-      rpc::RequestWorkerLeaseReply *reply,
-      std::function<void(void)> send_reply_callback);
+      const std::vector<internal::ReplyCallback> &reply_callbacks);
 
   void Spillback(const NodeID &spillback_to, const std::shared_ptr<internal::Work> &work);
 

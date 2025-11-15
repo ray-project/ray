@@ -300,7 +300,6 @@ class RuntimeEnv(dict):
         "worker_process_setup_hook",
         "_nsight",
         "_rocprof_sys",
-        "mpi",
         "image_uri",
     }
 
@@ -325,7 +324,6 @@ class RuntimeEnv(dict):
         rocprof_sys: Optional[Union[str, Dict[str, Dict[str, str]]]] = None,
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
-        mpi: Optional[Dict] = None,
         image_uri: Optional[str] = None,
         uv: Optional[List[str]] = None,
         **kwargs,
@@ -357,8 +355,6 @@ class RuntimeEnv(dict):
             runtime_env["config"] = config
         if worker_process_setup_hook is not None:
             runtime_env["worker_process_setup_hook"] = worker_process_setup_hook
-        if mpi is not None:
-            runtime_env["mpi"] = mpi
         if image_uri is not None:
             runtime_env["image_uri"] = image_uri
 
@@ -528,9 +524,6 @@ class RuntimeEnv(dict):
         if "java_jars" in self:
             return list(self["java_jars"])
         return []
-
-    def mpi(self) -> Optional[Union[str, Dict[str, str]]]:
-        return self.get("mpi", None)
 
     def nsight(self) -> Optional[Union[str, Dict[str, str]]]:
         return self.get("_nsight", None)

@@ -14,6 +14,7 @@ import pytest
 
 import ray
 import ray.cloudpickle as pickle
+from ray.tests.conftest import *  # noqa  # noqa
 
 
 @pytest.fixture(name="temp_database")
@@ -413,8 +414,6 @@ def test_databricks_uc_datasource_empty_result():
             os.environ,
             {"DATABRICKS_HOST": "test_host", "DATABRICKS_TOKEN": "test_token"},
         ):
-            ray.shutdown()
-            ray.init()
 
             # Call with dummy query to hit mocked flow
             ds = ray.data.read_databricks_tables(

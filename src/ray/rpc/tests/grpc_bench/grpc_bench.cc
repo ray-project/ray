@@ -13,18 +13,21 @@
 // limitations under the License.
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/grpc_server.h"
-#include "ray/rpc/server_call.h"
 #include "src/ray/rpc/test/grpc_bench/helloworld.grpc.pb.h"
 #include "src/ray/rpc/test/grpc_bench/helloworld.pb.h"
 
 using namespace ray;         // NOLINT
 using namespace ray::rpc;    // NOLINT
 using namespace helloworld;  // NOLINT
+
+class ServerCallFactory;
 
 class GreeterHandler {
  public:
@@ -56,9 +59,11 @@ class GreeterGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override{
-      RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(
-          Greeter, SayHello, -1, AuthType::NO_AUTH)}
+      const ClusterID &cluster_id,
+      const std::optional<AuthenticationToken> &auth_token) override {
+    RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(
+        Greeter, SayHello, -1, ClusterIdAuthType::NO_AUTH);
+  }
 
   /// The grpc async service object.
   Greeter::AsyncService service_;

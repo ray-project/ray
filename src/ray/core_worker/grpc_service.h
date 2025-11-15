@@ -29,11 +29,14 @@
 #pragma once
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/grpc_server.h"
-#include "ray/rpc/server_call.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -93,8 +96,8 @@ class CoreWorkerServiceHandler : public DelayedServiceHandler {
                                 CancelTaskReply *reply,
                                 SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleRemoteCancelTask(RemoteCancelTaskRequest request,
-                                      RemoteCancelTaskReply *reply,
+  virtual void HandleCancelRemoteTask(CancelRemoteTaskRequest request,
+                                      CancelRemoteTaskReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRegisterMutableObjectReader(
@@ -141,10 +144,6 @@ class CoreWorkerServiceHandler : public DelayedServiceHandler {
   virtual void HandleNumPendingTasks(NumPendingTasksRequest request,
                                      NumPendingTasksReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleFreeActorObject(FreeActorObjectRequest request,
-                                     FreeActorObjectReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
 };
 
 class CoreWorkerGrpcService : public GrpcService {
@@ -162,7 +161,8 @@ class CoreWorkerGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override;
+      const ClusterID &cluster_id,
+      const std::optional<AuthenticationToken> &auth_token) override;
 
  private:
   CoreWorkerService::AsyncService service_;

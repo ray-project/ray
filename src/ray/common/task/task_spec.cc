@@ -23,46 +23,9 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
-
-absl::Mutex TaskSpecification::mutex_;
-absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass>
-    TaskSpecification::sched_cls_to_id_;
-absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor>
-    TaskSpecification::sched_id_to_cls_;
-int TaskSpecification::next_sched_id_;
-
-SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
-    SchedulingClass id) {
-  absl::MutexLock lock(&mutex_);
-  auto it = sched_id_to_cls_.find(id);
-  RAY_CHECK(it != sched_id_to_cls_.end()) << "invalid id: " << id;
-  return it->second;
-}
-
-SchedulingClass TaskSpecification::GetSchedulingClass(
-    const SchedulingClassDescriptor &sched_cls) {
-  SchedulingClass sched_cls_id;
-  absl::MutexLock lock(&mutex_);
-  auto it = sched_cls_to_id_.find(sched_cls);
-  if (it == sched_cls_to_id_.end()) {
-    sched_cls_id = ++next_sched_id_;
-    // TODO(ekl) we might want to try cleaning up task types in these cases
-    if (sched_cls_id > 100) {
-      RAY_LOG_EVERY_MS(WARNING, 1000)
-          << "More than " << sched_cls_id
-          << " types of tasks seen, this may reduce performance.";
-    }
-    sched_cls_to_id_[sched_cls] = sched_cls_id;
-    sched_id_to_cls_.emplace(sched_cls_id, sched_cls);
-  } else {
-    sched_cls_id = it->second;
-  }
-  return sched_cls_id;
-}
 
 const BundleID TaskSpecification::PlacementGroupBundleId() const {
   if (message_->scheduling_strategy().scheduling_strategy_case() ==
@@ -118,6 +81,10 @@ void TaskSpecification::ComputeResources() {
   // from proto to LabelSelector data type.
   label_selector_ = std::make_shared<LabelSelector>(message_->label_selector());
 
+  // Parse fallback strategy from proto to list of fallback options if specified.
+  // FallbackOption parses the map of label selectors to the LabelSelector type.
+  fallback_strategy_ = ParseFallbackStrategy(message_->fallback_strategy().options());
+
   if (!IsActorTask()) {
     // There is no need to compute `SchedulingClass` for actor tasks since
     // the actor tasks need not be scheduled.
@@ -131,13 +98,15 @@ void TaskSpecification::ComputeResources() {
     const auto &function_descriptor = FunctionDescriptor();
     auto depth = GetDepth();
     auto label_selector = GetLabelSelector();
+    auto fallback_strategy = GetFallbackStrategy();
     auto sched_cls_desc = SchedulingClassDescriptor(resource_set,
                                                     label_selector,
                                                     function_descriptor,
                                                     depth,
-                                                    GetSchedulingStrategy());
+                                                    GetSchedulingStrategy(),
+                                                    fallback_strategy);
     // Map the scheduling class descriptor to an integer for performance.
-    sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
+    sched_cls_id_ = SchedulingClassToIds::GetSchedulingClass(sched_cls_desc);
   }
 
   runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());
@@ -223,7 +192,7 @@ bool TaskSpecification::HasRuntimeEnv() const {
   return !IsRuntimeEnvEmpty(SerializedRuntimeEnv());
 }
 
-uint64_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
+int32_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
 
 bool TaskSpecification::IsRetry() const { return AttemptNumber() > 0; }
 
@@ -355,6 +324,10 @@ const ResourceSet &TaskSpecification::GetRequiredResources() const {
 
 const LabelSelector &TaskSpecification::GetLabelSelector() const {
   return *label_selector_;
+}
+
+const std::vector<FallbackOption> &TaskSpecification::GetFallbackStrategy() const {
+  return *fallback_strategy_;
 }
 
 const rpc::SchedulingStrategy &TaskSpecification::GetSchedulingStrategy() const {
@@ -638,17 +611,16 @@ bool TaskSpecification::IsRetriable() const {
   return true;
 }
 
-void TaskSpecification::EmitTaskMetrics() const {
-  double duration_s = (GetMessage().lease_grant_timestamp_ms() -
-                       GetMessage().dependency_resolution_timestamp_ms()) /
-                      1000;
+void TaskSpecification::EmitTaskMetrics(
+    ray::observability::MetricInterface &scheduler_placement_time_ms_histogram) const {
+  double duration_ms = GetMessage().lease_grant_timestamp_ms() -
+                       GetMessage().dependency_resolution_timestamp_ms();
 
   if (IsActorCreationTask()) {
-    stats::STATS_scheduler_placement_time_s.Record(duration_s,
-                                                   {{"WorkloadType", "Actor"}});
+    scheduler_placement_time_ms_histogram.Record(duration_ms,
+                                                 {{"WorkloadType", "Actor"}});
   } else {
-    stats::STATS_scheduler_placement_time_s.Record(duration_s,
-                                                   {{"WorkloadType", "Task"}});
+    scheduler_placement_time_ms_histogram.Record(duration_ms, {{"WorkloadType", "Task"}});
   }
 }
 
@@ -664,16 +636,6 @@ std::string TaskSpecification::CallSiteString() const {
   }
   stream << FunctionDescriptor()->CallSiteString();
   return stream.str();
-}
-
-int CalculateRuntimeEnvHash(const std::string &serialized_runtime_env) {
-  if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
-    // It's useful to have the same predetermined value for both unspecified and empty
-    // runtime envs.
-    return 0;
-  }
-  size_t hash = std::hash<std::string>()(serialized_runtime_env);
-  return static_cast<int>(hash);
 }
 
 std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
@@ -692,10 +654,10 @@ std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
           curr_group_message.function_descriptors(j)));
     }
 
-    concurrency_groups.push_back(
-        {std::string{curr_group_message.name()},
-         static_cast<uint32_t>(curr_group_message.max_concurrency()),
-         function_descriptors});
+    concurrency_groups.emplace_back(
+        std::string{curr_group_message.name()},
+        static_cast<uint32_t>(curr_group_message.max_concurrency()),
+        function_descriptors);
   }
 
   return concurrency_groups;

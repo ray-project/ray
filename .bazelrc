@@ -27,6 +27,7 @@ build:macos --cxxopt="-std=c++17"
 build:clang-cl --cxxopt="-std:c++17"
 build:msvc-cl --cxxopt="/std:c++17"
 build:windows --cxxopt="/std:c++17"
+build:windows --cxxopt="/utf-8"
 # This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
 build:linux --copt="-fPIC"
 build:macos --copt="-fPIC"
@@ -236,6 +237,7 @@ try-import %workspace%/.user.bazelrc
 # It picks up the system headers when someone has protobuf installed via Homebrew.
 # Work around for https://github.com/bazelbuild/bazel/issues/8053
 build:macos --sandbox_block_path=/usr/local/
+build:macos --copt="-Wno-error=deprecated-declarations"
 # This option controls whether javac checks for missing direct dependencies.
 build --experimental_strict_java_deps=off
 build:clang-cl --per_file_copt="-external/com_github_redis_hiredis/ssl.c$@-Wno-parenthesis,-Wno-int-conversion"

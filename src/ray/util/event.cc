@@ -201,17 +201,20 @@ EventManager &EventManager::Instance() {
   return instance_;
 }
 
-bool EventManager::IsEmpty() {
+bool EventManager::IsEmpty() const {
+  absl::ReaderMutexLock lock(&mutex_);
   return reporter_map_.empty() && export_log_reporter_map_.empty();
 }
 
 void EventManager::Publish(const rpc::Event &event, const json &custom_fields) {
+  absl::ReaderMutexLock lock(&mutex_);
   for (const auto &element : reporter_map_) {
     (element.second)->Report(event, custom_fields);
   }
 }
 
 void EventManager::PublishExportEvent(const rpc::ExportEvent &export_event) {
+  absl::ReaderMutexLock lock(&mutex_);
   auto element = export_log_reporter_map_.find(export_event.source_type());
   RAY_CHECK(element != export_log_reporter_map_.end())
       << "RayEventInit wasn't called with the necessary source type "
@@ -221,15 +224,18 @@ void EventManager::PublishExportEvent(const rpc::ExportEvent &export_event) {
 }
 
 void EventManager::AddReporter(std::shared_ptr<BaseEventReporter> reporter) {
+  absl::MutexLock lock(&mutex_);
   reporter_map_.emplace(reporter->GetReporterKey(), reporter);
 }
 
 void EventManager::AddExportReporter(rpc::ExportEvent_SourceType source_type,
                                      std::shared_ptr<LogEventReporter> reporter) {
+  absl::MutexLock lock(&mutex_);
   export_log_reporter_map_.emplace(source_type, reporter);
 }
 
 void EventManager::ClearReporters() {
+  absl::MutexLock lock(&mutex_);
   reporter_map_.clear();
   export_log_reporter_map_.clear();
 }

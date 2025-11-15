@@ -59,9 +59,12 @@ message FreeObjectsReply {
 
 service ObjectManagerService {
   // Push service used to send object chunks
+  // Failure: Retries, it's idempotent. TODO: Failure behavior needs more tests.
   rpc Push(PushRequest) returns (PushReply);
   // Try to pull object from remote object manager
+  // Failure: Retries, it's idempotent. TODO: Failure behavior needs more tests.
   rpc Pull(PullRequest) returns (PullReply);
   // Tell remote object manager to free some objects
+  // Failure: Retries, it's idempotent.
   rpc FreeObjects(FreeObjectsRequest) returns (FreeObjectsReply);
 }
