@@ -14,6 +14,7 @@ except ImportError:
 DEPLOY_PATH = "/api/serve/applications/"
 DELETE_PATH = "/api/serve/applications/"
 STATUS_PATH = "/api/serve/applications/"
+OBSERVABILITY_PATH = "/api/serve/autoscaling/observability"
 
 
 class ServeSubmissionClient(SubmissionClient):
@@ -83,3 +84,9 @@ class ServeSubmissionClient(SubmissionClient):
         response = self._do_request("DELETE", DELETE_PATH)
         if response.status_code != 200:
             self._raise_error(response)
+
+    def get_autoscaling_observability(self) -> Dict:
+        response = self._do_request("GET", OBSERVABILITY_PATH)
+        if response.status_code != 200:
+            self._raise_error(response)
+        return response.json()

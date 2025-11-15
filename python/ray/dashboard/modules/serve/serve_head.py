@@ -1,9 +1,11 @@
 import asyncio
 import dataclasses
+import glob
 import json
 import logging
+import os
 from functools import wraps
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import aiohttp
 from aiohttp.web import Request, Response
@@ -15,6 +17,10 @@ from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.exceptions import RayTaskError
+from ray.serve._private.logging_utils import get_serve_logs_dir
+from ray.serve.schema import (
+    DeploymentAutoscalingDetail,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -323,3 +329,76 @@ class ServeHead(SubprocessModule):
                 )
 
             return self._controller
+
+    # Route for autoscaling observability
+    @routes.get("/api/serve/autoscaling/observability")
+    @dashboard_optional_utils.init_ray_and_catch_exceptions()
+    async def get_autoscaling_observability(self, req: Request) -> Response:
+        """
+        Returns the latest autoscaling details for all applications and deployments.
+        """
+        # Read the latest snapshot files and store it as {app_name,{dep_name:raw_data}}
+        latest_snapshots = await self.read_snapshot_files()
+        if not latest_snapshots:
+            # Return an empty dictionary if there are no snapshot files
+            return Response(text=json.dumps({}), content_type="application/json")
+
+        details: Dict[str, Dict[str, Any]] = {}
+        # Build the autoscaling details
+        for app_name, deployments in latest_snapshots.items():
+            details[app_name] = {}
+            for deployment_name, deployment_data in deployments.items():
+                details[app_name][
+                    deployment_name
+                ] = DeploymentAutoscalingDetail.from_snapshot(deployment_data).dict()
+
+        return Response(text=json.dumps(details), content_type="application/json")
+
+    async def read_snapshot_files(self):
+        loop = asyncio.get_event_loop()
+        # Run the blocking file operations in a thread pool
+        return await loop.run_in_executor(None, self._read_snapshot_files_sync)
+
+    def _read_snapshot_files_sync(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Finds the latest snapshot entry for each deployment by searching across all rotated log files,
+        sorted from newest to oldest based on their modification time.
+        Stores the latest entry that matches the application and deployment names not seen before.
+        """
+        # {application_name,{deployment_name:raw data}}
+        latest_snapshots = dict()
+        serve_logs_dir = get_serve_logs_dir()
+        snapshot_pattern = os.path.join(serve_logs_dir, "autoscaling_snapshot_*.log*")
+
+        all_snapshot_files = glob.glob(snapshot_pattern)
+        # Return if there are no files
+        if not all_snapshot_files:
+            return {}
+
+        # Sort files by their last modification time, newest first.
+        sorted_files = sorted(all_snapshot_files, key=os.path.getmtime, reverse=True)
+        # Iterate through each file from newest to oldest
+        for log_file in sorted_files:
+            try:
+                with open(log_file, "r") as f:
+                    all_lines = f.readlines()
+                for line in reversed(all_lines):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    raw = json.loads(line)
+                    # Return the most recent entry for the deployment
+                    app_name = raw.get("application_name")
+                    deployment_name = raw.get("deployment_name")
+                    if not app_name or not deployment_name:
+                        continue
+                    if app_name not in latest_snapshots:
+                        latest_snapshots[app_name] = {}
+                    # Only append the most recent entry for the deployment
+                    if deployment_name not in latest_snapshots[app_name]:
+                        latest_snapshots[app_name][deployment_name] = raw
+            # Continue reading other files if there were errors while reading the current file
+            except Exception as e:
+                logger.error(f"Error reading snapshot file {log_file}: {e}")
+                continue
+        return latest_snapshots
