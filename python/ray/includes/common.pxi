@@ -32,6 +32,7 @@ from ray.includes.common cimport (
 
 from ray.exceptions import (
     RayActorError,
+    ActorAlreadyExistsError,
     ActorDiedError,
     RayError,
     RaySystemError,
@@ -88,7 +89,7 @@ cdef int check_status(const CRayStatus& status) except -1 nogil:
     elif status.IsInvalidArgument():
         raise ValueError(message)
     elif status.IsAlreadyExists():
-        raise ValueError(message)
+        raise ActorAlreadyExistsError(message)
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
     elif status.IsObjectRefEndOfStream():
