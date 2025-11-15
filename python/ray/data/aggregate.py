@@ -1,5 +1,6 @@
 import abc
 import math
+import pickle
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -1450,6 +1451,7 @@ class ApproximateTopK(AggregateFnV2):
         k: int,
         log_capacity: int = 15,
         alias_name: Optional[str] = None,
+        encode_lists: bool = False,
     ):
         """
         Computes the approximate top k items in a column by using a datasketches frequent_strings_sketch.
@@ -1486,11 +1488,17 @@ class ApproximateTopK(AggregateFnV2):
             log_capacity: Base 2 logarithm of the maximum size of the internal hash map.
                 Higher values increase accuracy but use more memory. Defaults to 15.
             alias_name: The name of the aggregate. Defaults to None.
+            encode_lists: If `True`, encode list elements.  If `False`, encode
+                whole lists (i.e., the entire list is considered as a single object).
+                `False` by default. Note that this is a top-level flatten (not a recursive
+                flatten) operation.
         """
 
         self.k = k
         self._log_capacity = log_capacity
         self._frequent_strings_sketch = self._require_datasketches()
+        self._encode_lists = encode_lists
+
         super().__init__(
             alias_name if alias_name else f"approx_topk({str(on)})",
             on=on,
@@ -1507,8 +1515,16 @@ class ApproximateTopK(AggregateFnV2):
         column = table.column(self.get_target_column())
         sketch = self.zero(self._log_capacity)
         for value in column:
-            if value.as_py() is not None:
-                sketch.update(str(value.as_py()))
+            py_value = value.as_py()
+            if self._encode_lists and isinstance(py_value, list):
+                for item in py_value:
+                    if item is None:
+                        continue
+                    dump = pickle.dumps(item).hex()
+                    sketch.update(dump)
+            elif py_value is not None:
+                dump = pickle.dumps(py_value).hex()
+                sketch.update(dump)
         return sketch.serialize()
 
     def combine(self, current_accumulator: bytes, new: bytes) -> bytes:
@@ -1520,10 +1536,13 @@ class ApproximateTopK(AggregateFnV2):
     def finalize(self, accumulator: bytes) -> List[Dict[str, Any]]:
         from datasketches import frequent_items_error_type
 
+        column = self.get_target_column()
+
         frequent_items = self._frequent_strings_sketch.deserialize(
             accumulator
         ).get_frequent_items(frequent_items_error_type.NO_FALSE_NEGATIVES)
+
         return [
-            {self.get_target_column(): str(item[0]), "count": int(item[1])}
+            {column: pickle.loads(bytes.fromhex(str(item[0]))), "count": int(item[1])}
             for item in frequent_items[: self.k]
         ]
