@@ -238,7 +238,7 @@ def _convert_to_pyarrow_native_array(
                 )
 
         logger.log(
-            logging.getLevelName("TRACE"),
+            logging.DEBUG,
             f"Inferred dtype of '{pa_type}' for column '{column_name}'",
         )
 
