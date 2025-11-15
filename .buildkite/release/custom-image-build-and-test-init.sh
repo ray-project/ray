@@ -27,19 +27,20 @@ bash release/gcloud_docker_login.sh release/aws2gce_iam.json
 export PATH="${PWD}/google-cloud-sdk/bin:$PATH"
 
 
-echo "---- Install Bazel"
+echo "--- Install Bazel"
 curl -sSfLo /tmp/bazel https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64
 chmod +x /tmp/bazel
 
 
-echo "---- Install uv"
+echo "--- Install uv"
 wget -qO- https://astral.sh/uv/install.sh | sh
-uv python install 3.10
-uv python pin 3.10
-UV_PYTHON_BIN="$(uv python find 3.10)"
+UV_BIN="${HOME}/.local/bin/uv"
+"${UV_BIN}" python install 3.10
+"${UV_BIN}" python pin 3.10
+UV_PYTHON_BIN="$("${UV_BIN}" python find 3.10)"
 
 
-echo "---- Generate custom build steps"
+echo "--- Generate custom build steps"
 
 if [[ "${AUTOMATIC:-0}" == "1" && "${BUILDKITE_BRANCH}" == "master" ]]; then
   export REPORT_TO_RAY_TEST_DB=1
