@@ -36,7 +36,6 @@ echo "--- Install uv"
 wget -qO- https://astral.sh/uv/install.sh | sh
 UV_BIN="${HOME}/.local/bin/uv"
 "${UV_BIN}" python install 3.10
-"${UV_BIN}" python pin 3.10
 UV_PYTHON_BIN="$("${UV_BIN}" python find 3.10)"
 
 
