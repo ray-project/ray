@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from numpy import int32
 
@@ -95,8 +95,9 @@ class CollectiveTransportMetadata(TensorTransportMetadata):
 class CudaIpcTransportMetadata(TensorTransportMetadata):
     """Metadata for tensors stored in the GPU object store for CUDA IPC transport."""
 
-    cuda_ipc_meta: Optional[List[Dict[str, Any]]] = None
+    cuda_ipc_handles: Optional[List[Any]] = None
     cuda_ipc_device_uuid: Optional[str] = None
+    cuda_ipc_event_ipc_handle: Optional[bytes] = None
 
 
 @dataclass

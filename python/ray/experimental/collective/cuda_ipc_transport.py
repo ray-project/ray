@@ -41,55 +41,39 @@ class CudaIpcTransport(TensorTransportManager):
     ) -> CudaIpcTransportMetadata:
 
         tensor_meta = []
-        cuda_ipc_meta = []
+        cuda_ipc_handles = []
         device = None
         uuid = None
         if gpu_object:
             import torch
+            from torch.multiprocessing.reductions import reduce_tensor
+
+            # Create an interprocess-shareable CUDA event
+            # This event can be shared across processes via IPC
+            event = torch.cuda.Event(interprocess=True)
+            # Record the event on the current stream
+            # This marks the point when all prior operations (including tensor computation) are complete
+            torch.cuda.current_stream().record_event(event)
 
             device = gpu_object[0].device
             uuid = str(torch.cuda.get_device_properties(device).uuid)
+
             for t in gpu_object:
                 if t.device.type != device.type:
                     raise ValueError(
                         "All tensors in an RDT object must have the same device type."
                     )
-                storage = t._typed_storage()
-                (
-                    storage_device,
-                    storage_handle,
-                    storage_size_bytes,
-                    storage_offset_bytes,
-                    ref_counter_handle,
-                    ref_counter_offset,
-                    event_handle,
-                    event_sync_required,
-                ) = storage._share_cuda_()
-                # Fields specified in https://github.com/pytorch/pytorch/blob/1495b35d29512f303ab37780760c5e692158514b/torch/multiprocessing/reductions.py#L155
-
-                t_ipc_meta = {
-                    "tensor_cls": type(t),
-                    "tensor_size": t.size(),
-                    "tensor_stride": t.stride(),
-                    "tensor_offset": t.storage_offset(),
-                    "storage_cls": type(storage),
-                    "dtype": t.dtype,
-                    "storage_device": storage_device,
-                    "storage_handle": storage_handle,
-                    "storage_size_bytes": storage_size_bytes,
-                    "storage_offset_bytes": storage_offset_bytes,
-                    "requires_grad": t.requires_grad,
-                    "ref_counter_handle": ref_counter_handle,
-                    "ref_counter_offset": ref_counter_offset,
-                    "event_handle": event_handle,
-                    "event_sync_required": event_sync_required,
-                }
                 tensor_meta.append((t.shape, t.dtype))
-                cuda_ipc_meta.append(t_ipc_meta)
+                ipc_handle = reduce_tensor(t)
+                cuda_ipc_handles.append(ipc_handle)
+
+            event_ipc_handle = event.ipc_handle()
+
         return CudaIpcTransportMetadata(
             tensor_meta=tensor_meta,
             tensor_device=device,
-            cuda_ipc_meta=cuda_ipc_meta,
+            cuda_ipc_handles=cuda_ipc_handles,
+            cuda_ipc_event_ipc_handle=event_ipc_handle,
             cuda_ipc_device_uuid=uuid,
         )
 
@@ -152,7 +136,6 @@ class CudaIpcTransport(TensorTransportManager):
 
         if tensors:
             import torch
-            from torch.multiprocessing.reductions import rebuild_cuda_tensor
 
             device = torch.cuda.current_device()
             received_uuid = str(torch.cuda.get_device_properties(device).uuid)
@@ -161,8 +144,24 @@ class CudaIpcTransport(TensorTransportManager):
                 raise ValueError(
                     f"CUDA IPC transport only supports tensors on the same GPU, but the sender (GPU UUID: {sender_uuid}) and receiver (GPU UUID: {received_uuid}) are on different GPUs."
                 )
-            for i, ipc_meta in enumerate(tensor_transport_metadata.cuda_ipc_meta):
-                tensor = rebuild_cuda_tensor(**ipc_meta)
+            event_ipc_handle = tensor_transport_metadata.cuda_ipc_event_ipc_handle
+            if event_ipc_handle is not None:
+                # Reconstruct the event from IPC handle
+                event_remote = torch.cuda.Event.from_ipc_handle(
+                    device=device, handle=event_ipc_handle
+                )
+
+                # Make current stream wait for the sender's event
+                # This ensures sender's computation is complete before we use the tensor
+                # This is asynchronous - doesn't block CPU, only GPU stream
+                torch.cuda.current_stream().wait_event(event_remote)
+            for i, ipc_handle in enumerate(tensor_transport_metadata.cuda_ipc_handles):
+                # Reconstruct the tensor
+                func, args = ipc_handle
+                list_args = list(args)
+                # Update device ID to match current process's device mapping
+                list_args[6] = device
+                tensor = func(*list_args)
                 tensors[i] = tensor
 
     @staticmethod
