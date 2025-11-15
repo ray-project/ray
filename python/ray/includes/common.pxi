@@ -27,6 +27,7 @@ from ray.includes.common cimport (
     kLabelKeyTpuSliceName,
     kLabelKeyTpuWorkerId,
     kLabelKeyTpuPodType,
+    kLabelKeyAcceleratorMemoryPerAccelerator,
     kRayInternalNamespacePrefix,
 )
 
@@ -161,6 +162,7 @@ RAY_NODE_TPU_SLICE_NAME_KEY = kLabelKeyTpuSliceName.decode()
 RAY_NODE_TPU_WORKER_ID_KEY = kLabelKeyTpuWorkerId.decode()
 RAY_NODE_TPU_POD_TYPE_KEY = kLabelKeyTpuPodType.decode()
 
+RAY_ACCELERATOR_MEMORY_PER_ACCELERATOR_KEY = kLabelKeyAcceleratorMemoryPerAccelerator.decode()
 RAY_INTERNAL_NAMESPACE_PREFIX = kRayInternalNamespacePrefix.decode()
 # Prefix for namespaces which are used internally by ray.
 # Jobs within these namespaces should be hidden from users

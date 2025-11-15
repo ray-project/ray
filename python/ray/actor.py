@@ -1071,6 +1071,7 @@ class _ActorClassMetadata:
         num_gpus: The default number of GPUs required by the actor creation
             task.
         memory: The heap memory quota for this actor.
+        gpu_memory: The gpu memory request in bytes for this actor.
         resources: The default resources required by the actor creation task.
         label_selector: The labels required for the node on which this actor
             can be scheduled on. The label selector consist of key-value pairs, where the keys
@@ -1107,6 +1108,7 @@ class _ActorClassMetadata:
         num_cpus,
         num_gpus,
         memory,
+        gpu_memory,
         object_store_memory,
         resources,
         label_selector,
@@ -1129,6 +1131,7 @@ class _ActorClassMetadata:
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
+        self.gpu_memory = gpu_memory
         self.object_store_memory = object_store_memory
         self.resources = resources
         self.label_selector = label_selector

@@ -31,6 +31,7 @@ enum PredefinedResourcesEnum {
   CPU,
   MEM,
   GPU,
+  GPU_MEM,
   OBJECT_STORE_MEM,
   PredefinedResourcesEnum_MAX
 };
@@ -39,6 +40,7 @@ inline constexpr char kCPU_ResourceLabel[] = "CPU";
 inline constexpr char kGPU_ResourceLabel[] = "GPU";
 inline constexpr char kObjectStoreMemory_ResourceLabel[] = "object_store_memory";
 inline constexpr char kMemory_ResourceLabel[] = "memory";
+inline constexpr char kGPU_Memory_ResourceLabel[] = "gpu_memory";
 inline constexpr char kBundle_ResourceLabel[] = "bundle";
 
 /// Class to map string IDs to unique integer IDs and back.
@@ -145,7 +147,8 @@ inline StringIdMap &BaseSchedulingID<SchedulingIDTag::Resource>::GetMap() {
     map_ptr->InsertOrDie(kCPU_ResourceLabel, CPU)
         .InsertOrDie(kGPU_ResourceLabel, GPU)
         .InsertOrDie(kObjectStoreMemory_ResourceLabel, OBJECT_STORE_MEM)
-        .InsertOrDie(kMemory_ResourceLabel, MEM);
+        .InsertOrDie(kMemory_ResourceLabel, MEM)
+        .InsertOrDie(kGPU_Memory_ResourceLabel, GPU_MEM);
     return map_ptr;
   }()};
   return *singleton_map;
@@ -179,6 +182,8 @@ class ResourceID : public BaseSchedulingID<SchedulingIDTag::Resource> {
 
   /// Resource ID of GPU.
   static ResourceID GPU() { return ResourceID(PredefinedResourcesEnum::GPU); }
+
+  static ResourceID GPU_Memory() { return ResourceID(PredefinedResourcesEnum::GPU_MEM); }
 
   /// Resource ID of object store memory.
   static ResourceID ObjectStoreMemory() {
