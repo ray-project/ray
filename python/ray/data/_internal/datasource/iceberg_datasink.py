@@ -4,7 +4,7 @@ Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink A
 import logging
 import uuid
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
@@ -115,7 +115,7 @@ def _commit_upsert_task(
 
 @DeveloperAPI
 class IcebergDatasink(
-    Datasink[List["DataFile"] | tuple[List["DataFile"], Dict[str, List[Any]]]]
+    Datasink[Union[List["DataFile"], tuple[List["DataFile"], Dict[str, List[Any]]]]]
 ):
     """
     Iceberg datasink to write a Ray Dataset into an existing Iceberg table.
@@ -301,7 +301,7 @@ class IcebergDatasink(
 
     def write(
         self, blocks: Iterable[Block], ctx: TaskContext
-    ) -> List["DataFile"] | tuple[List["DataFile"], Dict[str, List[Any]]]:
+    ) -> Union[List["DataFile"], tuple[List["DataFile"], Dict[str, List[Any]]]]:
         """
         Write blocks to Parquet files in storage and return DataFile metadata.
 
