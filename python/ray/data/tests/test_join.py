@@ -263,8 +263,7 @@ def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_su
 
         assert 'Field "double" exists 2 times' in str(exc_info.value.cause)
     else:
-
-        joined_pd = pd.DataFrame(joined.take_all()).reset_index(drop=True)
+        joined_pd = joined.to_pandas()
 
         # Join using Pandas (to assert against)
         expected_pd = doubles_pd.join(
