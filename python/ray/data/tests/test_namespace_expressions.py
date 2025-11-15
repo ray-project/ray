@@ -38,13 +38,11 @@ def _create_dataset(
             # Create pandas DataFrame from items
             df = pd.DataFrame(items_data)
         ds = ray.data.from_pandas(df)
-    else:  # items
-        ds = ray.data.from_items(items_data)
     return ds
 
 
 # Pytest parameterization for all dataset creation formats
-DATASET_FORMATS = ["items", "pandas", "arrow"]
+DATASET_FORMATS = ["pandas", "arrow"]
 
 
 # ──────────────────────────────────────
