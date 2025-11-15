@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -93,6 +93,80 @@ class Join(
         self._partition_size_hint = partition_size_hint
         self._aggregator_ray_remote_args = aggregator_ray_remote_args
 
+    def apply_projection_pass_through(
+        self,
+        column_rename_map: Dict[str, str],
+    ) -> LogicalOperator:
+
+        left_op, right_op = self.input_dependencies
+        left_schema, right_schema = left_op.infer_schema(), right_op.infer_schema()
+
+        if left_schema is None or right_schema is None:
+            # Cannot pass projection through this op if schema is unknown.
+            return self
+
+        # When pushing projections through join, we must ensure join key columns
+        # are preserved on both sides, even if they're not in the output projection.
+        # This is necessary because the join operation needs these columns to perform the join.
+
+        # Collect all required columns for left side (output columns + join keys)
+        left_key_columns_set = set(self._left_key_columns)
+        left_required_columns = (
+            set(column_rename_map.keys()) | left_key_columns_set
+        ) & left_schema.names
+        new_left_op = left_op
+        if left_required_columns:
+            left_upstream_project = self._create_upstream_project(
+                columns=list(left_required_columns),
+                column_rename_map=column_rename_map,
+                input_op=left_op,
+            )
+            left_new_keys = self._rename_keys(
+                old_keys=list(self._left_key_columns),
+                column_rename_map=column_rename_map,
+            )
+            new_left_op = left_upstream_project
+
+        # Collect all required columns for right side (output columns + join keys)
+        right_key_columns_set = set(self._right_key_columns)
+        right_required_columns = (
+            set(column_rename_map.keys()) | right_key_columns_set
+        ) & right_schema.names
+        new_right_op = right_op
+        if right_required_columns:
+            right_upstream_project = self._create_upstream_project(
+                columns=list(right_required_columns),
+                column_rename_map=column_rename_map,
+                input_op=right_op,
+            )
+            right_new_keys = self._rename_keys(
+                old_keys=list(self._right_key_columns),
+                column_rename_map=column_rename_map,
+            )
+            new_right_op = right_upstream_project
+
+        join_op = Join(
+            left_input_op=new_left_op,
+            right_input_op=new_right_op,
+            join_type=self._join_type,
+            left_key_columns=left_new_keys,
+            right_key_columns=right_new_keys,
+            num_partitions=self._num_outputs,
+            left_columns_suffix=self._left_columns_suffix,
+            right_columns_suffix=self._right_columns_suffix,
+            partition_size_hint=self._partition_size_hint,
+            aggregator_ray_remote_args=self._aggregator_ray_remote_args,
+        )
+        if (
+            right_key_columns_set <= column_rename_map.keys()
+            and left_key_columns_set <= column_rename_map.keys()
+        ):
+            return join_op
+        else:
+            return self._create_downstream_project(
+                column_rename_map=column_rename_map, input_op=join_op
+            )
+
     @staticmethod
     def _validate_schemas(
         left_op_schema: "Schema",
@@ -139,55 +213,6 @@ class Join(
                 "in both left and right operands of the join operation: "
                 f"left has {left_op_schema}, but right has {right_op_schema}"
             )
-
-    def apply_projection(
-        self,
-        columns: List[str],
-        column_rename_map: Dict[str, str],
-    ) -> LogicalOperator:
-
-        left_op, right_op = self.input_dependencies
-
-        # When pushing projections through join, we must ensure join key columns
-        # are preserved on both sides, even if they're not in the output projection.
-        # This is necessary because the join operation needs these columns to perform the join.
-
-        # Collect all required columns for left side (output columns + join keys)
-        left_required_columns = set(columns) | set(self._left_key_columns)
-        left_upstream_project = self._create_upstream_project(
-            columns=list(left_required_columns),
-            column_rename_map=column_rename_map,
-            input_op=left_op,
-        )
-        left_new_columns = self._rename_projection(
-            old_keys=list(self._left_key_columns),
-            column_rename_map=column_rename_map,
-        )
-
-        # Collect all required columns for right side (output columns + join keys)
-        right_required_columns = set(columns) | set(self._right_key_columns)
-        right_upstream_project = self._create_upstream_project(
-            columns=list(right_required_columns),
-            column_rename_map=column_rename_map,
-            input_op=right_op,
-        )
-        right_new_columns = self._rename_projection(
-            old_keys=list(self._right_key_columns),
-            column_rename_map=column_rename_map,
-        )
-
-        return Join(
-            left_input_op=left_upstream_project,
-            right_input_op=right_upstream_project,
-            join_type=self._join_type,
-            left_key_columns=left_new_columns,
-            right_key_columns=right_new_columns,
-            num_partitions=self._num_outputs,
-            left_columns_suffix=self._left_columns_suffix,
-            right_columns_suffix=self._right_columns_suffix,
-            partition_size_hint=self._partition_size_hint,
-            aggregator_ray_remote_args=self._aggregator_ray_remote_args,
-        )
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         return PredicatePassThroughBehavior.CONDITIONAL

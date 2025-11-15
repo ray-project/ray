@@ -110,16 +110,17 @@ class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
 
 
 class LogicalOperatorSupportsProjectionPassThrough(LogicalOperator):
-    """Mixin for operators supporting projection pushthrough"""
+    """Mixin for operators supporting projection pushthrough
 
-    def supports_projection_pushthrough(self) -> bool:
+    This is distinct from LogicalOperatorSupportsProjectionPushdown, which is for
+    operators that can *accept* predicates (like Read). This trait is for operators
+    that allow projections to *pass through* them.
+    """
+
+    def supports_projection_pass_through(self) -> bool:
         return True
 
-    # TODO(justin): this will be replaced by LogicalOperatorContainsPartitionKeys
-    def get_referenced_columns(self) -> Optional[List[str]]:
-        return None
-
-    def _rename_projection(
+    def _rename_keys(
         self,
         old_keys: List[str],
         column_rename_map: Dict[str, str],
@@ -127,16 +128,16 @@ class LogicalOperatorSupportsProjectionPassThrough(LogicalOperator):
 
         new_keys = []
         for old_key in old_keys:
-            if old_key in column_rename_map:
-                new_key = column_rename_map[old_key]
-                new_keys.append(new_key)
-            else:
-                new_keys.append(old_key)
+            new_key = column_rename_map.get(old_key, old_key)
+            new_keys.append(new_key)
         return new_keys
+
+    def get_referenced_columns(self) -> Optional[List[str]]:
+        return None
 
     def _create_upstream_project(
         self,
-        columns: List[str],
+        columns_to_rename: List[str],
         column_rename_map: Dict[str, str],
         input_op: LogicalOperator,
     ) -> "Project":
@@ -149,7 +150,7 @@ class LogicalOperatorSupportsProjectionPassThrough(LogicalOperator):
             input_op.output_dependencies.remove(self)
 
         new_exprs = []
-        for old_col in columns:
+        for old_col in columns_to_rename:
             if old_col in column_rename_map:
                 new_col = column_rename_map[old_col]
                 new_exprs.append(col(old_col).alias(new_col))
@@ -163,9 +164,32 @@ class LogicalOperatorSupportsProjectionPassThrough(LogicalOperator):
             ray_remote_args=None,
         )
 
-    def apply_projection(
+    def _create_downstream_project(
         self,
-        columns: List[str],
+        column_rename_map: Dict[str, str],
+        input_op: LogicalOperator,
+    ) -> "Project":
+        from ray.data._internal.logical.operators.map_operator import Project
+
+        # NOTE: This can happen when we union the same dataset. The same
+        # dataset is only shallowed copied, so we safeguard removing
+        # output dependencies more than once.
+        if self in input_op.output_dependencies:
+            input_op.output_dependencies.remove(self)
+
+        new_exprs = []
+        for new_col in column_rename_map.values():
+            new_exprs.append(col(new_col))
+
+        return Project(
+            input_op=input_op,
+            exprs=new_exprs,
+            compute=None,
+            ray_remote_args=None,
+        )
+
+    def apply_projection_pass_through(
+        self,
         column_rename_map: Dict[str, str],
     ) -> LogicalOperator:
         raise NotImplementedError

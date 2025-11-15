@@ -401,14 +401,13 @@ class StreamingRepartition(AbstractMap, LogicalOperatorSupportsProjectionPassThr
     def can_modify_num_rows(self) -> bool:
         return False
 
-    def apply_projection(
+    def apply_projection_pass_through(
         self,
-        columns: List[str],
         column_rename_map: Dict[str, str],
     ) -> LogicalOperator:
 
         upstream_project = self._create_upstream_project(
-            columns=columns,
+            columns=list(column_rename_map.keys()),
             column_rename_map=column_rename_map,
             input_op=self.input_dependencies[0],
         )

@@ -260,7 +260,7 @@ class ProjectionPushdown(Rule):
         dag = plan.dag
         new_dag = dag._apply_transform(self._try_fuse_projects)
         new_dag = new_dag._apply_transform(self._push_projection_into_read_op)
-        new_dag = new_dag._apply_transform(self._push_projection_through_op)
+        new_dag = new_dag._apply_transform(self._pass_projection_through_op)
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
 
     @classmethod
@@ -361,8 +361,7 @@ class ProjectionPushdown(Rule):
                 else:
                     # Specific columns selected - build projection_map with renames applied
                     projection_map = {
-                        col: output_column_rename_map.get(col, col)
-                        for col in required_columns
+                        col: output_column_rename_map[col] for col in required_columns
                     }
 
                 # Apply projection to the read op
@@ -386,44 +385,43 @@ class ProjectionPushdown(Rule):
         return current_project
 
     @classmethod
-    def _push_projection_through_op(cls, op: LogicalOperator) -> LogicalOperator:
+    def _pass_projection_through_op(cls, op: LogicalOperator) -> LogicalOperator:
 
         if not isinstance(op, Project):
             return op
 
         current_project: Project = op
 
-        # Step 2: Push projection into the data source if supported
+        # Simple projections are those that use col() or alias()
+        # no star() exprs, no binary(), etc...
+        is_simple_projection = all(_is_col_expr(expr) for expr in current_project.exprs)
+
         input_op = current_project.input_dependency
         if (
             isinstance(input_op, LogicalOperatorSupportsProjectionPassThrough)
-            and input_op.supports_projection_pushthrough()
-            and not current_project.has_star_expr()
+            and input_op.supports_projection_pass_through()
+            and is_simple_projection
         ):
-            # Collect required column for projection
-            required_columns = _collect_referenced_columns(current_project.exprs)
+            # Collect inputs columns for projection
+            referenced_columns = _collect_referenced_columns(current_project.exprs)
+            assert (
+                referenced_columns is not None
+            ), "Projection pass through is not supported for star(*) expressions"
 
-            # Check if it's a simple projection that could be pushed into
-            # read as a whole
-            is_simple_projection = all(
-                _is_col_expr(expr) for expr in current_project.exprs
+            # Create a mapping from old name -> new name
+            output_column_rename_map = _extract_input_columns_renaming_mapping(
+                current_project.exprs
             )
 
-            if required_columns is not None and is_simple_projection:
-                # NOTE: We only can rename output columns when it's a simple
-                #       projection and Project operator is discarded (otherwise
-                #       it might be holding expression referencing attributes
-                #       by original their names prior to renaming)
-                #
-                # TODO fix by instead rewriting exprs
-                output_column_rename_map = _extract_input_columns_renaming_mapping(
-                    current_project.exprs
-                )
+            # This dict represents all input columns that were referenced that need
+            # to be renamed / preserved when passing the projection past the input_op.
+            column_rename_map = {
+                # col(a).alias(b) or col(a)
+                col: output_column_rename_map.get(col, col)
+                for col in referenced_columns
+            }
 
-                # Apply projection of columns to the read op
-                return input_op.apply_projection(
-                    required_columns, output_column_rename_map
-                )
+            return input_op.apply_projection_pass_through(column_rename_map)
 
         return op
 
@@ -431,8 +429,8 @@ class ProjectionPushdown(Rule):
 def _extract_input_columns_renaming_mapping(
     projection_exprs: List[Expr],
 ) -> Dict[str, str]:
-    """Fetches renaming mapping of all input columns names being renamed (replaced).
-    Format is source column name -> new column name.
+    """Fetches renaming mapping of all input columns names being renamed (replaced)
+    in alias() expressions. The format is source column name -> new column name.
     """
 
     return dict(

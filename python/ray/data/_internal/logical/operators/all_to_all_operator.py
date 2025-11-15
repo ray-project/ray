@@ -45,7 +45,11 @@ class AbstractAllToAll(LogicalOperator):
         self._sub_progress_bar_names = sub_progress_bar_names
 
 
-class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
+class RandomizeBlocks(
+    AbstractAllToAll,
+    LogicalOperatorSupportsProjectionPassThrough,
+    LogicalOperatorSupportsPredicatePassThrough,
+):
     """Logical operator for randomize_block_order."""
 
     def __init__(
@@ -70,6 +74,22 @@ class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThro
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
+
+    def apply_projection_pass_through(
+        self,
+        column_rename_map: Dict[str, str],
+    ) -> LogicalOperator:
+
+        upstream_project = self._create_upstream_project(
+            columns_to_rename=list(column_rename_map.keys()),
+            column_rename_map=column_rename_map,
+            input_op=self.input_dependencies[0],
+        )
+
+        return RandomizeBlocks(
+            input_op=upstream_project,
+            seed=self._seed,
+        )
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Randomizing block order doesn't affect filtering correctness
@@ -113,14 +133,13 @@ class RandomShuffle(
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
-    def apply_projection(
+    def apply_projection_pass_through(
         self,
-        columns: List[str],
         column_rename_map: Dict[str, str],
     ) -> LogicalOperator:
 
         upstream_project = self._create_upstream_project(
-            columns=columns,
+            columns_to_rename=list(column_rename_map.keys()),
             column_rename_map=column_rename_map,
             input_op=self.input_dependencies[0],
         )
@@ -183,12 +202,8 @@ class Repartition(
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
-    def get_referenced_columns(self) -> Optional[List[str]]:
-        return self._keys
-
-    def apply_projection(
+    def apply_projection_pass_through(
         self,
-        columns: List[str],
         column_rename_map: Dict[str, str],
     ) -> LogicalOperator:
 
@@ -196,29 +211,42 @@ class Repartition(
         # are preserved, even if they're not in the output projection.
         # This is necessary because the repartition operation needs these columns to partition by.
 
-        # Collect all required columns (output columns + partition keys)
-        required_columns = set(columns) | set(self.get_referenced_columns() or [])
+        # Collect all required columns (output columns + partition keys). If the keys are
+        # None, that means they are using sort-based repartition.
+        columns_to_rename = set(column_rename_map.keys()) | set(self._keys or [])
 
         upstream_project = self._create_upstream_project(
-            columns=list(required_columns),
+            columns_to_rename=list(columns_to_rename),
             column_rename_map=column_rename_map,
             input_op=self.input_dependencies[0],
         )
 
         new_keys: Optional[List[str]] = None
-        if self.get_referenced_columns() is not None:
-            new_keys = self._rename_projection(
-                old_keys=self.get_referenced_columns(),
+        if self._keys is not None:
+            new_keys = self._rename_keys(
+                old_keys=self._keys,
                 column_rename_map=column_rename_map,
             )
 
-        return Repartition(
+        repartition_op = Repartition(
             input_op=upstream_project,
             num_outputs=self._num_outputs,
             shuffle=self._shuffle,
             keys=new_keys,
             sort=self._sort,
         )
+
+        if len(columns_to_rename) == len(column_rename_map):
+            # This means the user selected all of the partition keys, so no
+            # we can short-circuit and return just a Repartition.
+            return repartition_op
+        else:
+            # This means the user selected columns that were not part of the
+            # partition key. This means we must apply an additional projection.
+            return self._create_downstream_project(
+                column_rename_map=column_rename_map,
+                input_op=repartition_op,
+            )
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Repartition doesn't affect filtering correctness
@@ -262,12 +290,8 @@ class Sort(
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
-    def get_referenced_columns(self) -> Optional[List[str]]:
-        return self._sort_key.get_columns()
-
-    def apply_projection(
+    def apply_projection_pass_through(
         self,
-        columns: List[str],
         column_rename_map: Dict[str, str],
     ) -> LogicalOperator:
 
@@ -276,15 +300,17 @@ class Sort(
         # This is necessary because the sort operation needs these columns to sort by.
 
         # Collect all required columns (output columns + sort keys)
-        required_columns = set(columns) | set(self.get_referenced_columns())
+        columns_to_rename = set(column_rename_map.keys()) | set(
+            self._sort_key.get_columns()
+        )
 
         upstream_project = self._create_upstream_project(
-            columns=list(required_columns),
+            columns_to_rename=list(columns_to_rename),
             column_rename_map=column_rename_map,
             input_op=self.input_dependencies[0],
         )
-        new_columns: List[str] = self._rename_projection(
-            old_keys=self.get_referenced_columns(),
+        new_columns: List[str] = self._rename_keys(
+            old_keys=self._sort_key.get_columns(),
             column_rename_map=column_rename_map,
         )
         new_sort_key = SortKey(
@@ -292,11 +318,24 @@ class Sort(
             descending=self._sort_key._descending,
             boundaries=self._sort_key.boundaries,
         )
-        return Sort(
+
+        sort_op = Sort(
             input_op=upstream_project,
             sort_key=new_sort_key,
             batch_format=self._batch_format,
         )
+
+        if len(columns_to_rename) == len(column_rename_map):
+            # This means the user selected all of the partition keys, so
+            # we can short-circuit and return just a sort.
+            return sort_op
+        else:
+            # This means the user selected columns that were not part of the
+            # partition key. This means we must apply an additional projection.
+            return self._create_downstream_project(
+                column_rename_map=column_rename_map,
+                input_op=sort_op,
+            )
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Sort doesn't affect filtering correctness
