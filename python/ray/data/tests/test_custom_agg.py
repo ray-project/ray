@@ -483,8 +483,8 @@ class TestApproximateTopK:
             ApproximateTopK(on="id", k=4, log_capacity=10, encode_lists=True)
         )
         assert result["approx_topk(id)"][0] == {"id": 1, "count": 3}
-        assert result["approx_topk(id)"][0] == {"id": 2, "count": 2}
-        assert result["approx_topk(id)"][0] == {"id": 3, "count": 1}
+        assert result["approx_topk(id)"][1] == {"id": 2, "count": 2}
+        assert result["approx_topk(id)"][2] == {"id": 3, "count": 1}
 
 
 if __name__ == "__main__":
