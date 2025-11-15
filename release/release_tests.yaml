@@ -4152,7 +4152,7 @@
     byod:
       runtime_env:
         - VLLM_DISABLE_COMPILE_CACHE=1
-      type: gpu
+      type: llm-cu128
     cluster_compute: llm_single_node_benchmark_l4.yaml
 
   run:
