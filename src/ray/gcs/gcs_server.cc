@@ -938,11 +938,11 @@ void GcsServer::PrintDebugState() const {
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Main service Event stats:\n\n"
-                  << io_context_provider_.GetDefaultIOContext().stats().StatsString()
+                  << io_context_provider_.GetDefaultIOContext().stats()->StatsString()
                   << "\n\n";
     for (const auto &io_context : io_context_provider_.GetAllDedicatedIOContexts()) {
       RAY_LOG(INFO) << io_context->GetName() << " Event stats:\n\n"
-                    << io_context->GetIoService().stats().StatsString() << "\n\n";
+                    << io_context->GetIoService().stats()->StatsString() << "\n\n";
     }
   }
 }

@@ -42,15 +42,6 @@ namespace stats {
 /// ray_[component]_[metrics_name]_total (e.g., ray_pull_manager_total)
 ///
 
-/// ASIO stats
-DECLARE_stats(io_context_event_loop_lag_ms);
-
-/// Event stats
-DECLARE_stats(operation_count);
-DECLARE_stats(operation_run_time_ms);
-DECLARE_stats(operation_queue_time_ms);
-DECLARE_stats(operation_active_count);
-
 /// Scheduler
 DECLARE_stats(scheduler_failed_worker_startup_total);
 DECLARE_stats(scheduler_tasks);

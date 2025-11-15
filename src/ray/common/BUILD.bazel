@@ -282,6 +282,7 @@ ray_cc_library(
     ],
     deps = [
         ":event_stats",
+        ":metrics",
         ":ray_config",
         "//src/ray/util:array",
         "//src/ray/util:function_traits",
@@ -312,6 +313,7 @@ ray_cc_library(
         "event_stats.h",
     ],
     deps = [
+        ":metrics",
         ":ray_config",
         "//src/ray/stats:stats_metric",
         "//src/ray/util:time",
