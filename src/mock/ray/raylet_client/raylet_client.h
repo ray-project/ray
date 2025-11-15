@@ -147,6 +147,11 @@ class MockRayletClientInterface : public RayletClientInterface {
                const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback),
               (override));
   MOCK_METHOD(void,
+              KillLocalActor,
+              (const rpc::KillLocalActorRequest &request,
+               const rpc::ClientCallback<rpc::KillLocalActorReply> &callback),
+              (override));
+  MOCK_METHOD(void,
               GlobalGC,
               (const rpc::ClientCallback<rpc::GlobalGCReply> &callback),
               (override));

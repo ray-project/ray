@@ -29,11 +29,11 @@ Try to use the same plugin and KubeRay versions.
 
 Go to the [releases page](https://github.com/ray-project/kuberay/releases) and download the binary for your platform.
 
-For example, to install kubectl plugin version 1.4.2 on Linux amd64:
+For example, to install kubectl plugin version 1.5.0 on Linux amd64:
 
 ```bash
-curl -LO https://github.com/ray-project/kuberay/releases/download/v1.4.2/kubectl-ray_v1.4.2_linux_amd64.tar.gz
-tar -xvf kubectl-ray_v1.4.2_linux_amd64.tar.gz
+curl -LO https://github.com/ray-project/kuberay/releases/download/v1.5.0/kubectl-ray_v1.5.0_linux_amd64.tar.gz
+tar -xvf kubectl-ray_v1.5.0_linux_amd64.tar.gz
 cp kubectl-ray ~/.local/bin
 ```
 
@@ -93,12 +93,12 @@ Created Ray Cluster: raycluster-sample-2
 You can also override the default values with a config file. For example, the following config file sets the worker CPU to 3.
 
 ```text
-$ curl -LO https://raw.githubusercontent.com/ray-project/kuberay/refs/tags/v1.4.2/kubectl-plugin/config/samples/create-cluster.sample.yaml
+$ curl -LO https://raw.githubusercontent.com/ray-project/kuberay/refs/tags/v1.5.0/kubectl-plugin/config/samples/create-cluster.sample.yaml
 $ kubectl ray create cluster raycluster-sample-3 --file create-cluster.sample.yaml
 Created Ray Cluster: raycluster-sample-3
 ```
 
-See https://github.com/ray-project/kuberay/blob/v1.4.2/kubectl-plugin/config/samples/create-cluster.complete.yaml for the complete list of parameters that you can set in the config file.
+See https://github.com/ray-project/kuberay/blob/v1.5.0/kubectl-plugin/config/samples/create-cluster.complete.yaml for the complete list of parameters that you can set in the config file.
 
 By default it only creates one worker group. You can use `kubectl ray create workergroup` to add additional worker groups to existing RayClusters.
 
