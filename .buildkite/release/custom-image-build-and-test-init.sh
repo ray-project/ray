@@ -53,8 +53,13 @@ if [[ "${BUILDKITE_BRANCH}" != "releases/"* ]]; then
   RUN_FLAGS+=(--run-unstable-tests)
 fi
 
-/tmp/bazel run --python_path="${UV_PYTHON_BIN}" //release:custom_image_build_and_test_init \
-  -- "${RUN_FLAGS[@]}" \
+/tmp/bazel build --python_path="${UV_PYTHON_BIN}" \
+  --build_python_zip --enable_runfiles \
+  --incompatible_use_python_toolchains=false \
+  //release:custom_image_build_and_test_init
+
+BAZEL_WORKSPACE_DIR="${PWD}" bazel-bin/release/custom_image_build_and_test_init \
+  "${RUN_FLAGS[@]}" \
   --custom-build-jobs-output-file .buildkite/release/custom_build_jobs.rayci.yaml \
   --test-jobs-output-file .buildkite/release/release_tests.json
 
