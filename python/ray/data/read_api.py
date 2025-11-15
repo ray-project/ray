@@ -4501,13 +4501,13 @@ def read_kafka(
     Returns:
         A :class:`~ray.data.Dataset` containing Kafka messages with the following schema:
         - offset: int64 - Message offset within partition
-        - key: string - Message key (if present)
-        - value: string - Message value (decoded as UTF-8)
+        - key: string - Message key (UTF-8 decoded, if present)
+        - value: binary - Message value as raw bytes
         - topic: string - Topic name
         - partition: int32 - Partition ID
         - timestamp: int64 - Message timestamp in milliseconds
         - timestamp_type: int32 - 0=CreateTime, 1=LogAppendTime
-        - headers: map<string, string> - Message headers
+        - headers: map<string, binary> - Message headers (keys as strings, values as bytes)
 
     Raises:
         ValueError: If invalid parameters are provided.

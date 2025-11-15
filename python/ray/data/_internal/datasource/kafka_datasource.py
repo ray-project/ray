@@ -3,6 +3,10 @@
 This module provides a Kafka datasource implementation for Ray Data that supports
 bounded reads with offset-based range queries.
 
+Message keys are decoded as UTF-8 strings (common case for routing keys).
+Message values are returned as raw bytes to support any serialization format
+(JSON, Avro, Protobuf, etc.). Users can decode values using map operations.
+
 Requires:
     - kafka-python: https://kafka-python.readthedocs.io/
 """
@@ -90,11 +94,22 @@ def _build_consumer_config_for_read(
     Returns:
         Consumer configuration dict for reading.
     """
+    # Value: keep as raw bytes, Key: decode as UTF-8 string (common case)
+    def deserialize_value(v):
+        return v  # Return raw bytes
+
+    def deserialize_key(k):
+        if k is None:
+            return None
+        return k.decode("utf-8")
+
     config = {
         "bootstrap_servers": bootstrap_servers,
         "enable_auto_commit": False,
         "auto_offset_reset": "latest",  # Default, will be overridden by seek
         "group_id": f"ray-data-kafka-{topic_name}-{partition_id}-{uuid.uuid4().hex[:8]}",
+        "value_deserializer": deserialize_value,
+        "key_deserializer": deserialize_key,
     }
 
     if not authentication:
@@ -134,26 +149,6 @@ def _build_consumer_config_for_read(
     for key in ["ssl_check_hostname", "ssl_ciphers", "ssl_password", "ssl_crlfile"]:
         if key in authentication:
             config[key] = authentication[key]
-
-    # Add deserializers
-    def deserialize_value(value):
-        if value is None:
-            return None
-        try:
-            return value.decode("utf-8")
-        except UnicodeDecodeError as e:
-            raise ValueError(f"Failed to decode message value as UTF-8: {e}") from e
-
-    def deserialize_key(key):
-        if key is None:
-            return None
-        try:
-            return key.decode("utf-8")
-        except UnicodeDecodeError as e:
-            raise ValueError(f"Failed to decode message key as UTF-8: {e}") from e
-
-    config["value_deserializer"] = deserialize_value
-    config["key_deserializer"] = deserialize_key
 
     return config
 
@@ -198,17 +193,17 @@ def _resolve_offset(
     raise ValueError(f"Unsupported offset type: {type(offset_value)}")
 
 
-def _convert_headers_to_dict(headers: List[Tuple[bytes, bytes]]) -> Dict[str, str]:
+def _convert_headers_to_dict(headers: List[Tuple[bytes, bytes]]) -> Dict[str, bytes]:
     """Convert Kafka message headers to dictionary.
 
     Args:
         headers: Kafka message headers (list of tuples).
 
     Returns:
-        Dictionary with string keys and values.
+        Dictionary with string keys and binary values.
 
     Raises:
-        ValueError: If header cannot be decoded as UTF-8.
+        ValueError: If header key cannot be decoded as UTF-8.
     """
     if not headers:
         return {}
@@ -216,13 +211,13 @@ def _convert_headers_to_dict(headers: List[Tuple[bytes, bytes]]) -> Dict[str, st
     headers_dict = {}
     for key, value in headers:
         try:
+            # Decode key as UTF-8 (keys should be strings)
             key_str = key.decode("utf-8") if isinstance(key, bytes) else str(key)
-            value_str = (
-                value.decode("utf-8") if isinstance(value, bytes) else str(value)
-            )
+            # Keep value as bytes
+            value_bytes = value
         except UnicodeDecodeError as e:
-            raise ValueError(f"Failed to decode header as UTF-8: {e}") from e
-        headers_dict[key_str] = value_str
+            raise ValueError(f"Failed to decode header key as UTF-8: {e}") from e
+        headers_dict[key_str] = value_bytes
 
     return headers_dict
 
@@ -547,17 +542,17 @@ class KafkaDatasource(Datasource):
                 exec_stats=None,
             )
 
-            # Create schema - flexible to handle JSON values or strings
+            # Create schema - binary data for maximum flexibility
             schema = pa.schema(
                 [
                     ("offset", pa.int64()),
                     ("key", pa.string()),
-                    ("value", pa.string()),  # Can be JSON string or plain string
+                    ("value", pa.binary()),
                     ("topic", pa.string()),
                     ("partition", pa.int32()),
                     ("timestamp", pa.int64()),  # Kafka timestamp in milliseconds
                     ("timestamp_type", pa.int32()),  # 0=CreateTime, 1=LogAppendTime
-                    ("headers", pa.map_(pa.string(), pa.string())),  # Message headers
+                    ("headers", pa.map_(pa.string(), pa.binary())),  # Message headers
                 ]
             )
             kafka_read_fn = create_kafka_read_fn(topic_name, partition_id)

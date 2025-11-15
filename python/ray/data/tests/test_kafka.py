@@ -72,6 +72,14 @@ def test_read_kafka_basic(bootstrap_server, kafka_producer, ray_start_regular_sh
     assert "timestamp" in first_record
     assert first_record["topic"] == topic
 
+    # Verify data types: key is string, value is binary
+    assert isinstance(first_record["key"], str)
+    assert isinstance(first_record["value"], bytes)
+    assert first_record["key"].startswith("key-")
+    value_obj = json.loads(first_record["value"].decode("utf-8"))
+    assert "id" in value_obj
+    assert "value" in value_obj
+
 
 @pytest.mark.parametrize(
     "total_messages,start_offset,end_offset,expected_count,test_id",
@@ -207,10 +215,11 @@ def test_read_kafka_with_message_headers(
     records = ds.take_all()
     assert len(records) == 10
 
-    # Verify headers
+    # Verify headers - now binary
     first_record = records[0]
     assert "headers" in first_record
-    assert first_record["headers"]["header1"] == "value1"
+    assert isinstance(first_record["headers"]["header1"], bytes)
+    assert first_record["headers"]["header1"].decode("utf-8") == "value1"
 
 
 def test_read_kafka_offset_exceeds_available_messages(
