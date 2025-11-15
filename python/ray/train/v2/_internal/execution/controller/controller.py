@@ -484,6 +484,10 @@ class TrainController:
     def _get_run_attempt_id(self):
         return self._run_attempt_id
 
+    def ping(self) -> bool:
+        """Liveness probe for external monitors."""
+        return True
+
     async def _run_control_loop_iteration(self):
         """Run a single iteration of the control loop.
 
