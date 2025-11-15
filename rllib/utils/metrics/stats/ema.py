@@ -33,7 +33,7 @@ class EmaStats(StatsBase):
         Also, we potentially aggregate them multiple times per reduction cycle.
         We therefore aggregate by taking the mean of all collected EMAs.
         We do this for simplicity and accept this limitation because EMAs
-        inherintly only approximate.
+        inherently only approximate.
 
         Example to illustrate this limitation:
         Using an ema coefficient of 0.01:

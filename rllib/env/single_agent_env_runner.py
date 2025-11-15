@@ -306,6 +306,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     global_env_steps_lifetime = (
                         self.num_env_steps_sampled_lifetime
                         // (self.config.num_env_runners or 1)
+                        + ts
                     ) * (self.config.num_env_runners or 1)
                     with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
                         to_env = self.module.forward_exploration(
