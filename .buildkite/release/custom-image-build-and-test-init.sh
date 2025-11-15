@@ -57,7 +57,7 @@ fi
   --build_python_zip \
   --enable_runfiles \
   --incompatible_use_python_toolchains=false \
-  --python_path=python \
+  --python_path="${UV_PYTHON_BIN}" \
   //release:custom_image_build_and_test_init
 
 "${UV_PYTHON_BIN}" bazel-bin/release/custom_image_build_and_test_init.zip --
