@@ -17,13 +17,15 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "mock/ray/gcs_client/accessors/actor_info_accessor.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/reference_counter_interface.h"
-#include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/accessors/actor_info_accessor_interface.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_publisher.h"
@@ -34,68 +36,11 @@ namespace core {
 
 using ::testing::_;
 
-class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
- public:
-  explicit MockActorInfoAccessor(gcs::GcsClient *client)
-      : gcs::ActorInfoAccessor(client) {}
-
-  ~MockActorInfoAccessor() {}
-
-  void AsyncSubscribe(
-      const ActorID &actor_id,
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const gcs::StatusCallback &done) {
-    auto callback_entry = std::make_pair(actor_id, subscribe);
-    callback_map_.emplace(actor_id, subscribe);
-    subscribe_finished_callback_map_[actor_id] = done;
-    actor_subscribed_times_[actor_id]++;
-  }
-
-  bool ActorStateNotificationPublished(const ActorID &actor_id,
-                                       const rpc::ActorTableData &actor_data) {
-    auto it = callback_map_.find(actor_id);
-    if (it == callback_map_.end()) return false;
-    auto actor_state_notification_callback = it->second;
-    auto copied = actor_data;
-    actor_state_notification_callback(actor_id, std::move(copied));
-    return true;
-  }
-
-  bool CheckSubscriptionRequested(const ActorID &actor_id) {
-    return callback_map_.find(actor_id) != callback_map_.end();
-  }
-
-  // Mock the logic of subscribe finished. see `ActorInfoAccessor::AsyncSubscribe`
-  bool ActorSubscribeFinished(const ActorID &actor_id,
-                              const rpc::ActorTableData &actor_data) {
-    auto subscribe_finished_callback_it = subscribe_finished_callback_map_.find(actor_id);
-    if (subscribe_finished_callback_it == subscribe_finished_callback_map_.end()) {
-      return false;
-    }
-
-    auto copied = actor_data;
-    if (!ActorStateNotificationPublished(actor_id, std::move(copied))) {
-      return false;
-    }
-
-    auto subscribe_finished_callback = subscribe_finished_callback_it->second;
-    subscribe_finished_callback(Status::OK());
-    // Erase callback when actor subscribe is finished.
-    subscribe_finished_callback_map_.erase(subscribe_finished_callback_it);
-    return true;
-  }
-
-  absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
-      callback_map_;
-  absl::flat_hash_map<ActorID, gcs::StatusCallback> subscribe_finished_callback_map_;
-  absl::flat_hash_map<ActorID, uint32_t> actor_subscribed_times_;
-};
-
 class MockGcsClient : public gcs::GcsClient {
  public:
   explicit MockGcsClient(gcs::GcsClientOptions options) : gcs::GcsClient(options) {}
 
-  void Init(MockActorInfoAccessor *actor_info_accessor) {
+  void Init(gcs::FakeActorInfoAccessor *actor_info_accessor) {
     actor_accessor_.reset(actor_info_accessor);
   }
 };
@@ -136,7 +81,7 @@ class ActorManagerTest : public ::testing::Test {
                  /*allow_cluster_id_nil=*/true,
                  /*fetch_cluster_id_if_nil=*/false),
         gcs_client_mock_(new MockGcsClient(options_)),
-        actor_info_accessor_(new MockActorInfoAccessor(gcs_client_mock_.get())),
+        actor_info_accessor_(new gcs::FakeActorInfoAccessor()),
         actor_task_submitter_(new MockActorTaskSubmitter()),
         publisher_(std::make_unique<pubsub::FakePublisher>()),
         subscriber_(std::make_unique<pubsub::FakeSubscriber>()),
@@ -196,7 +141,7 @@ class ActorManagerTest : public ::testing::Test {
 
   gcs::GcsClientOptions options_;
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
-  MockActorInfoAccessor *actor_info_accessor_;
+  gcs::FakeActorInfoAccessor *actor_info_accessor_;
   std::shared_ptr<MockActorTaskSubmitter> actor_task_submitter_;
   std::unique_ptr<pubsub::FakePublisher> publisher_;
   std::unique_ptr<pubsub::FakeSubscriber> subscriber_;

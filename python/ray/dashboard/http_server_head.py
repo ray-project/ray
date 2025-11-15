@@ -173,6 +173,8 @@ class HttpServerDashboardHead:
             mode = get_authentication_mode()
             if mode == AuthenticationMode.TOKEN:
                 mode_str = "token"
+            elif mode == AuthenticationMode.K8S:
+                mode_str = "k8s"
             else:
                 mode_str = "disabled"
 
@@ -305,7 +307,10 @@ class HttpServerDashboardHead:
             if (
                 # A best effort test for browser traffic. All common browsers
                 # start with Mozilla at the time of writing.
-                dashboard_optional_utils.is_browser_request(request)
+                (
+                    dashboard_optional_utils.is_browser_request(request)
+                    or dashboard_optional_utils.has_sec_fetch_headers(request)
+                )
                 and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
             ):
                 return aiohttp.web.Response(

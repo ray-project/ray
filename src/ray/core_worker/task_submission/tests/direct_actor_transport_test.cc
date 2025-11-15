@@ -109,12 +109,9 @@ TEST_F(DirectTaskTransportTest, ActorCreationOk) {
   auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
   auto creation_task_spec = GetActorCreationTaskSpec(actor_id);
   EXPECT_CALL(*task_manager, CompletePendingTask(creation_task_spec.TaskId(), _, _, _));
-  rpc::ClientCallback<rpc::CreateActorReply> create_cb;
-  EXPECT_CALL(*gcs_client->mock_actor_accessor,
-              AsyncCreateActor(creation_task_spec, ::testing::_))
-      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&create_cb)));
   actor_task_submitter->SubmitActorCreationTask(creation_task_spec);
-  create_cb(Status::OK(), rpc::CreateActorReply());
+  gcs_client->mock_actor_accessor->async_create_actor_callback_(Status::OK(),
+                                                                rpc::CreateActorReply());
 }
 
 TEST_F(DirectTaskTransportTest, ActorCreationFail) {
@@ -125,12 +122,9 @@ TEST_F(DirectTaskTransportTest, ActorCreationFail) {
       *task_manager,
       FailPendingTask(
           creation_task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, _, _));
-  rpc::ClientCallback<rpc::CreateActorReply> create_cb;
-  EXPECT_CALL(*gcs_client->mock_actor_accessor,
-              AsyncCreateActor(creation_task_spec, ::testing::_))
-      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&create_cb)));
   actor_task_submitter->SubmitActorCreationTask(creation_task_spec);
-  create_cb(Status::IOError(""), rpc::CreateActorReply());
+  gcs_client->mock_actor_accessor->async_create_actor_callback_(Status::IOError(""),
+                                                                rpc::CreateActorReply());
 }
 
 TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
@@ -142,10 +136,6 @@ TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
   auto task_arg = task_spec.GetMutableMessage().add_args();
   auto inline_obj_ref = task_arg->add_nested_inlined_refs();
   inline_obj_ref->set_object_id(ObjectID::ForActorHandle(actor_id).Binary());
-  std::function<void(Status)> register_cb;
-  EXPECT_CALL(*gcs_client->mock_actor_accessor,
-              AsyncRegisterActor(creation_task_spec, ::testing::_, ::testing::_))
-      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&register_cb)));
   actor_creator->AsyncRegisterActor(creation_task_spec, nullptr);
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   actor_task_submitter->AddActorQueueIfNotExists(actor_id,
@@ -158,7 +148,7 @@ TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
       *task_manager,
       FailOrRetryPendingTask(
           task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, _, _, _, _));
-  register_cb(Status::IOError(""));
+  gcs_client->mock_actor_accessor->async_register_actor_callback_(Status::IOError(""));
 }
 
 TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
@@ -170,10 +160,6 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
   auto task_arg = task_spec.GetMutableMessage().add_args();
   auto inline_obj_ref = task_arg->add_nested_inlined_refs();
   inline_obj_ref->set_object_id(ObjectID::ForActorHandle(actor_id).Binary());
-  std::function<void(Status)> register_cb;
-  EXPECT_CALL(*gcs_client->mock_actor_accessor,
-              AsyncRegisterActor(creation_task_spec, ::testing::_, ::testing::_))
-      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&register_cb)));
   actor_creator->AsyncRegisterActor(creation_task_spec, nullptr);
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   actor_task_submitter->AddActorQueueIfNotExists(actor_id,
@@ -183,7 +169,7 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
                                                  /*owned*/ false);
   ASSERT_TRUE(CheckSubmitTask(task_spec));
   EXPECT_CALL(*task_manager, FailOrRetryPendingTask(_, _, _, _, _, _)).Times(0);
-  register_cb(Status::OK());
+  gcs_client->mock_actor_accessor->async_register_actor_callback_(Status::OK());
 }
 
 }  // namespace core
