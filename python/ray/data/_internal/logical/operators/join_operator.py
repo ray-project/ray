@@ -88,10 +88,6 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         self._partition_size_hint = partition_size_hint
         self._aggregator_ray_remote_args = aggregator_ray_remote_args
 
-        # Temporary state for predicate pushdown to know which side's column
-        # substitutions to return
-        self._pushdown_side: Optional[JoinSide] = None
-
     @staticmethod
     def _validate_schemas(
         left_op_schema: "Schema",
@@ -247,37 +243,36 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         if suffix is None or suffix == "":
             return columns
 
-        result = set()
-        for col in columns:
-            if col.endswith(suffix):
-                # Strip the suffix
-                result.add(col[: -len(suffix)])
-            else:
-                # Column doesn't have this suffix, keep as-is
-                result.add(col)
-        return result
+        return {col[: -len(suffix)] if col.endswith(suffix) else col for col in columns}
 
-    def get_column_substitutions(self) -> dict[str, str]:
-        """Get column substitutions for the side currently being pushed to.
+    def get_column_substitutions(
+        self, side: Optional[JoinSide] = None
+    ) -> dict[str, str]:
+        """Get column substitutions for predicate pushdown.
 
-        This method implements the standard predicate pushdown interface used by
-        PASSTHROUGH_WITH_SUBSTITUTION operators. For joins, it uses the temporary
-        _pushdown_side state to determine which side's column renames to return.
+        This method implements the standard predicate passthrough interface.
+        For Join operators, column substitutions depend on which side is being
+        pushed to, so the `side` parameter must be provided.
+
+        Args:
+            side: Which side of the join to get substitutions for. Required for
+                  Join operators, optional for compatibility with other operators.
 
         Returns:
-            Dictionary mapping from original_name -> suffixed_name for the side
-            being pushed to, or empty dict if no substitutions are needed.
+            Dictionary mapping from original_name -> suffixed_name for the specified
+            side, or empty dict if no substitutions are needed or no side specified.
         """
-        if self._pushdown_side is None:
+        if side is None:
+            # Join requires side context for substitutions
             return {}
 
-        # Get suffix and schema for the side being pushed to
+        # Get suffix and schema for the specified side
         suffix = (
             self._left_columns_suffix
-            if self._pushdown_side == JoinSide.LEFT
+            if side == JoinSide.LEFT
             else self._right_columns_suffix
         )
-        input_op = self.input_dependencies[self._pushdown_side.value]
+        input_op = self.input_dependencies[side.value]
         schema = input_op.infer_schema()
 
         if not schema or suffix is None:
@@ -286,9 +281,4 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         # Create mapping: original_name -> suffixed_name
         # This will be inverted by _substitute_predicate_columns to map:
         # suffixed_name -> col(original_name)
-        rename_map = {}
-        for col_name in schema.names:
-            suffixed_name = col_name + suffix
-            rename_map[col_name] = suffixed_name
-
-        return rename_map
+        return {col_name: col_name + suffix for col_name in schema.names}

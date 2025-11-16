@@ -860,16 +860,16 @@ def _compute_expected_join_filter_result(
             right_pd, on="id", how=pandas_join_type, suffixes=suffixes
         )
     elif join_type in ["left_semi", "right_semi"]:
-        result_pd = _compute_semi_join(left_pd, right_pd, join_type, use_suffixes)
+        result_pd = _compute_semi_join(left_pd, right_pd, join_type)
     else:  # anti joins
-        result_pd = _compute_anti_join(left_pd, right_pd, join_type, use_suffixes)
+        result_pd = _compute_anti_join(left_pd, right_pd, join_type)
 
     # Apply filter
     result_pd = result_pd[result_pd[filter_col] < threshold]
     return result_pd.reset_index(drop=True)
 
 
-def _compute_semi_join(left_pd, right_pd, join_type, use_suffixes):
+def _compute_semi_join(left_pd, right_pd, join_type):
     """Compute semi join result using pandas."""
     merged = left_pd.merge(right_pd, on="id", how="inner")
     source_pd = left_pd if join_type == "left_semi" else right_pd
@@ -877,7 +877,7 @@ def _compute_semi_join(left_pd, right_pd, join_type, use_suffixes):
     return merged[["id"] + cols].drop_duplicates()
 
 
-def _compute_anti_join(left_pd, right_pd, join_type, use_suffixes):
+def _compute_anti_join(left_pd, right_pd, join_type):
     """Compute anti join result using pandas."""
     is_left = join_type == "left_anti"
     how = "left" if is_left else "right"

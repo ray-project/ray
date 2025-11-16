@@ -199,22 +199,13 @@ class PredicatePushdown(Rule):
         # Get the predicate expression, potentially rewritten to strip suffixes
         predicate_expr = filter_op._predicate_expr
 
-        # Apply column substitution using the standard interface
-        # For joins, this requires setting temporary state to indicate which side
-        if hasattr(conditional_op, "_pushdown_side"):
-            # Set the side we're pushing to
-            conditional_op._pushdown_side = push_side
-
-        # Use the same substitution pattern as PASSTHROUGH_WITH_SUBSTITUTION
-        rename_map = conditional_op.get_column_substitutions()
+        # Apply column substitution, passing the side context for Join operators
+        # This avoids the need for temporary mutable state
+        rename_map = conditional_op.get_column_substitutions(push_side)
         if rename_map:
             predicate_expr = cls._substitute_predicate_columns(
                 predicate_expr, rename_map
             )
-
-        # Clear the temporary state
-        if hasattr(conditional_op, "_pushdown_side"):
-            conditional_op._pushdown_side = None
 
         # Push to the appropriate branch
         new_inputs = list(conditional_op.input_dependencies)
