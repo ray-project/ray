@@ -1,10 +1,15 @@
 import math
 import os
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.execution_options import (
+        ExecutionResources,
+    )
 
 
 class ExecutionResources:
@@ -345,6 +350,37 @@ class ExecutionOptions:
     def is_resource_limits_default(self):
         """Returns True if resource_limits is the default value."""
         return self._resource_limits == ExecutionResources.for_limits()
+
+    def copy(
+        self,
+        resource_limits: Optional[ExecutionResources] = None,
+        exclude_resources: Optional[ExecutionResources] = None,
+        locality_with_output: Optional[Union[bool, List[NodeIdStr]]] = None,
+        preserve_order: Optional[bool] = None,
+        actor_locality_enabled: Optional[bool] = None,
+        verbose_progress: Optional[bool] = None,
+    ) -> "ExecutionOptions":
+        """Return a copy of this object, overriding specified fields.
+
+        Args:
+            resource_limits: Optional resource limits override.
+            exclude_resources: Optional exclude resources override.
+            locality_with_output: Optional locality override.
+            preserve_order: Optional preserve order override.
+            actor_locality_enabled: Optional actor locality override.
+            verbose_progress: Optional verbose progress override.
+
+        Returns:
+            A new ExecutionOptions object with overridden fields.
+        """
+        return ExecutionOptions(
+            resource_limits=resource_limits if resource_limits is not None else self.resource_limits,
+            exclude_resources=exclude_resources if exclude_resources is not None else self.exclude_resources,
+            locality_with_output=locality_with_output if locality_with_output is not None else self.locality_with_output,
+            preserve_order=preserve_order if preserve_order is not None else self.preserve_order,
+            actor_locality_enabled=actor_locality_enabled if actor_locality_enabled is not None else self.actor_locality_enabled,
+            verbose_progress=verbose_progress if verbose_progress is not None else self.verbose_progress,
+        )
 
     def validate(self) -> None:
         """Validate the options."""
