@@ -302,7 +302,7 @@ class KafkaDatasource(Datasource):
         )
         self._start_offset = start_offset
         self._end_offset = end_offset
-        self._kafka_auth_config = kafka_auth_config or {}
+        self._kafka_auth_config = kafka_auth_config
         self._timeout_ms = timeout_ms
         self._target_max_block_size = DataContext.get_current().target_max_block_size
 
