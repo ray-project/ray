@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorSupportsProjectionPushdown,
     LogicalPlan,
     Rule,
@@ -259,6 +260,7 @@ class ProjectionPushdown(Rule):
         dag = plan.dag
         new_dag = dag._apply_transform(self._try_fuse_projects)
         new_dag = new_dag._apply_transform(self._push_projection_into_read_op)
+        new_dag = new_dag._apply_transform(self._push_projection_through_op)
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
 
     @classmethod
@@ -382,6 +384,48 @@ class ProjectionPushdown(Rule):
                 )
 
         return current_project
+
+    @classmethod
+    def _push_projection_through_op(cls, op: LogicalOperator) -> LogicalOperator:
+
+        if not isinstance(op, Project):
+            return op
+
+        current_project: Project = op
+
+        # Step 2: Push projection into the data source if supported
+        input_op = current_project.input_dependency
+        if (
+            isinstance(input_op, LogicalOperatorSupportsProjectionPassThrough)
+            and input_op.supports_projection_pushthrough()
+            and not current_project.has_star_expr()
+        ):
+            # Collect required column for projection
+            required_columns = _collect_referenced_columns(current_project.exprs)
+
+            # Check if it's a simple projection that could be pushed into
+            # read as a whole
+            is_simple_projection = all(
+                _is_col_expr(expr) for expr in current_project.exprs
+            )
+
+            if required_columns is not None and is_simple_projection:
+                # NOTE: We only can rename output columns when it's a simple
+                #       projection and Project operator is discarded (otherwise
+                #       it might be holding expression referencing attributes
+                #       by original their names prior to renaming)
+                #
+                # TODO fix by instead rewriting exprs
+                output_column_rename_map = _extract_input_columns_renaming_mapping(
+                    current_project.exprs
+                )
+
+                # Apply projection of columns to the read op
+                return input_op.apply_projection(
+                    required_columns, output_column_rename_map
+                )
+
+        return op
 
 
 def _extract_input_columns_renaming_mapping(

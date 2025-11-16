@@ -1,8 +1,9 @@
-from typing import Optional
+from typing import Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
 )
 
@@ -22,7 +23,7 @@ class NAry(LogicalOperator):
         super().__init__(self.__class__.__name__, list(input_ops), num_outputs)
 
 
-class Zip(NAry):
+class Zip(NAry, LogicalOperatorSupportsProjectionPassThrough):
     """Logical operator for zip."""
 
     def __init__(
@@ -40,8 +41,29 @@ class Zip(NAry):
             total_num_outputs = max(total_num_outputs, num_outputs)
         return total_num_outputs
 
+    def apply_projection(
+        self,
+        columns: List[str],
+        column_rename_map: Dict[str, str],
+    ) -> LogicalOperator:
 
-class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
+        new_input_ops = []
+        for input_op in self.input_dependencies:
+            upstream_project = self._create_upstream_project(
+                columns=columns,
+                column_rename_map=column_rename_map,
+                input_op=input_op,
+            )
+            new_input_ops.append(upstream_project)
+
+        return Zip(*new_input_ops)
+
+
+class Union(
+    NAry,
+    LogicalOperatorSupportsProjectionPassThrough,
+    LogicalOperatorSupportsPredicatePassThrough,
+):
     """Logical operator for union."""
 
     def __init__(
@@ -58,6 +80,23 @@ class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
                 return None
             total_num_outputs += num_outputs
         return total_num_outputs
+
+    def apply_projection(
+        self,
+        columns: List[str],
+        column_rename_map: Dict[str, str],
+    ) -> LogicalOperator:
+
+        new_input_ops = []
+        for input_op in self.input_dependencies:
+            upstream_project = self._create_upstream_project(
+                columns=columns,
+                column_rename_map=column_rename_map,
+                input_op=input_op,
+            )
+            new_input_ops.append(upstream_project)
+
+        return Union(*new_input_ops)
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Union allows pushing filter into each branch

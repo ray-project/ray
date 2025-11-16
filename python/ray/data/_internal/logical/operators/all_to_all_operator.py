@@ -1,8 +1,9 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
@@ -75,7 +76,11 @@ class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThro
         return PredicatePassThroughBehavior.PASSTHROUGH
 
 
-class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
+class RandomShuffle(
+    AbstractAllToAll,
+    LogicalOperatorSupportsProjectionPassThrough,
+    LogicalOperatorSupportsPredicatePassThrough,
+):
     """Logical operator for random_shuffle."""
 
     def __init__(
@@ -108,12 +113,35 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
+    def apply_projection(
+        self,
+        columns: List[str],
+        column_rename_map: Dict[str, str],
+    ) -> LogicalOperator:
+
+        upstream_project = self._create_upstream_project(
+            columns=columns,
+            column_rename_map=column_rename_map,
+            input_op=self.input_dependencies[0],
+        )
+
+        return RandomShuffle(
+            input_op=upstream_project,
+            name=self._name,
+            seed=self._seed,
+            ray_remote_args=self._ray_remote_args,
+        )
+
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Random shuffle doesn't affect filtering correctness
         return PredicatePassThroughBehavior.PASSTHROUGH
 
 
-class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
+class Repartition(
+    AbstractAllToAll,
+    LogicalOperatorSupportsProjectionPassThrough,
+    LogicalOperatorSupportsPredicatePassThrough,
+):
     """Logical operator for repartition."""
 
     def __init__(
@@ -155,12 +183,53 @@ class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough)
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
+    def get_referenced_columns(self) -> Optional[List[str]]:
+        return self._keys
+
+    def apply_projection(
+        self,
+        columns: List[str],
+        column_rename_map: Dict[str, str],
+    ) -> LogicalOperator:
+
+        # When pushing projections through repartition, we must ensure partition key columns
+        # are preserved, even if they're not in the output projection.
+        # This is necessary because the repartition operation needs these columns to partition by.
+
+        # Collect all required columns (output columns + partition keys)
+        required_columns = set(columns) | set(self.get_referenced_columns() or [])
+
+        upstream_project = self._create_upstream_project(
+            columns=list(required_columns),
+            column_rename_map=column_rename_map,
+            input_op=self.input_dependencies[0],
+        )
+
+        new_keys: Optional[List[str]] = None
+        if self.get_referenced_columns() is not None:
+            new_keys = self._rename_projection(
+                old_keys=self.get_referenced_columns(),
+                column_rename_map=column_rename_map,
+            )
+
+        return Repartition(
+            input_op=upstream_project,
+            num_outputs=self._num_outputs,
+            shuffle=self._shuffle,
+            keys=new_keys,
+            sort=self._sort,
+        )
+
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Repartition doesn't affect filtering correctness
         return PredicatePassThroughBehavior.PASSTHROUGH
 
 
-class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
+class Sort(
+    AbstractAllToAll,
+    LogicalOperatorSupportsProjectionPassThrough,
+    LogicalOperatorSupportsPredicatePassThrough,
+):
     """Logical operator for sort."""
 
     def __init__(
@@ -193,6 +262,42 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
+    def get_referenced_columns(self) -> Optional[List[str]]:
+        return self._sort_key.get_columns()
+
+    def apply_projection(
+        self,
+        columns: List[str],
+        column_rename_map: Dict[str, str],
+    ) -> LogicalOperator:
+
+        # When pushing projections through sort, we must ensure sort key columns
+        # are preserved, even if they're not in the output projection.
+        # This is necessary because the sort operation needs these columns to sort by.
+
+        # Collect all required columns (output columns + sort keys)
+        required_columns = set(columns) | set(self.get_referenced_columns())
+
+        upstream_project = self._create_upstream_project(
+            columns=list(required_columns),
+            column_rename_map=column_rename_map,
+            input_op=self.input_dependencies[0],
+        )
+        new_columns: List[str] = self._rename_projection(
+            old_keys=self.get_referenced_columns(),
+            column_rename_map=column_rename_map,
+        )
+        new_sort_key = SortKey(
+            key=new_columns,
+            descending=self._sort_key._descending,
+            boundaries=self._sort_key.boundaries,
+        )
+        return Sort(
+            input_op=upstream_project,
+            sort_key=new_sort_key,
+            batch_format=self._batch_format,
+        )
+
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Sort doesn't affect filtering correctness
         return PredicatePassThroughBehavior.PASSTHROUGH
@@ -204,7 +309,7 @@ class Aggregate(AbstractAllToAll):
     def __init__(
         self,
         input_op: LogicalOperator,
-        key: Optional[str],
+        key: Optional[Union[str, List[str]]],
         aggs: List[AggregateFn],
         num_partitions: Optional[int] = None,
         batch_format: Optional[str] = "default",
