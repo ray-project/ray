@@ -4,9 +4,6 @@ from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tupl
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
-from ray.data._internal.planner.plan_expression.expression_evaluator import (
-    eval_projection,
-)
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     Block,
@@ -305,7 +302,7 @@ class GroupedData:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
-            udf_modifying_row_count=False,
+            udf_modifying_row_count=True,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
@@ -326,8 +323,13 @@ class GroupedData:
         Examples:
             >>> import ray
             >>> from ray.data.expressions import col
-            >>> ds = ray.data.from_items([{"group": 1, "value": 1}, {"group": 1, "value": 2}])
-            >>> ds.groupby("group").with_column("value_twice", col("value") * 2).sort(["group", "value"]).take_all() # doctest: +SKIP
+            >>> ds = (
+            ...     ray.data.from_items([{"group": 1, "value": 1}, {"group": 1, "value": 2}])
+            ...     .groupby("group")
+            ...     .with_column("value_twice", col("value") * 2)
+            ...     .sort(["group", "value"])
+            ... )
+            >>> ds.take_all()
             [{'group': 1, 'value': 1, 'value_twice': 2}, {'group': 1, 'value': 2, 'value_twice': 4}]
 
         Args:
@@ -352,10 +354,15 @@ class GroupedData:
             raise TypeError(
                 "GroupedData.with_column does not yet support download expressions."
             )
+
         aliased_expr = expr.alias(column_name)
         projection_exprs = [StarExpr(), aliased_expr]
 
         def _project_group(block: Block) -> Block:
+            from ray.data._internal.planner.plan_expression.expression_evaluator import (
+                eval_projection,
+            )
+
             return eval_projection(projection_exprs, block)
 
         return self.map_groups(
