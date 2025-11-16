@@ -1284,6 +1284,13 @@ class Algorithm(Checkpointable, Trainable):
                         ):
                             self.env_runner_group.sync_env_runner_states(
                                 config=self.config,
+                                env_steps_sampled=self.metrics.peek(
+                                    (
+                                        ENV_RUNNER_RESULTS,
+                                        NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                                    ),
+                                    default=0,
+                                ),
                                 env_to_module=self.env_to_module_connector,
                                 module_to_env=self.module_to_env_connector,
                             )
@@ -1435,6 +1442,13 @@ class Algorithm(Checkpointable, Trainable):
                                 self.eval_env_runner_group.sync_env_runner_states(
                                     config=self.evaluation_config,
                                     from_worker=self.env_runner,
+                                    env_steps_sampled=self.metrics.peek(
+                                        (
+                                            ENV_RUNNER_RESULTS,
+                                            NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                                        ),
+                                        default=0,
+                                    ),
                                     env_to_module=self.env_to_module_connector,
                                     module_to_env=self.module_to_env_connector,
                                 )
@@ -3152,6 +3166,9 @@ class Algorithm(Checkpointable, Trainable):
             self.env_runner_group.sync_env_runner_states(
                 config=self.config,
                 from_worker=self.env_runner,
+                env_steps_sampled=self.metrics.peek(
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                ),
                 env_to_module=self.env_to_module_connector,
                 module_to_env=self.module_to_env_connector,
             )
@@ -3163,6 +3180,9 @@ class Algorithm(Checkpointable, Trainable):
             self.eval_env_runner_group.sync_env_runner_states(
                 config=self.evaluation_config,
                 from_worker=self.env_runner,
+                env_steps_sampled=self.metrics.peek(
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                ),
                 env_to_module=self.env_to_module_connector,
                 module_to_env=self.module_to_env_connector,
             )
@@ -3258,7 +3278,7 @@ class Algorithm(Checkpointable, Trainable):
                 config=self.config,
                 from_worker=None,
                 env_steps_sampled=self.metrics.peek(
-                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                 ),
                 # connector_states=connector_states,
                 env_to_module=self.env_to_module_connector,
@@ -3268,6 +3288,9 @@ class Algorithm(Checkpointable, Trainable):
         elif self.env_runner_group.num_remote_env_runners() > 0 and self.env_runner:
             self.env_runner_group.sync_env_runner_states(
                 config=self.config,
+                env_steps_sampled=self.metrics.peek(
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                ),
                 from_worker=self.env_runner,
             )
 

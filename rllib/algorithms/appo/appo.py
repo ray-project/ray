@@ -190,7 +190,7 @@ class APPOConfig(IMPALAConfig):
             target_network_update_freq: NOTE: This parameter is only applicable on
                 the new API stack. The frequency with which to update the target
                 policy network from the main trained policy network. The metric
-                used is `NUM_ENV_STEPS_TRAINED_LIFETIME` and the unit is `n` (see [1]
+                used is `NUM_ENVl_STEPS_TRAINED_LIFETIME` and the unit is `n` (see [1]
                 4.1.1), where: `n = [circular_buffer_num_batches (N)] *
                 [circular_buffer_iterations_per_batch (K)] * [train batch size]`
                 For example, if you set `target_network_update_freq=2`, and N=4, K=2,

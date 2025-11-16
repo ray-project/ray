@@ -834,6 +834,10 @@ class IMPALA(Algorithm):
                             config=self.config,
                             connector_states=connector_states,
                             rl_module_state=rl_module_state,
+                            env_steps_sampled=self.metrics.peek(
+                                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                                default=0,
+                            ),
                             env_to_module=self.env_to_module_connector,
                             module_to_env=self.module_to_env_connector,
                         )
