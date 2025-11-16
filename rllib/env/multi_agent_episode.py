@@ -1022,6 +1022,12 @@ class MultiAgentEpisode:
         # successor.
         successor._hanging_rewards_begin = self._hanging_rewards_end.copy()
 
+        # Copy over hanging infos (including __common__) to successor.
+        if "__common__" in self._hanging_infos_end:
+            successor._hanging_infos_end["__common__"] = copy.deepcopy(
+                self._hanging_infos_end["__common__"]
+            )
+
         # Deepcopy all custom data in `self` to be continued in the cut episode.
         successor._custom_data = copy.deepcopy(self.custom_data)
 
@@ -2201,6 +2207,10 @@ class MultiAgentEpisode:
                 else {}
             )
             rew = rewards[data_idx] if len(rewards) > data_idx else {}
+
+            # Extract and preserve __common__ infos if present.
+            if "__common__" in inf:
+                self._hanging_infos_end["__common__"] = inf["__common__"]
 
             for agent_id, agent_obs in obs.items():
                 all_agent_ids.add(agent_id)
