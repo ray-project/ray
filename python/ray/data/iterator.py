@@ -456,6 +456,8 @@ class DataIterator(abc.ABC):
             else:
                 return batch
 
+        # If users are using their own collate_fn, users should take care of the host to device data transfer.
+        finalize_fn = None
         if collate_fn is None:
             # The default collate_fn handles formatting and Tensor creation.
             # Here, we defer host to device data transfer to the subsequent
@@ -466,6 +468,7 @@ class DataIterator(abc.ABC):
                 pin_memory=pin_memory,
             )
             batch_format = "pyarrow"
+            finalize_fn = default_finalize_fn
         elif isinstance(collate_fn, ArrowBatchCollateFn):
             # The ArrowBatchCollateFn handles formatting and Tensor creation.
             # Here, we defer host to device data transfer to the subsequent
@@ -495,7 +498,7 @@ class DataIterator(abc.ABC):
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=collate_fn,
-            _finalize_fn=default_finalize_fn,
+            _finalize_fn=finalize_fn,
         )
 
     def iter_tf_batches(
