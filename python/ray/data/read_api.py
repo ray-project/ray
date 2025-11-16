@@ -4506,7 +4506,7 @@ def read_kafka(
         ImportError: If kafka-python is not installed.
     """  # noqa: E501
     if trigger != "once":
-        raise ValueError(f"Only trigger='once' is supported. Got trigger={trigger}")
+        raise ValueError(f"Only trigger='once' is supported. Got trigger={trigger!r}")
 
     return ray.data.read_datasource(
         KafkaDatasource(
