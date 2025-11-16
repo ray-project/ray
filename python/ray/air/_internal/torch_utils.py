@@ -6,9 +6,10 @@ import pandas as pd
 import pyarrow
 import torch
 
-from ray._private.ray_constants import env_bool
+from ray._private.ray_constants import env_bool, env_integer
 from ray.air._internal.device_manager import get_torch_device_manager_by_context
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
+from ray.data._internal.util import make_async_gen
 from ray.data.collate_fn import (
     TensorBatchReturnType,
     TensorBatchType,
@@ -23,6 +24,12 @@ from ray.data.collate_fn import (
 DEFAULT_TENSOR_NON_BLOCKING_TRANSFER = env_bool(
     "RAY_AIR_DEFAULT_TENSOR_NON_BLOCKING_TRANSFER",
     True,
+)
+
+# Default number of workers for parallel tensor conversion.
+DEFAULT_TENSOR_CONVERSION_NUM_WORKERS = env_integer(
+    "RAY_AIR_DEFAULT_TENSOR_CONVERSION_NUM_WORKERS",
+    4,
 )
 
 
@@ -389,23 +396,103 @@ def arrow_batch_to_tensors(
 
     if combine_chunks:
         numpy_batch = ArrowBlockAccessor(batch).to_batch_format("numpy")
-        return {
-            col_name: convert_ndarray_batch_to_torch_tensor_batch(
-                col_array,
-                dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
-                pin_memory=pin_memory,
+        num_columns = len(numpy_batch)
+        num_workers = min(num_columns, DEFAULT_TENSOR_CONVERSION_NUM_WORKERS)
+
+        if num_workers > 1 and num_columns > 1:
+            # Process columns in parallel
+            def process_columns(col_items_iter):
+                """Process column items (col_name, col_array) from iterator."""
+                for col_name, col_array in col_items_iter:
+                    yield (
+                        col_name,
+                        convert_ndarray_batch_to_torch_tensor_batch(
+                            col_array,
+                            dtypes=dtypes[col_name]
+                            if isinstance(dtypes, dict)
+                            else dtypes,
+                            pin_memory=pin_memory,
+                        ),
+                    )
+
+            # Use make_async_gen to parallelize column processing
+            processed_cols = make_async_gen(
+                base_iterator=iter(numpy_batch.items()),
+                fn=process_columns,
+                preserve_ordering=False,
+                num_workers=max(num_workers, 1),
+                buffer_size=max(num_workers, 1),
             )
-            for col_name, col_array in numpy_batch.items()
-        }
+            return dict(processed_cols)
+        else:
+            # Sequential processing for single column or single worker
+            return {
+                col_name: convert_ndarray_batch_to_torch_tensor_batch(
+                    col_array,
+                    dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                    pin_memory=pin_memory,
+                )
+                for col_name, col_array in numpy_batch.items()
+            }
     else:
         numpy_list = transform_pyarrow.table_to_numpy_dict_chunked(
             batch,
         )
-        return convert_ndarray_list_to_torch_tensor_list(
-            numpy_list,
-            dtypes=dtypes,
-            pin_memory=pin_memory,
+        # Count total number of arrays across all columns
+        total_arrays = sum(len(arrays) for arrays in numpy_list.values())
+        num_columns = len(numpy_list)
+        num_workers = min(
+            max(total_arrays, num_columns), DEFAULT_TENSOR_CONVERSION_NUM_WORKERS
         )
+
+        if num_workers > 1 and total_arrays > 1:
+            # Process arrays in parallel
+            def process_arrays(array_items_iter):
+                """Process array items (col_name, array_index, array) from iterator."""
+                for col_name, array_index, array in array_items_iter:
+                    yield (
+                        col_name,
+                        array_index,
+                        convert_ndarray_batch_to_torch_tensor_batch(
+                            array,
+                            dtypes=dtypes[col_name]
+                            if isinstance(dtypes, dict)
+                            else dtypes,
+                            pin_memory=pin_memory,
+                        ),
+                    )
+
+            # Flatten arrays with column name and index for parallel processing
+            array_items = [
+                (col_name, idx, array)
+                for col_name, arrays in numpy_list.items()
+                for idx, array in enumerate(arrays)
+            ]
+
+            # Use make_async_gen to parallelize array processing
+            processed_arrays = make_async_gen(
+                base_iterator=iter(array_items),
+                fn=process_arrays,
+                preserve_ordering=False,
+                num_workers=max(num_workers, 1),
+                buffer_size=max(num_workers, 1),
+            )
+
+            # Reconstruct the dictionary structure
+            result: Dict[str, List[torch.Tensor]] = {}
+            for col_name, array_index, tensor in processed_arrays:
+                if col_name not in result:
+                    result[col_name] = [None] * len(numpy_list[col_name])
+                result[col_name][array_index] = tensor
+
+            return result
+        else:
+            # Sequential processing
+            return convert_ndarray_list_to_torch_tensor_list(
+                numpy_list,
+                dtypes=dtypes,
+                pin_memory=pin_memory,
+            )
 
 
 @torch.no_grad()
