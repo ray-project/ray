@@ -25,7 +25,6 @@ def _check_valid_plan_and_result(
     if check_ordering:
         assert actual_result == expected_result
     else:
-        # When ordering doesn't matter, compare as multisets.
         assert rows_same(pd.DataFrame(actual_result), pd.DataFrame(expected_result))
     assert ds._plan._logical_plan.dag.dag_str == expected_plan
 
