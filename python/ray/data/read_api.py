@@ -4491,7 +4491,7 @@ def read_kafka(
     Returns:
         A :class:`~ray.data.Dataset` containing Kafka messages with the following schema:
         - offset: int64 - Message offset within partition
-        - key: string - Message key (UTF-8 decoded, if present)
+        - key: binary - Message key as raw bytes
         - value: binary - Message value as raw bytes
         - topic: string - Topic name
         - partition: int32 - Partition ID
