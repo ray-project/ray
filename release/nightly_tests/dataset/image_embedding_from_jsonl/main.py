@@ -15,7 +15,7 @@ from ray._private.test_utils import EC2InstanceTerminatorWithGracePeriod
 from benchmark import Benchmark
 
 
-INPUT_PREFIX = "s3://ray-benchmark-data-internal/10TiB-jsonl-images"
+INPUT_PREFIX = "s3://ray-benchmark-data-internal-us-west-2/10TiB-jsonl-images"
 OUTPUT_PREFIX = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 
 BATCH_SIZE = 1024
