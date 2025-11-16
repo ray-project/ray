@@ -417,6 +417,12 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
         left_str = self.visit(expr.left)
         right_str = self.visit(expr.right)
 
+        # Add parentheses around child binary expressions to avoid ambiguity
+        if isinstance(expr.left, BinaryExpr):
+            left_str = f"({left_str})"
+        if isinstance(expr.right, BinaryExpr):
+            right_str = f"({right_str})"
+
         op_str = _INLINE_OP_SYMBOLS.get(expr.op, expr.op.name.lower())
         return f"{left_str} {op_str} {right_str}"
 

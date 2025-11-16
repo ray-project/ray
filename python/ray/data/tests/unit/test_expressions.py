@@ -801,7 +801,7 @@ def test_expression_repr(expr_fn, expected):
     [
         (
             _build_complex_expr,
-            "~col('age') + 10 * col('rate') / 2.5 >= 100 & col('name')...",
+            "~((((((((col('age') + 10) * col('rate')) / 2.5) >= 100) &...",
         ),
     ],
     ids=["complex_expression"],
