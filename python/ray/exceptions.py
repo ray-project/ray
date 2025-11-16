@@ -934,8 +934,10 @@ class UnserializableException(RayError):
 
 
 @DeveloperAPI
-class ActorAlreadyExistsError(RayError):
+class ActorAlreadyExistsError(ValueError):
     """Raised when a named actor already exists.
+
+    Note that this error is a subclass of ValueError, not RayError, to maintain backward compatibility.
 
     Args:
         error_message: The error message that contains information about the actor name and namespace.
@@ -978,4 +980,5 @@ RAY_EXCEPTION_TYPES = [
     OufOfBandObjectRefSerializationException,
     RayCgraphCapacityExceeded,
     UnserializableException,
+    ActorAlreadyExistsError,
 ]

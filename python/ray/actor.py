@@ -1536,8 +1536,6 @@ class ActorClass(Generic[T]):
                     # The actor was created between the first and second get_actor calls.
                     # Try to get it again to see if it's there.
                     return ray.get_actor(name, namespace=namespace)
-                except ValueError as e:
-                    raise e
 
         # We pop the "concurrency_groups" coming from "@ray.remote" here. We no longer
         # need it in "_remote()".
