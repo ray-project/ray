@@ -269,6 +269,7 @@ def plan_udf_map_op(
     supports_fusion = True
 
     if isinstance(op, MapBatches):
+        disable_block_shaping = False
         if op._enforce_input_output_block_size:
             ref_bundler = StreamingRepartitionRefBundler(op._batch_size)
             disable_block_shaping = True
