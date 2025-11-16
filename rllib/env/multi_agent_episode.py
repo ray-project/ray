@@ -899,6 +899,12 @@ class MultiAgentEpisode:
         elif other.is_truncated:
             self.is_truncated = True
 
+        # Copy __common__ infos from other (more recent chunk).
+        if "__common__" in other._hanging_infos_end:
+            self._hanging_infos_end["__common__"] = copy.deepcopy(
+                other._hanging_infos_end["__common__"]
+            )
+
         # Merge with `other`'s custom_data, but give `other` priority b/c we assume
         # that as a follow-up chunk of `self` other has a more complete version of
         # `custom_data`.
@@ -1736,6 +1742,7 @@ class MultiAgentEpisode:
             "env_t_to_agent_t": self.env_t_to_agent_t,
             "_hanging_actions_end": self._hanging_actions_end,
             "_hanging_extra_model_outputs_end": self._hanging_extra_model_outputs_end,
+            "_hanging_infos_end": self._hanging_infos_end,
             "_hanging_rewards_end": self._hanging_rewards_end,
             "_hanging_rewards_begin": self._hanging_rewards_begin,
             "is_terminated": self.is_terminated,
@@ -1782,6 +1789,7 @@ class MultiAgentEpisode:
         episode._hanging_extra_model_outputs_end = state[
             "_hanging_extra_model_outputs_end"
         ]
+        episode._hanging_infos_end = state.get("_hanging_infos_end", {})
         episode._hanging_rewards_end = state["_hanging_rewards_end"]
         episode._hanging_rewards_begin = state["_hanging_rewards_begin"]
         episode.is_terminated = state["is_terminated"]
