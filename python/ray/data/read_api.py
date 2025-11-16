@@ -4433,7 +4433,7 @@ def read_kafka(
     trigger: Literal["once"] = "once",
     start_offset: Union[int, Literal["earliest"]] = "earliest",
     end_offset: Union[int, Literal["latest"]] = "latest",
-    kafka_auth_config: Optional[KafkaAuthConfig] = None,
+    kafka_auth_config: KafkaAuthConfig = KafkaAuthConfig(),
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,

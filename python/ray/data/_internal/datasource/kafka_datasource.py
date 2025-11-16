@@ -13,7 +13,7 @@ Requires:
 
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -94,26 +94,26 @@ class KafkaAuthConfig:
     """
 
     # Security protocol
-    security_protocol: str
+    security_protocol: Optional[str] = None
 
     # SASL configuration
-    sasl_mechanism: str
-    sasl_plain_username: str
-    sasl_plain_password: str
-    sasl_kerberos_name: str
-    sasl_kerberos_service_name: str
-    sasl_kerberos_domain_name: str
-    sasl_oauth_token_provider: Any
+    sasl_mechanism: Optional[str] = None
+    sasl_plain_username: Optional[str] = None
+    sasl_plain_password: Optional[str] = None
+    sasl_kerberos_name: Optional[str] = None
+    sasl_kerberos_service_name: Optional[str] = None
+    sasl_kerberos_domain_name: Optional[str] = None
+    sasl_oauth_token_provider: Optional[Any] = None
 
     # SSL configuration
-    ssl_context: Any
-    ssl_check_hostname: bool
-    ssl_cafile: str
-    ssl_certfile: str
-    ssl_keyfile: str
-    ssl_password: str
-    ssl_ciphers: str
-    ssl_crlfile: str
+    ssl_context: Optional[Any] = None
+    ssl_check_hostname: Optional[bool] = None
+    ssl_cafile: Optional[str] = None
+    ssl_certfile: Optional[str] = None
+    ssl_keyfile: Optional[str] = None
+    ssl_password: Optional[str] = None
+    ssl_ciphers: Optional[str] = None
+    ssl_crlfile: Optional[str] = None
 
 
 def _add_authentication_to_config(
@@ -126,7 +126,11 @@ def _add_authentication_to_config(
         kafka_auth_config: Authentication configuration.
     """
     if kafka_auth_config:
-        config.update(kafka_auth_config)
+        # Extract non-None fields from dataclass without copying objects
+        for field in fields(kafka_auth_config):
+            value = getattr(kafka_auth_config, field.name)
+            if value is not None:
+                config[field.name] = value
 
 
 def _build_consumer_config_for_discovery(
@@ -262,7 +266,7 @@ class KafkaDatasource(Datasource):
             raise ValueError("bootstrap_servers cannot be empty")
 
         if timeout_ms <= 0:
-            raise ValueError("poll_timeout_ms must be positive")
+            raise ValueError("timeout_ms must be positive")
 
         if isinstance(start_offset, int) and isinstance(end_offset, int):
             if start_offset > end_offset:

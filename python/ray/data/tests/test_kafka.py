@@ -5,6 +5,7 @@ import pytest
 
 import ray
 from ray.data._internal.datasource.kafka_datasource import (
+    KafkaAuthConfig,
     _add_authentication_to_config,
     _build_consumer_config_for_discovery,
     _build_consumer_config_for_read,
@@ -60,27 +61,27 @@ def test_add_authentication_to_config():
     token_provider = object()
     ssl_context = object()  # Mock SSL context
 
-    kafka_auth_config = {
+    kafka_auth_config = KafkaAuthConfig(
         # Security protocol
-        "security_protocol": "SASL_SSL",
+        security_protocol="SASL_SSL",
         # SASL configuration
-        "sasl_mechanism": "SCRAM-SHA-256",
-        "sasl_plain_username": "testuser",
-        "sasl_plain_password": "testpass",
-        "sasl_kerberos_name": "kafka/hostname@REALM",
-        "sasl_kerberos_service_name": "kafka",
-        "sasl_kerberos_domain_name": "example.com",
-        "sasl_oauth_token_provider": token_provider,
+        sasl_mechanism="SCRAM-SHA-256",
+        sasl_plain_username="testuser",
+        sasl_plain_password="testpass",
+        sasl_kerberos_name="kafka/hostname@REALM",
+        sasl_kerberos_service_name="kafka",
+        sasl_kerberos_domain_name="example.com",
+        sasl_oauth_token_provider=token_provider,
         # SSL configuration
-        "ssl_context": ssl_context,
-        "ssl_check_hostname": False,
-        "ssl_cafile": "/path/to/ca.pem",
-        "ssl_certfile": "/path/to/cert.pem",
-        "ssl_keyfile": "/path/to/key.pem",
-        "ssl_password": "keypassword",
-        "ssl_ciphers": "HIGH:!aNULL",
-        "ssl_crlfile": "/path/to/crl.pem",
-    }
+        ssl_context=ssl_context,
+        ssl_check_hostname=False,
+        ssl_cafile="/path/to/ca.pem",
+        ssl_certfile="/path/to/cert.pem",
+        ssl_keyfile="/path/to/key.pem",
+        ssl_password="keypassword",
+        ssl_ciphers="HIGH:!aNULL",
+        ssl_crlfile="/path/to/crl.pem",
+    )
 
     _add_authentication_to_config(config, kafka_auth_config)
 
@@ -114,12 +115,12 @@ def test_build_consumer_config_for_discovery():
     assert "group_id" not in config
 
     # Test with authentication
-    kafka_auth_config = {
-        "security_protocol": "SASL_SSL",
-        "sasl_mechanism": "SCRAM-SHA-256",
-        "sasl_plain_username": "admin",
-        "sasl_plain_password": "secret",
-    }
+    kafka_auth_config = KafkaAuthConfig(
+        security_protocol="SASL_SSL",
+        sasl_mechanism="SCRAM-SHA-256",
+        sasl_plain_username="admin",
+        sasl_plain_password="secret",
+    )
     config = _build_consumer_config_for_discovery(bootstrap_servers, kafka_auth_config)
     assert config["security_protocol"] == "SASL_SSL"
     assert config["sasl_mechanism"] == "SCRAM-SHA-256"
@@ -139,12 +140,12 @@ def test_build_consumer_config_for_read():
     assert config["key_deserializer"] is not None
 
     # Test with authentication
-    kafka_auth_config = {
-        "security_protocol": "SASL_SSL",
-        "sasl_mechanism": "PLAIN",
-        "sasl_plain_username": "user",
-        "sasl_plain_password": "pass",
-    }
+    kafka_auth_config = KafkaAuthConfig(
+        security_protocol="SASL_SSL",
+        sasl_mechanism="PLAIN",
+        sasl_plain_username="user",
+        sasl_plain_password="pass",
+    )
     config_with_auth = _build_consumer_config_for_read(
         bootstrap_servers, kafka_auth_config
     )
