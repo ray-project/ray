@@ -377,9 +377,6 @@ class KafkaDatasource(Datasource):
             if discovery_consumer:
                 discovery_consumer.close()
 
-        if not topic_partitions:
-            return []
-
         # Store config for use in read functions (avoid serialization issues)
         bootstrap_servers = self._bootstrap_servers
         start_offset = self._start_offset
