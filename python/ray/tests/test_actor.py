@@ -18,7 +18,6 @@ from ray._private.test_utils import (
 )
 from ray.actor import ActorClassInheritanceException
 from ray.core.generated import gcs_pb2
-from ray.exceptions import ActorAlreadyExistsError
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.util.state import list_actors
 
@@ -1762,7 +1761,7 @@ def test_get_actor_after_same_name_actor_dead(shutdown_only):
     wait_for_condition(lambda: ray.util.state.get_actor(id=a_actor_id).state == "DEAD")
 
     # When a reference is held, the name cannot be reused.
-    with pytest.raises(ActorAlreadyExistsError):
+    with pytest.raises(ValueError):
         Actor.options(name=ACTOR_NAME).remote()
 
     # Deleting the remaining reference so the name can be reused
