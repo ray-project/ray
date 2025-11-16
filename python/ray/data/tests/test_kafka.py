@@ -112,17 +112,12 @@ def test_read_kafka_with_offsets(
     kafka_producer.flush()
     time.sleep(1)
 
-    # Read with specified offsets
-    kwargs = {
-        "topics": [topic],
-        "bootstrap_servers": [bootstrap_server],
-    }
-    if start_offset is not None:
-        kwargs["start_offset"] = start_offset
-    if end_offset is not None:
-        kwargs["end_offset"] = end_offset
-
-    ds = ray.data.read_kafka(**kwargs)
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset=start_offset,
+        end_offset=end_offset,
+    )
 
     records = ds.take_all()
     assert len(records) == expected_count
@@ -222,15 +217,34 @@ def test_read_kafka_with_message_headers(
     assert first_record["headers"]["header1"].decode("utf-8") == "value1"
 
 
+@pytest.mark.parametrize(
+    "start_offset,end_offset,expected_count, test_id",
+    [
+        (150, 200, 0, "start-offset-exceeds-available-messages"),
+        (0, 150, 100, "end-offset-exceeds-available-messages"),
+        (
+            "earliest",
+            150,
+            100,
+            "earliest-start-offset-end-offset-exceeds-available-messages",
+        ),
+    ],
+)
 def test_read_kafka_offset_exceeds_available_messages(
-    bootstrap_server, kafka_producer, ray_start_regular_shared
+    bootstrap_server,
+    kafka_producer,
+    ray_start_regular_shared,
+    start_offset,
+    end_offset,
+    expected_count,
+    test_id,
 ):
     import time
 
-    topic = "test-offset-timeout"
+    topic = f"test-offset-timeout-{test_id}"
 
     # Send only 50 messages
-    for i in range(50):
+    for i in range(100):
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.send(topic, value=message)
     kafka_producer.flush()
@@ -243,9 +257,9 @@ def test_read_kafka_offset_exceeds_available_messages(
     ds = ray.data.read_kafka(
         topics=[topic],
         bootstrap_servers=[bootstrap_server],
-        start_offset=0,
-        end_offset=200,
-        timeout_ms=5000,  # 5 second timeout
+        start_offset=start_offset,
+        end_offset=end_offset,
+        timeout_ms=3000,  # 3 second timeout
     )
 
     records = ds.take_all()
@@ -253,10 +267,10 @@ def test_read_kafka_offset_exceeds_available_messages(
     elapsed_time = time.time() - start_time
 
     # Should get all 50 available messages
-    assert len(records) == 50
+    assert len(records) == expected_count
 
     # Should have waited for timeout (at least 4.5 seconds to account for some variance)
-    assert elapsed_time >= 4.5, f"Expected timeout wait, but only took {elapsed_time}s"
+    assert elapsed_time >= 3, f"Expected timeout wait, but only took {elapsed_time}s"
 
 
 def test_read_kafka_invalid_topic(bootstrap_server, ray_start_regular_shared):
@@ -269,22 +283,42 @@ def test_read_kafka_invalid_topic(bootstrap_server, ray_start_regular_shared):
 
 
 @pytest.mark.parametrize(
-    "test_case",
+    "start_offset,end_offset,expected_error,topic",
     [
-        [0, "earliest", "end_offset cannot be 'earliest'"],
-        ["latest", 1000, "start_offset cannot be 'latest'"],
-        [80, 20, "start_offset must be less than end_offset"],
+        (0, "earliest", "end_offset cannot be 'earliest'", "test-invalid-offsets-0"),
+        ("latest", 1000, "start_offset cannot be 'latest'", "test-invalid-offsets-1"),
+        (80, 20, "start_offset must be less than end_offset", "test-invalid-offsets-2"),
+        (
+            150,
+            "latest",
+            r"start_offset \(150\) > end_offset \(latest \(resolved to 100\)\) for partition 0 in topic test-invalid-offsets-3",
+            "test-invalid-offsets-3",
+        ),
     ],
 )
 def test_read_kafka_invalid_offsets(
-    bootstrap_server, ray_start_regular_shared, test_case
+    bootstrap_server,
+    kafka_producer,
+    ray_start_regular_shared,
+    start_offset,
+    end_offset,
+    expected_error,
+    topic,
 ):
-    with pytest.raises(ValueError, match=test_case[2]):
+    # Send only 100 messages
+    topic = topic
+    for i in range(100):
+        message = {"id": i, "value": f"message-{i}"}
+        kafka_producer.send(topic, value=message)
+    kafka_producer.flush()
+    time.sleep(1)
+
+    with pytest.raises(ValueError, match=expected_error):
         ds = ray.data.read_kafka(
-            topics=["test-topic"],
+            topics=[topic],
             bootstrap_servers=[bootstrap_server],
-            start_offset=test_case[0],
-            end_offset=test_case[1],
+            start_offset=start_offset,
+            end_offset=end_offset,
         )
         ds.take_all()
 

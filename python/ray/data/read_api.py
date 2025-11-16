@@ -4428,8 +4428,8 @@ def read_kafka(
     *,
     bootstrap_servers: Union[str, List[str]],
     trigger: Literal["once"] = "once",
-    start_offset: Optional[Union[int, Literal["earliest"]]] = "earliest",
-    end_offset: Optional[Union[int, Literal["latest"]]] = "latest",
+    start_offset: Union[int, Literal["earliest"]] = "earliest",
+    end_offset: Union[int, Literal["latest"]] = "latest",
     authentication: Optional[Dict[str, Any]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
@@ -4473,11 +4473,11 @@ def read_kafka(
         start_offset: Starting position for reading. Can be:
             - int: Offset number or timestamp in milliseconds
             - str: "earliest", "latest", or offset number as string
-            If None, defaults to "earliest".
+            Default to "earliest".
         end_offset: Ending position for reading. Can be:
             - int: Offset number or timestamp in milliseconds
             - str: Offset number as string
-            If None, defaults to "latest".
+            Default to "latest".
         authentication: Authentication configuration dict. Supported keys:
             - security_protocol: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL
             - sasl_mechanism: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512, GSSAPI

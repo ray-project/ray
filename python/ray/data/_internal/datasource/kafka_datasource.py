@@ -156,39 +156,51 @@ def _build_consumer_config_for_read(
     return config
 
 
-def _resolve_offset(
+def _resolve_offsets(
     consumer: "KafkaConsumer",
     topic_partition: "TopicPartition",
-    offset_value: Union[int, Literal["earliest", "latest"]],
-) -> int:
-    """Convert offset value to offset for a partition.
+    start_offset: Union[int, Literal["earliest"]],
+    end_offset: Union[int, Literal["latest"]],
+) -> Tuple[int, int]:
+    """Resolve start and end offsets to actual integer offsets.
 
     Args:
-        consumer: KafkaConsumer instance with partition assigned.
-        topic_partition: TopicPartition instance.
-        offset_value: Offset value (int, str).
+        consumer: Kafka consumer instance.
+        topic_partition: TopicPartition to resolve offsets for.
+        start_offset: Start offset (int or "earliest").
+        end_offset: End offset (int or "latest").
 
     Returns:
-        Kafka offset as int.
-
-    Raises:
-        ValueError: If offset value is invalid or cannot be resolved.
+        Tuple of (resolved_start_offset, resolved_end_offset).
     """
+    earliest_offset = consumer.beginning_offsets([topic_partition])[topic_partition]
+    latest_offset = consumer.end_offsets([topic_partition])[topic_partition]
 
-    if isinstance(offset_value, str):
-        if offset_value == "earliest":
-            offsets = consumer.beginning_offsets([topic_partition])
-            return offsets[topic_partition]
-        if offset_value == "latest":
-            offsets = consumer.end_offsets([topic_partition])
-            return offsets[topic_partition]
+    # Keep original values for error messages
+    original_start = start_offset
+    original_end = end_offset
 
-    if isinstance(offset_value, int):
-        return offset_value
+    if start_offset == "earliest" or start_offset is None:
+        start_offset = earliest_offset
+    if end_offset == "latest" or end_offset is None:
+        end_offset = latest_offset
 
-    raise ValueError(
-        f"Unsupported offset type: {offset_value} of type {type(offset_value)}"
-    )
+    if start_offset > end_offset:
+        start_str = (
+            f"{original_start}"
+            if original_start == start_offset
+            else f"{original_start} (resolved to {start_offset})"
+        )
+        end_str = (
+            f"{original_end}"
+            if original_end == end_offset
+            else f"{original_end} (resolved to {end_offset})"
+        )
+        raise ValueError(
+            f"start_offset ({start_str}) > end_offset ({end_str}) "
+            f"for partition {topic_partition.partition} in topic {topic_partition.topic}"
+        )
+    return start_offset, end_offset
 
 
 def _convert_headers_to_dict(headers: List[Tuple[bytes, bytes]]) -> Dict[str, bytes]:
@@ -230,8 +242,8 @@ class KafkaDatasource(Datasource):
         self,
         topics: Union[str, List[str]],
         bootstrap_servers: Union[str, List[str]],
-        start_offset: Optional[Union[int, Literal["earliest"]]] = None,
-        end_offset: Optional[Union[int, Literal["latest"]]] = None,
+        start_offset: Union[int, Literal["earliest"]] = "earliest",
+        end_offset: Union[int, Literal["latest"]] = "latest",
         authentication: Optional[Dict[str, Any]] = None,
         max_records_per_task: int = 1000,
         timeout_ms: int = 10000,
@@ -410,32 +422,9 @@ class KafkaDatasource(Datasource):
                         topic_partition = TopicPartition(topic_name, partition_id)
                         consumer.assign([topic_partition])
 
-                        # Determine start offset for this partition
-                        if start_offset is not None:
-                            start_off = _resolve_offset(
-                                consumer, topic_partition, start_offset
-                            )
-                        else:
-                            beginning_offsets = consumer.beginning_offsets(
-                                [topic_partition]
-                            )
-                            start_off = beginning_offsets[topic_partition]
-
-                        # Determine end offset for this partition
-                        if end_offset is not None:
-                            end_off = _resolve_offset(
-                                consumer, topic_partition, end_offset
-                            )
-                        else:
-                            end_offsets = consumer.end_offsets([topic_partition])
-                            end_off = end_offsets[topic_partition]
-
-                        # Validate start_offset <= end_offset
-                        if start_off > end_off:
-                            raise ValueError(
-                                f"start_offset ({start_off}) > end_offset ({end_off}) "
-                                f"for partition {partition_id} in topic {topic_name}"
-                            )
+                        start_off, end_off = _resolve_offsets(
+                            consumer, topic_partition, start_offset, end_offset
+                        )
                         # Seek to the requested starting position
                         consumer.seek(topic_partition, start_off)
 
