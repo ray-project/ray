@@ -26,7 +26,6 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_EPISODES_EVICTED,
     NUM_AGENT_EPISODES_EVICTED_LIFETIME,
     NUM_AGENT_EPISODES_PER_SAMPLE,
-    NUM_AGENT_EPISODES_STORED,
     NUM_AGENT_RESAMPLES,
     NUM_AGENT_STEPS_ADDED,
     NUM_AGENT_STEPS_ADDED_LIFETIME,
@@ -36,7 +35,6 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_PER_SAMPLE_LIFETIME,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-    NUM_AGENT_STEPS_STORED,
     NUM_ENV_STEPS_ADDED,
     NUM_ENV_STEPS_ADDED_LIFETIME,
     NUM_ENV_STEPS_EVICTED,
@@ -57,7 +55,6 @@ from ray.rllib.utils.metrics import (
     NUM_MODULE_EPISODES_EVICTED,
     NUM_MODULE_EPISODES_EVICTED_LIFETIME,
     NUM_MODULE_EPISODES_PER_SAMPLE,
-    NUM_MODULE_EPISODES_STORED,
     NUM_MODULE_RESAMPLES,
     NUM_MODULE_STEPS_ADDED,
     NUM_MODULE_STEPS_ADDED_LIFETIME,
@@ -391,7 +388,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self.metrics.log_value(
             NUM_EPISODES_ADDED_LIFETIME,
             num_episodes_added,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         self.metrics.log_value(
             NUM_EPISODES_EVICTED,
@@ -401,7 +398,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self.metrics.log_value(
             NUM_EPISODES_EVICTED_LIFETIME,
             num_episodes_evicted,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         # Whole buffer step metrics.
         self.metrics.log_value(
@@ -418,7 +415,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self.metrics.log_value(
             NUM_ENV_STEPS_ADDED_LIFETIME,
             num_env_steps_added,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         self.metrics.log_value(
             NUM_ENV_STEPS_EVICTED,
@@ -428,7 +425,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self.metrics.log_value(
             NUM_ENV_STEPS_EVICTED_LIFETIME,
             num_env_steps_evicted,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
 
         # Log per-agent metrics.
@@ -443,7 +440,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             self.metrics.log_value(
                 (NUM_AGENT_EPISODES_ADDED_LIFETIME, aid),
                 agent_to_num_episodes_added[aid],
-                reduce="sum",
+                reduce="lifetime_sum",
             )
             # Number of new agent steps added. Note, this metric could
             # be zero, too.
@@ -455,7 +452,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             self.metrics.log_value(
                 (NUM_AGENT_STEPS_ADDED_LIFETIME, aid),
                 agent_to_num_steps_added[aid],
-                reduce="sum",
+                reduce="lifetime_sum",
             )
         for aid in agent_to_num_episodes_evicted:
             # Number of agent episodes evicted. Note, values could be zero.
@@ -467,7 +464,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             self.metrics.log_value(
                 (NUM_AGENT_EPISODES_EVICTED_LIFETIME, aid),
                 agent_to_num_episodes_evicted[aid],
-                reduce="sum",
+                reduce="lifetime_sum",
             )
             # Number of agent steps evicted. Note, values could be zero.
             self.metrics.log_value(
@@ -478,53 +475,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             self.metrics.log_value(
                 (NUM_AGENT_STEPS_EVICTED_LIFETIME, aid),
                 agent_to_num_steps_evicted[aid],
-                reduce="sum",
-            )
-        # Note, we need to loop through the metrics here to receive
-        # metrics for all agents (not only the ones that steps).
-        for aid in self.metrics.stats[NUM_AGENT_STEPS_ADDED_LIFETIME]:
-            # Add default metrics for evicted episodes if not existent.
-            if aid not in agent_to_num_episodes_evicted:
-                self.metrics.log_value(
-                    (NUM_AGENT_EPISODES_EVICTED, aid),
-                    0,
-                    reduce="sum",
-                )
-                self.metrics.log_value(
-                    (NUM_AGENT_EPISODES_EVICTED_LIFETIME, aid),
-                    0,
-                    reduce="sum",
-                )
-                self.metrics.log_value(
-                    (NUM_AGENT_STEPS_EVICTED, aid),
-                    0,
-                    reduce="sum",
-                )
-                self.metrics.log_value(
-                    (NUM_AGENT_STEPS_EVICTED_LIFETIME, aid),
-                    0,
-                    reduce="sum",
-                )
-            # Number of episodes in the buffer.
-            agent_episodes_stored = self.metrics.peek(
-                (NUM_AGENT_EPISODES_ADDED_LIFETIME, aid)
-            ) - self.metrics.peek((NUM_AGENT_EPISODES_EVICTED_LIFETIME, aid))
-            self.metrics.log_value(
-                (NUM_AGENT_EPISODES_STORED, aid),
-                agent_episodes_stored,
-                reduce="mean",
-                window=self._metrics_num_episodes_for_smoothing,
-            )
-            # Number of agent steps in the buffer.
-            agent_steps_stored = self.metrics.peek(
-                (NUM_AGENT_STEPS_ADDED_LIFETIME, aid)
-            ) - self.metrics.peek((NUM_AGENT_EPISODES_EVICTED_LIFETIME, aid))
-
-            self.metrics.log_value(
-                (NUM_AGENT_STEPS_STORED, aid),
-                agent_steps_stored,
-                reduce="mean",
-                window=self._metrics_num_episodes_for_smoothing,
+                reduce="lifetime_sum",
             )
 
         # Log per-module metrics.
@@ -539,7 +490,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             self.metrics.log_value(
                 (NUM_MODULE_EPISODES_ADDED_LIFETIME, mid),
                 module_to_num_episodes_added[mid],
-                reduce="sum",
+                reduce="lifetime_sum",
             )
             # Number of new module steps added. Note, this metric could
             # be zero, too.
@@ -551,7 +502,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             self.metrics.log_value(
                 (NUM_MODULE_STEPS_ADDED_LIFETIME, mid),
                 module_to_num_steps_added[mid],
-                reduce="sum",
+                reduce="lifetime_sum",
             )
         for mid in module_to_num_episodes_evicted:
             # Number of module episodes evicted. Note, values could be zero.
@@ -563,7 +514,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             self.metrics.log_value(
                 (NUM_MODULE_EPISODES_EVICTED_LIFETIME, mid),
                 module_to_num_episodes_evicted[mid],
-                reduce="sum",
+                reduce="lifetime_sum",
             )
             # Number of module steps evicted. Note, values could be zero.
             self.metrics.log_value(
@@ -574,41 +525,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             self.metrics.log_value(
                 (NUM_MODULE_STEPS_EVICTED_LIFETIME, mid),
                 module_to_num_steps_evicted[mid],
-                reduce="sum",
-            )
-        # Note, we need to loop through the metrics here to receive
-        # metrics for all agents (not only the ones that steps).
-        for mid in self.metrics.stats[NUM_MODULE_STEPS_ADDED_LIFETIME]:
-            # Number of episodes in the buffer.
-            if mid not in module_to_num_episodes_evicted:
-                self.metrics.log_value(
-                    (NUM_MODULE_EPISODES_EVICTED, mid),
-                    0,
-                    reduce="sum",
-                )
-                self.metrics.log_value(
-                    (NUM_MODULE_EPISODES_EVICTED_LIFETIME, mid),
-                    0,
-                    reduce="sum",
-                )
-                self.metrics.log_value(
-                    (NUM_MODULE_STEPS_EVICTED, mid),
-                    0,
-                    reduce="sum",
-                )
-                self.metrics.log_value(
-                    (NUM_MODULE_STEPS_EVICTED_LIFETIME, mid),
-                    0,
-                    reduce="sum",
-                )
-            module_episodes_stored = self.metrics.peek(
-                (NUM_MODULE_EPISODES_ADDED_LIFETIME, mid)
-            ) - self.metrics.peek((NUM_MODULE_EPISODES_EVICTED_LIFETIME, mid))
-            self.metrics.log_value(
-                (NUM_MODULE_EPISODES_STORED, mid),
-                module_episodes_stored,
-                reduce="mean",
-                window=self._metrics_num_episodes_for_smoothing,
+                reduce="lifetime_sum",
             )
 
     @override(ReplayBufferInterface)
@@ -1228,7 +1145,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self.metrics.log_value(
             NUM_ENV_STEPS_PER_SAMPLE_LIFETIME,
             num_env_steps_per_sample,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED,
@@ -1238,12 +1155,11 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
             num_env_steps_sampled,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         self.metrics.log_value(
             ENV_STEP_UTILIZATION,
-            self.metrics.peek(NUM_ENV_STEPS_PER_SAMPLE_LIFETIME)
-            / self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
+            num_env_steps_per_sample / num_env_steps_sampled,
             reduce="mean",
             window=self._metrics_num_episodes_for_smoothing,
         )
@@ -1287,7 +1203,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             self.metrics.log_value(
                 (NUM_AGENT_STEPS_SAMPLED_LIFETIME, aid),
                 agent_to_num_steps_sampled[aid],
-                reduce="sum",
+                reduce="lifetime_sum",
             )
             self.metrics.log_value(
                 (NUM_AGENT_EPISODES_PER_SAMPLE, aid),
@@ -1302,12 +1218,11 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             self.metrics.log_value(
                 (NUM_AGENT_STEPS_PER_SAMPLE_LIFETIME, aid),
                 agent_to_num_steps_per_sample[aid],
-                reduce="sum",
+                reduce="lifetime_sum",
             )
             self.metrics.log_value(
                 (AGENT_STEP_UTILIZATION, aid),
-                self.metrics.peek((NUM_AGENT_STEPS_PER_SAMPLE_LIFETIME, aid))
-                / self.metrics.peek((NUM_AGENT_STEPS_SAMPLED_LIFETIME, aid)),
+                agent_to_num_steps_per_sample[aid] / agent_to_num_steps_sampled[aid],
                 reduce="mean",
                 window=self._metrics_num_episodes_for_smoothing,
             )
@@ -1328,7 +1243,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             self.metrics.log_value(
                 (NUM_MODULE_STEPS_SAMPLED_LIFETIME, mid),
                 module_to_num_steps_sampled[mid],
-                reduce="sum",
+                reduce="lifetime_sum",
             )
             self.metrics.log_value(
                 (NUM_MODULE_EPISODES_PER_SAMPLE, mid),
@@ -1343,12 +1258,11 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             self.metrics.log_value(
                 (NUM_MODULE_STEPS_PER_SAMPLE_LIFETIME, mid),
                 module_to_num_steps_per_sample[mid],
-                reduce="sum",
+                reduce="lifetime_sum",
             )
             self.metrics.log_value(
                 (MODULE_STEP_UTILIZATION, mid),
-                self.metrics.peek((NUM_MODULE_STEPS_PER_SAMPLE_LIFETIME, mid))
-                / self.metrics.peek((NUM_MODULE_STEPS_SAMPLED_LIFETIME, mid)),
+                module_to_num_steps_per_sample[mid] / module_to_num_steps_sampled[mid],
                 reduce="mean",
                 window=self._metrics_num_episodes_for_smoothing,
             )
