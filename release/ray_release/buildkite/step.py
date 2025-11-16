@@ -159,7 +159,7 @@ def get_step(
     env_dict["ANYSCALE_PROJECT"] = get_test_project_id(test, default_project_id)
 
     step["env"].update(env_dict)
-    step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.9"
+    step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.10"
 
     commit = get_test_env_var("RAY_COMMIT")
     branch = get_test_env_var("RAY_BRANCH")
@@ -203,16 +203,16 @@ def get_step(
 
     image = test.get_anyscale_byod_image()
     base_image = test.get_anyscale_base_byod_image()
+    depends_on: List[str] = []
     if test.require_custom_byod_image():
-        step["depends_on"] = generate_custom_build_step_key(image)
+        depends_on.append(generate_custom_build_step_key(image))
     else:
-        step["depends_on"] = get_prerequisite_step(image, base_image)
+        depends_on.append(get_prerequisite_step(image, base_image))
 
     if block_step_key:
-        if not step["depends_on"]:
-            step["depends_on"] = block_step_key
-        else:
-            step["depends_on"] = [step["depends_on"], block_step_key]
+        depends_on.append(block_step_key)
+    step["depends_on"] = depends_on
+
     return step
 
 
