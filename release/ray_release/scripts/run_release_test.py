@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Optional, Tuple
@@ -162,6 +163,9 @@ def main(
     # off quickly. We should remove this when the new db reporter is stable.
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         reporters.append(RayTestDBReporter())
+
+    if test.is_azure():
+        subprocess.check_call(["bash", "release/azure_login.sh"])
 
     try:
         result = run_release_test(

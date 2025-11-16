@@ -68,7 +68,7 @@ class TestAnyscaleDockerContainer(RayCITestBase):
                     f"rayproject/ray-ml:123456-{pv}-cu121 "
                     f"{aws_prj}:123456-{pv}-cu121 {aws_ecr}",
                     f"./release/gcloud_docker_login.sh {gce_credentials}",
-                    "./release/azure_docker_login.sh",
+                    "./release/azure_login.sh",
                     "az acr login --name rayreleasetest",
                     "export PATH=$(pwd)/google-cloud-sdk/bin:$PATH",
                 ]
