@@ -415,7 +415,6 @@ class KafkaDatasource(Datasource):
                         consumer.seek(topic_partition, start_off)
 
                         records = []
-                        records_read = 0
 
                         output_buffer = BlockOutputBuffer(
                             OutputBlockSizeOption.of(
@@ -477,7 +476,6 @@ class KafkaDatasource(Datasource):
                                         "headers": headers_dict,
                                     }
                                 )
-                                records_read += 1
 
                                 # Yield incrementally when we hit batch size
                                 if len(records) >= KafkaDatasource.BATCH_SIZE_FOR_YIELD:
