@@ -3,6 +3,7 @@ import binascii
 import errno
 import importlib
 import inspect
+import logging
 import os
 import random
 import string
@@ -12,7 +13,12 @@ from inspect import signature
 from types import ModuleType
 from typing import Any, Coroutine, Dict, Optional, Tuple
 
+import ray
+from ray._raylet import GcsClient
+
 import psutil
+
+logger = logging.getLogger(__name__)
 
 
 def import_module_and_attr(
@@ -214,27 +220,101 @@ def get_call_location(back: int = 1):
         return "UNKNOWN"
 
 
-def get_user_temp_dir():
+def resolve_user_ray_temp_dir(gcs_address: str, node_id: str):
+    """
+    Get the ray temp directory.
+
+    If a temp dir was specified for this cluster, this function will
+    retrieve the information from GCS. Otherwise, it will fallback to the
+    default ray temp directory.
+
+    Args:
+        gcs_address: The address of the GCS server.
+                     E.g.: "127.0.0.1:6379"
+        node_id: The ID of the node to fetch the temp dir for.
+                 E.g.: "1a9904d8aa3de65367830e2aef6313a5b2e9d4b0e3725e0dceeacb1b"
+                        (hex string representation of the node ID)
+
+    Returns:
+        The path to the ray temp directory.
+    """
+    # check if temp dir is available from runtime context
+    if ray.is_initialized() and ray.get_runtime_context().get_node_id() == node_id:
+        return ray.get_runtime_context().get_temp_dir()
+
+    # Attempt to fetch temp dir as specified by --temp-dir at creation time.
+    if gcs_address is not None and node_id is not None:
+        gcs_client = GcsClient(gcs_address)
+        node_info = next(
+            iter(
+                gcs_client.get_all_node_info(
+                    filters=[
+                        ("node_id", "=", node_id),
+                        ("state", "=", "ALIVE"),
+                    ]
+                ).values()
+            )
+        )
+        if node_info is not None:
+            temp_dir = getattr(node_info, "temp_dir", None)
+            if temp_dir is not None:
+                return temp_dir
+            else:
+                logger.warning(
+                    "Node temp_dir not found in NodeInfo. "
+                    "Using Ray's default temp dir."
+                )
+
+    # fallback to default ray temp dir
+    tmp_dir = None
     if "RAY_TMPDIR" in os.environ:
-        return os.environ["RAY_TMPDIR"]
+        tmp_dir = os.environ["RAY_TMPDIR"]
     elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
-        return os.environ["TMPDIR"]
+        tmp_dir = os.environ["TMPDIR"]
     elif sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
         # Ideally we wouldn't need this fallback, but keep it for now for
         # for compatibility
-        tempdir = os.path.join(os.sep, "tmp")
+        tmp_dir = os.path.join(os.sep, "tmp")
     else:
-        tempdir = tempfile.gettempdir()
-    return tempdir
+        tmp_dir = tempfile.gettempdir()
+
+    return os.path.join(tmp_dir, "ray")
+
+
+def get_user_temp_dir():
+    """
+    get_user_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead.
+
+    Get the ray temp directory for the current user.
+
+    Note: There should not be a notion of user temp dir. Instead,
+    user specified temp directories for ray should overwrite /tmp/ray.
+    """
+    logger.warning(
+        "get_user_temp_dir is deprecated, and will be removed in a future release."
+        " Please use resolve_user_ray_temp_dir instead."
+    )
+
+    return resolve_user_ray_temp_dir(None, None)
 
 
 def get_ray_temp_dir():
-    return os.path.join(get_user_temp_dir(), "ray")
+    """
+    get_ray_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead.
+
+    Get the ray temp directory for the current user.
+    """
+    logger.warning(
+        "get_ray_temp_dir is deprecated, and will be removed in a future release."
+        " Please use resolve_user_ray_temp_dir instead."
+    )
+
+    return resolve_user_ray_temp_dir(None, None)
 
 
 def get_ray_address_file(temp_dir: Optional[str]):
     if temp_dir is None:
-        temp_dir = get_ray_temp_dir()
+        temp_dir = resolve_user_ray_temp_dir(None, None)
     return os.path.join(temp_dir, "ray_current_cluster")
 
 
