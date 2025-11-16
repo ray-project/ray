@@ -65,6 +65,7 @@ def add_rllib_example_script_args(
     default_reward: float = 100.0,
     default_iters: int = 200,
     default_timesteps: int = 100000,
+    remove_args: Optional[List[str]] = None,
 ) -> argparse.ArgumentParser:
     """Adds RLlib-typical (and common) examples scripts command line args to a parser.
 
@@ -76,6 +77,9 @@ def add_rllib_example_script_args(
         default_reward: The default value for the --stop-reward option.
         default_iters: The default value for the --stop-iters option.
         default_timesteps: The default value for the --stop-timesteps option.
+        remove_args: Optional list of argument names to remove from the parser.
+            Arguments can be specified with or without the '--' prefix
+            (e.g., '--algo' or 'algo').
 
     Returns:
         The altered (or newly created) parser object.
@@ -339,6 +343,32 @@ def add_rllib_example_script_args(
         "--enable-new-api-stack",
         action="store_true",
     )
+
+    # Remove specified arguments if requested.
+    if remove_args:
+        # Normalize remove_args: handle both '--arg-name' and 'arg-name' formats
+        normalized_remove_args = set()
+        for arg in remove_args:
+            # Remove '--' prefix if present and store both forms for matching
+            normalized_arg = arg.lstrip("-")
+            normalized_remove_args.add(normalized_arg)
+            # Also add with '--' prefix for matching against option_strings
+            normalized_remove_args.add(f"--{normalized_arg}")
+
+        # Find and remove matching actions
+        actions_to_remove = []
+        for action in parser._actions:
+            # Check if any option string matches the remove_args
+            if any(opt in normalized_remove_args for opt in action.option_strings):
+                actions_to_remove.append(action)
+
+        # Remove the actions from parser
+        for action in actions_to_remove:
+            parser._actions.remove(action)
+            # Also remove from parser._option_string_actions if it exists
+            if hasattr(parser, "_option_string_actions"):
+                for option_string in action.option_strings:
+                    parser._option_string_actions.pop(option_string, None)
 
     return parser
 
