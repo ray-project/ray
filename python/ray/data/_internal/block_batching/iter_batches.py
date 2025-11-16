@@ -123,9 +123,9 @@ class BatchIterator:
         self._prefetch_batches = prefetch_batches
         ctx = DataContext.get_current()
         self._eager_free = clear_block_after_read and ctx.eager_free
-        max_inflight_blocks = max(1, (prefetch_batches or 0) + 1)
+        max_get_blocks_batch_size = max(1, (prefetch_batches or 0) + 1)
         self._block_get_batch_size = min(
-            ctx.iter_get_block_batch_size, max_inflight_blocks
+            ctx.iter_get_block_batch_size, max_get_blocks_batch_size
         )
 
         actor_prefetcher_enabled = (

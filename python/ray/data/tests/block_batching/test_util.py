@@ -36,6 +36,7 @@ def test_resolve_block_refs(ray_start_regular_shared):
     assert list(resolved_iter) == [0, 1, 2]
 
 
+# Ensures `resolve_block_refs` respects the batch size knob.
 def test_resolve_block_refs_batches(ray_start_regular_shared, monkeypatch):
     ctx = ray.data.DataContext.get_current()
     old_batch_size = ctx.iter_get_block_batch_size
@@ -63,6 +64,7 @@ def test_resolve_block_refs_batches(ray_start_regular_shared, monkeypatch):
     assert call_sizes == [2, 2, 1]
 
 
+# Ensures the explicit `max_get_batch_size` override is prioritized.
 def test_resolve_block_refs_max_batch_override(ray_start_regular_shared, monkeypatch):
     ctx = ray.data.DataContext.get_current()
     old_batch_size = ctx.iter_get_block_batch_size
