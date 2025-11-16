@@ -1,4 +1,5 @@
-# Python requirements to run release tests from anyscale byod (cpu type)
+# Python requirements to run release tests from anyscale byod (gpu type)
+
 ale-py
 boto3
 cmake
