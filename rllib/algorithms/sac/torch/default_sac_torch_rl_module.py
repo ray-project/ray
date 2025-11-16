@@ -1,17 +1,18 @@
-import gymnasium as gym
 from typing import Any, Dict
+
+import gymnasium as gym
 
 from ray.rllib.algorithms.sac.default_sac_rl_module import DefaultSACRLModule
 from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.algorithms.sac.sac_learner import (
     ACTION_DIST_INPUTS_NEXT,
-    QF_PREDS,
-    QF_TWIN_PREDS,
-    QF_TARGET_NEXT,
-    ACTION_LOG_PROBS_NEXT,
-    ACTION_PROBS_NEXT,
-    ACTION_PROBS,
     ACTION_LOG_PROBS,
+    ACTION_LOG_PROBS_NEXT,
+    ACTION_PROBS,
+    ACTION_PROBS_NEXT,
+    QF_PREDS,
+    QF_TARGET_NEXT,
+    QF_TWIN_PREDS,
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ENCODER_OUT, Encoder, Model
@@ -54,11 +55,8 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
 
     @override(RLModule)
     def _forward_train(self, batch: Dict) -> Dict[str, Any]:
-        if self.inference_only:
-            raise RuntimeError(
-                "Trying to train a module that is not a learner module. Set the "
-                "flag `inference_only=False` when building the module."
-            )
+        # Call the `super`'s `forward_train`
+        super()._forward_train(batch)
         if isinstance(self.action_space, gym.spaces.Discrete):
             return self._forward_train_discrete(batch)
         elif isinstance(self.action_space, gym.spaces.Box):

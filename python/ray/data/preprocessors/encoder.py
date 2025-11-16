@@ -1,19 +1,32 @@
-from collections import Counter, OrderedDict
+import logging
+from collections import Counter
 from functools import partial
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Hashable, List, Optional, Set
 
 import numpy as np
 import pandas as pd
 import pandas.api.types
 
 from ray.air.util.data_batch_conversion import BatchFormat
-from ray.data import Dataset
-from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
+from ray.data.preprocessor import (
+    Preprocessor,
+    PreprocessorNotFittedException,
+    SerializablePreprocessorBase,
+)
+from ray.data.preprocessors.utils import make_post_processor
+from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.dataset import Dataset
+
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
-class OrdinalEncoder(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.ordinal_encoder")
+class OrdinalEncoder(SerializablePreprocessorBase):
     r"""Encode values within columns as ordered integer values.
 
     :class:`OrdinalEncoder` encodes categorical features as integers that range from
@@ -106,6 +119,7 @@ class OrdinalEncoder(Preprocessor):
         encode_lists: bool = True,
         output_columns: Optional[List[str]] = None,
     ):
+        super().__init__()
         # TODO: allow user to specify order of values within each column.
         self.columns = columns
         self.encode_lists = encode_lists
@@ -113,9 +127,18 @@ class OrdinalEncoder(Preprocessor):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(
-            dataset, self.columns, encode_lists=self.encode_lists
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
+        self.stat_computation_plan.add_callable_stat(
+            stat_fn=lambda key_gen: compute_unique_value_indices(
+                dataset=dataset,
+                columns=self.columns,
+                encode_lists=self.encode_lists,
+                key_gen=key_gen,
+            ),
+            post_process_fn=unique_post_fn(),
+            stat_key_fn=lambda col: f"unique({col})",
+            post_key_fn=lambda col: f"unique_values({col})",
+            columns=self.columns,
         )
         return self
 
@@ -130,11 +153,9 @@ class OrdinalEncoder(Preprocessor):
                 if self.encode_lists:
                     return s.map(partial(encode_list, name=s.name))
 
-                # cannot simply use map here due to pandas thinking
-                # tuples are to be used for indices
                 def list_as_category(element):
-                    element = tuple(element)
-                    return self.stats_[f"unique_values({s.name})"].get(element)
+                    key = tuple(element)
+                    return self.stats_[f"unique_values({s.name})"].get(key)
 
                 return s.apply(list_as_category)
 
@@ -143,6 +164,22 @@ class OrdinalEncoder(Preprocessor):
 
         df[self.output_columns] = df[self.columns].apply(column_ordinal_encoder)
         return df
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self.columns,
+            "output_columns": self.output_columns,
+            "encode_lists": self.encode_lists,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self.columns = fields["columns"]
+        self.output_columns = fields["output_columns"]
+        self.encode_lists = fields["encode_lists"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
 
     def __repr__(self):
         return (
@@ -153,7 +190,8 @@ class OrdinalEncoder(Preprocessor):
 
 
 @PublicAPI(stability="alpha")
-class OneHotEncoder(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.one_hot_encoder")
+class OneHotEncoder(SerializablePreprocessorBase):
     r"""`One-hot encode <https://en.wikipedia.org/wiki/One-hot#Machine_learning_and_statistics>`_
     categorical data.
 
@@ -250,48 +288,76 @@ class OneHotEncoder(Preprocessor):
         max_categories: Optional[Dict[str, int]] = None,
         output_columns: Optional[List[str]] = None,
     ):
+        super().__init__()
         # TODO: add `drop` parameter.
         self.columns = columns
-        self.max_categories = max_categories
+        self.max_categories = max_categories or {}
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(
-            dataset,
-            self.columns,
-            max_categories=self.max_categories,
-            encode_lists=False,
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
+        self.stat_computation_plan.add_callable_stat(
+            stat_fn=lambda key_gen: compute_unique_value_indices(
+                dataset=dataset,
+                columns=self.columns,
+                encode_lists=False,
+                key_gen=key_gen,
+                max_categories=self.max_categories,
+            ),
+            post_process_fn=unique_post_fn(),
+            stat_key_fn=lambda col: f"unique({col})",
+            post_key_fn=lambda col: f"unique_values({col})",
+            columns=self.columns,
         )
         return self
 
+    def safe_get(self, v: Any, stats: Dict[str, int]):
+        if isinstance(v, (list, np.ndarray)):
+            v = tuple(v)
+        if isinstance(v, Hashable):
+            return stats.get(v, -1)
+        else:
+            return -1  # Unhashable type treated as a missing category
+
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
-        from typing import Any
-
-        def safe_get(v: Any, stats: Dict[str, int]):
-            from collections.abc import Hashable
-
-            if isinstance(v, Hashable):
-                return stats.get(v, -1)
-            else:
-                return -1  # Unhashable type treated as a missing category
 
         # Compute new one-hot encoded columns
         for column, output_column in zip(self.columns, self.output_columns):
-            if _is_series_composed_of_lists(df[column]):
-                df[column] = df[column].map(tuple)
-
             stats = self.stats_[f"unique_values({column})"]
             num_categories = len(stats)
-            one_hot = np.zeros((len(df), num_categories), dtype=int)
-            codes = df[column].apply(lambda v: safe_get(v, stats)).to_numpy()
-            valid_rows = codes != -1
-            one_hot[np.nonzero(valid_rows)[0], codes[valid_rows].astype(int)] = 1
+            one_hot = np.zeros((len(df), num_categories), dtype=np.uint8)
+            # Integer indices for each category in the column
+            codes = df[column].apply(lambda v: self.safe_get(v, stats)).to_numpy()
+            # Filter to only the rows that have a valid category
+            valid_category_mask = codes != -1
+            # Dimension should be (num_rows, ) - 1D boolean array
+            non_zero_indices = np.nonzero(valid_category_mask)[0]
+            # Mark the corresponding categories as 1
+            one_hot[
+                non_zero_indices,
+                codes[valid_category_mask],
+            ] = 1
             df[output_column] = one_hot.tolist()
 
         return df
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self.columns,
+            "output_columns": self.output_columns,
+            "max_categories": self.max_categories,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self.columns = fields["columns"]
+        self.output_columns = fields["output_columns"]
+        self.max_categories = fields["max_categories"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
 
     def __repr__(self):
         return (
@@ -302,7 +368,10 @@ class OneHotEncoder(Preprocessor):
 
 
 @PublicAPI(stability="alpha")
-class MultiHotEncoder(Preprocessor):
+@SerializablePreprocessor(
+    version=1, identifier="io.ray.preprocessors.multi_hot_encoder"
+)
+class MultiHotEncoder(SerializablePreprocessorBase):
     r"""Multi-hot encode categorical data.
 
     This preprocessor replaces each list of categories with an :math:`m`-length binary
@@ -390,19 +459,27 @@ class MultiHotEncoder(Preprocessor):
         max_categories: Optional[Dict[str, int]] = None,
         output_columns: Optional[List[str]] = None,
     ):
+        super().__init__()
         # TODO: add `drop` parameter.
         self.columns = columns
-        self.max_categories = max_categories
+        self.max_categories = max_categories or {}
         self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(
-            dataset,
-            self.columns,
-            max_categories=self.max_categories,
-            encode_lists=True,
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
+        self.stat_computation_plan.add_callable_stat(
+            stat_fn=lambda key_gen: compute_unique_value_indices(
+                dataset=dataset,
+                columns=self.columns,
+                encode_lists=True,
+                key_gen=key_gen,
+                max_categories=self.max_categories,
+            ),
+            post_process_fn=unique_post_fn(),
+            stat_key_fn=lambda col: f"unique({col})",
+            post_key_fn=lambda col: f"unique_values({col})",
+            columns=self.columns,
         )
         return self
 
@@ -423,6 +500,22 @@ class MultiHotEncoder(Preprocessor):
 
         return df
 
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self.columns,
+            "output_columns": self.output_columns,
+            "max_categories": self.max_categories,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self.columns = fields["columns"]
+        self.output_columns = fields["output_columns"]
+        self.max_categories = fields["max_categories"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
@@ -432,7 +525,8 @@ class MultiHotEncoder(Preprocessor):
 
 
 @PublicAPI(stability="alpha")
-class LabelEncoder(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.label_encoder")
+class LabelEncoder(SerializablePreprocessorBase):
     r"""Encode labels as integer targets.
 
     :class:`LabelEncoder` encodes labels as integer targets that range from
@@ -498,11 +592,22 @@ class LabelEncoder(Preprocessor):
     """
 
     def __init__(self, label_column: str, *, output_column: Optional[str] = None):
+        super().__init__()
         self.label_column = label_column
         self.output_column = output_column or label_column
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(dataset, [self.label_column])
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
+        self.stat_computation_plan.add_callable_stat(
+            stat_fn=lambda key_gen: compute_unique_value_indices(
+                dataset=dataset,
+                columns=[self.label_column],
+                key_gen=key_gen,
+            ),
+            post_process_fn=unique_post_fn(),
+            stat_key_fn=lambda col: f"unique({col})",
+            post_key_fn=lambda col: f"unique_values({col})",
+            columns=[self.label_column],
+        )
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -557,12 +662,33 @@ class LabelEncoder(Preprocessor):
         df[self.label_column] = df[self.output_column].transform(column_label_decoder)
         return df
 
+    def get_input_columns(self) -> List[str]:
+        return [self.label_column]
+
+    def get_output_columns(self) -> List[str]:
+        return [self.output_column]
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "label_column": self.label_column,
+            "output_column": self.output_column,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self.label_column = fields["label_column"]
+        self.output_column = fields["output_column"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+
     def __repr__(self):
         return f"{self.__class__.__name__}(label_column={self.label_column!r}, output_column={self.output_column!r})"
 
 
 @PublicAPI(stability="alpha")
-class Categorizer(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.categorizer")
+class Categorizer(SerializablePreprocessorBase):
     r"""Convert columns to ``pd.CategoricalDtype``.
 
     Use this preprocessor with frameworks that have built-in support for
@@ -628,6 +754,7 @@ class Categorizer(Preprocessor):
         dtypes: Optional[Dict[str, pd.CategoricalDtype]] = None,
         output_columns: Optional[List[str]] = None,
     ):
+        super().__init__()
         if not dtypes:
             dtypes = {}
 
@@ -637,27 +764,68 @@ class Categorizer(Preprocessor):
             columns, output_columns
         )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         columns_to_get = [
-            column for column in self.columns if column not in set(self.dtypes)
+            column for column in self.columns if column not in self.dtypes
         ]
-        if columns_to_get:
-            unique_indices = _get_unique_value_indices(
-                dataset, columns_to_get, drop_na_values=True, key_format="{0}"
-            )
-            unique_indices = {
-                column: pd.CategoricalDtype(values_indices.keys())
-                for column, values_indices in unique_indices.items()
-            }
-        else:
-            unique_indices = {}
-        unique_indices = {**self.dtypes, **unique_indices}
-        self.stats_: Dict[str, pd.CategoricalDtype] = unique_indices
+        self.stats_ |= self.dtypes
+        if not columns_to_get:
+            return self
+
+        def callback(unique_indices: Dict[str, Dict]) -> pd.CategoricalDtype:
+            return pd.CategoricalDtype(unique_indices.keys())
+
+        self.stat_computation_plan.add_callable_stat(
+            stat_fn=lambda key_gen: compute_unique_value_indices(
+                dataset=dataset,
+                columns=columns_to_get,
+                key_gen=key_gen,
+            ),
+            post_process_fn=make_post_processor(
+                base_fn=unique_post_fn(drop_na_values=True),
+                callbacks=[callback],
+            ),
+            stat_key_fn=lambda col: f"unique({col})",
+            post_key_fn=lambda col: col,
+            columns=columns_to_get,
+        )
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
         df[self.output_columns] = df[self.columns].astype(self.stats_)
         return df
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self.columns,
+            "output_columns": self.output_columns,
+            "_fitted": getattr(self, "_fitted", None),
+            "dtypes": {
+                col: {"categories": list(dtype.categories), "ordered": dtype.ordered}
+                for col, dtype in self.dtypes.items()
+            }
+            if hasattr(self, "dtypes") and self.dtypes
+            else None,
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        # Handle dtypes field specially
+        self.dtypes = (
+            {
+                col: pd.CategoricalDtype(
+                    categories=dtype_data["categories"], ordered=dtype_data["ordered"]
+                )
+                for col, dtype_data in fields["dtypes"].items()
+            }
+            if fields.get("dtypes")
+            else {}
+        )
+
+        self.columns = fields["columns"]
+        self.output_columns = fields["output_columns"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
 
     def __repr__(self):
         return (
@@ -666,16 +834,14 @@ class Categorizer(Preprocessor):
         )
 
 
-def _get_unique_value_indices(
-    dataset: Dataset,
+def compute_unique_value_indices(
+    *,
+    dataset: "Dataset",
     columns: List[str],
-    drop_na_values: bool = False,
-    key_format: str = "unique_values({0})",
-    max_categories: Optional[Dict[str, int]] = None,
+    key_gen: Callable,
     encode_lists: bool = True,
-) -> Dict[str, Dict[str, int]]:
-    """If drop_na_values is True, will silently drop NA values."""
-
+    max_categories: Optional[Dict[str, int]] = None,
+):
     if max_categories is None:
         max_categories = {}
     columns_set = set(columns)
@@ -686,7 +852,8 @@ def _get_unique_value_indices(
                 f"{columns}."
             )
 
-    def get_pd_value_counts_per_column(col: pd.Series):
+    def get_pd_value_counts_per_column(col: pd.Series) -> Dict:
+
         # special handling for lists
         if _is_series_composed_of_lists(col):
             if encode_lists:
@@ -703,7 +870,8 @@ def _get_unique_value_indices(
                 col = col.map(lambda x: tuple(x))
         return Counter(col.value_counts(dropna=False).to_dict())
 
-    def get_pd_value_counts(df: pd.DataFrame) -> List[Dict[str, Counter]]:
+    def get_pd_value_counts(df: pd.DataFrame) -> Dict[str, List[Dict]]:
+
         df_columns = df.columns.tolist()
         result = {}
         for col in columns:
@@ -715,44 +883,50 @@ def _get_unique_value_indices(
                 )
         return result
 
-    value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
-    final_counters = {col: Counter() for col in columns}
-    for batch in value_counts.iter_batches(batch_size=None):
+    value_counts_ds = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
+    unique_values_by_col: Dict[str, Set] = {key_gen(col): set() for col in columns}
+    for batch in value_counts_ds.iter_batches(batch_size=None):
         for col, counters in batch.items():
             for counter in counters:
-                counter = {k: v for k, v in counter.items() if v is not None}
-                final_counters[col] += Counter(counter)
+                counter: Dict[Any, int] = {
+                    k: v for k, v in counter.items() if v is not None
+                }
+                if col in max_categories:
+                    counter: Dict[Any, int] = dict(
+                        Counter(counter).most_common(max_categories[col])
+                    )
+                # add only column values since frequencies are needed beyond this point
+                unique_values_by_col[key_gen(col)].update(counter.keys())
 
-    # Inspect if there is any NA values.
-    for col in columns:
+    return unique_values_by_col
+
+
+def unique_post_fn(drop_na_values: bool = False) -> Callable[[Set], Dict[str, int]]:
+    """
+    Returns a post-processing function that generates an encoding map by
+    sorting the unique values produced during aggregation or stats computation.
+
+    Args:
+        drop_na_values: If True, NA/null values will be silently dropped from the
+            encoding map. If False, raises an error if any NA/null values are present.
+
+    Returns:
+        A callable that takes a set of unique values and returns a dictionary
+        mapping each value to a unique integer index.
+    """
+
+    def gen_value_index(values: Set) -> Dict[str, int]:
         if drop_na_values:
-            counter = final_counters[col]
-            counter_dict = dict(counter)
-            sanitized_dict = {k: v for k, v in counter_dict.items() if not pd.isnull(k)}
-            final_counters[col] = Counter(sanitized_dict)
+            values = {k for k in values if not pd.isnull(k)}
         else:
-            if any(pd.isnull(k) for k in final_counters[col]):
+            if any(pd.isnull(k) for k in values):
                 raise ValueError(
-                    f"Unable to fit column '{col}' because it contains null"
-                    f" values. Consider imputing missing values first."
+                    "Unable to fit column because it contains null"
+                    " values. Consider imputing missing values first."
                 )
+        return {k: j for j, k in enumerate(sorted(values))}
 
-    unique_values_with_indices = OrderedDict()
-    for column in columns:
-        if column in max_categories:
-            # Output sorted by freq.
-            unique_values_with_indices[key_format.format(column)] = {
-                k[0]: j
-                for j, k in enumerate(
-                    final_counters[column].most_common(max_categories[column])
-                )
-            }
-        else:
-            # Output sorted by column name.
-            unique_values_with_indices[key_format.format(column)] = {
-                k: j for j, k in enumerate(sorted(dict(final_counters[column]).keys()))
-            }
-    return unique_values_with_indices
+    return gen_value_index
 
 
 def _validate_df(df: pd.DataFrame, *columns: str) -> None:

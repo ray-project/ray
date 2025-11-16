@@ -1,13 +1,12 @@
 import os
 import sys
 from unittest import mock
-import pytest
-import requests
 from unittest.mock import patch
 
-import ray
-from ray._private.accelerators import TPUAcceleratorManager
-from ray._private.accelerators import tpu
+import pytest
+import requests
+
+from ray._private.accelerators import TPUAcceleratorManager, tpu
 
 
 @patch("glob.glob")
@@ -259,98 +258,6 @@ def test_tpu_pod_detect_and_configure_worker(test_config):
                 )
 
     assert final_resources == expected_value
-
-
-def test_get_current_pod_name_smoke():
-    with patch(
-        "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_name",
-        return_value="my-tpu",
-    ):
-        name = ray.util.accelerators.tpu.get_current_pod_name()
-    assert name == "my-tpu"
-
-
-def test_empty_get_current_pod_name_returns_none():
-    with patch(
-        "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_name",
-        return_value="",
-    ):
-        name = ray.util.accelerators.tpu.get_current_pod_name()
-    assert name is None
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
-        # (number_chips_per_host, accl_type, expected_worker_count)
-        (4, "v2-4", 1),
-        (4, "v3-32", 4),
-        (4, "v4-8", 1),
-        (4, "v4-16", 2),
-        (8, "v5litepod-4", 1),
-        (8, "v5litepod-8", 1),
-        (8, "v5litepod-16", 2),
-        (8, "v5litepod-32", 4),
-        (4, "v5p-4", 1),
-        (4, "v5p-8", 1),
-        (4, "v5p-16", 2),
-        (8, "v6e-4", 1),
-        (8, "v6e-8", 1),
-        (8, "v6e-16", 2),
-    ],
-)
-@patch("glob.glob")
-def test_worker_count(mock_glob, test_case):
-    num_devices, accelerator_type, expected_worker_count = test_case
-    mock_glob.return_value = ["/dev/accel" + str(x) for x in range(num_devices)]
-    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
-
-    with patch(
-        "ray._private.accelerators.tpu.TPUAcceleratorManager."
-        "get_current_node_tpu_pod_type",
-        return_value=accelerator_type,
-    ):
-        worker_count = ray.util.accelerators.tpu.get_current_pod_worker_count()
-
-    assert worker_count == expected_worker_count
-
-
-@patch("glob.glob")
-def test_num_tpu_chips(mock_glob):
-    mock_glob.return_value = [
-        "/dev/accel0",
-        "/dev/accel1",
-        "/dev/accel2",
-        "/dev/accel3",
-    ]
-    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
-    num_tpu_chips = ray.util.accelerators.tpu.get_num_tpu_chips_on_node()
-    assert num_tpu_chips == 4
-
-
-def test_get_current_node_labels_env_only(monkeypatch):
-    # Simulate GKE TPU environment variables
-    monkeypatch.setenv("TPU_NAME", "tpu-worker-group-2")
-    monkeypatch.setenv("TPU_WORKER_ID", "0")
-    monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v6e-16")
-    monkeypatch.setenv("TPU_TOPOLOGY", "4x4")
-
-    tpu_labels = TPUAcceleratorManager.get_current_node_accelerator_labels()
-
-    assert tpu_labels["ray.io/tpu-slice-name"] == "tpu-worker-group-2"
-    assert tpu_labels["ray.io/tpu-worker-id"] == "0"
-    assert tpu_labels["ray.io/tpu-topology"] == "4x4"
-    assert tpu_labels["ray.io/tpu-pod-type"] == "v6e-16"
-
-
-def test_get_current_node_tpu_topology_from_metadata():
-    tpu_env_string = "TPU_ACCELERATOR:v6e.\nTOPOLOGY: '2x2x4'\nTPU_HOST_BOUNDS:0,1,1,2"
-
-    with patch(
-        "ray._private.accelerators.tpu._get_tpu_metadata", return_value=tpu_env_string
-    ):
-        topology = TPUAcceleratorManager.get_current_node_tpu_topology()
-        assert topology == "2x2x4"
 
 
 if __name__ == "__main__":

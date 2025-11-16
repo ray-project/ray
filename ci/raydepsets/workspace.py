@@ -8,7 +8,6 @@ import yaml
 
 @dataclass
 class BuildArgSet:
-    name: str
     build_args: Dict[str, str]
 
 
@@ -16,14 +15,17 @@ class BuildArgSet:
 class Depset:
     name: str
     operation: str
-    requirements: List[str]
-    constraints: List[str]
     output: str
-    override_flags: List[str]
-    append_flags: List[str]
+    config_name: str
+    constraints: Optional[List[str]] = None
+    override_flags: Optional[List[str]] = None
+    append_flags: Optional[List[str]] = None
+    requirements: Optional[List[str]] = None
+    packages: Optional[List[str]] = None
     source_depset: Optional[str] = None
     depsets: Optional[List[str]] = None
-    build_arg_set_name: Optional[str] = None
+    pre_hooks: Optional[List[str]] = None
+    include_setuptools: Optional[bool] = False
 
 
 def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
@@ -40,7 +42,7 @@ def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
         return obj
 
 
-def _dict_to_depset(depset: dict, build_arg_set_name: Optional[str] = None) -> Depset:
+def _dict_to_depset(depset: dict, config_name: str) -> Depset:
     return Depset(
         name=depset.get("name"),
         requirements=depset.get("requirements", []),
@@ -49,51 +51,49 @@ def _dict_to_depset(depset: dict, build_arg_set_name: Optional[str] = None) -> D
         output=depset.get("output"),
         source_depset=depset.get("source_depset"),
         depsets=depset.get("depsets", []),
-        build_arg_set_name=build_arg_set_name,
         override_flags=depset.get("override_flags", []),
         append_flags=depset.get("append_flags", []),
+        pre_hooks=depset.get("pre_hooks", []),
+        packages=depset.get("packages", []),
+        include_setuptools=depset.get("include_setuptools", False),
+        config_name=config_name,
     )
 
 
 @dataclass
 class Config:
     depsets: List[Depset] = field(default_factory=list)
-    build_arg_sets: List[BuildArgSet] = field(default_factory=list)
 
-    @staticmethod
-    def from_dict(data: dict) -> "Config":
-        build_arg_sets = Config.parse_build_arg_sets(data.get("build_arg_sets", []))
+    @classmethod
+    def from_dict(cls, data: dict, config_name: str) -> "Config":
+        build_arg_sets = cls.parse_build_arg_sets(data.get("build_arg_sets", {}))
         raw_depsets = data.get("depsets", [])
         depsets = []
         for depset in raw_depsets:
-            build_arg_set_matrix = depset.get("build_arg_sets", [])
-            if build_arg_set_matrix:
-                for build_arg_set_name in build_arg_set_matrix:
-                    build_arg_set = next(
-                        (
-                            build_arg_set
-                            for build_arg_set in build_arg_sets
-                            if build_arg_set.name == build_arg_set_name
-                        ),
-                        None,
-                    )
-                    if build_arg_set is None:
-                        raise KeyError(f"Build arg set {build_arg_set_name} not found")
+            build_arg_set_keys = depset.get("build_arg_sets", [])
+            if build_arg_set_keys:
+                # Expand the depset for each build arg set
+                for build_arg_set_key in build_arg_set_keys:
+                    try:
+                        build_arg_set = build_arg_sets[build_arg_set_key]
+                    except KeyError:
+                        raise KeyError(
+                            f"Build arg set {build_arg_set_key} not found in config {config_name}"
+                        )
                     depset_yaml = _substitute_build_args(depset, build_arg_set)
-                    depsets.append(_dict_to_depset(depset_yaml, build_arg_set_name))
+                    depsets.append(_dict_to_depset(depset_yaml, config_name))
             else:
-                depsets.append(_dict_to_depset(depset=depset))
-        return Config(depsets=depsets, build_arg_sets=build_arg_sets)
+                depsets.append(_dict_to_depset(depset, config_name))
+        return Config(depsets=depsets)
 
     @staticmethod
-    def parse_build_arg_sets(build_arg_sets: List[dict]) -> List[BuildArgSet]:
-        return [
-            BuildArgSet(
-                name=build_arg_set.get("name", None),
-                build_args=build_arg_set.get("build_args", []),
+    def parse_build_arg_sets(build_arg_sets: Dict[str, dict]) -> Dict[str, BuildArgSet]:
+        return {
+            key: BuildArgSet(
+                build_args=build_arg_set,
             )
-            for build_arg_set in build_arg_sets
-        ]
+            for key, build_arg_set in build_arg_sets.items()
+        }
 
 
 class Workspace:
@@ -104,7 +104,29 @@ class Workspace:
         if self.dir is None:
             raise RuntimeError("BUILD_WORKSPACE_DIRECTORY is not set")
 
-    def load_config(self, path: str) -> Config:
-        with open(os.path.join(self.dir, path), "r") as f:
+    def load_configs(self, config_path: str) -> Config:
+        merged_configs = self.merge_configs(self.get_all_configs(config_path))
+        return merged_configs
+
+    def get_all_configs(self, config_path: str) -> List[Config]:
+        return [self.load_config(path) for path in self.get_configs_dir(config_path)]
+
+    def get_configs_dir(self, configs_path: str) -> List[str]:
+        configs_dir = os.path.dirname(os.path.join(self.dir, configs_path))
+        return [
+            os.path.join(self.dir, configs_dir, path)
+            for path in os.listdir(os.path.join(self.dir, configs_dir))
+            if path.endswith(".depsets.yaml")
+        ]
+
+    def load_config(self, config_path: str) -> Config:
+        with open(os.path.join(self.dir, config_path), "r") as f:
             data = yaml.safe_load(f)
-            return Config.from_dict(data)
+        config_name = os.path.basename(config_path)
+        config = Config.from_dict(data, config_name)
+        return config
+
+    def merge_configs(self, configs: List[Config]) -> Config:
+        return Config(
+            depsets=[depset for config in configs for depset in config.depsets]
+        )

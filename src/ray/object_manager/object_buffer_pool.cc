@@ -27,7 +27,7 @@ namespace ray {
 
 ObjectBufferPool::ObjectBufferPool(
     std::shared_ptr<plasma::PlasmaClientInterface> store_client, uint64_t chunk_size)
-    : store_client_(store_client), default_chunk_size_(chunk_size) {}
+    : store_client_(std::move(store_client)), default_chunk_size_(chunk_size) {}
 
 ObjectBufferPool::~ObjectBufferPool() {
   absl::MutexLock lock(&pool_mutex_);
@@ -59,7 +59,7 @@ ObjectBufferPool::~ObjectBufferPool() {
   }
 
   RAY_CHECK(create_buffer_state_.empty());
-  RAY_CHECK_OK(store_client_->Disconnect());
+  store_client_->Disconnect();
 }
 
 uint64_t ObjectBufferPool::GetNumChunks(uint64_t data_size) const {
@@ -73,13 +73,13 @@ uint64_t ObjectBufferPool::GetBufferLength(uint64_t chunk_index,
              : default_chunk_size_;
 }
 
-std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status>
+std::pair<std::shared_ptr<MemoryObjectReader>, Status>
 ObjectBufferPool::CreateObjectReader(const ObjectID &object_id,
                                      rpc::Address owner_address) {
   absl::MutexLock lock(&pool_mutex_);
 
   std::vector<ObjectID> object_ids{object_id};
-  std::vector<plasma::ObjectBuffer> object_buffers(1);
+  std::vector<plasma::ObjectBuffer> object_buffers;
   RAY_CHECK_OK(store_client_->Get(object_ids, 0, &object_buffers));
   if (object_buffers[0].data == nullptr) {
     RAY_LOG(INFO)
@@ -87,35 +87,34 @@ ObjectBufferPool::CreateObjectReader(const ObjectID &object_id,
         << ". This is most likely because the object was evicted or spilled before the "
            "pull request was received. The caller will retry the pull request after a "
            "timeout.";
-    return std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status>(
-        nullptr,
-        ray::Status::IOError("Unable to obtain object chunk, object not local."));
+    return std::pair<std::shared_ptr<MemoryObjectReader>, Status>(
+        nullptr, Status::IOError("Unable to obtain object chunk, object not local."));
   }
 
-  return std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status>(
+  return std::pair<std::shared_ptr<MemoryObjectReader>, Status>(
       std::make_shared<MemoryObjectReader>(std::move(object_buffers[0]),
                                            std::move(owner_address)),
-      ray::Status::OK());
+      Status::OK());
 }
 
-ray::Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
-                                          const rpc::Address &owner_address,
-                                          uint64_t data_size,
-                                          uint64_t metadata_size,
-                                          uint64_t chunk_index) {
+Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
+                                     const rpc::Address &owner_address,
+                                     uint64_t data_size,
+                                     uint64_t metadata_size,
+                                     uint64_t chunk_index) {
   absl::MutexLock lock(&pool_mutex_);
   RAY_RETURN_NOT_OK(EnsureBufferExists(
       object_id, owner_address, data_size, metadata_size, chunk_index));
   auto &state = create_buffer_state_.at(object_id);
-  if (chunk_index >= state.chunk_state.size()) {
-    return ray::Status::IOError("Object size mismatch");
+  if (chunk_index >= state.chunk_state_.size()) {
+    return Status::IOError("Object size mismatch");
   }
-  if (state.chunk_state[chunk_index] != CreateChunkState::AVAILABLE) {
+  if (state.chunk_state_[chunk_index] != CreateChunkState::AVAILABLE) {
     // There can be only one reference to this chunk at any given time.
-    return ray::Status::IOError("Chunk already received by a different thread.");
+    return Status::IOError("Chunk already received by a different thread.");
   }
-  state.chunk_state[chunk_index] = CreateChunkState::REFERENCED;
-  return ray::Status::OK();
+  state.chunk_state_[chunk_index] = CreateChunkState::REFERENCED;
+  return Status::OK();
 }
 
 void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
@@ -128,35 +127,36 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
     absl::MutexLock lock(&pool_mutex_);
     auto it = create_buffer_state_.find(object_id);
     if (it == create_buffer_state_.end() ||
-        chunk_index >= it->second.chunk_state.size() ||
-        it->second.chunk_state.at(chunk_index) != CreateChunkState::REFERENCED) {
+        chunk_index >= it->second.chunk_state_.size() ||
+        it->second.chunk_state_.at(chunk_index) != CreateChunkState::REFERENCED) {
       RAY_LOG(DEBUG) << "Object " << object_id << " aborted before chunk " << chunk_index
                      << " could be sealed";
       return;
     }
-    if (it->second.data_size != data_size || it->second.metadata_size != metadata_size) {
+    if (it->second.data_size_ != data_size ||
+        it->second.metadata_size_ != metadata_size) {
       RAY_LOG(DEBUG) << "Object " << object_id << " size mismatch, rejecting chunk";
       return;
     }
-    RAY_CHECK(it->second.chunk_info.size() > chunk_index);
+    RAY_CHECK(it->second.chunk_info_.size() > chunk_index);
 
-    chunk_info = it->second.chunk_info.at(chunk_index);
-    RAY_CHECK(data.size() == chunk_info->buffer_length)
+    chunk_info = it->second.chunk_info_.at(chunk_index);
+    RAY_CHECK(data.size() == chunk_info->buffer_length_)
         << "size mismatch!  data size: " << data.size()
-        << " chunk size: " << chunk_info->buffer_length;
+        << " chunk size: " << chunk_info->buffer_length_;
 
     // Update the state from REFERENCED To SEALED before releasing the lock to ensure
     // that no other thread sees a REFERENCED state.
-    it->second.chunk_state.at(chunk_index) = CreateChunkState::SEALED;
+    it->second.chunk_state_.at(chunk_index) = CreateChunkState::SEALED;
     // Increment the number of inflight copies to ensure Abort
     // does not release the buffer.
-    it->second.num_inflight_copies++;
+    it->second.num_inflight_copies_++;
   }
 
   RAY_CHECK(chunk_info.has_value()) << "chunk_info is not set";
   // The num_inflight_copies is used to ensure that another thread cannot call Release
   // on the object_id, which makes the unguarded copy call safe.
-  std::memcpy(chunk_info->data, data.data(), chunk_info->buffer_length);
+  std::memcpy(chunk_info->data_, data.data(), chunk_info->buffer_length_);
 
   {
     // Ensure the process of object_id Seal and Release is mutex guarded.
@@ -165,9 +165,9 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
     // Abort cannot be called during inflight copy operations.
     RAY_CHECK(it != create_buffer_state_.end());
     // Decrement the number of inflight copies to ensure Abort can release the buffer.
-    it->second.num_inflight_copies--;
-    it->second.num_seals_remaining--;
-    if (it->second.num_seals_remaining == 0) {
+    it->second.num_inflight_copies_--;
+    it->second.num_seals_remaining_--;
+    if (it->second.num_seals_remaining_ == 0) {
       RAY_CHECK_OK(store_client_->Seal(object_id));
       RAY_CHECK_OK(store_client_->Release(object_id));
       create_buffer_state_.erase(it);
@@ -186,7 +186,7 @@ void ObjectBufferPool::AbortCreateInternal(const ObjectID &object_id) {
   auto no_copy_inflight = [this, object_id]() {
     pool_mutex_.AssertReaderHeld();
     auto it = create_buffer_state_.find(object_id);
-    return it == create_buffer_state_.end() || it->second.num_inflight_copies == 0;
+    return it == create_buffer_state_.end() || it->second.num_inflight_copies_ == 0;
   };
 
   pool_mutex_.Await(absl::Condition(&no_copy_inflight));
@@ -207,7 +207,7 @@ std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
   uint64_t space_remaining = data_size;
   std::vector<ChunkInfo> chunks;
   int64_t position = 0;
-  while (space_remaining) {
+  while (space_remaining > 0) {
     position = data_size - space_remaining;
     if (space_remaining < default_chunk_size_) {
       chunks.emplace_back(chunks.size(), data + position, space_remaining, buffer_ref);
@@ -221,18 +221,18 @@ std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
   return chunks;
 }
 
-ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
-                                                 const rpc::Address &owner_address,
-                                                 uint64_t data_size,
-                                                 uint64_t metadata_size,
-                                                 uint64_t chunk_index) {
+Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
+                                            const rpc::Address &owner_address,
+                                            uint64_t data_size,
+                                            uint64_t metadata_size,
+                                            uint64_t chunk_index) {
   while (true) {
     // Buffer for object_id already exists and the size matches ours.
     {
       auto it = create_buffer_state_.find(object_id);
-      if (it != create_buffer_state_.end() && it->second.data_size == data_size &&
-          it->second.metadata_size == metadata_size) {
-        return ray::Status::OK();
+      if (it != create_buffer_state_.end() && it->second.data_size_ == data_size &&
+          it->second.metadata_size_ == metadata_size) {
+        return Status::OK();
       }
     }
 
@@ -258,10 +258,10 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
   {
     auto it = create_buffer_state_.find(object_id);
     if (it != create_buffer_state_.end()) {
-      RAY_CHECK(it->second.data_size != data_size ||
-                it->second.metadata_size != metadata_size);
+      RAY_CHECK(it->second.data_size_ != data_size ||
+                it->second.metadata_size_ != metadata_size);
       RAY_LOG(WARNING) << "Object " << object_id << " size (" << data_size
-                       << ") differs from the original (" << it->second.data_size
+                       << ") differs from the original (" << it->second.data_size_
                        << "). This is likely due to re-execution of a task with a "
                           "nondeterministic output. Recreating object with size "
                        << data_size << ".";
@@ -305,7 +305,7 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
     }
     // Create failed. Buffer creation will be tried by another chunk.
     // And this chunk will eventually make it here via retried pull requests.
-    return ray::Status::IOError(s.message());
+    return Status::IOError(s.message());
   }
 
   // Read object into store.
@@ -317,17 +317,20 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
       std::forward_as_tuple(metadata_size,
                             data_size,
                             BuildChunks(object_id, mutable_data, data_size, data)));
-  RAY_CHECK(inserted.first->second.chunk_info.size() == num_chunks);
+  RAY_CHECK(inserted.first->second.chunk_info_.size() == num_chunks);
   RAY_LOG(DEBUG) << "Created object " << object_id
                  << " in plasma store, number of chunks: " << num_chunks
                  << ", chunk index: " << chunk_index;
 
-  return ray::Status::OK();
+  return Status::OK();
 }
 
 void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&pool_mutex_);
-  RAY_CHECK_OK(store_client_->Delete(object_ids));
+  Status s = store_client_->Delete(object_ids);
+  if (!s.ok()) {
+    RAY_LOG(WARNING) << "Failed to delete objects from plasma store: " << s;
+  }
 }
 
 std::string ObjectBufferPool::DebugString() const {

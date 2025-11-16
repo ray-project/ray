@@ -181,7 +181,7 @@ if __name__ == "__main__":
     total_num_remote_cpus = num_remote_nodes * num_remote_cpus
     is_smoke_test = args.smoke_test
 
-    result = {"success": 0}
+    result = {}
     num_nodes = len(ray.nodes())
     assert (
         num_nodes == num_remote_nodes + 1
@@ -224,7 +224,6 @@ if __name__ == "__main__":
     # avg_spread ~ 115 with Ray 1.0 scheduler. ~695 with (buggy) 0.8.7
     # scheduler.
     result["stage_4_spread"] = stage_4_spread
-    result["success"] = 1
 
     if not is_smoke_test:
         result["perf_metrics"] = [

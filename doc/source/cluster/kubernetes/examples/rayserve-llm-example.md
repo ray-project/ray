@@ -2,7 +2,7 @@
 
 # Serve a Large Language Model using Ray Serve LLM on Kubernetes
 
-This guide provides a step-by-step guide for deploying a Large Language Model (LLM) using Ray Serve LLM on Kubernetes. Leveraging KubeRay, Ray Serve, and vLLM, this guide deploys the  `Qwen/Qwen2.5-7B-Instruct` model from Hugging Face, enabling scalable, efficient, and OpenAI-compatible LLM serving within a Kubernetes environment. See [Serving LLMs](serving_llms) for information on Ray Serve LLM.
+This guide provides a step-by-step guide for deploying a Large Language Model (LLM) using Ray Serve LLM on Kubernetes. Leveraging KubeRay, Ray Serve, and vLLM, this guide deploys the  `Qwen/Qwen2.5-7B-Instruct` model from Hugging Face, enabling scalable, efficient, and OpenAI-compatible LLM serving within a Kubernetes environment. See [Serving LLMs](serving-llms) for information on Ray Serve LLM.
 
 ## Prerequisites
 
@@ -72,7 +72,7 @@ serveConfigV2: |
           max_ongoing_requests: 128
 ```
 
-In particular, this configuration loads the model from `Qwen/Qwen2.5-7B-Instruct` and sets its `model_id` to `qwen2.5-7b-instruct`. The `LLMDeployment` initializes the underlying LLM engine using the `engine_kwargs` field. The `deployment_config` section sets the desired number of engine replicas. By default, each replica requires one GPU. See [Serving LLMs](serving_llms) and the [Ray Serve config documentation](serve-in-production-config-file) for more information.
+In particular, this configuration loads the model from `Qwen/Qwen2.5-7B-Instruct` and sets its `model_id` to `qwen2.5-7b-instruct`. The `LLMDeployment` initializes the underlying LLM engine using the `engine_kwargs` field. The `deployment_config` section sets the desired number of engine replicas. By default, each replica requires one GPU. See [Serving LLMs](serving-llms) and the [Ray Serve config documentation](serve-in-production-config-file) for more information.
 
 Wait for the RayService resource to become healthy. You can confirm its status by running the following command:
 ```sh

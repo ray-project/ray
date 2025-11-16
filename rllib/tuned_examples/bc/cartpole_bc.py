@@ -1,7 +1,6 @@
 import warnings
 from pathlib import Path
 
-from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.metrics import (
@@ -13,6 +12,7 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.tune.result import TRAINING_ITERATION
 
 parser = add_rllib_example_script_args()
 # Use `parser` to add your own custom command line options to this script
@@ -51,7 +51,7 @@ config = (
         # The number of iterations to be run per learner when in multi-learner
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
-        # iteration. For single-learner mode, 1 is the only option.
+        # iteration.
         dataset_num_iters_per_learner=5,
     )
     .training(

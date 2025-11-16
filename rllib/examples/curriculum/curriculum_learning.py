@@ -56,7 +56,6 @@ Policy NOT using the curriculum (trying to solve the hardest task right away):
 """
 from functools import partial
 
-from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.connectors.env_to_module import FlattenObservations
@@ -71,6 +70,7 @@ from ray.rllib.utils.test_utils import (
     run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls
+from ray.tune.result import TRAINING_ITERATION
 
 parser = add_rllib_example_script_args(default_iters=100, default_timesteps=600000)
 parser.add_argument(
@@ -147,6 +147,15 @@ def _remote_fn(env_runner, new_task: int):
 
 class EnvTaskCallback(RLlibCallback):
     """Custom callback implementing `on_train_result()` for changing the envs' maps."""
+
+    def on_algorithm_init(
+        self,
+        *,
+        algorithm: "Algorithm",
+        **kwargs,
+    ) -> None:
+        # Set the initial task to 0.
+        algorithm._counters["current_env_task"] = 0
 
     def on_train_result(
         self,

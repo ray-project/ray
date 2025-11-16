@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Union
+from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
 import pandas as pd
 
@@ -28,6 +28,9 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 from ray.train.v2._internal.execution.checkpoint.report_handler import (
     ReportCallbackHandler,
 )
+from ray.train.v2._internal.execution.checkpoint.validation_manager import (
+    ValidationManager,
+)
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller.state import (
     AbortedState,
@@ -39,6 +42,7 @@ from ray.train.v2._internal.execution.controller.state import (
     RestartingState,
     RunningState,
     SchedulingState,
+    ShuttingDownState,
     TrainControllerState,
 )
 from ray.train.v2._internal.execution.failure_handling import (
@@ -50,7 +54,6 @@ from ray.train.v2._internal.execution.scaling_policy import (
     ResizeDecision,
     ScalingPolicy,
 )
-from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
     WorkerGroupPollStatus,
@@ -66,6 +69,10 @@ from ray.train.v2.api.exceptions import (
     TrainingFailedError,
 )
 from ray.train.v2.api.result import Result
+
+if TYPE_CHECKING:
+    from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
+
 
 logger = logging.getLogger(__name__)
 
@@ -122,27 +129,27 @@ class TrainController:
         self._failure_policy = failure_policy
         self._run_config = self._train_run_context.run_config
         self._callbacks = callbacks or []
-        self._storage_context = StorageContext(
-            storage_path=self._run_config.storage_path,
-            experiment_dir_name=self._run_config.name,
-            storage_filesystem=self._run_config.storage_filesystem,
-        )
+        self._storage_context = self._train_run_context.run_config.storage_context
 
         self._checkpoint_manager = CheckpointManager(
             checkpoint_config=self._run_config.checkpoint_config,
             storage_context=self._storage_context,
         )
+        self._validation_manager = ValidationManager(
+            checkpoint_manager=self._checkpoint_manager,
+        )
         report_handler = ReportCallbackHandler(
             report_callbacks=(
-                [self._checkpoint_manager]
+                [self._checkpoint_manager, self._validation_manager]
                 + [c for c in self._callbacks if isinstance(c, ReportCallback)]
             )
         )
 
         # Group callbacks by the hooks they're subscribed to.
-        self._controller_callbacks = [self._scaling_policy] + [
-            c for c in self._callbacks if isinstance(c, ControllerCallback)
-        ]
+        self._controller_callbacks = [
+            self._scaling_policy,
+            self._validation_manager,
+        ] + [c for c in self._callbacks if isinstance(c, ControllerCallback)]
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
         self._worker_group_callbacks_to_propagate = (
@@ -245,8 +252,10 @@ class TrainController:
                 ),
             )
         elif failure_decision == FailureDecision.RAISE:
-            next_state = ErroredState(
-                training_failed_error=training_failed_error,
+            next_state = ShuttingDownState(
+                next_state=ErroredState(
+                    training_failed_error=training_failed_error,
+                ),
             )
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
@@ -275,17 +284,37 @@ class TrainController:
     ) -> Optional[ControllerError]:
         """Start the worker group and launch the train function.
 
+        Args:
+            num_workers: The number of workers to start.
+            resources_per_worker: The resources per worker to start.
+
         Returns:
             None if the worker group was successfully started,
             ControllerError if the worker group failed to start.
         """
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
+        scaling_config = self._train_run_context.scaling_config
+
+        # Check for `bundle_label_selector` to influence WorkerGroup scheduling.
+        bundle_label_selector = None
+        try:
+            for callback in self._controller_callbacks:
+                selector = callback.on_controller_start_worker_group(
+                    scaling_config=scaling_config, num_workers=num_workers
+                )
+                if selector:
+                    bundle_label_selector = selector
+                    break
+        except Exception as e:
+            return ControllerError(e)
+
         worker_group_context = WorkerGroupContext(
             run_attempt_id=self._get_run_attempt_id(),
             train_fn_ref=self._train_fn_ref,
             num_workers=num_workers,
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
+            bundle_label_selector=bundle_label_selector,
         )
         try:
             self._worker_group = self.worker_group_cls.create(
@@ -382,13 +411,24 @@ class TrainController:
             assert isinstance(controller_state.scaling_decision, ResizeDecision)
             return self._execute_resize_decision(controller_state.scaling_decision)
         elif isinstance(controller_state, RunningState):
-            worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
+            try:
+                worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
+            except Exception as e:
+                training_failed_error = ControllerError(e)
+                failure_decision = self._failure_policy.make_decision(
+                    training_failed_error=training_failed_error,
+                )
+                return self._execute_failure_decision(
+                    failure_decision, training_failed_error=training_failed_error
+                )
 
             if worker_group_status.finished and not worker_group_status.errors:
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
-                    next_state=FinishedState(),
+                    next_state=ShuttingDownState(
+                        next_state=FinishedState(),
+                    ),
                 )
             if worker_group_status.errors:
                 worker_group_error = worker_group_status.get_worker_group_error()
@@ -426,6 +466,14 @@ class TrainController:
                     scaling_decision=controller_state.scaling_decision
                 ),
             )
+        elif isinstance(controller_state, ShuttingDownState):
+            # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
+            self._shutdown()
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=controller_state,
+                next_state=controller_state.next_state,
+            )
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
 
@@ -462,9 +510,6 @@ class TrainController:
         """Run the main control loop. Exits when training is finished or errored."""
         while not self.get_state().is_terminal():
             await self._run_control_loop_iteration()
-
-        # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
-        self._shutdown()
 
         # Call after_controller_finish with the final result
         result = self._build_result()
@@ -521,7 +566,6 @@ class TrainController:
             raise ValueError(
                 f"Cannot get result when controller is in state {controller_state}"
             )
-
         return self._build_result()
 
     def get_training_failed_error(self) -> Optional[TrainingFailedError]:
@@ -537,3 +581,10 @@ class TrainController:
             return controller_state.training_failed_error
 
         return None
+
+    async def get_all_reported_checkpoints(
+        self, current_report_index: int
+    ) -> List["ReportedCheckpoint"]:
+        return await self._checkpoint_manager.get_all_reported_checkpoints(
+            current_report_index
+        )

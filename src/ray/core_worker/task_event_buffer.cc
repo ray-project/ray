@@ -55,13 +55,15 @@ TaskProfileEvent::TaskProfileEvent(TaskID task_id,
                                    std::string component_id,
                                    std::string node_ip_address,
                                    std::string event_name,
-                                   int64_t start_time)
+                                   int64_t start_time,
+                                   std::string session_name)
     : TaskEvent(task_id, job_id, attempt_number),
       component_type_(std::move(component_type)),
       component_id_(std::move(component_id)),
       node_ip_address_(std::move(node_ip_address)),
       event_name_(std::move(event_name)),
-      start_time_(start_time) {}
+      start_time_(start_time),
+      session_name_(session_name) {}
 
 void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   // Base fields
@@ -188,8 +190,8 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
   definition_event_data.mutable_required_resources()->insert(
       std::make_move_iterator(required_resources.begin()),
       std::make_move_iterator(required_resources.end()));
-  definition_event_data.mutable_runtime_env_info()->CopyFrom(
-      task_spec_->RuntimeEnvInfo());
+  definition_event_data.set_serialized_runtime_env(
+      task_spec_->RuntimeEnvInfo().serialized_runtime_env());
   definition_event_data.set_job_id(job_id_.Binary());
   definition_event_data.set_parent_task_id(task_spec_->ParentTaskId().Binary());
   definition_event_data.set_placement_group_id(
@@ -211,17 +213,20 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
   }
 }
 
-void TaskStatusEvent::PopulateRpcRayTaskExecutionEvent(
-    rpc::events::TaskExecutionEvent &execution_event_data,
+void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
+    rpc::events::TaskLifecycleEvent &lifecycle_event_data,
     google::protobuf::Timestamp timestamp) {
   // Task identifier
-  execution_event_data.set_task_id(task_id_.Binary());
-  execution_event_data.set_task_attempt(attempt_number_);
+  lifecycle_event_data.set_task_id(task_id_.Binary());
+  lifecycle_event_data.set_task_attempt(attempt_number_);
 
   // Task state
-  auto &task_state = *execution_event_data.mutable_task_state();
   if (task_status_ != rpc::TaskStatus::NIL) {
-    task_state[task_status_] = timestamp;
+    rpc::events::TaskLifecycleEvent::StateTransition state_transition;
+    state_transition.set_state(task_status_);
+    state_transition.mutable_timestamp()->CopyFrom(timestamp);
+    *lifecycle_event_data.mutable_state_transitions()->Add() =
+        std::move(state_transition);
   }
 
   // Task property updates
@@ -230,7 +235,7 @@ void TaskStatusEvent::PopulateRpcRayTaskExecutionEvent(
   }
 
   if (state_update_->error_info_.has_value()) {
-    execution_event_data.mutable_ray_error_info()->CopyFrom(*state_update_->error_info_);
+    lifecycle_event_data.mutable_ray_error_info()->CopyFrom(*state_update_->error_info_);
   }
 
   if (state_update_->node_id_.has_value()) {
@@ -238,7 +243,7 @@ void TaskStatusEvent::PopulateRpcRayTaskExecutionEvent(
             .WithField("TaskStatus", task_status_)
         << "Node ID should be included when task status changes to "
            "SUBMITTED_TO_WORKER.";
-    execution_event_data.set_node_id(state_update_->node_id_->Binary());
+    lifecycle_event_data.set_node_id(state_update_->node_id_->Binary());
   }
 
   if (state_update_->worker_id_.has_value()) {
@@ -246,12 +251,14 @@ void TaskStatusEvent::PopulateRpcRayTaskExecutionEvent(
             .WithField("TaskStatus", task_status_)
         << "Worker ID should be included when task status changes to "
            "SUBMITTED_TO_WORKER.";
-    execution_event_data.set_worker_id(state_update_->worker_id_->Binary());
+    lifecycle_event_data.set_worker_id(state_update_->worker_id_->Binary());
   }
 
   if (state_update_->pid_.has_value()) {
-    execution_event_data.set_worker_pid(state_update_->pid_.value());
+    lifecycle_event_data.set_worker_pid(state_update_->pid_.value());
   }
+
+  lifecycle_event_data.set_job_id(job_id_.Binary());
 }
 
 void TaskStatusEvent::PopulateRpcRayEventBaseFields(
@@ -271,38 +278,37 @@ void TaskStatusEvent::PopulateRpcRayEventBaseFields(
       ray_event.set_event_type(rpc::events::RayEvent::TASK_DEFINITION_EVENT);
     }
   } else {
-    ray_event.set_event_type(rpc::events::RayEvent::TASK_EXECUTION_EVENT);
+    ray_event.set_event_type(rpc::events::RayEvent::TASK_LIFECYCLE_EVENT);
   }
 }
 
-void TaskStatusEvent::ToRpcRayEvents(RayEventsPair &ray_events_pair) {
-  auto &[task_definition_event_rpc, task_execution_event_rpc] = ray_events_pair;
-
+void TaskStatusEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
   google::protobuf::Timestamp timestamp = AbslTimeNanosToProtoTimestamp(timestamp_);
 
   // Populate the task definition event
-  if (task_spec_ && !task_definition_event_rpc) {
-    PopulateRpcRayEventBaseFields(task_definition_event_rpc.emplace(), true, timestamp);
+  if (task_spec_ && !ray_events_tuple.task_definition_event) {
+    PopulateRpcRayEventBaseFields(
+        ray_events_tuple.task_definition_event.emplace(), true, timestamp);
     if (is_actor_task_event_) {
       auto actor_task_definition_event =
-          task_definition_event_rpc->mutable_actor_task_definition_event();
+          ray_events_tuple.task_definition_event->mutable_actor_task_definition_event();
       PopulateRpcRayTaskDefinitionEvent(*actor_task_definition_event);
     } else {
       auto task_definition_event =
-          task_definition_event_rpc->mutable_task_definition_event();
+          ray_events_tuple.task_definition_event->mutable_task_definition_event();
       PopulateRpcRayTaskDefinitionEvent(*task_definition_event);
     }
   }
 
   // Populate the task execution event
-  PopulateRpcRayEventBaseFields(task_execution_event_rpc.has_value()
-                                    ? task_execution_event_rpc.value()
-                                    : task_execution_event_rpc.emplace(),
+  PopulateRpcRayEventBaseFields(ray_events_tuple.task_lifecycle_event.has_value()
+                                    ? ray_events_tuple.task_lifecycle_event.value()
+                                    : ray_events_tuple.task_lifecycle_event.emplace(),
                                 false,
                                 timestamp);
-  auto task_execution_event =
-      task_execution_event_rpc.value().mutable_task_execution_event();
-  PopulateRpcRayTaskExecutionEvent(*task_execution_event, timestamp);
+  auto task_lifecycle_event =
+      ray_events_tuple.task_lifecycle_event.value().mutable_task_lifecycle_event();
+  PopulateRpcRayTaskLifecycleEvent(*task_lifecycle_event, timestamp);
 }
 
 void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
@@ -342,9 +348,38 @@ void TaskProfileEvent::ToRpcTaskExportEvents(
   event_entry->set_extra_data(std::move(extra_data_));
 }
 
-void TaskProfileEvent::ToRpcRayEvents(RayEventsPair &ray_events_pair) {
-  // TODO(myan): #54515 need to further figure out how to migrate the task profile event
-  // to the new ray event format.
+void TaskProfileEvent::PopulateRpcRayEventBaseFields(
+    rpc::events::RayEvent &ray_event, google::protobuf::Timestamp timestamp) {
+  ray_event.set_event_id(UniqueID::FromRandom().Binary());
+  ray_event.set_source_type(rpc::events::RayEvent::CORE_WORKER);
+  ray_event.mutable_timestamp()->CopyFrom(timestamp);
+  ray_event.set_severity(rpc::events::RayEvent::INFO);
+  ray_event.set_event_type(rpc::events::RayEvent::TASK_PROFILE_EVENT);
+  ray_event.set_session_name(session_name_);
+}
+
+void TaskProfileEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
+  // Using profile start time as the event generation timestamp
+  google::protobuf::Timestamp timestamp = AbslTimeNanosToProtoTimestamp(start_time_);
+
+  // Populate Ray event base fields
+  auto &ray_event = ray_events_tuple.task_profile_event.emplace();
+  PopulateRpcRayEventBaseFields(ray_event, timestamp);
+
+  // Populate the task profile event
+  auto *task_profile_events = ray_event.mutable_task_profile_events();
+  task_profile_events->set_task_id(task_id_.Binary());
+  task_profile_events->set_job_id(job_id_.Binary());
+  task_profile_events->set_attempt_number(attempt_number_);
+  auto profile_events = task_profile_events->mutable_profile_events();
+  profile_events->set_component_type(component_type_);
+  profile_events->set_component_id(component_id_);
+  profile_events->set_node_ip_address(node_ip_address_);
+  auto event_entry = profile_events->add_events();
+  event_entry->set_event_name(event_name_);
+  event_entry->set_start_time(start_time_);
+  event_entry->set_end_time(end_time_);
+  event_entry->set_extra_data(std::move(extra_data_));
 }
 
 bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
@@ -585,19 +620,22 @@ std::unique_ptr<rpc::TaskEventData> TaskEventBufferImpl::CreateTaskEventDataToSe
 
 std::unique_ptr<rpc::events::RayEventsData>
 TaskEventBufferImpl::CreateRayEventsDataToSend(
-    absl::flat_hash_map<TaskAttempt, RayEventsPair> &&agg_task_events,
+    absl::flat_hash_map<TaskAttempt, RayEventsTuple> &&agg_task_events,
     const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send) {
   auto data = std::make_unique<rpc::events::RayEventsData>();
   // Move the ray events.
-  for (auto &[task_attempt, ray_events_pair] : agg_task_events) {
-    auto &[task_definition_event_rpc, task_execution_event_rpc] = ray_events_pair;
-    if (task_definition_event_rpc) {
+  for (auto &[task_attempt, ray_events_tuple] : agg_task_events) {
+    if (ray_events_tuple.task_definition_event) {
       auto events = data->add_events();
-      *events = std::move(task_definition_event_rpc.value());
+      *events = std::move(ray_events_tuple.task_definition_event.value());
     }
-    if (task_execution_event_rpc) {
+    if (ray_events_tuple.task_lifecycle_event) {
       auto events = data->add_events();
-      *events = std::move(task_execution_event_rpc.value());
+      *events = std::move(ray_events_tuple.task_lifecycle_event.value());
+    }
+    if (ray_events_tuple.task_profile_event) {
+      auto events = data->add_events();
+      *events = std::move(ray_events_tuple.task_profile_event.value());
     }
   }
 
@@ -618,8 +656,8 @@ TaskEventBuffer::TaskEventDataToSend TaskEventBufferImpl::CreateDataToSend(
     const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send) {
   // Aggregate the task events by TaskAttempt.
   absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> agg_task_events;
-  // (task_attempt, (task_definition_event, task_execution_events))
-  absl::flat_hash_map<TaskAttempt, RayEventsPair> agg_ray_events;
+  // (task_attempt, (task_definition_event, task_lifecycle_event, task_profile_event))
+  absl::flat_hash_map<TaskAttempt, RayEventsTuple> agg_ray_events;
 
   auto to_rpc_event_fn =
       [this, &agg_task_events, &agg_ray_events, &dropped_task_attempts_to_send](
@@ -778,9 +816,13 @@ void TaskEventBufferImpl::SendRayEventsToAggregator(
         event_aggregator_grpc_in_progress_ = false;
       };
 
-  rpc::events::AddEventsRequest request;
-  *request.mutable_events_data() = std::move(*data);
-  event_aggregator_client_->AddEvents(request, on_complete);
+  if (num_task_events_to_send == 0 && num_dropped_task_attempts_to_send == 0) {
+    event_aggregator_grpc_in_progress_ = false;
+  } else {
+    rpc::events::AddEventsRequest request;
+    *request.mutable_events_data() = std::move(*data);
+    event_aggregator_client_->AddEvents(request, on_complete);
+  }
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {

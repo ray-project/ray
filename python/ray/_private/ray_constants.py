@@ -67,6 +67,41 @@ DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 
 ID_SIZE = 28
 
+# The following constants are used to create default values for
+# resource isolation when it is enabled.
+# TODO(54703): Link to OSS documentation about the feature once it's available.
+DEFAULT_CGROUP_PATH = "/sys/fs/cgroup"
+# The default proportion of cpu cores to reserve for ray system processes.
+DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION = env_float(
+    "RAY_DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION", 0.05
+)
+# The default minimum number of cpu cores to reserve for ray system processes.
+# This value is used if the available_cores * DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION < this value.
+DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES = env_float(
+    "RAY_DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES", 1.0
+)
+# The default maximum number of cpu cores to reserve for ray system processes.
+# This value is used if the available_cores * DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION > this value.
+DEFAULT_MAX_SYSTEM_RESERVED_CPU_CORES = env_float(
+    "RAY_DEFAULT_MAX_SYSTEM_RESERVED_CPU_CORES", 3.0
+)
+# The values for SYSTEM_RESERVED_MEMORY do not include the memory reserveed
+# for the object store.
+# The default proportion available memory to reserve for ray system processes.
+DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION = env_float(
+    "RAY_DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION", 0.10
+)
+# The default minimum number of bytes to reserve for ray system processes.
+# This value is used if the available_memory * DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION < this value.
+DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
+    "RAY_DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES", (500) * (1024**2)
+)
+# The default maximum number of bytes to reserve for ray system processes.
+# This value is used if the available_memory * DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION > this value.
+DEFAULT_MAX_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
+    "RAY_DEFAULT_MAX_SYSTEM_RESERVED_MEMORY_BYTES", (10) * (1024**3)
+)
+
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
 DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = env_integer(
@@ -77,41 +112,11 @@ DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = env_float(
     "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION",
     0.3,
 )
-
-# The following values are only used when resource isolation is enabled
-# ===== The default number of bytes to reserve for ray system processes
-DEFAULT_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
-    "RAY_DEFAULT_DEFAULT_SYSTEM_RESERVED_MEMORY_BYTES", (25) * (10**9)
-)
-# The default proportion available memory to reserve for ray system processes
-DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION = env_integer(
-    "RAY_DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION", 0.10
-)
-# The default number of cpu cores to reserve for ray system processes
-DEFAULT_SYSTEM_RESERVED_CPU_CORES = env_float(
-    "RAY_DEFAULT_SYSTEM_RESERVED_CPU_CORES", 1.0
-)
-# The default proportion of cpu cores to reserve for ray system processes
-DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION = env_float(
-    "RAY_DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION", 0.05
-)
-# The smallest number of cores that ray system processes can be guaranteed
-MINIMUM_SYSTEM_RESERVED_CPU_CORES = 0.5
-# The smallest number of bytes that ray system processes can be guaranteed
-MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES = (100) * (10**6)
-# The default path for cgroupv2
-DEFAULT_CGROUP_PATH = "/sys/fs/cgroup"
-
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 # Each ObjectRef currently uses about 3KB of caller memory.
 CALLER_MEMORY_USAGE_PER_OBJECT_REF = 3000
-# Match max_direct_call_object_size in
-# src/ray/common/ray_config_def.h.
-# TODO(swang): Ideally this should be pulled directly from the
-# config in case the user overrides it.
-DEFAULT_MAX_DIRECT_CALL_OBJECT_SIZE = 100 * 1024
 # Above this number of bytes, raise an error by default unless the user sets
 # RAY_ALLOW_SLOW_STORAGE=1. This avoids swapping with large object stores.
 REQUIRE_SHM_SIZE_THRESHOLD = 10**10
@@ -157,6 +162,9 @@ RAY_JOB_SUBMIT_HOOK = "RAY_JOB_SUBMIT_HOOK"
 # Headers to pass when using the Job CLI. It will be given to
 # instantiate a Job SubmissionClient.
 RAY_JOB_HEADERS = "RAY_JOB_HEADERS"
+
+# Timeout waiting for the dashboard to come alive during node startup.
+RAY_DASHBOARD_STARTUP_TIMEOUT_S = env_integer("RAY_DASHBOARD_STARTUP_TIMEOUT_S", 60)
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
@@ -454,14 +462,6 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Default max_concurrency option in @ray.remote for threaded actors.
 DEFAULT_MAX_CONCURRENCY_THREADED = 1
 
-# Prefix for namespaces which are used internally by ray.
-# Jobs within these namespaces should be hidden from users
-# and should not be considered user activity.
-# Please keep this in sync with the definition kRayInternalNamespacePrefix
-# in /src/ray/gcs/gcs_server/gcs_job_manager.h.
-RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
-RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
-
 # Ray internal flags. These flags should not be set by users, and we strip them on job
 # submission.
 # This should be consistent with src/ray/common/ray_internal_flag_def.h
@@ -573,30 +573,15 @@ RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
 #   WorkerId will be removed from all metrics.
 RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "legacy")
 
-# Whether GPU metrics collection via `nvidia-smi` is enabled.
-# Controlled by the environment variable `RAY_metric_enable_gpu_nvsmi`.
-# Defaults to False to use pynvml to collect usage.
-RAY_METRIC_ENABLE_GPU_NVSMI = env_bool("RAY_metric_enable_gpu_nvsmi", False)
+# Whether enable OpenTelemetry as the metrics collection backend. The default is
+# using OpenCensus.
+RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", True)
 
-# Whether enable OpenTelemetry as the metrics collection backend on the driver
-# component. This flag is only used during the migration of the  metric collection
-# backend from OpenCensus to OpenTelemetry. It will be removed in the future.
-RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_AGENT = env_bool(
-    "RAY_experimental_enable_open_telemetry_on_agent", False
-)
-
-# Whether enable OpenTelemetry as the metrics collection backend on the core
-# components (core workers, gcs server, raylet, etc.). This flag is only used during
-# the migration of the  metric collection backend from OpenCensus to OpenTelemetry.
-# It will be removed in the future.
-RAY_EXPERIMENTAL_ENABLE_OPEN_TELEMETRY_ON_CORE = env_bool(
-    "RAY_experimental_enable_open_telemetry_on_core", False
-)
-
-# How long to wait for a fetch to complete during ray.get before timing out and raising an exception to the user.
+# How long to wait for a fetch for an RDT object to complete during ray.get before timing out and raising an exception to the user.
 #
-# NOTE: This must be kept in sync with the C++ definition of
-# `RayConfig::fetch_fail_timeout_milliseconds`.
-FETCH_FAIL_TIMEOUT_SECONDS = (
-    env_integer("RAY_fetch_fail_timeout_milliseconds", 60000) / 1000
+# NOTE: This is a tenth of `RayConfig::fetch_fail_timeout_milliseconds` by default as RDT transfers are expected to be much faster.
+RDT_FETCH_FAIL_TIMEOUT_SECONDS = (
+    env_integer("RAY_rdt_fetch_fail_timeout_milliseconds", 60000) / 1000
 )
+
+RAY_GC_MIN_COLLECT_INTERVAL = env_float("RAY_GC_MIN_COLLECT_INTERVAL_S", 5)

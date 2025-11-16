@@ -27,7 +27,11 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
+from ray.serve.config import (
+    DeploymentMode,
+    ProxyLocation,
+    gRPCOptions,
+)
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
     LoggingConfig,
@@ -533,6 +537,9 @@ def run(
     grpc_options = gRPCOptions()
     # Merge http_options and grpc_options with the ones on ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
+        http_options["location"] = ProxyLocation._to_deployment_mode(
+            config.proxy_location
+        ).value
         config_http_options = config.http_options.dict()
         http_options = {**config_http_options, **http_options}
         grpc_options = gRPCOptions(**config.grpc_options.dict())
@@ -868,6 +875,8 @@ def build(
         Dumper=ServeDeploySchemaDumper,
         default_flow_style=False,
         sort_keys=False,
+        width=80,  # Set width to avoid folding long lines
+        indent=2,  # Use 2-space indentation for more compact configuration
     )
     cli_logger.info(
         "The auto-generated application names default to `app1`, `app2`, ... etc. "
@@ -884,35 +893,31 @@ def build(
 class ServeDeploySchemaDumper(yaml.SafeDumper):
     """YAML dumper object with custom formatting for ServeDeploySchema.
 
-    Reformat config to follow this spacing:
-    ---------------------------------------
+    Reformat config to follow this spacing with appropriate line breaks:
+    ---------------------------------------------------------------
+    proxy_location: EveryNode
 
-    host: 0.0.0.0
+    http_options:
+      host: 0.0.0.0
+      port: 8000
 
-    port: 8000
+    grpc_options:
+      port: 9000
+      grpc_servicer_functions: []
+
+    logging_config:
+      # ...
 
     applications:
-
-    - name: app1
-
-      import_path: app1.path
-
-      runtime_env: {}
-
-      deployments:
-
-      - name: deployment1
-        ...
-
-      - name: deployment2
-        ...
+      - name: app1
+        import_path: app1.path
+        # ...
     """
 
     def write_line_break(self, data=None):
         # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
         super().write_line_break(data)
 
-        # Indents must be at most 4 to ensure that only the top 4 levels of
-        # the config file have line breaks between them.
-        if len(self.indents) <= 4:
+        # Only add extra line breaks between top-level keys
+        if len(self.indents) == 1:
             super().write_line_break()

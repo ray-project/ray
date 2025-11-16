@@ -6,9 +6,9 @@ import traceback
 from typing import Any, Optional
 
 import ray
+from ray._common.filters import CoreContextFilter
+from ray._common.formatters import JSONFormatter, TextFormatter
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
-from ray._private.ray_logging.filters import CoreContextFilter
-from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_JSON_LOGGING,
@@ -93,6 +93,7 @@ class ServeContextFilter(logging.Filter):
     def filter(self, record):
         if should_skip_context_filter(record):
             return True
+
         request_context = ray.serve.context._get_serve_request_context()
         if request_context.route:
             setattr(record, SERVE_LOG_ROUTE, request_context.route)
@@ -369,35 +370,6 @@ def configure_component_logger(
         maxBytes=max_bytes,
         backupCount=backup_count,
     )
-    if RAY_SERVE_ENABLE_JSON_LOGGING:
-        logger.warning(
-            "'RAY_SERVE_ENABLE_JSON_LOGGING' is deprecated, please use "
-            "'LoggingConfig' to enable json format."
-        )
-    if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
-        file_handler.addFilter(ServeCoreContextFilter())
-        file_handler.addFilter(ServeContextFilter())
-        file_handler.addFilter(
-            ServeComponentFilter(component_name, component_id, component_type)
-        )
-        file_handler.setFormatter(json_formatter)
-    else:
-        file_handler.setFormatter(serve_formatter)
-
-    if logging_config.enable_access_log is False:
-        file_handler.addFilter(log_access_log_filter)
-    else:
-        file_handler.addFilter(ServeContextFilter())
-
-    # Remove unwanted attributes from the log record.
-    file_handler.addFilter(ServeLogAttributeRemovalFilter())
-
-    # Redirect print, stdout, and stderr to Serve logger, only when it's on the replica.
-    if not RAY_SERVE_LOG_TO_STDERR and component_type == ServeComponentType.REPLICA:
-        builtins.print = redirected_print
-        sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)
-        sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)
-
     # Create a memory handler that buffers log records and flushes to file handler
     # Buffer capacity: buffer_size records
     # Flush triggers: buffer full, ERROR messages, or explicit flush
@@ -406,6 +378,35 @@ def configure_component_logger(
         target=file_handler,
         flushLevel=logging.ERROR,  # Auto-flush on ERROR/CRITICAL
     )
+    if RAY_SERVE_ENABLE_JSON_LOGGING:
+        logger.warning(
+            "'RAY_SERVE_ENABLE_JSON_LOGGING' is deprecated, please use "
+            "'LoggingConfig' to enable json format."
+        )
+    # Add filters directly to the memory handler effective for both buffered and non buffered cases
+    if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
+        memory_handler.addFilter(ServeCoreContextFilter())
+        memory_handler.addFilter(ServeContextFilter())
+        memory_handler.addFilter(
+            ServeComponentFilter(component_name, component_id, component_type)
+        )
+        file_handler.setFormatter(json_formatter)
+    else:
+        file_handler.setFormatter(serve_formatter)
+
+    if logging_config.enable_access_log is False:
+        memory_handler.addFilter(log_access_log_filter)
+    else:
+        memory_handler.addFilter(ServeContextFilter())
+
+    # Remove unwanted attributes from the log record.
+    memory_handler.addFilter(ServeLogAttributeRemovalFilter())
+
+    # Redirect print, stdout, and stderr to Serve logger, only when it's on the replica.
+    if not RAY_SERVE_LOG_TO_STDERR and component_type == ServeComponentType.REPLICA:
+        builtins.print = redirected_print
+        sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)
+        sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)
 
     # Add the memory handler instead of the file handler directly
     logger.addHandler(memory_handler)

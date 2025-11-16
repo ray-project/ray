@@ -73,16 +73,23 @@ struct StatsHandle {
   const std::shared_ptr<GuardedGlobalStats> global_stats;
   // Whether RecordEnd or RecordExecution is called.
   std::atomic<bool> end_or_execution_recorded;
+  // Metric emission specific configurations
+  const bool emit_stats;
+  const std::optional<std::string> context_name;
 
   StatsHandle(std::string event_name_,
-              int64_t start_time_,
+              const int64_t start_time_,
               std::shared_ptr<GuardedEventStats> handler_stats_,
-              std::shared_ptr<GuardedGlobalStats> global_stats_)
+              std::shared_ptr<GuardedGlobalStats> global_stats_,
+              const bool emit_stats_,
+              const std::optional<std::string> &context_name_)
       : event_name(std::move(event_name_)),
         start_time(start_time_),
         handler_stats(std::move(handler_stats_)),
         global_stats(std::move(global_stats_)),
-        end_or_execution_recorded(false) {}
+        end_or_execution_recorded(false),
+        emit_stats(emit_stats_),
+        context_name(context_name_) {}
 
   ~StatsHandle() {
     if (!end_or_execution_recorded) {
@@ -106,12 +113,19 @@ class EventTracker {
   /// The returned opaque stats handle MUST be given to a subsequent
   /// RecordExecution() or RecordEnd() call.
   ///
-  /// \param name A human-readable name to which collected stats will be associated.
-  /// \param expected_queueing_delay_ns How much to pad the observed queueing start time,
+  /// \param name A human-readable name to which collected stats will be associated for
+  /// logging. \param expected_queueing_delay_ns How much to pad the observed queueing
+  /// start time,
   ///  in nanoseconds.
+  ///  \param emit_metrics Emit the underlying stat as a service metric
+  ///  \param event_context_name A human-readable name to which collected stats will be
+  ///  associated for metrics.
   /// \return An opaque stats handle, to be given to RecordExecution() or RecordEnd().
-  std::shared_ptr<StatsHandle> RecordStart(std::string name,
-                                           int64_t expected_queueing_delay_ns = 0);
+  std::shared_ptr<StatsHandle> RecordStart(
+      std::string name,
+      bool emit_metrics = false,
+      int64_t expected_queueing_delay_ns = 0,
+      const std::optional<std::string> &event_context_name = std::nullopt);
 
   /// Records stats about the provided function's execution. This is used in conjunction
   /// with RecordStart() to manually instrument an event loop handler that calls .post().

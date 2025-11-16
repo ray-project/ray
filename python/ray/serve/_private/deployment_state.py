@@ -38,6 +38,7 @@ from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_PER_REPLICA_RETRY_COUNT,
     RAY_SERVE_ENABLE_TASK_EVENTS,
+    RAY_SERVE_FAIL_ON_RANK_ERROR,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -52,6 +53,7 @@ from ray.serve._private.deployment_scheduler import (
     ReplicaSchedulingRequestStatus,
     SpreadDeploymentSchedulingPolicy,
 )
+from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.usage import ServeUsageTag
@@ -68,6 +70,7 @@ from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import (
     DeploymentDetails,
     ReplicaDetails,
+    ReplicaRank,
     _deployment_info_to_schema,
 )
 from ray.util.placement_group import PlacementGroup
@@ -131,6 +134,7 @@ class DeploymentTargetState:
             placement_group_bundles=info.replica_config.placement_group_bundles,
             placement_group_strategy=info.replica_config.placement_group_strategy,
             max_replicas_per_node=info.replica_config.max_replicas_per_node,
+            route_prefix=info.route_prefix,
         )
 
         return cls(info, target_num_replicas, version, deleting)
@@ -246,8 +250,11 @@ class ActorReplicaWrapper:
         self._last_health_check_time: float = 0.0
         self._consecutive_health_check_failures = 0
         self._initialization_latency_s: Optional[float] = None
-        self._port: Optional[int] = None
+        self._internal_grpc_port: Optional[int] = None
         self._docs_path: Optional[str] = None
+        self._route_patterns: Optional[List[str]] = None
+        # Rank assigned to the replica.
+        self._rank: Optional[ReplicaRank] = None
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
         self._placement_group: PlacementGroup = None
@@ -260,6 +267,8 @@ class ActorReplicaWrapper:
         self._node_ip: str = None
         self._node_instance_id: str = None
         self._log_file_path: str = None
+        self._http_port: int = None
+        self._grpc_port: int = None
 
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
@@ -272,6 +281,9 @@ class ActorReplicaWrapper:
         self._last_record_routing_stats_time: float = 0.0
         self._ingress: bool = False
 
+        # Outbound deployments polling state
+        self._outbound_deployments: Optional[List[DeploymentID]] = None
+
     @property
     def replica_id(self) -> str:
         return self._replica_id
@@ -279,6 +291,10 @@ class ActorReplicaWrapper:
     @property
     def deployment_name(self) -> str:
         return self._deployment_id.name
+
+    @property
+    def rank(self) -> Optional[ReplicaRank]:
+        return self._rank
 
     @property
     def app_name(self) -> str:
@@ -338,6 +354,10 @@ class ActorReplicaWrapper:
         return self._docs_path
 
     @property
+    def route_patterns(self) -> Optional[List[str]]:
+        return self._route_patterns
+
+    @property
     def max_ongoing_requests(self) -> int:
         return self.deployment_config.max_ongoing_requests
 
@@ -356,6 +376,14 @@ class ActorReplicaWrapper:
     @property
     def health_check_timeout_s(self) -> float:
         return self.deployment_config.health_check_timeout_s
+
+    @property
+    def http_port(self) -> Optional[int]:
+        return self._http_port
+
+    @property
+    def grpc_port(self) -> Optional[int]:
+        return self._grpc_port
 
     @property
     def request_routing_stats_period_s(self) -> float:
@@ -416,12 +444,15 @@ class ActorReplicaWrapper:
 
         return self._initialization_latency_s
 
-    def start(self, deployment_info: DeploymentInfo) -> ReplicaSchedulingRequest:
+    def start(
+        self, deployment_info: DeploymentInfo, rank: ReplicaRank
+    ) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
 
         The replica will be in the STARTING and PENDING_ALLOCATION states
         until the deployment scheduler schedules the underlying actor.
         """
+        self._rank = rank  # Store the rank assigned to this replica
         self._actor_resources = deployment_info.replica_config.resource_dict
         self._ingress = deployment_info.ingress
         # it is currently not possible to create a placement group
@@ -465,6 +496,7 @@ class ActorReplicaWrapper:
                 self._version,
                 deployment_info.ingress,
                 deployment_info.route_prefix,
+                rank,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -580,7 +612,7 @@ class ActorReplicaWrapper:
                 temp = msgpack_deserialize(temp)
         return temp
 
-    def reconfigure(self, version: DeploymentVersion) -> bool:
+    def reconfigure(self, version: DeploymentVersion, rank: ReplicaRank) -> bool:
         """
         Update replica version. Also, updates the deployment config on the actor
         behind this DeploymentReplica instance if necessary.
@@ -588,19 +620,30 @@ class ActorReplicaWrapper:
         Returns: whether the actor is being updated.
         """
         updating = False
-        if self._version.requires_actor_reconfigure(version):
+
+        # Determine if we need heavyweight reconfiguration
+        # vs lightweight updates
+        needs_actor_reconfigure = self._version.requires_actor_reconfigure(version)
+        has_rank_changes = self._rank != rank
+
+        if needs_actor_reconfigure or has_rank_changes:
             # Call into replica actor reconfigure() with updated user config and
             # graceful_shutdown_wait_loop_s
+            # Setting updating=True because we want to transition to UPDATING state
+            # when rank is updated or deployment config changes.
             updating = True
             deployment_config = copy(version.deployment_config)
             deployment_config.user_config = self._format_user_config(
                 deployment_config.user_config
             )
             self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-                deployment_config
+                deployment_config,
+                rank,
+                version.route_prefix,
             )
 
         self._version = version
+        self._rank = rank
         return updating
 
     def recover(self) -> bool:
@@ -725,8 +768,13 @@ class ActorReplicaWrapper:
                         _,
                         self._version,
                         self._initialization_latency_s,
-                        self._port,
+                        self._internal_grpc_port,
                         self._docs_path,
+                        self._http_port,
+                        self._grpc_port,
+                        self._rank,
+                        self._route_patterns,
+                        self._outbound_deployments,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -999,6 +1047,9 @@ class ActorReplicaWrapper:
         except ValueError:
             pass
 
+    def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        return self._outbound_deployments
+
 
 class DeploymentReplica:
     """Manages state transitions for deployment replicas.
@@ -1032,12 +1083,12 @@ class DeploymentReplica:
             node_id=self.actor_node_id,
             node_ip=self._actor.node_ip,
             availability_zone=cluster_node_info_cache.get_node_az(self.actor_node_id),
-            actor_handle=self._actor.actor_handle,
+            actor_name=self._actor._actor_name,
             max_ongoing_requests=self._actor.max_ongoing_requests,
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
             routing_stats=self.routing_stats,
-            port=self._actor._port,
+            port=self._actor._internal_grpc_port,
         )
 
     def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
@@ -1086,6 +1137,10 @@ class DeploymentReplica:
         return self._actor.docs_path
 
     @property
+    def route_patterns(self) -> Optional[List[str]]:
+        return self._actor.route_patterns
+
+    @property
     def actor_id(self) -> str:
         return self._actor.actor_id
 
@@ -1099,6 +1154,14 @@ class DeploymentReplica:
         return self._actor.node_id
 
     @property
+    def actor_http_port(self) -> Optional[int]:
+        return self._actor.http_port
+
+    @property
+    def actor_grpc_port(self) -> Optional[int]:
+        return self._actor.grpc_port
+
+    @property
     def actor_pid(self) -> Optional[int]:
         """Returns the node id of the actor, None if not placed."""
         return self._actor.pid
@@ -1109,24 +1172,30 @@ class DeploymentReplica:
 
         return self._actor.initialization_latency_s
 
-    def start(self, deployment_info: DeploymentInfo) -> ReplicaSchedulingRequest:
+    def start(
+        self, deployment_info: DeploymentInfo, rank: ReplicaRank
+    ) -> ReplicaSchedulingRequest:
         """
         Start a new actor for current DeploymentReplica instance.
         """
-        replica_scheduling_request = self._actor.start(deployment_info)
+        replica_scheduling_request = self._actor.start(deployment_info, rank=rank)
         self._start_time = time.time()
         self._logged_shutdown_message = False
         self.update_actor_details(start_time_s=self._start_time)
         return replica_scheduling_request
 
-    def reconfigure(self, version: DeploymentVersion) -> bool:
+    def reconfigure(
+        self,
+        version: DeploymentVersion,
+        rank: ReplicaRank,
+    ) -> bool:
         """
         Update replica version. Also, updates the deployment config on the actor
         behind this DeploymentReplica instance if necessary.
 
         Returns: whether the actor is being updated.
         """
-        return self._actor.reconfigure(version)
+        return self._actor.reconfigure(version, rank=rank)
 
     def recover(self) -> bool:
         """
@@ -1143,6 +1212,11 @@ class DeploymentReplica:
         self._start_time = time.time()
         self.update_actor_details(start_time_s=self._start_time)
         return True
+
+    @property
+    def rank(self) -> Optional[ReplicaRank]:
+        """Get the rank assigned to the replica."""
+        return self._actor.rank
 
     def check_started(
         self,
@@ -1255,6 +1329,9 @@ class DeploymentReplica:
         # when dumping these objects. See
         # https://github.com/ray-project/ray/issues/26210 for the issue.
         return json.dumps(required), json.dumps(available)
+
+    def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        return self._actor.get_outbound_deployments()
 
 
 class ReplicaStateContainer:
@@ -1388,10 +1465,394 @@ class ReplicaStateContainer:
         return repr(self._replicas)
 
 
+class RankManager:
+    """Manages ranks for a single node."""
+
+    def __init__(self):
+        self._ranks: Dict[str, int] = {}
+        self._released_ranks: Set[int] = set()
+        self._next_rank: int = 0
+
+    def assign_rank(self, key: str) -> int:
+        if key in self._ranks:
+            raise RuntimeError(f"Rank for {key} already assigned: {self._ranks[key]}")
+
+        if self._released_ranks:
+            # Reuse the smallest released rank
+            rank = min(self._released_ranks)
+            self._released_ranks.remove(rank)
+        else:
+            # Assign the next available rank
+            # This is the first time we're assigning a rank to this replica
+            rank = self._next_rank
+            self._next_rank += 1
+
+        self._ranks[key] = rank
+        return rank
+
+    def release_rank(self, key: str) -> None:
+        if key not in self._ranks:
+            raise RuntimeError(f"Rank for {key} not assigned")
+        rank = self._ranks.pop(key)
+        # Add the released rank to the set of released ranks
+        # This rank can be reused for a new replica
+        self._released_ranks.add(rank)
+
+    def recover_rank(self, key: str, rank: int) -> None:
+        if key in self._ranks:
+            raise RuntimeError(f"Rank for {key} already assigned: {self._ranks[key]}")
+        self._ranks[key] = rank
+        self._released_ranks.discard(rank)
+        if rank >= self._next_rank:
+            self._next_rank = rank + 1
+
+    def get_rank(self, key: str) -> int:
+        if key not in self._ranks:
+            raise RuntimeError(f"Rank for {key} not assigned")
+        return self._ranks[key]
+
+    def has_rank(self, key: str) -> bool:
+        return key in self._ranks
+
+    def get_ranks_mapping(self) -> Dict[str, int]:
+        return self._ranks.copy()
+
+    def clear(self) -> None:
+        self._ranks.clear()
+        self._released_ranks.clear()
+        self._next_rank = 0
+
+    def check_rank_consistency_and_reassign_minimally(
+        self,
+        active_keys: List[str],
+    ) -> List[str]:
+        """Verify rank system invariants and reassign ranks when needed.
+
+        This method ensures:
+        1. All active keys have ranks
+        2. No duplicate ranks exist
+        3. Ranks are contiguous when at target count
+
+        Args:
+            active_keys: List of currently active keys
+
+        Returns:
+            List of keys that need to be reconfigured with new ranks
+
+        Raises:
+            RuntimeError: If rank system invariants are violated and fail_on_error=True
+        """
+        if not active_keys:
+            return []
+
+        active_keys_set = set(active_keys)
+
+        # Check for stale ranks - this should never happen
+        stale_keys = set(self._ranks.keys()) - active_keys_set
+        if stale_keys:
+            logger.error(
+                f"Found stale ranks for keys: {stale_keys}. "
+                "This should never happen. Please report this as a bug."
+            )
+            raise RuntimeError("Rank system is in an invalid state.")
+
+        # Verify system invariants - all active keys must have ranks
+        unranked_keys = active_keys_set - set(self._ranks.keys())
+        if unranked_keys:
+            logger.error(
+                f"Found active keys without ranks: {unranked_keys}. "
+                "This should never happen. Please report this as a bug."
+            )
+            raise RuntimeError("Rank system is in an invalid state.")
+
+        # Check for duplicate ranks - this should never happen
+        rank_counts = {}
+        for key, rank in self._ranks.copy().items():
+            if key in active_keys_set:  # Only check active keys
+                rank_counts[rank] = rank_counts.get(rank, 0) + 1
+                if rank_counts[rank] > 1:
+                    logger.error(
+                        f"Found duplicate rank {rank} assigned to multiple keys. "
+                        "This should never happen. Please report this as a bug."
+                    )
+                    raise RuntimeError("Rank system is in an invalid state.")
+
+        # Check if we need to reassign ranks for contiguity
+        # Only force contiguity when at target count (e.g., after autoscaling down)
+        current_ranks = sorted(self._ranks.values())
+        expected_ranks = list(range(len(active_keys)))
+
+        keys_needing_reconfiguration_from_reassignment = []
+
+        if current_ranks != expected_ranks:
+            logger.debug(
+                f"At target count but ranks are not contiguous. "
+                f"Current: {current_ranks}, Expected: {expected_ranks}. "
+                "Performing minimal reassignment."
+            )
+            keys_needing_reconfiguration_from_reassignment = (
+                self._perform_minimal_rank_reassignment(active_keys)
+            )
+
+        return keys_needing_reconfiguration_from_reassignment
+
+    def _perform_minimal_rank_reassignment(self, active_keys: List[str]) -> List[str]:
+        """Perform minimal rank reassignment to achieve contiguity.
+
+        This method reassigns ranks while minimizing the number of keys that need
+        to be reconfigured. It prioritizes keeping existing ranks when possible.
+
+        Args:
+            active_keys: List of currently active keys
+
+        Returns:
+            List of keys that need to be reconfigured with new ranks
+        """
+        target_ranks_set = set(range(len(active_keys)))
+
+        # Find which keys need new ranks
+        keys_needing_ranks = []
+        keys_keeping_ranks = []
+
+        for key in active_keys:
+            current_rank = self.get_rank(key)
+
+            if current_rank in target_ranks_set:
+                # This key can keep its rank
+                target_ranks_set.remove(current_rank)  # O(1) operation
+                keys_keeping_ranks.append(key)
+            else:
+                # This key needs a new rank
+                keys_needing_ranks.append(key)
+
+        # Convert remaining target ranks to sorted list for deterministic assignment
+        available_ranks = sorted(target_ranks_set)
+
+        # Assign new ranks to keys that need them
+        for i, key in enumerate(keys_needing_ranks):
+            new_rank = available_ranks[i]  # O(1) operation
+
+            # Store the old rank before updating
+            old_rank = self._ranks[key]
+
+            logger.debug(f"Reassigning key {key}: rank {old_rank} -> {new_rank}")
+
+            # Update the rank mapping
+            self._ranks[key] = new_rank
+            # Remove the newly assigned rank from available ranks
+            self._released_ranks.discard(new_rank)
+            # Add the old rank back to available ranks for reuse
+            self._released_ranks.add(old_rank)
+
+        # Log the reassignment summary
+        logger.debug(
+            f"Minimal reassignment complete: {len(keys_keeping_ranks)} keys kept ranks, "
+            f"{len(keys_needing_ranks)} keys reassigned"
+        )
+
+        return keys_needing_ranks
+
+
+class DeploymentRankManager:
+    """Manages replica ranks for a deployment.
+    This class handles rank assignment, release, consistency checking, and reassignment.
+    It maintains the rank system invariants and provides a clean interface for rank operations.
+
+    Maintains one level of rank tracking:
+    - Global rank: Replica-level rank across all nodes (0, 1, 2, ...)
+    """
+
+    def __init__(self, fail_on_rank_error: bool = True):
+        # Global rank manager (existing replica-level rank)
+        self._replica_rank_manager = RankManager()
+        self._fail_on_rank_error = fail_on_rank_error
+
+    def _execute_with_error_handling(self, func, safe_default, *args, **kwargs):
+        if self._fail_on_rank_error:
+            # Let exceptions propagate
+            return func(*args, **kwargs)
+        else:
+            # Catch exceptions and return safe default
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"Error executing function {func.__name__}: {e}")
+                return safe_default
+
+    def assign_rank(self, replica_id: str) -> ReplicaRank:
+        """Assign a rank to a new replica.
+
+        Args:
+            replica_id: The unique ID of the replica
+
+        Returns:
+            ReplicaRank object with the assigned rank
+
+        Raises:
+            RuntimeError: If the replica already has a rank assigned
+        """
+
+        def _assign_rank_impl():
+            if self.has_replica_rank(replica_id):
+                raise RuntimeError(
+                    f"Rank for {replica_id} already assigned: {self._replica_rank_manager.get_rank(replica_id)}"
+                )
+
+            # Assign global rank
+            rank = self._replica_rank_manager.assign_rank(replica_id)
+
+            return ReplicaRank(rank=rank, node_rank=-1, local_rank=-1)
+
+        return self._execute_with_error_handling(
+            _assign_rank_impl, ReplicaRank(rank=0, node_rank=-1, local_rank=-1)
+        )
+
+    def release_rank(self, replica_id: str) -> None:
+        """Release rank for a replica.
+
+        Args:
+            replica_id: ID of the replica
+
+        Raises:
+            RuntimeError: If replica doesn't have ranks
+        """
+
+        def _release_rank_impl():
+            if not self.has_replica_rank(replica_id):
+                raise RuntimeError(f"Rank for {replica_id} not assigned")
+
+            # Release global rank
+            self._replica_rank_manager.release_rank(replica_id)
+
+        return self._execute_with_error_handling(_release_rank_impl, None)
+
+    def recover_rank(
+        self,
+        replica_id: str,
+        rank: ReplicaRank,
+    ) -> None:
+        """Recover rank for a replica (e.g., after controller restart).
+
+        Args:
+            replica_id: ID of the replica
+            rank: The rank to recover
+
+        Raises:
+            RuntimeError: If replica already has ranks assigned
+        """
+
+        def _recover_rank_impl():
+            if self.has_replica_rank(replica_id):
+                raise RuntimeError(
+                    f"Rank for {replica_id} already assigned: {self._replica_rank_manager.get_rank(replica_id)}"
+                )
+
+            # Recover global rank
+            self._replica_rank_manager.recover_rank(replica_id, rank.rank)
+
+        return self._execute_with_error_handling(_recover_rank_impl, None)
+
+    def has_replica_rank(self, replica_id: str) -> bool:
+        """Check if replica has a rank assigned.
+
+        Args:
+            replica_id: The unique ID of the replica
+
+        Returns:
+            True if the replica has a rank assigned, False otherwise
+
+        Raises:
+            RuntimeError: If the replica doesn't have ranks assigned
+        """
+        return self._replica_rank_manager.has_rank(replica_id)
+
+    def get_replica_rank(self, replica_id: str) -> ReplicaRank:
+        """Get the rank for a replica.
+
+        Args:
+            replica_id: ID of the replica
+
+        Returns:
+            ReplicaRank object
+
+        Raises:
+            RuntimeError: If replica doesn't have ranks assigned
+        """
+
+        def _get_replica_rank_impl():
+            if not self.has_replica_rank(replica_id):
+                raise RuntimeError(f"Rank for {replica_id} not assigned")
+
+            global_rank = self._replica_rank_manager.get_rank(replica_id)
+            return ReplicaRank(rank=global_rank, node_rank=-1, local_rank=-1)
+
+        return self._execute_with_error_handling(
+            _get_replica_rank_impl, ReplicaRank(rank=0, node_rank=-1, local_rank=-1)
+        )
+
+    def check_rank_consistency_and_reassign_minimally(
+        self,
+        active_replicas: List["DeploymentReplica"],
+    ) -> List["DeploymentReplica"]:
+        """Verify rank system invariants and reassign ranks when needed across all three levels.
+
+        This method ensures:
+        1. Global ranks are contiguous [0, N-1] for N replicas
+
+        Args:
+            active_replicas: List of currently active replicas
+
+        Returns:
+            List of replicas that need to be reconfigured with new ranks
+        """
+
+        def _check_rank_consistency_impl():
+            if not active_replicas:
+                return []
+
+            # Extract replica IDs from replicas
+            active_replica_ids = [
+                replica.replica_id.unique_id for replica in active_replicas
+            ]
+
+            # Create a mapping from replica ID to replica object for quick lookup
+            replica_id_to_replica = {
+                replica.replica_id.unique_id: replica for replica in active_replicas
+            }
+
+            # Track all replicas needing reconfiguration from any rank system
+            all_replica_ids_needing_reconfiguration = set()
+
+            # STEP 1: Check global rank consistency
+            replica_ids_from_global = self._replica_rank_manager.check_rank_consistency_and_reassign_minimally(
+                active_replica_ids
+            )
+            all_replica_ids_needing_reconfiguration.update(replica_ids_from_global)
+
+            # Convert replica IDs back to replica objects
+            # Filter out stale replicas that are not in the active set
+            replicas_needing_reconfiguration = [
+                replica_id_to_replica[replica_id]
+                for replica_id in all_replica_ids_needing_reconfiguration
+                if replica_id in replica_id_to_replica
+            ]
+
+            return replicas_needing_reconfiguration
+
+        return self._execute_with_error_handling(_check_rank_consistency_impl, [])
+
+    def clear(self) -> None:
+        self._replica_rank_manager.clear()
+
+    def get_replica_ranks_mapping(self) -> Dict[str, int]:
+        return self._replica_rank_manager.get_ranks_mapping()
+
+
 class DeploymentState:
     """Manages the target state and replicas for a single deployment."""
 
     FORCE_STOP_UNHEALTHY_REPLICAS = RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS
+    MAX_CONSTRUCTOR_RETRY_COUNT_WARNING_LOGGED = False
 
     def __init__(
         self,
@@ -1428,6 +1889,10 @@ class DeploymentState:
             DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
         )
 
+        self._rank_manager = DeploymentRankManager(
+            fail_on_rank_error=RAY_SERVE_FAIL_ON_RANK_ERROR
+        )
+
         self.replica_average_ongoing_requests: Dict[str, float] = {}
 
         self.health_check_gauge = metrics.Gauge(
@@ -1448,12 +1913,13 @@ class DeploymentState:
         self._last_broadcasted_deployment_config = None
 
         self._docs_path: Optional[str] = None
+        self._route_patterns: Optional[List[str]] = None
 
     def should_autoscale(self) -> bool:
         """
         Check if the deployment is under autoscaling
         """
-        return self._id in self._autoscaling_state_manager._autoscaling_states
+        return self._autoscaling_state_manager.should_autoscale_deployment(self._id)
 
     def get_checkpoint_data(self) -> DeploymentTargetState:
         """
@@ -1541,9 +2007,27 @@ class DeploymentState:
         return self._docs_path
 
     @property
+    def route_patterns(self) -> Optional[List[str]]:
+        return self._route_patterns
+
+    @property
     def _failed_to_start_threshold(self) -> int:
+        # Use global override if set, otherwise use deployment config
+        value = MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT
+        if value is not None and not self.MAX_CONSTRUCTOR_RETRY_COUNT_WARNING_LOGGED:
+            logger.warning(
+                "MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT is deprecated and will be removed in the future. "
+                "Please use 'max_constructor_retry_count' instead in configurations."
+            )
+            self.MAX_CONSTRUCTOR_RETRY_COUNT_WARNING_LOGGED = True
+        base_retry_count = (
+            value
+            if value is not None
+            else self._target_state.info.deployment_config.max_constructor_retry_count
+        )
+
         return min(
-            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+            base_retry_count,
             self._target_state.target_num_replicas * MAX_PER_REPLICA_RETRY_COUNT,
         )
 
@@ -1694,6 +2178,7 @@ class DeploymentState:
         self,
         target_info: DeploymentInfo,
         target_num_replicas: int,
+        updated_via_api: bool = False,
     ) -> None:
         """Set the target state for the deployment to the provided info.
 
@@ -1702,6 +2187,7 @@ class DeploymentState:
             target_num_replicas: The number of replicas that this deployment
                 should attempt to run.
             status_trigger: The driver that triggered this change of state.
+            updated_via_api: Whether the target state update was triggered via API.
         """
         new_target_state = DeploymentTargetState.create(
             target_info, target_num_replicas, deleting=False
@@ -1714,6 +2200,8 @@ class DeploymentState:
                 != new_target_state.version.deployment_config.autoscaling_config
             ):
                 ServeUsageTag.AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED.record("True")
+            elif updated_via_api:
+                ServeUsageTag.NUM_REPLICAS_VIA_API_CALL_UPDATED.record("True")
             elif (
                 self._target_state.version.deployment_config.num_replicas
                 != new_target_state.version.deployment_config.num_replicas
@@ -1730,7 +2218,7 @@ class DeploymentState:
         this method returns False.
 
         Returns:
-            bool: Whether or not the deployment is being updated.
+            bool: Whether the target state has changed.
         """
 
         curr_deployment_info = self._target_state.info
@@ -1745,6 +2233,7 @@ class DeploymentState:
                 != deployment_info.deployment_config
                 or curr_deployment_info.replica_config.ray_actor_options
                 != deployment_info.replica_config.ray_actor_options
+                or curr_deployment_info.route_prefix != deployment_info.route_prefix
                 or deployment_info.version is None
                 or curr_deployment_info.version != deployment_info.version
             )
@@ -1812,22 +2301,25 @@ class DeploymentState:
         self._replica_has_started = False
         return True
 
-    def autoscale(self) -> int:
-        """Autoscale the deployment based on metrics."""
+    def autoscale(self, decision_num_replicas: int) -> bool:
+        """
+        Apply the given scaling decision by updating the target replica count.
+
+        Skips if deleting, if `decision_num_replicas` is None, or matches the
+        current target. Otherwise updates the state and logs an up/down scaling.
+
+        Args:
+            decision_num_replicas: target replica count to apply.
+
+        Returns:
+            bool: True if the target state was updated, False if no change occurred.
+        """
 
         if self._target_state.deleting:
-            return
+            return False
 
-        decision_num_replicas = self._autoscaling_state_manager.get_target_num_replicas(
-            deployment_id=self._id,
-            curr_target_num_replicas=self._target_state.target_num_replicas,
-        )
-
-        if (
-            decision_num_replicas is None
-            or decision_num_replicas == self._target_state.target_num_replicas
-        ):
-            return
+        if decision_num_replicas == self._target_state.target_num_replicas:
+            return False
 
         new_info = copy(self._target_state.info)
         new_info.version = self._target_state.version.code_version
@@ -1843,11 +2335,11 @@ class DeploymentState:
                 states=[ReplicaState.RUNNING], version=self._target_state.version
             ),
         ):
-            return
+            return True
 
         curr_stats_str = (
             f"Current ongoing requests: "
-            f"{self._autoscaling_state_manager.get_total_num_requests(self._id):.2f}, "
+            f"{self._autoscaling_state_manager.get_total_num_requests_for_deployment(self._id):.2f}, "
             f"current running replicas: "
             f"{self._replicas.count(states=[ReplicaState.RUNNING])}."
         )
@@ -1870,10 +2362,23 @@ class DeploymentState:
                 trigger=DeploymentStatusInternalTrigger.AUTOSCALE_DOWN,
                 message=f"Downscaling from {old_num} to {new_num} replicas.",
             )
+        return True
 
-    def delete(self) -> None:
+    def delete(self) -> bool:
         if not self._target_state.deleting:
             self._set_target_state_deleting()
+            return True
+
+        return False
+
+    def set_target_num_replicas(
+        self,
+        target_num_replicas: int,
+    ) -> None:
+        """Set the target state for the deployment to the provided info."""
+        self._set_target_state(
+            self._target_state.info, target_num_replicas, updated_via_api=True
+        )
 
     def _stop_or_update_outdated_version_replicas(self, max_to_stop=math.inf) -> bool:
         """Stop or update replicas with outdated versions.
@@ -1917,7 +2422,13 @@ class DeploymentState:
                     self._target_state.version
                 ):
                     replicas_changed = True
-                actor_updating = replica.reconfigure(self._target_state.version)
+                # Get current rank for the replica
+                current_rank = self._rank_manager.get_replica_rank(
+                    replica.replica_id.unique_id
+                )
+                actor_updating = replica.reconfigure(
+                    self._target_state.version, rank=current_rank.rank
+                )
                 if actor_updating:
                     self._replicas.add(ReplicaState.UPDATING, replica)
                 else:
@@ -2032,13 +2543,22 @@ class DeploymentState:
                 logger.info(f"Adding {to_add} replica{'s' * (to_add>1)} to {self._id}.")
                 for _ in range(to_add):
                     replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
+
+                    # Assign rank during replica creation (startup process)
+                    assigned_rank = self._rank_manager.assign_rank(replica_id.unique_id)
+
+                    logger.debug(
+                        f"Assigned rank {assigned_rank.rank} to new replica {replica_id.unique_id} during startup"
+                    )
                     new_deployment_replica = DeploymentReplica(
                         replica_id,
                         self._target_state.version,
                     )
-                    upscale.append(
-                        new_deployment_replica.start(self._target_state.info)
+                    scheduling_request = new_deployment_replica.start(
+                        self._target_state.info, rank=assigned_rank
                     )
+
+                    upscale.append(scheduling_request)
 
                     self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
 
@@ -2145,6 +2665,15 @@ class DeploymentState:
         for replica in self._replicas.pop(states=[original_state]):
             start_status, error_msg = replica.check_started()
             if start_status == ReplicaStartupStatus.SUCCEEDED:
+                if original_state == ReplicaState.RECOVERING:
+                    # If the previous state was RECOVERING, that mean the replica
+                    # crashed and is now starting up again. We need to recover the rank
+                    # from the replica actor. The invariant is that the rank is assigned
+                    # during startup and before the replica is added to the replicas
+                    # data structure with RUNNING state.
+                    # Recover rank from the replica actor during controller restart
+                    replica_id = replica.replica_id.unique_id
+                    self._rank_manager.recover_rank(replica_id, replica.rank)
                 # This replica should be now be added to handle's replica
                 # set.
                 self._replicas.add(ReplicaState.RUNNING, replica)
@@ -2153,9 +2682,10 @@ class DeploymentState:
                 )
 
                 # if replica version is the same as the target version,
-                # we update the docs path
+                # we update the docs path and route patterns
                 if replica.version == self._target_state.version:
                     self._docs_path = replica.docs_path
+                    self._route_patterns = replica.route_patterns
 
                 # Log the startup latency.
                 e2e_replica_start_latency = time.time() - replica._start_time
@@ -2374,7 +2904,72 @@ class DeploymentState:
                 self._replicas.add(ReplicaState.STOPPING, replica)
             else:
                 logger.info(f"{replica.replica_id} is stopped.")
+                # Release rank only after replica is successfully stopped
+                # This ensures rank is available during draining/graceful shutdown
+                replica_id = replica.replica_id.unique_id
+                self._rank_manager.release_rank(replica_id)
+                logger.debug(
+                    f"Released rank from replica {replica_id} in deployment {self._id}"
+                )
                 self._autoscaling_state_manager.on_replica_stopped(replica.replica_id)
+
+        # After replica state updates, check rank consistency and perform minimal reassignment if needed
+        # This ensures ranks are continuous after lifecycle events
+        # Only do consistency check when deployment is stable (not during active updates)
+        # maybe this constraint need to be relaxed in the future. The implication is that
+        # if we delay the rank reassignment, the rank system will be in an invalid state
+        # for a longer period of time. Abrar made this decision because he is not confident
+        # about how rollouts work in the deployment state machine.
+        active_replicas = self._replicas.get()
+        if (
+            active_replicas
+            and self._curr_status_info.status == DeploymentStatus.HEALTHY
+        ):
+            replicas_to_reconfigure = (
+                self._rank_manager.check_rank_consistency_and_reassign_minimally(
+                    active_replicas,
+                )
+            )
+
+            # Reconfigure replicas that had their ranks reassigned
+            self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
+
+    def _reconfigure_replicas_with_new_ranks(
+        self, replicas_to_reconfigure: List["DeploymentReplica"]
+    ):
+        """Reconfigure replicas with their new ranks after reassignment.
+        This uses the reconfigure() mechanism to update replicas with their new ranks.
+        """
+        if not replicas_to_reconfigure:
+            return
+
+        logger.debug(
+            f"Reconfiguring {len(replicas_to_reconfigure)} replicas with rank changes in deployment {self._id}"
+        )
+
+        updated_count = 0
+        for replica in replicas_to_reconfigure:
+            replica_id = replica.replica_id.unique_id
+            new_rank = self._rank_manager.get_replica_rank(replica_id)
+
+            # Use reconfigure() to update rank
+            # World size is calculated automatically from deployment config
+            _ = replica.reconfigure(
+                self._target_state.version,
+                rank=new_rank,
+            )
+            updated_count += 1
+
+        logger.debug(
+            f"Successfully reconfigured {updated_count} replicas with new ranks in deployment {self._id}"
+        )
+
+    def _get_replica_ranks_mapping(self) -> Dict[str, int]:
+        """Get the current mapping of replica IDs to ranks.
+        Returns:
+            Dictionary mapping replica_id to rank.
+        """
+        return self._rank_manager.get_replica_ranks_mapping()
 
     def _choose_pending_migration_replicas_to_stop(
         self,
@@ -2499,6 +3094,30 @@ class DeploymentState:
         self._replicas.add(ReplicaState.STOPPING, replica_to_stop)
         for replica in running_replicas:
             self._replicas.add(ReplicaState.RUNNING, replica)
+
+    def is_ingress(self) -> bool:
+        return self._target_state.info.ingress
+
+    def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        """Get the outbound deployments.
+
+        Returns:
+            Sorted list of deployment IDs that this deployment calls. None if
+            outbound deployments are not yet polled.
+        """
+        result: Set[DeploymentID] = set()
+        has_outbound_deployments = False
+        for replica in self._replicas.get([ReplicaState.RUNNING]):
+            if replica.version != self._target_state.version:
+                # Only consider replicas of the target version
+                continue
+            outbound_deployments = replica.get_outbound_deployments()
+            if outbound_deployments is not None:
+                result.update(outbound_deployments)
+                has_outbound_deployments = True
+        if not has_outbound_deployments:
+            return None
+        return sorted(result, key=lambda d: (d.name))
 
 
 class DeploymentStateManager:
@@ -2738,6 +3357,21 @@ class DeploymentStateManager:
         if deployment_id in self._deployment_states:
             return self._deployment_states[deployment_id].docs_path
 
+    def get_deployment_route_patterns(
+        self, deployment_id: DeploymentID
+    ) -> Optional[List[str]]:
+        """Get route patterns for a deployment if available."""
+        if deployment_id in self._deployment_states:
+            return self._deployment_states[deployment_id].route_patterns
+        return None
+
+    def get_deployment_target_num_replicas(
+        self, deployment_id: DeploymentID
+    ) -> Optional[int]:
+        if deployment_id not in self._deployment_states:
+            return None
+        return self._deployment_states[deployment_id].target_num_replicas
+
     def get_deployment_details(self, id: DeploymentID) -> Optional[DeploymentDetails]:
         """Gets detailed info on a deployment.
 
@@ -2803,7 +3437,7 @@ class DeploymentStateManager:
         this is a no-op and returns False.
 
         Returns:
-            bool: Whether or not the deployment is being updated.
+            bool: Whether the target state has changed.
         """
         if deployment_id not in self._deployment_states:
             self._deployment_states[deployment_id] = self._create_deployment_state(
@@ -2822,7 +3456,40 @@ class DeploymentStateManager:
         # This method must be idempotent. We should validate that the
         # specified deployment exists on the client.
         if id in self._deployment_states:
-            self._deployment_states[id].delete()
+            return self._deployment_states[id].delete()
+
+        return False
+
+    def _validate_deployment_state_for_num_replica_update(
+        self, deployment_id: DeploymentID
+    ):
+        """Validate the state of a deployment for num replica update."""
+        statuses = self.get_deployment_statuses([deployment_id])
+
+        if statuses is None or len(statuses) == 0:
+            raise ValueError(f"Deployment {deployment_id} not found")
+        elif statuses[0].status_trigger == DeploymentStatusTrigger.DELETING:
+            raise DeploymentIsBeingDeletedError(
+                f"Deployment {deployment_id} is being deleted. Scaling operations are not allowed."
+            )
+
+    def set_target_num_replicas(
+        self, deployment_id: DeploymentID, target_num_replicas: int
+    ):
+        """Set target number of replicas for a deployment."""
+        self._validate_deployment_state_for_num_replica_update(deployment_id)
+
+        deployment_state = self._deployment_states[deployment_id]
+        if target_num_replicas != deployment_state.target_num_replicas:
+            logger.info(
+                f"Target number of replicas changed from {deployment_state.target_num_replicas} to {target_num_replicas} for deployment {deployment_id}"
+            )
+            deployment_state.set_target_num_replicas(target_num_replicas)
+            self.save_checkpoint()
+        else:
+            logger.info(
+                f"Skipping updating target number of replicas as it did not change for deployment {deployment_id}"
+            )
 
     def update(self) -> bool:
         """Updates the state of all deployments to match their goal state.
@@ -2834,12 +3501,10 @@ class DeploymentStateManager:
         any_recovering = False
         upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]] = {}
         downscales: Dict[DeploymentID, DeploymentDownscaleRequest] = {}
+        target_state_changed = False
 
         # STEP 1: Update current state
         for deployment_state in self._deployment_states.values():
-            if deployment_state.should_autoscale():
-                deployment_state.autoscale()
-
             deployment_state.check_and_update_replicas()
 
         # STEP 2: Check current status
@@ -2890,10 +3555,6 @@ class DeploymentStateManager:
                 deleted_ids.append(deployment_id)
             any_recovering |= any_replicas_recovering
 
-        # Take a checkpoint before actually affecting the state of the cluster
-        # by starting/stopping replicas.
-        self.save_checkpoint()
-
         # STEP 6: Schedule all STARTING replicas and stop all STOPPING replicas
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(
             upscales, downscales
@@ -2933,7 +3594,25 @@ class DeploymentStateManager:
         if len(deleted_ids):
             self._record_deployment_usage()
 
+        if target_state_changed:
+            self.save_checkpoint()
+
         return any_recovering
+
+    def autoscale(self, deployment_id: DeploymentID, target_num_replicas: int) -> bool:
+        """Autoscale the deployment to the target number of replicas.
+
+        Args:
+            deployment_id: The deployment ID.
+            target_num_replicas: The target number of replicas.
+
+        Returns:
+            True if the deployment was autoscaled, False otherwise.
+        """
+        if deployment_id not in self._deployment_states:
+            return False
+
+        return self._deployment_states[deployment_id].autoscale(target_num_replicas)
 
     def _handle_scheduling_request_failures(
         self,
@@ -3014,3 +3693,55 @@ class DeploymentStateManager:
         for deployment_state in self._deployment_states.values():
             node_ids.update(deployment_state.get_active_node_ids())
         return node_ids
+
+    def get_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
+        """Get all ingress replicas info for all deployments."""
+        ingress_replicas_list = [
+            deployment_state._replicas.get()
+            for deployment_state in self._deployment_states.values()
+            if deployment_state.is_ingress()
+        ]
+
+        ingress_replicas_info = []
+        for replicas in ingress_replicas_list:
+            for replica in replicas:
+                ingress_replicas_info.append(
+                    (
+                        replica.actor_node_id,
+                        replica.replica_id.unique_id,
+                        replica.actor_http_port,
+                        replica.actor_grpc_port,
+                    )
+                )
+        return ingress_replicas_info
+
+    def _get_replica_ranks_mapping(self, deployment_id: DeploymentID) -> Dict[str, int]:
+        """Get the current rank mapping for all replicas in a deployment.
+        Args:
+            deployment_id: The deployment ID to get ranks for.
+        Returns:
+            Dictionary mapping replica_id to rank.
+        """
+        deployment_state = self._deployment_states.get(deployment_id)
+        if deployment_state is None:
+            return {}
+
+        return deployment_state._get_replica_ranks_mapping()
+
+    def get_deployment_outbound_deployments(
+        self, deployment_id: DeploymentID
+    ) -> Optional[List[DeploymentID]]:
+        """Get the cached outbound deployments for a specific deployment.
+
+        Args:
+            deployment_id: The deployment ID to get outbound deployments for.
+
+        Returns:
+            List of deployment IDs that this deployment calls, or None if
+            the deployment doesn't exist or hasn't been polled yet.
+        """
+        deployment_state = self._deployment_states.get(deployment_id)
+        if deployment_state is None:
+            return None
+
+        return deployment_state.get_outbound_deployments()

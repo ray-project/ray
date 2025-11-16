@@ -11,12 +11,14 @@ import yaml
 
 import ray
 from ray import serve
-from ray.llm._internal.serve.configs.openai_api_models import (
+from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     CompletionRequest,
     EmbeddingCompletionRequest,
+    ScoreRequest,
+    TranscriptionRequest,
 )
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
+from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.serve.llm import (
@@ -110,6 +112,41 @@ def mock_embedding_request(dimensions):
     if dimensions:
         request.dimensions = dimensions
     return request
+
+
+@pytest.fixture
+def mock_transcription_request(stream, temperature, language):
+    """Fixture for creating transcription requests for mock testing."""
+    # Create a mock audio file for testing
+    from io import BytesIO
+
+    from fastapi import UploadFile
+
+    # Create a simple mock audio file (WAV format)
+    mock_audio_data = b"RIFF\x00\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88X\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00"  # random byte string to test the transcription API
+    mock_file = UploadFile(
+        file=BytesIO(mock_audio_data),
+        filename="test_audio.wav",
+    )
+
+    return TranscriptionRequest(
+        file=mock_file,
+        model=MOCK_MODEL_ID,
+        language=language,
+        temperature=temperature,
+        stream=stream,
+        prompt="",
+    )
+
+
+@pytest.fixture
+def mock_score_request():
+    """Fixture for creating score requests for mock testing."""
+    return ScoreRequest(
+        model=MOCK_MODEL_ID,
+        text_1="What is the capital of France?",
+        text_2="The capital of France is Paris.",
+    )
 
 
 def get_test_model_path(yaml_file: str) -> pathlib.Path:

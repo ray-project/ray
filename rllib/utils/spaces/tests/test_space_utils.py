@@ -2,9 +2,9 @@
 
 import unittest
 
-from gymnasium.spaces import Box, Discrete, MultiDiscrete, MultiBinary, Tuple, Dict
 import numpy as np
 import tree  # pip install dm_tree
+from gymnasium.spaces import Box, Dict, Discrete, MultiBinary, MultiDiscrete, Tuple
 
 from ray.rllib.utils.spaces.space_utils import (
     batch,
@@ -130,7 +130,8 @@ class TestSpaceUtils(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

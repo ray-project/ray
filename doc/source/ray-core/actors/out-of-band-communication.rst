@@ -19,8 +19,8 @@ See :ref:`Ray Collective <ray-collective>` for more details.
 
 HTTP Server
 -----------
-You can start a http server inside the actor and expose http endpoints to clients
-so users outside of the ray cluster can communicate with the actor.
+You can start an HTTP server inside the actor and expose HTTP endpoints to clients
+so users outside of the Ray cluster can communicate with the actor.
 
 .. tab-set::
 

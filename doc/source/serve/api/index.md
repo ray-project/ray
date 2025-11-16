@@ -70,6 +70,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.delete
    serve.status
    serve.shutdown
+   serve.shutdown_async
 ```
 
 ### Configurations
@@ -83,6 +84,9 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.config.gRPCOptions
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
+   serve.config.AutoscalingPolicy
+   serve.config.AutoscalingContext
+   serve.config.AggregationFunction
    serve.config.RequestRouterConfig
 ```
 
@@ -100,6 +104,11 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.schema.ServeStatus
    serve.schema.DeploymentStatusOverview
    serve.schema.EncodingType
+   serve.schema.AutoscalingMetricsHealth
+   serve.schema.AutoscalingStatus
+   serve.schema.ScalingDecision
+   serve.schema.DeploymentAutoscalingDetail
+   serve.schema.ReplicaRank
 ```
 
 ### Request Router
@@ -383,6 +392,11 @@ Content-Type: application/json
    schema.ServeApplicationSchema
    schema.DeploymentSchema
    schema.RayActorOptionsSchema
+   schema.CeleryAdapterConfig
+   schema.TaskProcessorConfig
+   schema.TaskResult
+   schema.ScaleDeploymentRequest
+   schema.TaskProcessorAdapter
 ```
 
 (serve-rest-api-response-schema)=

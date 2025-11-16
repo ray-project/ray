@@ -1,14 +1,13 @@
 import gc
 import os
-import sys
 import signal
+import sys
 
 import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray.core.generated import gcs_pb2
-from ray.core.generated import common_pb2
+from ray.core.generated import common_pb2, gcs_pb2
 
 
 @pytest.mark.parametrize("deterministic_failure", ["request", "response"])
@@ -57,9 +56,7 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
 
     def verify1():
         gc.collect()
-        actor_info = ray._private.state.state.global_state_accessor.get_actor_info(
-            actor_id
-        )
+        actor_info = ray._private.state.state.get_actor_info(actor_id)
         assert actor_info is not None
         actor_info = gcs_pb2.ActorTableData.FromString(actor_info)
         assert actor_info.state == gcs_pb2.ActorTableData.ActorState.DEAD
@@ -82,9 +79,7 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
     assert ray.get(obj2) == [1] * 1024 * 1024
 
     def verify2():
-        actor_info = ray._private.state.state.global_state_accessor.get_actor_info(
-            actor_id
-        )
+        actor_info = ray._private.state.state.get_actor_info(actor_id)
         assert actor_info is not None
         actor_info = gcs_pb2.ActorTableData.FromString(actor_info)
         assert actor_info.state == gcs_pb2.ActorTableData.ActorState.DEAD
@@ -103,9 +98,7 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
     del obj2
 
     def verify3():
-        actor_info = ray._private.state.state.global_state_accessor.get_actor_info(
-            actor_id
-        )
+        actor_info = ray._private.state.state.get_actor_info(actor_id)
         assert actor_info is not None
         actor_info = gcs_pb2.ActorTableData.FromString(actor_info)
         assert actor_info.state == gcs_pb2.ActorTableData.ActorState.DEAD

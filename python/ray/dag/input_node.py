@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from ray.dag import DAGNode
 from ray.dag.format_utils import get_dag_node_str

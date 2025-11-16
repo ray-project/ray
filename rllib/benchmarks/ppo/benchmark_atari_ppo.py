@@ -21,7 +21,6 @@ import subprocess
 
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
-
 parser = add_rllib_example_script_args()
 
 # Might need `gymnasium[atari, other]` to be installed.

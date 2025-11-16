@@ -5,14 +5,15 @@ Unit/Integration Testing for python/_private/utils.py
 This currently expects to work for minimal installs.
 """
 import logging
-import pytest
 import sys
-from unittest.mock import patch, mock_open
+from unittest.mock import mock_open, patch
+
+import pytest
 
 from ray._private.utils import (
+    get_current_node_cpu_model_name,
     parse_pg_formatted_resources_to_original,
     try_import_each_module,
-    get_current_node_cpu_model_name,
 )
 
 logger = logging.getLogger(__name__)

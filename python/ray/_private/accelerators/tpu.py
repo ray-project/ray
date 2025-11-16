@@ -3,12 +3,13 @@ import logging
 import os
 import re
 from functools import lru_cache
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import requests
 
 import ray
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,43 @@ SINGLE_CORE_TPU_TYPES = ("v5litepod", "v6e")
 # The valid TPU types.
 VALID_TPU_TYPES = ("v2", "v3", "v4", "v5p", "v5litepod", "v6e")
 
+# This is only used to construct TPU 3D topologies
+def _get_larger_3d_topologies(max_x: int, max_y: int, max_z: int) -> Set[str]:
+    """Returns a set of larger 3D TPU topologies given the max x,y,z value. Using DEFAULT_TPU_NUM_CHIPS_PER_HOST as increment"""
+    topologies = set()
+    for x in range(
+        DEFAULT_TPU_NUM_CHIPS_PER_HOST, max_x + 1, DEFAULT_TPU_NUM_CHIPS_PER_HOST
+    ):
+        for y in range(
+            DEFAULT_TPU_NUM_CHIPS_PER_HOST, max_y + 1, DEFAULT_TPU_NUM_CHIPS_PER_HOST
+        ):
+            for z in range(
+                DEFAULT_TPU_NUM_CHIPS_PER_HOST,
+                max_z + 1,
+                DEFAULT_TPU_NUM_CHIPS_PER_HOST,
+            ):
+                topologies.add(f"{x}x{y}x{z}")
+
+    return topologies
+
+
+# The valid TPU topologies for each of the TPU types
+VALID_TPU_TOPOLOGY = {
+    "v2": {"4x4", "4x8", "8x8", "8x16", "16x16"},
+    "v3": {"4x4", "4x8", "8x8", "8x16", "16x16", "16x32", "32x32"},
+    "v4": {"2x2x1", "2x2x2", "2x2x4", "2x4x4"}.union(
+        _get_larger_3d_topologies(12, 12, 16)
+    ),
+    "v5p": {
+        "2x2x1",
+        "2x2x2",
+        "2x2x4",
+        "2x4x4",
+    }.union(_get_larger_3d_topologies(16, 16, 24)),
+    "v5litepod": {"2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
+    "v6e": {"2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
+}
+
 
 def _get_tpu_metadata(key: str) -> Optional[str]:
     """Poll and get TPU metadata."""
@@ -108,6 +146,122 @@ def get_tpu_cores_per_chip(accelerator_type: str) -> int:
         return 1
 
     return DEFAULT_TPU_NUM_CORES_PER_CHIP
+
+
+def infer_tpu_pod_type_from_topology(
+    topology: str, accelerator_type: str
+) -> Optional[str]:
+    """Infer the TPU pod type (e.g. v4-32) from topology and accelerator type."""
+    if not topology or not accelerator_type:
+        return None
+    try:
+        num_chips = 1
+        for value in topology.strip().lower().split("x"):
+            num_chips *= int(value)
+        generation = accelerator_type.lower().replace("tpu-", "")
+        return f"{generation}-{num_chips}"
+    except Exception as e:
+        raise ValueError(
+            f"Failed to infer pod type from topology '{topology}' "
+            f"and type '{accelerator_type}'"
+        ) from e
+
+
+def fetch_tpu_slice_name_from_pg(pg):
+    @ray.remote(num_cpus=0)
+    def _get_tpu_slice_name():
+        return TPUAcceleratorManager.get_current_node_tpu_name()
+
+    tpu_name_ref = _get_tpu_slice_name.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg, placement_group_bundle_index=0
+        )
+    ).remote()
+
+    return ray.get(tpu_name_ref)
+
+
+def get_chips_per_host(topology: str, accelerator_version: str) -> int:
+    """Get the number of chips per host (aka VMs) based on topology and accelerator version.
+    The current rule is as follows:
+        Default chips per host is 4.
+        If accelerator_version is v5e or v6e AND topology product <= 8, the chips per host will just be the proudct. i.e. 1, 4, or 8
+        If accelerator_version is v5e or v6e AND topology product > 8, the chips per host will be 4
+        If accelerator_version is v5p or other versions, the chips per host will be 4
+
+    Args:
+        topology: The TPU topology string (e.g. "2x2x2").
+        accelerator_version: The accelerator version of the node (e.g. "V4", "v4").
+
+    Returns:
+        A int representing the number of chips per host (aka VM)
+    """
+    chips_per_host = DEFAULT_TPU_NUM_CHIPS_PER_HOST
+    total_chips = 1
+    for value in topology.strip().lower().split("x"):
+        total_chips *= int(value)
+
+    if (
+        total_chips <= 8
+        and accelerator_version.strip().lower() in SINGLE_HOST_8_CHIPS_TPU_TYPES
+    ):
+        return total_chips
+
+    return chips_per_host
+
+
+def reserve_tpu_slice(
+    topology: str,
+    accelerator_type: str,
+) -> Optional[str]:
+    """Reserves a TPU slice using its head resource and returns the slice name.
+    This enables gang scheduling of training workers with multi-host TPUs.
+    This is used by JaxTrainer with TPUs in Ray Train.
+
+    Args:
+        topology: The TPU topology string (e.g. "2x2x2").
+        accelerator_type: The accelerator type of the node (e.g. "TPU-V4").
+
+    Returns:
+        A string representing a unique TPU slice name.
+    """
+    pod_type = infer_tpu_pod_type_from_topology(topology, accelerator_type)
+    if pod_type is None:
+        return None
+
+    # Reserve a slice by creating a placement group on the TPU head.
+    head_label_selector = {
+        "ray.io/tpu-worker-id": "0",
+        "ray.io/tpu-pod-type": pod_type,
+    }
+    head_placement_group = ray.util.placement_group(
+        bundles=[{f"TPU-{pod_type}-head": 1}],
+        bundle_label_selector=[head_label_selector],
+    )
+
+    logger.debug("Waiting to reserve multi-host slice head.")
+    timeout = 100
+    ready, _ = ray.wait([head_placement_group.ready()], timeout=timeout)
+
+    if not ready:
+        raise TimeoutError(
+            "Failed to reserve TPU head for slice with shape: {}. "
+            "Ensure your cluster has sufficient resources. Requesting TPU "
+            "head node with labels: {}. Current resources: {}".format(
+                pod_type, head_label_selector, ray.available_resources()
+            )
+        )
+
+    # Retrieve the unique slice ID.
+    slice_name = fetch_tpu_slice_name_from_pg(head_placement_group)
+    if slice_name is None:
+        raise RuntimeError(
+            "Failed to retrieve TPU slice name after reserving head placement group. "
+            "Ensure that TPU slice metadata is available and correctly configured on multi-host nodes."
+        )
+
+    # TODO: return both the slice name and reference to the PG reservation.
+    return slice_name
 
 
 class TPUAcceleratorManager(AcceleratorManager):
@@ -176,6 +330,32 @@ class TPUAcceleratorManager(AcceleratorManager):
         """
         expected_pattern = re.compile(r"^v\d+[a-zA-Z]*-\d+$")
         if not expected_pattern.match(tpu_accelerator_type):
+            return False
+        return True
+
+    @staticmethod
+    def is_valid_tpu_accelerator_topology(
+        tpu_accelerator_version: str, tpu_topology: str
+    ) -> bool:
+        """Check whether the tpu topology is valid.
+
+        The accelerator_type field follows a form of v{generation}.
+        The accelerator_topology field follows either the form {A}x{B} or {A}x{B}x{C} depending on the v{generation}
+
+        Args:
+            tpu_accelerator_version: The string representation of the accelerator version. (e.g. v6e, V5P)
+            tpu_topology: The string representation of the accelerator topology
+                to be checked for validity
+
+        Returns:
+            True if it's valid topology, false othrwise
+        """
+        tpu_version_formatted = tpu_accelerator_version.strip().lower().split("-")[0]
+        if (
+            tpu_version_formatted.lower() not in VALID_TPU_TOPOLOGY
+            or tpu_topology.strip().lower()
+            not in VALID_TPU_TOPOLOGY[tpu_version_formatted]
+        ):
             return False
         return True
 
@@ -424,8 +604,8 @@ class TPUAcceleratorManager(AcceleratorManager):
         @ray.remote(resources={"TPU-v4-16-head"})
         def run_jax_fn(executable):
             # Note this will execute on worker 0
-            tpu_name = ray.util.accelerators.tpu.get_tpu_pod_name()
-            num_workers = ray.util.accelerators.tpu.get_tpu_num_workers()
+            tpu_name = ray.util.tpu.get_tpu_pod_name()
+            num_workers = ray.util.tpu.get_tpu_num_workers()
             tpu_executable = executable.options(resources={"TPU": 4, tpu_name: 1})
             return [tpu_executable.remote() for _ in range(num_workers)]
 

@@ -9,11 +9,12 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 import requests
 import yaml
 
 import ray
+from ray._common.network_utils import build_address
+from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
@@ -25,7 +26,6 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_until_server_available,
 )
-from ray._common.network_utils import parse_address, build_address
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
@@ -77,8 +77,8 @@ class JobAgentSubmissionBrowserClient(JobAgentSubmissionClient):
 @pytest_asyncio.fixture
 async def job_sdk_client(make_sure_dashboard_http_port_unused):
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
-        ip, _ = parse_address(ctx.address_info["webui_url"])
-        agent_address = build_address(ip, DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
+        node_ip = ctx.address_info["node_ip_address"]
+        agent_address = build_address(node_ip, DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
         assert wait_until_server_available(agent_address)
         head_address = ctx.address_info["webui_url"]
         assert wait_until_server_available(head_address)
@@ -428,7 +428,10 @@ async def test_tail_job_logs_with_echo(job_sdk_client):
     async for lines in agent_client.tail_job_logs(job_id):
         print(lines, end="")
         for line in lines.strip().split("\n"):
-            if "Runtime env is setting up." in line:
+            if (
+                "Runtime env is setting up." in line
+                or "Running entrypoint for job" in line
+            ):
                 continue
             assert line.split(" ") == ["Hello", str(i)]
             i += 1
@@ -469,8 +472,8 @@ async def test_job_log_in_multiple_node(
         dashboard_agent_listen_port=DEFAULT_DASHBOARD_AGENT_LISTEN_PORT + 2
     )
 
-    ip, _ = parse_address(cluster.webui_url)
-    agent_address = build_address(ip, DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
+    node_ip = cluster.head_node.node_ip_address
+    agent_address = build_address(node_ip, DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
     assert wait_until_server_available(agent_address)
     client = JobAgentSubmissionClient(format_web_url(agent_address))
 
@@ -539,7 +542,7 @@ async def test_job_log_in_multiple_node(
             assert wait_until_server_available(agent_address)
             client = JobAgentSubmissionClient(format_web_url(agent_address))
             resp = await client.get_job_logs_internal(job_id)
-            assert result_log in resp.logs, resp.logs
+            assert result_log in resp.logs, f"logs: {resp.logs}"
 
             job_check_status[index] = True
         return True
@@ -595,18 +598,18 @@ async def test_non_default_dashboard_agent_http_port(tmp_path):
     """
     import subprocess
 
-    cmd = (
-        "ray start --head " f"--dashboard-agent-listen-port {get_current_unused_port()}"
-    )
+    dashboard_agent_port = get_current_unused_port()
+    cmd = "ray start --head " f"--dashboard-agent-listen-port {dashboard_agent_port}"
     subprocess.check_output(cmd, shell=True)
 
     try:
         # We will need to wait for the ray to be started in the subprocess.
         address_info = ray.init("auto", ignore_reinit_error=True).address_info
 
-        ip, _ = parse_address(address_info["webui_url"])
+        node_ip = address_info["node_ip_address"]
+
         dashboard_agent_listen_port = address_info["dashboard_agent_listen_port"]
-        agent_address = build_address(ip, dashboard_agent_listen_port)
+        agent_address = build_address(node_ip, dashboard_agent_listen_port)
         print("agent address = ", agent_address)
 
         agent_client = JobAgentSubmissionClient(format_web_url(agent_address))

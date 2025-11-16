@@ -21,6 +21,11 @@ export type StateApiLogInput = {
    * -1 for all lines.
    */
   maxLines?: number;
+  /**
+   * A boolean flag for determining whether to filter ANSI escape codes.
+   * The default value is True.
+   */
+  filterAnsiCode?: boolean;
 };
 
 export const getStateApiDownloadLogUrl = ({
@@ -30,6 +35,7 @@ export const getStateApiDownloadLogUrl = ({
   actorId,
   suffix,
   maxLines = MAX_LINES_FOR_LOGS,
+  filterAnsiCode = true,
 }: StateApiLogInput) => {
   if (
     nodeId === null ||
@@ -51,6 +57,7 @@ export const getStateApiDownloadLogUrl = ({
       : []),
     ...(suffix !== undefined ? [`suffix=${encodeURIComponent(suffix)}`] : []),
     `lines=${maxLines}`,
+    `filter_ansi_code=${filterAnsiCode}`,
   ];
 
   return `api/v0/logs/file?${variables.join("&")}`;

@@ -1,4 +1,5 @@
 import collections
+import copy
 import logging
 import os
 import traceback
@@ -11,13 +12,14 @@ from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.runtime_env import RuntimeEnv
+from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train.v2._internal.constants import (
-    DEFAULT_REPORT_BARRIER_TIMEOUT_S,
-    DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
+    COLLECTIVE_TIMEOUT_S_ENV_VAR,
+    COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+    DEFAULT_COLLECTIVE_TIMEOUT_S,
+    DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
     DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
     DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
-    REPORT_BARRIER_TIMEOUT_S_ENV_VAR,
-    REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
     WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
     get_env_vars_to_propagate,
@@ -37,7 +39,6 @@ from ray.train.v2._internal.execution.callback import (
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
-    StorageContext,
     TrainRunContext,
 )
 from ray.train.v2._internal.execution.worker_group.poll import (
@@ -89,6 +90,7 @@ class WorkerGroupContext:
         num_workers: The number of workers in the worker group.
         resources_per_worker: The resources per worker.
         placement_strategy: Strategy for placing workers.
+        bundle_label_selector: Optional label selectors to apply per-bundle for workers.
     """
 
     run_attempt_id: str
@@ -96,9 +98,10 @@ class WorkerGroupContext:
     num_workers: int
     resources_per_worker: Dict[str, float]
     placement_strategy: str = "PACK"
+    bundle_label_selector: Optional[Dict[str, str]] = None
 
 
-class WorkerGroup:
+class WorkerGroup(BaseWorkerGroup):
     _worker_cls = RayTrainWorker
 
     @classmethod
@@ -143,11 +146,7 @@ class WorkerGroup:
         """
         self._train_run_context = train_run_context
         run_config = self._train_run_context.run_config
-        self._storage_context = StorageContext(
-            storage_path=run_config.storage_path,
-            experiment_dir_name=run_config.name,
-            storage_filesystem=run_config.storage_filesystem,
-        )
+        self._storage_context = run_config.storage_context
 
         self._worker_group_context: WorkerGroupContext = worker_group_context
 
@@ -178,12 +177,12 @@ class WorkerGroup:
                 DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
             )
         )
-        self._report_barrier_timeout_s = env_float(
-            REPORT_BARRIER_TIMEOUT_S_ENV_VAR, DEFAULT_REPORT_BARRIER_TIMEOUT_S
+        self._collective_timeout_s = env_float(
+            COLLECTIVE_TIMEOUT_S_ENV_VAR, DEFAULT_COLLECTIVE_TIMEOUT_S
         )
-        self._report_barrier_warn_interval_s = env_float(
-            REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
-            DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
+        self._collective_warn_interval_s = env_float(
+            COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+            DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
         )
 
     ################################################################################
@@ -268,10 +267,18 @@ class WorkerGroup:
             for callback in self._callbacks:
                 callback.before_worker_group_start(worker_group_context)
 
+            bundle_label_selector = (
+                [worker_group_context.bundle_label_selector.copy()]
+                * worker_group_context.num_workers
+                if worker_group_context.bundle_label_selector
+                else None
+            )
+
             pg = placement_group(
                 bundles=[worker_group_context.resources_per_worker]
                 * worker_group_context.num_workers,
                 strategy=worker_group_context.placement_strategy,
+                bundle_label_selector=bundle_label_selector,
             )
             logger.info(
                 f"Attempting to start training worker group of size {worker_group_context.num_workers} with "
@@ -302,8 +309,8 @@ class WorkerGroup:
                     soft=False,
                 )
             ).remote(
-                timeout_s=self._report_barrier_timeout_s,
-                warn_interval_s=self._report_barrier_warn_interval_s,
+                timeout_s=self._collective_timeout_s,
+                warn_interval_s=self._collective_warn_interval_s,
             )
             worker_group_state_builder.with_sync_actor(sync_actor)
 
@@ -427,6 +434,7 @@ class WorkerGroup:
                 synchronization_actor=sync_actor,
                 storage_context=self._storage_context,
                 worker_callbacks=self._worker_callbacks_to_propagate,
+                controller_actor=ray.get_runtime_context().current_actor,
                 **{
                     arg: arg_values[i] for arg, arg_values in train_context_args.items()
                 },
@@ -464,12 +472,14 @@ class WorkerGroup:
 
     def abort(self):
         """Abort the worker group."""
-        # TODO: consider shutting down the workers in the future.
-        # We don't do this for now due to this risk of hanging e.g. when calling
-        # `destroy_process_group` on an active group.
         self._assert_active()
         for callback in self._callbacks:
             callback.before_worker_group_abort(self._worker_group_context)
+
+        # TODO: Add shutdown callback hooks
+
+        self._worker_group_state.shutdown()
+        self._clear_state()
 
     #####################################################################################
     # Polling Worker Group
@@ -557,7 +567,7 @@ class WorkerGroup:
                 error = WorkerHealthCheckTimeoutError(error_msg)
 
             poll_task_to_result[hanging_poll] = WorkerStatus(
-                running=True, error=error, training_result=None
+                running=True, error=error, training_report=None
             )
 
         for done_poll in done_polls:
@@ -576,7 +586,7 @@ class WorkerGroup:
                 poll_result = WorkerStatus(
                     running=False,
                     error=WorkerHealthCheckFailedError(error_msg, failure=e),
-                    training_result=None,
+                    training_report=None,
                 )
 
             poll_task_to_result[done_poll] = poll_result
@@ -705,6 +715,10 @@ class WorkerGroup:
     def __len__(self) -> int:
         self._assert_active()
         return len(self.get_workers())
+
+    def get_resources_per_worker(self) -> dict:
+        """Get the resources allocated per worker."""
+        return copy.deepcopy(self._worker_group_context.resources_per_worker)
 
     #########################################################################################
     # Static Utility Methods

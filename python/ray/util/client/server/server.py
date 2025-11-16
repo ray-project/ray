@@ -10,7 +10,6 @@ import queue
 import threading
 import time
 from collections import defaultdict
-from concurrent import futures
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 import grpc
@@ -20,14 +19,14 @@ import ray._private.state
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray import cloudpickle
+from ray._common.network_utils import build_address, is_localhost
 from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
-from ray._raylet import GcsClient
 from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
 from ray._private.services import canonicalize_bootstrap_address_or_die
 from ray._private.tls_utils import add_port_to_grpc_server
-from ray._common.network_utils import build_address
+from ray._raylet import GcsClient
 from ray.job_config import JobConfig
 from ray.util.client.common import (
     CLIENT_SERVER_MAX_THREADS,
@@ -135,7 +134,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                     logger.exception("Running Ray Init failed:")
                     return ray_client_pb2.InitResponse(
                         ok=False,
-                        msg="Call to `ray.init()` on the server " f"failed with: {e}",
+                        msg=f"Call to `ray.init()` on the server failed with: {e}",
                     )
         if job_config is None:
             return ray_client_pb2.InitResponse(ok=True)
@@ -378,8 +377,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 return_exception_in_context(e, context)
         else:
             raise RuntimeError(
-                "Client requested termination without providing a valid "
-                "terminate_type"
+                "Client requested termination without providing a valid terminate_type"
             )
         return ray_client_pb2.TerminateResponse(ok=True)
 
@@ -397,7 +395,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         """
         if len(request.ids) != 1:
             raise ValueError(
-                "Async get() must have exactly 1 Object ID. " f"Actual: {request}"
+                f"Async get() must have exactly 1 Object ID. Actual: {request}"
             )
         rid = request.ids[0]
         ref = self.object_refs[client_id].get(rid, None)
@@ -479,8 +477,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                     valid=False,
                     error=cloudpickle.dumps(
                         ValueError(
-                            f"ClientObjectRef {rid} is not found for client "
-                            f"{client_id}"
+                            f"ClientObjectRef {rid} is not found for client {client_id}"
                         )
                     ),
                 )
@@ -773,13 +770,14 @@ def serve(host: str, port: int, ray_connect_handler=None):
             if not ray.is_initialized():
                 return ray.init(job_config=job_config, **ray_init_kwargs)
 
+    from ray._private.grpc_utils import create_grpc_server_with_interceptors
+
     ray_connect_handler = ray_connect_handler or default_connect_handler
-    server = grpc.server(
-        futures.ThreadPoolExecutor(
-            max_workers=CLIENT_SERVER_MAX_THREADS,
-            thread_name_prefix="ray_client_server",
-        ),
+    server = create_grpc_server_with_interceptors(
+        max_workers=CLIENT_SERVER_MAX_THREADS,
+        thread_name_prefix="ray_client_server",
         options=GRPC_OPTIONS,
+        asynchronous=False,
     )
     task_servicer = RayletServicer(ray_connect_handler)
     data_servicer = DataServicer(task_servicer)
@@ -787,7 +785,7 @@ def serve(host: str, port: int, ray_connect_handler=None):
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(task_servicer, server)
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(logs_servicer, server)
-    if host != "127.0.0.1" and host != "localhost":
+    if not is_localhost(host):
         add_port_to_grpc_server(server, f"127.0.0.1:{port}")
     add_port_to_grpc_server(server, f"{host}:{port}")
     current_handle = ClientServerHandle(
@@ -929,7 +927,7 @@ def main():
                 )
             except Exception as e:
                 logger.error(
-                    f"[{args.mode}] Failed to put health check " f"on {args.address}"
+                    f"[{args.mode}] Failed to put health check on {args.address}"
                 )
                 logger.exception(e)
 

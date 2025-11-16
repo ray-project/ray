@@ -1,0 +1,10 @@
+name: "ray-py$PYTHON_VERSION-cpu-base$ARCH_SUFFIX"
+froms: ["ubuntu:22.04"]
+dockerfile: docker/base-deps/Dockerfile
+srcs:
+  - python/requirements_compiled.txt
+build_args:
+  - PYTHON_VERSION
+  - BASE_IMAGE=ubuntu:22.04
+tags:
+  - cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cpu-base$ARCH_SUFFIX

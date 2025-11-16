@@ -36,17 +36,14 @@ class APIIngress:
     ray_actor_options={"num_gpus": 1},
     autoscaling_config={"min_replicas": 0, "max_replicas": 2},
 )
-class StableDiffusionV2:
+class StableDiffusionXL:
     def __init__(self):
-        from diffusers import EulerDiscreteScheduler, StableDiffusionPipeline
+        from diffusers import DiffusionPipeline
 
-        model_id = "stabilityai/stable-diffusion-2"
+        model_id = "stabilityai/stable-diffusion-xl-base-1.0"
 
-        scheduler = EulerDiscreteScheduler.from_pretrained(
-            model_id, subfolder="scheduler"
-        )
-        self.pipe = StableDiffusionPipeline.from_pretrained(
-            model_id, scheduler=scheduler, revision="fp16", torch_dtype=torch.float16
+        self.pipe = DiffusionPipeline.from_pretrained(
+            model_id, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
         )
         self.pipe = self.pipe.to("cuda")
 
@@ -58,7 +55,7 @@ class StableDiffusionV2:
             return image
 
 
-entrypoint = APIIngress.bind(StableDiffusionV2.bind())
+entrypoint = APIIngress.bind(StableDiffusionXL.bind())
 
 # __example_code_end__
 

@@ -6,6 +6,7 @@ from ray.train.xgboost.xgboost_predictor import XGBoostPredictor
 from ray.train.xgboost.xgboost_trainer import XGBoostTrainer
 
 if is_v2_enabled():
+    from ray.train.v2.xgboost.config import XGBoostConfig  # noqa: F811
     from ray.train.v2.xgboost.xgboost_trainer import XGBoostTrainer  # noqa: F811
 
 __all__ = [

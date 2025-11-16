@@ -1,12 +1,11 @@
 """Test the collective allreduice API on a distributed Ray cluster."""
-import pytest
-import ray
-from ray.util.collective.types import ReduceOp
-
 import cupy as cp
+import pytest
 import torch
 
+import ray
 from ray.util.collective.tests.util import create_collective_workers
+from ray.util.collective.types import ReduceOp
 
 
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])

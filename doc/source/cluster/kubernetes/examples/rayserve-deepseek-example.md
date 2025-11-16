@@ -2,7 +2,7 @@
 
 # Serve Deepseek R1 using Ray Serve LLM
 
-This guide provides a step-by-step guide for deploying a Large Language Model (LLM) using Ray Serve LLM on Kubernetes. Leveraging KubeRay, Ray Serve, and vLLM, this guide deploys the  `deepseek-ai/DeepSeek-R1` model from Hugging Face, enabling scalable, efficient, and OpenAI-compatible LLM serving within a Kubernetes environment. See [Serving LLMs](serving_llms) for information on Ray Serve LLM.
+This guide provides a step-by-step guide for deploying a Large Language Model (LLM) using Ray Serve LLM on Kubernetes. Leveraging KubeRay, Ray Serve, and vLLM, this guide deploys the  `deepseek-ai/DeepSeek-R1` model from Hugging Face, enabling scalable, efficient, and OpenAI-compatible LLM serving within a Kubernetes environment. See [Serving LLMs](serving-llms) for information on Ray Serve LLM.
 
 ## Prerequisites
 A DeepSeek model requires 2 nodes, each equipped with 8 H100 80 GB GPUs.
@@ -108,7 +108,7 @@ In particular, this configuration loads the model from `deepseek-ai/DeepSeek-R1`
   This setting enables pipeline parallelism, dividing the model's entire set of layers into 2 sequential stages. Adjust this variable according to cluster worker node numbers.
 
 
-The `deployment_config` section sets the desired number of engine replicas. See [Serving LLMs](serving_llms) and the [Ray Serve config documentation](serve-in-production-config-file) for more information.
+The `deployment_config` section sets the desired number of engine replicas. See [Serving LLMs](serving-llms) and the [Ray Serve config documentation](serve-in-production-config-file) for more information.
 
 Wait for the RayService resource to become healthy. You can confirm its status by running the following command:
 ```sh
