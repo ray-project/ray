@@ -797,21 +797,29 @@ def test_expression_repr(expr_fn, expected):
 
 
 @pytest.mark.parametrize(
-    "expr_fn,expected",
+    "expr_fn,expected_prefix",
     [
         (
             _build_complex_expr,
-            "~((((((((col('age') + 10) * col('rate')) / 2.5) >= 100) &...",
+            "~((((((((col('age') + 10) * col('rate')) / 2.5) >= 100) & (col('name').is_not_null() | ((col('status')",
         ),
     ],
     ids=["complex_expression"],
 )
-def test_expression_inline_repr(expr_fn, expected):
-    """Test inline representation of expressions with a comprehensive example."""
+def test_expression_inline_repr(expr_fn, expected_prefix):
+    """Test inline representation of expressions with a comprehensive example.
+
+    Note: This tests that the visitor generates the correct untruncated representation.
+    Top-level truncation is handled by callers of the visitor, not the visitor itself.
+    Individual literals may be truncated based on max_literal_length.
+    """
     expr = expr_fn()
     visitor = _InlineExprReprVisitor()
     inline_repr = visitor.visit(expr)
-    assert inline_repr == expected
+    # Verify the representation starts correctly
+    assert inline_repr.startswith(expected_prefix)
+    # Verify the representation ends correctly (not truncated at top level)
+    assert inline_repr.endswith(".alias('complex_filter')")
 
 
 if __name__ == "__main__":

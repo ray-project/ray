@@ -377,29 +377,13 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
     the representation compact.
     """
 
-    def __init__(self, max_literal_length: int = 20, max_total_length: int = 60):
+    def __init__(self, max_literal_length: int = 20):
         """Initialize the inline representation visitor.
 
         Args:
             max_literal_length: Maximum length for literal value representations
-            max_total_length: Maximum length for the entire expression string
         """
         self._max_literal_length = max_literal_length
-        self._max_total_length = max_total_length
-
-    def visit(self, expr: "Expr") -> str:
-        """Visit an expression and return its truncated inline representation.
-
-        Args:
-            expr: The expression to visit
-
-        Returns:
-            A string representation, truncated if longer than max_total_length
-        """
-        result = super().visit(expr)
-        if len(result) > self._max_total_length:
-            return result[: self._max_total_length - 3] + "..."
-        return result
 
     def visit_column(self, expr: "ColumnExpr") -> str:
         """Visit a column expression and return its inline representation."""

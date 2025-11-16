@@ -283,6 +283,12 @@ class Filter(AbstractUDFMap):
             )
 
             expr_str = _InlineExprReprVisitor().visit(self._predicate_expr)
+
+            # Truncate only the final result if too long
+            max_length = 60
+            if len(expr_str) > max_length:
+                expr_str = expr_str[: max_length - 3] + "..."
+
             return f"{op_name}({expr_str})"
         return super()._get_operator_name(op_name, fn)
 
