@@ -252,7 +252,7 @@ approach similar to the existing Kueue integration guides.
 > **Supported resources** – At the time of writing, the Kueue
 > autoscaler integration supports `RayCluster` and `RayService`.  Support
 > for `RayJob` autoscaling is under development; see the Kueue issue
-> tracker for updates【[issue](https://github.com/kubernetes-sigs/kueue/issues/7605)】.
+> tracker for updates[issue](https://github.com/kubernetes-sigs/kueue/issues/7605).
 
 
 ### Prerequisites
@@ -414,6 +414,7 @@ NAMESPACE   NAME                                           QUEUE    RESERVED IN 
 default     raycluster-raycluster-kueue-autoscaler-21c46   ray-lq   ray-cq        True                  26s
 ```
 
+(step-2-verify-autoscaling-for-a-raycluster)=
 ### Step 2: Verify autoscaling for a RayCluster
 
 To observe autoscaling, create load on the cluster and watch worker
