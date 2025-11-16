@@ -411,8 +411,7 @@ The `ADMITTED` column should show `True` once the `RayCluster`
 has been scheduled by Kueue.
 ```bash
 NAMESPACE   NAME                                           QUEUE    RESERVED IN   ADMITTED   FINISHED   AGE
-default     raycluster-raycluster-kueue-autoscaler-36054   ray-lq   ray-cq        True                  113s
-default     raycluster-raycluster-kueue-autoscaler-cc671   ray-lq   ray-cq        True       True       3m53s
+default     raycluster-raycluster-kueue-autoscaler-21c46   ray-lq   ray-cq        True                  26s
 ```
 
 ### Step 2: Verify autoscaling for a RayCluster
