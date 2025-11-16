@@ -1,0 +1,43 @@
+build_arg_sets:
+  py311:
+    PYTHON_VERSION: "3.11"
+    PYTHON_SHORT: "311"
+  py312:
+    PYTHON_VERSION: "3.12"
+    PYTHON_SHORT: "312"
+  py313:
+    PYTHON_VERSION: "3.13"
+    PYTHON_SHORT: "313"
+
+
+depsets:
+  - name: req_compiled_depset_${PYTHON_SHORT}
+    operation: compile
+    requirements:
+      - python/requirements.txt
+      - python/requirements/lint-requirements.txt
+      - python/requirements/test-requirements.txt
+      - python/requirements/cloud-requirements.txt
+      - python/requirements/docker/ray-docker-requirements.txt
+      - python/requirements/ml/core-requirements.txt
+      - python/requirements/ml/data-requirements.txt
+      - python/requirements/ml/data-test-requirements.txt
+      - python/requirements/ml/dl-generic-requirements.txt
+      - python/requirements/ml/rllib-requirements.txt
+      - python/requirements/ml/rllib-test-requirements.txt
+      - python/requirements/ml/train-requirements.txt
+      - python/requirements/ml/train-test-requirements.txt
+      - python/requirements/ml/tune-requirements.txt
+      - python/requirements/ml/tune-test-requirements.txt
+      - python/requirements/security-requirements.txt
+    output: python/deplocks/req_compiled/req_compiled_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+      - --unsafe-package pip
+      - --no-header
+    build_arg_sets:
+      - py311
+      - py312
+      - py313

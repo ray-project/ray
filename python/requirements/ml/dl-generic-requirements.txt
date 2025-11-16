@@ -9,12 +9,6 @@ tensorflow-datasets; python_version < '3.12'
 array-record==0.5.1; python_version < '3.12' and sys_platform != 'darwin' and platform_system != 'Windows'
 etils==1.5.2; python_version < '3.12'
 
-# If you make changes below this line, please also make the corresponding changes to `dl-gpu-requirements.txt`
-# and to `install-dependencies.sh`!
-
---extra-index-url https://download.pytorch.org/whl/cpu  # for CPU versions of torch, torchvision
---find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html  # for CPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
-
 torch==2.3.0; python_version <= '3.12'
 torch==2.6.0; python_version > '3.12'
 torchmetrics==0.10.3
