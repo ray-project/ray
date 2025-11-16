@@ -49,6 +49,7 @@ class RayDataConfig(DataLoaderConfig):
     enable_shard_locality: bool = True
     preserve_order: bool = False
     ray_data_pin_memory: bool = False
+    move_collate_to_ray_data: bool = False
 
 
 class TorchConfig(DataLoaderConfig):
