@@ -27,6 +27,7 @@ from ray.data.datasource import (
 from ray.data.iterator import DataIterator, DatasetIterator
 from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401
+    KafkaAuthConfig,
     from_arrow,
     from_arrow_refs,
     from_blocks,
@@ -164,6 +165,7 @@ __all__ = [
     "read_delta",
     "read_delta_sharing_tables",
     "read_kafka",
+    "KafkaAuthConfig",
     "read_hudi",
     "read_iceberg",
     "read_images",

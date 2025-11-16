@@ -13,7 +13,6 @@ Requires:
 
 import logging
 import time
-import uuid
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -23,6 +22,7 @@ from typing import (
     Literal,
     Optional,
     Tuple,
+    TypedDict,
     Union,
 )
 
@@ -40,14 +40,58 @@ from ray.data.datasource import Datasource, ReadTask
 logger = logging.getLogger(__name__)
 
 
+class KafkaAuthConfig(TypedDict, total=False):
+    """Authentication configuration for Kafka connections.
+
+    Uses standard kafka-python parameter names. See kafka-python documentation
+    for full details: https://kafka-python.readthedocs.io/
+
+    """
+
+    # Security protocol
+    security_protocol: str
+
+    # SASL configuration
+    sasl_mechanism: str
+    sasl_plain_username: str
+    sasl_plain_password: str
+    sasl_kerberos_name: str
+    sasl_kerberos_service_name: str
+    sasl_kerberos_domain_name: str
+    sasl_oauth_token_provider: Any
+
+    # SSL configuration
+    ssl_context: Any
+    ssl_check_hostname: bool
+    ssl_cafile: str
+    ssl_certfile: str
+    ssl_keyfile: str
+    ssl_password: str
+    ssl_ciphers: str
+    ssl_crlfile: str
+
+
+def _add_authentication_to_config(
+    config: Dict[str, Any], kafka_auth_config: Optional[KafkaAuthConfig]
+) -> None:
+    """Add authentication configuration to consumer config in-place.
+
+    Args:
+        config: Consumer config dict to modify.
+        kafka_auth_config: Authentication configuration.
+    """
+    if kafka_auth_config:
+        config.update(kafka_auth_config)
+
+
 def _build_consumer_config_for_discovery(
-    bootstrap_servers: List[str], authentication: Dict[str, Any]
+    bootstrap_servers: List[str], kafka_auth_config: Optional[KafkaAuthConfig]
 ) -> Dict[str, Any]:
     """Build minimal consumer config for partition discovery.
 
     Args:
         bootstrap_servers: List of Kafka broker addresses.
-        authentication: Authentication configuration dict.
+        kafka_auth_config: Authentication configuration.
 
     Returns:
         Consumer configuration dict for discovery.
@@ -55,104 +99,32 @@ def _build_consumer_config_for_discovery(
     config = {
         "bootstrap_servers": bootstrap_servers,
         "enable_auto_commit": False,
-        "auto_offset_reset": "latest",
         "consumer_timeout_ms": 1000,  # Short timeout for discovery
     }
-
-    if not authentication:
-        return config
-
-    # Add essential auth config for discovery
-    for key in ["security_protocol", "sasl_mechanism"]:
-        if key in authentication:
-            config[key] = authentication[key]
-
-    if "sasl_username" in authentication:
-        config["sasl_plain_username"] = authentication["sasl_username"]
-    if "sasl_password" in authentication:
-        config["sasl_plain_password"] = authentication["sasl_password"]
-
-    # Add SSL config if present
-    ssl_key_mapping = {
-        "ssl_ca_location": "ssl_cafile",
-        "ssl_certificate_location": "ssl_certfile",
-        "ssl_key_location": "ssl_keyfile",
-    }
-    for auth_key, config_key in ssl_key_mapping.items():
-        if auth_key in authentication:
-            config[config_key] = authentication[auth_key]
-        elif config_key in authentication:
-            config[config_key] = authentication[config_key]
-
+    _add_authentication_to_config(config, kafka_auth_config)
     return config
 
 
 def _build_consumer_config_for_read(
     bootstrap_servers: List[str],
-    authentication: Dict[str, Any],
-    topic_name: str,
-    partition_id: int,
+    kafka_auth_config: Optional[KafkaAuthConfig],
 ) -> Dict[str, Any]:
     """Build full consumer config for reading messages.
 
     Args:
         bootstrap_servers: List of Kafka broker addresses.
-        authentication: Authentication configuration dict.
-        topic_name: Topic name for unique group_id.
-        partition_id: Partition ID for unique group_id.
+        kafka_auth_config: Authentication configuration.
 
     Returns:
         Consumer configuration dict for reading.
     """
-    # Value: keep as raw bytes, Key: decode as UTF-8 string (common case)
-
     config = {
         "bootstrap_servers": bootstrap_servers,
         "enable_auto_commit": False,
-        "auto_offset_reset": "latest",  # Default, will be overridden by seek
-        "group_id": f"ray-data-kafka-{topic_name}-{partition_id}-{uuid.uuid4().hex[:8]}",
         "value_deserializer": lambda v: v,
         "key_deserializer": lambda k: k,
     }
-
-    if not authentication:
-        return config
-
-    # Direct mappings (auth key -> config key)
-    direct_mappings = {
-        "security_protocol": "security_protocol",
-        "sasl_mechanism": "sasl_mechanism",
-        "sasl_kerberos_service_name": "sasl_kerberos_service_name",
-        "sasl_kerberos_domain_name": "sasl_kerberos_domain_name",
-        "sasl_oauth_token_provider": "sasl_oauth_token_provider",
-    }
-    for auth_key, config_key in direct_mappings.items():
-        if auth_key in authentication:
-            config[config_key] = authentication[auth_key]
-
-    # Special mappings (auth key -> different config key)
-    if "sasl_username" in authentication:
-        config["sasl_plain_username"] = authentication["sasl_username"]
-    if "sasl_password" in authentication:
-        config["sasl_plain_password"] = authentication["sasl_password"]
-
-    # Add SSL/TLS configuration if present
-    ssl_key_mapping = {
-        "ssl_ca_location": "ssl_cafile",
-        "ssl_certificate_location": "ssl_certfile",
-        "ssl_key_location": "ssl_keyfile",
-    }
-    for auth_key, config_key in ssl_key_mapping.items():
-        if auth_key in authentication:
-            config[config_key] = authentication[auth_key]
-        elif config_key in authentication:
-            config[config_key] = authentication[config_key]
-
-    # Add other SSL parameters directly
-    for key in ["ssl_check_hostname", "ssl_ciphers", "ssl_password", "ssl_crlfile"]:
-        if key in authentication:
-            config[key] = authentication[key]
-
+    _add_authentication_to_config(config, kafka_auth_config)
     return config
 
 
@@ -244,7 +216,7 @@ class KafkaDatasource(Datasource):
         bootstrap_servers: Union[str, List[str]],
         start_offset: Union[int, Literal["earliest"]] = "earliest",
         end_offset: Union[int, Literal["latest"]] = "latest",
-        authentication: Optional[Dict[str, Any]] = None,
+        kafka_auth_config: Optional[KafkaAuthConfig] = None,
         max_records_per_task: int = 1000,
         timeout_ms: int = 10000,
     ):
@@ -259,12 +231,7 @@ class KafkaDatasource(Datasource):
             end_offset: Ending position. Can be:
                 - int: Offset number or timestamp in milliseconds
                 - str: Offset number as string
-            authentication: Authentication configuration dict with keys:
-                - security_protocol: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL
-                - sasl_mechanism: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512, GSSAPI
-                - sasl_username: Username for SASL authentication
-                - sasl_password: Password for SASL authentication
-                - ssl_* parameters for SSL configuration
+            kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
             max_records_per_task: Maximum records per task per batch.
             timeout_ms: Timeout in milliseconds to poll to until reaching end_offset (default 10000ms/10s).
 
@@ -320,7 +287,7 @@ class KafkaDatasource(Datasource):
         )
         self.start_offset = start_offset
         self.end_offset = end_offset
-        self.authentication = authentication or {}
+        self.kafka_auth_config = kafka_auth_config or {}
         self.max_records_per_task = max_records_per_task
         self.timeout_ms = timeout_ms
 
@@ -350,7 +317,7 @@ class KafkaDatasource(Datasource):
 
         # Build minimal consumer config for partition discovery
         consumer_config = _build_consumer_config_for_discovery(
-            self.bootstrap_servers, self.authentication
+            self.bootstrap_servers, self.kafka_auth_config
         )
 
         # Discover partitions for all topics
@@ -377,9 +344,9 @@ class KafkaDatasource(Datasource):
         bootstrap_servers = self.bootstrap_servers
         start_offset = self.start_offset
         end_offset = self.end_offset
-        authentication = self.authentication
         max_records_per_task = self.max_records_per_task
         timeout_ms = self.timeout_ms
+        kafka_auth_config = self.kafka_auth_config
 
         tasks = []
         for topic_name, partition_id in topic_partitions:
@@ -390,7 +357,7 @@ class KafkaDatasource(Datasource):
                 bootstrap_servers: List[str] = bootstrap_servers,
                 start_offset: Optional[Union[int, Literal["earliest"]]] = start_offset,
                 end_offset: Optional[Union[int, Literal["latest"]]] = end_offset,
-                authentication: Dict[str, Any] = authentication,
+                kafka_auth_config: Optional[KafkaAuthConfig] = kafka_auth_config,
                 timeout_ms: int = timeout_ms,
             ):
                 """Create a Kafka read function with captured variables.
@@ -412,7 +379,7 @@ class KafkaDatasource(Datasource):
 
                     # Build consumer configuration
                     consumer_config = _build_consumer_config_for_read(
-                        bootstrap_servers, authentication, topic_name, partition_id
+                        bootstrap_servers, kafka_auth_config
                     )
 
                     # Create the Kafka consumer

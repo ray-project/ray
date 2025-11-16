@@ -42,7 +42,10 @@ from ray.data._internal.datasource.json_datasource import (
     ArrowJSONDatasource,
     PandasJSONDatasource,
 )
-from ray.data._internal.datasource.kafka_datasource import KafkaDatasource
+from ray.data._internal.datasource.kafka_datasource import (
+    KafkaAuthConfig,
+    KafkaDatasource,
+)
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
@@ -4430,7 +4433,7 @@ def read_kafka(
     trigger: Literal["once"] = "once",
     start_offset: Union[int, Literal["earliest"]] = "earliest",
     end_offset: Union[int, Literal["latest"]] = "latest",
-    authentication: Optional[Dict[str, Any]] = None,
+    kafka_auth_config: Optional[KafkaAuthConfig] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -4478,15 +4481,7 @@ def read_kafka(
             - int: Offset number or timestamp in milliseconds
             - str: Offset number as string
             Default to "latest".
-        authentication: Authentication configuration dict. Supported keys:
-            - security_protocol: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL
-            - sasl_mechanism: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512, GSSAPI
-            - sasl_username: Username for SASL authentication
-            - sasl_password: Password for SASL authentication
-            - ssl_ca_location: Path to CA certificate file
-            - ssl_certificate_location: Path to client certificate file
-            - ssl_key_location: Path to client key file
-            - Other SSL parameters as supported by kafka-python
+        kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker.
@@ -4522,7 +4517,7 @@ def read_kafka(
             bootstrap_servers=bootstrap_servers,
             start_offset=start_offset,
             end_offset=end_offset,
-            authentication=authentication,
+            kafka_auth_config=kafka_auth_config,
             timeout_ms=timeout_ms,
         ),
         parallelism=parallelism,
