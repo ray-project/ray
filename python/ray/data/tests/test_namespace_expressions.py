@@ -37,7 +37,7 @@ def _create_dataset(
         else:
             # Create pandas DataFrame from items
             df = pd.DataFrame(items_data)
-        ds = ray.data.from_pandas(df)
+        ds = ray.data.from_blocks([df])
     return ds
 
 

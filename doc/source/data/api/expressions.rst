@@ -50,7 +50,7 @@ You access them through properties on expressions: ``.list``, ``.str``, and ``.s
 
 The following example shows how to use the string namespace to transform text columns:
 
-.. code-block:: python
+.. testcode::
 
     import ray
     from ray.data.expressions import col
@@ -64,10 +64,9 @@ The following example shows how to use the string namespace to transform text co
 
     # Use the string namespace to uppercase the names
     ds = ds.with_column("upper_name", col("name").str.upper())
+    ds.show()
 
-This produces a dataset with both the original and uppercase names:
-
-.. code-block:: text
+.. testoutput::
 
     {'name': 'alice', 'upper_name': 'ALICE'}
     {'name': 'bob', 'upper_name': 'BOB'}
@@ -75,7 +74,7 @@ This produces a dataset with both the original and uppercase names:
 
 The following example demonstrates using the list namespace to work with array columns:
 
-.. code-block:: python
+.. testcode::
 
     import ray
     from ray.data.expressions import col
@@ -89,10 +88,9 @@ The following example demonstrates using the list namespace to work with array c
 
     # Use the list namespace to get the length of each list
     ds = ds.with_column("num_scores", col("scores").list.len())
+    ds.show()
 
-This produces a dataset with the scores and their counts:
-
-.. code-block:: text
+.. testoutput::
 
     {'scores': [85, 90, 78], 'num_scores': 3}
     {'scores': [92, 88], 'num_scores': 2}
@@ -100,7 +98,7 @@ This produces a dataset with the scores and their counts:
 
 The following example shows how to use the struct namespace to access nested fields:
 
-.. code-block:: python
+.. testcode::
 
     import ray
     from ray.data.expressions import col
@@ -114,10 +112,9 @@ The following example shows how to use the struct namespace to access nested fie
 
     # Use the struct namespace to extract a specific field
     ds = ds.with_column("user_name", col("user").struct.field("name"))
+    ds.show()
 
-This produces a dataset with the extracted user names:
-
-.. code-block:: text
+.. testoutput::
 
     {'user': {'name': 'alice', 'age': 25}, 'user_name': 'alice'}
     {'user': {'name': 'bob', 'age': 30}, 'user_name': 'bob'}
