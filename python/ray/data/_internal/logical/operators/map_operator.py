@@ -277,8 +277,13 @@ class Filter(AbstractUDFMap):
 
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
         if self.is_expression_based():
-            # TODO: Use a truncated expression prefix here instead of <expression>.
-            return f"{op_name}(<expression>)"
+            # Get a concise inline string representation of the expression
+            from ray.data._internal.planner.plan_expression.expression_visitors import (
+                _InlineExprReprVisitor,
+            )
+
+            expr_str = _InlineExprReprVisitor().visit(self._predicate_expr)
+            return f"{op_name}({expr_str})"
         return super()._get_operator_name(op_name, fn)
 
 

@@ -20,6 +20,9 @@ from pyiceberg.expressions import (
 )
 
 from ray.data._internal.datasource.iceberg_datasource import _IcebergExpressionVisitor
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    _InlineExprReprVisitor,
+)
 from ray.data.datatype import DataType
 from ray.data.expressions import (
     BinaryExpr,
@@ -791,6 +794,24 @@ def test_expression_repr(expr_fn, expected):
     """Test tree representation of expressions with a comprehensive example."""
     expr = expr_fn()
     assert repr(expr) == expected
+
+
+@pytest.mark.parametrize(
+    "expr_fn,expected",
+    [
+        (
+            _build_complex_expr,
+            "~col('age') + 10 * col('rate') / 2.5 >= 100 & col('name')...",
+        ),
+    ],
+    ids=["complex_expression"],
+)
+def test_expression_inline_repr(expr_fn, expected):
+    """Test inline representation of expressions with a comprehensive example."""
+    expr = expr_fn()
+    visitor = _InlineExprReprVisitor()
+    inline_repr = visitor.visit(expr)
+    assert inline_repr == expected
 
 
 if __name__ == "__main__":

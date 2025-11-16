@@ -347,3 +347,116 @@ class _TreeReprVisitor(_ExprVisitor[str]):
 
     def visit_star(self, expr: "StarExpr") -> str:
         return self._make_tree_lines("COL(*)", expr=expr)
+
+
+class _InlineExprReprVisitor(_ExprVisitor[str]):
+    """Visitor that generates concise inline string representations of expressions.
+
+    This visitor creates single-line string representations suitable for displaying
+    in operator names, log messages, etc. It aims to be human-readable while keeping
+    the representation compact.
+    """
+
+    def __init__(self, max_literal_length: int = 20, max_total_length: int = 60):
+        """Initialize the inline representation visitor.
+
+        Args:
+            max_literal_length: Maximum length for literal value representations
+            max_total_length: Maximum length for the entire expression string
+        """
+        self._max_literal_length = max_literal_length
+        self._max_total_length = max_total_length
+
+    def visit(self, expr: "Expr") -> str:
+        """Visit an expression and return its truncated inline representation.
+
+        Args:
+            expr: The expression to visit
+
+        Returns:
+            A string representation, truncated if longer than max_total_length
+        """
+        result = super().visit(expr)
+        if len(result) > self._max_total_length:
+            return result[: self._max_total_length - 3] + "..."
+        return result
+
+    def visit_column(self, expr: "ColumnExpr") -> str:
+        """Visit a column expression and return its inline representation."""
+        return f"col({expr.name!r})"
+
+    def visit_literal(self, expr: "LiteralExpr") -> str:
+        """Visit a literal expression and return its inline representation."""
+        value_repr = repr(expr.value)
+        if len(value_repr) > self._max_literal_length:
+            value_repr = value_repr[: self._max_literal_length - 3] + "..."
+        return value_repr
+
+    def visit_binary(self, expr: "BinaryExpr") -> str:
+        """Visit a binary expression and return its inline representation."""
+        left_str = self.visit(expr.left)
+        right_str = self.visit(expr.right)
+
+        # Map operation names to symbols for common operators
+        op_symbols = {
+            "ADD": "+",
+            "SUB": "-",
+            "MUL": "*",
+            "DIV": "/",
+            "FLOORDIV": "//",
+            "GT": ">",
+            "LT": "<",
+            "GE": ">=",
+            "LE": "<=",
+            "EQ": "==",
+            "NE": "!=",
+            "AND": "&",
+            "OR": "|",
+            "IN": "in",
+            "NOT_IN": "not in",
+        }
+
+        op_str = op_symbols.get(expr.op.name, expr.op.name.lower())
+        return f"{left_str} {op_str} {right_str}"
+
+    def visit_unary(self, expr: "UnaryExpr") -> str:
+        """Visit a unary expression and return its inline representation."""
+        operand_str = self.visit(expr.operand)
+
+        # Map operation names to symbols/functions
+        if expr.op.name == "NOT":
+            return f"~{operand_str}"
+        elif expr.op.name == "IS_NULL":
+            return f"{operand_str}.is_null()"
+        elif expr.op.name == "IS_NOT_NULL":
+            return f"{operand_str}.is_not_null()"
+        else:
+            return f"{expr.op.name.lower()}({operand_str})"
+
+    def visit_alias(self, expr: "AliasExpr") -> str:
+        """Visit an alias expression and return its inline representation."""
+        inner_str = self.visit(expr.expr)
+        return f"{inner_str}.alias({expr.name!r})"
+
+    def visit_udf(self, expr: "UDFExpr") -> str:
+        """Visit a UDF expression and return its inline representation."""
+        # Get function name for better readability
+        fn_name = getattr(expr.fn, "__name__", str(expr.fn))
+
+        # Build argument list
+        args_str = []
+        for arg in expr.args:
+            args_str.append(self.visit(arg))
+        for key, value in expr.kwargs.items():
+            args_str.append(f"{key}={self.visit(value)}")
+
+        args_repr = ", ".join(args_str) if args_str else ""
+        return f"{fn_name}({args_repr})"
+
+    def visit_download(self, expr: "DownloadExpr") -> str:
+        """Visit a download expression and return its inline representation."""
+        return f"download({expr.uri_column_name!r})"
+
+    def visit_star(self, expr: "StarExpr") -> str:
+        """Visit a star expression and return its inline representation."""
+        return "col(*)"
