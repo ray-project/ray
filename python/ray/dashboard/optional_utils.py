@@ -138,12 +138,30 @@ def is_browser_request(req: Request) -> bool:
     return req.headers["User-Agent"].startswith("Mozilla")
 
 
+def has_sec_fetch_headers(req: Request) -> bool:
+    """Checks for the existance of any of the sec-fetch-* headers"""
+    return any(
+        h in req.headers
+        for h in (
+            "Sec-Fetch-Mode",
+            "Sec-Fetch-Dest",
+            "Sec-Fetch-Site",
+            "Sec-Fetch-User",
+        )
+    )
+
+
 def deny_browser_requests() -> Callable:
     """Reject any requests that appear to be made by a browser"""
 
     def decorator_factory(f: Callable) -> Callable:
         @functools.wraps(f)
         async def decorator(self, req: Request):
+            if has_sec_fetch_headers(req):
+                return Response(
+                    text="Browser requests not allowed",
+                    status=aiohttp.web.HTTPMethodNotAllowed.status_code,
+                )
             if is_browser_request(req):
                 return Response(
                     text="Browser requests not allowed",
