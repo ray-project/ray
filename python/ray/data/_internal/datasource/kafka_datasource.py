@@ -388,6 +388,18 @@ class KafkaDatasource(Datasource):
         kafka_auth_config = self._kafka_auth_config
 
         tasks = []
+        schema = pa.schema(
+            [
+                ("offset", pa.int64()),
+                ("key", pa.binary()),
+                ("value", pa.binary()),
+                ("topic", pa.string()),
+                ("partition", pa.int32()),
+                ("timestamp", pa.int64()),  # Kafka timestamp in milliseconds
+                ("timestamp_type", pa.int32()),  # 0=CreateTime, 1=LogAppendTime
+                ("headers", pa.map_(pa.string(), pa.binary())),  # Message headers
+            ]
+        )
         for topic_name, partition_id in topic_partitions:
 
             def create_kafka_read_fn(
@@ -471,8 +483,6 @@ class KafkaDatasource(Datasource):
                             )
 
                             if not msg_batch:
-                                # No more messages available right now
-                                # Yield any accumulated records and exit the loop
                                 continue
 
                             messages = msg_batch.get(topic_partition, [])
@@ -532,19 +542,6 @@ class KafkaDatasource(Datasource):
                 exec_stats=None,
             )
 
-            # Create schema - binary data for maximum flexibility
-            schema = pa.schema(
-                [
-                    ("offset", pa.int64()),
-                    ("key", pa.binary()),
-                    ("value", pa.binary()),
-                    ("topic", pa.string()),
-                    ("partition", pa.int32()),
-                    ("timestamp", pa.int64()),  # Kafka timestamp in milliseconds
-                    ("timestamp_type", pa.int32()),  # 0=CreateTime, 1=LogAppendTime
-                    ("headers", pa.map_(pa.string(), pa.binary())),  # Message headers
-                ]
-            )
             kafka_read_fn = create_kafka_read_fn(topic_name, partition_id)
             # Create read task
             task = ReadTask(
