@@ -385,7 +385,6 @@ def test_read_kafka_offset_exceeds_available_messages(
     # Should get all 50 available messages
     assert len(records) == expected_count
 
-    # Should have waited for timeout (at least 4.5 seconds to account for some variance)
     assert elapsed_time >= 3, f"Expected timeout wait, but only took {elapsed_time}s"
 
 
