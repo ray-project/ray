@@ -248,8 +248,12 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     agent_client, head_client = job_sdk_client
 
     runtime_env = runtime_env_option["runtime_env"]
-    runtime_env = upload_working_dir_if_needed(runtime_env, logger=logger)
-    runtime_env = upload_py_modules_if_needed(runtime_env, logger=logger)
+    runtime_env = upload_working_dir_if_needed(
+        runtime_env, include_gitignore=True, logger=logger
+    )
+    runtime_env = upload_py_modules_if_needed(
+        runtime_env, include_gitignore=True, logger=logger
+    )
     runtime_env = RuntimeEnv(**runtime_env_option["runtime_env"]).to_dict()
     request = validate_request_type(
         {"runtime_env": runtime_env, "entrypoint": runtime_env_option["entrypoint"]},
@@ -299,8 +303,12 @@ async def test_submit_job_rejects_browsers(
     agent_client = JobAgentSubmissionBrowserClient(agent_address)
 
     runtime_env = runtime_env_option["runtime_env"]
-    runtime_env = upload_working_dir_if_needed(runtime_env, logger=logger)
-    runtime_env = upload_py_modules_if_needed(runtime_env, logger=logger)
+    runtime_env = upload_working_dir_if_needed(
+        runtime_env, include_gitignore=True, logger=logger
+    )
+    runtime_env = upload_py_modules_if_needed(
+        runtime_env, include_gitignore=True, logger=logger
+    )
     runtime_env = RuntimeEnv(**runtime_env_option["runtime_env"]).to_dict()
     request = validate_request_type(
         {"runtime_env": runtime_env, "entrypoint": runtime_env_option["entrypoint"]},
@@ -386,7 +394,9 @@ raise RuntimeError('Intentionally failed.')
             file.write(driver_script)
 
         runtime_env = {"working_dir": tmp_dir}
-        runtime_env = upload_working_dir_if_needed(runtime_env, tmp_dir, logger=logger)
+        runtime_env = upload_working_dir_if_needed(
+            runtime_env, include_gitignore=True, scratch_dir=tmp_dir, logger=logger
+        )
         runtime_env = RuntimeEnv(**runtime_env).to_dict()
 
         request = validate_request_type(
