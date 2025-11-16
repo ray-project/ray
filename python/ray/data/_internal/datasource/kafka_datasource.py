@@ -427,7 +427,7 @@ class KafkaDatasource(Datasource):
                             )
                         )
 
-                        # Main polling loop - read maximum 500 messages per loop
+                        # Main polling loop - read maximum 500 messages per loop (default max_poll_records for KafkaConsumer poll is 500)
                         partition_done = False
                         start_time = time.time()
                         timeout_seconds = timeout_ms / 1000.0

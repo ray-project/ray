@@ -161,7 +161,6 @@ def test_build_consumer_config_for_read():
 def test_read_kafka_basic(bootstrap_server, kafka_producer, ray_start_regular_shared):
     topic = "test-basic"
 
-    # Send test messages
     for i in range(100):
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.send(topic, value=message, key=f"key-{i}")
@@ -223,7 +222,6 @@ def test_read_kafka_with_offsets(
 ):
     topic = f"test-{test_id}"
 
-    # Send test messages
     for i in range(total_messages):
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.send(topic, value=message)
@@ -308,7 +306,6 @@ def test_read_kafka_with_message_headers(
 ):
     topic = "test-headers"
 
-    # Send messages with headers
     for i in range(10):
         message = {"id": i, "value": f"message-{i}"}
         headers = [
@@ -359,7 +356,6 @@ def test_read_kafka_offset_exceeds_available_messages(
 
     topic = f"test-offset-timeout-{test_id}"
 
-    # Send only 50 messages
     for i in range(100):
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.send(topic, value=message)
@@ -420,8 +416,6 @@ def test_read_kafka_invalid_offsets(
     expected_error,
     topic,
 ):
-    # Send only 100 messages
-    topic = topic
     for i in range(100):
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.send(topic, value=message)
