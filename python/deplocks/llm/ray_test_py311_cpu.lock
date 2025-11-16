@@ -560,7 +560,7 @@ cryptography==44.0.3 \
     #   msal
     #   pyjwt
     #   pyopenssl
-cupy-cuda12x==13.1.0 ; sys_platform != 'darwin' \
+cupy-cuda12x==13.1.0 ; python_full_version < '3.13' and sys_platform != 'darwin' \
     --hash=sha256:230f8a8e99c81a653baa0ed00819990c0ed1f0cf0298214786b5e323461dc61a \
     --hash=sha256:2d16eaa2d086e416ac13467d4ff3184b9a081fe76b761ce51d4a46ec1c4bd28a \
     --hash=sha256:432273fd4b61a284f7d705d08b8291403548fd422bcbd945635cc155bc6a923d \
@@ -697,7 +697,7 @@ fastjsonschema==2.19.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   nbformat
-fastrlock==0.8.2 ; sys_platform != 'darwin' \
+fastrlock==0.8.2 ; python_full_version < '3.13' and sys_platform != 'darwin' \
     --hash=sha256:067edb0a0805bf61e17a251d5046af59f6e9d2b8ad01222e0ef7a0b7937d5548 \
     --hash=sha256:07ed3c7b3867c05a3d6be4ced200c7767000f3431b9be6da66972822dd86e8be \
     --hash=sha256:08315bde19d0c2e6b06593d5a418be3dc8f9b1ee721afa96867b9853fceb45cf \
