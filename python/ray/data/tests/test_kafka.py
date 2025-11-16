@@ -318,7 +318,6 @@ def test_read_kafka_with_message_headers(
     kafka_producer.flush()
     time.sleep(1)
 
-    # Read messages
     ds = ray.data.read_kafka(
         topics=[topic],
         bootstrap_servers=[bootstrap_server],
@@ -327,7 +326,6 @@ def test_read_kafka_with_message_headers(
     records = ds.take_all()
     assert len(records) == 10
 
-    # Verify headers - now binary
     first_record = records[0]
     assert "headers" in first_record
     assert isinstance(first_record["headers"]["header1"], bytes)

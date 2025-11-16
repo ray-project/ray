@@ -506,7 +506,7 @@ class KafkaDatasource(Datasource):
                     ("partition", pa.int32()),
                     ("timestamp", pa.int64()),  # Kafka timestamp in milliseconds
                     ("timestamp_type", pa.int32()),  # 0=CreateTime, 1=LogAppendTime
-                    ("headers", pa.map_(pa.binary(), pa.binary())),  # Message headers
+                    ("headers", pa.map_(pa.string(), pa.binary())),  # Message headers
                 ]
             )
             kafka_read_fn = create_kafka_read_fn(topic_name, partition_id)
