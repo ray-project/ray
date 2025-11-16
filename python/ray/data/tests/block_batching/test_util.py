@@ -36,6 +36,62 @@ def test_resolve_block_refs(ray_start_regular_shared):
     assert list(resolved_iter) == [0, 1, 2]
 
 
+def test_resolve_block_refs_batches(ray_start_regular_shared, monkeypatch):
+    ctx = ray.data.DataContext.get_current()
+    old_batch_size = ctx.iter_get_block_batch_size
+    ctx.iter_get_block_batch_size = 2
+
+    call_sizes = []
+    original_get = ray.get
+
+    def recording_get(refs, *args, **kwargs):
+        if isinstance(refs, list):
+            call_sizes.append(len(refs))
+        else:
+            call_sizes.append(1)
+        return original_get(refs, *args, **kwargs)
+
+    monkeypatch.setattr(ray, "get", recording_get)
+
+    block_refs = [ray.put(i) for i in range(5)]
+
+    try:
+        assert list(resolve_block_refs(iter(block_refs))) == list(range(5))
+    finally:
+        ctx.iter_get_block_batch_size = old_batch_size
+
+    assert call_sizes == [2, 2, 1]
+
+
+def test_resolve_block_refs_max_batch_override(ray_start_regular_shared, monkeypatch):
+    ctx = ray.data.DataContext.get_current()
+    old_batch_size = ctx.iter_get_block_batch_size
+    ctx.iter_get_block_batch_size = 32
+
+    call_sizes = []
+    original_get = ray.get
+
+    def recording_get(refs, *args, **kwargs):
+        if isinstance(refs, list):
+            call_sizes.append(len(refs))
+        else:
+            call_sizes.append(1)
+        return original_get(refs, *args, **kwargs)
+
+    monkeypatch.setattr(ray, "get", recording_get)
+
+    block_refs = [ray.put(i) for i in range(7)]
+
+    try:
+        assert list(resolve_block_refs(iter(block_refs), max_get_batch_size=3)) == list(
+            range(7)
+        )
+    finally:
+        ctx.iter_get_block_batch_size = old_batch_size
+
+    assert call_sizes == [3, 3, 1]
+
+
 @pytest.mark.parametrize("block_size", [1, 10])
 @pytest.mark.parametrize("drop_last", [True, False])
 def test_blocks_to_batches(block_size, drop_last):

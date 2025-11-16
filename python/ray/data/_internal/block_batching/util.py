@@ -43,27 +43,57 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
 def resolve_block_refs(
     block_ref_iter: Iterator[ObjectRef[Block]],
     stats: Optional[DatasetStats] = None,
+    max_get_batch_size: Optional[int] = None,
 ) -> Iterator[Block]:
     """Resolves the block references for each logical batch.
 
     Args:
         block_ref_iter: An iterator over block object references.
         stats: An optional stats object to recording block hits and misses.
+        max_get_batch_size: Maximum number of block references to resolve in a
+            single ``ray.get()`` call. If ``None``, defaults to
+            ``DataContext.get_current().iter_get_block_batch_size``.
     """
     hits = 0
     misses = 0
     unknowns = 0
 
-    for block_ref in block_ref_iter:
-        current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
-        hits += current_hit
-        misses += current_miss
-        unknowns += current_unknown
+    ctx = ray.data.context.DataContext.get_current()
+    effective_batch_size = max(
+        1,
+        max_get_batch_size
+        if max_get_batch_size is not None
+        else ctx.iter_get_block_batch_size,
+    )
+    pending: List[ObjectRef[Block]] = []
 
-        # TODO(amogkam): Optimized further by batching multiple references in a single
-        # `ray.get()` call.
+    def _resolve_pending() -> List[Block]:
+        nonlocal hits, misses, unknowns, pending
+        if not pending:
+            return []
+
+        current_hit, current_miss, current_unknown = _calculate_ref_hits(pending)
+        if current_hit == current_miss == current_unknown == -1:
+            hits = misses = unknowns = -1
+        elif hits != -1:
+            hits += current_hit
+            misses += current_miss
+            unknowns += current_unknown
+
         with stats.iter_get_s.timer() if stats else nullcontext():
-            block = ray.get(block_ref)
+            blocks = ray.get(pending)
+
+        pending.clear()
+
+        return blocks
+
+    for block_ref in block_ref_iter:
+        pending.append(block_ref)
+        if len(pending) >= effective_batch_size:
+            for block in _resolve_pending():
+                yield block
+
+    for block in _resolve_pending():
         yield block
 
     if stats:
