@@ -143,7 +143,7 @@ def _build_consumer_config_for_discovery(
     """
     config = {
         "bootstrap_servers": bootstrap_servers,
-        "enable_auto_commit": False,
+        "enable_auto_commit": False,  # We are performing a bounded read, so we don't need to commit offsets
         "consumer_timeout_ms": 1000,  # Short timeout for discovery
     }
     _add_authentication_to_config(config, kafka_auth_config)
@@ -329,6 +329,7 @@ class KafkaDatasource(Datasource):
         self._end_offset = end_offset
         self._kafka_auth_config = kafka_auth_config or {}
         self._timeout_ms = timeout_ms
+        self._target_max_block_size = DataContext.get_current().target_max_block_size
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Return an estimate of the in-memory data size, or None if unknown."""
@@ -436,10 +437,9 @@ class KafkaDatasource(Datasource):
                         records = []
                         records_read = 0
 
-                        ctx = DataContext.get_current()
                         output_buffer = BlockOutputBuffer(
                             OutputBlockSizeOption.of(
-                                target_max_block_size=ctx.target_max_block_size
+                                target_max_block_size=self._target_max_block_size
                             )
                         )
 
