@@ -5,9 +5,10 @@ from ray import serve
 @serve.deployment(num_replicas=4)
 class ModelShard:
     def __call__(self):
+        context = serve.get_replica_context()
         return {
-            "rank": serve.get_replica_context().rank,
-            "world_size": serve.get_replica_context().world_size,
+            "rank": context.rank.rank,  # Access the integer rank value
+            "world_size": context.world_size,
         }
 
 
@@ -17,20 +18,21 @@ app = ModelShard.bind()
 # __reconfigure_rank_start__
 from typing import Any
 from ray import serve
+from ray.serve.schema import ReplicaRank
 
 
 @serve.deployment(num_replicas=4, user_config={"name": "model_v1"})
 class RankAwareModel:
     def __init__(self):
         context = serve.get_replica_context()
-        self.rank = context.rank
+        self.rank = context.rank.rank  # Extract integer rank value
         self.world_size = context.world_size
         self.model_name = None
         print(f"Replica rank: {self.rank}/{self.world_size}")
 
-    async def reconfigure(self, user_config: Any, rank: int):
+    async def reconfigure(self, user_config: Any, rank: ReplicaRank):
         """Called when user_config or rank changes."""
-        self.rank = rank
+        self.rank = rank.rank  # Extract integer rank value from ReplicaRank object
         self.world_size = serve.get_replica_context().world_size
         self.model_name = user_config.get("name")
         print(f"Reconfigured: rank={self.rank}, model={self.model_name}")

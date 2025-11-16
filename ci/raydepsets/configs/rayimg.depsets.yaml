@@ -134,3 +134,22 @@ depsets:
     build_arg_sets:
       - py39
       - py310
+
+    # Second layer of the ray release images. Contains anyscale cli deps (and others)
+    # and is a subset of the base extra test deps defined above (release image depset)
+  - name: ray_base_extra_${PYTHON_SHORT}
+    operation: subset
+    source_depset: ray_base_extra_testdeps_${PYTHON_SHORT}
+    requirements:
+      - docker/base-deps/requirements.in
+      - docker/base-extra/requirements.in
+    output: python/deplocks/base_extra/ray_base_extra_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+      - py311
+      - py312
