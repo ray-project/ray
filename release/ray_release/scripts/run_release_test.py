@@ -164,9 +164,6 @@ def main(
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         reporters.append(RayTestDBReporter())
 
-    if test.is_azure():
-        subprocess.check_call(["bash", "release/azure_login.sh"])
-
     try:
         result = run_release_test(
             test=test,
