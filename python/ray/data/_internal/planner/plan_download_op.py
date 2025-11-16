@@ -181,37 +181,43 @@ def download_bytes_threaded(
         if len(uris) == 0:
             continue
 
-        paths, fs = _resolve_paths_and_filesystem(uris)
-        fs = RetryingPyFileSystem.wrap(
-            fs, retryable_errors=data_context.retried_io_errors
-        )
+        def load_uri_bytes(uri_iterator):
+            """Resolve filesystem and download bytes for each URI.
 
-        def load_uri_bytes(uri_path_iterator):
-            """Function that takes an iterator of URI paths and yields downloaded bytes for each."""
-            for uri_path in uri_path_iterator:
+            Takes an iterator of URIs and yields bytes for each.
+            """
+            for uri in uri_iterator:
                 read_bytes = None
                 try:
+                    # Resolve filesystem for this specific URI
+                    resolved_paths, fs = _resolve_paths_and_filesystem(uri)
+                    fs = RetryingPyFileSystem.wrap(
+                        fs, retryable_errors=data_context.retried_io_errors
+                    )
+                    resolved_path = resolved_paths[0]
+
+                    # Download bytes
                     # Use open_input_stream to handle the rare scenario where the data source is not seekable.
-                    with fs.open_input_stream(uri_path) as f:
+                    with fs.open_input_stream(resolved_path) as f:
                         read_bytes = f.read()
                 except OSError as e:
                     logger.debug(
-                        f"OSError reading uri '{uri_path}' for column '{uri_column_name}': {e}"
+                        f"OSError reading uri '{uri}' for column '{uri_column_name}': {e}"
                     )
                 except Exception as e:
                     # Catch unexpected errors like pyarrow.lib.ArrowInvalid caused by an invalid uri like
                     # `foo://bar` to avoid failing because of one invalid uri.
                     logger.warning(
-                        f"Unexpected error reading uri '{uri_path}' for column '{uri_column_name}': {e}"
+                        f"Unexpected error reading uri '{uri}' for column '{uri_column_name}': {e}"
                     )
                 finally:
                     yield read_bytes
 
-        # Use make_async_gen to download URI bytes concurrently
-        # This preserves the order of results to match the input URIs
+        # Use make_async_gen to resolve and download URI bytes concurrently
+        # preserve_ordering=True ensures results are returned in the same order as input URIs
         uri_bytes = list(
             make_async_gen(
-                base_iterator=iter(paths),
+                base_iterator=iter(uris),
                 fn=load_uri_bytes,
                 preserve_ordering=True,
                 num_workers=URI_DOWNLOAD_MAX_WORKERS,
@@ -319,11 +325,16 @@ class PartitionActor:
         if not uris:
             return []
 
-        # Get the filesystem from the first URI
-        paths, fs = _resolve_paths_and_filesystem(uris)
-        fs = RetryingPyFileSystem.wrap(
-            fs, retryable_errors=self._data_context.retried_io_errors
-        )
+        # Get the filesystem from the URIs (assumes all URIs use same filesystem for sampling)
+        try:
+            paths, fs = _resolve_paths_and_filesystem(uris)
+            fs = RetryingPyFileSystem.wrap(
+                fs, retryable_errors=self._data_context.retried_io_errors
+            )
+        except Exception as e:
+            logger.warning(f"Failed to resolve URIs for size sampling: {e}")
+            # Return zeros for all URIs if resolution fails
+            return [0] * len(uris)
 
         # Use ThreadPoolExecutor for concurrent size fetching
         file_sizes = []

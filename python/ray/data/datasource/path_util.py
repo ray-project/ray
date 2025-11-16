@@ -9,6 +9,111 @@ if TYPE_CHECKING:
     import pyarrow
 
 
+def _get_fsspec_http_filesystem() -> "pyarrow.fs.PyFileSystem":
+    """Get fsspec HTTPFileSystem wrapped in PyArrow PyFileSystem.
+
+    Returns:
+        PyFileSystem wrapping fsspec HTTPFileSystem.
+
+    Raises:
+        ImportError: If fsspec is not installed.
+    """
+    try:
+        import fsspec  # noqa: F401
+        from fsspec.implementations.http import HTTPFileSystem
+    except ModuleNotFoundError:
+        raise ImportError(
+            "Please install fsspec to read files from HTTP."
+        ) from None
+
+    from pyarrow.fs import FSSpecHandler, PyFileSystem
+    return PyFileSystem(FSSpecHandler(HTTPFileSystem()))
+
+
+def _wrap_fsspec_filesystem(
+    filesystem: "pyarrow.fs.FileSystem",
+) -> "pyarrow.fs.PyFileSystem":
+    """Validate and wrap an fsspec filesystem in PyArrow PyFileSystem.
+
+    Args:
+        filesystem: Filesystem to validate and wrap.
+
+    Returns:
+        PyFileSystem wrapping the fsspec filesystem.
+
+    Raises:
+        TypeError: If filesystem is not a valid pyarrow or fsspec filesystem.
+    """
+    from pyarrow.fs import FSSpecHandler, PyFileSystem
+
+    err_msg = (
+        f"The filesystem passed must either conform to "
+        f"pyarrow.fs.FileSystem, or "
+        f"fsspec.spec.AbstractFileSystem. The provided "
+        f"filesystem was: {filesystem}"
+    )
+    try:
+        import fsspec  # noqa: F401
+    except ModuleNotFoundError:
+        # If filesystem is not a pyarrow filesystem and fsspec isn't
+        # installed, then filesystem is neither a pyarrow filesystem nor
+        # an fsspec filesystem, so we raise a TypeError.
+        raise TypeError(err_msg) from None
+
+    if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
+        raise TypeError(err_msg)
+
+    return PyFileSystem(FSSpecHandler(filesystem))
+
+
+def _try_resolve_with_encoding(
+    path: str,
+    filesystem: Optional["pyarrow.fs.FileSystem"],
+) -> Tuple["pyarrow.fs.FileSystem", str]:
+    """Try resolving a path with URL encoding for special characters.
+
+    This handles paths with special characters like ';', '?', '#' that
+    may cause URI parsing errors.
+
+    Args:
+        path: The path to resolve.
+        filesystem: Optional filesystem to validate against.
+
+    Returns:
+        Tuple of (resolved_filesystem, resolved_path).
+
+    Raises:
+        Exception: Re-raises any errors that aren't URI parsing related.
+    """
+    from pyarrow.fs import _resolve_filesystem_and_path
+
+    resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
+        _encode_url(path), filesystem
+    )
+    resolved_path = _decode_url(resolved_path)
+    return resolved_filesystem, resolved_path
+
+
+def _try_resolve_with_http_fsspec(
+    path: str,
+) -> Tuple["pyarrow.fs.PyFileSystem", str]:
+    """Try resolving an HTTP(S) path using fsspec HTTPFileSystem.
+
+    This is a fallback for when PyArrow doesn't recognize the HTTP(S) scheme.
+
+    Args:
+        path: The HTTP(S) path to resolve.
+
+    Returns:
+        Tuple of (http_filesystem, path).
+
+    Raises:
+        ImportError: If fsspec is not installed.
+    """
+    http_filesystem = _get_fsspec_http_filesystem()
+    return http_filesystem, path
+
+
 def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
     """Check if a path has a file extension in the provided list.
 
@@ -60,12 +165,7 @@ def _resolve_paths_and_filesystem(
             compatibility.
     """
     import pyarrow as pa
-    from pyarrow.fs import (
-        FileSystem,
-        FSSpecHandler,
-        PyFileSystem,
-        _resolve_filesystem_and_path,
-    )
+    from pyarrow.fs import FileSystem, _resolve_filesystem_and_path
 
     if isinstance(paths, str):
         paths = [paths]
@@ -80,24 +180,7 @@ def _resolve_paths_and_filesystem(
         raise ValueError("Must provide at least one path.")
 
     if filesystem and not isinstance(filesystem, FileSystem):
-        err_msg = (
-            f"The filesystem passed must either conform to "
-            f"pyarrow.fs.FileSystem, or "
-            f"fsspec.spec.AbstractFileSystem. The provided "
-            f"filesystem was: {filesystem}"
-        )
-        try:
-            import fsspec  # noqa: F401
-            from fsspec.implementations.http import HTTPFileSystem
-        except ModuleNotFoundError:
-            # If filesystem is not a pyarrow filesystem and fsspec isn't
-            # installed, then filesystem is neither a pyarrow filesystem nor
-            # an fsspec filesystem, so we raise a TypeError.
-            raise TypeError(err_msg) from None
-        if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
-            raise TypeError(err_msg) from None
-
-        filesystem = PyFileSystem(FSSpecHandler(filesystem))
+        filesystem = _wrap_fsspec_filesystem(filesystem)
 
     resolved_paths = []
     for path in paths:
@@ -107,31 +190,37 @@ def _resolve_paths_and_filesystem(
                 path, filesystem
             )
         except pa.lib.ArrowInvalid as e:
-            if "Cannot parse URI" in str(e):
-                resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
-                    _encode_url(path), filesystem
-                )
-                resolved_path = _decode_url(resolved_path)
-            elif "Unrecognized filesystem type in URI" in str(e):
+            error_str = str(e)
+            if "Cannot parse URI" in error_str:
+                # Try URL encoding for special characters
+                try:
+                    resolved_filesystem, resolved_path = _try_resolve_with_encoding(
+                        path, filesystem
+                    )
+                except Exception as encoding_error:
+                    raise ValueError(
+                        f"Failed to resolve path '{path}': {encoding_error}"
+                    ) from encoding_error
+            elif "Unrecognized filesystem type in URI" in error_str:
                 scheme = urllib.parse.urlparse(path, allow_fragments=False).scheme
                 if scheme in ["http", "https"]:
-                    # If scheme of path is HTTP and filesystem is not resolved,
-                    # try to use fsspec HTTPFileSystem. This expects fsspec is
-                    # installed.
+                    # Try fsspec HTTP filesystem
                     try:
-                        import fsspec  # noqa: F401
-                        from fsspec.implementations.http import HTTPFileSystem
-                    except ModuleNotFoundError:
+                        resolved_filesystem, resolved_path = _try_resolve_with_http_fsspec(
+                            path
+                        )
+                    except ImportError as import_error:
                         raise ImportError(
-                            "Please install fsspec to read files from HTTP."
-                        ) from None
-
-                    resolved_filesystem = PyFileSystem(FSSpecHandler(HTTPFileSystem()))
-                    resolved_path = path
+                            f"Cannot resolve HTTP path '{path}': {import_error}"
+                        ) from import_error
                 else:
-                    raise
+                    raise ValueError(
+                        f"Unrecognized filesystem type in URI '{path}': {error_str}"
+                    ) from e
             else:
-                raise
+                raise ValueError(
+                    f"Failed to resolve path '{path}': {error_str}"
+                ) from e
 
         if filesystem is None:
             filesystem = resolved_filesystem
@@ -153,8 +242,8 @@ def _is_http_filesystem(fs: "pyarrow.fs.FileSystem") -> bool:
     """Return whether ``fs`` is a PyFileSystem handled by a fsspec HTTPFileSystem."""
     from pyarrow.fs import FSSpecHandler, PyFileSystem
 
+    # Try to import HTTPFileSystem
     try:
-        import fsspec  # noqa: F401
         from fsspec.implementations.http import HTTPFileSystem
     except ModuleNotFoundError:
         return False
