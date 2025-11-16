@@ -252,7 +252,7 @@ approach similar to the existing Kueue integration guides.
 > **Supported resources** – At the time of writing, the Kueue
 > autoscaler integration supports `RayCluster` and `RayService`.  Support
 > for `RayJob` autoscaling is under development; see the Kueue issue
-> tracker for updates[issue](https://github.com/kubernetes-sigs/kueue/issues/7605).
+> tracker for updates: [issue](https://github.com/kubernetes-sigs/kueue/issues/7605).
 
 
 ### Prerequisites
