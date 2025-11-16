@@ -681,6 +681,62 @@ def test_join_with_unjoinable_non_key_columns(
         )
 
 
+def test_join_with_suffixes_filter_on_join_key(ray_start_regular_shared_2_cpus):
+    """Test filtering on join key column when suffixes are used.
+
+    Join keys don't receive suffixes in the output schema, even when suffixes
+    are specified. This test verifies that predicates on join key columns can
+    still be pushed down correctly.
+    """
+    from ray.data._internal.logical.operators.join_operator import Join
+    from ray.data._internal.logical.operators.map_operator import Filter
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+    from ray.data.expressions import col
+    from ray.data.tests.test_util import plan_operator_comes_before
+
+    # Overlapping "value" column requires suffixes
+    left_data = [{"id": i, "value": i * 10} for i in range(5)]
+    right_data = [{"id": i, "value": i * 100} for i in range(5)]
+
+    left_ds = ray.data.from_items(left_data)
+    right_ds = ray.data.from_items(right_data)
+
+    # Join with suffixes
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("id",),
+        left_suffix="_l",
+        right_suffix="_r",
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+
+    # Filter on join key column (which is NOT suffixed in output)
+    filtered_ds = joined.filter(expr=col("id") < 3)
+
+    # Verify pushdown occurred
+    logical_plan = filtered_ds._plan._logical_plan
+    optimized_plan = LogicalOptimizer().optimize(logical_plan)
+
+    # Filter on join key can be pushed to either side for inner join
+    # It should be pushed down
+    assert plan_operator_comes_before(
+        optimized_plan, Filter, Join
+    ), "Filter on join key column should be pushed before Join"
+
+    # Verify correctness
+    actual_df = filtered_ds.to_pandas()
+    expected_df = pd.DataFrame(
+        [
+            {"id": 0, "value_l": 0, "value_r": 0},
+            {"id": 1, "value_l": 10, "value_r": 100},
+            {"id": 2, "value_l": 20, "value_r": 200},
+        ]
+    )
+    assert rows_same(actual_df, expected_df)
+
+
 def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_2_cpus):
     """Test PR bug: comparing differently-named join keys from both sides.
 

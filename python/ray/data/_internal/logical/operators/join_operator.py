@@ -261,6 +261,10 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         Returns:
             Dictionary mapping from original_name -> suffixed_name for the specified
             side, or empty dict if no substitutions are needed or no side specified.
+
+            Note: Join key columns are NOT included in the mapping because they
+            don't receive suffixes in the output schema - only non-key overlapping
+            columns are suffixed.
         """
         if side is None:
             # Join requires side context for substitutions
@@ -278,7 +282,17 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         if not schema or suffix is None:
             return {}
 
+        # Get join key columns for this side
+        join_keys = set(
+            self._left_key_columns if side == JoinSide.LEFT else self._right_key_columns
+        )
+
         # Create mapping: original_name -> suffixed_name
+        # Exclude join key columns - they don't get suffixed in the output
         # This will be inverted by _substitute_predicate_columns to map:
         # suffixed_name -> col(original_name)
-        return {col_name: col_name + suffix for col_name in schema.names}
+        return {
+            col_name: col_name + suffix
+            for col_name in schema.names
+            if col_name not in join_keys
+        }
