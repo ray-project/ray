@@ -7,6 +7,7 @@ import pytest
 import ray
 from ray.data import Dataset
 from ray.data._internal.logical.interfaces import Plan
+from ray.data._internal.util import rows_same
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
