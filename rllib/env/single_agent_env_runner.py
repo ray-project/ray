@@ -128,7 +128,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
         # This should be the default.
         self._needs_initial_reset: bool = True
-        self._episodes: List[Optional[SingleAgentEpisode]] = [
+        self._ongoing_episodes: List[Optional[SingleAgentEpisode]] = [
             None for _ in range(self.num_envs)
         ]
         self._shared_data = None
@@ -156,9 +156,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         """Runs and returns a sample (n timesteps or m episodes) on the env(s).
 
         Args:
-            num_timesteps: The number of timesteps to sample during this call.
+            num_timesteps: The minimum number of timesteps to sample during this call.
                 Note that only one of `num_timesteps` or `num_episodes` may be provided.
-            num_episodes: The number of episodes to sample during this call.
+            num_episodes: The minimum number of episodes to sample during this call.
                 Note that only one of `num_timesteps` or `num_episodes` may be provided.
             explore: If True, will use the RLModule's `forward_exploration()`
                 method to compute actions. If False, will use the RLModule's
@@ -263,27 +263,34 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         force_reset: bool = False,
     ) -> List[SingleAgentEpisode]:
         """Helper method to sample n timesteps or m episodes."""
-
+        ts = 0
+        eps = 0
         done_episodes_to_return: List[SingleAgentEpisode] = []
 
-        # Have to reset the env (on all vector sub_envs).
-        if force_reset or num_episodes is not None or self._needs_initial_reset:
-            episodes = self._episodes = [None for _ in range(self.num_envs)]
-            shared_data = self._shared_data = {}
-            self._reset_envs(episodes, shared_data, explore)
+        def _reset_envs_and_episodes():
+            """Helper method to reset the envs, ongoing episodes and shared data.
+
+            This resets the global ts variable and deletes ongoing episodes.
+            The Done episodes are preserved.
+            """
+            nonlocal ts
+            ts = 0
+            self._ongoing_episodes = [None for _ in range(self.num_envs)]
+            self._shared_data = {}
+            self._reset_envs(self._ongoing_episodes, self._shared_data, explore)
             # We just reset the env. Don't have to force this again in the next
             # call to `self._sample_timesteps()`.
             self._needs_initial_reset = False
-        else:
-            episodes = self._episodes
-            shared_data = self._shared_data
+
+        # Have to reset the env (on all vector sub_envs).
+        if force_reset or num_episodes is not None or self._needs_initial_reset:
+            _reset_envs_and_episodes()
 
         if num_episodes is not None:
             self._needs_initial_reset = True
 
         # Loop through `num_timesteps` timesteps or `num_episodes` episodes.
-        ts = 0
-        eps = 0
+
         while (
             (ts < num_timesteps) if num_timesteps is not None else (eps < num_episodes)
         ):
@@ -319,9 +326,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 to_env = self._module_to_env(
                     rl_module=self.module,
                     batch=to_env,
-                    episodes=episodes,
+                    episodes=self._ongoing_episodes,
                     explore=explore,
-                    shared_data=shared_data,
+                    shared_data=self._shared_data,
                     metrics=self.metrics,
                     metrics_prefix_key=(MODULE_TO_ENV_CONNECTOR,),
                 )
@@ -335,14 +342,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
             # Try stepping the environment.
             results = self._try_env_step(actions_for_env)
+            # If the env step fails, reset the envs and continue the loop.
             if results == ENV_STEP_FAILURE:
-                return self._sample(
-                    num_timesteps=num_timesteps,
-                    num_episodes=num_episodes,
-                    explore=explore,
-                    random_actions=random_actions,
-                    force_reset=True,
-                )
+                _reset_envs_and_episodes()
+                continue
+
             observations, rewards, terminateds, truncateds, infos = results
             observations, actions = unbatch(observations), unbatch(actions)
 
@@ -353,8 +357,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
                 # Episode has no data in it yet -> Was just reset and needs to be called
                 # with its `add_env_reset()` method.
-                if not self._episodes[env_index].is_reset:
-                    episodes[env_index].add_env_reset(
+                if not self._ongoing_episodes[env_index].is_reset:
+                    self._ongoing_episodes[env_index].add_env_reset(
                         observation=observations[env_index],
                         infos=infos[env_index],
                     )
@@ -365,7 +369,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     # Only increase ts when we actually stepped (not reset as a reset
                     # does not count as a timestep).
                     ts += 1
-                    episodes[env_index].add_env_step(
+                    self._ongoing_episodes[env_index].add_env_step(
                         observation=observations[env_index],
                         action=actions[env_index],
                         reward=rewards[env_index],
@@ -379,10 +383,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # forward pass only in the next `while`-iteration.
             if self.module is not None:
                 self._cached_to_module = self._env_to_module(
-                    episodes=episodes,
+                    episodes=self._ongoing_episodes,
                     explore=explore,
                     rl_module=self.module,
-                    shared_data=shared_data,
+                    shared_data=self._shared_data,
                     metrics=self.metrics,
                     metrics_prefix_key=(ENV_TO_MODULE_CONNECTOR,),
                 )
@@ -391,40 +395,39 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 # Call `on_episode_start()` callback (always after reset).
                 if env_index in call_on_episode_start:
                     self._make_on_episode_callback(
-                        "on_episode_start", env_index, episodes
+                        "on_episode_start", env_index, self._ongoing_episodes
                     )
                 # Make the `on_episode_step` callbacks.
                 else:
                     self._make_on_episode_callback(
-                        "on_episode_step", env_index, episodes
+                        "on_episode_step", env_index, self._ongoing_episodes
                     )
 
                 # Episode is done.
-                if episodes[env_index].is_done:
+                if self._ongoing_episodes[env_index].is_done:
                     eps += 1
 
                     # Make the `on_episode_end` callbacks (before finalizing the episode
                     # object).
                     self._make_on_episode_callback(
-                        "on_episode_end", env_index, episodes
+                        "on_episode_end", env_index, self._ongoing_episodes
                     )
 
                     # Numpy'ize the episode.
                     if self.config.episodes_to_numpy:
                         # Any possibly compress observations.
-                        done_episodes_to_return.append(episodes[env_index].to_numpy())
+                        done_episodes_to_return.append(
+                            self._ongoing_episodes[env_index].to_numpy()
+                        )
                     # Leave episode as lists of individual (obs, action, etc..) items.
                     else:
-                        done_episodes_to_return.append(episodes[env_index])
-
-                    # Also early-out if we reach the number of episodes within this
-                    # for-loop.
-                    if eps == num_episodes:
-                        break
+                        done_episodes_to_return.append(
+                            self._ongoing_episodes[env_index]
+                        )
 
                     # Create a new episode object with no data in it and execute
                     # `on_episode_created` callback (before the `env.reset()` call).
-                    self._new_episode(env_index, episodes)
+                    self._new_episode(env_index, self._ongoing_episodes)
 
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
@@ -438,11 +441,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         if num_timesteps is not None:
             ongoing_episodes_continuations = [
                 eps.cut(len_lookback_buffer=self.config.episode_lookback_horizon)
-                for eps in self._episodes
+                for eps in self._ongoing_episodes
             ]
 
-            for eps in self._episodes:
-                # Just started episodes do not have to be returned. There is no data
+            for eps in self._ongoing_episodes:
+                # Just started Episodes do not have to be returned. There is no data
                 # in them anyway.
                 if eps.t == 0:
                     continue
@@ -458,7 +461,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     ongoing_episodes_to_return.append(eps)
 
             # Continue collecting into the cut Episode chunks.
-            self._episodes = ongoing_episodes_continuations
+            self._ongoing_episodes = ongoing_episodes_continuations
 
         # Ray metrics
         self._log_env_steps(metric=self._metrics_num_env_steps_sampled, num_steps=ts)
@@ -776,7 +779,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             self._make_on_episode_callback("on_episode_start", env_index, episodes)
 
     def _new_episode(self, env_index, episodes=None):
-        episodes = episodes if episodes is not None else self._episodes
+        episodes = episodes if episodes is not None else self._ongoing_episodes
         episodes[env_index] = SingleAgentEpisode(
             observation_space=self.env.single_observation_space,
             action_space=self.env.single_action_space,
