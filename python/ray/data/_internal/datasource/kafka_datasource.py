@@ -241,11 +241,11 @@ class KafkaDatasource(Datasource):
             topics: Kafka topic name(s) to read from.
             bootstrap_servers: Kafka broker addresses (string or list of strings).
             start_offset: Starting position. Can be:
-                - int: Offset number or timestamp in milliseconds
-                - str: "earliest", "latest", or offset number as string
+                - int: Offset number
+                - str: "earliest"
             end_offset: Ending position. Can be:
-                - int: Offset number or timestamp in milliseconds
-                - str: Offset number as string
+                - int: Offset number
+                - str: "latest"
             kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
             timeout_ms: Timeout in milliseconds to poll to until reaching end_offset (default 10000ms/10s).
 

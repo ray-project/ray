@@ -4444,7 +4444,7 @@ def read_kafka(
     """Read data from Kafka topics.
 
     This function supports bounded reads from Kafka topics, reading messages
-    between a start and end offset or timestamp. Only the "once" trigger is
+    between a start and end offset. Only the "once" trigger is
     supported for now, which performs a single bounded read. Currently we only
     have one read task for each partition.
 
@@ -4472,13 +4472,11 @@ def read_kafka(
         trigger: Trigger mode for reading. Only "once" is supported, which
             performs a single bounded read.
         start_offset: Starting position for reading. Can be:
-            - int: Offset number or timestamp in milliseconds
-            - str: "earliest", "latest", or offset number as string
-            Default to "earliest".
+            - int: Offset number
+            - str: "earliest"
         end_offset: Ending position for reading. Can be:
-            - int: Offset number or timestamp in milliseconds
-            - str: Offset number as string
-            Default to "latest".
+            - int: Offset number
+            - str: "latest"
         kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker.
