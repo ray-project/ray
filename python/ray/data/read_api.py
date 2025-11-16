@@ -4474,7 +4474,7 @@ def read_kafka(
         start_offset: Starting position for reading. Can be:
             - int: Offset number
             - str: "earliest"
-        end_offset: Ending position for reading. Can be:
+        end_offset: Ending position for reading (exclusive). Can be:
             - int: Offset number
             - str: "latest"
         kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
