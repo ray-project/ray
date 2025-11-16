@@ -71,6 +71,7 @@ class MultiAgentEpisode:
         "env_t_to_agent_t",
         "_hanging_actions_end",
         "_hanging_extra_model_outputs_end",
+        "_hanging_infos_end",
         "_hanging_rewards_end",
         "_hanging_rewards_begin",
         "is_terminated",
@@ -250,6 +251,7 @@ class MultiAgentEpisode:
         # until the next observation is received.
         self._hanging_actions_end = {}
         self._hanging_extra_model_outputs_end = defaultdict(dict)
+        self._hanging_infos_end = {}
         self._hanging_rewards_end = defaultdict(float)
 
         # In case of a `cut()` or `slice()`, we also need to store the hanging actions,
@@ -395,6 +397,11 @@ class MultiAgentEpisode:
         terminateds = terminateds or {}
         truncateds = truncateds or {}
         extra_model_outputs = extra_model_outputs or {}
+
+        # Extract and store the "__common__" key from infos if present.
+        # This key contains infos that are common to all agents.
+        if "__common__" in infos:
+            self._hanging_infos_end["__common__"] = infos.pop("__common__")
 
         # Increase (global) env step by one.
         self.env_t += 1
@@ -2395,6 +2402,11 @@ class MultiAgentEpisode:
             if agent_value is None or agent_value == []:
                 continue
             ret[agent_id] = agent_value
+
+        # If retrieving infos, include the "__common__" key if it exists.
+        if what == "infos" and "__common__" in self._hanging_infos_end:
+            ret["__common__"] = self._hanging_infos_end["__common__"]
+
         return ret
 
     def _get_data_by_env_steps_as_list(
@@ -2458,6 +2470,11 @@ class MultiAgentEpisode:
                 )
                 if agent_value is not None:
                     ret2[agent_id] = agent_value
+
+            # If retrieving infos, include the "__common__" key if it exists.
+            if what == "infos" and "__common__" in self._hanging_infos_end:
+                ret2["__common__"] = self._hanging_infos_end["__common__"]
+
             ret.append(ret2)
         return ret
 
@@ -2519,6 +2536,11 @@ class MultiAgentEpisode:
                 )
                 if agent_values is not None:
                     ret[agent_id] = agent_values
+
+        # If retrieving infos, include the "__common__" key if it exists.
+        if what == "infos" and "__common__" in self._hanging_infos_end:
+            ret["__common__"] = self._hanging_infos_end["__common__"]
+
         return ret
 
     def _get_single_agent_data_by_index(
