@@ -56,42 +56,21 @@ namespace rpc {
     INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms); \
   }
 
-inline std::shared_ptr<grpc::Channel> BuildChannel(
+/// Build a gRPC channel to the specified address.
+///
+/// This is the ONLY recommended way to create gRPC channels in Ray.
+/// Use of raw grpc::CreateCustomChannel() should be avoided.
+///
+/// Authentication tokens are automatically added in metadata when RAY_AUTH_MODE=token.
+///
+/// \param address The server address
+/// \param port The server port
+/// \param arguments Optional channel arguments for customization
+/// \return A shared pointer to the gRPC channel
+std::shared_ptr<grpc::Channel> BuildChannel(
     const std::string &address,
     int port,
-    std::optional<grpc::ChannelArguments> arguments = std::nullopt) {
-  if (!arguments.has_value()) {
-    arguments = grpc::ChannelArguments();
-  }
-
-  arguments->SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
-                    ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
-  arguments->SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
-  arguments->SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
-  arguments->SetInt(GRPC_ARG_HTTP2_WRITE_BUFFER_SIZE,
-                    ::RayConfig::instance().grpc_stream_buffer_size());
-  std::shared_ptr<grpc::Channel> channel;
-  if (::RayConfig::instance().USE_TLS()) {
-    std::string server_cert_file = std::string(::RayConfig::instance().TLS_SERVER_CERT());
-    std::string server_key_file = std::string(::RayConfig::instance().TLS_SERVER_KEY());
-    std::string root_cert_file = std::string(::RayConfig::instance().TLS_CA_CERT());
-    std::string server_cert_chain = ReadCert(server_cert_file);
-    std::string private_key = ReadCert(server_key_file);
-    std::string cacert = ReadCert(root_cert_file);
-
-    grpc::SslCredentialsOptions ssl_opts;
-    ssl_opts.pem_root_certs = cacert;
-    ssl_opts.pem_private_key = private_key;
-    ssl_opts.pem_cert_chain = server_cert_chain;
-    auto ssl_creds = grpc::SslCredentials(ssl_opts);
-    channel =
-        grpc::CreateCustomChannel(BuildAddress(address, port), ssl_creds, *arguments);
-  } else {
-    channel = grpc::CreateCustomChannel(
-        BuildAddress(address, port), grpc::InsecureChannelCredentials(), *arguments);
-  }
-  return channel;
-}
+    std::optional<grpc::ChannelArguments> arguments = std::nullopt);
 
 template <class GrpcService>
 class GrpcClient {
