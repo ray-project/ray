@@ -776,9 +776,9 @@ class Dataset:
             batch_size=batch_size,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
-            min_rows_per_bundled_input=batch_size
+            min_rows_per_bundled_input=None
             if enforce_input_output_block_size
-            else None,
+            else batch_size,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
