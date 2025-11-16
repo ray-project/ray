@@ -32,7 +32,6 @@ steps:
       - docker
     wanda: docker/base-deps/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -45,7 +44,6 @@ steps:
     label: "wanda: ray.py{{matrix}}.cpu.base-extra (aarch64)"
     wanda: docker/base-extra/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -66,7 +64,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
@@ -91,7 +88,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
@@ -138,7 +134,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture aarch64 --upload
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -170,7 +165,6 @@ steps:
       - raycpubaseextra-aarch64
     job_env: forge-aarch64
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -197,7 +191,6 @@ steps:
       - raycpubase-aarch64
     job_env: forge-aarch64
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"

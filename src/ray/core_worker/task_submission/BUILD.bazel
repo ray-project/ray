@@ -70,6 +70,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:protobuf_utils",
         "//src/ray/core_worker:actor_creator",
+        "//src/ray/core_worker:reference_counter_interface",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/rpc:rpc_callback_types",
         "//src/ray/util:time",
