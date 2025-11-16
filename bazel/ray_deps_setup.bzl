@@ -139,6 +139,13 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
+        name = "com_github_blake3_team_blake3",
+        build_file = "@io_ray//bazel:blake3.BUILD",
+        url = "https://github.com/BLAKE3-team/BLAKE3/archive/refs/tags/1.8.2.tar.gz",
+        sha256 = "6b51aefe515969785da02e87befafc7fdc7a065cd3458cf1141f29267749e81f",
+    )
+
+    auto_http_archive(
         name = "com_github_tporadowski_redis_bin",
         build_file = "@io_ray//bazel:redis.BUILD",
         strip_prefix = None,

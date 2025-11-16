@@ -17,6 +17,7 @@ ray_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//src/ray/common:constants",
+        "@com_github_blake3_team_blake3//:blake3",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
