@@ -177,7 +177,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
       scheduling_key_entry.num_busy_workers++;
 
       task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(current_sys_time_ms());
-      task_spec.EmitTaskMetrics();
+      task_spec.EmitTaskMetrics(scheduler_placement_time_ms_histogram_);
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
       PushNormalTask(
@@ -613,6 +613,7 @@ bool NormalTaskSubmitter::HandleGetWorkerFailureCause(
   rpc::ErrorType task_error_type = rpc::ErrorType::WORKER_DIED;
   std::unique_ptr<rpc::RayErrorInfo> error_info;
   bool fail_immediately = false;
+  NodeID node_id = NodeID::FromBinary(addr.node_id());
   if (get_worker_failure_cause_reply_status.ok()) {
     RAY_LOG(WARNING) << "Worker failure cause for task " << task_id << ": "
                      << ray::gcs::RayErrorInfoToString(
@@ -630,22 +631,21 @@ bool NormalTaskSubmitter::HandleGetWorkerFailureCause(
     RAY_LOG(WARNING) << "Failed to fetch worker failure cause with status "
                      << get_worker_failure_cause_reply_status.ToString()
                      << " worker id: " << WorkerID::FromBinary(addr.worker_id())
-                     << " node id: " << NodeID::FromBinary(addr.node_id())
-                     << " ip: " << addr.ip_address();
+                     << " node id: " << node_id << " ip: " << addr.ip_address();
     task_error_type = rpc::ErrorType::NODE_DIED;
-    std::stringstream buffer;
-    buffer << "Task failed due to the node (where this task was running) "
-           << " was dead or unavailable.\n\nThe node IP: " << addr.ip_address()
-           << ", node ID: " << NodeID::FromBinary(addr.node_id()) << "\n\n"
-           << "This can happen if the instance where the node was running failed, "
-           << "the node was preempted, or raylet crashed unexpectedly "
-           << "(e.g., due to OOM) etc.\n\n"
-           << "To see node death information, use `ray list nodes --filter \"node_id="
-           << NodeID::FromBinary(addr.node_id()) << "\"`, "
-           << "or check Ray dashboard cluster page, or search the node ID in GCS log, "
-           << "or use `ray logs raylet.out -ip " << addr.ip_address() << "`";
+
+    std::string error_message = absl::StrFormat(
+        "Task failed because the node it was running on is dead or unavailable. Node IP: "
+        "%s, node ID: %s. This can happen if the node was preempted, had a hardware "
+        "failure, or its raylet crashed unexpectedly. To see node death information, use "
+        "`ray list nodes --filter node_id=%s`, check the Ray dashboard cluster page, "
+        "search the node ID in the GCS logs, or use `ray logs raylet.out -ip %s`.",
+        addr.ip_address(),
+        node_id.Hex(),
+        node_id.Hex(),
+        addr.ip_address());
     error_info = std::make_unique<rpc::RayErrorInfo>();
-    error_info->set_error_message(buffer.str());
+    error_info->set_error_message(error_message);
     error_info->set_error_type(rpc::ErrorType::NODE_DIED);
   }
   return task_manager_.FailOrRetryPendingTask(task_id,

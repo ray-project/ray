@@ -1,6 +1,10 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalOperatorSupportsPredicatePassThrough,
+    PredicatePassThroughBehavior,
+)
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
@@ -38,7 +42,7 @@ class AbstractOneToOne(LogicalOperator):
         ...
 
 
-class Limit(AbstractOneToOne):
+class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for limit."""
 
     def __init__(
@@ -83,6 +87,11 @@ class Limit(AbstractOneToOne):
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_metadata().input_files
+
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        # Pushing filter through limit is safe: Filter(Limit(data, n), pred)
+        # becomes Limit(Filter(data, pred), n), which filters earlier
+        return PredicatePassThroughBehavior.PASSTHROUGH
 
 
 class Download(AbstractOneToOne):

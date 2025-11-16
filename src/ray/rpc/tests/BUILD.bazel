@@ -52,6 +52,7 @@ ray_cc_test(
         "//src/ray/rpc:grpc_client",
         "//src/ray/rpc:grpc_server",
         "//src/ray/rpc/authentication:authentication_token_loader",
+        "//src/ray/util:env",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -79,6 +80,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common:ray_config",
         "//src/ray/rpc/authentication:authentication_token_loader",
+        "//src/ray/util:env",
         "@com_google_googletest//:gtest_main",
     ],
 )
