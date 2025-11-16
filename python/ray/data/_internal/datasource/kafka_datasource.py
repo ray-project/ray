@@ -220,35 +220,6 @@ def _resolve_offsets(
     return start_offset, end_offset
 
 
-def _convert_headers_to_dict(headers: List[Tuple[bytes, bytes]]) -> Dict[str, bytes]:
-    """Convert Kafka message headers to dictionary.
-
-    Args:
-        headers: Kafka message headers (list of tuples).
-
-    Returns:
-        Dictionary with string keys and binary values.
-
-    Raises:
-        ValueError: If header key cannot be decoded as UTF-8.
-    """
-    if not headers:
-        return {}
-
-    headers_dict = {}
-    for key, value in headers:
-        try:
-            # Decode key as UTF-8 (keys should be strings)
-            key_str = key.decode("utf-8") if isinstance(key, bytes) else str(key)
-            # Keep value as bytes
-            value_bytes = value
-        except UnicodeDecodeError as e:
-            raise ValueError(f"Failed to decode header key as UTF-8: {e}") from e
-        headers_dict[key_str] = value_bytes
-
-    return headers_dict
-
-
 class KafkaDatasource(Datasource):
     """Kafka datasource for reading from Kafka topics with bounded reads."""
 
@@ -492,7 +463,7 @@ class KafkaDatasource(Datasource):
                                     break
 
                                 # Extract all message metadata into a flat record
-                                headers_dict = _convert_headers_to_dict(msg.headers)
+                                headers_dict = dict(msg.headers) if msg.headers else {}
 
                                 records.append(
                                     {
