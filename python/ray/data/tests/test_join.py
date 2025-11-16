@@ -14,6 +14,9 @@ from ray.data.dataset import Dataset
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
+# Semi/anti joins only output columns from one side (no column collisions)
+SEMI_ANTI_JOINS = {"left_semi", "right_semi", "left_anti", "right_anti"}
+
 
 @pytest.mark.parametrize(
     "num_rows_left,num_rows_right,partition_size_hint",
@@ -750,12 +753,7 @@ def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_
 def _setup_join_datasets(use_suffixes, filter_side, join_type):
     """Create test datasets for join predicate pushdown tests."""
     # Semi/anti joins only output columns from one side, so they never need suffixes
-    is_semi_or_anti = join_type in [
-        "left_semi",
-        "right_semi",
-        "left_anti",
-        "right_anti",
-    ]
+    is_semi_or_anti = join_type in SEMI_ANTI_JOINS
 
     # Determine column names based on whether suffixes are needed
     if use_suffixes and not is_semi_or_anti:
@@ -871,10 +869,10 @@ def _compute_expected_join_filter_result(
 
 def _compute_semi_join(left_pd, right_pd, join_type):
     """Compute semi join result using pandas."""
-    merged = left_pd.merge(right_pd, on="id", how="inner")
-    source_pd = left_pd if join_type == "left_semi" else right_pd
-    cols = [c for c in source_pd.columns if c != "id"]
-    return merged[["id"] + cols].drop_duplicates()
+    if join_type == "left_semi":
+        return left_pd[left_pd["id"].isin(right_pd["id"])]
+    else:  # right_semi
+        return right_pd[right_pd["id"].isin(left_pd["id"])]
 
 
 def _compute_anti_join(left_pd, right_pd, join_type):
@@ -944,12 +942,7 @@ def test_join_predicate_pushdown(
 
     # Semi/anti joins only output columns from one side, so they don't use suffixes
     # even when input columns overlap
-    join_uses_suffixes = use_suffixes and join_type not in [
-        "left_semi",
-        "right_semi",
-        "left_anti",
-        "right_anti",
-    ]
+    join_uses_suffixes = use_suffixes and join_type not in SEMI_ANTI_JOINS
 
     # Setup datasets
     left_ds, right_ds, filter_col, threshold = _setup_join_datasets(
