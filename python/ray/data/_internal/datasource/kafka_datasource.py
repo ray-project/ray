@@ -3,9 +3,8 @@
 This module provides a Kafka datasource implementation for Ray Data that supports
 bounded reads with offset-based range queries.
 
-Message keys are decoded as UTF-8 strings (common case for routing keys).
-Message values are returned as raw bytes to support any serialization format
-(JSON, Avro, Protobuf, etc.). Users can decode values using map operations.
+Message keys and values are returned as raw bytes to support any serialization format
+(JSON, Avro, Protobuf, etc.). Users can decode them using map operations.
 
 Requires:
     - kafka-python: https://kafka-python.readthedocs.io/
