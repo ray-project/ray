@@ -26,14 +26,7 @@ def _check_valid_plan_and_result(
         assert actual_result == expected_result
     else:
         # When ordering doesn't matter, compare as multisets.
-        from collections import Counter
-
-        def to_hashable(d):
-            return tuple(sorted(d.items()))
-
-        assert Counter(map(to_hashable, actual_result)) == Counter(
-            map(to_hashable, expected_result)
-        )
+        assert rows_same(pd.DataFrame(actual_result), pd.DataFrame(expected_result))
     assert ds._plan._logical_plan.dag.dag_str == expected_plan
 
     expected_physical_plan_ops = expected_physical_plan_ops or []
