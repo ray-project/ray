@@ -420,7 +420,8 @@ def arrow_batch_to_tensors(
                 base_iterator=iter(numpy_batch.items()),
                 fn=process_columns,
                 preserve_ordering=False,
-                num_workers=num_workers,
+                num_workers=max(num_workers, 1),
+                buffer_size=max(num_workers, 1),
             )
             return dict(processed_cols)
         else:
@@ -473,7 +474,8 @@ def arrow_batch_to_tensors(
                 base_iterator=iter(array_items),
                 fn=process_arrays,
                 preserve_ordering=False,
-                num_workers=num_workers,
+                num_workers=max(num_workers, 1),
+                buffer_size=max(num_workers, 1),
             )
 
             # Reconstruct the dictionary structure
