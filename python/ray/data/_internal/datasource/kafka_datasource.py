@@ -14,7 +14,17 @@ Requires:
 import logging
 import time
 import uuid
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import pyarrow as pa
 
@@ -149,8 +159,7 @@ def _build_consumer_config_for_read(
 def _resolve_offset(
     consumer: "KafkaConsumer",
     topic_partition: "TopicPartition",
-    offset_value: Union[int, str],
-    is_end: bool = False,
+    offset_value: Union[int, Literal["earliest", "latest"]],
 ) -> int:
     """Convert offset value to offset for a partition.
 
@@ -158,7 +167,6 @@ def _resolve_offset(
         consumer: KafkaConsumer instance with partition assigned.
         topic_partition: TopicPartition instance.
         offset_value: Offset value (int, str).
-        is_end: Whether this is an end_offset (for validation).
 
     Returns:
         Kafka offset as int.
@@ -174,16 +182,13 @@ def _resolve_offset(
         if offset_value == "latest":
             offsets = consumer.end_offsets([topic_partition])
             return offsets[topic_partition]
-        if offset_value.isdigit():
-            return int(offset_value)
-        raise ValueError(
-            f"Invalid {'end' if is_end else 'start'}_offset string: {offset_value}"
-        )
 
     if isinstance(offset_value, int):
         return offset_value
 
-    raise ValueError(f"Unsupported offset type: {type(offset_value)}")
+    raise ValueError(
+        f"Unsupported offset type: {offset_value} of type {type(offset_value)}"
+    )
 
 
 def _convert_headers_to_dict(headers: List[Tuple[bytes, bytes]]) -> Dict[str, bytes]:
@@ -225,8 +230,8 @@ class KafkaDatasource(Datasource):
         self,
         topics: Union[str, List[str]],
         bootstrap_servers: Union[str, List[str]],
-        start_offset: Optional[Union[int, str]] = None,
-        end_offset: Optional[Union[int, str]] = None,
+        start_offset: Optional[Union[int, Literal["earliest"]]] = None,
+        end_offset: Optional[Union[int, Literal["latest"]]] = None,
         authentication: Optional[Dict[str, Any]] = None,
         max_records_per_task: int = 1000,
         timeout_ms: int = 10000,
@@ -371,8 +376,8 @@ class KafkaDatasource(Datasource):
                 topic_name: str = topic_name,
                 partition_id: int = partition_id,
                 bootstrap_servers: List[str] = bootstrap_servers,
-                start_offset: Optional[Union[int, str]] = start_offset,
-                end_offset: Optional[Union[int, str]] = end_offset,
+                start_offset: Optional[Union[int, Literal["earliest"]]] = start_offset,
+                end_offset: Optional[Union[int, Literal["latest"]]] = end_offset,
                 authentication: Dict[str, Any] = authentication,
                 timeout_ms: int = timeout_ms,
             ):
@@ -408,7 +413,7 @@ class KafkaDatasource(Datasource):
                         # Determine start offset for this partition
                         if start_offset is not None:
                             start_off = _resolve_offset(
-                                consumer, topic_partition, start_offset, is_end=False
+                                consumer, topic_partition, start_offset
                             )
                         else:
                             beginning_offsets = consumer.beginning_offsets(
@@ -419,7 +424,7 @@ class KafkaDatasource(Datasource):
                         # Determine end offset for this partition
                         if end_offset is not None:
                             end_off = _resolve_offset(
-                                consumer, topic_partition, end_offset, is_end=True
+                                consumer, topic_partition, end_offset
                             )
                         else:
                             end_offsets = consumer.end_offsets([topic_partition])

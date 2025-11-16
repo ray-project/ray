@@ -91,7 +91,6 @@ def test_read_kafka_basic(bootstrap_server, kafka_producer, ray_start_regular_sh
         (100, None, None, 100, "both-none"),
         (100, "earliest", 30, 30, "earliest-start-offset-number-end-offset"),
         (100, 50, "latest", 50, "number-start-offset-number-end-offset"),
-        (100, "20", "80", 60, "number-start-offset-string-number-end-offset-string"),
     ],
 )
 def test_read_kafka_with_offsets(
