@@ -4434,7 +4434,6 @@ def read_kafka(
     start_offset: Union[int, Literal["earliest"]] = "earliest",
     end_offset: Union[int, Literal["latest"]] = "latest",
     kafka_auth_config: Optional[KafkaAuthConfig] = None,
-    parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
@@ -4455,7 +4454,6 @@ def read_kafka(
             :skipif: True
 
             import ray
-            from datetime import datetime, timedelta
 
             # Read from a single topic with offset range
             ds = ray.data.read_kafka(
@@ -4482,7 +4480,6 @@ def read_kafka(
             - str: Offset number as string
             Default to "latest".
         kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
-        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
@@ -4491,7 +4488,7 @@ def read_kafka(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        timeout_ms: Timeout in milliseconds to poll to until reaching end_offset (default 10000ms/10s).
+        timeout_ms: Timeout in milliseconds to poll to until reaching end_offset (default 10000ms).
 
     Returns:
         A :class:`~ray.data.Dataset` containing Kafka messages with the following schema:
@@ -4520,7 +4517,7 @@ def read_kafka(
             kafka_auth_config=kafka_auth_config,
             timeout_ms=timeout_ms,
         ),
-        parallelism=parallelism,
+        parallelism=-1,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
