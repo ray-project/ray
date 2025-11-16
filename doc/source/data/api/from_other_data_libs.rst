@@ -10,7 +10,7 @@ libraries, so you can quickly map what you may already know to Ray Data APIs.
 
 .. note::
 
-  - This is meant to map APIs that perform comparable but not necessarily identical operations.
+  - This maps APIs that perform comparable but not necessarily identical operations.
     Select the API reference for exact semantics and usage.
   - This list may not be exhaustive: It focuses on common APIs or APIs that are less obvious to see a connection.
 

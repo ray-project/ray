@@ -733,3 +733,29 @@ def assert_blocks_expected_in_plasma(
 @pytest.fixture(autouse=True, scope="function")
 def log_internal_stack_trace_to_stdout(restore_data_context):
     ray.data.context.DataContext.get_current().log_internal_stack_trace_to_stdout = True
+
+
+@pytest.fixture(params=[True, False], ids=["datafusion", "sqlglot"])
+def sql_engine(request, restore_data_context):
+    """Parametrize tests to run with both DataFusion and SQLGlot SQL engines.
+
+    This fixture ensures SQL tests validate that both engines produce identical
+    results for the same queries. It automatically switches between engines and
+    restores the original configuration after each test.
+
+    Usage:
+        def test_my_sql_query(ray_start_regular_shared, sql_engine):
+            # This test will run twice: once with DataFusion, once with SQLGlot
+            result = ray.data.sql("SELECT * FROM my_table")
+            assert len(result.take_all()) > 0
+    """
+    ctx = ray.data.context.DataContext.get_current()
+    original_use_datafusion = ctx.sql_use_datafusion
+
+    # Set the engine for this test iteration
+    ctx.sql_use_datafusion = request.param
+
+    yield request.param
+
+    # Restore original configuration
+    ctx.sql_use_datafusion = original_use_datafusion

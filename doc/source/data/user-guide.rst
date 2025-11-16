@@ -19,6 +19,10 @@ shows you how to achieve several tasks.
     joining-data
     shuffling-data
     saving-data
+    sql-quickstart
+    sql-user-guide
+    sql-examples
+    sql-contributing
     working-with-images
     working-with-text
     working-with-tensors

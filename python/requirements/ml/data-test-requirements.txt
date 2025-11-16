@@ -21,6 +21,7 @@ decord
 snowflake-connector-python>=3.15.0
 pyiceberg[sql-sqlite]==0.10.0
 clickhouse-connect
+sqlglot==25.6.1
 pybase64
 hudi==0.4.0
 datasketches

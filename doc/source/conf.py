@@ -659,6 +659,7 @@ autodoc_mock_imports = [
     "setproctitle",
     "skimage",
     "sklearn",
+    "sqlglot",
     "starlette",
     "tensorflow",
     "torch",
