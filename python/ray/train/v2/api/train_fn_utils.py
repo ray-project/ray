@@ -4,7 +4,7 @@ from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetad
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2._internal.util import requires_train_worker
 from ray.train.v2.api.context import TrainContext
-from ray.train.v2.api.report_config import CheckpointUploadMode
+from ray.train.v2.api.report_config import CheckpointUploadMode, ConsistencyMode
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -186,7 +186,9 @@ def get_checkpoint() -> Optional["Checkpoint"]:
 
 @PublicAPI(stability="alpha")
 @requires_train_worker()
-def get_all_reported_checkpoints() -> List["ReportedCheckpoint"]:
+def get_all_reported_checkpoints(
+    consistency_mode: ConsistencyMode = ConsistencyMode.VALIDATED,
+) -> List["ReportedCheckpoint"]:
     """Get all the reported checkpoints so far.
 
     Blocks until Ray Train has finished processing every in-flight `ray.train.report` call.
@@ -223,11 +225,16 @@ def get_all_reported_checkpoints() -> List["ReportedCheckpoint"]:
             )
             trainer.fit()
 
+    Args:
+        consistency_mode: Read semantics for checkpoint retrieval. Defaults to VALIDATED.
+
     Returns:
         List of ReportedCheckpoint objects that represent the checkpoints and
         corresponding metrics reported by the workers.
     """
-    return get_train_fn_utils().get_all_reported_checkpoints()
+    return get_train_fn_utils().get_all_reported_checkpoints(
+        consistency_mode=consistency_mode
+    )
 
 
 @PublicAPI(stability="stable")
