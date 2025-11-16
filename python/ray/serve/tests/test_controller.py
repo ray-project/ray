@@ -216,6 +216,17 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                             ],
                         }
                     },
+                    "deployment_topology": {
+                        "app_name": "default",
+                        "nodes": {
+                            "autoscaling_app": {
+                                "name": "autoscaling_app",
+                                "outbound_deployments": [],
+                                "is_ingress": True,
+                            }
+                        },
+                        "ingress_deployment": "autoscaling_app",
+                    },
                 }
             },
             "target_capacity": None,
