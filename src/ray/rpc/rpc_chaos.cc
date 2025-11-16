@@ -33,27 +33,27 @@ namespace testing {
 //     export RAY_testing_rpc_failure="method1=3:12:12:50,method2=5:10:25:25"
 // Key is the RPC call name and value is a four part colon separated structure. It
 // contains the max number of failures to inject + probability of req failure +
-// probability of reply failure + probability of in flight failure.
+// probability of reply failure + probability of in-flight failure.
 
 // You can also use a wildcard to set probabilities for all rpc's and -1 as num_failures
 // to have unlimited failures.
 //     export RAY_testing_rpc_failure="*=-1:10:25:50"
 // This will set the probabilities for all rpc's to 10% for request failures, 25% for
-// reply failures, and 50% for in flight failures.
+// reply failures, and 50% for in-flight failures.
 
 // You can also provide 5th, 6th, and / or 7th  optional parameters to specify that there
-// should be at least a certain amount of request, response, and in flight failures.
-// flight failures. By default these are set to 0, but by setting them to positive values
-// guarantees that the first N RPCs will have X request failures, followed by Y response
-// failures, followed by Z in flight failures. Afterwards, it will revert to the
-// probabilistic failures.
+// should be at least a certain amount of request, response, and in-flight failures.
+// By default these are set to 0, but by setting them to positive values guarantees that
+// the first N RPCs will have X request failures, followed by Y response failures,
+// followed by Z in-flight failures. Afterwards, it will revert to the probabilistic
+// failures.
 //
 // You can combine this with the wildcard so that each RPC method will have the same lower
 // bounds applied.
 //
 // Ex. unlimited failures for all rpc's with 25% request failures, 50% response failures,
-// and 10% in flight failures with at least 2 request failures, 3 response failures, and 1
-// in flight failure.
+// and 10% in-flight failures with at least 2 request failures, 3 response failures, and 1
+// in-flight failure.
 //     export RAY_testing_rpc_failure="*=-1:25:50:10:2:3:1"
 
 class RpcFailureManager {
@@ -180,17 +180,16 @@ class RpcFailureManager {
     if (random_number <= failable.req_failure_prob) {
       failable.num_remaining_failures--;
       return RpcFailure::Request;
-    }
-    if (random_number <= failable.req_failure_prob + failable.resp_failure_prob) {
+    } else if (random_number <= failable.req_failure_prob + failable.resp_failure_prob) {
       failable.num_remaining_failures--;
       return RpcFailure::Response;
-    }
-    if (random_number <= failable.req_failure_prob + failable.resp_failure_prob +
-                             failable.in_flight_failure_prob) {
+    } else if (random_number <= failable.req_failure_prob + failable.resp_failure_prob +
+                                    failable.in_flight_failure_prob) {
       failable.num_remaining_failures--;
       return RpcFailure::InFlight;
+    } else {
+      return RpcFailure::None;
     }
-    return RpcFailure::None;
   }
 };
 
