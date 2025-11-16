@@ -446,8 +446,8 @@ class KafkaDatasource(Datasource):
                                 break
 
                             # Calculate remaining timeout for this poll
-                            remaining_timeout_ms = max(
-                                1000, int((timeout_seconds - elapsed_time) * 1000)
+                            remaining_timeout_ms = int(
+                                (timeout_seconds - elapsed_time) * 1000
                             )
 
                             # Poll for a batch of messages from Kafka
