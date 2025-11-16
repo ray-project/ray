@@ -408,7 +408,9 @@ def arrow_batch_to_tensors(
                         col_name,
                         convert_ndarray_batch_to_torch_tensor_batch(
                             col_array,
-                            dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                            dtypes=dtypes[col_name]
+                            if isinstance(dtypes, dict)
+                            else dtypes,
                             pin_memory=pin_memory,
                         ),
                     )
@@ -438,7 +440,9 @@ def arrow_batch_to_tensors(
         # Count total number of arrays across all columns
         total_arrays = sum(len(arrays) for arrays in numpy_list.values())
         num_columns = len(numpy_list)
-        num_workers = min(max(total_arrays, num_columns), DEFAULT_TENSOR_CONVERSION_NUM_WORKERS)
+        num_workers = min(
+            max(total_arrays, num_columns), DEFAULT_TENSOR_CONVERSION_NUM_WORKERS
+        )
 
         if num_workers > 1 and total_arrays > 1:
             # Process arrays in parallel
@@ -450,7 +454,9 @@ def arrow_batch_to_tensors(
                         array_index,
                         convert_ndarray_batch_to_torch_tensor_batch(
                             array,
-                            dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                            dtypes=dtypes[col_name]
+                            if isinstance(dtypes, dict)
+                            else dtypes,
                             pin_memory=pin_memory,
                         ),
                     )
