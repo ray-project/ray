@@ -262,7 +262,6 @@ class KafkaDatasource(Datasource):
         start_offset: Union[int, Literal["earliest"]] = "earliest",
         end_offset: Union[int, Literal["latest"]] = "latest",
         kafka_auth_config: Optional[KafkaAuthConfig] = None,
-        max_records_per_task: int = 1000,
         timeout_ms: int = 10000,
     ):
         """Initialize Kafka datasource.
@@ -277,7 +276,6 @@ class KafkaDatasource(Datasource):
                 - int: Offset number or timestamp in milliseconds
                 - str: Offset number as string
             kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
-            max_records_per_task: Maximum records per task per batch.
             timeout_ms: Timeout in milliseconds to poll to until reaching end_offset (default 10000ms/10s).
 
         Raises:
@@ -291,9 +289,6 @@ class KafkaDatasource(Datasource):
 
         if not bootstrap_servers:
             raise ValueError("bootstrap_servers cannot be empty")
-
-        if max_records_per_task <= 0:
-            raise ValueError("max_records_per_task must be positive")
 
         if timeout_ms <= 0:
             raise ValueError("poll_timeout_ms must be positive")
@@ -324,17 +319,16 @@ class KafkaDatasource(Datasource):
                         "Expected 'host:port' string."
                     )
 
-        self.topics = topics if isinstance(topics, list) else [topics]
-        self.bootstrap_servers = (
+        self._topics = topics if isinstance(topics, list) else [topics]
+        self._bootstrap_servers = (
             bootstrap_servers
             if isinstance(bootstrap_servers, list)
             else [bootstrap_servers]
         )
-        self.start_offset = start_offset
-        self.end_offset = end_offset
-        self.kafka_auth_config = kafka_auth_config or {}
-        self.max_records_per_task = max_records_per_task
-        self.timeout_ms = timeout_ms
+        self._start_offset = start_offset
+        self._end_offset = end_offset
+        self._kafka_auth_config = kafka_auth_config or {}
+        self._timeout_ms = timeout_ms
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Return an estimate of the in-memory data size, or None if unknown."""
@@ -362,7 +356,7 @@ class KafkaDatasource(Datasource):
 
         # Build minimal consumer config for partition discovery
         consumer_config = _build_consumer_config_for_discovery(
-            self.bootstrap_servers, self.kafka_auth_config
+            self._bootstrap_servers, self._kafka_auth_config
         )
 
         # Discover partitions for all topics
@@ -370,7 +364,7 @@ class KafkaDatasource(Datasource):
         discovery_consumer = None
         try:
             discovery_consumer = KafkaConsumer(**consumer_config)
-            for topic in self.topics:
+            for topic in self._topics:
                 partitions = discovery_consumer.partitions_for_topic(topic)
                 if not partitions:
                     raise ValueError(
@@ -386,12 +380,11 @@ class KafkaDatasource(Datasource):
             return []
 
         # Store config for use in read functions (avoid serialization issues)
-        bootstrap_servers = self.bootstrap_servers
-        start_offset = self.start_offset
-        end_offset = self.end_offset
-        max_records_per_task = self.max_records_per_task
-        timeout_ms = self.timeout_ms
-        kafka_auth_config = self.kafka_auth_config
+        bootstrap_servers = self._bootstrap_servers
+        start_offset = self._start_offset
+        end_offset = self._end_offset
+        timeout_ms = self._timeout_ms
+        kafka_auth_config = self._kafka_auth_config
 
         tasks = []
         for topic_name, partition_id in topic_partitions:
@@ -442,7 +435,7 @@ class KafkaDatasource(Datasource):
 
                         records = []
                         records_read = 0
-                        # Use per_task_row_limit if provided, otherwise use max_records_per_task
+
                         ctx = DataContext.get_current()
                         output_buffer = BlockOutputBuffer(
                             OutputBlockSizeOption.of(
@@ -535,7 +528,7 @@ class KafkaDatasource(Datasource):
 
             # Create metadata for this task
             metadata = BlockMetadata(
-                num_rows=max_records_per_task,
+                num_rows=None,
                 size_bytes=None,
                 input_files=[f"kafka://{topic_name}/{partition_id}"],
                 exec_stats=None,
