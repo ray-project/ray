@@ -35,6 +35,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
+    ALL_MODULES,
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
     LAST_TARGET_UPDATE_TS,
@@ -757,13 +758,13 @@ class DQN(Algorithm):
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
             with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-                self.env_runner_group.sync_env_runner_states(
-                    config=self.config,
-                    env_steps_sampled=self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
-                    ),
-                    env_to_module=self.env_to_module_connector,
-                    module_to_env=self.module_to_env_connector,
+                modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
+                # NOTE: the new API stack does not use global vars.
+                self.env_runner_group.sync_weights(
+                    from_worker_or_learner_group=self.learner_group,
+                    policies=modules_to_update,
+                    global_vars=None,
+                    inference_only=True,
                 )
 
     def _training_step_old_api_stack(self) -> ResultDict:
