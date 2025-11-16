@@ -323,7 +323,7 @@ You can also use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLo
     logger = MetricsLogger()
 
     for _ in range(3):
-        with logger.log_time("my_block_to_be_timed", with_throughput=True):
+        with logger.log_time("my_block_to_be_timed", with_throughput=True, reduce="sum"):
             time.sleep(1.0)
 
     # Expect the throughput to be roughly 1.0/sec.
