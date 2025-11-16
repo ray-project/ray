@@ -8,6 +8,7 @@ from ray.data.expressions import (
     DownloadExpr,
     Expr,
     LiteralExpr,
+    Operation,
     StarExpr,
     UDFExpr,
     UnaryExpr,
@@ -15,6 +16,25 @@ from ray.data.expressions import (
 )
 
 T = TypeVar("T")
+
+# Mapping of operations to their string symbols for inline representation
+_INLINE_OP_SYMBOLS = {
+    Operation.ADD: "+",
+    Operation.SUB: "-",
+    Operation.MUL: "*",
+    Operation.DIV: "/",
+    Operation.FLOORDIV: "//",
+    Operation.GT: ">",
+    Operation.LT: "<",
+    Operation.GE: ">=",
+    Operation.LE: "<=",
+    Operation.EQ: "==",
+    Operation.NE: "!=",
+    Operation.AND: "&",
+    Operation.OR: "|",
+    Operation.IN: "in",
+    Operation.NOT_IN: "not in",
+}
 
 
 class _ExprVisitorBase(_ExprVisitor[None]):
@@ -397,38 +417,19 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
         left_str = self.visit(expr.left)
         right_str = self.visit(expr.right)
 
-        # Map operation names to symbols for common operators
-        op_symbols = {
-            "ADD": "+",
-            "SUB": "-",
-            "MUL": "*",
-            "DIV": "/",
-            "FLOORDIV": "//",
-            "GT": ">",
-            "LT": "<",
-            "GE": ">=",
-            "LE": "<=",
-            "EQ": "==",
-            "NE": "!=",
-            "AND": "&",
-            "OR": "|",
-            "IN": "in",
-            "NOT_IN": "not in",
-        }
-
-        op_str = op_symbols.get(expr.op.name, expr.op.name.lower())
+        op_str = _INLINE_OP_SYMBOLS.get(expr.op, expr.op.name.lower())
         return f"{left_str} {op_str} {right_str}"
 
     def visit_unary(self, expr: "UnaryExpr") -> str:
         """Visit a unary expression and return its inline representation."""
         operand_str = self.visit(expr.operand)
 
-        # Map operation names to symbols/functions
-        if expr.op.name == "NOT":
+        # Map operations to symbols/functions
+        if expr.op == Operation.NOT:
             return f"~{operand_str}"
-        elif expr.op.name == "IS_NULL":
+        elif expr.op == Operation.IS_NULL:
             return f"{operand_str}.is_null()"
-        elif expr.op.name == "IS_NOT_NULL":
+        elif expr.op == Operation.IS_NOT_NULL:
             return f"{operand_str}.is_not_null()"
         else:
             return f"{expr.op.name.lower()}({operand_str})"
