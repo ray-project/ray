@@ -678,110 +678,6 @@ def test_join_with_unjoinable_non_key_columns(
         )
 
 
-@pytest.mark.parametrize(
-    "join_type,filter_side,should_push",
-    [
-        ("inner", "left", True),
-        ("inner", "right", True),
-        ("left_outer", "left", True),
-        ("left_outer", "right", False),
-    ],
-    ids=["inner_left", "inner_right", "left_outer_left", "left_outer_right"],
-)
-def test_join_with_predicate_pushdown(
-    ray_start_regular_shared_2_cpus, join_type, filter_side, should_push
-):
-    """Test that predicate pushdown works correctly with different join types.
-
-    Filters on single-side predicates should push past the join when appropriate:
-    - Inner join: can push to either side
-    - Left outer: can push to left (preserved) side only
-    - Right outer: can push to right (preserved) side only
-    """
-    from ray.data._internal.logical.optimizers import LogicalOptimizer
-    from ray.data._internal.util import MiB
-    from ray.data.expressions import col
-
-    DataContext.get_current().target_max_block_size = 1 * MiB
-
-    # Create datasets directly without map to allow filter pushdown through join
-    # Both have ids 0-31 with different value columns
-    left_data = [{"id": i, "left_val": i * 10} for i in range(32)]
-    right_data = [{"id": i, "right_val": i * 100} for i in range(32)]
-
-    left_ds = ray.data.from_items(left_data)
-    right_ds = ray.data.from_items(right_data)
-
-    # Join then filter
-    joined = left_ds.join(
-        right_ds,
-        join_type=join_type,
-        num_partitions=4,
-        on=("id",),
-        aggregator_ray_remote_args={"num_cpus": 0.01},
-    )
-
-    # Filter on column from specified side
-    if filter_side == "left":
-        filtered_ds = joined.filter(expr=col("left_val") < 100)
-    else:
-        filtered_ds = joined.filter(expr=col("right_val") < 1000)
-
-    # Verify correctness by computing expected result with pandas
-    from ray.data._internal.util import rows_same
-
-    left_pd = left_ds.to_pandas()
-    right_pd = right_ds.to_pandas()
-
-    # Compute expected join result
-    if join_type == "inner":
-        expected_pd = left_pd.merge(right_pd, on="id", how="inner")
-    elif join_type == "left_outer":
-        expected_pd = left_pd.merge(right_pd, on="id", how="left")
-    else:
-        raise ValueError(f"Unsupported join type for this test: {join_type}")
-
-    # Apply filter (must match what we filtered in Ray Data)
-    if filter_side == "left":
-        # For left-side filter, use notna() to include NaN rows from outer joins
-        expected_pd = expected_pd[expected_pd["left_val"] < 100]
-    else:
-        # For right-side filter in outer joins, NaN values fail the comparison
-        # and are filtered out (matching Ray Data behavior)
-        expected_pd = expected_pd[expected_pd["right_val"] < 1000]
-
-    actual_df = filtered_ds.to_pandas()
-    expected_df = expected_pd.reset_index(drop=True)
-
-    assert rows_same(actual_df, expected_df), (
-        f"Results don't match for {join_type} join with {filter_side} filter:\n"
-        f"Actual:\n{actual_df}\n\nExpected:\n{expected_df}"
-    )
-
-    # Check plan to verify pushdown behavior
-    logical_plan = filtered_ds._plan._logical_plan
-    optimized_plan = LogicalOptimizer().optimize(logical_plan)
-    plan_str = optimized_plan.dag.dag_str
-
-    join_idx = plan_str.find("Join[Join]")
-    filter_idx = plan_str.find("Filter[Filter(<expression>)]")
-
-    if should_push:
-        # Filter should be pushed before join
-        assert filter_idx != -1, f"Filter should exist in plan: {plan_str}"
-        assert filter_idx < join_idx, (
-            f"Filter should be pushed before Join for {join_type} with {filter_side} "
-            f"predicate. Plan: {plan_str}"
-        )
-    else:
-        # Filter should remain after join
-        if filter_idx != -1:
-            assert filter_idx > join_idx, (
-                f"Filter should stay after Join for {join_type} with {filter_side} "
-                f"predicate. Plan: {plan_str}"
-            )
-
-
 def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_2_cpus):
     """Test PR bug: comparing differently-named join keys from both sides.
 
@@ -848,6 +744,239 @@ def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_
     assert not plan_operator_comes_before(optimized_plan, Filter, Join), (
         "Filter comparing columns from both sides should NOT be pushed before Join "
         "since neither side has both columns"
+    )
+
+
+def _setup_join_datasets(use_suffixes, filter_side, join_type):
+    """Create test datasets for join predicate pushdown tests."""
+    # Semi/anti joins only output columns from one side, so they never need suffixes
+    is_semi_or_anti = join_type in [
+        "left_semi",
+        "right_semi",
+        "left_anti",
+        "right_anti",
+    ]
+
+    # Determine column names based on whether suffixes are needed
+    if use_suffixes and not is_semi_or_anti:
+        # Overlapping "value" column - requires suffixes for non-semi/anti joins
+        left_col, right_col = "value", "value"
+        left_filter_col, right_filter_col = "value_l", "value_r"
+    else:
+        # Non-overlapping columns - no suffixes needed
+        left_col, right_col = "left_val", "right_val"
+        left_filter_col, right_filter_col = "left_val", "right_val"
+
+    left_data = [{"id": i, left_col: i * 10} for i in range(5)]
+    right_data = [{"id": i, right_col: i * 100} for i in range(5)]
+    filter_col = left_filter_col if filter_side == "left" else right_filter_col
+    threshold = 30 if filter_side == "left" else 300
+
+    left_ds = ray.data.from_items(left_data)
+    right_ds = ray.data.from_items(right_data)
+    return left_ds, right_ds, filter_col, threshold
+
+
+def _perform_join(left_ds, right_ds, join_type, use_suffixes):
+    """Perform join with or without suffixes."""
+    join_kwargs = {
+        "join_type": join_type,
+        "num_partitions": 2,
+        "on": ("id",),
+        "aggregator_ray_remote_args": {"num_cpus": 0.01},
+    }
+    if use_suffixes:
+        join_kwargs["left_suffix"] = "_l"
+        join_kwargs["right_suffix"] = "_r"
+    return left_ds.join(right_ds, **join_kwargs)
+
+
+def _verify_pushdown_behavior(
+    filtered_ds, should_push, join_type, filter_side, use_suffixes
+):
+    """Verify that predicate pushdown behaves as expected."""
+    from ray.data._internal.logical.operators.join_operator import Join
+    from ray.data._internal.logical.operators.map_operator import Filter
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+    from ray.data.tests.test_util import plan_operator_comes_before
+
+    logical_plan = filtered_ds._plan._logical_plan
+    optimized_plan = LogicalOptimizer().optimize(logical_plan)
+
+    suffix_msg = "with" if use_suffixes else "without"
+    if should_push:
+        assert plan_operator_comes_before(
+            optimized_plan, Filter, Join
+        ), f"Filter on {filter_side} column should be pushed before Join for {join_type} ({suffix_msg} suffixes)"
+    else:
+        assert not plan_operator_comes_before(
+            optimized_plan, Filter, Join
+        ), f"Filter on {filter_side} column should NOT be pushed before Join for {join_type} ({suffix_msg} suffixes)"
+
+
+def _verify_join_filter_correctness(
+    filtered_ds,
+    left_ds,
+    right_ds,
+    join_type,
+    filter_side,
+    filter_col,
+    threshold,
+    use_suffixes,
+):
+    """Verify correctness of join+filter result using pandas as reference."""
+    actual_df = filtered_ds.to_pandas()
+    expected_df = _compute_expected_join_filter_result(
+        left_ds, right_ds, join_type, filter_side, filter_col, threshold, use_suffixes
+    )
+
+    # Reorder expected columns to match actual (rows_same is strict about column order)
+    expected_df = expected_df[actual_df.columns]
+
+    suffix_msg = "with" if use_suffixes else "without"
+    assert rows_same(actual_df, expected_df), (
+        f"Results don't match for {join_type} join with {filter_side} filter ({suffix_msg} suffixes):\n"
+        f"Actual:\n{actual_df}\n\nExpected:\n{expected_df}"
+    )
+
+
+def _compute_expected_join_filter_result(
+    left_ds, right_ds, join_type, filter_side, filter_col, threshold, use_suffixes
+):
+    """Compute expected join+filter result using pandas."""
+    left_pd = left_ds.to_pandas()
+    right_pd = right_ds.to_pandas()
+
+    # Compute join result
+    if join_type in ["inner", "left_outer", "right_outer", "full_outer"]:
+        pandas_join_type = {
+            "inner": "inner",
+            "left_outer": "left",
+            "right_outer": "right",
+            "full_outer": "outer",
+        }[join_type]
+        suffixes = ("_l", "_r") if use_suffixes else ("", "")
+        result_pd = left_pd.merge(
+            right_pd, on="id", how=pandas_join_type, suffixes=suffixes
+        )
+    elif join_type in ["left_semi", "right_semi"]:
+        result_pd = _compute_semi_join(left_pd, right_pd, join_type, use_suffixes)
+    else:  # anti joins
+        result_pd = _compute_anti_join(left_pd, right_pd, join_type, use_suffixes)
+
+    # Apply filter
+    result_pd = result_pd[result_pd[filter_col] < threshold]
+    return result_pd.reset_index(drop=True)
+
+
+def _compute_semi_join(left_pd, right_pd, join_type, use_suffixes):
+    """Compute semi join result using pandas."""
+    merged = left_pd.merge(right_pd, on="id", how="inner")
+    source_pd = left_pd if join_type == "left_semi" else right_pd
+    cols = [c for c in source_pd.columns if c != "id"]
+    return merged[["id"] + cols].drop_duplicates()
+
+
+def _compute_anti_join(left_pd, right_pd, join_type, use_suffixes):
+    """Compute anti join result using pandas."""
+    is_left = join_type == "left_anti"
+    how = "left" if is_left else "right"
+    source_pd = left_pd if is_left else right_pd
+    only_indicator = "left_only" if is_left else "right_only"
+
+    merged = left_pd.merge(right_pd, on="id", how=how, indicator=True)
+    return merged[merged["_merge"] == only_indicator][list(source_pd.columns)]
+
+
+@pytest.mark.parametrize(
+    "join_type,filter_side,should_push",
+    [
+        ("inner", "left", True),
+        ("inner", "right", True),
+        ("left_outer", "left", True),
+        ("left_outer", "right", False),
+        ("right_outer", "left", False),
+        ("right_outer", "right", True),
+        ("left_semi", "left", True),
+        ("right_semi", "right", True),
+        ("left_anti", "left", True),
+        ("right_anti", "right", True),
+        ("full_outer", "left", False),
+        ("full_outer", "right", False),
+    ],
+    ids=[
+        "inner_left_push",
+        "inner_right_push",
+        "left_outer_left_push",
+        "left_outer_right_no_push",
+        "right_outer_left_no_push",
+        "right_outer_right_push",
+        "left_semi_left_push",
+        "right_semi_right_push",
+        "left_anti_left_push",
+        "right_anti_right_push",
+        "full_outer_left_no_push",
+        "full_outer_right_no_push",
+    ],
+)
+@pytest.mark.parametrize(
+    "use_suffixes", [False, True], ids=["no_suffixes", "with_suffixes"]
+)
+def test_join_predicate_pushdown(
+    ray_start_regular_shared_2_cpus, join_type, filter_side, should_push, use_suffixes
+):
+    """Test that predicates can be pushed down correctly for all join types.
+
+    Tests both scenarios:
+    - Non-overlapping columns (no suffixes needed)
+    - Overlapping columns requiring suffixes (tests suffix-stripping logic)
+
+    Pushdown rules:
+    - INNER: Can push to either side
+    - LEFT_OUTER/SEMI/ANTI: Can push to left (preserved/output) side only
+    - RIGHT_OUTER/SEMI/ANTI: Can push to right (preserved/output) side only
+    - FULL_OUTER: Cannot push to either side
+
+    Note: Semi/anti joins only output columns from one side, so we only test
+    filtering on the side that's actually in the output.
+    """
+    from ray.data.expressions import col
+
+    # Semi/anti joins only output columns from one side, so they don't use suffixes
+    # even when input columns overlap
+    join_uses_suffixes = use_suffixes and join_type not in [
+        "left_semi",
+        "right_semi",
+        "left_anti",
+        "right_anti",
+    ]
+
+    # Setup datasets
+    left_ds, right_ds, filter_col, threshold = _setup_join_datasets(
+        use_suffixes, filter_side, join_type
+    )
+
+    # Perform join
+    joined = _perform_join(left_ds, right_ds, join_type, join_uses_suffixes)
+
+    # Apply filter
+    filtered_ds = joined.filter(expr=col(filter_col) < threshold)
+
+    # Verify plan optimization
+    _verify_pushdown_behavior(
+        filtered_ds, should_push, join_type, filter_side, use_suffixes
+    )
+
+    # Verify correctness
+    _verify_join_filter_correctness(
+        filtered_ds,
+        left_ds,
+        right_ds,
+        join_type,
+        filter_side,
+        filter_col,
+        threshold,
+        use_suffixes,
     )
 
 
