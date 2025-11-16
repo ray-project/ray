@@ -505,7 +505,7 @@ class KafkaDatasource(Datasource):
                                 if len(records) >= KafkaDatasource.BATCH_SIZE_FOR_YIELD:
                                     table = pa.Table.from_pylist(records)
                                     output_buffer.add_block(table)
-                                    if output_buffer.has_next():
+                                    while output_buffer.has_next():
                                         yield output_buffer.next()
                                     records = []  # Clear for next batch
 
@@ -513,11 +513,9 @@ class KafkaDatasource(Datasource):
                         if records:
                             table = pa.Table.from_pylist(records)
                             output_buffer.add_block(table)
-                            if output_buffer.has_next():
-                                yield output_buffer.next()
 
                         output_buffer.finalize()
-                        if output_buffer.has_next():
+                        while output_buffer.has_next():
                             yield output_buffer.next()
 
                     finally:
