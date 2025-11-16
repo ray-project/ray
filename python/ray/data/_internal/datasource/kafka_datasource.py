@@ -358,6 +358,7 @@ class KafkaDatasource(Datasource):
         end_offset = self._end_offset
         timeout_ms = self._timeout_ms
         kafka_auth_config = self._kafka_auth_config
+        target_max_block_size = self._target_max_block_size
 
         tasks = []
         schema = pa.schema(
@@ -382,6 +383,7 @@ class KafkaDatasource(Datasource):
                 end_offset: Optional[Union[int, Literal["latest"]]] = end_offset,
                 kafka_auth_config: Optional[KafkaAuthConfig] = kafka_auth_config,
                 timeout_ms: int = timeout_ms,
+                target_max_block_size: int = target_max_block_size,
             ):
                 """Create a Kafka read function with captured variables.
 
@@ -422,7 +424,7 @@ class KafkaDatasource(Datasource):
 
                         output_buffer = BlockOutputBuffer(
                             OutputBlockSizeOption.of(
-                                target_max_block_size=self._target_max_block_size
+                                target_max_block_size=target_max_block_size
                             )
                         )
 
