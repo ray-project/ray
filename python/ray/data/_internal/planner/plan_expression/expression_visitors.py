@@ -430,6 +430,10 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
         """Visit a unary expression and return its inline representation."""
         operand_str = self.visit(expr.operand)
 
+        # Add parentheses around binary expression operands to avoid ambiguity
+        if isinstance(expr.operand, BinaryExpr):
+            operand_str = f"({operand_str})"
+
         # Map operations to symbols/functions
         if expr.op == Operation.NOT:
             return f"~{operand_str}"
@@ -448,7 +452,8 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
     def visit_udf(self, expr: "UDFExpr") -> str:
         """Visit a UDF expression and return its inline representation."""
         # Get function name for better readability
-        fn_name = getattr(expr.fn, "__name__", str(expr.fn))
+        # For callable objects (instances with __call__), use the class name
+        fn_name = getattr(expr.fn, "__name__", expr.fn.__class__.__name__)
 
         # Build argument list
         args_str = []
