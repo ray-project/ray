@@ -19,6 +19,7 @@ from dataloader_factory import BaseDataLoaderFactory
 from torch_dataloader_factory import TorchDataLoaderFactory
 from ray_dataloader_factory import RayDataLoaderFactory
 from logger_utils import ContextLoggerAdapter
+from collate_utils import OneRowBatch
 
 logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
@@ -214,6 +215,35 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
         return tensors["image"], tensors["label"]
 
 
+class CustomCollateFnAfterMoving(ArrowBatchCollateFn):
+    def __init__(
+        self,
+        device: Optional[str] = None,
+        pin_memory: bool = False,
+    ):
+        """Initialize the collate function.
+
+        Args:
+            dtypes: Optional torch dtype(s) for the tensors
+            device: Optional device to place tensors on
+        """
+        self.device = device
+        self.pin_memory = pin_memory
+
+    def __call__(self, one_row_table: "pyarrow.Table") -> Tuple[torch.Tensor, torch.Tensor]:
+        """Convert an Arrow batch to PyTorch tensors.
+
+        Args:
+            batch: PyArrow Table to convert
+
+        Returns:
+            Tuple of (image_tensor, label_tensor)
+        """
+        one_row_batch = OneRowBatch.from_one_row_table(one_row_table)
+        batch = one_row_batch.to_batch(pin_memory=self.pin_memory)
+        return batch["image"], batch["label"]
+
+
 class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
     """Factory for creating Ray DataLoader for image classification tasks."""
 
@@ -221,10 +251,16 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
         super().__init__(benchmark_config)
 
     def _get_collate_fn(self) -> Optional[CollateFn]:
-        return CustomArrowCollateFn(
-            device=ray.train.torch.get_device(),
-            pin_memory=self.get_dataloader_config().ray_data_pin_memory,
-        )
+        if self.get_dataloader_config().move_collate_to_ray_data:
+            return CustomCollateFnAfterMoving(
+                device=ray.train.torch.get_device(),
+                pin_memory=self.get_dataloader_config().ray_data_pin_memory,
+            )
+        else:
+            return CustomArrowCollateFn(
+                device=ray.train.torch.get_device(),
+                pin_memory=self.get_dataloader_config().ray_data_pin_memory,
+            )
 
 
 class ImageClassificationMockDataLoaderFactory(BaseDataLoaderFactory):

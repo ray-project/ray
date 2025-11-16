@@ -61,7 +61,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         dataloader_config = self.get_dataloader_config()
         return iter(
             ds_iterator.iter_torch_batches(
-                batch_size=dataloader_config.train_batch_size,
+                batch_size=dataloader_config.train_batch_size if not dataloader_config.move_collate_to_ray_data else 1,
                 local_shuffle_buffer_size=(
                     dataloader_config.local_buffer_shuffle_size
                     if dataloader_config.local_buffer_shuffle_size > 0

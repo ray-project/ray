@@ -1,6 +1,6 @@
 # Standard library imports
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING
 
 # Third-party imports
 from torch.utils.data import IterableDataset
@@ -18,8 +18,28 @@ from image_classification.factory import (
 from .imagenet import get_preprocess_map_fn
 from .parquet_iterable_dataset import S3ParquetImageIterableDataset
 from s3_parquet_reader import S3ParquetReader
+from collate_utils import OneRowBatch
+
+if TYPE_CHECKING:
+    import pyarrow
 
 logger = logging.getLogger(__name__)
+
+
+def collate_fn_ray_data(batch_table: "pyarrow.Table") -> "pyarrow.Table":
+    from ray.air._internal.torch_utils import (
+        arrow_batch_to_tensors,
+    )
+
+    batch_table = batch_table.select(["image", "label"])
+    batch_table = arrow_batch_to_tensors(
+        batch_table,
+        combine_chunks=True,
+        pin_memory=False,
+    )
+
+    one_row_batch = OneRowBatch.from_batch(batch_table)
+    return one_row_batch.to_one_row_table()
 
 
 class ImageClassificationParquetRayDataLoaderFactory(
@@ -56,6 +76,9 @@ class ImageClassificationParquetRayDataLoaderFactory(
 
         if self.get_dataloader_config().limit_training_rows > 0:
             train_ds = train_ds.limit(self.get_dataloader_config().limit_training_rows)
+
+        if self.get_dataloader_config().move_collate_to_ray_data:
+            train_ds = train_ds.batcher_and_collate(collate_fn_ray_data, batch_size=self.get_dataloader_config().train_batch_size, batch_format="pyarrow", udf_modifying_row_count=True)
 
         # Create validation dataset without random transforms
         val_ds = ray.data.read_parquet(

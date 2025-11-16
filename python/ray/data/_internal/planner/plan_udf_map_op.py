@@ -265,14 +265,23 @@ def plan_udf_map_op(
         op._fn_constructor_args if udf_is_callable_class else None,
         op._fn_constructor_kwargs if udf_is_callable_class else None,
     )
+    ref_bundler = None
+    supports_fusion = True
 
     if isinstance(op, MapBatches):
+        disable_block_shaping = False
+        if op._enforce_input_output_block_size:
+            ref_bundler = StreamingRepartitionRefBundler(op._batch_size)
+            disable_block_shaping = True
+            # TODO(xgui): explore the fusion for different refbundler
+            supports_fusion = False
         transform_fn = BatchMapTransformFn(
             _generate_transform_fn_for_map_batches(fn),
             batch_size=op._batch_size,
             batch_format=op._batch_format,
             zero_copy_batch=op._zero_copy_batch,
             is_udf=True,
+            disable_block_shaping=disable_block_shaping,
             output_block_size_option=output_block_size_option,
         )
 
@@ -298,10 +307,12 @@ def plan_udf_map_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
+        ref_bundler=ref_bundler,
         min_rows_per_bundle=op._min_rows_per_bundled_input,
         ray_remote_args_fn=op._ray_remote_args_fn,
         ray_remote_args=op._ray_remote_args,
         per_block_limit=op._per_block_limit,
+        supports_fusion=supports_fusion,
     )
 
 

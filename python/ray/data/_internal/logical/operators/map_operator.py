@@ -1,7 +1,7 @@
 import functools
 import inspect
 import logging
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import (
@@ -13,6 +13,9 @@ from ray.data._internal.logical.operators.one_to_one_operator import AbstractOne
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import Expr, StarExpr
 from ray.data.preprocessor import Preprocessor
+
+if TYPE_CHECKING:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +179,7 @@ class MapBatches(AbstractUDFMap):
         udf_modifying_row_count: bool = False,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        enforce_input_output_block_size: bool = False,
     ):
         super().__init__(
             "MapBatches",
@@ -194,6 +198,7 @@ class MapBatches(AbstractUDFMap):
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
         self._udf_modifying_row_count = udf_modifying_row_count
+        self._enforce_input_output_block_size = enforce_input_output_block_size
 
     def can_modify_num_rows(self) -> bool:
         return self._udf_modifying_row_count
