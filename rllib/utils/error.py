@@ -41,14 +41,13 @@ ERR_MSG_NO_GPUS = """Found {} GPUs on your machine (GPU devices found: {})! If y
     1 by default for your particular RL algorithm."""
 
 ERR_MSG_INVALID_ENV_DESCRIPTOR = """The env string you provided ('{}') is:
-a) Not a supported or -installed environment.
+a) Not a supported or an installed environment.
 b) Not a tune-registered environment creator.
 c) Not a valid env class string.
 
 Try one of the following:
-a) For Atari support: `pip install gym[atari] autorom[accept-rom-license]`.
-b) To register your custom env, do `from ray import tune;
-   tune.register_env('[name]', lambda cfg: [return env obj from here using cfg])`.
+a) For Atari support: `pip install gymnasium[atari]` and prefix the environment name with `ale_py:`, for example, `"ale_py:ALE/Pong-v5"`.
+b) To register your custom env, do `from ray import tune; tune.register_env('[name]', lambda cfg: [return env obj from here using cfg])`.
    Then in your config, do `config.environment(env='[name]').
 c) Make sure you provide a fully qualified classpath, e.g.:
    `ray.rllib.examples.envs.classes.repeat_after_me_env.RepeatAfterMeEnv`

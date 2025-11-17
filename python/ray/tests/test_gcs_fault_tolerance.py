@@ -1258,11 +1258,10 @@ def test_mark_job_finished_rpc_retry_and_idempotency(shutdown_only, monkeypatch)
     Uses RPC failure injection to simulate network retry scenarios.
     """
     # Inject RPC failures for MarkJobFinished - simulate network failures
-    # Format: method_name=max_failures:request_failure_prob:response_failure_prob
     # We inject request failures to force retries and test idempotency
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "ray::rpc::JobInfoGcsService.grpc_client.MarkJobFinished=3:50:0",
+        "ray::rpc::JobInfoGcsService.grpc_client.MarkJobFinished=3:50:0:0",
     )
 
     ray.init(num_cpus=1)
