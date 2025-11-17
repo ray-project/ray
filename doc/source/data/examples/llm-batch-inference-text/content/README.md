@@ -354,32 +354,6 @@ Use the Ray Dashboard to identify bottlenecks and adjust parameters.
 For performance tuning, see the [Ray Data performance guide](https://docs.ray.io/en/latest/data/performance-tips.html). To configure your inference engine, see the [vLLM configuration options](https://docs.vllm.ai/en/latest/serving/engine_args.html).
 
 
-## Save results
-
-After processing, save the results to a persistent storage location such as S3 or local disk.
-
-
-```python
-# Save the processed dataset to Parquet format.
-# Replace this path with your desired output location.
-output_path_small = "local:///tmp/processed_customers_small"
-output_path_large = "local:///tmp/processed_customers_large"
-
-print(f"Saving small processed dataset to {output_path_small}...")
-processed_small.write_parquet(output_path_small)
-print("Saved successfully.")
-
-print(f"Saving large processed dataset to {output_path_large}...")
-processed_large.write_parquet(output_path_large)
-print("Saved successfully.")
-
-# Alternatively, save as CSV:
-# processed_small.write_csv(output_path_small)
-# processed_large.write_csv(output_path_large)
-```
-
-For more information, see [Saving Data](https://docs.ray.io/en/latest/data/saving-data.html)
-
 ## Summary
 
 In this notebook, you built an end-to-end batch pipeline: loading a customer dataset from S3 into a Ray Dataset, configuring a vLLM processor for Llama 3.1 8 B, and adding simple pre/post-processing to normalize dates. You validated the flow on 10,000 rows, scaled to 1M+ records, monitored progress in the Ray Dashboard, and saved the results to persistent storage.

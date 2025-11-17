@@ -391,34 +391,6 @@ Use the Ray Dashboard to identify bottlenecks and adjust parameters.
 For performance tuning, see the [Ray Data performance guide](https://docs.ray.io/en/latest/data/performance-tips.html). To configure your inference engine, see the [vLLM configuration options](https://docs.vllm.ai/en/latest/serving/engine_args.html).
 
 
-## Save results
-
-After processing, save the results to a persistent storage location such as S3 or local disk.
-
-
-
-```python
-# Save the processed dataset to JSON format (better for text outputs).
-# Replace this path with your desired output location.
-output_path_small = "local:///tmp/processed_captions_small"
-output_path_large = "local:///tmp/processed_captions_large"
-
-print(f"Saving small processed dataset to {output_path_small}...")
-processed_small.write_json(output_path_small)
-print("Saved successfully.")
-
-print(f"Saving large processed dataset to {output_path_large}...")
-processed_large.write_json(output_path_large)
-print("Saved successfully.")
-
-# Alternatively, save as Parquet for better compression:
-# processed_small.write_parquet(output_path_small)
-# processed_large.write_parquet(output_path_large)
-```
-
-For more information, see [Saving Data](https://docs.ray.io/en/latest/data/saving-data.html).
-
-
 ## Summary
 
 In this notebook, you built an end-to-end vision batch inference pipeline: loading an HuggingFace image dataset into Ray Dataset, configuring a vLLM processor for the Qwen2.5-VL vision-language model, and adding pre/post-processing to generate image captions. You validated the flow on 100,000 images, scaled to 100k images, monitored progress in the Ray Dashboard, and saved the results to persistent storage.
