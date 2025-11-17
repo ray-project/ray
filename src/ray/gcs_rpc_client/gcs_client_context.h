@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,25 +26,38 @@ class GcsRpcClient;
 
 namespace gcs {
 
-/// \class GcsClientContext
-/// Minimal interface providing access to RPC client and subscriber.
-/// This allows accessor implementations to access GCS services without
-/// depending on the full GcsClient class, breaking circular dependencies.
+/**
+  @class GcsClientContext
+  Minimal interface providing access to RPC client and subscriber. This allows accessor
+  implementations to access GCS services without depending on the full GcsClient class,
+  breaking circular dependencies.
+*/
 class GcsClientContext {
  public:
   virtual ~GcsClientContext() = default;
 
-  /// Get the GCS subscriber for pubsub operations.
+  /**
+   Get the GCS subscriber for pubsub operations.
+  */
   virtual pubsub::GcsSubscriber &GetGcsSubscriber() = 0;
 
-  /// Get the GCS RPC client for making RPC calls.
+  /**
+   Get the GCS RPC client for making RPC calls.
+  */
   virtual rpc::GcsRpcClient &GetGcsRpcClient() = 0;
 
-  /// Check if the RPC client has been initialized
+  /**
+   Check if the RPC client has been initialized
+  */
   virtual bool IsInitialized() const = 0;
 
-  /// Setters
+  /**
+   Set the GCS RPC client for making RPC calls.
+  */
   virtual void SetGcsRpcClient(std::shared_ptr<rpc::GcsRpcClient> client) = 0;
+  /**
+   Set the GCS subscriber for pubsub operations.
+  */
   virtual void SetGcsSubscriber(std::unique_ptr<pubsub::GcsSubscriber> subscriber) = 0;
 
   virtual void Disconnect() = 0;
