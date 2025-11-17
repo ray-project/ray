@@ -1,11 +1,13 @@
-from typing import Dict, Optional
+from typing import List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
     LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
+    ProjectionPassThroughBehavior,
 )
+from ray.data._internal.logical.operators.map_operator import Project
 
 
 class NAry(LogicalOperator):
@@ -41,43 +43,25 @@ class Zip(NAry, LogicalOperatorSupportsProjectionPassThrough):
             total_num_outputs = max(total_num_outputs, num_outputs)
         return total_num_outputs
 
+    def get_referenced_keys(self) -> Optional[List[List[str]]]:
+        """Return empty lists for each input (Zip has no keys)."""
+        return [[] for _ in self.input_dependencies]
+
     def apply_projection_pass_through(
         self,
-        column_rename_map: Dict[str, str],
+        renamed_keys: Optional[List[List[str]]],
+        upstream_projects: List["Project"],
     ) -> LogicalOperator:
+        """Recreate Zip with upstream projects.
 
-        new_input_ops = []
-        for input_op in self.input_dependencies:
-            # Get the schema of this input to determine which columns it contributes
-            schema = input_op.infer_schema()
-            if schema is None:
-                # cannot pass projections if schema is unknown.
-                new_input_ops.append(input_op)
-                continue
+        Args:
+            renamed_keys: Not used for Zip (no keys to rename)
+            upstream_projects: List of projects, one per input
+        """
+        return Zip(*upstream_projects)
 
-            # Calling .names works for both Pandas + Pyarrow schema
-            input_schema_cols = set(input_op.infer_schema().names)
-
-            # Only push down columns that exist in this input
-            columns_to_pass_through = [
-                old_col for old_col in column_rename_map if old_col in input_schema_cols
-            ]
-
-            if columns_to_pass_through:
-                # There exists columns referenced in the input_op that can
-                # be pass to, so we create an upstream project operator.
-                upstream_project = self._create_upstream_project(
-                    columns=columns_to_pass_through,
-                    column_rename_map=column_rename_map,
-                    input_op=input_op,
-                )
-                new_input_ops.append(upstream_project)
-            else:
-                # There are no columns that this input_op references, projection
-                # cannot be done.
-                new_input_ops.append(input_op)
-
-        return Zip(*new_input_ops)
+    def projection_passthrough_behavior(self) -> ProjectionPassThroughBehavior:
+        return ProjectionPassThroughBehavior.PASSTHROUGH_WITH_CONDITIONAL
 
 
 class Union(
@@ -104,19 +88,14 @@ class Union(
 
     def apply_projection_pass_through(
         self,
-        column_rename_map: Dict[str, str],
+        renamed_keys: Optional[List[List[str]]],
+        upstream_projects: List["Project"],
     ) -> LogicalOperator:
+        """Recreate Union with upstream projects for all branches."""
+        return Union(*upstream_projects)
 
-        new_input_ops = []
-        for input_op in self.input_dependencies:
-            upstream_project = self._create_upstream_project(
-                columns_to_rename=list(column_rename_map.keys()),
-                column_rename_map=column_rename_map,
-                input_op=input_op,
-            )
-            new_input_ops.append(upstream_project)
-
-        return Union(*new_input_ops)
+    def projection_passthrough_behavior(self) -> ProjectionPassThroughBehavior:
+        return ProjectionPassThroughBehavior.PASSTHROUGH_INTO_BRANCHES
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Union allows pushing filter into each branch

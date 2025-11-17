@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
 from .operator import Operator
 from ray.data.block import BlockMetadata
-from ray.data.expressions import Expr, col
+from ray.data.expressions import Expr
 
 if TYPE_CHECKING:
     from ray.data._internal.logical.operators.map_operator import Project
@@ -117,81 +117,41 @@ class LogicalOperatorSupportsProjectionPassThrough(LogicalOperator):
     that allow projections to *pass through* them.
     """
 
-    def supports_projection_pass_through(self) -> bool:
-        return True
+    @abstractmethod
+    def projection_passthrough_behavior(self) -> "ProjectionPassThroughBehavior":
+        """Returns the projection passthrough behavior for this operator."""
+        pass
 
-    def _rename_keys(
-        self,
-        old_keys: List[str],
-        column_rename_map: Dict[str, str],
-    ) -> List[str]:
+    def get_referenced_keys(self) -> Optional[List[List[str]]]:
+        """Returns columns/keys that this operator specifically references (e.g., sort keys, partition keys).
 
-        new_keys = []
-        for old_key in old_keys:
-            new_key = column_rename_map.get(old_key, old_key)
-            new_keys.append(new_key)
-        return new_keys
+        Returns List[List[str]] indexed by input dependency:
+        - Single-input operators: [[keys]] or None
+        - Multi-input operators: [[left_keys], [right_keys]] or None
 
-    def get_referenced_columns(self) -> Optional[List[str]]:
+        Returns None if the operator doesn't reference any specific columns/keys.
+        """
         return None
 
-    def _create_upstream_project(
-        self,
-        columns_to_rename: List[str],
-        column_rename_map: Dict[str, str],
-        input_op: LogicalOperator,
-    ) -> "Project":
-        from ray.data._internal.logical.operators.map_operator import Project
-
-        # NOTE: This can happen when we union the same dataset. The same
-        # dataset is only shallowed copied, so we safeguard removing
-        # output dependencies more than once.
-        if self in input_op.output_dependencies:
-            input_op.output_dependencies.remove(self)
-
-        new_exprs = []
-        for old_col in columns_to_rename:
-            if old_col in column_rename_map:
-                new_col = column_rename_map[old_col]
-                new_exprs.append(col(old_col).alias(new_col))
-            else:
-                new_exprs.append(col(old_col))
-
-        return Project(
-            input_op=input_op,
-            exprs=new_exprs,
-            compute=None,
-            ray_remote_args=None,
-        )
-
-    def _create_downstream_project(
-        self,
-        column_rename_map: Dict[str, str],
-        input_op: LogicalOperator,
-    ) -> "Project":
-        from ray.data._internal.logical.operators.map_operator import Project
-
-        # NOTE: This can happen when we union the same dataset. The same
-        # dataset is only shallowed copied, so we safeguard removing
-        # output dependencies more than once.
-        if self in input_op.output_dependencies:
-            input_op.output_dependencies.remove(self)
-
-        new_exprs = []
-        for new_col in column_rename_map.values():
-            new_exprs.append(col(new_col))
-
-        return Project(
-            input_op=input_op,
-            exprs=new_exprs,
-            compute=None,
-            ray_remote_args=None,
-        )
-
+    @abstractmethod
     def apply_projection_pass_through(
         self,
-        column_rename_map: Dict[str, str],
+        renamed_keys: Optional[List[List[str]]],
+        upstream_projects: List["Project"],
     ) -> LogicalOperator:
+        """Apply projection pass-through by recreating the operator.
+
+        Args:
+            renamed_keys: The renamed version of operator-specific keys, indexed by input.
+                         Single-input: [[renamed_partition_keys]] or None
+                         Multi-input: [[left_keys], [right_keys], ...] or None
+            upstream_projects: List of Project operators to place before this operator.
+                              Single-input operators use upstream_projects[0].
+                              Multi-input operators use all elements.
+
+        Returns:
+            The new operator: upstream_projects -> new_op
+        """
         raise NotImplementedError
 
 
@@ -234,6 +194,22 @@ class PredicatePassThroughBehavior(Enum):
 
     # Predicate can be conditionally pushed based on columns (e.g., Join)
     CONDITIONAL = "conditional"
+
+
+class ProjectionPassThroughBehavior(Enum):
+    """Defines how projections can be passed through an operator.
+    See the projection_pushdown.py rules for more details on how this
+    is used.
+    """
+
+    # Projection can be pushed through into all branches (e.g., StreamingRepartition, RandomShuffle, Union).
+    PASSTHROUGH_INTO_BRANCHES = "passthrough_into_branches"
+
+    # Projection can be pushed through with key substitution (e.g., Sort, Repartition).
+    PASSTHROUGH_WITH_SUBSTITUTION = "passthrough_with_substitution"
+
+    # Projection handling depends on which branch columns come from (e.g., Join, Zip).
+    PASSTHROUGH_WITH_CONDITIONAL = "passthrough_with_conditional"
 
 
 class LogicalOperatorSupportsPredicatePassThrough(ABC):

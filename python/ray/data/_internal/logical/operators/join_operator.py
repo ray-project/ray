@@ -1,15 +1,17 @@
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
     LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
+    ProjectionPassThroughBehavior,
 )
 from ray.data._internal.logical.operators.n_ary_operator import NAry
 
 if TYPE_CHECKING:
+    from ray.data._internal.logical.operators.map_operator import Project
     from ray.data.dataset import Schema
     from ray.data.expressions import Expr
 
@@ -93,79 +95,44 @@ class Join(
         self._partition_size_hint = partition_size_hint
         self._aggregator_ray_remote_args = aggregator_ray_remote_args
 
+    def get_referenced_keys(self) -> Optional[List[List[str]]]:
+        """Return join keys for left and right sides as List[List[str]]."""
+        return [list(self._left_key_columns), list(self._right_key_columns)]
+
     def apply_projection_pass_through(
         self,
-        column_rename_map: Dict[str, str],
+        renamed_keys: Optional[List[List[str]]],
+        upstream_projects: List["Project"],
     ) -> LogicalOperator:
+        """Recreate Join with upstream projects and renamed keys.
 
-        left_op, right_op = self.input_dependencies
-        left_schema, right_schema = left_op.infer_schema(), right_op.infer_schema()
+        Args:
+            renamed_keys: [[left_renamed_keys], [right_renamed_keys]] or None
+            upstream_projects: [left_project, right_project]
+        """
+        # Extract left and right renamed keys (index by input)
+        left_new_keys = (
+            renamed_keys[0] if renamed_keys else list(self._left_key_columns)
+        )
+        right_new_keys = (
+            renamed_keys[1] if renamed_keys else list(self._right_key_columns)
+        )
 
-        if left_schema is None or right_schema is None:
-            # Cannot pass projection through this op if schema is unknown.
-            return self
-
-        # When pushing projections through join, we must ensure join key columns
-        # are preserved on both sides, even if they're not in the output projection.
-        # This is necessary because the join operation needs these columns to perform the join.
-
-        # Collect all required columns for left side (output columns + join keys)
-        left_key_columns_set = set(self._left_key_columns)
-        left_required_columns = (
-            set(column_rename_map.keys()) | left_key_columns_set
-        ) & left_schema.names
-        new_left_op = left_op
-        if left_required_columns:
-            left_upstream_project = self._create_upstream_project(
-                columns=list(left_required_columns),
-                column_rename_map=column_rename_map,
-                input_op=left_op,
-            )
-            left_new_keys = self._rename_keys(
-                old_keys=list(self._left_key_columns),
-                column_rename_map=column_rename_map,
-            )
-            new_left_op = left_upstream_project
-
-        # Collect all required columns for right side (output columns + join keys)
-        right_key_columns_set = set(self._right_key_columns)
-        right_required_columns = (
-            set(column_rename_map.keys()) | right_key_columns_set
-        ) & right_schema.names
-        new_right_op = right_op
-        if right_required_columns:
-            right_upstream_project = self._create_upstream_project(
-                columns=list(right_required_columns),
-                column_rename_map=column_rename_map,
-                input_op=right_op,
-            )
-            right_new_keys = self._rename_keys(
-                old_keys=list(self._right_key_columns),
-                column_rename_map=column_rename_map,
-            )
-            new_right_op = right_upstream_project
-
-        join_op = Join(
-            left_input_op=new_left_op,
-            right_input_op=new_right_op,
-            join_type=self._join_type,
-            left_key_columns=left_new_keys,
-            right_key_columns=right_new_keys,
+        return Join(
+            left_input_op=upstream_projects[0],
+            right_input_op=upstream_projects[1],
+            join_type=self._join_type.value,
+            left_key_columns=tuple(left_new_keys),
+            right_key_columns=tuple(right_new_keys),
             num_partitions=self._num_outputs,
             left_columns_suffix=self._left_columns_suffix,
             right_columns_suffix=self._right_columns_suffix,
             partition_size_hint=self._partition_size_hint,
             aggregator_ray_remote_args=self._aggregator_ray_remote_args,
         )
-        if (
-            right_key_columns_set <= column_rename_map.keys()
-            and left_key_columns_set <= column_rename_map.keys()
-        ):
-            return join_op
-        else:
-            return self._create_downstream_project(
-                column_rename_map=column_rename_map, input_op=join_op
-            )
+
+    def projection_passthrough_behavior(self) -> ProjectionPassThroughBehavior:
+        return ProjectionPassThroughBehavior.PASSTHROUGH_WITH_CONDITIONAL
 
     @staticmethod
     def _validate_schemas(

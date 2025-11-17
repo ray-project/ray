@@ -403,16 +403,16 @@ class StreamingRepartition(AbstractMap, LogicalOperatorSupportsProjectionPassThr
 
     def apply_projection_pass_through(
         self,
-        column_rename_map: Dict[str, str],
+        renamed_keys: Optional[List[List[str]]],
+        upstream_projects: List["Project"],
     ) -> LogicalOperator:
-
-        upstream_project = self._create_upstream_project(
-            columns=list(column_rename_map.keys()),
-            column_rename_map=column_rename_map,
-            input_op=self.input_dependencies[0],
-        )
-
+        """Recreate StreamingRepartition with projection pass-through."""
         return StreamingRepartition(
-            input_op=upstream_project,
+            input_op=upstream_projects[0],
             target_num_rows_per_block=self._target_num_rows_per_block,
         )
+
+    def projection_passthrough_behavior(self):
+        from ray.data._internal.logical.interfaces import ProjectionPassThroughBehavior
+
+        return ProjectionPassThroughBehavior.PASSTHROUGH_INTO_BRANCHES
