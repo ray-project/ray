@@ -29,7 +29,8 @@
 #include "ray/common/status.h"
 #include "ray/util/env.h"
 #include "ray/util/filesystem.h"
-#include "ray/util/util.h"
+#include "ray/util/path_utils.h"
+#include "ray/util/time.h"
 
 using namespace testing;  // NOLINT
 using json = nlohmann::json;
@@ -247,8 +248,7 @@ TEST(PrintLogTest, TestJSONLogging) {
 TEST(PrintLogTest, LogTestWithInit) {
   // Test empty app name.
   const std::string log_dir = ray::GetUserTempDir();
-  const std::string log_filepath =
-      RayLog::GetLogFilepathFromDirectory(log_dir, /*app_name=*/"");
+  const std::string log_filepath = GetLogFilepathFromDirectory(log_dir, /*app_name=*/"");
   RayLog::StartRayLog(/*app_name=*/"", RayLogLevel::DEBUG, log_filepath);
   PrintLog();
   RayLog::ShutDownRayLog();
@@ -258,7 +258,7 @@ TEST(PrintLogTest, LogTestWithInit) {
 TEST(LogPerfTest, PerfTest) {
   const std::string app_name = "/fake/path/to/appdire/LogPerfTest";
   const std::string log_dir = ray::GetUserTempDir();
-  const std::string log_filepath = RayLog::GetLogFilepathFromDirectory(log_dir, app_name);
+  const std::string log_filepath = GetLogFilepathFromDirectory(log_dir, app_name);
   RayLog::StartRayLog(app_name, RayLogLevel::ERROR, log_filepath);
   int rounds = 10;
 

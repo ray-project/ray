@@ -1,6 +1,6 @@
 import abc
-from collections import defaultdict
 import inspect
+from collections import defaultdict
 from typing import (
     Any,
     Callable,
@@ -19,7 +19,7 @@ import tree
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils import force_list
-from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic, override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import BatchedNdArray
@@ -178,7 +178,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 environment if `self` is the first connector piece in the pipeline or
                 from the previous connector piece in the pipeline).
             input_action_space: The input action space (either coming from the
-                environment if `self is the first connector piece in the pipeline or
+                environment if `self` is the first connector piece in the pipeline or
                 from the previous connector piece in the pipeline).
 
         Returns:
@@ -207,7 +207,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 environment if `self` is the first connector piece in the pipeline or
                 from the previous connector piece in the pipeline).
             input_action_space: The input action space (either coming from the
-                environment if `self is the first connector piece in the pipeline or
+                environment if `self` is the first connector piece in the pipeline or
                 from the previous connector piece in the pipeline).
 
         Returns:

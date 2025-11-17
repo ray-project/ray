@@ -3,7 +3,7 @@ import sys
 import pytest
 
 import ray
-from ray._private.usage.usage_lib import TagKey
+from ray._common.usage.usage_lib import TagKey
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     get_or_create_telemetry_agent,
 )

@@ -8,13 +8,13 @@
 
 # TODO (sven): Add LSTM to this benchmark, make multi-agent, make multi-GPU.
 
+import gymnasium as gym
+import numpy as np
+
+from ray import tune
 from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
-from ray import tune
-
-import gymnasium as gym
-import numpy as np
 
 
 class EnlargeObs(gym.ObservationWrapper):
@@ -40,7 +40,6 @@ parser = add_rllib_example_script_args(
     default_reward=450.0,
     default_timesteps=2000000,
 )
-parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()

@@ -10,6 +10,7 @@ from ray._private.test_utils import wait_until_server_available
 from ray.dashboard.tests.conftest import *  # noqa
 
 os.environ["RAY_enable_export_api_write"] = "1"
+os.environ["RAY_enable_core_worker_ray_event_to_aggregator"] = "0"
 
 
 @pytest.mark.asyncio

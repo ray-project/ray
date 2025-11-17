@@ -8,7 +8,7 @@ from ray.data.iterator import DataIterator
 if TYPE_CHECKING:
     import pyarrow
 
-    from ray.data import Dataset
+    from ray.data.dataset import Dataset
 
 
 class DataIteratorImpl(DataIterator):

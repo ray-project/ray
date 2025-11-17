@@ -62,7 +62,7 @@ class XGBoostTrainer(DataParallelTrainer):
                 params,
                 dtrain=dtrain,
                 evals=[(deval, "validation")],
-                num_boost_round=10,
+                num_boost_round=1,
                 callbacks=[RayTrainReportCallback()],
             )
 
@@ -71,15 +71,10 @@ class XGBoostTrainer(DataParallelTrainer):
         trainer = XGBoostTrainer(
             train_fn_per_worker,
             datasets={"train": train_ds, "validation": eval_ds},
-            scaling_config=ray.train.ScalingConfig(num_workers=4),
+            scaling_config=ray.train.ScalingConfig(num_workers=2),
         )
         result = trainer.fit()
         booster = RayTrainReportCallback.get_model(result.checkpoint)
-
-    .. testoutput::
-        :hide:
-
-        ...
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
@@ -108,12 +103,8 @@ class XGBoostTrainer(DataParallelTrainer):
         dataset_config: The configuration for ingesting the input ``datasets``.
             By default, all the Ray Dataset are split equally across workers.
             See :class:`~ray.train.DataConfig` for more details.
-        resume_from_checkpoint: A checkpoint to resume training from.
-            This checkpoint can be accessed from within ``train_loop_per_worker``
-            by calling ``ray.train.get_checkpoint()``.
-        metadata: Dict that should be made available via
-            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
-            for checkpoints saved from this Trainer. Must be JSON-serializable.
+        resume_from_checkpoint: [Deprecated]
+        metadata: [Deprecated]
     """
 
     def __init__(

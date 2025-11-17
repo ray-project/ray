@@ -1,11 +1,14 @@
 import os
 import sys
-import pytest
 from unittest.mock import patch
 
+import pytest
+
 import ray
-from ray._private.accelerators import AMDGPUAcceleratorManager
-from ray._private.accelerators import get_accelerator_manager_for_resource
+from ray._private.accelerators import (
+    AMDGPUAcceleratorManager,
+    get_accelerator_manager_for_resource,
+)
 
 
 @pytest.mark.parametrize(
@@ -77,6 +80,22 @@ def test_get_current_process_visible_accelerator_ids(
     assert (
         AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() is None
     )
+
+
+def test_hip_cuda_env_var_get_current_process_visible_accelerator_ids(monkeypatch):
+    # HIP and CUDA visible env vars are set and equal
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0,1,2")
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1,2")
+    assert AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
+        "0",
+        "1",
+        "2",
+    ]
+
+    # HIP and CUDA visible env vars are set and not equal
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1,3")
+    with pytest.raises(ValueError):
+        AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids()
 
 
 def test_set_current_process_visible_accelerator_ids():

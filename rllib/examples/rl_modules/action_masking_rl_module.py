@@ -21,7 +21,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-env-runners 2`
+`python [script file name].py --num-env-runners 2`
 
 Control the number of `EnvRunner`s with the `--num-env-runners` flag. This
 will increase the sampling speed.
@@ -71,12 +71,10 @@ from ray.rllib.examples.envs.classes.action_mask_env import ActionMaskEnv
 from ray.rllib.examples.rl_modules.classes.action_masking_rlm import (
     ActionMaskingTorchRLModule,
 )
-
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-
 
 parser = add_rllib_example_script_args(
     default_iters=10,

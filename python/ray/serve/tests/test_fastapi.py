@@ -310,7 +310,10 @@ def test_fastapi_features(serve_instance):
         "db",
         "app.state",
     ]
-    assert open(resp.json()["file_path"]).read() == "hello"
+    wait_for_condition(
+        lambda: open(resp.json()["file_path"]).read() == "hello",
+        timeout=10,
+    )
 
     resp = httpx.request(
         "GET",

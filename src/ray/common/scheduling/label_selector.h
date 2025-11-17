@@ -14,19 +14,25 @@
 
 #pragma once
 
+#include <algorithm>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "google/protobuf/map.h"
+#include "ray/common/constants.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
 enum class LabelSelectorOperator {
+  LABEL_OPERATOR_UNSPECIFIED = 0,
   // This is to support equality or in semantics.
-  LABEL_IN = 0,
+  LABEL_IN = 1,
   // This is to support not equal or not in semantics.
-  LABEL_NOT_IN = 1
+  LABEL_NOT_IN = 2
 };
 
 // Defines requirements for a label key and value.
@@ -38,6 +44,15 @@ class LabelConstraint {
                   LabelSelectorOperator op,
                   absl::flat_hash_set<std::string> values)
       : key_(std::move(key)), op_(op), values_(std::move(values)) {}
+
+  // Constructor to parse LabelConstraint data type from proto message.
+  explicit LabelConstraint(const rpc::LabelSelectorConstraint &proto)
+      : key_(proto.label_key()),
+        op_(static_cast<LabelSelectorOperator>(proto.operator_())) {
+    for (const auto &value : proto.label_values()) {
+      values_.insert(value);
+    }
+  }
 
   const std::string &GetLabelKey() const { return key_; }
 
@@ -57,8 +72,30 @@ class LabelSelector {
  public:
   LabelSelector() = default;
 
-  explicit LabelSelector(
-      const google::protobuf::Map<std::string, std::string> &label_selector);
+  // Constructor for parsing user-input label selector string maps to LabelSelector class.
+  template <typename MapType>
+  explicit LabelSelector(const MapType &label_selector) {
+    // Label selector keys and values are validated before construction in
+    // `prepare_label_selector`.
+    // https://github.com/ray-project/ray/blob/feb1c6180655b69fc64c5e0c25cc56cbe96e0b26/python/ray/_raylet.pyx#L782C1-L784C70
+    for (const auto &[key, value] : label_selector) {
+      AddConstraint(key, value);
+    }
+  }
+
+  // Constructor to parse LabelSelector data type from proto message.
+  explicit LabelSelector(const rpc::LabelSelector &proto) {
+    constraints_.reserve(proto.label_constraints_size());
+    for (const auto &proto_constraint : proto.label_constraints()) {
+      constraints_.emplace_back(proto_constraint);
+    }
+  }
+
+  // Convert LabelSelector object to rpc::LabelSelector proto message.
+  void ToProto(rpc::LabelSelector *proto) const;
+
+  // Convert the LabelSelector object back into a string map.
+  google::protobuf::Map<std::string, std::string> ToStringMap() const;
 
   void AddConstraint(const std::string &key, const std::string &value);
 
@@ -68,11 +105,52 @@ class LabelSelector {
 
   const std::vector<LabelConstraint> &GetConstraints() const { return constraints_; }
 
+  std::string DebugString() const;
+
   std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>
   ParseLabelSelectorValue(const std::string &key, const std::string &value);
 
  private:
   std::vector<LabelConstraint> constraints_;
 };
+
+inline bool operator==(const LabelConstraint &lhs, const LabelConstraint &rhs) {
+  return lhs.GetLabelKey() == rhs.GetLabelKey() &&
+         lhs.GetOperator() == rhs.GetOperator() &&
+         lhs.GetLabelValues() == rhs.GetLabelValues();
+}
+
+inline bool operator==(const LabelSelector &lhs, const LabelSelector &rhs) {
+  return lhs.GetConstraints() == rhs.GetConstraints();
+}
+
+template <typename H>
+H AbslHashValue(H h, const LabelSelector &label_selector) {
+  h = H::combine(std::move(h), label_selector.GetConstraints().size());
+  for (const auto &constraint : label_selector.GetConstraints()) {
+    h = H::combine(std::move(h),
+                   constraint.GetLabelKey(),
+                   static_cast<int>(constraint.GetOperator()));
+
+    for (const auto &value : constraint.GetLabelValues()) {
+      h = H::combine(std::move(h), value);
+    }
+  }
+  return h;
+}
+
+inline std::optional<absl::flat_hash_set<std::string>> GetHardNodeAffinityValues(
+    const LabelSelector &label_selector) {
+  const std::string hard_affinity_key(kLabelKeyNodeID);
+
+  for (const auto &constraint : label_selector.GetConstraints()) {
+    if (constraint.GetLabelKey() == hard_affinity_key) {
+      if (constraint.GetOperator() == LabelSelectorOperator::LABEL_IN) {
+        return constraint.GetLabelValues();
+      }
+    }
+  }
+  return std::nullopt;
+}
 
 }  // namespace ray

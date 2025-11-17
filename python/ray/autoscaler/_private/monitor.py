@@ -14,7 +14,12 @@ from typing import Any, Callable, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
-import ray._private.utils
+from ray._common.network_utils import build_address, parse_address
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BACKUP_COUNT,
+    LOGGING_ROTATE_BYTES,
+)
+from ray._private import logging_utils
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
 from ray._raylet import GcsClient
@@ -40,7 +45,6 @@ from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_put,
 )
-from ray._private import logging_utils
 
 try:
     import prometheus_client
@@ -146,21 +150,17 @@ class Monitor:
         # TODO: eventually plumb ClusterID through to here
         self.gcs_client = GcsClient(address=self.gcs_address)
 
-        if monitor_ip:
-            monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
-            self.gcs_client.internal_kv_put(
-                b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
-            )
         _initialize_internal_kv(self.gcs_client)
+
         if monitor_ip:
-            monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
+            monitor_addr = build_address(monitor_ip, AUTOSCALER_METRIC_PORT)
             self.gcs_client.internal_kv_put(
                 b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
             )
         self._session_name = self.get_session_name(self.gcs_client)
         logger.info(f"session_name: {self._session_name}")
         worker.mode = 0
-        head_node_ip = self.gcs_address.split(":")[0]
+        head_node_ip = parse_address(self.gcs_address)[0]
 
         self.load_metrics = LoadMetrics()
         self.last_avail_resources = None
@@ -243,6 +243,9 @@ class Monitor:
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
 
+        # TODO(jinbum-kim): Still needed since some fields aren't in cluster_resource_state.
+        # Remove after v1 autoscaler fully migrates to get_cluster_resource_state().
+        # ref: https://github.com/ray-project/ray/pull/57130
         response = self.gcs_client.get_all_resource_usage(timeout=60)
         resources_batch_data = response.resource_usage_data
         log_resource_batch_data_if_desired(resources_batch_data)
@@ -259,41 +262,41 @@ class Monitor:
         # Tell the readonly node provider what nodes to report.
         if self.readonly_config:
             new_nodes = []
-            for msg in list(resources_batch_data.batch):
+            for msg in list(cluster_resource_state.node_states):
                 node_id = msg.node_id.hex()
-                new_nodes.append((node_id, msg.node_manager_address))
+                new_nodes.append((node_id, msg.node_ip_address))
             self.autoscaler.provider._set_nodes(new_nodes)
 
         mirror_node_types = {}
-        cluster_full = False
+        legacy_cluster_full_detected = any(
+            getattr(entry, "cluster_full_of_actors_detected", False)
+            for entry in resources_batch_data.batch
+        )
+        cluster_full = legacy_cluster_full_detected or getattr(
+            response, "cluster_full_of_actors_detected_by_gcs", False
+        )
         if (
             hasattr(response, "cluster_full_of_actors_detected_by_gcs")
             and response.cluster_full_of_actors_detected_by_gcs
         ):
             # GCS has detected the cluster full of actors.
             cluster_full = True
-        for resource_message in resources_batch_data.batch:
+        for resource_message in cluster_resource_state.node_states:
             node_id = resource_message.node_id
             # Generate node type config based on GCS reported node list.
             if self.readonly_config:
                 # Keep prefix in sync with ReadonlyNodeProvider.
                 node_type = format_readonly_node_type(node_id.hex())
                 resources = {}
-                for k, v in resource_message.resources_total.items():
+                for k, v in resource_message.total_resources.items():
                     resources[k] = v
                 mirror_node_types[node_type] = {
                     "resources": resources,
                     "node_config": {},
                     "max_workers": 1,
                 }
-            if (
-                hasattr(resource_message, "cluster_full_of_actors_detected")
-                and resource_message.cluster_full_of_actors_detected
-            ):
-                # A worker node has detected the cluster full of actors.
-                cluster_full = True
-            total_resources = dict(resource_message.resources_total)
-            available_resources = dict(resource_message.resources_available)
+            total_resources = dict(resource_message.total_resources)
+            available_resources = dict(resource_message.available_resources)
 
             waiting_bundles, infeasible_bundles = parse_resource_demands(
                 resources_batch_data.resource_load_by_shape
@@ -319,7 +322,7 @@ class Monitor:
                 else:
                     ip = node_id.hex()
             else:
-                ip = resource_message.node_manager_address
+                ip = resource_message.node_ip_address
 
             idle_duration_s = 0.0
             if node_id in ray_nodes_idle_duration_ms_by_id:
@@ -664,18 +667,18 @@ if __name__ == "__main__":
         "--logging-rotate-bytes",
         required=False,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BYTES,
+        default=LOGGING_ROTATE_BYTES,
         help="Specify the max bytes for rotating "
         "log file, default is "
-        f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.",
+        f"{LOGGING_ROTATE_BYTES} bytes.",
     )
     parser.add_argument(
         "--logging-rotate-backup-count",
         required=False,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        default=LOGGING_ROTATE_BACKUP_COUNT,
         help="Specify the backup count of rotated log file, default is "
-        f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.",
+        f"{LOGGING_ROTATE_BACKUP_COUNT}.",
     )
     parser.add_argument(
         "--monitor-ip",

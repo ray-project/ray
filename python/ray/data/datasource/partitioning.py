@@ -1,4 +1,5 @@
 import posixpath
+import urllib.parse
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
@@ -278,6 +279,11 @@ class PathPartitionParser:
         """
         dirs = [d for d in dir_path.split("/") if d and (d.count("=") == 1)]
         kv_pairs = [d.split("=") for d in dirs] if dirs else []
+        # NOTE: PyArrow URL-encodes partition values when writing to cloud storage. To
+        #       ensure the values are consistent when you read them back, we need to
+        #       URL-decode them. See https://github.com/apache/arrow/issues/34905.
+        kv_pairs = [[key, urllib.parse.unquote(value)] for key, value in kv_pairs]
+
         field_names = self._scheme.field_names
         if field_names and kv_pairs:
             if len(kv_pairs) != len(field_names):
@@ -434,10 +440,11 @@ class PathPartitionFilter:
         """
         filtered_paths = paths
         if self._filter_fn is not None:
-            filtered_paths = [
-                path for path in paths if self._filter_fn(self._parser(path))
-            ]
+            filtered_paths = [path for path in paths if self.apply(path)]
         return filtered_paths
+
+    def apply(self, path: str) -> bool:
+        return self._filter_fn(self._parser(path))
 
     @property
     def parser(self) -> PathPartitionParser:

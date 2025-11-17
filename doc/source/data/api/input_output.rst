@@ -186,6 +186,16 @@ Databricks
 
    read_databricks_tables
 
+Snowflake
+---------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_snowflake
+   Dataset.write_snowflake
+
 Unity Catalog
 -------------
 
@@ -241,6 +251,15 @@ Lance
 
    read_lance
    Dataset.write_lance
+
+MCAP (Message Capture)
+----------------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_mcap
 
 ClickHouse
 ----------
@@ -400,7 +419,6 @@ MetadataProvider API
    datasource.FileMetadataProvider
    datasource.BaseFileMetadataProvider
    datasource.DefaultFileMetadataProvider
-   datasource.ParquetMetadataProvider
    datasource.FastFileMetadataProvider
 
 Shuffling API

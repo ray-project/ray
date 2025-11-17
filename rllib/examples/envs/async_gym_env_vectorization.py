@@ -19,7 +19,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack `
+`python [script file name].py `
 
 Use the `--vectorize-mode=BOTH` option to run both modes (SYNC and ASYNC)
 through Tune at the same time and get a better comparison of the throughputs
@@ -65,16 +65,15 @@ import time
 
 import gymnasium as gym
 
+from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray import tune
 
 parser = add_rllib_example_script_args(default_reward=60.0)
 parser.set_defaults(
-    enable_new_api_stack=True,
     env="CartPole-v1",
     num_envs_per_env_runner=6,
 )

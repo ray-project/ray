@@ -30,6 +30,7 @@ class FIFOBundleQueue(BundleQueue):
         self._bundle_to_nodes: Dict["RefBundle", List[_Node]] = defaultdict(deque)
 
         self._nbytes = 0
+        self._num_blocks = 0
         self._num_bundles = 0
 
     def __len__(self) -> int:
@@ -54,9 +55,10 @@ class FIFOBundleQueue(BundleQueue):
         self._bundle_to_nodes[bundle].append(new_node)
 
         self._nbytes += bundle.size_bytes()
+        self._num_blocks += len(bundle.block_refs)
         self._num_bundles += 1
 
-    def pop(self) -> "RefBundle":
+    def get_next(self) -> "RefBundle":
         """Return the first (left) bundle in the queue."""
         # Case 1: The queue is empty.
         if not self._head:
@@ -67,7 +69,10 @@ class FIFOBundleQueue(BundleQueue):
 
         return bundle
 
-    def peek(self) -> Optional["RefBundle"]:
+    def has_next(self) -> bool:
+        return self._num_bundles > 0
+
+    def peek_next(self) -> Optional["RefBundle"]:
         """Return the first (left) bundle in the queue without removing it."""
         if self._head is None:
             return None
@@ -105,13 +110,14 @@ class FIFOBundleQueue(BundleQueue):
             node.prev.next = node.next
             node.next.prev = node.prev
 
+        self._num_bundles -= 1
+        self._num_blocks -= len(bundle)
         self._nbytes -= bundle.size_bytes()
+
         assert self._nbytes >= 0, (
             "Expected the total size of objects in the queue to be non-negative, but "
             f"got {self._nbytes} bytes instead."
         )
-
-        self._num_bundles -= 1
 
         return node.value
 
@@ -119,11 +125,15 @@ class FIFOBundleQueue(BundleQueue):
         self._head = None
         self._tail = None
         self._bundle_to_nodes.clear()
-        self._nbytes = 0
         self._num_bundles = 0
+        self._num_blocks = 0
+        self._nbytes = 0
 
     def estimate_size_bytes(self) -> int:
         return self._nbytes
+
+    def num_blocks(self) -> int:
+        return self._num_blocks
 
     def is_empty(self):
         return not self._bundle_to_nodes and self._head is None and self._tail is None

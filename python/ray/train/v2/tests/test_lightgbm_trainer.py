@@ -68,7 +68,7 @@ def test_fit_with_categoricals(ray_start_6_cpus):
             valid_names.append(eval_name)
 
         # Add network params of the worker group to enable distributed training.
-        config.update(ray.train.lightgbm.v2.get_network_params())
+        config.update(ray.train.lightgbm.get_network_params())
 
         lightgbm.train(
             params=config,

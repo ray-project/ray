@@ -14,7 +14,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --stop-reward=200.0`
+`python [script file name].py --stop-reward=200.0`
 
 Use the `--stop-iters`, `--stop-reward`, and/or `--stop-timesteps` options to
 determine how long to train the policy for. Use the `--serve-episodes` option to
@@ -67,18 +67,18 @@ Episode R=500.0
 
 import atexit
 import os
-
-import requests
 import subprocess
 import time
-
-import gymnasium as gym
 from pathlib import Path
 
+import gymnasium as gym
+import requests
+
+from ray._common.network_utils import build_address
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import (
-    COMPONENT_LEARNER_GROUP,
     COMPONENT_LEARNER,
+    COMPONENT_LEARNER_GROUP,
     COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
 )
@@ -93,7 +93,6 @@ from ray.rllib.utils.test_utils import (
 
 parser = add_rllib_example_script_args()
 parser.set_defaults(
-    enable_new_api_stack=True,
     checkpoint_freq=1,
     checkpoint_at_and=True,
 )
@@ -167,7 +166,7 @@ if __name__ == "__main__":
             # print(f"-> Requesting action for obs={obs} ...", end="")
             # Send a request to serve.
             resp = requests.get(
-                f"http://localhost:{args.port}/rllib-rlmodule",
+                f"http://{build_address('localhost', args.port)}/rllib-rlmodule",
                 json={"observation": obs.tolist()},
             )
             response = resp.json()

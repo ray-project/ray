@@ -1,14 +1,9 @@
 import logging
 from typing import Optional, TypeVar
 
-import ray
-import ray.cloudpickle as pickle
-from ray.train.v2._internal.execution.context import get_train_context
+from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
+from ray.train.v2._internal.util import requires_train_worker
 from ray.util.annotations import PublicAPI
-
-# For reference, {1:1} is 19 bytes, {"1":"1"} is 21 bytes,
-# and {"12345": "12345"} is 25 bytes.
-_MAX_BROADCAST_SIZE_BYTES = 1000
 
 T = TypeVar("T", bound=Optional[object])
 
@@ -17,6 +12,7 @@ logger = logging.getLogger(__file__)
 
 
 @PublicAPI(stability="alpha")
+@requires_train_worker()
 def broadcast_from_rank_zero(data: T) -> T:
     """Broadcast small (<1kb) data from the rank 0 worker to all other workers.
 
@@ -26,7 +22,6 @@ def broadcast_from_rank_zero(data: T) -> T:
     Example:
 
         .. testcode:
-            :skipif: True
 
             from ray.train import get_context
             from ray.train.collective import broadcast_from_rank_zero
@@ -56,29 +51,11 @@ def broadcast_from_rank_zero(data: T) -> T:
         pickle.PicklingError: If the data is not pickleable.
         TypeError: If the data is not pickleable.
     """
-    # Validate data.
-    if data is not None:
-        data_bytes = len(pickle.dumps(data))
-        if data_bytes > _MAX_BROADCAST_SIZE_BYTES:
-            logger.warning(
-                f"Data size {data_bytes} bytes exceeds the maximum broadcast "
-                f"size of {_MAX_BROADCAST_SIZE_BYTES} bytes"
-            )
-
-    # Send data to all workers.
-    train_context = get_train_context()
-    sync_actor = train_context.get_synchronization_actor()
-    return ray.get(
-        sync_actor.broadcast_from_rank_zero.remote(
-            world_rank=train_context.get_world_rank(),
-            world_size=train_context.get_world_size(),
-            data=data,
-            caller_method_name="ray.train.collective.broadcast_from_rank_zero",
-        )
-    )
+    return get_train_fn_utils().broadcast_from_rank_zero(data)
 
 
 @PublicAPI(stability="alpha")
+@requires_train_worker()
 def barrier() -> None:
     """Create a barrier across all workers.
 
@@ -87,7 +64,6 @@ def barrier() -> None:
     Example:
 
         .. testcode:
-            :skipif: True
 
             from ray.train import get_context
             from ray.train.collective import barrier
@@ -103,13 +79,4 @@ def barrier() -> None:
             trainer = TorchTrainer(train_func)
             trainer.fit()
     """
-    train_context = get_train_context()
-    sync_actor = train_context.get_synchronization_actor()
-    return ray.get(
-        sync_actor.broadcast_from_rank_zero.remote(
-            world_rank=train_context.get_world_rank(),
-            world_size=train_context.get_world_size(),
-            data=None,
-            caller_method_name="ray.train.collective.barrier",
-        )
-    )
+    return get_train_fn_utils().barrier()

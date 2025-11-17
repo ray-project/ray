@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/gcs/pb_util.h"
+#include "ray/common/protobuf_utils.h"
 
 namespace ray {
 namespace core {
@@ -119,6 +119,16 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
   return actor_handles_.find(actor_id) != actor_handles_.end();
 }
 
+std::shared_ptr<ActorHandle> ActorManager::GetActorHandleIfExists(
+    const ActorID &actor_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = actor_handles_.find(actor_id);
+  if (it != actor_handles_.end()) {
+    return it->second;
+  }
+  return nullptr;
+}
+
 bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                      const std::string &call_site,
                                      const rpc::Address &caller_address,
@@ -160,7 +170,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   actor_task_submitter_.AddActorQueueIfNotExists(
       actor_id,
       actor_handle->MaxPendingCalls(),
-      actor_handle->ExecuteOutOfOrder(),
+      actor_handle->AllowOutOfOrderExecution(),
       /*fail_if_actor_unreachable=*/actor_handle->MaxTaskRetries() == 0,
       owned);
   bool inserted = false;
@@ -203,7 +213,7 @@ void ActorManager::WaitForActorRefDeleted(
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the gcs server can destroy the actor.
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-  if (!reference_counter_.SetObjectRefDeletedCallback(actor_creation_return_id,
+  if (!reference_counter_.AddObjectRefDeletedCallback(actor_creation_return_id,
                                                       callback)) {
     RAY_LOG(DEBUG).WithField(actor_id) << "ActorID reference already gone";
     callback(actor_creation_return_id);
@@ -214,8 +224,8 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                                 const rpc::ActorTableData &actor_data) {
   const auto &actor_state = rpc::ActorTableData::ActorState_Name(actor_data.state());
   const auto worker_id = WorkerID::FromBinary(actor_data.address().worker_id());
-  const auto raylet_id = NodeID::FromBinary(actor_data.address().raylet_id());
-  RAY_LOG(INFO).WithField(actor_id).WithField(worker_id).WithField(raylet_id)
+  const auto node_id = NodeID::FromBinary(actor_data.address().node_id());
+  RAY_LOG(INFO).WithField(actor_id).WithField(worker_id).WithField(node_id)
       << "received notification on actor, state: " << actor_state
       << ", ip address: " << actor_data.address().ip_address()
       << ", port: " << actor_data.address().port()
@@ -298,7 +308,7 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
                 this,
                 std::placeholders::_1,
                 std::placeholders::_2);
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+  gcs_client_->Actors().AsyncSubscribe(
       actor_id,
       actor_notification_callback,
       [this, actor_id, cached_actor_name](Status status) {
@@ -313,7 +323,7 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
             cached_actor_name_to_ids_.emplace(cached_actor_name, actor_id);
           }
         }
-      }));
+      });
 }
 
 void ActorManager::MarkActorKilledOrOutOfScope(

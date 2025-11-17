@@ -24,7 +24,7 @@ right and whether the pole is currently moving up or down).
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -42,8 +42,8 @@ You should see the following output (during the experiment) in your console:
 
 """
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentStatelessCartPole
+from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
     LSTMContainingRLModule,
 )
@@ -57,7 +57,6 @@ parser = add_rllib_example_script_args(
     default_reward=300.0,
     default_timesteps=2000000,
 )
-parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":

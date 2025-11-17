@@ -40,7 +40,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-frames=4 --env=ALE/Pong-v5`
+`python [script file name].py --num-frames=4 --env=ALE/Pong-v5`
 
 Use the `--num-frames` option to define the number of observations to framestack.
 If you don't want to use Connectors to perform the framestacking, set the
@@ -84,8 +84,8 @@ from ray.rllib.connectors.env_to_module import (
     PrevActionsPrevRewards,
 )
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentStatelessCartPole
+from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -99,7 +99,6 @@ torch, nn = try_import_torch()
 parser = add_rllib_example_script_args(
     default_reward=200.0, default_timesteps=1000000, default_iters=2000
 )
-parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument("--n-prev-rewards", type=int, default=1)
 parser.add_argument("--n-prev-actions", type=int, default=1)
 

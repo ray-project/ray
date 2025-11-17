@@ -1,56 +1,59 @@
-import os
 import hashlib
-import time
-import traceback
+import os
 import random
 import string
-from typing import Optional, List, Tuple
+import time
+import traceback
+from typing import List, Optional, Tuple
+
+from google.cloud import storage as gcs_storage
 
 from ray_release.alerts.handle import handle_result, require_result
-from ray_release.anyscale_util import get_cluster_name, LAST_LOGS_LENGTH
+from ray_release.anyscale_util import (
+    LAST_LOGS_LENGTH,
+    create_cluster_env_from_image,
+    get_cluster_name,
+    get_custom_cluster_env_name,
+)
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
+from ray_release.cloud_util import archive_directory
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
-from ray_release.command_runner.job_runner import JobRunner
-from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
-from ray_release.job_manager.kuberay_job_manager import KubeRayJobManager
-from ray_release.test import Test
+from ray_release.command_runner.command_runner import CommandRunner
+from ray_release.command_runner.job_runner import JobRunner
 from ray_release.config import (
+    DEFAULT_AUTOSUSPEND_MINS,
     DEFAULT_BUILD_TIMEOUT,
     DEFAULT_CLUSTER_TIMEOUT,
     DEFAULT_COMMAND_TIMEOUT,
     DEFAULT_WAIT_FOR_NODES_TIMEOUT,
-    DEFAULT_AUTOSUSPEND_MINS,
 )
-from ray_release.template import load_test_cluster_compute, get_working_dir
 from ray_release.exception import (
+    ClusterEnvCreateError,
+    CommandError,
+    CommandTimeout,
+    PrepareCommandError,
+    PrepareCommandTimeout,
     ReleaseTestConfigError,
     ReleaseTestSetupError,
-    CommandError,
-    PrepareCommandError,
-    CommandTimeout,
-    PrepareCommandTimeout,
     TestCommandError,
     TestCommandTimeout,
-    ClusterEnvCreateError,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
+from ray_release.job_manager.kuberay_job_manager import KubeRayJobManager
+from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, ResultStatus, handle_exception
 from ray_release.signal_handling import (
-    setup_signal_handling,
-    reset_signal_handling,
     register_handler,
+    reset_signal_handling,
+    setup_signal_handling,
 )
-from ray_release.util import (
-    create_cluster_env_from_image,
-    get_custom_cluster_env_name,
-    upload_working_dir,
-)
-from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config
+from ray_release.template import get_working_dir, load_test_cluster_compute
+from ray_release.test import Test
 
 type_str_to_command_runner = {
     "job": JobRunner,
@@ -293,6 +296,28 @@ def _prepare_remote_environment(
             raise PrepareCommandTimeout(e)
 
 
+def _upload_working_dir_to_gcs(working_dir: str) -> str:
+    """Upload working directory to GCS bucket.
+
+    Args:
+        working_dir: Path to directory to upload.
+    Returns:
+        GCS path where directory was uploaded.
+    """
+    # Create archive of working dir
+    logger.info(f"Archiving working directory: {working_dir}")
+    archived_file_path = archive_directory(working_dir)
+    archived_filename = os.path.basename(archived_file_path)
+
+    # Upload to GCS
+    gcs_client = gcs_storage.Client()
+    bucket = gcs_client.bucket("ray-release-working-dir")
+    blob = bucket.blob(archived_filename)
+    blob.upload_from_filename(archived_filename)
+
+    return f"gs://ray-release-working-dir/{blob.name}"
+
+
 def _running_test_script(
     test: Test,
     smoke_test: bool,
@@ -421,40 +446,61 @@ def run_release_test_kuberay(
     smoke_test: bool = False,
     test_definition_root: Optional[str] = None,
 ) -> Result:
-    result.stable = test.get("stable", True)
-    result.smoke_test = smoke_test
-    cluster_compute = load_test_cluster_compute(test, test_definition_root)
-    kuberay_compute_config = convert_cluster_compute_to_kuberay_compute_config(
-        cluster_compute
-    )
-    kuberay_autoscaler_version = cluster_compute.get("autoscaler_version", None)
-    if kuberay_autoscaler_version:
-        kuberay_autoscaler_config = {"version": kuberay_autoscaler_version}
-    else:
-        kuberay_autoscaler_config = None
-    working_dir_upload_path = upload_working_dir(get_working_dir(test))
+    start_time = time.monotonic()
+    pipeline_exception = None
+    try:
+        result.stable = test.get("stable", True)
+        result.smoke_test = smoke_test
+        cluster_compute = load_test_cluster_compute(test, test_definition_root)
+        kuberay_compute_config = convert_cluster_compute_to_kuberay_compute_config(
+            cluster_compute
+        )
+        kuberay_autoscaler_version = cluster_compute.get("autoscaler_version", None)
+        if kuberay_autoscaler_version:
+            kuberay_autoscaler_config = {"version": kuberay_autoscaler_version}
+        else:
+            kuberay_autoscaler_config = None
+        working_dir_upload_path = _upload_working_dir_to_gcs(get_working_dir(test))
 
-    command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
-    test_name_hash = hashlib.sha256(test["name"].encode()).hexdigest()[:10]
-    # random 8 digit suffix
-    random_suffix = "".join(random.choices(string.digits, k=8))
-    job_name = f"{test['name'][:20]}-{test_name_hash}-{random_suffix}".replace("_", "-")
-    logger.info(f"Job name: {job_name}")
-    kuberay_job_manager = KubeRayJobManager()
-    retcode, duration = kuberay_job_manager.run_and_wait(
-        job_name=job_name,
-        image=test.get_anyscale_byod_image(),
-        cmd_to_run=test["run"]["script"],
-        env_vars=test.get_byod_runtime_env(),
-        working_dir=working_dir_upload_path,
-        pip=test.get_byod_pips(),
-        compute_config=kuberay_compute_config,
-        autoscaler_config=kuberay_autoscaler_config,
-        timeout=command_timeout,
-    )
-    kuberay_job_manager.fetch_results()
-    result.return_code = retcode
-    result.runtime = duration
+        command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
+        test_name_hash = hashlib.sha256(test["name"].encode()).hexdigest()[:10]
+        # random 8 digit suffix
+        random_suffix = "".join(random.choices(string.digits, k=8))
+        base_job_name = f"{test['name'][:20]}-{test_name_hash}-{random_suffix}"
+        job_name = base_job_name.replace("_", "-")
+        logger.info(f"Job name: {job_name}")
+        kuberay_job_manager = KubeRayJobManager()
+        retcode, duration = kuberay_job_manager.run_and_wait(
+            job_name=job_name,
+            image=test.get_anyscale_byod_image(),
+            cmd_to_run=test["run"]["script"],
+            env_vars=test.get_byod_runtime_env(),
+            working_dir=working_dir_upload_path,
+            pip=test.get_byod_pips(),
+            compute_config=kuberay_compute_config,
+            autoscaler_config=kuberay_autoscaler_config,
+            timeout=command_timeout,
+        )
+        kuberay_job_manager.fetch_results()
+        result.return_code = retcode
+        result.runtime = duration
+    except Exception as e:
+        logger.info(f"Exception: {e}")
+        pipeline_exception = e
+        result.runtime = time.monotonic() - start_time
+
+    if pipeline_exception:
+        buildkite_group(":rotating_light: Handling errors")
+        exit_code, result_status, runtime = handle_exception(
+            pipeline_exception,
+            result.runtime,
+        )
+
+        result.return_code = exit_code.value
+        result.status = result_status.value
+        if runtime is not None:
+            result.runtime = runtime
+        raise pipeline_exception
     return result
 
 

@@ -9,9 +9,13 @@ from enum import Enum, unique
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray.dashboard.utils as dashboard_utils
-from ray._private.ray_constants import env_integer
-from ray.core.generated.common_pb2 import TaskStatus, TaskType
-from ray.core.generated.gcs_pb2 import TaskEvents
+
+# TODO(aguo): Instead of a version check, modify the below models
+# to use pydantic BaseModel instead of dataclass.
+# In pydantic 2, dataclass no longer needs the `init=True` kwarg to
+# generate an __init__ method. Additionally, it will raise an error if
+# it detects `init=True` to be set.
+from ray._common.pydantic_compat import IS_PYDANTIC_2
 from ray._private.custom_types import (
     TypeActorStatus,
     TypeNodeStatus,
@@ -22,15 +26,11 @@ from ray._private.custom_types import (
     TypeWorkerExitType,
     TypeWorkerType,
 )
-from ray.util.state.exception import RayStateApiException
+from ray._private.ray_constants import env_integer
+from ray.core.generated.common_pb2 import TaskStatus, TaskType
+from ray.core.generated.gcs_pb2 import TaskEvents
 from ray.dashboard.modules.job.pydantic_models import JobDetails
-
-# TODO(aguo): Instead of a version check, modify the below models
-# to use pydantic BaseModel instead of dataclass.
-# In pydantic 2, dataclass no longer needs the `init=True` kwarg to
-# generate an __init__ method. Additionally, it will raise an error if
-# it detects `init=True` to be set.
-from ray._common.pydantic_compat import IS_PYDANTIC_2
+from ray.util.state.exception import RayStateApiException
 
 try:
     from pydantic.dataclasses import dataclass
@@ -152,7 +152,7 @@ class ListApiOptions:
         # To return the data to users, when there's a partial failure
         # we need to have a timeout that's smaller than the users' timeout.
         # 80% is configured arbitrarily.
-        self.timeout = int(self.timeout * self.server_timeout_multiplier)
+        self.timeout = max(1, int(self.timeout * self.server_timeout_multiplier))
         assert self.timeout != 0, "0 second timeout is not supported."
         if self.filters is None:
             self.filters = []
@@ -197,6 +197,18 @@ class ListApiOptions:
 class GetApiOptions:
     # Timeout for the HTTP request
     timeout: int = DEFAULT_RPC_TIMEOUT
+    # When the request is processed on the server side,
+    # we should apply multiplier so that server side can finish
+    # processing a request within timeout. Otherwise,
+    # timeout will always lead Http timeout.
+    server_timeout_multiplier: float = 0.8
+
+    def __post_init__(self):
+        # To return the data to users, when there's a partial failure
+        # we need to have a timeout that's smaller than the users' timeout.
+        # 80% is configured arbitrarily.
+        self.timeout = max(1, int(self.timeout * self.server_timeout_multiplier))
+        assert self.timeout != 0, "0 second timeout is not supported."
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -498,6 +510,10 @@ class ActorState(StateSchema):
     num_restarts: int = state_column(filterable=False, detail=True)
     #: Number of times this actor is restarted due to lineage reconstructions.
     num_restarts_due_to_lineage_reconstruction: int = state_column(
+        filterable=False, detail=True
+    )
+    #: Number of times this actor is restarted due to node preemption.
+    num_restarts_due_to_node_preemption: int = state_column(
         filterable=False, detail=True
     )
     #: The call site of the actor creation.

@@ -137,7 +137,7 @@ def test_grpc_backpressure(serve_instance):
     _, pending = ray.wait([second_ref], timeout=0.1)
     for _ in range(10):
         status_code, text = ray.get(do_request.remote(("hi-err")))
-        assert status_code == grpc.StatusCode.UNAVAILABLE
+        assert status_code == grpc.StatusCode.RESOURCE_EXHAUSTED
         assert text.startswith("Request dropped due to backpressure")
 
     # Send the signal; the first request will be unblocked and the second should

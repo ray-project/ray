@@ -28,7 +28,10 @@ SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12), (3, 13)]
 # in WORKSPACE file as well.
 
 ROOT_DIR = os.path.dirname(__file__)
-BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
+BUILD_CORE = os.getenv("RAY_BUILD_CORE", "1") == "1"
+BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA", "0") == "1"
+BUILD_CPP = os.getenv("RAY_DISABLE_EXTRA_CPP") != "1"
+BUILD_REDIS = os.getenv("RAY_BUILD_REDIS", "1") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
@@ -37,7 +40,7 @@ THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "runtime_env", "agent", "thirdparty_files"
 )
-
+DEPS_ONLY_VERSION = "100.0.0.dev0"
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
 # replaced with junctions in Windows. This variable is set in our conda-forge
@@ -70,6 +73,7 @@ class BuildType(Enum):
     DEBUG = 2
     ASAN = 3
     TSAN = 4
+    DEPS_ONLY = 5
 
 
 class SetupSpec:
@@ -86,6 +90,8 @@ class SetupSpec:
             self.version: str = f"{version}+asan"
         elif build_type == BuildType.TSAN:
             self.version: str = f"{version}+tsan"
+        elif build_type == BuildType.DEPS_ONLY:
+            self.version: str = DEPS_ONLY_VERSION
         else:
             self.version = version
         self.description: str = description
@@ -95,7 +101,7 @@ class SetupSpec:
         self.extras: dict = {}
 
     def get_packages(self):
-        if self.type == SetupType.RAY:
+        if self.type == SetupType.RAY and self.build_type != BuildType.DEPS_ONLY:
             return setuptools.find_packages(exclude=("tests", "*.tests", "*.tests.*"))
         else:
             return []
@@ -108,6 +114,8 @@ elif build_type == "asan":
     BUILD_TYPE = BuildType.ASAN
 elif build_type == "tsan":
     BUILD_TYPE = BuildType.TSAN
+elif build_type == "deps-only":
+    BUILD_TYPE = BuildType.DEPS_ONLY
 else:
     BUILD_TYPE = BuildType.DEFAULT
 
@@ -130,7 +138,7 @@ else:
     )
     RAY_EXTRA_CPP = True
     # Disable extra cpp for the development versions.
-    if "dev" in setup_spec.version or os.getenv("RAY_DISABLE_EXTRA_CPP") == "1":
+    if "dev" in setup_spec.version or not BUILD_CPP:
         RAY_EXTRA_CPP = False
 
 # Ideally, we could include these files by putting them in a
@@ -271,6 +279,8 @@ if setup_spec.type == SetupType.RAY:
         ],
         "tune": [
             "pandas",
+            # TODO: Remove pydantic dependency from tune once tune doesn't import train
+            pydantic_dep,
             "tensorboardX>=1.9",
             "requests",
             *pyarrow_deps,
@@ -299,12 +309,23 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
+    # This is required for supporting the asynchronous inference, allowing the ray serve applications to
+    # allow asynchronously execute their code, via the use of celery task processor.
+    setup_spec.extras["serve-async-inference"] = list(
+        set(
+            setup_spec.extras["serve"]
+            + [
+                "celery",
+            ]
+        )
+    )
+
     if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gymnasium==1.0.0",
+        "gymnasium==1.1.1",
         "lz4",
         "ormsgpack==1.7.0",
         "pyyaml",
@@ -355,13 +376,17 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm>=0.9.2",
+                "vllm[audio]>=0.11.0",
+                "nixl>=0.6.1",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
                 # async-timeout is a backport of asyncio.timeout for python < 3.11
                 "async-timeout; python_version < '3.11'",
                 "typer",
+                "meson",
+                "pybind11",
+                "hf_transfer",
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]
@@ -377,12 +402,14 @@ if setup_spec.type == SetupType.RAY:
 # new releases candidates.
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        "click >= 7.0",
+        # Click 8.3.* does not work with copy.deepcopy on Python 3.10
+        # TODO(aslonnie): https://github.com/ray-project/ray/issues/56747
+        "click>=7.0, !=8.3.*",
         "filelock",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "packaging",
-        "protobuf >= 3.15.3, != 3.19.5",
+        "protobuf>=3.20.3",
         "pyyaml",
         "requests",
     ]
@@ -512,7 +539,7 @@ if is_conda_forge_build and is_native_windows_or_msys():
     replace_symlinks_with_junctions()
 
 
-def build(build_python, build_java, build_cpp):
+def build(build_python, build_java, build_cpp, build_redis):
     if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
         msg = (
             "Detected Python version {}, which is not supported. "
@@ -531,30 +558,10 @@ def build(build_python, build_java, build_cpp):
         )
         raise OSError(msg)
 
-    bazel_env = os.environ.copy()
-    bazel_env["PYTHON3_BIN_PATH"] = sys.executable
-
-    if is_native_windows_or_msys():
-        SHELL = bazel_env.get("SHELL")
-        if SHELL:
-            bazel_env.setdefault("BAZEL_SH", os.path.normpath(SHELL))
-        BAZEL_SH = bazel_env.get("BAZEL_SH", "")
-        SYSTEMROOT = os.getenv("SystemRoot")
-        wsl_bash = os.path.join(SYSTEMROOT, "System32", "bash.exe")
-        if (not BAZEL_SH) and SYSTEMROOT and os.path.isfile(wsl_bash):
-            msg = (
-                "You appear to have Bash from WSL,"
-                " which Bazel may invoke unexpectedly. "
-                "To avoid potential problems,"
-                " please explicitly set the {name!r}"
-                " environment variable for Bazel."
-            ).format(name="BAZEL_SH")
-            raise RuntimeError(msg)
-
-    # Note: We are passing in sys.executable so that we use the same
-    # version of Python to build packages inside the build.sh script. Note
-    # that certain flags will not be passed along such as --user or sudo.
-    # TODO(rkn): Fix this.
+    # Vendor thirdparty packages.
+    #
+    # TODO(ray-core, ray-ci): the version of these vendored packages should be
+    # pinned, so that the build is reproducible.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL_CONDA_FORGE"):
         pip_packages = ["psutil", "colorama"]
         subprocess.check_call(
@@ -584,6 +591,39 @@ def build(build_python, build_java, build_cpp):
             ]
             + runtime_env_agent_pip_packages
         )
+
+    bazel_targets = []
+    if build_python:
+        bazel_targets.append("//:gen_ray_pkg")
+    if build_cpp:
+        bazel_targets.append("//cpp:gen_ray_cpp_pkg")
+    if build_java:
+        bazel_targets.append("//java:gen_ray_java_pkg")
+    if build_redis:
+        bazel_targets.append("//:gen_redis_pkg")
+
+    if not bazel_targets:
+        return
+
+    bazel_env = os.environ.copy()
+    bazel_env["PYTHON3_BIN_PATH"] = sys.executable
+
+    if is_native_windows_or_msys():
+        SHELL = bazel_env.get("SHELL")
+        if SHELL:
+            bazel_env.setdefault("BAZEL_SH", os.path.normpath(SHELL))
+        BAZEL_SH = bazel_env.get("BAZEL_SH", "")
+        SYSTEMROOT = os.getenv("SystemRoot")
+        wsl_bash = os.path.join(SYSTEMROOT, "System32", "bash.exe")
+        if (not BAZEL_SH) and SYSTEMROOT and os.path.isfile(wsl_bash):
+            msg = (
+                "You appear to have Bash from WSL,"
+                " which Bazel may invoke unexpectedly. "
+                "To avoid potential problems,"
+                " please explicitly set the {name!r}"
+                " environment variable for Bazel."
+            ).format(name="BAZEL_SH")
+            raise RuntimeError(msg)
 
     bazel_flags = ["--verbose_failures"]
     if BAZEL_ARGS:
@@ -622,19 +662,6 @@ def build(build_python, build_java, build_cpp):
         bazel_precmd_flags = []
         if sys.platform == "win32":
             bazel_precmd_flags = ["--output_user_root=C:/tmp"]
-        # Using --incompatible_strict_action_env so that the build is more
-        # cache-able We cannot turn this on for Python tests yet, as Ray's
-        # Python bazel tests are not hermetic.
-        #
-        # And we put it here so that does not change behavior of
-        # conda-forge build.
-        if sys.platform != "darwin":  # TODO(aslonnie): does not work on macOS..
-            bazel_flags.append("--incompatible_strict_action_env")
-
-    bazel_targets = []
-    bazel_targets += ["//:ray_pkg"] if build_python else []
-    bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
-    bazel_targets += ["//java:ray_java_pkg"] if build_java else []
 
     if setup_spec.build_type == BuildType.DEBUG:
         bazel_flags.append("--config=debug")
@@ -644,6 +671,7 @@ def build(build_python, build_java, build_cpp):
         bazel_flags.append("--config=tsan")
 
     bazel_bin = _find_bazel_bin()
+    # Build all things first.
     subprocess.check_call(
         [bazel_bin]
         + bazel_precmd_flags
@@ -653,6 +681,12 @@ def build(build_python, build_java, build_cpp):
         + bazel_targets,
         env=bazel_env,
     )
+    # Then run the actions.
+    for action in bazel_targets:
+        subprocess.check_call(
+            [bazel_bin] + bazel_precmd_flags + ["run"] + bazel_flags + [action],
+            env=bazel_env,
+        )
 
 
 def _walk_thirdparty_dir(directory):
@@ -689,12 +723,15 @@ def copy_file(target_dir, filename, rootdir):
 
 
 def pip_run(build_ext):
-    if SKIP_BAZEL_BUILD:
-        build(False, False, False)
+    if SKIP_BAZEL_BUILD or setup_spec.build_type == BuildType.DEPS_ONLY:
+        build(False, False, False, False)
     else:
-        build(True, BUILD_JAVA, True)
+        build(BUILD_CORE, BUILD_JAVA, BUILD_CPP, BUILD_REDIS)
 
     if setup_spec.type == SetupType.RAY:
+        if setup_spec.build_type == BuildType.DEPS_ONLY:
+            setup_spec.files_to_include = []
+            return
         setup_spec.files_to_include += ray_files
 
         thirdparty_dir = os.path.join(ROOT_DIR, THIRDPARTY_SUBDIR)
@@ -758,6 +795,7 @@ if __name__ == "__main__":
             "Programming Language :: Python :: 3.10",
             "Programming Language :: Python :: 3.11",
             "Programming Language :: Python :: 3.12",
+            "Programming Language :: Python :: 3.13",
         ],
         packages=setup_spec.get_packages(),
         cmdclass={"build_ext": build_ext},
@@ -784,7 +822,7 @@ if __name__ == "__main__":
         exclude_package_data={
             # Empty string means "any package".
             # Therefore, exclude BUILD from every package:
-            "": ["BUILD"],
+            "": ["BUILD", "BUILD.bazel"],
         },
         zip_safe=False,
         license="Apache 2.0",

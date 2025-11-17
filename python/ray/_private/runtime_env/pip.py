@@ -118,9 +118,8 @@ class PipProcessor:
 
         logger.info("Pip check on %s successfully.", path)
 
-    @classmethod
     async def _install_pip_packages(
-        cls,
+        self,
         path: str,
         pip_packages: List[str],
         cwd: str,
@@ -143,7 +142,8 @@ class PipProcessor:
             pip_packages,
         )
 
-        # pip options
+        # Install all dependencies
+        # The default options for pip install are
         #
         # --disable-pip-version-check
         #   Don't periodically check PyPI to determine whether a new version
@@ -152,16 +152,22 @@ class PipProcessor:
         # --no-cache-dir
         #   Disable the cache, the pip runtime env is a one-time installation,
         #   and we don't need to handle the pip cache broken.
+        #
+        # Allow users to specify their own options to install packages via `pip`.
         pip_install_cmd = [
             python,
             "-m",
             "pip",
             "install",
-            "--disable-pip-version-check",
-            "--no-cache-dir",
             "-r",
             pip_requirements_file,
         ]
+
+        pip_opt_list = self._pip_config.get(
+            "pip_install_options", ["--disable-pip-version-check", "--no-cache-dir"]
+        )
+        pip_install_cmd.extend(pip_opt_list)
+
         logger.info("Installing python requirements to %s", virtualenv_path)
 
         await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env=pip_env)

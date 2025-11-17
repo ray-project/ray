@@ -5,7 +5,7 @@ Distributed multiprocessing.Pool
 
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
 
-Ray supports running distributed python programs with the `multiprocessing.Pool API`_
+Ray supports running distributed Python programs with the `multiprocessing.Pool API`_
 using `Ray Actors <actors.html>`__ instead of local processes. This makes it easy
 to scale existing applications that use ``multiprocessing.Pool`` from a single node
 to a cluster.

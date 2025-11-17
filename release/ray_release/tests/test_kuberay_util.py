@@ -1,4 +1,5 @@
 import sys
+
 import pytest
 
 from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config

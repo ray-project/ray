@@ -1,6 +1,12 @@
 import logging
 from typing import Optional, Type, Union
 
+from typing_extensions import Self
+
+from ray._common.deprecation import (
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
@@ -25,24 +31,20 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray.rllib.utils.deprecation import (
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics import (
+    LAST_TARGET_UPDATE_TS,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
-    LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
     NUM_TARGET_UPDATES,
     OFFLINE_SAMPLING_TIMER,
-    TARGET_NET_UPDATE_TIMER,
-    SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+    TARGET_NET_UPDATE_TIMER,
     TIMERS,
 )
 from ray.rllib.utils.typing import ResultDict, RLModuleSpecType
@@ -124,7 +126,7 @@ class CQLConfig(SACConfig):
         min_q_weight: Optional[float] = NotProvided,
         deterministic_backup: Optional[bool] = NotProvided,
         **kwargs,
-    ) -> "CQLConfig":
+    ) -> Self:
         """Sets the training-related configuration.
 
         Args:
@@ -161,7 +163,7 @@ class CQLConfig(SACConfig):
         return self
 
     @override(AlgorithmConfig)
-    def offline_data(self, **kwargs) -> "CQLConfig":
+    def offline_data(self, **kwargs) -> Self:
 
         super().offline_data(**kwargs)
 
@@ -211,14 +213,6 @@ class CQLConfig(SACConfig):
             AddObservationsFromEpisodesToBatch,
             AddNextObservationsFromEpisodesToTrainBatch(),
         )
-
-        # In case we run multiple updates per RLlib training step in the `Learner` or
-        # when training on GPU conversion to tensors is managed in batch prefetching.
-        if self.num_gpus_per_learner > 0 or (
-            self.dataset_num_iters_per_learner
-            and self.dataset_num_iters_per_learner > 1
-        ):
-            pipeline.remove("NumpyToTensor")
 
         return pipeline
 
@@ -289,7 +283,7 @@ class CQL(SAC):
 
     @classmethod
     @override(SAC)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> CQLConfig:
         return CQLConfig()
 
     @classmethod
@@ -310,15 +304,20 @@ class CQL(SAC):
 
         # Sampling from offline data.
         with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
+            # If we should use an iterator in the learner(s). Note, in case of
+            # multiple learners we must always return a list of iterators.
+            return_iterator = return_iterator = (
+                self.config.num_learners > 0
+                or self.config.dataset_num_iters_per_learner != 1
+            )
+
             # Return an iterator in case we are using remote learners.
             batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
                 # Return an iterator, if a `Learner` should update
                 # multiple times per RLlib iteration.
-                return_iterator=self.config.dataset_num_iters_per_learner > 1
-                if self.config.dataset_num_iters_per_learner
-                else True,
+                return_iterator=return_iterator,
             )
 
         # Updating the policy.

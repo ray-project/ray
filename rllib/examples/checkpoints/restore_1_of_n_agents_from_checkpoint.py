@@ -13,7 +13,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=2
+`python [script file name].py --num-agents=2
 --checkpoint-freq=20 --checkpoint-at-end`
 
 Control the number of agents and policies (RLModules) via --num-agents and
@@ -47,7 +47,6 @@ an expert from the get go.
 
 from pathlib import Path
 
-from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core import (
     COMPONENT_LEARNER,
@@ -68,13 +67,13 @@ from ray.rllib.utils.test_utils import (
     run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls, register_env
+from ray.tune.result import TRAINING_ITERATION
 
 parser = add_rllib_example_script_args(
     # Pendulum-v1 sum of 2 agents (each agent reaches -250).
     default_reward=-500.0,
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     checkpoint_freq=1,
     num_agents=2,
 )

@@ -8,14 +8,14 @@ from typing import Optional
 
 import ray._common.signature
 from ray import Language, cross_language
-from ray._private import ray_option_utils
+from ray._common import ray_option_utils
+from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
+from ray._common.serialization import pickle_dumps
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import (
     client_mode_convert_function,
     client_mode_should_convert,
 )
-from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
-from ray._private.serialization import pickle_dumps
 from ray._private.utils import get_runtime_env_info, parse_runtime_env_for_task_or_actor
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
@@ -58,6 +58,7 @@ class RemoteFunction:
         _memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
         _label_selector: The label requirements on a node for scheduling of the task or actor.
+        _fallback_strategy: Soft constraints of a list of decorator options to fall back on when scheduling on a node.
         _resources: The default custom resource requirements for invocations of
             this remote function.
         _num_returns: The default number of return values for invocations
@@ -206,6 +207,8 @@ class RemoteFunction:
                 which this actor can be scheduled on. The label selector consist of key-value pairs,
                 where the keys are label names and the value are expressions consisting of an operator
                 with label values or just a value to indicate equality.
+            fallback_strategy (List[Dict[str, Any]]): If specified, expresses soft constraints
+                through a list of decorator options to fall back on when scheduling on a node.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
                 See :ref:`accelerator types <accelerator_types>`.
@@ -247,9 +250,6 @@ class RemoteFunction:
                 task. If set to True, task events such as (task running, finished)
                 are emitted, and available to Ray Dashboard and State API.
                 See :ref:`state-api-overview-ref` for more details.
-            _metadata: Extended options for Ray libraries. For example,
-                _metadata={"workflows.io/options": <workflow options>} for
-                Ray workflows.
             _labels: The key-value labels of a task.
 
         Examples:
@@ -332,7 +332,7 @@ class RemoteFunction:
             # Only need to record on the driver side
             # since workers are created via tasks or actors
             # launched from the driver.
-            from ray._private.usage import usage_lib
+            from ray._common.usage import usage_lib
 
             usage_lib.record_library_usage("core")
 
@@ -472,6 +472,7 @@ class RemoteFunction:
         enable_task_events = task_options.get("enable_task_events")
         labels = task_options.get("_labels")
         label_selector = task_options.get("label_selector")
+        fallback_strategy = task_options.get("fallback_strategy")
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -504,6 +505,7 @@ class RemoteFunction:
                 enable_task_events,
                 labels,
                 label_selector,
+                fallback_strategy,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).

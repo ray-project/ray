@@ -95,12 +95,6 @@ install_miniforge() {
     )
   fi
 
-  if [[ "${PYTHON-}" != "3.12" && "${PYTHON-}" != "3.13" ]]; then
-    # Install mpi4py as a test dependency for Python <3.12; currently mpi4py is not
-    # available for Python 3.12 or 3.13
-    "${WORKSPACE_DIR}"/ci/suppress_output conda install -c anaconda mpi4py -y
-  fi
-
   command -V python
   test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated
 }

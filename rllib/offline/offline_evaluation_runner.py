@@ -1,9 +1,7 @@
-import numpy
-import ray
 import types
+from typing import TYPE_CHECKING, Any, Collection, Dict, Iterable, Optional, Union
 
-from typing import Any, Collection, Dict, Iterable, Optional, TYPE_CHECKING, Union
-
+import ray
 from ray.data.iterator import DataIterator
 from ray.rllib.core import (
     ALL_MODULES,
@@ -11,8 +9,7 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils import unflatten_dict
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import get_device, try_import_torch
@@ -100,32 +97,10 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
 
     def _create_batch_iterator(self, **kwargs) -> Iterable:
 
-        # Define the collate function that converts the flattened dictionary
-        # to a `MultiAgentBatch` with Tensors.
-        def _collate_fn(_batch: Dict[str, numpy.ndarray]) -> MultiAgentBatch:
-            _batch = unflatten_dict(_batch)
-            _batch = MultiAgentBatch(
-                {
-                    module_id: SampleBatch(module_data)
-                    for module_id, module_data in _batch.items()
-                },
-                env_steps=sum(
-                    len(next(iter(module_data.values())))
-                    for module_data in _batch.values()
-                ),
-            )
-            _batch = self._convert_batch_type(_batch, to_device=False)
-            return _batch
-
-        # Define the finalize function that makes the host-to-device transfer.
-        def _finalize_fn(batch: MultiAgentBatch) -> MultiAgentBatch:
-            return self._convert_batch_type(batch, to_device=True, use_stream=True)
-
         # Return a minibatch iterator.
         return MiniBatchRayDataIterator(
             iterator=self._dataset_iterator,
-            collate_fn=_collate_fn,
-            finalize_fn=_finalize_fn,
+            device=self._device,
             minibatch_size=self.config.offline_eval_batch_size_per_runner,
             num_iters=self.config.dataset_num_iters_per_eval_runner,
             **kwargs,
@@ -413,9 +388,11 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         try:
             self.__device = get_device(
                 self.config,
-                0
-                if not self.worker_index
-                else self.config.num_gpus_per_offline_eval_runner,
+                (
+                    0
+                    if not self.worker_index
+                    else self.config.num_gpus_per_offline_eval_runner
+                ),
             )
         except NotImplementedError:
             self.__device = None
@@ -480,7 +457,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         return self.__batch_iterator
 
     @property
-    def _device(self) -> DeviceType:
+    def _device(self) -> Union[DeviceType, None]:
         return self.__device
 
     @property

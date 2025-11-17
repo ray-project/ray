@@ -3,10 +3,8 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
 import numpy as np
 
-from ray.data._internal.util import (
-    _check_import,
-    call_with_retry,
-)
+from ray._common.retry import call_with_retry
+from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -59,9 +57,15 @@ class LanceDatasource(Datasource):
             "max_backoff_s": self.READ_FRAGMENTS_RETRY_MAX_BACKOFF_SECONDS,
         }
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
+    ) -> List[ReadTask]:
         read_tasks = []
-        for fragments in np.array_split(self.lance_ds.get_fragments(), parallelism):
+        ds_fragments = self.scanner_options.get("fragments")
+        if ds_fragments is None:
+            ds_fragments = self.lance_ds.get_fragments()
+
+        for fragments in np.array_split(ds_fragments, parallelism):
             if len(fragments) <= 0:
                 continue
 
@@ -74,8 +78,8 @@ class LanceDatasource(Datasource):
             # TODO(chengsu): Take column projection into consideration for schema.
             metadata = BlockMetadata(
                 num_rows=num_rows,
-                input_files=input_files,
                 size_bytes=None,
+                input_files=input_files,
                 exec_stats=None,
             )
             scanner_options = self.scanner_options
@@ -91,6 +95,7 @@ class LanceDatasource(Datasource):
                 ),
                 metadata,
                 schema=fragments[0].schema,
+                per_task_row_limit=per_task_row_limit,
             )
             read_tasks.append(read_task)
         return read_tasks

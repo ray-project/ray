@@ -8,7 +8,7 @@ This demonstrates running the following policies in competition:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=2 [--use-lstm]?`
+`python [script file name].py --num-agents=2 [--use-lstm]?`
 
 Without `--use-lstm`, Agent 2 should quickly reach a reward of ~7.0, always
 beating the `always_same` policy, but only 50% of the time beating the `beat_last`
@@ -32,12 +32,15 @@ import random
 import gymnasium as gym
 from pettingzoo.classic import rps_v2
 
-from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
+from ray.rllib.examples.rl_modules.classes import (
+    AlwaysSameHeuristicRLM,
+    BeatLastHeuristicRLM,
+)
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
@@ -46,12 +49,8 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray.rllib.examples.rl_modules.classes import (
-    AlwaysSameHeuristicRLM,
-    BeatLastHeuristicRLM,
-)
 from ray.tune.registry import get_trainable_cls, register_env
-
+from ray.tune.result import TRAINING_ITERATION
 
 parser = add_rllib_example_script_args(
     default_iters=50,
@@ -59,7 +58,6 @@ parser = add_rllib_example_script_args(
     default_reward=6.0,
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_agents=2,
 )
 parser.add_argument(

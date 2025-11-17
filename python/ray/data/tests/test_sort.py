@@ -8,13 +8,14 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data import Dataset
+from ray._raylet import NodeID
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
@@ -444,21 +445,24 @@ def test_push_based_shuffle_schedule():
             expected {num_reducers_per_merge_idx[i]}."""
             assert num_reducers > 0
 
+    node_id_1 = NodeID.from_random().hex()
+    node_id_2 = NodeID.from_random().hex()
+    node_id_3 = NodeID.from_random().hex()
     for num_cpus in range(1, 20):
-        _test(20, 3, {"node1": num_cpus})
-    _test(20, 3, {"node1": 100})
-    _test(100, 3, {"node1": 10, "node2": 10, "node3": 10})
-    _test(100, 10, {"node1": 10, "node2": 10, "node3": 10})
+        _test(20, 3, {node_id_1: num_cpus})
+    _test(20, 3, {node_id_1: 100})
+    _test(100, 3, {node_id_1: 10, node_id_2: 10, node_id_3: 10})
+    _test(100, 10, {node_id_1: 10, node_id_2: 10, node_id_3: 10})
     # Regression test for https://github.com/ray-project/ray/issues/25863.
-    _test(1000, 2, {f"node{i}": 16 for i in range(20)})
+    _test(1000, 2, {NodeID.from_random().hex(): 16 for i in range(20)})
     # Regression test for https://github.com/ray-project/ray/issues/37754.
-    _test(260, 2, {"node1": 128})
-    _test(1, 2, {"node1": 128})
+    _test(260, 2, {node_id_1: 128})
+    _test(1, 2, {node_id_1: 128})
 
     # Test float merge_factor.
     for cluster_config in [
-        {"node1": 10},
-        {"node1": 10, "node2": 10},
+        {node_id_1: 10},
+        {node_id_1: 10, node_id_2: 10},
     ]:
         _test(100, 1, cluster_config)
         _test(100, 1.3, cluster_config)
@@ -558,9 +562,9 @@ def patch_ray_remote(condition, callback):
 def patch_ray_get(callback):
     original_ray_get = ray.get
 
-    def ray_get_override(object_refs):
+    def ray_get_override(object_refs, *args, **kwargs):
         callback(object_refs)
-        return original_ray_get(object_refs)
+        return original_ray_get(object_refs, *args, **kwargs)
 
     ray.get = ray_get_override
     return original_ray_get

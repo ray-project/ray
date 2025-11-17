@@ -18,6 +18,7 @@ from pdb import Pdb
 from typing import Callable
 
 import ray
+from ray._common.network_utils import build_address, is_ipv6
 from ray._private import ray_constants
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
 from ray.util.annotations import DeveloperAPI
@@ -102,7 +103,9 @@ class _RemotePdb(Pdb):
         self._breakpoint_uuid = breakpoint_uuid
         self._quiet = quiet
         self._patch_stdstreams = patch_stdstreams
-        self._listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._listen_socket = socket.socket(
+            socket.AF_INET6 if is_ipv6(host) else socket.AF_INET, socket.SOCK_STREAM
+        )
         self._listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
         self._listen_socket.bind((host, port))
         self._ip_address = ip_address
@@ -110,9 +113,9 @@ class _RemotePdb(Pdb):
     def listen(self):
         if not self._quiet:
             _cry(
-                "RemotePdb session open at %s:%s, "
+                "RemotePdb session open at %s, "
                 "use 'ray debug' to connect..."
-                % (self._ip_address, self._listen_socket.getsockname()[1])
+                % build_address(self._ip_address, self._listen_socket.getsockname()[1])
             )
         self._listen_socket.listen(1)
         connection, address = self._listen_socket.accept()
@@ -249,7 +252,7 @@ def _connect_ray_pdb(
         quiet=quiet,
     )
     sockname = rdb._listen_socket.getsockname()
-    pdb_address = "{}:{}".format(ip_address, sockname[1])
+    pdb_address = build_address(ip_address, sockname[1])
     parentframeinfo = inspect.getouterframes(inspect.currentframe())[2]
     data = {
         "proctitle": ray._raylet.getproctitle(),
@@ -344,7 +347,10 @@ def _post_mortem():
 def _connect_pdb_client(host, port):
     if sys.platform == "win32":
         import msvcrt
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    s = socket.socket(
+        socket.AF_INET6 if is_ipv6(host) else socket.AF_INET, socket.SOCK_STREAM
+    )
     s.connect((host, port))
 
     while True:

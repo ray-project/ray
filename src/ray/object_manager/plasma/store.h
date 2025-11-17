@@ -80,9 +80,6 @@ class PlasmaStore {
   /// before the object is pinned by raylet for the first time.
   bool IsObjectSpillable(const ObjectID &object_id) ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Return the plasma object bytes that are consumed by core workers.
-  int64_t GetConsumedBytes();
-
   /// Return the number of plasma objects that have been created.
   int64_t GetCumulativeCreatedObjects() const {
     absl::MutexLock lock(&mutex_);
@@ -172,8 +169,7 @@ class PlasmaStore {
   /// \param timeout_ms The timeout for the get request in milliseconds.
   void ProcessGetRequest(const std::shared_ptr<Client> &client,
                          const std::vector<ObjectID> &object_ids,
-                         int64_t timeout_ms,
-                         bool is_from_worker) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+                         int64_t timeout_ms) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Process queued requests to create an object.
   void ProcessCreateRequests() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -211,7 +207,7 @@ class PlasmaStore {
   ///
   /// \param client The client whose connection the error occurred on.
   /// \param error The error details.
-  void HandleClientConnectionError(std::shared_ptr<Client> client,
+  void HandleClientConnectionError(const std::shared_ptr<Client> &client,
                                    const boost::system::error_code &error)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -220,7 +216,7 @@ class PlasmaStore {
   /// \param client The client that the message is from.
   /// \param type The message type.
   /// \param message The message data.
-  Status ProcessClientMessage(std::shared_ptr<Client> client,
+  Status ProcessClientMessage(const std::shared_ptr<Client> &client,
                               plasma::flatbuf::MessageType type,
                               const std::vector<uint8_t> &message)
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -313,9 +309,6 @@ class PlasmaStore {
 
   /// Queue of object creation requests.
   CreateRequestQueue create_request_queue_ ABSL_GUARDED_BY(mutex_);
-
-  /// Total plasma object bytes that are consumed by core workers.
-  std::atomic<int64_t> total_consumed_bytes_;
 
   /// Whether we have dumped debug information on OOM yet. This limits dump
   /// (which can be expensive) to once per OOM event.

@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 
-from ray._private.ray_logging.filters import CoreContextFilter
+from ray._common.filters import CoreContextFilter
 from ray.serve._private.logging_utils import ServeContextFilter
 
 

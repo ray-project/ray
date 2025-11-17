@@ -14,6 +14,20 @@ from ray.includes.common cimport (
     kGcsAutoscalerV2EnabledKey,
     kGcsAutoscalerClusterConfigKey,
     kGcsPidKey,
+    kNodeTypeNameEnv,
+    kNodeMarketTypeEnv,
+    kNodeRegionEnv,
+    kNodeZoneEnv,
+    kLabelKeyNodeAcceleratorType,
+    kLabelKeyNodeMarketType,
+    kLabelKeyNodeRegion,
+    kLabelKeyNodeZone,
+    kLabelKeyNodeGroup,
+    kLabelKeyTpuTopology,
+    kLabelKeyTpuSliceName,
+    kLabelKeyTpuWorkerId,
+    kLabelKeyTpuPodType,
+    kRayInternalNamespacePrefix,
 )
 
 from ray.exceptions import (
@@ -50,8 +64,8 @@ cdef class GcsClientOptions:
             c_cluster_id = CClusterID.FromHex(cluster_id_hex)
         self = GcsClientOptions()
         try:
-            ip, port = gcs_address.split(":", 2)
-            port = int(port)
+            ip, port_str = parse_address(gcs_address)
+            port = int(port_str)
             self.inner.reset(
                 new CGcsClientOptions(
                     ip, port, c_cluster_id, allow_cluster_id_nil, allow_cluster_id_nil))
@@ -128,3 +142,55 @@ GCS_AUTOSCALER_STATE_NAMESPACE = kGcsAutoscalerStateNamespace.decode()
 GCS_AUTOSCALER_V2_ENABLED_KEY = kGcsAutoscalerV2EnabledKey.decode()
 GCS_AUTOSCALER_CLUSTER_CONFIG_KEY = kGcsAutoscalerClusterConfigKey.decode()
 GCS_PID_KEY = kGcsPidKey.decode()
+
+# Ray node label related constants from src/ray/common/constants.h
+NODE_TYPE_NAME_ENV = kNodeTypeNameEnv.decode()
+NODE_MARKET_TYPE_ENV = kNodeMarketTypeEnv.decode()
+NODE_REGION_ENV = kNodeRegionEnv.decode()
+NODE_ZONE_ENV = kNodeZoneEnv.decode()
+
+RAY_NODE_ACCELERATOR_TYPE_KEY = kLabelKeyNodeAcceleratorType.decode()
+RAY_NODE_MARKET_TYPE_KEY = kLabelKeyNodeMarketType.decode()
+RAY_NODE_REGION_KEY = kLabelKeyNodeRegion.decode()
+RAY_NODE_ZONE_KEY = kLabelKeyNodeZone.decode()
+RAY_NODE_GROUP_KEY = kLabelKeyNodeGroup.decode()
+
+# TPU specifc Ray node label related constants
+RAY_NODE_TPU_TOPOLOGY_KEY = kLabelKeyTpuTopology.decode()
+RAY_NODE_TPU_SLICE_NAME_KEY = kLabelKeyTpuSliceName.decode()
+RAY_NODE_TPU_WORKER_ID_KEY = kLabelKeyTpuWorkerId.decode()
+RAY_NODE_TPU_POD_TYPE_KEY = kLabelKeyTpuPodType.decode()
+
+RAY_INTERNAL_NAMESPACE_PREFIX = kRayInternalNamespacePrefix.decode()
+# Prefix for namespaces which are used internally by ray.
+# Jobs within these namespaces should be hidden from users
+# and should not be considered user activity.
+RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
+
+# Util functions for async handling
+
+cdef incremented_fut():
+    fut = concurrent.futures.Future()
+    cpython.Py_INCREF(fut)
+    return fut
+
+cdef void assign_and_decrement_fut(result, fut) noexcept with gil:
+    assert isinstance(fut, concurrent.futures.Future)
+
+    assert not fut.done()
+    try:
+        ret, exc = result
+        if exc:
+            fut.set_exception(exc)
+        else:
+            fut.set_result(ret)
+    finally:
+        # We INCREFed it in `incremented_fut` to keep it alive during the async wait,
+        # and we DECREF it here to balance it.
+        cpython.Py_DECREF(fut)
+
+cdef raise_or_return(tup):
+    ret, exc = tup
+    if exc:
+        raise exc
+    return ret

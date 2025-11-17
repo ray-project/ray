@@ -1,8 +1,7 @@
-import io
 import logging
 import threading
 import traceback
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     import torch
@@ -13,7 +12,6 @@ import ray._private.utils
 import ray.cloudpickle as pickle
 import ray.exceptions
 from ray._private import ray_constants
-from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import (
     DynamicObjectRefGenerator,
     MessagePackSerializedObject,
@@ -55,7 +53,7 @@ from ray.exceptions import (
     WorkerCrashedError,
 )
 from ray.experimental.compiled_dag_ref import CompiledDAGRef
-from ray.util import inspect_serializability, serialization_addons
+from ray.util import serialization_addons
 
 logger = logging.getLogger(__name__)
 ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = ray_constants.env_bool(
@@ -67,23 +65,9 @@ class DeserializationError(Exception):
     pass
 
 
-def pickle_dumps(obj: Any, error_msg: str):
-    """Wrap cloudpickle.dumps to provide better error message
-    when the object is not serializable.
-    """
-    try:
-        return pickle.dumps(obj)
-    except (TypeError, ray.exceptions.OufOfBandObjectRefSerializationException) as e:
-        sio = io.StringIO()
-        inspect_serializability(obj, print_file=sio)
-        msg = f"{error_msg}:\n{sio.getvalue()}"
-        if isinstance(e, TypeError):
-            raise TypeError(msg) from e
-        else:
-            raise ray.exceptions.OufOfBandObjectRefSerializationException(msg)
-
-
-def _object_ref_deserializer(binary, call_site, owner_address, object_status):
+def _object_ref_deserializer(
+    binary, call_site, owner_address, object_status, tensor_transport_val
+):
     # NOTE(suquark): This function should be a global function so
     # cloudpickle can access it directly. Otherwise cloudpickle
     # has to dump the whole function definition, which is inefficient.
@@ -92,7 +76,9 @@ def _object_ref_deserializer(binary, call_site, owner_address, object_status):
     # the core worker to resolve the value. This is to make sure
     # that the ref count for the ObjectRef is greater than 0 by the
     # time the core worker resolves the value of the object.
-    obj_ref = ray.ObjectRef(binary, owner_address, call_site)
+    obj_ref = ray.ObjectRef(
+        binary, owner_address, call_site, tensor_transport_val=tensor_transport_val
+    )
 
     # TODO(edoakes): we should be able to just capture a reference
     # to 'self' here instead, but this function is itself pickled
@@ -109,6 +95,40 @@ def _object_ref_deserializer(binary, call_site, owner_address, object_status):
         worker.core_worker.deserialize_and_register_object_ref(
             obj_ref.binary(), outer_id, owner_address, object_status
         )
+    return obj_ref
+
+
+def _gpu_object_ref_deserializer(
+    binary,
+    call_site,
+    owner_address,
+    object_status,
+    tensor_transport_val,
+    gpu_object_meta,
+):
+    """
+    Deserialize a GPU object ref. When the GPU object ref is deserialized,
+    it firstly deserialize the normal object ref, and then add metadata of
+    the GPU object to the GPU object manager, which will be used to fetch
+    the GPU object later.
+
+    Args:
+        binary: The binary data of the object ref.
+        call_site: The call site of the object ref.
+        owner_address: The owner address of the object ref.
+        object_status: The object status of the object ref.
+        tensor_transport_val: The tensor transport value of the GPU object ref.
+        gpu_object_meta: The GPU object metadata. This is used to fetch the GPU object later.
+
+    Returns:
+        The deserialized GPU object ref.
+    """
+    obj_ref = _object_ref_deserializer(
+        binary, call_site, owner_address, object_status, tensor_transport_val
+    )
+    gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+    gpu_object_manager.add_gpu_object_metadata(obj_ref, gpu_object_meta)
+
     return obj_ref
 
 
@@ -132,6 +152,12 @@ class SerializationContext:
     def __init__(self, worker):
         self.worker = worker
         self._thread_local = threading.local()
+        # This flag is to mark whether the custom serializer for torch.Tensor has
+        # been registered. If the method is decorated with
+        # `@ray.method(tensor_transport="xxx")`, it will use external transport
+        # (e.g. gloo, nccl, etc.) for tensor communication between actors,
+        # instead of the normal serialize -> object store -> deserialize codepath.
+        self._torch_custom_serializer_registered = False
 
         def actor_handle_reducer(obj):
             ray._private.worker.global_worker.check_connected()
@@ -156,6 +182,7 @@ class SerializationContext:
         def object_ref_reducer(obj):
             worker = ray._private.worker.global_worker
             worker.check_connected()
+
             self.add_contained_object_ref(
                 obj,
                 allow_out_of_band_serialization=(
@@ -163,14 +190,35 @@ class SerializationContext:
                 ),
                 call_site=obj.call_site(),
             )
+
             obj, owner_address, object_status = worker.core_worker.serialize_object_ref(
                 obj
             )
+            # Check if this is a GPU ObjectRef being serialized inside a collection
+            if (
+                self.is_in_band_serialization()
+                and worker.gpu_object_manager.is_managed_object(obj.hex())
+            ):
+
+                gpu_object_manager = (
+                    ray._private.worker.global_worker.gpu_object_manager
+                )
+                gpu_object_meta = gpu_object_manager._get_gpu_object_metadata(obj)
+                return _gpu_object_ref_deserializer, (
+                    obj.binary(),
+                    obj.call_site(),
+                    owner_address,
+                    object_status,
+                    obj.tensor_transport(),
+                    gpu_object_meta,
+                )
+
             return _object_ref_deserializer, (
                 obj.binary(),
                 obj.call_site(),
                 owner_address,
                 object_status,
+                obj.tensor_transport(),
             )
 
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
@@ -259,21 +307,15 @@ class SerializationContext:
     def _deserialize_pickle5_data(
         self,
         data: Any,
-        tensor_transport: TensorTransportEnum,
-        object_id: Optional[str] = None,
+        out_of_band_tensors: Optional[List["torch.Tensor"]],
     ) -> Any:
         """
 
         Args:
             data: The data to deserialize.
-            tensor_transport: The tensor transport to use. If not equal to OBJECT_STORE,
-                it means that any tensors in the object are sent out-of-band
-                instead of through the object store. In this case, we need to
-                retrieve the tensors from the in-actor object store. Then, we
-                deserialize `data` with the retrieved tensors in the
-                serialization context.
-            object_id: The object ID to use as the key for the in-actor object store
-                to retrieve tensors.
+            out_of_band_tensors: Tensors that were sent out-of-band. If this is
+                not None, then the serialized data will contain placeholders
+                that need to be replaced with these tensors.
 
         Returns:
             Any: The deserialized object.
@@ -281,18 +323,9 @@ class SerializationContext:
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current().serialization_context
-
-        enable_gpu_objects = tensor_transport != TensorTransportEnum.OBJECT_STORE
+        enable_gpu_objects = out_of_band_tensors is not None
         if enable_gpu_objects:
-            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            if not gpu_object_manager.gpu_object_store.has_gpu_object(object_id):
-                assert gpu_object_manager.is_managed_gpu_object(
-                    object_id
-                ), f"obj_id={object_id} not found in GPU object store. This error is unexpected. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
-                gpu_object_manager.fetch_gpu_object(object_id)
-            tensors = gpu_object_manager.gpu_object_store.get_gpu_object(object_id)
-            ctx.reset_out_of_band_tensors(tensors)
-            gpu_object_manager.gpu_object_store.remove_gpu_object(object_id)
+            ctx.reset_out_of_band_tensors(out_of_band_tensors)
 
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
@@ -312,16 +345,13 @@ class SerializationContext:
         self,
         data,
         metadata_fields,
-        object_id: Optional[str] = None,
-        tensor_transport: Optional[
-            TensorTransportEnum
-        ] = TensorTransportEnum.OBJECT_STORE,
+        out_of_band_tensors: Optional[List["torch.Tensor"]] = None,
     ):
         msgpack_data, pickle5_data = split_buffer(data)
 
         if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
             python_objects = self._deserialize_pickle5_data(
-                pickle5_data, tensor_transport, object_id
+                pickle5_data, out_of_band_tensors
             )
         else:
             python_objects = []
@@ -365,10 +395,8 @@ class SerializationContext:
         data,
         metadata,
         object_ref,
-        tensor_transport: Optional[TensorTransportEnum],
+        out_of_band_tensors: Optional[List["torch.Tensor"]],
     ):
-        if tensor_transport is None:
-            tensor_transport = TensorTransportEnum.OBJECT_STORE
         if metadata:
             metadata_fields = metadata.split(b",")
             if metadata_fields[0] in [
@@ -376,7 +404,7 @@ class SerializationContext:
                 ray_constants.OBJECT_METADATA_TYPE_PYTHON,
             ]:
                 return self._deserialize_msgpack_data(
-                    data, metadata_fields, object_ref.hex(), tensor_transport
+                    data, metadata_fields, out_of_band_tensors
                 )
             # Check if the object should be returned as raw bytes.
             if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_RAW:
@@ -384,7 +412,9 @@ class SerializationContext:
                     return b""
                 return data.to_pybytes()
             elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
-                obj = self._deserialize_msgpack_data(data, metadata_fields)
+                obj = self._deserialize_msgpack_data(
+                    data, metadata_fields, out_of_band_tensors
+                )
                 # The last character is a 1 if weak_ref=True and 0 else.
                 serialized, weak_ref = obj[:-1], obj[-1:] == b"1"
                 return _actor_handle_deserializer(serialized, weak_ref)
@@ -401,7 +431,9 @@ class SerializationContext:
             # TODO (kfstorm): exception serialization should be language
             # independent.
             if error_type == ErrorType.Value("TASK_EXECUTION_EXCEPTION"):
-                obj = self._deserialize_msgpack_data(data, metadata_fields)
+                obj = self._deserialize_msgpack_data(
+                    data, metadata_fields, out_of_band_tensors
+                )
                 return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return WorkerCrashedError()
@@ -424,7 +456,9 @@ class SerializationContext:
                 except google.protobuf.message.DecodeError:
                     # Deserialization from Python. The TaskCancelledError is
                     # serialized and returned directly.
-                    obj = self._deserialize_msgpack_data(data, metadata_fields)
+                    obj = self._deserialize_msgpack_data(
+                        data, metadata_fields, out_of_band_tensors
+                    )
                     return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("OBJECT_LOST"):
                 return ObjectLostError(
@@ -510,22 +544,33 @@ class SerializationContext:
             return PlasmaObjectNotAvailable
 
     def deserialize_objects(
-        self, serialized_ray_objects: List[SerializedRayObject], object_refs
+        self,
+        serialized_ray_objects: List[SerializedRayObject],
+        object_refs,
+        gpu_objects: Dict[str, List["torch.Tensor"]],
     ):
         assert len(serialized_ray_objects) == len(object_refs)
         # initialize the thread-local field
         if not hasattr(self._thread_local, "object_ref_stack"):
             self._thread_local.object_ref_stack = []
         results = []
-        for object_ref, (data, metadata, tensor_transport_value) in zip(
+        for object_ref, (data, metadata, transport) in zip(
             object_refs, serialized_ray_objects
         ):
             try:
                 # Push the object ref to the stack, so the object under
                 # the object ref knows where it comes from.
                 self._thread_local.object_ref_stack.append(object_ref)
+                object_tensors = None
+                if object_ref is not None:
+                    object_id = object_ref.hex()
+                    if object_id in gpu_objects:
+                        object_tensors = gpu_objects[object_id]
                 obj = self._deserialize_object(
-                    data, metadata, object_ref, tensor_transport_value
+                    data,
+                    metadata,
+                    object_ref,
+                    object_tensors,
                 )
             except Exception as e:
                 logger.exception(e)
@@ -610,32 +655,52 @@ class SerializationContext:
             metadata, msgpack_data, contained_object_refs, pickle5_serialized_object
         )
 
-    def serialize_and_store_gpu_objects(
+    def serialize_gpu_objects(
         self,
         value: Any,
-        obj_id: bytes,
-    ) -> MessagePackSerializedObject:
+    ) -> Tuple[MessagePackSerializedObject, List["torch.Tensor"]]:
         """Retrieve GPU data from `value` and store it in the GPU object store. Then, return the serialized value.
 
         Args:
             value: The value to serialize.
-            obj_id: The object ID of the value. `obj_id` is required, and the GPU data (e.g. tensors) in `value`
-                will be stored in the GPU object store with the key `obj_id`.
 
         Returns:
             Serialized value.
         """
+
+        if not self._torch_custom_serializer_registered:
+            # Register a custom serializer for torch.Tensor. If the method is
+            # decorated with `@ray.method(tensor_transport="xxx")`, it will
+            # use external transport (e.g. gloo, nccl, etc.) for tensor
+            # communication between actors, instead of the normal serialize ->
+            # object store -> deserialize codepath.
+            from ray.experimental.channel.torch_tensor_type import TorchTensorType
+
+            TorchTensorType().register_custom_serializer()
+            self._torch_custom_serializer_registered = True
+
+        serialized_val, tensors = self._serialize_and_retrieve_tensors(value)
+
+        return serialized_val, tensors
+
+    def store_gpu_objects(self, obj_id: str, tensors: List["torch.Tensor"]):
+        """
+        Store GPU objects in the GPU object store.
+
+        Args:
+            obj_id: The object ID of the value. `obj_id` is required, and the GPU data (e.g. tensors) in `value`
+                will be stored in the GPU object store with the key `obj_id`.
+            tensors: The tensors to store in the GPU object store.
+        """
         assert (
             obj_id is not None
         ), "`obj_id` is required, and it is the key to retrieve corresponding tensors from the GPU object store."
-        serialized_val, tensors = self._serialize_and_retrieve_tensors(value)
-        if tensors:
-            obj_id = obj_id.decode("ascii")
-            worker = ray._private.worker.global_worker
-            gpu_object_manager = worker.gpu_object_manager
-            gpu_object_manager.gpu_object_store.add_gpu_object(obj_id, tensors)
-
-        return serialized_val
+        # Regardless of whether `tensors` is empty, we always store the GPU object
+        # in the GPU object store. This ensures that `get_tensor_transport_metadata` is not
+        # blocked indefinitely.
+        worker = ray._private.worker.global_worker
+        gpu_object_manager = worker.gpu_object_manager
+        gpu_object_manager.gpu_object_store.add_object(obj_id, tensors, is_primary=True)
 
     def serialize(
         self, value: Any

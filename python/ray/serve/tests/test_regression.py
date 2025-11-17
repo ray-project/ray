@@ -12,6 +12,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor
 from ray.serve._private.constants import RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD
+from ray.serve._private.test_utils import get_application_url
 from ray.serve.context import _get_global_client
 from ray.serve.handle import DeploymentHandle
 
@@ -76,7 +77,7 @@ def test_np_in_composed_model(serve_instance):
     cm_d = ComposedModel.bind(sum_d)
     serve.run(cm_d)
 
-    result = httpx.get("http://127.0.0.1:8000/")
+    result = httpx.get(get_application_url())
     assert result.status_code == 200
     assert float(result.text) == 100.0
 
@@ -95,7 +96,7 @@ def test_replica_memory_growth(serve_instance):
     handle = serve.run(gc_unreachable_objects.bind())
 
     def get_gc_garbage_len_http():
-        result = httpx.get("http://127.0.0.1:8000")
+        result = httpx.get(get_application_url())
         assert result.status_code == 200
         return result.json()
 

@@ -1,24 +1,23 @@
 import logging
-import ray
-
 from pathlib import Path
 from typing import List
 
+import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.annotations import (
-    override,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
     OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.rllib.utils.compression import pack_if_needed
 from ray.rllib.utils.spaces.space_utils import to_jsonable_if_needed
 from ray.rllib.utils.typing import EpisodeType
-from ray.util.debug import log_once
 from ray.util.annotations import PublicAPI
+from ray.util.debug import log_once
 
 logger = logging.Logger(__file__)
 
@@ -39,8 +38,10 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         # Get the data context for this `EnvRunner`.
         data_context = ray.data.DataContext.get_current()
         # Limit the resources for Ray Data to the CPUs given to this `EnvRunner`.
-        data_context.execution_options.resource_limits.cpu = (
-            config.num_cpus_per_env_runner
+        data_context.execution_options.resource_limits = (
+            data_context.execution_options.resource_limits.copy(
+                cpu=config.num_cpus_per_env_runner
+            )
         )
 
         # Set the output write method.

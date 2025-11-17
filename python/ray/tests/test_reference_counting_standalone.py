@@ -15,11 +15,11 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._private.internal_api import memory_summary
-from ray._common.test_utils import SignalActor
 from ray._common.test_utils import (
+    SignalActor,
     wait_for_condition,
 )
+from ray._private.internal_api import memory_summary
 
 logger = logging.getLogger(__name__)
 

@@ -231,7 +231,7 @@ class LogsManager:
                 "Actor is not scheduled yet."
             )
         worker_id = WorkerID(worker_id_binary)
-        node_id_binary = actor_data.address.raylet_id
+        node_id_binary = actor_data.address.node_id
         if not node_id_binary:
             raise ValueError(
                 f"Node ID for Actor ID {actor_id} not found. "

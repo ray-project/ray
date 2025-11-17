@@ -22,8 +22,10 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/grpc_util.h"
-#include "ray/common/ray_config.h"
+#include "ray/common/scheduling/placement_group_util.h"
+#include "ray/common/scheduling/resource_set.h"
+#include "ray/stats/metric_defs.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
@@ -120,7 +122,7 @@ void LocalResourceManager::FreeTaskResourceInstances(
     }
   }
 }
-void LocalResourceManager::SetBusyFootprint(WorkFootprint item) {
+void LocalResourceManager::MarkFootprintAsBusy(WorkFootprint item) {
   auto prev = last_idle_times_.find(item);
   if (prev != last_idle_times_.end() && !prev->second.has_value()) {
     return;
@@ -129,7 +131,7 @@ void LocalResourceManager::SetBusyFootprint(WorkFootprint item) {
   OnResourceOrStateChanged();
 }
 
-void LocalResourceManager::SetIdleFootprint(WorkFootprint item) {
+void LocalResourceManager::MarkFootprintAsIdle(WorkFootprint item) {
   auto prev = last_idle_times_.find(item);
   bool state_change = prev == last_idle_times_.end() || !prev->second.has_value();
 
@@ -305,6 +307,10 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
     syncer::ResourceViewSyncMessage &resource_view_sync_message) const {
   NodeResources resources = ToNodeResources();
 
+  // Populate node labels.
+  resource_view_sync_message.mutable_labels()->insert(resources.labels.begin(),
+                                                      resources.labels.end());
+
   auto total = resources.total.GetResourceMap();
   resource_view_sync_message.mutable_resources_total()->insert(total.begin(),
                                                                total.end());
@@ -343,6 +349,9 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
         switch (std::get<WorkFootprint>(iter.first)) {
         case WorkFootprint::NODE_WORKERS:
           resource_view_sync_message.add_node_activity("Busy workers on node.");
+          break;
+        case WorkFootprint::PULLING_TASK_ARGUMENTS:
+          resource_view_sync_message.add_node_activity("Pulling task arguments.");
           break;
         default:
           UNREACHABLE;

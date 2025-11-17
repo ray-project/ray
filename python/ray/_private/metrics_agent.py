@@ -6,7 +6,6 @@ import threading
 import time
 import traceback
 from collections import defaultdict, namedtuple
-from enum import Enum
 from typing import Any, Dict, List, Set, Tuple, Union
 
 from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
@@ -35,7 +34,12 @@ from prometheus_client.core import (
 )
 
 import ray
-from ray._private.ray_constants import RAY_METRIC_CARDINALITY_LEVEL, env_bool
+from ray._common.network_utils import build_address
+from ray._private.ray_constants import env_bool
+from ray._private.telemetry.metric_cardinality import (
+    WORKER_ID_TAG_KEY,
+    MetricCardinality,
+)
 from ray._raylet import GcsClient
 from ray.core.generated.metrics_pb2 import Metric
 from ray.util.metrics import _is_invalid_metric_name
@@ -48,8 +52,6 @@ logger = logging.getLogger(__name__)
 RAY_WORKER_TIMEOUT_S = "RAY_WORKER_TIMEOUT_S"
 GLOBAL_COMPONENT_KEY = "CORE"
 RE_NON_ALPHANUMS = re.compile(r"[^a-zA-Z0-9]")
-# Keep in sync with the WorkerIdKey in src/ray/stats/tag_defs.cc
-WORKER_ID_TAG_KEY = "WorkerId"
 
 
 class Gauge(View):
@@ -130,17 +132,6 @@ def fix_grpc_metric(metric: Metric):
                 bucket_bounds = dist_value.bucket_options.explicit.bounds
                 if len(bucket_bounds) > 0 and bucket_bounds[0] == 0:
                     bucket_bounds[0] = 0.000_000_1
-
-
-class MetricCardinalityLevel(str, Enum):
-    """Cardinality level of the metric.
-
-    This is used to determine the cardinality level of the metric.
-    The cardinality level is used to determine the type of the metric.
-    """
-
-    LEGACY = "legacy"
-    RECOMMENDED = "recommended"
 
 
 class OpencensusProxyMetric:
@@ -494,20 +485,6 @@ class OpenCensusProxyCollector:
         else:
             raise ValueError(f"unsupported aggregation type {type(agg_data)}")
 
-    def _get_metric_cardinality_level_setting(self) -> str:
-        return RAY_METRIC_CARDINALITY_LEVEL.lower()
-
-    def _get_metric_cardinality_level(self) -> MetricCardinalityLevel:
-        """Get the cardinality level of the core metric.
-
-        This is used to determine set of metric labels. Some high cardinality labels
-        such as `WorkerId` and `Name` will be removed on low cardinality level.
-        """
-        try:
-            return MetricCardinalityLevel(self._get_metric_cardinality_level_setting())
-        except ValueError:
-            return MetricCardinalityLevel.LEGACY
-
     def _aggregate_metric_data(
         self,
         datas: List[
@@ -608,11 +585,11 @@ class OpenCensusProxyCollector:
             to_lower_cardinality: Dict[str, List[OpencensusProxyMetric]] = defaultdict(
                 list
             )
-            cardinality_level = self._get_metric_cardinality_level()
+            cardinality_level = MetricCardinality.get_cardinality_level()
             for component in self._components.values():
                 for metric in component.metrics.values():
                     if (
-                        cardinality_level == MetricCardinalityLevel.RECOMMENDED
+                        cardinality_level == MetricCardinality.RECOMMENDED
                         and not metric.is_distribution_aggregation_data()
                     ):
                         # We reduce the cardinality for all metrics except for histogram
@@ -798,13 +775,23 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         ray._private.state.state._initialize_global_state(gcs_client_options)
         self.temp_dir = temp_dir
         self.default_service_discovery_flush_period = 5
+
+        # The last service discovery content that PrometheusServiceDiscoveryWriter has seen
+        self.latest_service_discovery_content = []
+        self._content_lock = threading.RLock()
+
         super().__init__()
+
+    def get_latest_service_discovery_content(self):
+        """Return the latest stored service discovery content."""
+        with self._content_lock:
+            return self.latest_service_discovery_content
 
     def get_file_discovery_content(self):
         """Return the content for Prometheus service discovery."""
         nodes = ray.nodes()
         metrics_export_addresses = [
-            "{}:{}".format(node["NodeManagerAddress"], node["MetricsExportPort"])
+            build_address(node["NodeManagerAddress"], node["MetricsExportPort"])
             for node in nodes
             if node["alive"] is True
         ]
@@ -815,9 +802,10 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         dashboard_addr = gcs_client.internal_kv_get(b"DashboardMetricsAddress", None)
         if dashboard_addr:
             metrics_export_addresses.append(dashboard_addr.decode("utf-8"))
-        return json.dumps(
-            [{"labels": {"job": "ray"}, "targets": metrics_export_addresses}]
-        )
+        content = [{"labels": {"job": "ray"}, "targets": metrics_export_addresses}]
+        with self._content_lock:
+            self.latest_service_discovery_content = content
+        return json.dumps(content)
 
     def write(self):
         # Write a file based on https://prometheus.io/docs/guides/file-sd/

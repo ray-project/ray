@@ -1,10 +1,13 @@
-import time
-import pytest
-from pytest_docker_tools import container, fetch, network, volume
-from pytest_docker_tools import wrappers
 import subprocess
-import docker
+import time
 from typing import List
+
+import pytest
+from pytest_docker_tools import container, fetch, network, volume, wrappers
+
+import docker
+
+from ray._common.network_utils import build_address
 
 # If you need to debug tests using fixtures in this file,
 # comment in the volume
@@ -126,7 +129,7 @@ def gen_worker_node(envs, num_cpus):
             "ray",
             "start",
             "--address",
-            f"{head_node_container_name}:6379",
+            build_address(head_node_container_name, 6379),
             "--block",
             # Fix the port of raylet to make sure raylet restarts at the same
             # ip:port is treated as a different raylet.
@@ -181,10 +184,16 @@ def run_in_container(cmds: List[List[str]], container_id: str):
     for cmd in cmds:
         docker_cmd = ["docker", "exec", container_id] + cmd
         print(f"Executing command: {docker_cmd}", time.time())
-        resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT)
-        output = resp.decode("utf-8").strip()
-        print(f"Output: {output}")
-        outputs.append(output)
+        try:
+            resp = subprocess.check_output(docker_cmd, stderr=subprocess.STDOUT)
+            output = resp.decode("utf-8").strip()
+            print(f"Output: {output}")
+            outputs.append(output)
+        except subprocess.CalledProcessError as e:
+            error_output = e.output.decode("utf-8") if e.output else "No output"
+            print(f"Command failed with return code {e.returncode}")
+            print(f"Full error output:\n{error_output}")
+            raise
 
     return outputs
 
@@ -214,7 +223,16 @@ def podman_docker_cluster():
         "-f",
         "/dev/null",
     ]
-    container_id = subprocess.check_output(start_container_command).decode("utf-8")
+    try:
+        container_id = subprocess.check_output(
+            start_container_command, stderr=subprocess.STDOUT
+        ).decode("utf-8")
+    except subprocess.CalledProcessError as e:
+        error_output = e.output.decode("utf-8") if e.output else "No output"
+        print(f"Command failed with return code {e.returncode}")
+        print(f"Full error output:\n{error_output}")
+        raise
+
     container_id = container_id.strip()
 
     # Get group id that owns the docker socket file. Add user `ray` to

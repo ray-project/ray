@@ -8,4 +8,4 @@ from probes.openai_client import openai_client
 def test_get_model(model: str):
     model_description = openai_client.models.retrieve(model)
     assert model_description.id == model
-    assert "rayllm_metadata" in model_description.model_dump()
+    assert "metadata" in model_description.model_dump()

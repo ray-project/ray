@@ -1,7 +1,7 @@
 import abc
-from dataclasses import dataclass, field
 import functools
-from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -14,7 +14,7 @@ from ray.rllib.models.utils import get_activation_fn, get_initializer_fn
 from ray.rllib.utils.annotations import ExperimentalAPI
 
 if TYPE_CHECKING:
-    from ray.rllib.core.models.base import Model, Encoder
+    from ray.rllib.core.models.base import Encoder, Model
 
 
 @ExperimentalAPI
@@ -77,7 +77,7 @@ class ModelConfig(abc.ABC):
             a slow-down and should only be used for debugging.
     """
 
-    input_dims: Union[List[int], Tuple[int]] = None
+    input_dims: Union[List[int], Tuple[int, ...]] = None
     always_check_shapes: bool = False
 
     @abc.abstractmethod
@@ -90,7 +90,7 @@ class ModelConfig(abc.ABC):
         raise NotImplementedError
 
     @property
-    def output_dims(self) -> Optional[Tuple[int]]:
+    def output_dims(self) -> Optional[Tuple[int, ...]]:
         """Read-only `output_dims` are inferred automatically from other settings."""
         return None
 
@@ -168,7 +168,7 @@ class _MLPConfig(ModelConfig):
             stds are clipped in between -20 and 20.
     """
 
-    hidden_layer_dims: Union[List[int], Tuple[int]] = (256, 256)
+    hidden_layer_dims: Union[List[int], Tuple[int, ...]] = (256, 256)
     hidden_layer_use_bias: bool = True
     hidden_layer_activation: str = "relu"
     hidden_layer_use_layernorm: bool = False
@@ -298,10 +298,6 @@ class MLPHeadConfig(_MLPConfig):
             from ray.rllib.core.models.torch.heads import TorchMLPHead
 
             return TorchMLPHead(self)
-        else:
-            from ray.rllib.core.models.tf.heads import TfMLPHead
-
-            return TfMLPHead(self)
 
 
 @ExperimentalAPI
@@ -386,10 +382,6 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
             from ray.rllib.core.models.torch.heads import TorchFreeLogStdMLPHead
 
             return TorchFreeLogStdMLPHead(self)
-        else:
-            from ray.rllib.core.models.tf.heads import TfFreeLogStdMLPHead
-
-            return TfFreeLogStdMLPHead(self)
 
 
 @ExperimentalAPI
@@ -575,8 +567,8 @@ class CNNTransposeHeadConfig(ModelConfig):
         # )
     """
 
-    input_dims: Union[List[int], Tuple[int]] = None
-    initial_image_dims: Union[List[int], Tuple[int]] = field(
+    input_dims: Union[List[int], Tuple[int, ...]] = None
+    initial_image_dims: Union[List[int], Tuple[int, ...]] = field(
         default_factory=lambda: [4, 4, 96]
     )
     initial_dense_weights_initializer: Optional[Union[str, Callable]] = None
@@ -641,11 +633,6 @@ class CNNTransposeHeadConfig(ModelConfig):
             from ray.rllib.core.models.torch.heads import TorchCNNTransposeHead
 
             return TorchCNNTransposeHead(self)
-
-        elif framework == "tf2":
-            from ray.rllib.core.models.tf.heads import TfCNNTransposeHead
-
-            return TfCNNTransposeHead(self)
 
 
 @ExperimentalAPI
@@ -746,7 +733,7 @@ class CNNEncoderConfig(ModelConfig):
             different activation and bias settings).
     """
 
-    input_dims: Union[List[int], Tuple[int]] = None
+    input_dims: Union[List[int], Tuple[int, ...]] = None
     cnn_filter_specifiers: List[List[Union[int, List[int]]]] = field(
         default_factory=lambda: [[16, [4, 4], 2], [32, [4, 4], 2], [64, [8, 8], 2]]
     )
@@ -823,11 +810,6 @@ class CNNEncoderConfig(ModelConfig):
 
             return TorchCNNEncoder(self)
 
-        elif framework == "tf2":
-            from ray.rllib.core.models.tf.encoder import TfCNNEncoder
-
-            return TfCNNEncoder(self)
-
 
 @ExperimentalAPI
 @dataclass
@@ -888,10 +870,6 @@ class MLPEncoderConfig(_MLPConfig):
             from ray.rllib.core.models.torch.encoder import TorchMLPEncoder
 
             return TorchMLPEncoder(self)
-        else:
-            from ray.rllib.core.models.tf.encoder import TfMLPEncoder
-
-            return TfMLPEncoder(self)
 
 
 @ExperimentalAPI
@@ -1037,11 +1015,6 @@ class RecurrentEncoderConfig(ModelConfig):
                 TorchGRUEncoder as GRU,
                 TorchLSTMEncoder as LSTM,
             )
-        else:
-            from ray.rllib.core.models.tf.encoder import (
-                TfGRUEncoder as GRU,
-                TfLSTMEncoder as LSTM,
-            )
 
         if self.recurrent_layer_type == "lstm":
             return LSTM(self)
@@ -1083,13 +1056,3 @@ class ActorCriticEncoderConfig(ModelConfig):
                 return TorchStatefulActorCriticEncoder(self)
             else:
                 return TorchActorCriticEncoder(self)
-        else:
-            from ray.rllib.core.models.tf.encoder import (
-                TfActorCriticEncoder,
-                TfStatefulActorCriticEncoder,
-            )
-
-            if isinstance(self.base_encoder_config, RecurrentEncoderConfig):
-                return TfStatefulActorCriticEncoder(self)
-            else:
-                return TfActorCriticEncoder(self)

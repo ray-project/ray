@@ -12,7 +12,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --sheldon-cooper-mode`
+`python [script file name].py --sheldon-cooper-mode`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -42,22 +42,20 @@ You should see results similar to the following in your console output:
 Note that b/c we are playing a zero-sum game, the overall return remains 0.0 at
 all times.
 """
+from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObservations
 from ray.rllib.examples.envs.classes.multi_agent.rock_paper_scissors import (
     RockPaperScissors,
 )
-from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObservations
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls, register_env  # noqa
 
-
 parser = add_rllib_example_script_args(
     default_reward=0.9, default_iters=50, default_timesteps=100000
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_agents=2,
 )
 parser.add_argument(

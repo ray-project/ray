@@ -20,24 +20,23 @@ from typing import (
 
 import gymnasium as gym
 
-from ray.rllib.core.models.specs.typing import SpecType
+from ray._common.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    deprecation_warning,
+)
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic,
+    override,
 )
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
 from ray.rllib.utils.serialization import (
+    deserialize_type,
     gym_space_from_dict,
     gym_space_to_dict,
     serialize_type,
-    deserialize_type,
 )
 from ray.rllib.utils.typing import ModuleID, StateDict, T
 from ray.util.annotations import PublicAPI
@@ -466,26 +465,6 @@ class MultiRLModule(RLModule):
         return list(self._rl_modules.items())
 
     @override(RLModule)
-    def output_specs_train(self) -> SpecType:
-        return []
-
-    @override(RLModule)
-    def output_specs_inference(self) -> SpecType:
-        return []
-
-    @override(RLModule)
-    def output_specs_exploration(self) -> SpecType:
-        return []
-
-    @override(RLModule)
-    def _default_input_specs(self) -> SpecType:
-        """MultiRLModule should not check the input specs.
-
-        The underlying single-agent RLModules will check the input specs.
-        """
-        return []
-
-    @override(RLModule)
     def as_multi_rl_module(self) -> "MultiRLModule":
         """Returns self in order to match `RLModule.as_multi_rl_module()` behavior.
 
@@ -516,6 +495,22 @@ class MultiRLModule(RLModule):
                 f"Module with module_id {module_id} not found. "
                 f"Available modules: {set(self.keys())}"
             )
+
+    @Deprecated(error=False)
+    def output_specs_train(self):
+        pass
+
+    @Deprecated(error=False)
+    def output_specs_inference(self):
+        pass
+
+    @Deprecated(error=False)
+    def output_specs_exploration(self):
+        pass
+
+    @Deprecated(error=False)
+    def _default_input_specs(self):
+        pass
 
 
 @PublicAPI(stability="alpha")

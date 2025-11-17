@@ -15,7 +15,6 @@
 #pragma once
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -26,9 +25,8 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
-#include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/util/process.h"
 
 namespace ray {
@@ -84,7 +82,6 @@ struct CoreWorkerOptions {
         interactive(false),
         node_ip_address(""),
         node_manager_port(0),
-        raylet_ip_address(""),
         driver_name(""),
         task_execution_callback(nullptr),
         free_actor_object_callback(nullptr),
@@ -98,8 +95,8 @@ struct CoreWorkerOptions {
         get_lang_stack(nullptr),
         kill_main(nullptr),
         cancel_async_actor_task(nullptr),
+        actor_shutdown_callback(nullptr),
         is_local_mode(false),
-        terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
         metrics_agent_port(-1),
         runtime_env_hash(0),
@@ -108,13 +105,7 @@ struct CoreWorkerOptions {
         entrypoint(""),
         worker_launch_time_ms(-1),
         worker_launched_time_ms(-1),
-        assigned_worker_port(std::nullopt),
-        assigned_raylet_id(std::nullopt),
-        debug_source(""),
-        enable_resource_isolation(false) {
-    // TODO(hjiang): Add invariant check: for worker, both should be assigned; for driver,
-    // neither should be assigned.
-  }
+        debug_source("") {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -141,8 +132,6 @@ struct CoreWorkerOptions {
   std::string node_ip_address;
   /// Port of the local raylet.
   int node_manager_port;
-  /// IP address of the raylet.
-  std::string raylet_ip_address;
   /// The name of the driver.
   std::string driver_name;
   /// Application-language worker callback to execute tasks.
@@ -183,10 +172,10 @@ struct CoreWorkerOptions {
   // Should return a boolean indicating if the task was successfully cancelled or not.
   // If not, the client will retry.
   std::function<bool(const TaskID &task_id)> cancel_async_actor_task;
+  /// Callback to shutdown actor instance before shutdown.
+  std::function<void()> actor_shutdown_callback;
   /// Is local mode being used.
   bool is_local_mode;
-  /// The function to destroy asyncio event and loops.
-  std::function<void()> terminate_asyncio_thread;
   /// Serialized representation of JobConfig.
   std::string serialized_job_config;
   /// The port number of a metrics agent that imports metrics from core workers.
@@ -209,31 +198,15 @@ struct CoreWorkerOptions {
   std::function<std::shared_ptr<ray::RayObject>(const ray::RayObject &object,
                                                 const ObjectID &object_id)>
       object_allocator;
-  /// Session name (Cluster ID) of the cluster.
+  /// The current Ray session name.
   std::string session_name;
   std::string entrypoint;
   int64_t worker_launch_time_ms;
   int64_t worker_launched_time_ms;
-  /// Available port number for the worker.
-  ///
-  /// TODO(hjiang): Figure out how to assign available port at core worker start, also
-  /// need to add an end-to-end integration test.
-  ///
-  /// On the next end-to-end integrartion PR, we should check
-  /// - non-empty for worker
-  /// - and empty for driver
-  std::optional<int> assigned_worker_port;
-  /// Same as [assigned_worker_port], will be assigned for worker, and left empty for
-  /// driver.
-  std::optional<NodeID> assigned_raylet_id;
 
   // Source information for `CoreWorker`, used for debugging and informational purpose,
   // rather than functional purpose.
   std::string debug_source;
-
-  // If true, core worker enables resource isolation through cgroupv2 by reserving
-  // resources for ray system processes.
-  bool enable_resource_isolation = false;
 };
 }  // namespace core
 }  // namespace ray

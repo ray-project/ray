@@ -1,7 +1,7 @@
 import logging
 import os
 import random
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -16,8 +16,13 @@ from torch.utils.data import (
 )
 
 import ray.train.torch
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray.train.torch.train_loop_utils import _WrappedDataLoader
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.train.torch.train_loop_utils import (
+    _WrappedDataLoader,
+    get_devices as get_devices_distributed,
+)
+from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
+from ray.train.v2._internal.util import requires_train_worker
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -32,6 +37,130 @@ _TORCH_AMP_DEPRECATION_MESSAGE = (
     "See this issue for more context: "
     "https://github.com/ray-project/ray/issues/49454"
 )
+
+
+@PublicAPI(stability="stable")
+@requires_train_worker()
+def get_device() -> torch.device:
+    """Gets the correct torch device configured for the current worker.
+
+    Returns the torch device for the current worker. If more than 1 GPU is
+    requested per worker, returns the device with the lowest device index.
+
+    .. note::
+
+        If you requested multiple GPUs per worker, and want to get
+        the full list of torch devices, please use
+        :meth:`~ray.train.torch.get_devices`.
+
+    Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
+    superset of the `ray.get_gpu_ids()`.
+
+    Returns:
+        The torch device assigned to the current worker.
+
+    Examples:
+
+        Example: Launched 2 workers on the current node, each with 1 GPU
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
+            ray.get_gpu_ids() == [2]
+            torch.cuda.is_available() == True
+            get_device() == torch.device("cuda:0")
+
+        Example: Launched 4 workers on the current node, each with 1 GPU
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+            ray.get_gpu_ids() == [2]
+            torch.cuda.is_available() == True
+            get_device() == torch.device("cuda:2")
+
+        Example: Launched 2 workers on the current node, each with 2 GPUs
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+            ray.get_gpu_ids() == [2,3]
+            torch.cuda.is_available() == True
+            get_device() == torch.device("cuda:2")
+
+
+        You can move a model to device by:
+
+        .. testcode::
+            :skipif: True
+
+            model.to(ray.train.torch.get_device())
+
+        Instead of manually checking the device type:
+
+        .. testcode::
+            :skipif: True
+
+            model.to("cuda" if torch.cuda.is_available() else "cpu")
+    """
+    return get_devices()[0]
+
+
+@PublicAPI(stability="beta")
+@requires_train_worker()
+def get_devices() -> List[torch.device]:
+    """Gets the list of torch devices configured for the current worker.
+
+    Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
+    superset of the `ray.get_gpu_ids()`.
+
+    Returns:
+        The list of torch devices assigned to the current worker.
+
+    Examples:
+
+        Example: Launched 2 workers on the current node, each with 1 GPU
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] == "2,3"
+            ray.get_gpu_ids() == [2]
+            torch.cuda.is_available() == True
+            get_devices() == [torch.device("cuda:0")]
+
+        Example: Launched 4 workers on the current node, each with 1 GPU
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
+            ray.get_gpu_ids() == [2]
+            torch.cuda.is_available() == True
+            get_devices() == [torch.device("cuda:2")]
+
+        Example: Launched 2 workers on the current node, each with 2 GPUs
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
+            ray.get_gpu_ids() == [2,3]
+            torch.cuda.is_available() == True
+            get_devices() == [torch.device("cuda:2"), torch.device("cuda:3")]
+    """
+    if get_train_fn_utils().is_distributed():
+        return get_devices_distributed()
+    else:
+        # Local mode, we defer to torch.cuda
+        # TODO(xgui): Use `ScalingConfig.use_gpu` instead
+        if torch.cuda.is_available():
+            return [torch.device(f"cuda:{torch.cuda.current_device()}")]
+        else:
+            return [torch.device("cpu")]
 
 
 def prepare_model(

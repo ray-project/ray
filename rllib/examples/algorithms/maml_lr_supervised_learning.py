@@ -106,11 +106,11 @@ from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.algorithms.classes.maml_lr_differentiable_learner import (
     MAMLTorchDifferentiableLearner,
 )
-from ray.rllib.examples.algorithms.classes.maml_lr_meta_learner import (
-    MAMLTorchMetaLearner,
-)
 from ray.rllib.examples.algorithms.classes.maml_lr_differentiable_rlm import (
     DifferentiableTorchRLModule,
+)
+from ray.rllib.examples.algorithms.classes.maml_lr_meta_learner import (
+    MAMLTorchMetaLearner,
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.framework import try_import_torch
@@ -224,9 +224,7 @@ def sample_task(batch_size=10, noise_std=0.1, training_data=False, return_params
 
 
 # Define arguments.
-parser = add_rllib_example_script_args(
-    default_iters=70_000,
-)
+parser = add_rllib_example_script_args(default_iters=70_000)
 
 parser.add_argument(
     "--meta-train-batch-size",

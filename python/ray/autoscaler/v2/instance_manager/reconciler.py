@@ -21,10 +21,10 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     LaunchNodeError,
     TerminateNodeError,
 )
+from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
 from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer import (
     RayInstallError,
 )
-from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingRequest
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
@@ -38,12 +38,10 @@ from ray.core.generated.autoscaler_pb2 import (
     PendingInstance,
     PendingInstanceRequest,
 )
-from ray.core.generated.instance_manager_pb2 import GetInstanceManagerStateRequest
-from ray.core.generated.instance_manager_pb2 import Instance as IMInstance
 from ray.core.generated.instance_manager_pb2 import (
+    GetInstanceManagerStateRequest,
+    Instance as IMInstance,
     InstanceUpdateEvent as IMInstanceUpdateEvent,
-)
-from ray.core.generated.instance_manager_pb2 import (
     NodeKind,
     StatusCode,
     UpdateInstanceManagerStateRequest,
@@ -848,7 +846,7 @@ class Reconciler:
             # Enforce the max allowed pending nodes based on current running nodes
             num_desired_to_upscale = max(
                 1,
-                math.ceil(upscaling_speed * len(running_instances_for_type)),
+                math.ceil(upscaling_speed * max(len(running_instances_for_type), 1)),
             )
 
             # Enforce global limit, at most we can launch `max_concurrent_launches`

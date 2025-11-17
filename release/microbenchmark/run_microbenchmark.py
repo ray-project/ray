@@ -1,7 +1,6 @@
+import argparse
 import json
 import os
-
-import argparse
 
 
 def to_dict_key(key: str):

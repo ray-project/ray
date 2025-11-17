@@ -61,6 +61,7 @@ class MockTaskManagerInterface : public TaskManagerInterface {
                const std::vector<ObjectID> &contained_ids),
               (override));
   MOCK_METHOD(void, MarkTaskCanceled, (const TaskID &task_id), (override));
+  MOCK_METHOD(void, MarkTaskNoRetry, (const TaskID &task_id), (override));
   MOCK_METHOD(std::optional<TaskSpecification>,
               GetTaskSpec,
               (const TaskID &task_id),
