@@ -71,11 +71,10 @@ class AnyscaleJobRunner(CommandRunner):
         sdk: Optional["AnyscaleSDK"] = None,
         artifact_path: Optional[str] = None,
     ):
-        super().__init__(
-            cluster_manager=cluster_manager,
-            file_manager=file_manager,
-            working_dir=working_dir,
-        )
+        super().__init__()
+        self.cluster_manager = cluster_manager
+        self.file_manager = file_manager
+        self.working_dir = working_dir
         self.sdk = sdk or get_anyscale_sdk()
         self.job_manager = AnyscaleJobManager(cluster_manager)
 
