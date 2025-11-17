@@ -1,1 +1,2 @@
 datasets==3.6.0
+aiohttp==3.11.16
