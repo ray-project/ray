@@ -31,7 +31,7 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
     buffer_0_one_hot = {
         "a": np.array([0.0, 0.0, 0.0, 0.0], np.float32),
         "b": np.array([[0, 0, 0], [0, 0, 0]], np.float32),
-        "c": (np.array([0, 0, 0, 0, 0]), np.array([0], np.float32)),
+        "c": (np.array([0, 0, 0, 0, 0, 0, 0, 0]), np.array([0], np.float32)),
     }
     buffer_1 = {
         "a": 1,
