@@ -27,7 +27,7 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
         self._total_pending_rows = 0
 
     def _try_build_ready_bundle(self, flush_remaining: bool = False):
-        if self._total_pending_rows >= self._target_num_rows or flush_remaining:
+        if self._total_pending_rows >= self._target_num_rows:
             rows_needed_from_last_bundle = (
                 self._pending_bundles[-1].num_rows()
                 - self._total_pending_rows % self._target_num_rows
@@ -50,6 +50,12 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
             if remaining_bundle and remaining_bundle.num_rows() > 0:
                 self._pending_bundles.append(remaining_bundle)
                 self._total_pending_rows += remaining_bundle.num_rows()
+        elif flush_remaining:
+            self._ready_bundles.append(
+                RefBundle.merge_ref_bundles(self._pending_bundles)
+            )
+            self._pending_bundles.clear()
+            self._total_pending_rows = 0
 
     def add_bundle(self, ref_bundle: RefBundle):
         self._total_pending_rows += ref_bundle.num_rows()
