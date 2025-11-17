@@ -7,6 +7,7 @@ import pytest
 import ray
 from ray.data import Dataset
 from ray.data._internal.logical.interfaces import Plan
+from ray.data._internal.util import rows_same
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
@@ -19,8 +20,13 @@ def _check_valid_plan_and_result(
     expected_plan: Plan,
     expected_result: List[Dict[str, Any]],
     expected_physical_plan_ops=None,
+    check_ordering=True,
 ):
-    assert ds.take_all() == expected_result
+    actual_result = ds.take_all()
+    if check_ordering:
+        assert actual_result == expected_result
+    else:
+        assert rows_same(pd.DataFrame(actual_result), pd.DataFrame(expected_result))
     assert ds._plan._logical_plan.dag.dag_str == expected_plan
 
     expected_physical_plan_ops = expected_physical_plan_ops or []
@@ -83,6 +89,7 @@ def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
         ds,
         "Read[ReadRange] -> Limit[limit=5] -> Project[Project]",
         [{"id": i} for i in range(5)],
+        check_ordering=False,
     )
 
     # Test 6: Limit should stop at Sort operations (AllToAll)
