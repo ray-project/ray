@@ -96,6 +96,13 @@ class PredicatePushdown(Rule):
         # Check if filter references computed columns or renamed source columns
         from ray.data.expressions import AliasExpr
 
+        # Collect all new column names created by the projection
+        # This is needed to handle rename chains like: rename(a->b, b->c)
+        # where 'b' is both created (by a->b) and removed (by b->c)
+        new_names = {
+            expr.name for expr in projection_op.exprs if isinstance(expr, AliasExpr)
+        }
+
         for expr in projection_op.exprs:
             # Only AliasExpr can be computed columns or renames
             if not isinstance(expr, AliasExpr):
@@ -104,8 +111,12 @@ class PredicatePushdown(Rule):
             if expr.name in predicate_columns and not _is_renaming_expr(expr):
                 return False  # Computed column
             # Check renamed source: rename({'b': 'B'}) - filter shouldn't use old name 'b'
+            # However, if another rename creates a new column with the same name 'b',
+            # then it's valid to reference 'b' in the filter
             if _is_renaming_expr(expr) and expr.expr.name in predicate_columns:
-                return False  # Old name after rename
+                # Only block if this old name doesn't reappear as a new name
+                if expr.expr.name not in new_names:
+                    return False  # Old name after rename
 
         return True
 

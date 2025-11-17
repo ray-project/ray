@@ -626,6 +626,92 @@ class TestProjectionWithFilterEdgeCases:
         with pytest.raises((KeyError, ray.exceptions.RayTaskError)):
             ds.filter(expr=col("b") == 2).take_all()
 
+    @pytest.mark.parametrize(
+        "ds_factory,rename_map,filter_col,filter_value,expected_rows",
+        [
+            # In-memory dataset: rename a->b, b->b_old
+            (
+                lambda: ray.data.from_items(
+                    [
+                        {"a": 1, "b": 2, "c": 3},
+                        {"a": 2, "b": 5, "c": 8},
+                        {"a": 3, "b": 6, "c": 9},
+                    ]
+                ),
+                {"a": "b", "b": "b_old"},
+                "b",
+                1,
+                [{"b": 2, "b_old": 5, "c": 8}, {"b": 3, "b_old": 6, "c": 9}],
+            ),
+            # Parquet dataset: rename sepal.length->sepal.width, sepal.width->old_width
+            (
+                lambda: ray.data.read_parquet("example://iris.parquet"),
+                {"sepal.length": "sepal.width", "sepal.width": "old_width"},
+                "sepal.width",
+                5.0,
+                None,  # Will verify via alternative computation
+            ),
+        ],
+        ids=["in_memory", "parquet"],
+    )
+    def test_rename_chain_with_name_reuse(
+        self,
+        ray_start_regular_shared,
+        ds_factory,
+        rename_map,
+        filter_col,
+        filter_value,
+        expected_rows,
+    ):
+        """Test rename chains where an output name matches another rename's input name.
+
+        This tests the fix for a bug where rename(a->b, b->c) followed by filter(b>5)
+        would incorrectly block pushdown, even though 'b' is a valid output column
+        (created by a->b).
+
+        Example: rename({'a': 'b', 'b': 'temp'}) creates 'b' from 'a' and 'temp' from 'b'.
+        A filter on 'b' should be able to push through.
+        """
+        ds = ds_factory()
+
+        # Apply rename and filter
+        ds_renamed_filtered = ds.rename_columns(rename_map).filter(
+            expr=col(filter_col) > filter_value
+        )
+
+        # Verify correctness
+        if expected_rows is not None:
+            # For in-memory, compare against expected rows
+            result_df = ds_renamed_filtered.to_pandas()
+            expected_df = pd.DataFrame(expected_rows)
+            result_df = result_df[sorted(result_df.columns)]
+            expected_df = expected_df[sorted(expected_df.columns)]
+            assert rows_same(result_df, expected_df)
+        else:
+            # For parquet, compare against alternative computation
+            # Filter on original column, then rename
+            original_col = next(k for k, v in rename_map.items() if v == filter_col)
+            expected = ds.filter(expr=col(original_col) > filter_value).rename_columns(
+                rename_map
+            )
+            assert rows_same(ds_renamed_filtered.to_pandas(), expected.to_pandas())
+
+        # Verify plan optimization
+        optimized_plan = LogicalOptimizer().optimize(
+            ds_renamed_filtered._plan._logical_plan
+        )
+
+        # For parquet (supports predicate pushdown), filter should push into Read
+        if "parquet" in str(ds._plan._logical_plan.dag).lower():
+            assert not plan_has_operator(
+                optimized_plan, Filter
+            ), "Filter should be pushed into Read after rebinding through rename chain"
+        else:
+            # For in-memory, filter should at least push through projection
+            assert plan_operator_comes_before(
+                optimized_plan, Filter, Project
+            ), "Filter should be pushed before Project after rebinding through rename chain"
+
 
 class TestPushIntoBranchesBehavior:
     """Tests for PUSH_INTO_BRANCHES behavior operators.
