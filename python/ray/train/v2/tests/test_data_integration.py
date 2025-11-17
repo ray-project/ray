@@ -293,6 +293,113 @@ def test_data_config_resource_limits(ray_start_4_cpus, resource_limits):
     trainer.fit()
 
 
+def test_per_dataset_execution_options_single(ray_start_4_cpus):
+    """Test that a single ExecutionOptions object applies to all datasets."""
+    NUM_ROWS = 100
+    NUM_WORKERS = 2
+
+    train_ds = ray.data.range(NUM_ROWS)
+    val_ds = ray.data.range(NUM_ROWS)
+
+    # Create execution options with specific settings
+    execution_options = ExecutionOptions()
+    execution_options.preserve_order = True
+    execution_options.verbose_progress = True
+
+    data_config = ray.train.DataConfig(execution_options=execution_options)
+
+    def train_fn():
+        train_shard = ray.train.get_dataset_shard("train")
+        val_shard = ray.train.get_dataset_shard("val")
+
+        # Verify both datasets have the same execution options
+        assert train_shard.get_context().execution_options.preserve_order is True
+        assert train_shard.get_context().execution_options.verbose_progress is True
+        assert val_shard.get_context().execution_options.preserve_order is True
+        assert val_shard.get_context().execution_options.verbose_progress is True
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        datasets={"train": train_ds, "val": val_ds},
+        dataset_config=data_config,
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+    )
+    trainer.fit()
+
+
+def test_per_dataset_execution_options_dict(ray_start_4_cpus):
+    """Test that a dict of ExecutionOptions maps to specific datasets, and datasets
+    not in the dict get default ingest options. Also tests resource limits."""
+    NUM_ROWS = 100
+    NUM_WORKERS = 2
+
+    train_ds = ray.data.range(NUM_ROWS)
+    val_ds = ray.data.range(NUM_ROWS)
+    test_ds = ray.data.range(NUM_ROWS)
+
+    # Create different execution options for different datasets
+    train_options = ExecutionOptions()
+    train_options.preserve_order = True
+    train_options.verbose_progress = True
+    train_options.resource_limits = train_options.resource_limits.copy(cpu=4, gpu=2)
+
+    val_options = ExecutionOptions()
+    val_options.preserve_order = False
+    val_options.verbose_progress = False
+    val_options.resource_limits = val_options.resource_limits.copy(cpu=2, gpu=1)
+
+    execution_options_dict = {
+        "train": train_options,
+        "val": val_options,
+    }
+
+    data_config = ray.train.DataConfig(execution_options=execution_options_dict)
+    default_options = ray.train.DataConfig.default_ingest_options()
+
+    def train_fn():
+        train_shard = ray.train.get_dataset_shard("train")
+        val_shard = ray.train.get_dataset_shard("val")
+        test_shard = ray.train.get_dataset_shard("test")
+
+        # Verify each dataset in the dict gets its specific options
+        assert train_shard.get_context().execution_options.preserve_order is True
+        assert train_shard.get_context().execution_options.verbose_progress is True
+        assert val_shard.get_context().execution_options.preserve_order is False
+        assert val_shard.get_context().execution_options.verbose_progress is False
+
+        # Verify resource limits
+        assert train_shard.get_context().execution_options.resource_limits.cpu == 4
+        assert train_shard.get_context().execution_options.resource_limits.gpu == 2
+        assert val_shard.get_context().execution_options.resource_limits.cpu == 2
+        assert val_shard.get_context().execution_options.resource_limits.gpu == 1
+
+        # Verify dataset not in the dict gets default options
+        assert (
+            test_shard.get_context().execution_options.preserve_order
+            == default_options.preserve_order
+        )
+        assert (
+            test_shard.get_context().execution_options.verbose_progress
+            == default_options.verbose_progress
+        )
+        assert (
+            test_shard.get_context().execution_options.resource_limits.cpu
+            == default_options.resource_limits.cpu
+        )
+        assert (
+            test_shard.get_context().execution_options.resource_limits.gpu
+            == default_options.resource_limits.gpu
+        )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        datasets={"train": train_ds, "val": val_ds, "test": test_ds},
+        dataset_config=data_config,
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+    )
+    trainer.fit()
+
+
 if __name__ == "__main__":
     import sys
 
