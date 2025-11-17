@@ -41,13 +41,12 @@ class DeepSpeedInferenceWorker:
         self.model_config = AutoConfig.from_pretrained(
             model_id_or_path,
             torch_dtype=torch.bfloat16,
-            token="",
             trust_remote_code=False,
         )
 
         # Load and configure the tokenizer.
         self.tokenizer = AutoTokenizer.from_pretrained(
-            model_id_or_path, use_fast=False, token=""
+            model_id_or_path, use_fast=False
         )
         self.tokenizer.padding_side = "left"
         if self.tokenizer.pad_token is None:
@@ -82,7 +81,7 @@ class DeepSpeedInferenceWorker:
         # Create a file to indicate where the checkpoint is.
         checkpoints_json = tempfile.NamedTemporaryFile(suffix=".json", mode="w+")
         write_checkpoints_json(
-            self.model_id_or_path, self._local_rank, checkpoints_json, token=""
+            self.model_id_or_path, self._local_rank, checkpoints_json
         )
 
         # Prepare the DeepSpeed inference configuration.

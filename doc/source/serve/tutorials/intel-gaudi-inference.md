@@ -95,6 +95,8 @@ pip install git+https://github.com/huggingface/optimum-habana.git
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.20.0
 # Only needed by the DeepSpeed example.
 export RAY_EXPERIMENTAL_NOSET_HABANA_VISIBLE_MODULES=1
+# Specify your Hugging Face token.
+export HF_TOKEN=<YOUR_HF_TOKEN>
 ```
 
 Start Ray in the container with `ray start --head`. You are now ready to run the examples.
