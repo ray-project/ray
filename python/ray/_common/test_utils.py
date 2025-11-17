@@ -4,7 +4,7 @@ This module contains test utility classes that are distributed with the Ray pack
 and can be used by external libraries and tests. These utilities must remain in
 _common/ (not in tests/) to be accessible in the Ray package distribution.
 """
-
+from ray import serve
 import asyncio
 import inspect
 import os
@@ -99,6 +99,8 @@ def wait_for_condition(
     start = time.time()
     last_ex = None
     while time.time() - start <= timeout:
+        print(f"@@@@@@@ server status: {serve.status()}")
+        print(f"@@@@@@@ kwargs: {kwargs}")
         try:
             if condition_predictor(**kwargs):
                 return

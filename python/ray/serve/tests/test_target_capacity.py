@@ -168,6 +168,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
         },
     )
+    raise Exception("stop here")
 
 
 def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerClient):
