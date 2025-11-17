@@ -947,6 +947,109 @@ class TestMultiAgentEpisode(unittest.TestCase):
         for agent_id, agent_inf in infos[0].items():
             check(inf[agent_id][0], agent_inf)
 
+    def test_get_infos_with_common_key(self):
+        """Tests that get_infos() preserves the __common__ key.
+
+        The __common__ key is used in multi-agent environments to store
+        information that is common to all agents. This test verifies that
+        the __common__ key is preserved in all three code paths of get_infos():
+        - _get_data_by_env_steps() (default, env_steps=True)
+        - _get_data_by_agent_steps() (env_steps=False)
+        - _get_data_by_env_steps_as_list() (return_list=True)
+        """
+        # Create observations, actions, and rewards for multiple timesteps
+        observations = [
+            {"agent_1": 0, "agent_2": 0},
+            {"agent_1": 1, "agent_2": 1},
+            {"agent_1": 2, "agent_2": 2},
+        ]
+        actions = [
+            {"agent_1": 0, "agent_2": 0},
+            {"agent_1": 1, "agent_2": 1},
+        ]
+        rewards = [
+            {"agent_1": 0.5, "agent_2": 0.6},
+            {"agent_1": 1.1, "agent_2": 1.2},
+        ]
+
+        # Create infos with __common__ key that should be preserved
+        infos = [
+            {
+                "agent_1": {"a1_info": "timestep_0"},
+                "agent_2": {"a2_info": "timestep_0"},
+                "__common__": {"global_info": "common_data_t0"},
+            },
+            {
+                "agent_1": {"a1_info": "timestep_1"},
+                "agent_2": {"a2_info": "timestep_1"},
+                "__common__": {"global_info": "common_data_t1"},
+            },
+            {
+                "agent_1": {"a1_info": "timestep_2"},
+                "agent_2": {"a2_info": "timestep_2"},
+                "__common__": {"global_info": "common_data_t2"},
+            },
+        ]
+
+        terminateds = {"__all__": False, "agent_1": False, "agent_2": False}
+        truncateds = {"__all__": False, "agent_1": False, "agent_2": False}
+
+        # Create a multi-agent episode
+        episode = MultiAgentEpisode(
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            infos=infos,
+            terminateds=terminateds,
+            truncateds=truncateds,
+        )
+
+        # Test 1: get_infos() with env_steps=True (default)
+        # This tests the _get_data_by_env_steps() code path
+        inf = episode.get_infos(indices=-1)
+        # Verify __common__ key is present
+        self.assertIn("__common__", inf)
+        check(inf["__common__"], {"global_info": "common_data_t2"})
+        # Verify per-agent infos are also present
+        check(inf["agent_1"], {"a1_info": "timestep_2"})
+        check(inf["agent_2"], {"a2_info": "timestep_2"})
+
+        # Test 2: get_infos() with multiple indices (env_steps=True)
+        inf = episode.get_infos(indices=[-1, -2])
+        self.assertIn("__common__", inf)
+        check(inf["__common__"], {"global_info": "common_data_t2"})
+
+        # Test 3: get_infos() with env_steps=False
+        # This tests the _get_data_by_agent_steps() code path
+        inf = episode.get_infos(indices=-1, env_steps=False)
+        # Verify __common__ key is present
+        self.assertIn("__common__", inf)
+        check(inf["__common__"], {"global_info": "common_data_t2"})
+        # Verify per-agent infos are also present
+        check(inf["agent_1"], {"a1_info": "timestep_2"})
+        check(inf["agent_2"], {"a2_info": "timestep_2"})
+
+        # Test 4: get_infos() with return_list=True
+        # This tests the _get_data_by_env_steps_as_list() code path
+        inf = episode.get_infos(return_list=True)
+        # Should return a list with one item (last timestep)
+        self.assertIsInstance(inf, list)
+        self.assertEqual(len(inf), 1)
+        # Verify __common__ key is present in the returned dict
+        self.assertIn("__common__", inf[0])
+        check(inf[0]["__common__"], {"global_info": "common_data_t2"})
+        # Verify per-agent infos are also present
+        check(inf[0]["agent_1"], {"a1_info": "timestep_2"})
+        check(inf[0]["agent_2"], {"a2_info": "timestep_2"})
+
+        # Test 5: get_infos() with return_list=True and multiple indices
+        inf = episode.get_infos(indices=[-1, -2], return_list=True)
+        self.assertIsInstance(inf, list)
+        self.assertEqual(len(inf), 2)
+        # Both returned dicts should have __common__ key
+        for timestep_inf in inf:
+            self.assertIn("__common__", timestep_inf)
+
     def test_get_actions(self):
         """Tests whether the `MultiAgentEpisode.get_actions()` API works as expected."""
         # Generate a simple multi-agent episode.
