@@ -1,13 +1,14 @@
 import sys
-import pytest
+from typing import Dict, List
 from unittest import mock
-from typing import List, Dict
+
+import pytest
 
 from ray_release.scripts.ray_bisect import (
     _bisect,
+    _get_test,
     _obtain_test_result,
     _sanity_check,
-    _get_test,
 )
 
 
