@@ -173,7 +173,7 @@ def azure_authenticate():
     with open(cert_path, "w") as f:
         f.write(cert)
 
-    # Login to Azure
+    # Login to Azure using the certificate.
     subprocess.check_call(
         [
             "az",
