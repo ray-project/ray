@@ -69,10 +69,16 @@ class PredicatePushdown(Rule):
     ) -> bool:
         """Check if a filter can be pushed through a projection operator.
 
-        Returns False if filter references columns that don't exist in projection's input:
+        Returns False (blocks pushdown) if filter references:
         - Columns removed by select: select(['a']).filter(col('b'))
         - Computed columns: with_column('d', 4).filter(col('d'))
-        - Renamed source columns: rename({'b': 'B'}).filter(col('b'))
+        - Old column names after rename: rename({'b': 'B'}).filter(col('b'))
+
+        Returns True (allows pushdown) for:
+        - Columns present in output: select(['a', 'b']).filter(col('a'))
+        - New column names after rename: rename({'b': 'B'}).filter(col('B'))
+        - Rename chains with name reuse: rename({'a': 'b', 'b': 'c'}).filter(col('b'))
+          (where 'b' is valid output created by a->b)
         """
         from ray.data._internal.logical.rules.projection_pushdown import (
             _is_renaming_expr,
@@ -80,43 +86,59 @@ class PredicatePushdown(Rule):
         from ray.data._internal.planner.plan_expression.expression_visitors import (
             _ColumnReferenceCollector,
         )
+        from ray.data.expressions import AliasExpr
 
         collector = _ColumnReferenceCollector()
         collector.visit(filter_op._predicate_expr)
         predicate_columns = set(collector.get_column_refs() or [])
 
-        # Check if filter references columns removed by explicit select
-        if not projection_op.has_star_expr():
-            output_columns = {
-                expr.name for expr in projection_op.exprs if hasattr(expr, "name")
-            }
-            if not predicate_columns.issubset(output_columns):
-                return False
-
-        # Check if filter references computed columns or renamed source columns
-        from ray.data.expressions import AliasExpr
-
-        # Collect all new column names created by the projection
-        # This is needed to handle rename chains like: rename(a->b, b->c)
-        # where 'b' is both created (by a->b) and removed (by b->c)
-        new_names = {
-            expr.name for expr in projection_op.exprs if isinstance(expr, AliasExpr)
-        }
+        output_columns = set()
+        new_names = set()
+        original_columns_being_renamed = set()
 
         for expr in projection_op.exprs:
-            # Only AliasExpr can be computed columns or renames
-            if not isinstance(expr, AliasExpr):
-                continue
-            # Check computed column: with_column('d', 4) creates AliasExpr(lit(4), 'd')
-            if expr.name in predicate_columns and not _is_renaming_expr(expr):
-                return False  # Computed column
-            # Check renamed source: rename({'b': 'B'}) - filter shouldn't use old name 'b'
-            # However, if another rename creates a new column with the same name 'b',
-            # then it's valid to reference 'b' in the filter
-            if _is_renaming_expr(expr) and expr.expr.name in predicate_columns:
-                # Only block if this old name doesn't reappear as a new name
-                if expr.expr.name not in new_names:
-                    return False  # Old name after rename
+            # Collect output column names
+            output_columns.add(expr.name)
+
+            # Process AliasExpr (computed columns or renames)
+            if isinstance(expr, AliasExpr):
+                new_names.add(expr.name)
+
+                # Check computed column: with_column('d', 4) creates AliasExpr(lit(4), 'd')
+                if expr.name in predicate_columns and not _is_renaming_expr(expr):
+                    return False  # Computed column
+
+                # Track old names being renamed for later check
+                if _is_renaming_expr(expr):
+                    original_columns_being_renamed.add(expr.expr.name)
+
+        # Check if filter references columns removed by explicit select
+        # Valid if: projection includes all columns (star) OR predicate columns exist in output
+        has_required_columns = (
+            projection_op.has_star_expr() or predicate_columns.issubset(output_columns)
+        )
+        if not has_required_columns:
+            return False
+
+        # Find old names that are:
+        # 1. Being renamed away (in original_columns_being_renamed), AND
+        # 2. Referenced in predicate (in predicate_columns), AND
+        # 3. NOT recreated as new names (not in new_names)
+        #
+        # Examples:
+        #   rename({'b': 'B'}).filter(col('b'))
+        #     → {'b'} & {'b'} - {'B'} = {'b'} → BLOCKS (old name 'b' no longer exists)
+        #
+        #   rename({'a': 'b', 'b': 'c'}).filter(col('b'))
+        #     → {'a','b'} & {'b'} - {'b','c'} = {} → ALLOWS (new 'b' created by a->b)
+        #
+        #   rename({'b': 'B'}).filter(col('B'))
+        #     → {'b'} & {'B'} - {'B'} = {} → ALLOWS (using new name 'B')
+        invalid_old_names = (
+            original_columns_being_renamed & predicate_columns
+        ) - new_names
+        if invalid_old_names:
+            return False  # Old name after rename
 
         return True
 
