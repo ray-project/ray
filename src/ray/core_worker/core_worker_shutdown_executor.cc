@@ -208,10 +208,11 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
     }
 
     worker->task_execution_service_.post(
-        [weak_core_worker, shutdown_callback]() {
+        [this, weak_core_worker, shutdown_callback]() {
           auto worker_inner = weak_core_worker.lock();
           if (!worker_inner) {
             RAY_LOG(WARNING) << "CoreWorker destroyed during drain references execution";
+            NotifyComplete();
             return;
           }
 
