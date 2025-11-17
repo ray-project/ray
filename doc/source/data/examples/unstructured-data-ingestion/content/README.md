@@ -228,13 +228,9 @@ print("Extracting text from documents...")
 
 # Parameters:
 #   - process_file: The function to apply to each record
-#   - concurrency=16: Run 8 parallel tasks at a time
-#   - num_cpus=1: Each task gets 1 CPU (text extraction is CPU-intensive)
 
 documents_with_text = document_collection.map(
-    process_file,
-    concurrency=16,
-    num_cpus=1
+    process_file
 )
 ```
 
@@ -330,12 +326,10 @@ def enrich_business_metadata(record: Dict[str, Any]) -> Dict[str, Any]:
 print("Enriching with business metadata (using zero-shot NLP)...")
 
 # Note: zero-shot and LLM models can be heavy;
-# For fast local testing, decrease concurrency or use a smaller model, or replace with a production endpoint.
+# For fast local testing, use a smaller model, or replace with a production endpoint.
 
 documents_with_metadata = documents_with_text.map(
-    enrich_business_metadata,
-    concurrency=4,  # Lower if running on small nodes (NLP models use RAM/CPU)
-    num_cpus=1      # Each will load a model; set to available logical CPUs or 1 per task
+    enrich_business_metadata
 )
 
 
@@ -653,37 +647,11 @@ warehouse_dataset = warehouse_dataset.rename_columns({
 # ADD PIPELINE METADATA: Constant columns for all records
 # These columns are the same for every record in this run
 # They help with data lineage and debugging
-
-def add_pipeline_metadata(batch: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add constant metadata columns to every record.
-    
-    BEGINNER NOTE:
-    - These columns help track WHERE and WHEN data was processed
-    - Useful for debugging and auditing
-    - All records in this batch get the same values
-    
-    Why map_batches() for constants?
-    - More efficient than adding columns one at a time
-    - Can add multiple columns in one pass
-    - Pandas operations are fast for this
-    """
-    batch["processing_date"] = processing_date     # When was this processed?
-    batch["pipeline_version"] = "1.0"             # Which version of pipeline?
-    batch["processing_engine"] = "ray_data"       # What tool processed it?
-    return batch
-
-# Apply metadata addition
-# Parameters:
-#   - batch_format="pandas": Use pandas for easy column addition
-#   - num_cpus=0.1: Very low CPU (just adding constants)
-#   - batch_size=10000: Large batches (this is very fast)
-
-warehouse_dataset = warehouse_dataset.map_batches(
-    add_pipeline_metadata,
-    batch_format="pandas",
-    num_cpus=0.1,
-    batch_size=1000
+warehouse_dataset = (
+    warehouse_dataset
+    .with_column("processing_date", processing_date)       # When was this processed?
+    .with_column("pipeline_version", "1.0")               # Which version of pipeline?
+    .with_column("processing_engine", "ray_data")         # What tool processed it?
 )
 ```
 
@@ -967,9 +935,9 @@ This pipeline demonstrated all major Ray Data operations:
 - This allows Ray to optimize the entire pipeline
 
 **3. Resource Management**
-- `num_cpus`: How many CPU cores per task
-- `concurrency`: How many tasks run in parallel
 - `batch_size`: How many records per batch
+- `concurrency`: How many tasks run in parallel (advanced)
+- `num_cpus`: How many CPU cores per task (advanced)
 - Balance these based on your workload
 
 **4. Partitioning Strategy**
@@ -1012,9 +980,9 @@ This pipeline demonstrated all major Ray Data operations:
 2. **Tune resource parameters for your cluster**
    ```python
    # For larger clusters, increase parallelism:
-   concurrency=50     # More parallel tasks
    batch_size=5000    # Larger batches
-   num_cpus=2         # More CPU per task
+   concurrency=50     # More parallel tasks (advanced)
+   num_cpus=2         # More CPU per task (advanced)
    ```
 
 3. **Add error handling and retry logic**
