@@ -224,7 +224,7 @@ class ApplicationTargetState:
     deleting: bool
     api_type: APIType
     serialized_application_autoscaling_policy_def: Optional[bytes]
-    external_scaler_enabled: bool = False
+    external_scaler_enabled: bool
 
 
 class ApplicationState:
