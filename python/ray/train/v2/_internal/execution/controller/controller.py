@@ -275,7 +275,7 @@ class TrainController:
             )
             await asyncio.sleep(remaining_time)
             if self.get_state().is_terminal():
-                logger.warning(
+                logger.debug(
                     f"Controller is unexpectedly in terminal state {self.get_state()} after "
                     "sleeping and before polling workers. Exiting actor."
                 )
