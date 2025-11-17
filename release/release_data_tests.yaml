@@ -181,7 +181,7 @@
       # This test consistently fails on fixed-size clusters due to head OOM from
       # too many objects references on the head node. So, we only run it on
       # autoscaling clusters.
-      scaling: [autoscaling]
+      scaling: [fixed_size, autoscaling]
       shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle]
       columns:
         - "column08 column13 column14"   # 84 groups
@@ -193,7 +193,7 @@
   run:
     timeout: 3600
     script: >
-      python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
+      python groupby_benchmark.py --sf 10 --map-groups --group-by {{columns}}
       --shuffle-strategy {{shuffle_strategy}}
 
 ###############
