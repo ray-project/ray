@@ -155,6 +155,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
         },
+        timeout=30,
     )
 
     # Finish rollout (remove target_capacity), should have no effect.
