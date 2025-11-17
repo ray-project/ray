@@ -4,7 +4,6 @@ import pytest
 import torch
 
 import ray
-from ray.exceptions import ActorDiedError
 
 
 @ray.remote(enable_tensor_transport=True)
@@ -54,7 +53,7 @@ def test_ipc_fail(ray_start_regular):
     gpu_ref = src_actor.echo.remote(tensor)
 
     # Trigger tensor transfer from src to dst actor
-    with pytest.raises(ActorDiedError):
+    with pytest.raises(ValueError):
         ray.get(dst_actor.double.remote(gpu_ref), _tensor_transport="object_store")
 
 

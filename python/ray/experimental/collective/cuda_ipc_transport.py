@@ -27,11 +27,16 @@ class CudaIpcTransport(TensorTransportManager):
     def is_one_sided() -> bool:
         return True
 
+    @staticmethod
+    def can_abort_transport() -> bool:
+        return False
+
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
         return True
 
     @staticmethod
     def extract_tensor_transport_metadata(
+        obj_id: str,
         gpu_object: List["torch.Tensor"],
     ) -> CudaIpcTransportMetadata:
 
@@ -89,7 +94,9 @@ class CudaIpcTransport(TensorTransportManager):
             # it could take arbitrarily long and we don't want to trigger a spurious
             # timeout.
             gpu_object = gpu_object_store.wait_and_get_object(obj_id)
-            return CudaIpcTransport.extract_tensor_transport_metadata(gpu_object)
+            return CudaIpcTransport.extract_tensor_transport_metadata(
+                obj_id, gpu_object
+            )
 
         # Submit a Ray actor task to the source actor to get the tensor metadata.
         # The metadata is a list of tuples, where each tuple contains the shape and dtype
@@ -174,3 +181,13 @@ class CudaIpcTransport(TensorTransportManager):
     @staticmethod
     def garbage_collect(obj_id: str, tensor_transport_meta: CudaIpcTransportMetadata):
         pass
+
+    @staticmethod
+    def abort_transport(
+        obj_id: str,
+        communicator_metadata: CudaIpcCommunicatorMetadata,
+    ):
+        # TODO: Implement CUDA IPC abort transport.
+        raise NotImplementedError(
+            "CUDA IPC transport does not support abort_transport for now."
+        )
