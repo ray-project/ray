@@ -1050,6 +1050,103 @@ class TestMultiAgentEpisode(unittest.TestCase):
         for timestep_inf in inf:
             self.assertIn("__common__", timestep_inf)
 
+    def test_get_infos_with_common_key_incremental(self):
+        """Tests that __common__ key is preserved when building episode incrementally.
+
+        This test simulates how episodes are actually created in practice - by
+        starting with an empty episode and calling add_env_step() multiple times
+        to incrementally add observations, actions, rewards, and infos (including
+        __common__ info) as the environment steps forward.
+        """
+        # Create an empty episode and initialize it with a reset
+        episode = MultiAgentEpisode()
+        episode.add_env_reset(
+            observations={"agent_1": 0, "agent_2": 0},
+            infos={
+                "agent_1": {"reset_info": "initial"},
+                "agent_2": {"reset_info": "initial"},
+                "__common__": {"episode_id": 123, "env_config": "test"},
+            },
+        )
+
+        # Verify __common__ is preserved after reset
+        inf = episode.get_infos(indices=-1)
+        self.assertIn("__common__", inf)
+        check(inf["__common__"], {"episode_id": 123, "env_config": "test"})
+
+        # Add first environment step with new observations, actions, rewards, and infos
+        episode.add_env_step(
+            observations={"agent_1": 1, "agent_2": 1},
+            actions={"agent_1": 0, "agent_2": 0},
+            rewards={"agent_1": 1.0, "agent_2": 1.5},
+            infos={
+                "agent_1": {"step_info": "step_1"},
+                "agent_2": {"step_info": "step_1"},
+                "__common__": {"timestep": 1, "global_reward": 2.5},
+            },
+        )
+
+        # Verify __common__ is updated after step 1
+        inf = episode.get_infos(indices=-1)
+        self.assertIn("__common__", inf)
+        check(inf["__common__"], {"timestep": 1, "global_reward": 2.5})
+        # Verify per-agent infos are also present
+        check(inf["agent_1"], {"step_info": "step_1"})
+        check(inf["agent_2"], {"step_info": "step_1"})
+
+        # Add second environment step
+        episode.add_env_step(
+            observations={"agent_1": 2, "agent_2": 2},
+            actions={"agent_1": 1, "agent_2": 1},
+            rewards={"agent_1": 2.0, "agent_2": 2.5},
+            infos={
+                "agent_1": {"step_info": "step_2"},
+                "agent_2": {"step_info": "step_2"},
+                "__common__": {"timestep": 2, "global_reward": 4.5},
+            },
+        )
+
+        # Verify __common__ is updated after step 2
+        inf = episode.get_infos(indices=-1)
+        self.assertIn("__common__", inf)
+        check(inf["__common__"], {"timestep": 2, "global_reward": 4.5})
+
+        # Add third environment step
+        episode.add_env_step(
+            observations={"agent_1": 3, "agent_2": 3},
+            actions={"agent_1": 2, "agent_2": 2},
+            rewards={"agent_1": 3.0, "agent_2": 3.5},
+            infos={
+                "agent_1": {"step_info": "step_3"},
+                "agent_2": {"step_info": "step_3"},
+                "__common__": {"timestep": 3, "global_reward": 6.5},
+            },
+        )
+
+        # Verify __common__ is updated after step 3
+        inf = episode.get_infos(indices=-1)
+        self.assertIn("__common__", inf)
+        check(inf["__common__"], {"timestep": 3, "global_reward": 6.5})
+
+        # Test getting multiple timesteps - should only return latest __common__
+        # (since __common__ is stored in _hanging_infos_end, not per-timestep)
+        inf = episode.get_infos(indices=[-1, -2, -3])
+        self.assertIn("__common__", inf)
+        # The __common__ value should be the most recent one
+        check(inf["__common__"], {"timestep": 3, "global_reward": 6.5})
+
+        # Test with env_steps=False (agent-centric view)
+        inf = episode.get_infos(indices=-1, env_steps=False)
+        self.assertIn("__common__", inf)
+        check(inf["__common__"], {"timestep": 3, "global_reward": 6.5})
+
+        # Test with return_list=True
+        inf = episode.get_infos(return_list=True)
+        self.assertIsInstance(inf, list)
+        self.assertEqual(len(inf), 1)  # Should return last timestep
+        self.assertIn("__common__", inf[0])
+        check(inf[0]["__common__"], {"timestep": 3, "global_reward": 6.5})
+
     def test_get_actions(self):
         """Tests whether the `MultiAgentEpisode.get_actions()` API works as expected."""
         # Generate a simple multi-agent episode.
