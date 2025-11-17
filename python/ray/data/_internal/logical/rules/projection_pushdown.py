@@ -299,10 +299,26 @@ def _get_columns_to_rename_for_input(
     column_rename_map: Dict[str, str],
     input_op_referenced_keys: List[str],
 ) -> Optional[List[str]]:
-    """Determine which columns to rename for a specific input.
+    """Determine which columns to include in the upstream project for a specific input.
 
-    Returns:
-        List of columns to include in the upstream project, or None if no project needed.
+    Transformation examples:
+
+    Case 1: (use_schema_analysis=True, schema=None) → Cannot optimize
+        Input[unknown schema] → None (skip optimization)
+
+    Case 2: (use_schema_analysis=True, schema=Available) → Schema-based filtering
+        Input[cols: a,b,c]
+        + Requested: [b, d]         # Project wants columns b and d
+        + Keys: [a]                 # Operator needs key a
+        → Upstream selects: [a, b]  # Only b exists in schema; d doesn't, so skip it
+
+    Case 3: (use_schema_analysis=False, schema=Any) → No schema filtering
+        Input[cols: a,b,c]
+        + Requested: [b, d]         # Project wants columns b and d
+        + Keys: [a]                 # Operator needs key a
+        → Upstream selects: [a, b, d]  # Include all requested, even if d doesn't exist
+
+    Returns None if schema is required but unavailable.
     """
     match (use_schema_analysis, schema is None):
         case (True, True):
@@ -312,6 +328,7 @@ def _get_columns_to_rename_for_input(
         case (True, False):
             # Schema-based: Only push columns that exist in this input (Join, Zip)
             input_schema_cols: Set[str] = set(schema.names)
+            # Columns in both projection and input.
             projected_cols_in_input: Set[str] = (
                 set(column_rename_map.keys()) & input_schema_cols
             )
@@ -506,6 +523,22 @@ class ProjectionPushdown(Rule):
             for col in curr_project_referenced_cols
         }
 
+        # Short-circuit check: Skip optimization if conditions prevent safe transformation
+        if op_to_pass_through.requires_schema_based_branch_selection():
+            # Check if all inputs have schemas
+            all_schemas_exist = all(
+                input_op.infer_schema() is not None
+                for input_op in op_to_pass_through.input_dependencies
+            )
+            # Check if there are any non-trivial renames
+            has_nontrivial_renames = any(
+                old != new for old, new in filtered_old_to_new_name_map.items()
+            )
+
+            # Skip optimization if schema analysis required but schemas missing + renames exist
+            if not all_schemas_exist and has_nontrivial_renames:
+                return op
+
         # Apply unified projection pass-through logic
         return cls._apply_projection_pass_through(
             op=op_to_pass_through,
@@ -589,7 +622,8 @@ class ProjectionPushdown(Rule):
             if columns_to_rename is None:
                 # Short-circuit: Schema unavailable, use original input
                 upstream_projects.append(input_op)
-                # No rename needed
+                # Here, we use the old keys, because we know that
+                # the projection has trivial renames.
                 renamed_keys_per_input.append(input_op_referenced_keys)
                 continue
 
@@ -609,9 +643,11 @@ class ProjectionPushdown(Rule):
             renamed_keys_per_input.append(input_op_renamed_keys)
 
         # Recreate operator with new inputs and renamed keys
-        new_op: LogicalOperator = op.apply_projection_pass_through(
-            renamed_keys=renamed_keys_per_input,
-            upstream_projects=upstream_projects,
+        new_op: LogicalOperatorSupportsProjectionPassThrough = (
+            op.apply_projection_pass_through(
+                renamed_keys=renamed_keys_per_input,
+                upstream_projects=upstream_projects,
+            )
         )
 
         # Step 4: Create downstream project if keys aren't all in output
