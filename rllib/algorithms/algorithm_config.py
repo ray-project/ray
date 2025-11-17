@@ -1,7 +1,6 @@
 import copy
 import dataclasses
 import logging
-
 import math
 import sys
 from enum import Enum
