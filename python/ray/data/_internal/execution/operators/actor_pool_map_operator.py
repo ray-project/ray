@@ -390,6 +390,9 @@ class ActorPoolMapOperator(MapOperator):
         # once the bundle queue is exhausted.
         self._inputs_done = True
 
+        # Immediately dispatch any queued bundles after inputs are done
+        self._dispatch_tasks()
+
         if self._metrics.num_inputs_received < self._actor_pool.min_size():
             warnings.warn(
                 f"The minimum number of concurrent actors for '{self.name}' is set to "
