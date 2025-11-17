@@ -122,5 +122,10 @@ AgentManager::~AgentManager() {
   }
 }
 
+pid_t GetPid(){
+  return process_.GetPid()
+}
+
+
 }  // namespace raylet
 }  // namespace ray
