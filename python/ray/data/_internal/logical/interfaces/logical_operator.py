@@ -117,34 +117,40 @@ class LogicalOperatorSupportsProjectionPassThrough(LogicalOperator):
     that allow projections to *pass through* them.
     """
 
-    @abstractmethod
-    def projection_passthrough_behavior(self) -> "ProjectionPassThroughBehavior":
-        """Returns the projection passthrough behavior for this operator."""
-        pass
+    def requires_schema_based_branch_selection(self) -> bool:
+        """Returns True if projection pass-through requires schema analysis per branch.
 
-    def get_referenced_keys(self) -> Optional[List[List[str]]]:
+        When True (i.e: Join, Zip): Use schema analysis to determine which columns go to which branch.
+        When False (all others): Push same columns to all branches.
+
+        This is needed because because some operators do not change/update the schema, so we can
+        completely ignore the schema during projection pass through.
+        """
+        return False
+
+    def get_referenced_keys(self) -> List[List[str]]:
         """Returns columns/keys that this operator specifically references (e.g., sort keys, partition keys).
 
         Returns List[List[str]] indexed by input dependency:
-        - Single-input operators: [[keys]] or None
-        - Multi-input operators: [[left_keys], [right_keys]] or None
+        - Single-input operators: [[keys]] or [[]] if no keys
+        - Multi-input operators: [[left_keys], [right_keys], ...]
 
-        Returns None if the operator doesn't reference any specific columns/keys.
+        If no keys, returns empty lists: [[], [], ...] for each input.
         """
-        return None
+        return [[] for _ in self.input_dependencies]
 
     @abstractmethod
     def apply_projection_pass_through(
         self,
-        renamed_keys: Optional[List[List[str]]],
+        renamed_keys: List[List[str]],
         upstream_projects: List["Project"],
     ) -> LogicalOperator:
         """Apply projection pass-through by recreating the operator.
 
         Args:
             renamed_keys: The renamed version of operator-specific keys, indexed by input.
-                         Single-input: [[renamed_partition_keys]] or None
-                         Multi-input: [[left_keys], [right_keys], ...] or None
+                         Single-input: [[renamed_partition_keys]] or [[]] if no keys
+                         Multi-input: [[left_keys], [right_keys], ...]
             upstream_projects: List of Project operators to place before this operator.
                               Single-input operators use upstream_projects[0].
                               Multi-input operators use all elements.
@@ -194,22 +200,6 @@ class PredicatePassThroughBehavior(Enum):
 
     # Predicate can be conditionally pushed based on columns (e.g., Join)
     CONDITIONAL = "conditional"
-
-
-class ProjectionPassThroughBehavior(Enum):
-    """Defines how projections can be passed through an operator.
-    See the projection_pushdown.py rules for more details on how this
-    is used.
-    """
-
-    # Projection can be pushed through into all branches (e.g., StreamingRepartition, RandomShuffle, Union).
-    PASSTHROUGH_INTO_BRANCHES = "passthrough_into_branches"
-
-    # Projection can be pushed through with key substitution (e.g., Sort, Repartition).
-    PASSTHROUGH_WITH_SUBSTITUTION = "passthrough_with_substitution"
-
-    # Projection handling depends on which branch columns come from (e.g., Join, Zip).
-    PASSTHROUGH_WITH_CONDITIONAL = "passthrough_with_conditional"
 
 
 class LogicalOperatorSupportsPredicatePassThrough(ABC):

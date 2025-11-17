@@ -5,7 +5,6 @@ from ray.data._internal.logical.interfaces import (
     LogicalOperatorSupportsPredicatePassThrough,
     LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
-    ProjectionPassThroughBehavior,
 )
 from ray.data._internal.logical.operators.map_operator import Project
 
@@ -43,25 +42,26 @@ class Zip(NAry, LogicalOperatorSupportsProjectionPassThrough):
             total_num_outputs = max(total_num_outputs, num_outputs)
         return total_num_outputs
 
-    def get_referenced_keys(self) -> Optional[List[List[str]]]:
+    def requires_schema_based_branch_selection(self) -> bool:
+        """Zip requires schema analysis to determine which columns go to which branch."""
+        return True
+
+    def get_referenced_keys(self) -> List[List[str]]:
         """Return empty lists for each input (Zip has no keys)."""
         return [[] for _ in self.input_dependencies]
 
     def apply_projection_pass_through(
         self,
-        renamed_keys: Optional[List[List[str]]],
+        renamed_keys: List[List[str]],
         upstream_projects: List["Project"],
     ) -> LogicalOperator:
         """Recreate Zip with upstream projects.
 
         Args:
-            renamed_keys: Not used for Zip (no keys to rename)
+            renamed_keys: Empty lists for Zip (no keys to rename)
             upstream_projects: List of projects, one per input
         """
         return Zip(*upstream_projects)
-
-    def projection_passthrough_behavior(self) -> ProjectionPassThroughBehavior:
-        return ProjectionPassThroughBehavior.PASSTHROUGH_WITH_CONDITIONAL
 
 
 class Union(
@@ -88,14 +88,11 @@ class Union(
 
     def apply_projection_pass_through(
         self,
-        renamed_keys: Optional[List[List[str]]],
+        renamed_keys: List[List[str]],
         upstream_projects: List["Project"],
     ) -> LogicalOperator:
         """Recreate Union with upstream projects for all branches."""
         return Union(*upstream_projects)
-
-    def projection_passthrough_behavior(self) -> ProjectionPassThroughBehavior:
-        return ProjectionPassThroughBehavior.PASSTHROUGH_INTO_BRANCHES
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Union allows pushing filter into each branch

@@ -33,6 +33,7 @@ from ray.data._internal.logical.rules.projection_pushdown import ProjectionPushd
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data.context import DataContext
 from ray.data.expressions import col
+from ray.tests.conftest import *  # noqa
 
 
 class TestProjectionPassThrough:

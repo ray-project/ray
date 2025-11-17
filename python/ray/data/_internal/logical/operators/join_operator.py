@@ -6,7 +6,6 @@ from ray.data._internal.logical.interfaces import (
     LogicalOperatorSupportsPredicatePassThrough,
     LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
-    ProjectionPassThroughBehavior,
 )
 from ray.data._internal.logical.operators.n_ary_operator import NAry
 
@@ -95,28 +94,28 @@ class Join(
         self._partition_size_hint = partition_size_hint
         self._aggregator_ray_remote_args = aggregator_ray_remote_args
 
-    def get_referenced_keys(self) -> Optional[List[List[str]]]:
+    def requires_schema_based_branch_selection(self) -> bool:
+        """Join requires schema analysis to determine which columns go to which branch."""
+        return True
+
+    def get_referenced_keys(self) -> List[List[str]]:
         """Return join keys for left and right sides as List[List[str]]."""
         return [list(self._left_key_columns), list(self._right_key_columns)]
 
     def apply_projection_pass_through(
         self,
-        renamed_keys: Optional[List[List[str]]],
+        renamed_keys: List[List[str]],
         upstream_projects: List["Project"],
     ) -> LogicalOperator:
         """Recreate Join with upstream projects and renamed keys.
 
         Args:
-            renamed_keys: [[left_renamed_keys], [right_renamed_keys]] or None
+            renamed_keys: [[left_renamed_keys], [right_renamed_keys]]
             upstream_projects: [left_project, right_project]
         """
         # Extract left and right renamed keys (index by input)
-        left_new_keys = (
-            renamed_keys[0] if renamed_keys else list(self._left_key_columns)
-        )
-        right_new_keys = (
-            renamed_keys[1] if renamed_keys else list(self._right_key_columns)
-        )
+        left_new_keys = renamed_keys[0]
+        right_new_keys = renamed_keys[1]
 
         return Join(
             left_input_op=upstream_projects[0],
@@ -130,9 +129,6 @@ class Join(
             partition_size_hint=self._partition_size_hint,
             aggregator_ray_remote_args=self._aggregator_ray_remote_args,
         )
-
-    def projection_passthrough_behavior(self) -> ProjectionPassThroughBehavior:
-        return ProjectionPassThroughBehavior.PASSTHROUGH_WITH_CONDITIONAL
 
     @staticmethod
     def _validate_schemas(

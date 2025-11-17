@@ -5,7 +5,6 @@ from ray.data._internal.logical.interfaces import (
     LogicalOperatorSupportsPredicatePassThrough,
     LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
-    ProjectionPassThroughBehavior,
 )
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
@@ -78,7 +77,7 @@ class RandomizeBlocks(
 
     def apply_projection_pass_through(
         self,
-        renamed_keys: Optional[List[List[str]]],
+        renamed_keys: List[List[str]],
         upstream_projects: List["Project"],
     ) -> LogicalOperator:
         """Recreate RandomizeBlocks with projection pass-through."""
@@ -86,9 +85,6 @@ class RandomizeBlocks(
             input_op=upstream_projects[0],
             seed=self._seed,
         )
-
-    def projection_passthrough_behavior(self) -> ProjectionPassThroughBehavior:
-        return ProjectionPassThroughBehavior.PASSTHROUGH_INTO_BRANCHES
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Randomizing block order doesn't affect filtering correctness
@@ -134,7 +130,7 @@ class RandomShuffle(
 
     def apply_projection_pass_through(
         self,
-        renamed_keys: Optional[List[List[str]]],
+        renamed_keys: List[List[str]],
         upstream_projects: List["Project"],
     ) -> LogicalOperator:
         """Recreate RandomShuffle with projection pass-through."""
@@ -144,9 +140,6 @@ class RandomShuffle(
             seed=self._seed,
             ray_remote_args=self._ray_remote_args,
         )
-
-    def projection_passthrough_behavior(self) -> ProjectionPassThroughBehavior:
-        return ProjectionPassThroughBehavior.PASSTHROUGH_INTO_BRANCHES
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Random shuffle doesn't affect filtering correctness
@@ -199,13 +192,13 @@ class Repartition(
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
-    def get_referenced_keys(self) -> Optional[List[List[str]]]:
+    def get_referenced_keys(self) -> List[List[str]]:
         """Return partition keys that need to be preserved."""
-        return [self._keys] if self._keys else None
+        return [self._keys] if self._keys else [[]]
 
     def apply_projection_pass_through(
         self,
-        renamed_keys: Optional[List[List[str]]],
+        renamed_keys: List[List[str]],
         upstream_projects: List["Project"],
     ) -> LogicalOperator:
         """Recreate Repartition with renamed partition keys."""
@@ -213,12 +206,9 @@ class Repartition(
             input_op=upstream_projects[0],
             num_outputs=self._num_outputs,
             shuffle=self._shuffle,
-            keys=renamed_keys[0] if (renamed_keys and self._keys is not None) else None,
+            keys=renamed_keys[0] if renamed_keys[0] else None,
             sort=self._sort,
         )
-
-    def projection_passthrough_behavior(self) -> ProjectionPassThroughBehavior:
-        return ProjectionPassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Repartition doesn't affect filtering correctness
@@ -262,19 +252,19 @@ class Sort(
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
-    def get_referenced_keys(self) -> Optional[List[List[str]]]:
+    def get_referenced_keys(self) -> List[List[str]]:
         """Return sort keys that need to be preserved."""
         return [self._sort_key.get_columns()]
 
     def apply_projection_pass_through(
         self,
-        renamed_keys: Optional[List[List[str]]],
+        renamed_keys: List[List[str]],
         upstream_projects: List["Project"],
     ) -> LogicalOperator:
         """Recreate Sort with renamed sort keys."""
         # Create new sort key with renamed columns (index into [0] for single-input)
         new_sort_key = SortKey(
-            key=renamed_keys[0] if renamed_keys else self._sort_key.get_columns(),
+            key=renamed_keys[0],
             descending=self._sort_key._descending,
             boundaries=self._sort_key.boundaries,
         )
@@ -285,9 +275,6 @@ class Sort(
             sort_key=new_sort_key,
             batch_format=self._batch_format,
         )
-
-    def projection_passthrough_behavior(self) -> ProjectionPassThroughBehavior:
-        return ProjectionPassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Sort doesn't affect filtering correctness
