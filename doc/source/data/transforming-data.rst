@@ -403,8 +403,9 @@ Then, call :meth:`~ray.data.grouped_data.GroupedData.map_groups` to execute a tr
             import ray
 
             def normalize_features(group: pd.DataFrame) -> pd.DataFrame:
-                target = group.drop("target")
-                group = (group - group.min()) / group.std()
+                target = group["target"]
+                group = group.drop(columns=["target"])
+                group = (group - group.mean()) / group.std()
                 group["target"] = target
                 return group
 
