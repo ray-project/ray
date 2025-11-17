@@ -32,6 +32,7 @@ namespace ray {
 /// Encapsulates non-resource artifacts that evidence work when present.
 enum WorkFootprint {
   NODE_WORKERS = 1,
+  PULLING_TASK_ARGUMENTS = 2,
 };
 
 // Represents artifacts of a node that can be busy or idle.
@@ -117,9 +118,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
   // Removes idle time for a WorkFootprint, thereby marking it busy.
-  void SetBusyFootprint(WorkFootprint item);
+  void MarkFootprintAsBusy(WorkFootprint item);
   // Sets the idle time for a WorkFootprint to now.
-  void SetIdleFootprint(WorkFootprint item);
+  void MarkFootprintAsIdle(WorkFootprint item);
 
   double GetLocalAvailableCpus() const;
 
