@@ -63,7 +63,7 @@ class CloudResourceMonitor(InstanceUpdatedSubscriber):
         """
         resource_availability_scores: Dict[NodeType, float] = {}
         if self._last_unavailable_timestamp:
-            max_ts = max(resource_availability_scores.values())
+            max_ts = max(self._last_unavailable_timestamp.values())
             for node_type in self._last_unavailable_timestamp:
                 resource_availability_scores[node_type] = (
                     1 - self._last_unavailable_timestamp[node_type] / max_ts
