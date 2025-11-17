@@ -700,7 +700,26 @@ def config(address: str, name: Optional[str]):
         "specified application."
     ),
 )
-def status(address: str, name: Optional[str]):
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Verbose mode. If set, this will display the autoscaling observability of all the deployments in the application.",
+)
+@click.option(
+    "--deployment-name",
+    "-d",
+    default=None,
+    required=False,
+    type=str,
+    help=(
+        "Name of a deployment. If set, this will display the autoscaling observability of the "
+        "specified deployment in verbose mode."
+    ),
+)
+def status(
+    address: str, name: Optional[str], verbose: bool, deployment_name: Optional[str]
+):
     warn_if_agent_address_set()
 
     serve_details = ServeInstanceDetails(
@@ -734,6 +753,29 @@ def status(address: str, name: Optional[str]):
                 ),
                 end="",
             )
+    # Add verbose mode: This currently filters by application name, deployment name if provided.
+    if verbose:
+        autoscaling_details = ServeSubmissionClient(
+            address
+        ).get_autoscaling_observability()
+        if not autoscaling_details:
+            cli_logger.print("No autoscaling details found.")
+            return
+        if name and name not in autoscaling_details:
+            cli_logger.error(f'Application "{name}" does not exist.')
+            return
+        if deployment_name and not name:
+            cli_logger.error("--deployment-name requires --name to be set.")
+            return
+        if deployment_name and deployment_name not in autoscaling_details[name]:
+            cli_logger.error(f'Deployment "{deployment_name}" does not exist.')
+            return
+        deployment_details = autoscaling_details
+        if name:
+            deployment_details = autoscaling_details[name]
+            if deployment_name:
+                deployment_details = deployment_details[deployment_name]
+        print(yaml.safe_dump(deployment_details, sort_keys=False), end="")
 
 
 @cli.command(
