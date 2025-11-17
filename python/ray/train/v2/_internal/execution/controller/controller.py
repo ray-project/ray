@@ -25,9 +25,6 @@ from ray.train.v2._internal.execution.callback import (
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
-from ray.train.v2._internal.execution.controller.pg_cleaner_callback import (
-    PlacementGroupCleanerCallback,
-)
 from ray.train.v2._internal.execution.checkpoint.report_handler import (
     ReportCallbackHandler,
 )
@@ -148,14 +145,10 @@ class TrainController:
             )
         )
 
-        # Create the PlacementGroupCleaner callback for automatic cleanup
-        self._pg_cleaner_callback = PlacementGroupCleanerCallback()
-
         # Group callbacks by the hooks they're subscribed to.
         self._controller_callbacks = [
             self._scaling_policy,
             self._validation_manager,
-            self._pg_cleaner_callback,
         ] + [c for c in self._callbacks if isinstance(c, ControllerCallback)]
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
@@ -595,4 +588,3 @@ class TrainController:
         return await self._checkpoint_manager.get_all_reported_checkpoints(
             current_report_index
         )
-
