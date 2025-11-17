@@ -109,11 +109,6 @@ if __name__ == "__main__":
 
     tune.register_env("slow-env", _env_creator)
 
-    if args.vectorize_mode == "both" and args.no_tune:
-        raise ValueError(
-            "`--vectorize-mode=both` and `--no-tune` not allowed in combination!"
-        )
-
     base_config = (
         PPOConfig()
         .environment("slow-env")
