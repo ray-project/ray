@@ -328,11 +328,11 @@ class InstanceUtil:
             Instance.TERMINATED: set(),  # Terminal state.
             # When in this status, the cloud instance failed to be allocated by the
             # node provider.
-            Instance.ALLOCATION_FAILED: set(
+            Instance.ALLOCATION_FAILED: {
                 # Autoscaler requests to shutdown the instance when ths instance is
                 # failed to be allocated.
                 Instance.TERMINATING,
-            ),
+            },
             Instance.RAY_INSTALL_FAILED: {
                 # Autoscaler requests to shutdown the instance when ray install failed.
                 Instance.TERMINATING,
