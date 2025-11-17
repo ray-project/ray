@@ -630,7 +630,7 @@ As in the RayCluster case, the worker Pods scale up toward
 `maxReplicas` while the CPU-bound tasks are running and scale back
 down toward `minReplicas` after the tasks finish and the idle timeout
 elapses.  The only difference is that the `ray.io/cluster` label now
-matches the RayService name (`rayservice-kueue-autoscaler`) instead of the
+matches the RayService name (`rayservice-kueue-autoscaler-9xvcr`) instead of the
 stand-alone `RayCluster` name (`raycluster-kueue-autoscaler`).
 
 ### Limitations
