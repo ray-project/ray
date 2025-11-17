@@ -296,7 +296,27 @@ llm_config = LLMConfig(
     ...
 )
 ```
-NOTE: `CloudDownloader` is a callback that isn't public yet. We plan to make it public after stabilizing the API and incorporating user feedback. In the meantime, the compile cache can be retrieved using any preferred method, as long as the path to the cache is set in `compilation_config`. 
+Other options for retrieving the compile cache (distributed filesystem, block storage) can be used, as long as the path to the cache is set in `compilation_config`. 
+
+### Custom Initialization Behaviors
+
+We provide a the ability to create custom node initialization behaviors with the API defined by [`CallbackBase`](https://github.com/ray-project/ray/blob/master/python/ray/llm/_internal/common/callbacks/base.py). Callback functions defined in the class are invoked at certain parts of the initialization process. An example is the above mentioned [`CloudDownloader`](https://github.com/ray-project/ray/blob/master/python/ray/llm/_internal/common/callbacks/cloud_downloader.py) which overrides the `on_before_download_model_files_distributed` function to distribute installation tasks across nodes. To enable your custom callback, specify the classname inside `LLMConfig`. 
+
+```python
+from user_custom_classes import CustomCallback
+config = LLMConfig(
+    ...
+    callback_config={
+        "callback_class": CustomCallback, 
+        # or use string "user_custom_classes.CustomCallback"
+        "callback_kwargs": {"kwargs_test_key": "kwargs_test_value"},
+    },
+    ...
+)
+```
+
+> **Note:** Callbacks are a new feature. We may change the callback API and incorporate user feedback as we continue to develop this functionality.
+
 
 ## Best practices
 
