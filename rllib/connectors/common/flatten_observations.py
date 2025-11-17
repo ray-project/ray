@@ -299,6 +299,7 @@ class FlattenObservations(ConnectorV2):
             keys_to_remove
             and (
                 isinstance(input_observation_space, gym.spaces.Dict)
+                # Note, not all agent must have dictionary observation spaces.
                 or any(
                     isinstance(agent_space, gym.spaces.Dict)
                     for agent_space in input_action_space
@@ -342,6 +343,7 @@ class FlattenObservations(ConnectorV2):
                         .copy()
                     )
 
+                # Add the transformed observations to the batch.
                 self.add_n_batch_items(
                     batch=batch,
                     column=Columns.OBS,
@@ -386,6 +388,16 @@ class FlattenObservations(ConnectorV2):
         return batch
 
     def _remove_keys_from_dict(self, obs, sa_episode):
+        """Removes keys from dictionary spaces.
+
+        Args:
+            obs: Observation sample from space.
+            sa_episode: Single-agent episode. Needs `agent_id` set in multi-agent
+                setups.
+
+        Returns:
+            Observation sample `obs` with keys in `self._keys_to_remove` removed.
+        """
 
         # Only remove keys for agents that have a dictionary space.
         is_dict_space = False
