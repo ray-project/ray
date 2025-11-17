@@ -255,6 +255,7 @@ message ReplicaConfig {
   string placement_group_bundles = 6;
   string placement_group_strategy = 7;
   int32 max_replicas_per_node = 8;
+  string bundle_label_selector = 9;
 }
 
 enum TargetCapacityDirection {
