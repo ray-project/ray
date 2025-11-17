@@ -193,7 +193,7 @@
   run:
     timeout: 3600
     script: >
-      python groupby_benchmark.py --sf 10 --map-groups --group-by {{columns}}
+      python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
       --shuffle-strategy {{shuffle_strategy}}
 
 ###############
