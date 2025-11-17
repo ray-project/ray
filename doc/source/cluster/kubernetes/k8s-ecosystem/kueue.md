@@ -492,10 +492,6 @@ To make a RayService work with Kueue and the Ray autoscaler:
    specify worker `minReplicas`/`maxReplicas`.
 
 The following manifest deploys a simple Ray Serve app with autoscaling.
-The Serve application (`demo_app`) and deployment names (`ServiceA` and
-`ServiceB`) are placeholders to avoid implying a specific KubeRay
-example.  Adjust the deployments and resources for your own
-application.
 
 ```yaml
 apiVersion: ray.io/v1
