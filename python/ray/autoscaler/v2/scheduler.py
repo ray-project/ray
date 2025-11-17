@@ -732,7 +732,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         # The availability scores of cloud resource. A low score suggests that
         # this type of resource has historically experienced allocation failures,
         # and the weight of this type should be reduced during scheduling.
-        _cloud_resource_availabilities: Dict[NodeType, float] = field(default_factory=dict)
+        _cloud_resource_availabilities: Dict[NodeType, float] = field(
+            default_factory=dict
+        )
 
         def __init__(
             self,
@@ -1485,7 +1487,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 requests_to_sched,
                 existing_nodes,
                 resource_request_source,
-                ctx.get_cloud_resource_availabilities()
+                ctx.get_cloud_resource_availabilities(),
             )
             if best_node is None:
                 # No existing nodes can schedule any more requests.
@@ -1524,7 +1526,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 requests_to_sched,
                 node_pools,
                 resource_request_source,
-                ctx.get_cloud_resource_availabilities()
+                ctx.get_cloud_resource_availabilities(),
             )
             if best_node is None:
                 break
@@ -1625,9 +1627,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             key=lambda r: (
                 r.score,
                 cloud_resource_availabilities.get(r.node.node_type, 1),
-                random.random()
+                random.random(),
             ),
-            reverse=True
+            reverse=True,
         )
 
         best_result = results[0]
