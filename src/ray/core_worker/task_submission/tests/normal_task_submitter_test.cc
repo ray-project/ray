@@ -1517,6 +1517,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
 
 TEST(NormalTaskSubmitterSchedulingKeyTest, TestSchedulingKeys) {
   InstrumentedIOContextWithThread io_context("TestSchedulingKeys");
+  // Mock reference counter as enabled
   auto memory_store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
 
   std::unordered_map<std::string, double> resources1({{"a", 1.0}});
@@ -1560,16 +1561,16 @@ TEST(NormalTaskSubmitterSchedulingKeyTest, TestSchedulingKeys) {
   ObjectID plasma2 = ObjectID::FromRandom();
   // Ensure the data is already present in the local store for direct call objects.
   auto data = GenerateRandomObject();
-  memory_store->Put(*data, direct1);
-  memory_store->Put(*data, direct2);
+  memory_store->Put(*data, direct1, /*has_reference=*/true);
+  memory_store->Put(*data, direct2, /*has_reference=*/true);
 
   // Force plasma objects to be promoted.
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto plasma_data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-  memory_store->Put(plasma_data, plasma1);
-  memory_store->Put(plasma_data, plasma2);
+  memory_store->Put(plasma_data, plasma1, /*has_reference=*/true);
+  memory_store->Put(plasma_data, plasma2, /*has_reference=*/true);
 
   TaskSpecification same_deps_1 = BuildTaskSpec(resources1, descriptor1);
   same_deps_1.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
@@ -1600,6 +1601,7 @@ TEST(NormalTaskSubmitterSchedulingKeyTest, TestSchedulingKeys) {
 
 TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
   InstrumentedIOContextWithThread store_io_context("TestBacklogReport");
+  // Mock reference counter as enabled
   auto memory_store =
       std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService());
   auto submitter =
@@ -1623,8 +1625,8 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto plasma_data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-  memory_store->Put(plasma_data, plasma1);
-  memory_store->Put(plasma_data, plasma2);
+  memory_store->Put(plasma_data, plasma1, /*has_reference=*/true);
+  memory_store->Put(plasma_data, plasma2, /*has_reference=*/true);
 
   // Same SchedulingClass, different SchedulingKey
   TaskSpecification task2 = BuildTaskSpec(resources1, descriptor1);
@@ -1791,7 +1793,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillResolvingTask) {
   ASSERT_EQ(task_manager->num_inlined_dependencies, 0);
   submitter.CancelTask(task, true, false);
   auto data = GenerateRandomObject();
-  store->Put(*data, obj1);
+  store->Put(*data, obj1, /*has_reference=*/true);
   WaitForObjectIdInMemoryStore(*store, obj1);
   ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
