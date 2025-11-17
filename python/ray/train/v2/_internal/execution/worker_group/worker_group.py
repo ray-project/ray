@@ -327,7 +327,7 @@ class WorkerGroup(BaseWorkerGroup):
                 ).remote()
                 # Fire-and-forget monitoring loop.
                 reaper.run.remote(
-                    controller=ray.get_runtime_context().current_actor,
+                    controller_actor_id=ray.get_runtime_context().get_actor_id(),
                     placement_group=pg,
                 )
                 worker_group_state_builder.with_reaper_actor(reaper)
