@@ -387,6 +387,7 @@ def assert_tensors_equivalent(obj1, obj2):
 
 def test_cpu_tensor_serialization(ray_start_cluster_with_zero_copy_tensors):
     PRIMITIVE_OBJECTS = [
+        # Existing ones
         torch.tensor(42),
         torch.tensor(3.14159),
         torch.tensor(True),
@@ -399,6 +400,13 @@ def test_cpu_tensor_serialization(ray_start_cluster_with_zero_copy_tensors):
         torch.ones(2, 2, dtype=torch.float32).cpu(),
         torch.tensor([]).cpu(),
         torch.tensor((), dtype=torch.float32).cpu(),
+        torch.zeros(0, 5),
+        torch.zeros(3, 0),
+        torch.zeros(2, 0, 4),
+        torch.randn(1, 1, 1, 1),
+        torch.randn(2, 3, 4, 5, 6),
+        torch.arange(8).reshape(2, 2, 2),
+        torch.tensor(99).expand(1, 3, 1),
     ]
 
     t1 = torch.tensor(1)
@@ -490,6 +498,13 @@ def test_gpu_tensor_serialization(ray_start_cluster_with_zero_copy_tensors):
         torch.ones(2, 2, dtype=torch.float32, device="cuda"),
         torch.tensor([], device="cuda"),
         torch.tensor((), dtype=torch.float32, device="cuda"),
+        torch.zeros(0, 5, device="cuda"),
+        torch.zeros(3, 0, device="cuda"),
+        torch.zeros(2, 0, 4, device="cuda"),
+        torch.randn(1, 1, 1, 1, device="cuda"),
+        torch.randn(2, 3, 4, 5, 6, device="cuda"),
+        torch.arange(8, device="cuda").reshape(2, 2, 2),
+        torch.tensor(99, device="cuda").expand(1, 3, 1),
     ]
 
     COMPLEX_GPU_OBJECTS = [
