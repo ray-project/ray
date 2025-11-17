@@ -29,7 +29,7 @@ class CloudResourceMonitor(InstanceUpdatedSubscriber):
     ) -> None:
         self._last_unavailable_timestamp: Dict[NodeType, float] = {}
 
-    def allocation_failed(self, failed_event: InstanceUpdateEvent):
+    def allocation_timeout(self, failed_event: InstanceUpdateEvent):
         unavailable_timestamp = time.time()
         self._last_unavailable_timestamp[
             failed_event.instance_type
@@ -51,8 +51,8 @@ class CloudResourceMonitor(InstanceUpdatedSubscriber):
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
         for event in events:
-            if event.new_instance_status == Instance.ALLOCATION_FAILED:
-                self.allocation_failed(event)
+            if event.new_instance_status == Instance.ALLOCATION_TIMEOUT:
+                self.allocation_timeout(event)
             elif event.new_instance_status == Instance.ALLOCATED:
                 self.allocation_succeeded(event)
 
