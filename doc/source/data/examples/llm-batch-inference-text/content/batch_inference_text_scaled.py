@@ -31,12 +31,10 @@ processor_config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     engine_kwargs=dict(
         max_model_len=256,  # estimate system prompt + user prompt + output tokens (+ reasoning tokens if any)
-        max_num_batched_tokens=65536,  # so we can batch many rows together
-        max_num_seqs=1024,  # so we can batch many rows together
     ),
     batch_size=256,
     accelerator_type="L4",
-    concurrency=10,
+    concurrency=10, # 10 replicas across 10 GPUs
 )
 
 

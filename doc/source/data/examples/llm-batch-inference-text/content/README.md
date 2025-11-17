@@ -95,7 +95,7 @@ processor_config = vLLMEngineProcessorConfig(
     engine_kwargs=dict(
         max_model_len= 256, # estimate system prompt + user prompt + output tokens (+ reasoning tokens if any)
     ),
-    batch_size=128,
+    batch_size=256,
     accelerator_type="L4",
     concurrency=4,
 )
@@ -244,8 +244,7 @@ The dashboard shows:
 
 ## Scale up to larger datasets
 
-Your Ray Data processing pipeline can easily scale up to process more data. By default, this section processes the full 2-million-row dataset.  
-
+Your Ray Data processing pipeline can easily scale up to process more data. By default, this section processes 1M rows.  
 You can control the dataset size through the `LARGE_DATASET_LIMIT` environment variable.
 
 
@@ -258,12 +257,42 @@ print(f"Scaling dataset to: {dataset_limit:,} rows...")
 
 # Apply the limit to the dataset.
 ds_large = ds.limit(dataset_limit)
+```
 
+You can scale the number of concurrent replicas based on the compute available in your cluster. In this case, each replica is a copy of your Llama model and fits in a single L4 GPU.
+
+
+```python
+processor_config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs=dict(
+        max_model_len= 256, # estimate system prompt + user prompt + output tokens (+ reasoning tokens if any)
+    ),
+    batch_size=256,
+    accelerator_type="L4",
+    concurrency=10, # Deploy 10 replicas across 10 GPUs to maximize throughput
+)
+
+# Build the LLM processor with the configuration and functions.
+processor = build_llm_processor(
+    processor_config,
+    preprocess=preprocess,
+    postprocess=postprocess,
+)
+```
+
+With additional replicas, repartition your dataset into more blocks for better parallelism. Ray data can efficiently schedule those smaller blocks accross all your additional replicas.
+
+
+```python
 # Repartition for better parallelism.
 num_partitions_large = 128
 print(f"Repartitioning dataset into {num_partitions_large} blocks...")
 ds_large = ds_large.repartition(num_blocks=num_partitions_large)
+```
 
+
+```python
 # Run the same processor on the larger dataset.
 processed_large = processor(ds_large)
 processed_large = processed_large.materialize()
@@ -275,7 +304,30 @@ pprint(processed_large.take(3))
 
 ### Performance optimization tips
 
-When scaling to larger datasets, consider these optimizations:
+When scaling to larger datasets, consider these optimizations tips:
+
+**Analyze your pipeline**
+Use *stats()* to analyze each steps in your pipeline and identify any bottlenecks.
+```python
+processed = processor(ds).materialize()
+print(processed.stats())
+```
+The outputs contains detailed description of each step in your pipeline.
+```text
+Operator 0 ...
+
+...
+
+Operator 8 MapBatches(vLLMEngineStageUDF): 3908 tasks executed, 3908 blocks produced in 340.21s
+    * Remote wall time: ...
+    ...
+
+...
+
+Dataset throughput:
+	* Ray Data throughput: ...
+	* Estimated single node throughput: ...
+```
 
 **Adjust concurrency**  
 Increase the `concurrency` parameter to add more parallel workers.
@@ -329,6 +381,6 @@ For more information, see [Saving Data](https://docs.ray.io/en/latest/data/savin
 
 ## Summary
 
-In this notebook, you built an end-to-end batch pipeline: loading a customer dataset from S3 into a Ray Dataset, configuring a vLLM processor for Llama 3.1 8 B, and adding simple pre/post-processing to normalize dates. You validated the flow on 10,000 rows, scaled to 2M+ records, monitored progress in the Ray Dashboard, and saved the results to persistent storage.
+In this notebook, you built an end-to-end batch pipeline: loading a customer dataset from S3 into a Ray Dataset, configuring a vLLM processor for Llama 3.1 8 B, and adding simple pre/post-processing to normalize dates. You validated the flow on 10,000 rows, scaled to 1M+ records, monitored progress in the Ray Dashboard, and saved the results to persistent storage.
 
 See [Anyscale batch inference optimization](https://docs.anyscale.com/llm/batch-inference) for more information on using Ray Data with Anyscale and for more advanced use cases, see [Working with LLMs](https://docs.ray.io/en/latest/data/working-with-llms.html).

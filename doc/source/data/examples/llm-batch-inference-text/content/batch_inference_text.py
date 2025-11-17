@@ -29,8 +29,6 @@ processor_config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     engine_kwargs=dict(
         max_model_len= 256, # estimate system prompt + user prompt + output tokens (+ reasoning tokens if any)
-        max_num_batched_tokens=16384, # so we can batch many rows together
-        max_num_seqs=128, # so we can batch many rows together
     ),
     batch_size=128,
     accelerator_type="L4",
