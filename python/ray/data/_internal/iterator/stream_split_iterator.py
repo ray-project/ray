@@ -242,6 +242,18 @@ class SplitCoordinator:
             # Track overhead time in the instance variable
             self._coordinator_overhead_s += time.perf_counter() - start_time
 
+    def shutdown_executor(self):
+        """Shuts down the internal data executor."""
+        with self._lock:
+            try:
+                # Call shutdown on the executor
+                if self._executor is not None:
+                    self._executor.shutdown(force=False)
+            except Exception:
+                logger.debug(
+                    "Failed to explicitly shutdown executor on SplitCoordinator shutdown."
+                )
+
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""
 

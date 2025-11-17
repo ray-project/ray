@@ -1,6 +1,8 @@
 import copy
+import logging
 from typing import Dict, List
 
+import ray
 import ray.train
 from ray.data import DataIterator
 from ray.data.context import DataContext
@@ -13,7 +15,10 @@ from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     Worker,
     WorkerGroup,
+    WorkerGroupContext,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class RayDatasetShardProvider:
@@ -41,6 +46,7 @@ class DatasetsCallback(WorkerGroupCallback):
         self._datasets = train_run_context.datasets
         self._data_config = copy.deepcopy(train_run_context.dataset_config)
         self._scaling_config = train_run_context.scaling_config
+        self._coordinator_actors: List[ray.actor.ActorHandle] = []
 
         # Capture the current DataContext to propagate it to
         # the Train workers later.
@@ -58,6 +64,32 @@ class DatasetsCallback(WorkerGroupCallback):
         """Return the resources reserved for training, so that Data can exclude
         these resources logically from its available pool."""
         return scaling_config.total_resources
+
+    def _save_coordinator_actors(
+        self, ds_iterators_per_rank: List[Dict[str, DataIterator]]
+    ):
+        """
+        Save each unique SplitCoordinator actor handle given the iterators per rank.
+        These handles will later be used to call shutdown on the actors.
+        """
+        for rank_iterators in ds_iterators_per_rank:
+            for iterator in rank_iterators.values():
+                coord = getattr(iterator, "_coord_actor", None)
+                if coord is not None and coord not in self._coordinator_actors:
+                    self._coordinator_actors.append(coord)
+
+    def _shutdown_data_executors(self):
+        """Eagerly shutdown the data executors of the split coordinator actors."""
+        for coord in self._coordinator_actors:
+            try:
+                ref = coord.shutdown_executor.remote()
+                ray.get(ref, timeout=5)
+            except ray.exceptions.GetTimeoutError:
+                logger.debug("Failed to shutdown data executor within 5 seconds.")
+            except Exception:
+                logger.debug(
+                    "Failed to invoke remote shutdown of split coordinator executor."
+                )
 
     # --------------------------
     # WorkerGroupCallback
@@ -84,6 +116,8 @@ class DatasetsCallback(WorkerGroupCallback):
         )
         assert len(ds_iterators_per_rank) == world_size
 
+        self._save_coordinator_actors(ds_iterators_per_rank)
+
         shard_providers_per_rank = [
             RayDatasetShardProvider(ds_iterators=ds_iterators_per_rank[rank])
             for rank in range(world_size)
@@ -99,3 +133,11 @@ class DatasetsCallback(WorkerGroupCallback):
             _propagate_data_context,
             self._data_context,
         )
+
+    def before_worker_group_shutdown(self, worker_group: WorkerGroup) -> None:
+        self._shutdown_data_executors()
+
+    def before_worker_group_abort(
+        self, worker_group_context: WorkerGroupContext
+    ) -> None:
+        self._shutdown_data_executors()
