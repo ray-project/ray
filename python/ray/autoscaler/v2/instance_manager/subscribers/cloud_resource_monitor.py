@@ -2,12 +2,11 @@ import logging
 import time
 from typing import Dict, List
 
-from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
-
 from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceUpdatedSubscriber,
 )
 from ray.autoscaler.v2.schema import NodeType
+from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 logger = logging.getLogger(__name__)
 
