@@ -52,7 +52,7 @@ def test_push_actor_task_failure(
         assert ray.get(refs) == list(range(10))
 
 
-@pytest.mark.parametrize("deterministic_failure", ["request", "response", "in_flight"])
+@pytest.mark.parametrize("deterministic_failure", RPC_FAILURE_TYPES)
 def test_update_object_location_batch_failure(
     monkeypatch, ray_start_cluster, deterministic_failure
 ):
