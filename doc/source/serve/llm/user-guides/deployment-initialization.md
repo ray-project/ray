@@ -300,7 +300,7 @@ Other options for retrieving the compile cache (distributed filesystem, block st
 
 ### Custom Initialization Behaviors
 
-We provide a the ability to create custom node initialization behaviors with the API defined by [`CallbackBase`](https://github.com/ray-project/ray/blob/master/python/ray/llm/_internal/common/callbacks/base.py). Callback functions defined in the class are invoked at certain parts of the initialization process. An example is the above mentioned [`CloudDownloader`](https://github.com/ray-project/ray/blob/master/python/ray/llm/_internal/common/callbacks/cloud_downloader.py) which overrides the `on_before_download_model_files_distributed` function to distribute installation tasks across nodes. To enable your custom callback, specify the classname inside `LLMConfig`. 
+We provide the ability to create custom node initialization behaviors with the API defined by [`CallbackBase`](https://github.com/ray-project/ray/blob/master/python/ray/llm/_internal/common/callbacks/base.py). Callback functions defined in the class are invoked at certain parts of the initialization process. An example is the above mentioned [`CloudDownloader`](https://github.com/ray-project/ray/blob/master/python/ray/llm/_internal/common/callbacks/cloud_downloader.py) which overrides the `on_before_download_model_files_distributed` function to distribute download tasks across nodes. To enable your custom callback, specify the classname inside `LLMConfig`. 
 
 ```python
 from user_custom_classes import CustomCallback
