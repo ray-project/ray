@@ -280,7 +280,7 @@ processor_large = build_llm_processor(
 )
 ```
 
-With additional replicas, repartition your dataset into more blocks for better parallelism. Ray data can efficiently schedule those smaller blocks accross all your additional replicas.
+With additional replicas, repartition your dataset into more blocks for better parallelism. Ray data can efficiently schedule those smaller blocks across all your additional replicas.
 
 
 ```python
