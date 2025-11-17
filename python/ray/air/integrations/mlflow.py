@@ -148,15 +148,17 @@ def setup_mlflow(
 
     try:
         train_context = ray.train.get_context()
+    except DeprecationWarning:
+        train_context = ray.tune.get_context()
 
+    try:
         # Do a try-catch here if we are not in a train session
         if rank_zero_only and train_context.get_world_rank() != 0:
             return _NoopModule()
 
         default_trial_id = train_context.get_trial_id()
         default_trial_name = train_context.get_trial_name()
-
-    except RuntimeError:
+    except (RuntimeError, DeprecationWarning):
         default_trial_id = None
         default_trial_name = None
 
