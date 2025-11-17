@@ -178,9 +178,6 @@
 
   matrix:
     setup:
-      # This test consistently fails on fixed-size clusters due to head OOM from
-      # too many objects references on the head node. So, we only run it on
-      # autoscaling clusters.
       scaling: [fixed_size, autoscaling]
       shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle]
       columns:
