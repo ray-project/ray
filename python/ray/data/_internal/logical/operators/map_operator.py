@@ -336,6 +336,7 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
 
                 return ActorPoolStrategy(min_size=1, max_size=None)
 
+        # No callable class UDFs found - use default (TaskPoolStrategy)
         return None
 
     def has_star_expr(self) -> bool:

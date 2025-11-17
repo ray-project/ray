@@ -144,11 +144,9 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
     """Visitor that converts Ray Data expressions to PyArrow compute expressions."""
 
     def visit_column(self, expr: "ColumnExpr") -> "pyarrow.compute.Expression":
-
         return pc.field(expr.name)
 
     def visit_literal(self, expr: "LiteralExpr") -> "pyarrow.compute.Expression":
-
         return pc.scalar(expr.value)
 
     def visit_binary(self, expr: "BinaryExpr") -> "pyarrow.compute.Expression":
@@ -829,29 +827,38 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
     ) -> Decorated:
         # Check if this is a callable class (has __call__ method defined)
         if isinstance(func_or_class, type) and issubclass(func_or_class, Callable):
-            # This is a callable class - create a wrapper class
-            class ExpressionAwareCallableClass(func_or_class):
+            # Wrapper that delays instantiation and returns expressions instead of executing.
+            # Without this, MyClass(args) would instantiate on the driver and
+            # instance(col(...)) would try to execute rather than building an expression.
+            class ExpressionAwareCallableClass:
+                """Intercepts callable class instantiation to delay until actor execution.
+
+                Allows natural syntax like:
+                    add_five = AddOffset(5)
+                    ds.with_column("result", add_five(col("x")))
+                """
+
                 def __init__(self, *args, **kwargs):
+                    # Capture class and constructor args (don't instantiate yet)
                     self._udf_cls = func_or_class
                     self._ctor_args = args
                     self._ctor_kwargs = kwargs
 
                 def __call__(self, *call_args, **call_kwargs):
-                    # Build a lazy callable that instantiates on the worker
-                    # the first time it's invoked during expression evaluation.
-                    def _lazy_impl(*args, **kwargs):
-                        # Running on task - create instance lazily as before
-                        if not hasattr(_lazy_impl, "_instance"):
-                            _lazy_impl._instance = self._udf_cls(
-                                *self._ctor_args, **self._ctor_kwargs
-                            )
-                        instance = _lazy_impl._instance
+                    # Return a UDFExpr. The real instance is created on the actor
+                    # via create_actor_context_init_fn() and retrieved during
+                    # evaluation via call_udf_from_actor_context().
+                    #
+                    # This placeholder should never be called since callable classes
+                    # always use actors, but provides a clear error if something goes wrong.
+                    def _placeholder(*args, **kwargs):
+                        raise RuntimeError(
+                            f"Callable class UDF '{self._udf_cls.__name__}' executed "
+                            f"outside actor context (this should not happen)."
+                        )
 
-                        return instance(*args, **kwargs)
-
-                    # Pass constructor args to _create_udf_callable for actor semantics
                     udf_callable = _create_udf_callable(
-                        _lazy_impl,
+                        _placeholder,
                         return_dtype,
                         fn_constructor_args=self._ctor_args,
                         fn_constructor_kwargs=self._ctor_kwargs,
@@ -859,7 +866,7 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
                     )
                     return udf_callable(*call_args, **call_kwargs)
 
-            # Preserve the original class name and module
+            # Preserve the original class name and module for better error messages
             ExpressionAwareCallableClass.__name__ = func_or_class.__name__
             ExpressionAwareCallableClass.__qualname__ = func_or_class.__qualname__
             ExpressionAwareCallableClass.__module__ = func_or_class.__module__

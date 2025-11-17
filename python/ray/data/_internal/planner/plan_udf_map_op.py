@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from threading import Thread
 from types import GeneratorType
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -17,6 +18,9 @@ from typing import (
     Tuple,
     TypeVar,
 )
+
+if TYPE_CHECKING:
+    from ray.data.expressions import Expr
 
 import numpy as np
 import pandas as pd
@@ -92,21 +96,6 @@ class UDFSpec:
     constructor_args: Tuple[Any, ...]
     constructor_kwargs: Dict[str, Any]
 
-    @classmethod
-    def from_map_batches(
-        cls,
-        udf_class: type,
-        constructor_args: Tuple[Any, ...],
-        constructor_kwargs: Dict[str, Any],
-    ) -> "UDFSpec":
-        """Create a UDFSpec for map_batches (original == instantiation class)."""
-        return cls(
-            original_class=udf_class,
-            instantiation_class=udf_class,
-            constructor_args=constructor_args,
-            constructor_kwargs=constructor_kwargs,
-        )
-
 
 class _MapActorContext:
     def __init__(
@@ -142,6 +131,56 @@ class _MapActorContext:
         self.udf_map_asyncio_thread = thread
 
 
+def _collect_udf_specs_from_expressions(exprs: List["Expr"]) -> List[UDFSpec]:
+    """Collect UDFSpecs for callable class UDFs found in expressions.
+
+    Deduplicates by class and applies make_callable_class_concurrent wrapping.
+
+    Args:
+        exprs: List of expressions to collect UDFs from
+
+    Returns:
+        List of UDFSpec objects for all unique callable class UDFs found
+    """
+    from ray.data._internal.planner.plan_expression.expression_visitors import (
+        _CallableClassUDFCollector,
+    )
+
+    # Collect all callable class UDFs from all expressions
+    callable_class_udfs = []
+    for expr in exprs:
+        collector = _CallableClassUDFCollector()
+        collector.visit(expr)
+        callable_class_udfs.extend(collector.get_callable_class_udfs())
+
+    # Deduplicate and create specs
+    udf_specs = []
+    seen_classes = set()
+
+    for udf_expr in callable_class_udfs:
+        cls = udf_expr.fn_constructor_class
+        if cls not in seen_classes:
+            seen_classes.add(cls)
+
+            # Apply concurrency wrapper for non-async UDFs (same as _get_udf)
+            wrapped_cls = (
+                make_callable_class_concurrent(cls)
+                if not _is_async_udf(cls.__call__)
+                else cls
+            )
+
+            udf_specs.append(
+                UDFSpec(
+                    original_class=cls,
+                    instantiation_class=wrapped_cls,
+                    constructor_args=udf_expr.fn_constructor_args,
+                    constructor_kwargs=udf_expr.fn_constructor_kwargs,
+                )
+            )
+
+    return udf_specs
+
+
 def plan_project_op(
     op: Project,
     physical_children: List[PhysicalOperator],
@@ -155,52 +194,9 @@ def plan_project_op(
     # datasources with weak references, e.g., PyIceberg tables)
     projection_exprs = op.exprs
 
-    # Collect all callable class UDFs from expressions
-    from ray.data._internal.planner.plan_expression.expression_visitors import (
-        _CallableClassUDFCollector,
-    )
-
-    callable_class_udfs = []
-    for expr in projection_exprs:
-        collector = _CallableClassUDFCollector()
-        collector.visit(expr)
-        callable_class_udfs.extend(collector.get_callable_class_udfs())
-
-    # Create init_fn by reusing the shared actor context init logic
-    init_fn = None
-    if callable_class_udfs:
-        # Build UDF specs from expressions
-        # Apply the same preprocessing as _get_udf (make_callable_class_concurrent)
-        udf_specs = []
-        seen_udf_classes = (
-            {}
-        )  # Map original class ID to (original_class, wrapped_class)
-
-        for udf_expr in callable_class_udfs:
-            orig_udf_class = udf_expr.fn_constructor_class
-            orig_udf_id = id(orig_udf_class)
-
-            # Only process each unique UDF class once
-            if orig_udf_id not in seen_udf_classes:
-                # Apply make_callable_class_concurrent for non-async UDFs (same as _get_udf)
-                if not _is_async_udf(orig_udf_class.__call__):
-                    wrapped_udf_class = make_callable_class_concurrent(orig_udf_class)
-                else:
-                    wrapped_udf_class = orig_udf_class
-
-                seen_udf_classes[orig_udf_id] = (orig_udf_class, wrapped_udf_class)
-                # Store UDF spec with both original and wrapped class
-                udf_specs.append(
-                    UDFSpec(
-                        original_class=orig_udf_class,
-                        instantiation_class=wrapped_udf_class,
-                        constructor_args=udf_expr.fn_constructor_args,
-                        constructor_kwargs=udf_expr.fn_constructor_kwargs,
-                    )
-                )
-
-        # Use the shared init function creator (same core logic as _get_udf)
-        init_fn = create_actor_context_init_fn(udf_specs)
+    # Collect UDF specs from expressions and create init_fn if needed
+    udf_specs = _collect_udf_specs_from_expressions(projection_exprs)
+    init_fn = create_actor_context_init_fn(udf_specs) if udf_specs else None
 
     def _project_block(block: Block) -> Block:
         try:
