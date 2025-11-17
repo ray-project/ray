@@ -9,7 +9,7 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
     Rule,
 )
-from ray.data._internal.logical.operators.map_operator import Filter
+from ray.data._internal.logical.operators.map_operator import Filter, Project
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
 )
@@ -62,6 +62,45 @@ class PredicatePushdown(Rule):
             input_op.input_dependencies[0],
             predicate_expr=combined_predicate,
         )
+
+    @classmethod
+    def _can_push_filter_through_projection(
+        cls, filter_op: "Filter", projection_op: Project
+    ) -> bool:
+        """Check if a filter can be pushed through a projection operator.
+
+        Returns False if filter references columns that don't exist in projection's input:
+        - Columns removed by select: select(['a']).filter(col('b'))
+        - Computed columns: with_column('d', 4).filter(col('d'))
+        - Renamed source columns: rename({'b': 'B'}).filter(col('b'))
+        """
+        from ray.data._internal.logical.rules.projection_pushdown import (
+            _is_renaming_expr,
+        )
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _ColumnReferenceCollector,
+        )
+
+        collector = _ColumnReferenceCollector()
+        collector.visit(filter_op._predicate_expr)
+        predicate_columns = set(collector.get_column_refs() or [])
+
+        # Check if filter references columns removed by explicit select
+        if not projection_op.has_star_expr():
+            output_columns = {
+                expr.name for expr in projection_op.exprs if hasattr(expr, "name")
+            }
+            if not predicate_columns.issubset(output_columns):
+                return False
+
+        # Check if filter references computed columns or renamed source columns
+        for expr in projection_op.exprs:
+            if expr.name in predicate_columns and not _is_renaming_expr(expr):
+                return False  # Computed column
+            if _is_renaming_expr(expr) and expr.expr.name in predicate_columns:
+                return False  # Old name after rename
+
+        return True
 
     @classmethod
     def _substitute_predicate_columns(
@@ -135,6 +174,14 @@ class PredicatePushdown(Rule):
                     behavior
                     == PredicatePassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
                 ):
+                    # Check if we can safely push the filter through this projection
+                    if isinstance(
+                        input_op, Project
+                    ) and not cls._can_push_filter_through_projection(
+                        filter_op, input_op
+                    ):
+                        return filter_op
+
                     rename_map = input_op.get_column_substitutions()
                     if rename_map:
                         predicate_expr = cls._substitute_predicate_columns(
