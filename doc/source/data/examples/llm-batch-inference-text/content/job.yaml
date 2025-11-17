@@ -6,7 +6,7 @@ compute_config:
     instance_type: m5.2xlarge
   worker_nodes:
     - instance_type: g6.2xlarge
-      min_nodes: 1
+      min_nodes: 0
       max_nodes: 10
 working_dir: .
 max_retries: 2
