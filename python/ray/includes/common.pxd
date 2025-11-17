@@ -438,54 +438,8 @@ cdef extern from "ray/gcs_rpc_client/accessors/actor_info_accessor_interface.h" 
                                   const StatusPyCallback &callback,
                                   int64_t timeout_ms)
 
-cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
-    cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
-        CRayStatus GetAll(
-            const optional[c_string] &job_or_submission_id,
-            c_bool skip_submission_job_info_field,
-            c_bool skip_is_running_tasks_field,
-            c_vector[CJobTableData] &result,
-            int64_t timeout_ms)
-
-        void AsyncGetAll(
-            const optional[c_string] &job_or_submission_id,
-            c_bool skip_submission_job_info_field,
-            c_bool skip_is_running_tasks_field,
-            const MultiItemPyCallback[CJobTableData] &callback,
-            int64_t timeout_ms)
-
-    cdef cppclass CNodeInfoAccessor "ray::gcs::NodeInfoAccessor":
-        CRayStatus CheckAlive(
-            const c_vector[CNodeID] &node_ids,
-            int64_t timeout_ms,
-            c_vector[c_bool] &result)
-
-        void AsyncCheckAlive(
-            const c_vector[CNodeID] &node_ids,
-            int64_t timeout_ms,
-            const MultiItemPyCallback[c_bool] &callback)
-
-        CRayStatus DrainNodes(
-            const c_vector[CNodeID] &node_ids,
-            int64_t timeout_ms,
-            c_vector[c_string] &drained_node_ids)
-
-        CStatusOr[c_vector[CGcsNodeInfo]] GetAllNoCache(
-            int64_t timeout_ms,
-            optional[CGcsNodeState] state_filter,
-            optional[CNodeSelector] node_selector)
-
-        void AsyncGetAll(
-            const MultiItemPyCallback[CGcsNodeInfo] &callback,
-            int64_t timeout_ms,
-            c_vector[CNodeID] node_ids)
-
-    cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
-        CRayStatus GetAllResourceUsage(
-            int64_t timeout_ms,
-            CGetAllResourceUsageReply &serialized_reply)
-
-    cdef cppclass CInternalKVAccessor "ray::gcs::InternalKVAccessor":
+cdef extern from "ray/gcs_rpc_client/accessors/internal_kv_accessor_interface.h" nogil:
+    cdef cppclass CInternalKVAccessorInterface "ray::gcs::InternalKVAccessorInterface":
         CRayStatus Keys(
             const c_string &ns,
             const c_string &prefix,
@@ -563,6 +517,53 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             c_bool del_by_prefix,
             int64_t timeout_ms,
             const OptionalItemPyCallback[int] &callback)
+
+cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
+    cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
+        CRayStatus GetAll(
+            const optional[c_string] &job_or_submission_id,
+            c_bool skip_submission_job_info_field,
+            c_bool skip_is_running_tasks_field,
+            c_vector[CJobTableData] &result,
+            int64_t timeout_ms)
+
+        void AsyncGetAll(
+            const optional[c_string] &job_or_submission_id,
+            c_bool skip_submission_job_info_field,
+            c_bool skip_is_running_tasks_field,
+            const MultiItemPyCallback[CJobTableData] &callback,
+            int64_t timeout_ms)
+
+    cdef cppclass CNodeInfoAccessor "ray::gcs::NodeInfoAccessor":
+        CRayStatus CheckAlive(
+            const c_vector[CNodeID] &node_ids,
+            int64_t timeout_ms,
+            c_vector[c_bool] &result)
+
+        void AsyncCheckAlive(
+            const c_vector[CNodeID] &node_ids,
+            int64_t timeout_ms,
+            const MultiItemPyCallback[c_bool] &callback)
+
+        CRayStatus DrainNodes(
+            const c_vector[CNodeID] &node_ids,
+            int64_t timeout_ms,
+            c_vector[c_string] &drained_node_ids)
+
+        CStatusOr[c_vector[CGcsNodeInfo]] GetAllNoCache(
+            int64_t timeout_ms,
+            optional[CGcsNodeState] state_filter,
+            optional[CNodeSelector] node_selector)
+
+        void AsyncGetAll(
+            const MultiItemPyCallback[CGcsNodeInfo] &callback,
+            int64_t timeout_ms,
+            c_vector[CNodeID] node_ids)
+
+    cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
+        CRayStatus GetAllResourceUsage(
+            int64_t timeout_ms,
+            CGetAllResourceUsageReply &serialized_reply)
 
     cdef cppclass CRuntimeEnvAccessor "ray::gcs::RuntimeEnvAccessor":
         CRayStatus PinRuntimeEnvUri(
@@ -652,7 +653,7 @@ cdef extern from "ray/gcs_rpc_client/gcs_client.h" nogil:
 
         CActorInfoAccessorInterface& Actors()
         CJobInfoAccessor& Jobs()
-        CInternalKVAccessor& InternalKV()
+        CInternalKVAccessorInterface& InternalKV()
         CNodeInfoAccessor& Nodes()
         CNodeResourceInfoAccessor& NodeResources()
         CRuntimeEnvAccessor& RuntimeEnvs()

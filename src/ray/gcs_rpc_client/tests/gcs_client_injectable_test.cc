@@ -150,6 +150,11 @@ class MixedAccessorFactory : public AccessorFactoryInterface {
     // Return mock implementation
     return std::make_unique<TestActorInfoAccessor>(client_impl);
   }
+
+  std::unique_ptr<InternalKVAccessorInterface> CreateInternalKVAccessor(
+      GcsClientContext *context) override {
+    return nullptr;
+  }
 };
 
 TEST(GcsClientInjectableTest, AccessorFactoryReturnsInjectedAccessorIfDefaultOverriden) {
