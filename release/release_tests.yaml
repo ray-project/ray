@@ -3535,7 +3535,7 @@
     cluster_compute: azure/tests/azure_compute.yaml
   run:
     timeout: 2400
-    script: bash release/azure_docker_login.sh && python -I launch_and_verify_cluster.py azure/tests/azure-cluster.yaml --num-expected-nodes 3 --retries 10
+    script: bash release/azure_login.sh && python -I launch_and_verify_cluster.py azure/tests/azure-cluster.yaml --num-expected-nodes 3 --retries 10
 
   variations:
     - __suffix__: v1

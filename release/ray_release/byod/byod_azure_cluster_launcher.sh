@@ -3,4 +3,16 @@
 
 set -exo pipefail
 
-pip3 install azure-cli-core==2.21.0 azure-core azure-identity azure-mgmt-compute azure-mgmt-network azure-mgmt-resource azure-common msrest msrestazure
+PIP_PKGS=(
+    "azure-cli-core==2.21.0"
+    azure-core
+    azure-identity
+    azure-mgmt-compute
+    azure-mgmt-network
+    azure-mgmt-resource
+    azure-common
+    msrest
+    msrestazure
+)
+
+pip3 install "${PIP_PKGS[@]}"

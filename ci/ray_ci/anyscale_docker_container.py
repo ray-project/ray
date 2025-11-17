@@ -36,7 +36,7 @@ class AnyscaleDockerContainer(DockerContainer):
             # gcloud login
             f"./release/gcloud_docker_login.sh {gce_credentials}",
             # azure login
-            "./release/azure_docker_login.sh",
+            "./release/azure_login.sh",
             # azure cr login
             f"az acr login --name {_AZURE_REGISTRY_NAME}",
             "export PATH=$(pwd)/google-cloud-sdk/bin:$PATH",

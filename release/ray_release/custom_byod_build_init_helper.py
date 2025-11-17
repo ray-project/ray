@@ -74,7 +74,7 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
                 f"export RAY_WANT_COMMIT_IN_IMAGE={ray_want_commit}",
                 "bash release/gcloud_docker_login.sh release/aws2gce_iam.json",
                 "export PATH=$(pwd)/google-cloud-sdk/bin:$$PATH",
-                "bash release/azure_docker_login.sh",
+                "bash release/azure_login.sh",
                 f"az acr login --name {AZURE_REGISTRY_NAME}",
                 f"aws ecr get-login-password --region {config['byod_ecr_region']} | docker login --username AWS --password-stdin {config['byod_ecr']}",
                 f"bazelisk run //release:custom_byod_build -- --image-name {image} --base-image {base_image} {f'--post-build-script {post_build_script}' if post_build_script else ''} {f'--python-depset {python_depset}' if python_depset else ''}",

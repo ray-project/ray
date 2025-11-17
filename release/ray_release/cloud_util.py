@@ -1,15 +1,50 @@
+import json
 import os
 import random
 import shutil
 import string
+import tempfile
 import time
 from typing import Optional, Tuple
 from urllib.parse import urlparse
 
-from azure.identity import DefaultAzureCredential
+import boto3
+from azure.identity import CertificateCredential
 from azure.storage.blob import BlobServiceClient
 
 from ray_release.logger import logger
+
+_AZURE_ACCOUNT_SECRET_ID = "azure-service-principal-oss-release"
+_AZURE_CERTIFICATE_SECRET_ID = "azure-service-principal-certificate"
+_AZURE_CREDENTIAL = [None]
+
+
+def get_azure_credential() -> CertificateCredential:
+    if _AZURE_CREDENTIAL[0] is None:
+        secret_manager = boto3.client("secretsmanager", region_name="us-west-2")
+        azure_account = secret_manager.get_secret_value(
+            SecretId=_AZURE_ACCOUNT_SECRET_ID
+        )
+        azure_account = json.loads(azure_account["SecretString"])
+        client_id = azure_account["client_id"]
+        tenant_id = azure_account["tenant_id"]
+
+        certificate_secret = secret_manager.get_secret_value(
+            SecretId=_AZURE_CERTIFICATE_SECRET_ID
+        )
+        certificate = certificate_secret["SecretString"]
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            certificate_path = os.path.join(tmp_dir, "azure_cert.pem")
+            with open(certificate_path, "w") as f:
+                f.write(certificate)
+            _AZURE_CREDENTIAL[0] = CertificateCredential(
+                tenant_id=tenant_id,
+                client_id=client_id,
+                certificate_path=certificate_path,
+            )
+
+    return _AZURE_CREDENTIAL[0]
 
 
 def generate_tmp_cloud_storage_path() -> str:
@@ -20,6 +55,7 @@ def upload_file_to_azure(
     local_file_path: str,
     azure_file_path: str,
     blob_service_client: Optional[BlobServiceClient] = None,
+    credential: Optional[CertificateCredential] = None,
 ) -> None:
     """Upload a file to Azure Blob Storage.
 
@@ -31,7 +67,8 @@ def upload_file_to_azure(
     account, container, path = _parse_abfss_uri(azure_file_path)
     account_url = f"https://{account}.blob.core.windows.net"
     if blob_service_client is None:
-        credential = DefaultAzureCredential(exclude_managed_identity_credential=True)
+        if credential is None:
+            credential = get_azure_credential()
         blob_service_client = BlobServiceClient(account_url, credential)
 
     blob_client = blob_service_client.get_blob_client(container=container, blob=path)
