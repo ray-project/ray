@@ -143,6 +143,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # and receiving the next `sample()` request from the user.
         self._time_after_sampling = None
 
+        # Save whether to convert episodes to numpy during sample
+        #   In `OfflineSingleAgentEnvRunner`, this result is set to False
+        #   during initialisation
+        self.episodes_to_numpy = self.config.episodes_to_numpy
+
     @override(EnvRunner)
     def sample(
         self,
@@ -420,7 +425,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     )
 
                     # Numpy'ize the episode.
-                    if self.config.episodes_to_numpy:
+                    if self.episodes_to_numpy:
                         # Any possibly compress observations.
                         done_episodes_to_return.append(episodes[env_index].to_numpy())
                     # Leave episode as lists of individual (obs, action, etc..) items.
@@ -460,7 +465,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 self._ongoing_episodes_for_metrics[eps.id_].append(eps)
 
                 # Numpy'ize the episode.
-                if self.config.episodes_to_numpy:
+                if self.episodes_to_numpy:
                     # Any possibly compress observations.
                     ongoing_episodes_to_return.append(eps.to_numpy())
                 # Leave episode as lists of individual (obs, action, etc..) items.
