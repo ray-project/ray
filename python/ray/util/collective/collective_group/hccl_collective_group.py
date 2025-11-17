@@ -158,8 +158,9 @@ class HCCLGroup(BaseGroup):
             if default_backend == "hccl":  # if same backend, simply use existing group
                 self._pg = default_pg
             else:  # otherwise create separate group
-                self._pg = dist.new_group(ranks=list(range(world_size)))
+                self._pg = dist.new_group(ranks=list(range(world_size)), backend='hccl')
 
+        super(HCCLGroup, self).__init__(world_size, rank, group_name)
         self._dev_comm_map = {}
         self._dev_streams_map = {}
 
