@@ -15,7 +15,6 @@ hf_dataset = hf_dataset.select_columns(["jpg"])
 
 ds = ray.data.from_huggingface(hf_dataset)
 print("Dataset loaded successfully.")
-IMAGE_COLUMN = 'jpg'
 
 
 # The BLIP3o/BLIP3o-Pretrain-Short-Caption dataset contains ~5M of images.
@@ -32,23 +31,22 @@ print(f"Repartitioning dataset into {num_partitions_large} blocks for parallelis
 ds_large = ds_large.repartition(num_blocks=num_partitions_large)
 
 
-processor_config = vLLMEngineProcessorConfig(
+processor_config_large = vLLMEngineProcessorConfig(
     model_source="Qwen/Qwen2.5-VL-3B-Instruct",
     engine_kwargs=dict(
         max_model_len=8192,
-        max_num_batched_tokens=2048,
     ),
-    batch_size=64,
-    accelerator_type="L40S",
-    concurrency=10,
-    has_image=True,
+    batch_size=16,
+    accelerator_type="L4", # Or upgrade to larger GPU
+    concurrency=10, # Increase the number of parallel workers
+    has_image=True,  # Enable image input
 )
 
 
 # Preprocess function prepares messages with image content for the VLM.
 def preprocess(row: dict[str, Any]) -> dict[str, Any]:
     # Convert bytes image to PIL
-    image = row[IMAGE_COLUMN]['bytes']
+    image = row['jpg']['bytes']
     image = Image.open(BytesIO(image))
     image = image.resize((225, 225), Image.Resampling.BICUBIC)
     
@@ -90,14 +88,14 @@ def postprocess(row: dict[str, Any]) -> dict[str, Any]:
 
 
 # Build the LLM processor with the configuration and functions.
-processor = build_llm_processor(
-    processor_config,
+processor_large = build_llm_processor(
+    processor_config_large,
     preprocess=preprocess,
     postprocess=postprocess,
 )
 
 # Run the same processor on the larger dataset.
-processed_large = processor(ds_large)
+processed_large = processor_large(ds_large)
 processed_large = processed_large.materialize()
 
 # Display the first 3 entries to verify the output.

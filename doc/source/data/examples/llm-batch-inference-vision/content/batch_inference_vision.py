@@ -14,7 +14,6 @@ hf_dataset = hf_dataset.select_columns(["jpg"])
 
 ds = ray.data.from_huggingface(hf_dataset)
 print("Dataset loaded successfully.")
-IMAGE_COLUMN = 'jpg'
 
 # Limit the dataset to 10,000 images for this example.
 print("Limiting dataset to 10,000 images for initial processing.")
@@ -33,7 +32,6 @@ processor_config = vLLMEngineProcessorConfig(
     model_source="Qwen/Qwen2.5-VL-3B-Instruct",
     engine_kwargs=dict(
         max_model_len=8192,
-        max_num_batched_tokens=2048,
     ),
     batch_size=16,
     accelerator_type="L4",
@@ -45,7 +43,7 @@ processor_config = vLLMEngineProcessorConfig(
 # Preprocess function prepares messages with image content for the VLM.
 def preprocess(row: dict[str, Any]) -> dict[str, Any]:
     # Convert bytes image to PIL
-    image = row[IMAGE_COLUMN]['bytes']
+    image = row['jpg']['bytes']
     image = Image.open(BytesIO(image))
     image = image.resize((225, 225), Image.Resampling.BICUBIC)
     

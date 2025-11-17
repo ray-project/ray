@@ -55,10 +55,9 @@ print("Dataset loaded successfully.")
 
 sample = ds.take(2)
 print("Sample data:")
-IMAGE_COLUMN = 'jpg'
 for i, item in enumerate(sample):
     print(f"\nSample {i+1}:")
-    image = Image.open(BytesIO(item[IMAGE_COLUMN]['bytes']))
+    image = Image.open(BytesIO(item['jpg']['bytes']))
     image.show()
 ```
 
@@ -103,13 +102,10 @@ This example uses the `Qwen/Qwen2.5-VL-3B-Instruct` model, a vision-language mod
 ```python
 from ray.data.llm import vLLMEngineProcessorConfig
 
-MAX_MODEL_LEN = 8192
-
 processor_config = vLLMEngineProcessorConfig(
     model_source="Qwen/Qwen2.5-VL-3B-Instruct",
     engine_kwargs=dict(
-        max_model_len=MAX_MODEL_LEN,
-        max_num_batched_tokens=2048,
+        max_model_len=8192
     ),
     batch_size=16,
     accelerator_type="L4",
@@ -137,7 +133,7 @@ from io import BytesIO
 # Preprocess function prepares messages with image content for the VLM.
 def preprocess(row: dict[str, Any]) -> dict[str, Any]:
     # Convert bytes image to PIL 
-    image = row[IMAGE_COLUMN]['bytes']
+    image = row['jpg']['bytes']
     image = Image.open(BytesIO(image))
     # Resize for consistency + predictable vision-token budget
     image = image.resize((225, 225), Image.Resampling.BICUBIC)
@@ -226,7 +222,7 @@ Save your batch inference code as `batch_vision_inference.py`, then create a job
 
 ```yaml
 # job.yaml
-name: llm-batch-inference-vision
+name: my-llm-batch-inference-vision
 entrypoint: python batch_inference_vision.py
 image_uri: anyscale/ray-llm:2.51.1-py311-cu128
 compute_config:
@@ -234,7 +230,7 @@ compute_config:
     instance_type: m5.2xlarge
   worker_nodes:
     - instance_type: g6.2xlarge
-      min_nodes: 1
+      min_nodes: 0
       max_nodes: 10
 requirements: # Python dependencies - can be list or path to requirements.txt
   - datasets==4.4.1
@@ -258,10 +254,10 @@ Track your job's progress in the Anyscale Console or through the CLI:
 
 ```bash
 # Check job status.
-anyscale job status --name vlm-batch-inference-vision
+anyscale job status --name my-llm-batch-inference-vision
 
 # View logs.
-anyscale job logs --name vlm-batch-inference-vision
+anyscale job logs --name my-llm-batch-inference-vision
 ```
 
 The Ray Dashboard remains available for detailed monitoring. To access it, go over your Anyscale Job in your console.  
@@ -283,31 +279,8 @@ The dashboard shows:
 
 ## Scale up to larger datasets
 
-Your Ray Data processing pipeline can easily scale up to process more images. The Leopard-Instruct dataset contains approximately 1 million images, making it ideal for demonstrating large-scale batch inference.
-
-Redefine your Processor to include GPUs with more memory, increase the batch size and the concurrency.
-
-
-```python
-processor_config_large_concurrency = vLLMEngineProcessorConfig(
-    model_source="Qwen/Qwen2.5-VL-3B-Instruct",
-    engine_kwargs=dict(
-        max_model_len=MAX_MODEL_LEN,
-        max_num_batched_tokens=2048
-    ),
-    batch_size=64,
-    accelerator_type="L4", # Or upgrade to larger GPU
-    concurrency=10, # Increase the number of parallel workers
-    has_image=True,  # Enable image input.
-)
-processor_large_concurrency = build_llm_processor(
-    processor_config_large_concurrency,
-    preprocess=preprocess,
-    postprocess=postprocess,
-)
-```
-
-The following example processes a configurable number of images from the dataset, controlled by the `LARGE_DATASET_LIMIT` environment variable (default: 100k images). You can increase this to process the full 1M images or any subset.
+Your Ray Data processing pipeline can easily scale up to process more images. By default, this section processes 1M images.  
+You can control the dataset size through the `LARGE_DATASET_LIMIT` environment variable.
 
 
 ```python
@@ -318,14 +291,45 @@ import os
 dataset_limit = int(os.environ.get("LARGE_DATASET_LIMIT", 1_000_000))
 print(f"Processing {dataset_limit:,} images... (or the whole dataset if you picked >5M)")
 ds_large = ds.limit(dataset_limit)
+```
 
+You can scale the number of concurrent replicas based on the compute available in your cluster. In this case, each replica is a copy of your Qwen-VL model and fits in a single L4 GPU.
+
+
+```python
+processor_config_large = vLLMEngineProcessorConfig(
+    model_source="Qwen/Qwen2.5-VL-3B-Instruct",
+    engine_kwargs=dict(
+        max_model_len=8192,
+    ),
+    batch_size=16,
+    accelerator_type="L4", # Or upgrade to larger GPU
+    concurrency=10, # Increase the number of parallel workers
+    has_image=True,  # Enable image input
+)
+processor_large = build_llm_processor(
+    processor_config_large,
+    preprocess=preprocess,
+    postprocess=postprocess,
+)
+```
+
+With additional replicas, repartition your dataset into more blocks for better parallelism. Ray data can efficiently schedule those smaller blocks accross all your additional replicas.
+
+
+```python
 # Repartition for better parallelism.
 num_partitions_large = 128
 print(f"Repartitioning dataset into {num_partitions_large} blocks for parallelism...")
 ds_large = ds_large.repartition(num_blocks=num_partitions_large)
+```
 
+Execute the new pipeline
+
+
+```python
 # Run the compute-scaled processor on the larger dataset.
-processed_large = processor_large_concurrency(ds_large)
+processed_large = processor_large(ds_large)
 processed_large = processed_large.materialize()
 
 print(f"\nProcessed {processed_large.count()} images successfully.")
@@ -336,6 +340,29 @@ pprint(processed_large.take(3))
 ### Performance optimization tips
 
 When scaling to larger datasets, consider these optimizations:
+
+**Analyze your pipeline**
+Use *stats()* to analyze each steps in your pipeline and identify any bottlenecks.
+```python
+processed = processor(ds).materialize()
+print(processed.stats())
+```
+The outputs contains detailed description of each step in your pipeline.
+```text
+Operator 0 ...
+
+...
+
+Operator 8 MapBatches(vLLMEngineStageUDF): 3908 tasks executed, 3908 blocks produced in 340.21s
+    * Remote wall time: ...
+    ...
+
+...
+
+Dataset throughput:
+	* Ray Data throughput: ...
+	* Estimated single node throughput: ...
+```
 
 **Adjust concurrency**  
 Increase the `concurrency` parameter to add more parallel workers and GPUs.
