@@ -330,6 +330,7 @@ py_library(
     visibility = ["//visibility:private"],
     deps = [
         ":logger",
+        bk_require("boto3"),
         bk_require("azure-storage-blob"),
         bk_require("azure-identity"),
     ],
