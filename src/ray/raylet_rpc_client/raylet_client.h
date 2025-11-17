@@ -174,6 +174,10 @@ class RayletClient : public RayletClientInterface {
   void GetWorkerPIDs(const gcs::OptionalItemCallback<std::vector<int32_t>> &callback,
                      int64_t timeout_ms);
 
+  /// Get agents pids from raylet, include dashboard and runtime env agent
+  void RayletClient::GetAgentsPIDs(const gcs::OptionalItemCallback<std::vector<int32_t>> &callback,
+                                   int64_t timeout_ms)
+
  protected:
   /// gRPC client to the NodeManagerService.
   std::shared_ptr<rpc::GrpcClient<rpc::NodeManagerService>> grpc_client_;

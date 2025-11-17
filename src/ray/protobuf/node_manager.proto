@@ -406,6 +406,13 @@ message GetWorkerPIDsReply {
   repeated int32 pids = 1;
 }
 
+message GetAgentPIDsRequest {}
+
+message GetAgentPIDsReply {
+  // PIDs of all Agent managed by the local raylet.
+  repeated int32 pids = 1;
+}
+
 message KillLocalActorRequest {
   // ID of the actor that is intended to be killed.
   bytes intended_actor_id = 1;
