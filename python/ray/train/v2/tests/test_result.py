@@ -117,8 +117,7 @@ def test_get_best_checkpoint():
 
 
 def test_get_best_checkpoint_nested_metrics():
-    """Test that get_best_checkpoint works with nested metric dictionaries.
-    """
+    """Test that get_best_checkpoint works with nested metric dictionaries."""
     # Test with nested metric structure
     res = Result(
         metrics={},
