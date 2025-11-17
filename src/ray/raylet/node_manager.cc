@@ -2890,8 +2890,8 @@ void NodeManager::TriggerLocalOrGlobalGCIfNeeded() {
   }
 
   if (should_global_gc_) {
-    // Always increment the sync message version number so that old GC commands can be
-    // dropped + gc doesn't happen twice on retransmission.
+    // Always increment the sync message version number so it's always triggered once per
+    // call.
     gc_command_sync_version_++;
     ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
     should_global_gc_ = false;
