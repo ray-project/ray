@@ -9,6 +9,7 @@ from ray.air.constants import TRAINING_ITERATION
 from ray.tune.experiment import Trial
 from ray.tune.logger import LoggerCallback
 from ray.tune.result import TIMESTEPS_TOTAL
+from ray.tune.trainable.trainable_fn_utils import _in_tune_session
 from ray.util.annotations import PublicAPI
 
 try:
@@ -147,17 +148,17 @@ def setup_mlflow(
         )
 
     try:
-        train_context = ray.train.get_context()
-    except DeprecationWarning:
-        train_context = ray.tune.get_context()
+        if _in_tune_session():
+            context = ray.tune.get_context()
+        else:
+            context = ray.train.get_context()
 
-    try:
         # Do a try-catch here if we are not in a train session
-        if rank_zero_only and train_context.get_world_rank() != 0:
+        if rank_zero_only and context.get_world_rank() != 0:
             return _NoopModule()
 
-        default_trial_id = train_context.get_trial_id()
-        default_trial_name = train_context.get_trial_name()
+        default_trial_id = context.get_trial_id()
+        default_trial_name = context.get_trial_name()
     except (RuntimeError, DeprecationWarning):
         default_trial_id = None
         default_trial_name = None
