@@ -361,7 +361,7 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
         {
             "cmd": "ray start --head",
             "env": {
-                "RAY_testing_rpc_failure": "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=2:50:50,CoreWorkerService.grpc_client.PushTask=3:50:50"
+                "RAY_testing_rpc_failure": "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=3:33:33:33,CoreWorkerService.grpc_client.PushTask=3:33:33:33"
             },
         },
     ],

@@ -108,6 +108,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.schema.AutoscalingStatus
    serve.schema.ScalingDecision
    serve.schema.DeploymentAutoscalingDetail
+   serve.schema.ReplicaRank
 ```
 
 ### Request Router

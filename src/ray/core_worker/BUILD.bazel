@@ -271,7 +271,6 @@ ray_cc_library(
     hdrs = ["store_provider/memory_store/memory_store.h"],
     deps = [
         ":core_worker_context",
-        ":reference_counter_interface",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:metrics",
@@ -290,6 +289,7 @@ ray_cc_library(
     name = "task_manager_interface",
     hdrs = ["task_manager_interface.h"],
     deps = [
+        ":reference_counter_interface",
         "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/common:task_common",
@@ -348,6 +348,7 @@ ray_cc_library(
     hdrs = ["future_resolver.h"],
     deps = [
         ":memory_store",
+        ":reference_counter_interface",
         "//src/ray/common:id",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
     ],
@@ -408,7 +409,6 @@ ray_cc_library(
     deps = [
         ":common",
         ":core_worker_context",
-        ":reference_counter_interface",
         "//src/ray/common:buffer",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
