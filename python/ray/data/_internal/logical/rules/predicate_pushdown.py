@@ -97,8 +97,9 @@ class PredicatePushdown(Rule):
         original_columns_being_renamed = set()
 
         for expr in projection_op.exprs:
-            # Collect output column names
-            output_columns.add(expr.name)
+            if expr.name is not None:
+                # Collect output column names
+                output_columns.add(expr.name)
 
             # Process AliasExpr (computed columns or renames)
             if isinstance(expr, AliasExpr):
