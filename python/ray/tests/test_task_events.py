@@ -12,7 +12,8 @@ from ray._private.state_api_test_utils import (
     verify_failed_task,
 )
 from ray._private.test_utils import (
-    raw_metrics,
+    PrometheusTimeseries,
+    raw_metric_timeseries,
 )
 from ray._private.worker import RayContext
 from ray.exceptions import RuntimeEnvSetupError
@@ -27,7 +28,9 @@ _SYSTEM_CONFIG = {
 }
 
 
-def aggregate_task_event_metric(info: RayContext) -> Dict:
+def aggregate_task_event_metric(
+    info: RayContext, timeseries: PrometheusTimeseries
+) -> Dict:
     """
     Aggregate metrics of task events into:
         {
@@ -39,7 +42,7 @@ def aggregate_task_event_metric(info: RayContext) -> Dict:
                 ray_gcs_task_manager_task_events_dropped STATUS_EVENT,
         }
     """
-    res = raw_metrics(info)
+    res = raw_metric_timeseries(info, timeseries)
     task_events_info = defaultdict(int)
     if "ray_gcs_task_manager_task_events_dropped" in res:
         for sample in res["ray_gcs_task_manager_task_events_dropped"]:
@@ -68,8 +71,10 @@ def test_status_task_events_metrics(shutdown_only):
     for _ in range(10):
         ray.get(f.remote())
 
+    timeseries = PrometheusTimeseries()
+
     def verify():
-        metric = aggregate_task_event_metric(info)
+        metric = aggregate_task_event_metric(info, timeseries)
         assert metric["REPORTED"] >= 10, (
             "At least 10 tasks events should be reported. "
             "Could be more than 10 with multiple flush."
@@ -191,8 +196,7 @@ def test_failed_task_failed_due_to_node_failure(ray_start_cluster):
         verify_failed_task,
         name="node-killed",
         error_type="NODE_DIED",
-        error_message="Task failed due to the node (where this task was running) "
-        " was dead or unavailable",
+        error_message="Task failed because the node it was running on is dead or unavailable",
     )
 
 
@@ -224,40 +228,6 @@ def test_failed_task_unschedulable(shutdown_only):
             " doesn't exist any more or is infeasible"
         ),
     )
-
-
-# TODO(rickyx): Make this work.
-# def test_failed_task_removed_placement_group(shutdown_only, monkeypatch):
-#     ray.init(num_cpus=2, _system_config=_SYSTEM_CONFIG)
-#     from ray.util.placement_group import placement_group, remove_placement_group
-#     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-#
-#     pg = placement_group([{"CPU": 2}])
-#     ray.get(pg.ready())
-#
-#     @ray.remote(num_cpus=2)
-#     def sleep():
-#         time.sleep(999)
-#
-#     with monkeypatch.context() as m:
-#         m.setenv(
-#             "RAY_testing_asio_delay_us",
-#             "NodeManagerService.grpc_server.RequestWorkerLease=3000000:3000000",
-#         )
-#
-#         sleep.options(
-#             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
-#             name="task-pg-removed",
-#             max_retries=0,
-#         ).remote()
-#
-#     remove_placement_group(pg)
-#
-#     wait_for_condition(
-#         verify_failed_task,
-#         name="task-pg-removed",
-#         error_type="TASK_PLACEMENT_GROUP_REMOVED",
-#     )
 
 
 def test_failed_task_runtime_env_setup(shutdown_only):
