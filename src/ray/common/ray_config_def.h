@@ -851,32 +851,37 @@ RAY_CONFIG(std::string, REDIS_CLIENT_KEY, "")
 RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 
 /// grpc delay testing flags
-///  To use this, simply do
+///  To use this,
 ///      export RAY_testing_asio_delay_us="method1=min_val:max_val,method2=20:100"
 //  The delay is a random number between the interval. If method equals '*',
 //  it will apply to all methods.
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
-/// To use this, simply do
-///     export
-///     RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob"
+/// To use this,
+///  export
+///  RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob:in_flight_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob:in_flight_failure_prob"
 /// If you want to test all rpc failures you can use * as the method name and you can set
 /// -1 max_num_failures to have unlimited failures.
-/// Ex. unlimited failures for all rpc's with 25% request failures and 50% response
-/// failures.
-///     export RAY_testing_rpc_failure="*=-1:25:50"
+/// Ex. unlimited failures for all rpc's with 25% request failures, 50% response
+/// failures, and 10% in-flight failures.
+///     export RAY_testing_rpc_failure="*=-1:25:50:10"
 /// NOTE: Setting the wildcard will override any configuration for other methods.
 ///
-/// You can also provide an optional fourth and/or fifth parameter to specify that there
-/// should be at least a certain amount of failures on the request and response. The
-/// fourth parameter is for the request and the fifth parameter is for the response. By
-/// default these are set to 0, but by setting them to positive values it guarantees
-/// that the first X request RPCs will fail, followed by Y response RPCs that will fail.
+/// You can also provide an optional fifth, sixth, and/or seventh parameter to specify
+/// that there should be at least a certain amount of failures.
+//  The 5th parameter is for request failures.
+//  The 6th parameter is for response failures.
+//  The 7th parameter is for in-flight failures.
+/// By default these are set to 0, but by setting them to positive values it guarantees
+/// that the first X request RPCs will fail, followed by Y response RPCs that will fail,
+/// followed by Z in-flight RPCs that will fail.
 /// Afterwards, it will revert to the probabilistic failures. You can combine this with
 /// the wildcard so that each RPC method will have the same lower bounds applied.
-/// Ex. unlimited failures for all rpc's with 25% request failures and 50% response
-/// failures with at least 2 request failures and 3 response failures.
-///     export RAY_testing_rpc_failure="*=-1:25:50:2:3"
+///
+/// Ex. unlimited failures for all rpc's with 25% request failures, 50% response failures,
+/// and 10% in-flight failures with at least 2 request failures, 3 response failures, and
+/// 1 in-flight failure.
+///     export RAY_testing_rpc_failure="*=-1:25:50:10:2:3:1"
 RAY_CONFIG(std::string, testing_rpc_failure, "")
 /// If this is set, when injecting RPC failures, we'll check if the server and client have
 /// the same address. If they do, we won't inject the failure.
