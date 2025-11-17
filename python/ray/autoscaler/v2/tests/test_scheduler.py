@@ -2665,9 +2665,9 @@ def test_get_nodes_with_resource_availabilities():
             min_worker_nodes=0,
             max_worker_nodes=10,
         ),
-        "type_cpu": NodeTypeConfig(
-            name="type_cpu",
-            resources={"CPU": 8},
+        "type_gpu4": NodeTypeConfig(
+            name="type_gpu3",
+            resources={"CPU": 1, "GPU": 1, "gpu4": 1},
             min_worker_nodes=0,
             max_worker_nodes=10,
         ),
@@ -2694,31 +2694,47 @@ def test_get_nodes_with_resource_availabilities():
         )
         return to_launch, infeasible
 
+    # Pick the node type with the highest availability score when utilization scores are equal.
     assert get_nodes_for(
-        [{"GPU": 1}],
+        [{"CPU": 8, "GPU": 1}],
         cloud_resource_availabilities={
             "type_gpu1": 0.1,
             "type_gpu2": 1,
             "type_gpu3": 0.2,
         },
-    ) == {"type_gpu2": 1}
+    ) == ({"type_gpu2": 1}, [])
+
+    # The availability score is set to 1 by default.
+    assert get_nodes_for(
+        [{"CPU": 8, "GPU": 1}],
+        cloud_resource_availabilities={"type_gpu2": 0.1, "type_gpu3": 0.2},
+    ) == ({"type_gpu1": 1}, [])
 
     assert get_nodes_for(
-        [{"GPU": 1}], cloud_resource_availabilities={"type_gpu2": 0.1, "type_gpu3": 0.2}
-    ) == {"type_gpu1": 1}
-
-    assert get_nodes_for(
-        [{"GPU": 2}],
+        [{"CPU": 8, "GPU": 1}] * 2,
         cloud_resource_availabilities={
             "type_gpu1": 0.1,
             "type_gpu2": 0.1,
             "type_gpu3": 1,
         },
-    ) == {"type_gpu3": 2}
+    ) == ({"type_gpu3": 2}, [])
 
-    assert get_nodes_for([{"CPU": 4}], cloud_resource_availabilities={}) == {
-        "type_cpu": 1
-    }
+    # The utilization score is the first factor to be considered.
+    assert get_nodes_for([{"CPU": 1, "GPU": 1}], cloud_resource_availabilities={}) == (
+        {"type_gpu4": 1},
+        [],
+    )
+
+    # The utilization score is the first factor to be considered.
+    assert get_nodes_for(
+        [{"CPU": 1, "GPU": 1}],
+        cloud_resource_availabilities={
+            "type_gpu1": 0.1,
+            "type_gpu2": 0.1,
+            "type_gpu3": 1,
+            "type_gpu4": 0.1,
+        },
+    ) == ({"type_gpu4": 1}, [])
 
 
 if __name__ == "__main__":
