@@ -14,23 +14,23 @@ from unittest.mock import MagicMock
 from urllib.parse import quote_plus
 
 import pytest
-from ray._common.test_utils import wait_for_condition
 import requests
 from click.testing import CliRunner
 from requests.exceptions import ConnectionError, HTTPError
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
 import ray.scripts.scripts as scripts
-from ray._common.utils import get_or_create_event_loop
-import ray._private.ray_constants as ray_constants
-from ray._common.ray_constants import (
-    LOGGING_ROTATE_BYTES,
-    LOGGING_ROTATE_BACKUP_COUNT,
-)
 from ray._common.network_utils import build_address, parse_address
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BACKUP_COUNT,
+    LOGGING_ROTATE_BYTES,
+)
+from ray._common.test_utils import wait_for_condition
+from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS_LEGACY,
@@ -419,10 +419,16 @@ def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
 
+    def dashboard_available():
+        try:
+            return requests.get(webui_url).status_code == 200
+        except Exception:
+            return False
+
     timeout_seconds = 30
     start_time = time.time()
+    wait_for_condition(dashboard_available)
     while True:
-        time.sleep(3)
         try:
             # Starting and getting jobs should be fine from API clients
             response = requests.post(
@@ -442,6 +448,57 @@ def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
                         "AppleWebKit/537.36 (KHTML, like Gecko) "
                         "Chrome/119.0.0.0 Safari/537.36"
                     )
+                },
+            )
+            with pytest.raises(HTTPError):
+                response.raise_for_status()
+
+            # Getting jobs should be fine for browsers
+            response = requests.get(webui_url + "/api/jobs/")
+            response.raise_for_status()
+            break
+        except (AssertionError, requests.exceptions.ConnectionError) as e:
+            logger.info("Retry because of %s", e)
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                raise Exception("Timed out while testing.")
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_deny_fetch_requests(enable_test_module, ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    def dashboard_available():
+        try:
+            return requests.get(webui_url).status_code == 200
+        except Exception:
+            return False
+
+    timeout_seconds = 30
+    start_time = time.time()
+    wait_for_condition(dashboard_available)
+    while True:
+        try:
+            # Starting and getting jobs should be fine from API clients
+            response = requests.post(
+                webui_url + "/api/jobs/", json={"entrypoint": "ls"}
+            )
+            response.raise_for_status()
+            response = requests.get(webui_url + "/api/jobs/")
+            response.raise_for_status()
+
+            # Starting job should be blocked for browsers
+            response = requests.post(
+                webui_url + "/api/jobs/",
+                json={"entrypoint": "ls"},
+                headers={
+                    "User-Agent": ("Spurious User Agent"),
+                    "Sec-Fetch-Site": ("cross-site"),
                 },
             )
             with pytest.raises(HTTPError):

@@ -4,6 +4,7 @@ load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
 compile_pip_requirements(
     name = "requirements_buildkite",
+    data = [":requirements-doc.txt"],
     requirements_in = "requirements_buildkite.in",
     requirements_txt = "requirements_buildkite.txt",
     tags = [
@@ -13,39 +14,10 @@ compile_pip_requirements(
 )
 
 compile_pip_requirements(
-    name = "requirements_byod_3.9",
-    requirements_in = "ray_release/byod/requirements_byod_3.9.in",
-    requirements_txt = "ray_release/byod/requirements_byod_3.9.txt",
-    tags = [
-        "team:ci",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-compile_pip_requirements(
-    name = "requirements_byod_3.11",
-    requirements_in = "ray_release/byod/requirements_byod_3.11.in",
-    requirements_txt = "ray_release/byod/requirements_byod_3.11.txt",
-    tags = [
-        "team:ci",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-compile_pip_requirements(
-    name = "requirements_byod_3.12",
-    requirements_in = "ray_release/byod/requirements_byod_3.12.in",
-    requirements_txt = "ray_release/byod/requirements_byod_3.12.txt",
-    tags = [
-        "team:ci",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-compile_pip_requirements(
-    name = "requirements_ml_byod_3.9",
-    requirements_in = "ray_release/byod/requirements_ml_byod_3.9.in",
-    requirements_txt = "ray_release/byod/requirements_ml_byod_3.9.txt",
+    name = "requirements_py310",
+    data = [":requirements-doc.txt"],
+    requirements_in = "requirements_py310.in",
+    requirements_txt = "requirements_py310.txt",
     tags = [
         "team:ci",
     ],
@@ -94,24 +66,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "tune_serve_golden_notebook_client_smoke_test",
-    size = "medium",
-    srcs = test_srcs,
-    env = {
-        "IS_SMOKE_TEST": "1",
-    },
-    main = "golden_notebook_tests/workloads/torch_tune_serve_test.py",
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
 ####
 # AIR smoke tests
 ####
@@ -124,6 +78,7 @@ py_test(
         "xgboost",
         "--smoke-test",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "train_tests/xgboost_lightgbm/train_batch_inference_benchmark.py",
     tags = [
         "exclusive",
@@ -144,6 +99,7 @@ py_test(
         "--data-format=parquet",
         "--smoke-test",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "nightly_tests/dataset/gpu_batch_inference.py",
     tags = [
         "exclusive",
@@ -164,6 +120,7 @@ py_test(
         "--data-format=raw",
         "--smoke-test",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "nightly_tests/dataset/gpu_batch_inference.py",
     tags = [
         "exclusive",
@@ -183,6 +140,7 @@ py_test(
         "--data-size-gb=1",
         "--smoke-test",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "air_tests/air_benchmarks/workloads/pytorch_training_e2e.py",
     tags = [
         "exclusive",
@@ -208,6 +166,7 @@ py_test(
         "--smoke-test",
         "--local",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     main = "air_tests/air_benchmarks/workloads/tensorflow_benchmark.py",
     tags = [
         "exclusive",
@@ -294,29 +253,217 @@ py_binary(
         ["**/*.py"],
         exclude = ["ray_release/tests/*.py"],
     ),
+    exec_compatible_with = ["//bazel:py39"],
     deps = [":ray_release"],
+)
+
+py_library(
+    name = "bazel",
+    srcs = ["ray_release/bazel.py"],
+    imports = ["."],
+    visibility = ["//ci/ray_ci:__pkg__"],
+    deps = [
+        bk_require("bazel-runfiles"),
+    ],
+)
+
+py_library(
+    name = "logger",
+    srcs = ["ray_release/logger.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+)
+
+py_library(
+    name = "exception",
+    srcs = ["ray_release/exception.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+)
+
+py_library(
+    name = "result",
+    srcs = ["ray_release/result.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":exception",
+    ],
+)
+
+py_library(
+    name = "kuberay_util",
+    srcs = ["ray_release/kuberay_util.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+)
+
+py_library(
+    name = "global_config",
+    srcs = ["ray_release/configs/global_config.py"],
+    data = glob(["ray_release/configs/*.yaml"]),
+    imports = ["."],
+    visibility = ["//ci/ray_ci:__pkg__"],
+    deps = [
+        bk_require("pyyaml"),
+    ],
+)
+
+py_library(
+    name = "wheels",
+    srcs = ["ray_release/wheels.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+)
+
+py_library(
+    name = "retry",
+    srcs = ["ray_release/retry.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+)
+
+py_library(
+    name = "cloud_util",
+    srcs = ["ray_release/cloud_util.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":logger",
+        bk_require("azure-storage-blob"),
+        bk_require("azure-identity"),
+    ],
+)
+
+py_library(
+    name = "util",
+    srcs = ["ray_release/util.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":global_config",
+        ":logger",
+        bk_require("anyscale"),
+    ],
+)
+
+py_library(
+    name = "anyscale_util",
+    srcs = ["ray_release/anyscale_util.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":exception",
+        ":logger",
+        ":util",
+        bk_require("anyscale"),
+    ],
+)
+
+py_library(
+    name = "aws",
+    srcs = ["ray_release/aws.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":logger",
+        ":util",
+        bk_require("boto3"),
+        bk_require("botocore"),
+        bk_require("aws-requests-auth"),
+    ],
+)
+
+py_library(
+    name = "test",
+    srcs = ["ray_release/test.py"],
+    imports = ["."],
+    visibility = ["//ci/ray_ci:__pkg__"],
+    deps = [
+        ":aws",
+        ":global_config",
+        ":logger",
+        ":result",
+        ":util",
+        bk_require("aioboto3"),
+        bk_require("boto3"),
+        bk_require("botocore"),
+        bk_require("pygithub"),
+    ],
+)
+
+py_library(
+    name = "test_automation",
+    srcs = [
+        "ray_release/test_automation/ci_state_machine.py",
+        "ray_release/test_automation/release_state_machine.py",
+        "ray_release/test_automation/state_machine.py",
+    ],
+    imports = ["."],
+    visibility = ["//ci/ray_ci:__pkg__"],
+    deps = [
+        ":test",
+        bk_require("pygithub"),
+        bk_require("pybuildkite"),
+    ],
 )
 
 py_library(
     name = "ray_release",
     srcs = glob(
         ["ray_release/**/*.py"],
-        exclude = ["ray_release/tests/*.py"],
+        exclude = [
+            "ray_release/tests/*.py",
+            "ray_release/configs/*.py",
+            "ray_release/scripts/*.py",
+            "ray_release/test_automation/*.py",
+            "ray_release/bazel.py",
+            "ray_release/logger.py",
+            "ray_release/result.py",
+            "ray_release/exception.py",
+            "ray_release/kuberay_util.py",
+            "ray_release/wheels.py",
+            "ray_release/util.py",
+            "ray_release/retry.py",
+            "ray_release/cloud_util.py",
+            "ray_release/anyscale_util.py",
+            "ray_release/aws.py",
+            "ray_release/test.py",
+        ],
     ),
     data = glob([
         "ray_release/environments/*.env",
-        "ray_release/configs/*.yaml",
     ]) + [
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
+        "//doc:deployment_serve_llm_example_configs",
         "//doc:example_configs",
+        "//doc/source/train/examples/pytorch/deepspeed_finetune/ci:ci_yamls",
         "//doc/source/train/examples/pytorch/distributing-pytorch/ci:ci_yamls",
+        "//doc/source/train/examples/pytorch/pytorch-fsdp/ci:ci_yamls",
+        "//doc/source/train/examples/pytorch/pytorch-profiling/ci:ci_yamls",
     ],
     imports = ["."],
     visibility = ["//visibility:public"],
     deps = [
+        ":anyscale_util",
+        ":aws",
+        ":bazel",
+        ":cloud_util",
+        ":exception",
+        ":global_config",
+        ":kuberay_util",
+        ":logger",
+        ":result",
+        ":retry",
+        ":test",
+        ":test_automation",
+        ":util",
+        ":wheels",
         bk_require("anyscale"),
         bk_require("aws-requests-auth"),
+        bk_require("azure-storage-blob"),
+        bk_require("azure-identity"),
         bk_require("bazel-runfiles"),
         bk_require("aioboto3"),
         bk_require("boto3"),
@@ -324,6 +471,7 @@ py_library(
         bk_require("click"),
         bk_require("google-cloud-storage"),
         bk_require("jinja2"),
+        bk_require("msal"),
         bk_require("pybuildkite"),
         bk_require("pygithub"),
         bk_require("requests"),
@@ -341,7 +489,7 @@ py_test(
     name = "test_alerts",
     size = "small",
     srcs = ["ray_release/tests/test_alerts.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
@@ -356,7 +504,7 @@ py_test(
     name = "test_anyscale_job_manager",
     size = "small",
     srcs = ["ray_release/tests/test_anyscale_job_manager.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
@@ -371,7 +519,7 @@ py_test(
     name = "test_anyscale_job_wrapper",
     size = "small",
     srcs = ["ray_release/tests/test_anyscale_job_wrapper.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
@@ -379,6 +527,16 @@ py_test(
     deps = [
         ":ray_release",
         bk_require("pytest"),
+    ],
+)
+
+py_library(
+    name = "bisect_lib",
+    srcs = ["ray_release/scripts/ray_bisect.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":ray_release",
     ],
 )
 
@@ -390,12 +548,13 @@ py_test(
         "cluster_tests/cpt_autoscaling_1-3_aws.yaml",
         "ray_release/tests/test_collection_data.yaml",
     ],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
     ],
     deps = [
+        ":bisect_lib",
         ":ray_release",
         bk_require("pytest"),
     ],
@@ -408,7 +567,7 @@ py_test(
     data = [
         "ray_release/configs/oss_config.yaml",
     ],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
@@ -427,7 +586,7 @@ py_test(
     data = [
         "ray_release/configs/oss_config.yaml",
     ],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
@@ -445,7 +604,25 @@ py_test(
     data = [
         "ray_release/configs/oss_config.yaml",
     ],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":custom_byod_build_lib",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_custom_byod_build_init_helper",
+    size = "small",
+    srcs = ["ray_release/tests/test_custom_byod_build_init_helper.py"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
@@ -457,10 +634,31 @@ py_test(
 )
 
 py_test(
+    name = "test_custom_image_build_and_test_init",
+    size = "small",
+    srcs = ["ray_release/tests/test_custom_image_build_and_test_init.py"],
+    data = [
+        "hello_world_tests/hello_world_compute_config.yaml",
+        "ray_release/configs/oss_config.yaml",
+        "ray_release/tests/sample_5_tests.yaml",
+        "ray_release/tests/sample_tests.yaml",
+    ],
+    exec_compatible_with = ["//bazel:py39"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":custom_image_build_and_test_init_lib",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_cluster_manager",
     size = "small",
     srcs = ["ray_release/tests/test_cluster_manager.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
@@ -483,9 +681,10 @@ py_test(
     ) + [
         "ray_release/tests/test_collection_data.yaml",
         "//python/ray/autoscaler/aws:test_configs",
+        "//python/ray/autoscaler/azure:test_configs",
         "//python/ray/autoscaler/gcp:test_configs",
     ],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
@@ -500,7 +699,7 @@ py_test(
     name = "test_env",
     size = "small",
     srcs = ["ray_release/tests/test_env.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
@@ -515,13 +714,13 @@ py_test(
     name = "test_global_config",
     size = "small",
     srcs = ["ray_release/tests/test_global_config.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
     ],
     deps = [
-        ":ray_release",
+        ":global_config",
         ":test_utils",
         bk_require("pytest"),
     ],
@@ -531,7 +730,7 @@ py_test(
     name = "test_glue",
     size = "small",
     srcs = ["ray_release/tests/test_glue.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
@@ -547,7 +746,7 @@ py_test(
     name = "test_log_aggregator",
     size = "small",
     srcs = ["ray_release/tests/test_log_aggregator.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
@@ -562,13 +761,14 @@ py_test(
     name = "test_result",
     size = "small",
     srcs = ["ray_release/tests/test_result.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
     ],
     deps = [
-        ":ray_release",
+        ":exception",
+        ":result",
         bk_require("pytest"),
     ],
 )
@@ -582,7 +782,7 @@ py_test(
         "ray_release/tests/_test_run_release_test_sh.py",
         "run_release_test.sh",
     ],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
@@ -597,7 +797,7 @@ py_test(
     name = "test_state_machine",
     size = "small",
     srcs = ["ray_release/tests/test_state_machine.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
@@ -612,13 +812,13 @@ py_test(
     name = "test_kuberay_util",
     size = "small",
     srcs = ["ray_release/tests/test_kuberay_util.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
     ],
     deps = [
-        ":ray_release",
+        ":kuberay_util",
         bk_require("pytest"),
     ],
 )
@@ -630,13 +830,14 @@ py_test(
     data = [
         "ray_release/configs/oss_config.yaml",
     ],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
     ],
     deps = [
-        ":ray_release",
+        ":bazel",
+        ":test",
         bk_require("pytest"),
     ],
 )
@@ -648,25 +849,7 @@ py_test(
     data = [
         "ray_release/configs/oss_config.yaml",
     ],
-    exec_compatible_with = ["//:hermetic_python"],
-    tags = [
-        "release_unit",
-        "team:ci",
-    ],
-    deps = [
-        ":ray_release",
-        bk_require("pytest"),
-    ],
-)
-
-py_test(
-    name = "test_wheels",
-    size = "small",
-    srcs = ["ray_release/tests/test_wheels.py"],
-    data = [
-        "//:python_sources",
-    ],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
@@ -681,13 +864,41 @@ py_test(
     name = "test_retry",
     size = "small",
     srcs = ["ray_release/tests/test_retry.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":retry",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_template",
+    srcs = ["ray_release/tests/test_template.py"],
+    exec_compatible_with = ["//bazel:py39"],
     tags = [
         "release_unit",
         "team:ci",
     ],
     deps = [
         ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_cloud_util",
+    srcs = ["ray_release/tests/test_cloud_util.py"],
+    exec_compatible_with = ["//bazel:py39"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":cloud_util",
         bk_require("pytest"),
     ],
 )
@@ -701,7 +912,17 @@ py_binary(
         "//python/ray/autoscaler/aws:test_configs",
         "//python/ray/autoscaler/gcp:test_configs",
     ],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
+    deps = [
+        ":ray_release",
+    ],
+)
+
+py_library(
+    name = "custom_byod_build_lib",
+    srcs = ["ray_release/scripts/custom_byod_build.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
     deps = [
         ":ray_release",
     ],
@@ -710,7 +931,27 @@ py_binary(
 py_binary(
     name = "custom_byod_build",
     srcs = ["ray_release/scripts/custom_byod_build.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py39"],
+    deps = [
+        ":ray_release",
+    ],
+)
+
+py_library(
+    name = "custom_image_build_and_test_init_lib",
+    srcs = ["ray_release/scripts/custom_image_build_and_test_init.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":ray_release",
+    ],
+)
+
+py_binary(
+    name = "custom_image_build_and_test_init",
+    srcs = ["ray_release/scripts/custom_image_build_and_test_init.py"],
+    data = glob(["release_*.yaml"]),
+    exec_compatible_with = ["//bazel:py39"],
     deps = [
         ":ray_release",
     ],

@@ -1,17 +1,18 @@
 import argparse
+import json
 import os
-from typing import Tuple, Optional
+from dataclasses import dataclass
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
+
 import ray
-import json
 from ray._private.ray_microbenchmark_helpers import timeit
-from ray.experimental.collective import create_collective_group
 from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
 )
-from dataclasses import dataclass
+from ray.experimental.collective import create_collective_group
 
 DTYPE = torch.float16
 SHAPE = [(1,), (1_000,), (1_000_000,), (100_000_000,)]
@@ -27,7 +28,7 @@ class BackendConfig:
 
 BACKEND_CONFIG = {
     "gloo": BackendConfig(
-        init_actor_kwargs={"enable_tensor_transport": True},
+        init_actor_kwargs={},
         send_method_kwargs={"tensor_transport": "gloo"},
         device=torch.device("cpu"),
         collective_group_backend="torch_gloo",
@@ -51,7 +52,7 @@ BACKEND_CONFIG = {
 }
 
 
-@ray.remote
+@ray.remote(enable_tensor_transport=True)
 class Actor:
     def __init__(
         self,
@@ -69,6 +70,8 @@ class Actor:
 
     def recv(self, tensor: torch.Tensor):
         assert tensor.device.type == self.device.type
+        # Return the first element of the tensor to make sure the actor has received the tensor.
+        return tensor[0].item()
 
 
 def _exec_p2p_transfer(

@@ -1,6 +1,6 @@
 import ray
-from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.kuberay.autoscaling_config import _generate_provider_config
+from ray.autoscaler._private.providers import _get_node_provider
 
 
 @ray.remote

@@ -218,7 +218,7 @@ Importance Weighted Actor-Learner Architecture (IMPALA)
     **IMPALA architecture:** In a training iteration, IMPALA requests samples from all EnvRunners asynchronously and the collected episodes
     are returned to the main algorithm process as Ray references rather than actual objects available on the local process.
     IMPALA then passes these episode references to the Learners for asynchronous updates of the model.
-    RLlib doesn't always synch back the weights to the EnvRunners right after a new model version is available.
+    RLlib doesn't always sync back the weights to the EnvRunners right after a new model version is available.
     To account for the EnvRunners being off-policy, IMPALA uses a procedure called v-trace,
     `described in the paper <https://arxiv.org/abs/1802.01561>`__.
     IMPALA scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
@@ -361,7 +361,7 @@ Conservative Q-Learning (CQL)
 **Tuned examples:**
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/pendulum_cql.py>`__
 
-**CQL-specific configs** and :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
+**CQL-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.cql.cql.CQLConfig
    :members: training
@@ -386,7 +386,7 @@ Implicit Q-Learning (IQL)
 **Tuned examples:**
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/iql/pendulum_iql.py>`__
 
-**IQL-specific configs** and :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
+**IQL-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.iql.iql.IQLConfig
    :members: training

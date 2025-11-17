@@ -44,7 +44,7 @@ config = (
 )
 
 stop = {
-    NUM_ENV_STEPS_SAMPLED_LIFETIME: 300000,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: 400000,
     # Divide by num_agents to get actual return per agent.
     f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 450.0 * (args.num_agents or 1),
 }

@@ -17,6 +17,8 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
         True
         >>> _has_file_extension("foo.CSV", ["csv"])
         True
+        >>> _has_file_extension("foo.CSV", [".csv"])
+        True
         >>> _has_file_extension("foo.csv", ["json", "jsonl"])
         False
         >>> _has_file_extension("foo.csv", None)
@@ -32,14 +34,17 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
     if extensions is None:
         return True
 
-    # The user-specified extensions don't contain a leading dot, so we add it here.
-    extensions = [f".{ext.lower()}" for ext in extensions]
+    # If the user-specified extensions don't contain a leading dot, we add it here
+    extensions = [
+        f".{ext.lower()}" if not ext.startswith(".") else ext.lower()
+        for ext in extensions
+    ]
     return any(path.lower().endswith(ext) for ext in extensions)
 
 
 def _resolve_paths_and_filesystem(
     paths: Union[str, List[str]],
-    filesystem: "pyarrow.fs.FileSystem" = None,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
 ) -> Tuple[List[str], "pyarrow.fs.FileSystem"]:
     """
     Resolves and normalizes all provided paths, infers a filesystem from the
@@ -69,7 +74,7 @@ def _resolve_paths_and_filesystem(
     elif not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
         raise ValueError(
             "Expected `paths` to be a `str`, `pathlib.Path`, or `list[str]`, but got "
-            f"`{paths}`."
+            f"`{paths}`"
         )
     elif len(paths) == 0:
         raise ValueError("Must provide at least one path.")
@@ -175,6 +180,7 @@ def _unwrap_protocol(path):
         return pathlib.Path(path).as_posix()
 
     parsed = urllib.parse.urlparse(path, allow_fragments=False)  # support '#' in path
+    params = ";" + parsed.params if parsed.params else ""  # support ';' in path
     query = "?" + parsed.query if parsed.query else ""  # support '?' in path
     netloc = parsed.netloc
     if parsed.scheme == "s3" and "@" in parsed.netloc:
@@ -195,7 +201,7 @@ def _unwrap_protocol(path):
     ):
         parsed_path = parsed_path[1:]
 
-    return netloc + parsed_path + query
+    return netloc + parsed_path + params + query
 
 
 def _is_url(path) -> bool:

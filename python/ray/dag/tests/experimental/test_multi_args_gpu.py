@@ -3,12 +3,12 @@ import os
 import sys
 
 import pytest
+import torch
 
 import ray
-from ray.dag import InputNode, MultiOutputNode
 import ray.cluster_utils
+from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
-import torch
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)

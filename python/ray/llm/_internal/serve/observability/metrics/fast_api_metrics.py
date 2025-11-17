@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from ray.llm._internal.serve.configs.constants import ENABLE_VERBOSE_TELEMETRY
+from ray.llm._internal.serve.constants import ENABLE_VERBOSE_TELEMETRY
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.metrics.event_loop_monitoring import (
     EVENT_LOOP_LATENCY_HISTOGRAM_BOUNDARIES,

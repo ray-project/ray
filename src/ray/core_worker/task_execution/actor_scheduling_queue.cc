@@ -35,7 +35,11 @@ ActorSchedulingQueue::ActorSchedulingQueue(
       task_event_buffer_(task_event_buffer),
       pool_manager_(std::move(pool_manager)) {}
 
-void ActorSchedulingQueue::Stop() { pool_manager_->Stop(); }
+void ActorSchedulingQueue::Stop() {
+  pool_manager_->Stop();
+  CancelAllPending(Status::SchedulingCancelled(
+      "Actor scheduling queue stopped; canceling pending tasks"));
+}
 
 bool ActorSchedulingQueue::TaskQueueEmpty() const {
   RAY_CHECK(false) << "TaskQueueEmpty() not implemented for actor queues";
@@ -104,29 +108,29 @@ void ActorSchedulingQueue::Add(
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
     waiter_.Wait(dependencies, [this, seq_no, is_retry, retry_request]() mutable {
-      InboundRequest *inbound_request = nullptr;
+      InboundRequest *inbound_req = nullptr;
       if (is_retry) {
         // retry_request is guaranteed to be a valid pointer for retries because it
         // won't be erased from the retry list until its dependencies are fetched and
         // ExecuteRequest happens.
-        inbound_request = retry_request;
+        inbound_req = retry_request;
       } else if (auto it = pending_actor_tasks_.find(seq_no);
                  it != pending_actor_tasks_.end()) {
         // For non-retry tasks, we need to check if the task is still in the map because
         // it can be erased due to being canceled via a higher `client_processed_up_to_`.
-        inbound_request = &it->second;
+        inbound_req = &it->second;
       }
 
-      if (inbound_request != nullptr) {
-        const auto &task_spec = inbound_request->TaskSpec();
+      if (inbound_req != nullptr) {
+        const auto &inbound_req_task_spec = inbound_req->TaskSpec();
         RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-            task_spec.TaskId(),
-            task_spec.JobId(),
-            task_spec.AttemptNumber(),
-            task_spec,
+            inbound_req_task_spec.TaskId(),
+            inbound_req_task_spec.JobId(),
+            inbound_req_task_spec.AttemptNumber(),
+            inbound_req_task_spec,
             rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
             /* include_task_info */ false));
-        inbound_request->MarkDependenciesResolved();
+        inbound_req->MarkDependenciesResolved();
         ScheduleRequests();
       }
     });
@@ -247,6 +251,24 @@ void ActorSchedulingQueue::ScheduleRequests() {
         pending_actor_tasks_.erase(head);
       }
     });
+  }
+}
+
+void ActorSchedulingQueue::CancelAllPending(const Status &status) {
+  absl::MutexLock lock(&mu_);
+  // Cancel in-order pending tasks
+  while (!pending_actor_tasks_.empty()) {
+    auto head = pending_actor_tasks_.begin();
+    head->second.Cancel(status);
+    pending_task_id_to_is_canceled.erase(head->second.TaskID());
+    pending_actor_tasks_.erase(head);
+  }
+  // Cancel retry tasks
+  while (!pending_retry_actor_tasks_.empty()) {
+    auto &req = pending_retry_actor_tasks_.front();
+    req.Cancel(status);
+    pending_task_id_to_is_canceled.erase(req.TaskID());
+    pending_retry_actor_tasks_.pop_front();
   }
 }
 

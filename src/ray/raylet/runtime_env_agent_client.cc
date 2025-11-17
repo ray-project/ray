@@ -28,7 +28,10 @@
 #include "absl/strings/str_format.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/logging.h"
+#include "ray/util/process.h"
+#include "ray/util/time.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 
 namespace beast = boost::beast;  // from <boost/beast.hpp>
@@ -126,6 +129,11 @@ class Session : public std::enable_shared_from_this<Session> {
     req_.set(http::field::content_type, "application/octet-stream");
     // Sets Content-Length header.
     req_.prepare_payload();
+
+    auto auth_token = rpc::AuthenticationTokenLoader::instance().GetToken();
+    if (auth_token.has_value() && !auth_token->empty()) {
+      req_.set(http::field::authorization, auth_token->ToAuthorizationHeaderValue());
+    }
   }
 
   void Failed(ray::Status status) {
@@ -230,9 +238,10 @@ class SessionPool {
   void enqueue(std::shared_ptr<Session> session) {
     if (running_sessions_.size() < max_concurrency_) {
       running_sessions_.insert(session);
-      session->run(/*finished_callback=*/[this](std::shared_ptr<Session> session) {
-        this->remove_session_from_running(session);
-      });
+      session->run(
+          /*finished_callback=*/[this](std::shared_ptr<Session> session_to_remove) {
+            this->remove_session_from_running(session_to_remove);
+          });
     } else {
       pending_sessions_.emplace(std::move(session));
     }

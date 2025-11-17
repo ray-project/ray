@@ -1,10 +1,10 @@
-import pytest
 import sys
+
+import pytest
 import torch
 
 import ray
 import ray.experimental.collective
-
 
 SHAPE = (2, 2)
 DTYPE = torch.float16

@@ -1,8 +1,10 @@
-import ray
-import numpy as np
-import time
-import os
 import json
+import os
+import time
+
+import numpy as np
+
+import ray
 
 
 def test_small_objects_many_to_one():
@@ -63,7 +65,6 @@ if "TEST_OUTPUT_JSON" in os.environ:
         results = {
             "num_messages_many_to_one": many_to_one_throughput,
             "num_messages_one_to_many": one_to_many_throughput,
-            "success": "1",
         }
         results["perf_metrics"] = [
             {

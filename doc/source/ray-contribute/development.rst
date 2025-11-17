@@ -40,7 +40,7 @@ Create a virtual environment to prevent version conflicts and to develop with an
 
         .. code-block:: shell
 
-            conda create -c conda-forge python=3.9 -n myenv
+            conda create -c conda-forge python=3.10 -n myenv
 
 
         Activate your virtual environment to tell the shell/terminal to use this particular Python:
@@ -61,7 +61,7 @@ Create a virtual environment to prevent version conflicts and to develop with an
 
         This contains a directory with all the packages used by the local Python of your project. You only need to do this step once.
 
-        Activate your virtual environment to tell the  shell/terminal to use this particular Python:
+        Activate your virtual environment to tell the shell/terminal to use this particular Python:
 
         .. code-block:: shell
 
@@ -92,8 +92,8 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
 
 .. code-block:: shell
 
-    # For example, for Python 3.9:
-    pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
+    # For example, for Python 3.10:
+    pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl
 
 4. Replace Python files in the installed package with your local editable copy. We provide a simple script to help you do this: ``python python/ray/setup-dev.py``. Running the script will remove the  ``ray/tune``, ``ray/rllib``, ``ray/autoscaler`` dir (among other directories) bundled with the ``ray`` pip package, and replace them with links to your local code. This way, changing files in your git clone will directly affect the behavior of your installed Ray.
 
@@ -291,9 +291,12 @@ Environment variables that influence builds
 
 You can tweak the build with the following environment variables (when running ``pip install -e .`` or ``python setup.py install``):
 
+- ``RAY_BUILD_CORE``: If set and equal to ``1``, the core parts will be built. Defaults to ``1``.
 - ``RAY_INSTALL_JAVA``: If set and equal to ``1``, extra build steps will be executed
   to build java portions of the codebase
 - ``RAY_INSTALL_CPP``: If set and equal to ``1``, ``ray-cpp`` will be installed
+- ``RAY_BUILD_REDIS``: If set and equal to ``1``, Redis binaries will be built or fetched.
+  These binaries are only used for testing. Defaults to ``1``.
 - ``RAY_DISABLE_EXTRA_CPP``: If set and equal to ``1``, a regular (non -
   ``cpp``) build will not provide some ``cpp`` interfaces
 - ``SKIP_BAZEL_BUILD``: If set and equal to ``1``, no Bazel build steps will be
@@ -316,11 +319,12 @@ You can tweak the build with the following environment variables (when running `
 Installing additional dependencies for development
 --------------------------------------------------
 
-Dependencies for the linter (``scripts/format.sh``) can be installed with:
+Dependencies for the linter (``pre-commit``) can be installed with:
 
 .. code-block:: shell
 
- pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
+  pip install -c python/requirements_compiled.txt pre-commit
+  pre-commit install
 
 Dependencies for running Ray unit tests under ``python/ray/tests`` can be installed with:
 
@@ -333,12 +337,9 @@ Requirement files for running Ray Data / ML library tests are under ``python/req
 Pre-commit Hooks
 ----------------
 
-Ray is planning to replace the pre-push hooks that are invoked from ``scripts/format.sh`` with
-pre-commit hooks using `the pre-commit python package <https://pre-commit.com/>`_ in the future. At
-the moment, we have configured a ``.pre-commit-config.yaml`` which runs all the same checks done by
-``scripts/format.sh`` along with a few additional ones too. Currently this developer tooling is
-opt-in, with any formatting changes made by ``scripts/format.sh`` expected to be caught by
-``pre-commit`` as well. To start using ``pre-commit``:
+Ray uses pre-commit hooks with `the pre-commit python package <https://pre-commit.com/>`_.
+The ``.pre-commit-config.yaml`` file configures all the linting and formatting checks.
+To start using ``pre-commit``:
 
 .. code-block:: shell
 
@@ -353,8 +354,7 @@ you commit new code changes with git. To temporarily skip pre-commit checks, use
 
    git commit -n
 
-If you find that ``scripts/format.sh`` makes a change that is different from what ``pre-commit``
-does, please `report an issue here`_.
+If you encounter any issues with ``pre-commit``, please `report an issue here`_.
 
 .. _report an issue here: https://github.com/ray-project/ray/issues/new?template=bug-report.yml
 

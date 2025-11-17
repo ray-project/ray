@@ -1,15 +1,15 @@
 import os
 import signal
-import time
 import sys
+import time
 import warnings
 
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_tasks
-from ray._common.test_utils import wait_for_condition
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")

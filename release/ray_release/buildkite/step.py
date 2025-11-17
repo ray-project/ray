@@ -1,18 +1,22 @@
 import copy
 import os
-from typing import Any, Dict, Optional, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
-from ray_release.test import Test, TestState
 from ray_release.config import (
     DEFAULT_ANYSCALE_PROJECT,
     DEFAULT_CLOUD_ID,
     as_smoke_test,
     get_test_project_id,
 )
+from ray_release.custom_byod_build_init_helper import (
+    generate_custom_build_step_key,
+    get_prerequisite_step,
+)
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
 from ray_release.template import get_test_env_var
+from ray_release.test import Test, TestState
 from ray_release.util import DeferredEnvVar
 
 DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
@@ -70,6 +74,7 @@ def get_step_for_test_group(
     priority: int = 0,
     global_config: Optional[str] = None,
     is_concurrency_limit: bool = True,
+    block_step_key: Optional[str] = None,
 ):
     steps = []
     for group in sorted(grouped_tests):
@@ -88,6 +93,7 @@ def get_step_for_test_group(
                     env=env,
                     priority_val=priority,
                     global_config=global_config,
+                    block_step_key=block_step_key,
                 )
 
                 if not is_concurrency_limit:
@@ -111,9 +117,9 @@ def get_step(
     env: Optional[Dict] = None,
     priority_val: int = 0,
     global_config: Optional[str] = None,
+    block_step_key: Optional[str] = None,
 ):
     env = env or {}
-
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
     cmd = [
@@ -134,6 +140,10 @@ def get_step(
 
     if smoke_test:
         cmd += ["--smoke-test"]
+
+    num_retries = test.get("run", {}).get("num_retries")
+    if num_retries:
+        step["retry"]["automatic"][0]["limit"] = num_retries
 
     step["plugins"][0][DOCKER_PLUGIN_KEY]["command"] = cmd
 
@@ -191,4 +201,26 @@ def get_step(
 
     step["label"] = full_label
 
+    image = test.get_anyscale_byod_image()
+    base_image = test.get_anyscale_base_byod_image()
+    if test.require_custom_byod_image():
+        step["depends_on"] = generate_custom_build_step_key(image)
+    else:
+        step["depends_on"] = get_prerequisite_step(image, base_image)
+
+    if block_step_key:
+        if not step["depends_on"]:
+            step["depends_on"] = block_step_key
+        else:
+            step["depends_on"] = [step["depends_on"], block_step_key]
+    return step
+
+
+def generate_block_step(num_tests: int):
+    step = {
+        "block": "Run release tests",
+        "depends_on": None,
+        "key": "block_run_release_tests",
+        "prompt": f"You are triggering {num_tests} tests. Do you want to proceed?",
+    }
     return step
