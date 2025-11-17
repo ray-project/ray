@@ -464,6 +464,7 @@ class Dataset:
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         udf_modifying_row_count: bool = False,
+        enforce_input_output_block_size: bool = False,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -708,6 +709,7 @@ class Dataset:
             concurrency=concurrency,
             udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
+            enforce_input_output_block_size=enforce_input_output_block_size,
             **ray_remote_args,
         )
 
@@ -729,7 +731,7 @@ class Dataset:
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]],
         udf_modifying_row_count: bool,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
-        enforce_input_output_block_size: bool = False,
+        enforce_input_output_block_size: bool,
         **ray_remote_args,
     ):
         # NOTE: The `map_groups` implementation calls `map_batches` with
@@ -1243,52 +1245,6 @@ class Dataset:
         )
         logical_plan = LogicalPlan(select_op, self.context)
         return Dataset(plan, logical_plan)
-
-    @PublicAPI(api_group=BT_API_GROUP)
-    def batcher_and_collate(
-        self,
-        fn: UserDefinedFunction[DataBatch, DataBatch],
-        *,
-        batch_size: int,
-        compute: Optional[ComputeStrategy] = None,
-        batch_format: Optional[str] = "default",
-        zero_copy_batch: bool = True,
-        fn_args: Optional[Iterable[Any]] = None,
-        fn_kwargs: Optional[Dict[str, Any]] = None,
-        fn_constructor_args: Optional[Iterable[Any]] = None,
-        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        num_cpus: Optional[float] = None,
-        num_gpus: Optional[float] = None,
-        memory: Optional[float] = None,
-        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
-        udf_modifying_row_count: bool = False,
-        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
-        **ray_remote_args,
-    ) -> "Dataset":
-        if batch_size <= 0:
-            raise ValueError(
-                "`batch_size` must be a positive integer for `batcher_and_collate`."
-            )
-
-        return self._map_batches_without_batch_size_validation(
-            fn,
-            batch_size=batch_size,
-            compute=compute,
-            batch_format=batch_format,
-            zero_copy_batch=zero_copy_batch,
-            fn_args=fn_args,
-            fn_kwargs=fn_kwargs,
-            fn_constructor_args=fn_constructor_args,
-            fn_constructor_kwargs=fn_constructor_kwargs,
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            memory=memory,
-            concurrency=concurrency,
-            udf_modifying_row_count=udf_modifying_row_count,
-            ray_remote_args_fn=ray_remote_args_fn,
-            enforce_input_output_block_size=True,
-            **ray_remote_args,
-        )
 
     @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(
