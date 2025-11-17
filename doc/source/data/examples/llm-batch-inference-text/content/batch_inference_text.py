@@ -30,7 +30,7 @@ processor_config = vLLMEngineProcessorConfig(
     engine_kwargs=dict(
         max_model_len= 256, # estimate system prompt + user prompt + output tokens (+ reasoning tokens if any)
     ),
-    batch_size=128,
+    batch_size=256,
     accelerator_type="L4",
     concurrency=4,
 )

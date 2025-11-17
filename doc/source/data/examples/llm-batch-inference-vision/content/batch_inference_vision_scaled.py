@@ -72,7 +72,7 @@ def preprocess(row: dict[str, Any]) -> dict[str, Any]:
         ],
         sampling_params=dict(
             temperature=0.3,
-            max_tokens=150,
+            max_tokens=256,
             detokenize=False,
         ),
     )
