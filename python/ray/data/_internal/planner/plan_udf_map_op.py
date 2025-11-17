@@ -273,6 +273,7 @@ def plan_udf_map_op(
         if op._enforce_input_output_block_size:
             ref_bundler = StreamingRepartitionRefBundler(op._batch_size)
             disable_block_shaping = True
+            assert op._batch_size, "MapBatches needs to have batch_size if enforce_input_output_block_size is True"
             # TODO(xgui): explore the fusion for different refbundler
             supports_fusion = False
         transform_fn = BatchMapTransformFn(
