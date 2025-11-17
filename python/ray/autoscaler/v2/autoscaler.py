@@ -164,9 +164,7 @@ class Autoscaler:
                     max_concurrent_installs=config.get_max_num_worker_nodes() or 50,
                 )
             )
-        self.cloud_resource_monitor = CloudResourceMonitor(
-            instance_storage=instance_storage
-        )
+        self.cloud_resource_monitor = CloudResourceMonitor()
         subscribers.append(self.cloud_resource_monitor)
 
         self._instance_manager = InstanceManager(
