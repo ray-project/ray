@@ -18,6 +18,7 @@
 #include <string>
 #include <utility>
 
+#include "ray/rpc/authentication/k8s_constants.h"
 #include "ray/util/logging.h"
 
 #ifdef _WIN32
@@ -47,8 +48,8 @@ std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken() {
     return cached_token_;
   }
 
-  // If token auth is not enabled, return std::nullopt
-  if (GetAuthenticationMode() != AuthenticationMode::TOKEN) {
+  // If token or k8s auth is not enabled, return std::nullopt
+  if (!RequiresTokenAuthentication()) {
     cached_token_ = std::nullopt;
     return std::nullopt;
   }
@@ -77,8 +78,8 @@ bool AuthenticationTokenLoader::HasToken() {
     return !cached_token_->empty();
   }
 
-  // If token auth is not enabled, no token needed
-  if (GetAuthenticationMode() != AuthenticationMode::TOKEN) {
+  // If token or k8s auth is not enabled, no token needed
+  if (!RequiresTokenAuthentication()) {
     cached_token_ = std::nullopt;
     return false;
   }
@@ -135,7 +136,20 @@ AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
     }
   }
 
-  // Precedence 3: Default token path ~/.ray/auth_token
+  // Precedence 3 (auth_mode=k8s only): Load Kubernetes service account token
+  if (GetAuthenticationMode() == AuthenticationMode::K8S) {
+    std::string token_str = TrimWhitespace(ReadTokenFromFile(k8s::kK8sSaTokenPath));
+    if (!token_str.empty()) {
+      RAY_LOG(DEBUG)
+          << "Loaded authentication token from Kubernetes service account path: "
+          << k8s::kK8sSaTokenPath;
+      return AuthenticationToken(token_str);
+    }
+    RAY_LOG(DEBUG) << "Kubernetes service account token not found or empty at: "
+                   << k8s::kK8sSaTokenPath;
+  }
+
+  // Precedence 4: Default token path ~/.ray/auth_token
   std::string default_path = GetDefaultTokenPath();
   std::string token_str = TrimWhitespace(ReadTokenFromFile(default_path));
   if (!token_str.empty()) {

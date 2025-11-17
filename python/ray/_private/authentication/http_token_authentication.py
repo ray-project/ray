@@ -2,8 +2,10 @@ import logging
 from types import ModuleType
 from typing import Dict, List, Optional
 
-from ray._private.authentication import authentication_constants
-from ray.dashboard import authentication_utils as auth_utils
+from ray._private.authentication import (
+    authentication_constants,
+    authentication_utils as auth_utils,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +43,22 @@ def get_token_auth_middleware(
         ):
             return await handler(request)
 
+        # Check Authorization header first (for API clients)
         auth_header = request.headers.get(
             authentication_constants.AUTHORIZATION_HEADER_NAME, ""
         )
+
+        # If no Authorization header, check cookie (for web dashboard)
+        if not auth_header:
+            token = request.cookies.get(
+                authentication_constants.AUTHENTICATION_TOKEN_COOKIE_NAME
+            )
+            if token:
+                # Format as Bearer token for validation
+                auth_header = (
+                    authentication_constants.AUTHORIZATION_BEARER_PREFIX + token
+                )
+
         if not auth_header:
             return aiohttp_module.web.Response(
                 status=401, text="Unauthorized: Missing authentication token"
