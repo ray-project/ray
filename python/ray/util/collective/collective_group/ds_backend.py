@@ -4,7 +4,9 @@ import warnings
 import os
 from typing import TYPE_CHECKING, List
 
-import ray
+import torch
+import torch_npu
+
 from ray.util.collective.types import Backend
 
 if TYPE_CHECKING:
@@ -28,16 +30,15 @@ class DSBackend:
         Creates a DS client with connection to DS worker.
         """
         host = "localhost"
-        port = 2379
-        npu_ids = os.environ["ASCEND_RT_VISIBLE_DEVICES"]
+        port = int(os.getenv("DS_WORKER_PORT"))
+        npu_ids = os.environ.get("ASCEND_RT_VISIBLE_DEVICES")
         if len(npu_ids) > 1:
-            device_id = int(npu_ids[0])
             warnings.warn(
                 f"Data system requires exactly 1 NPU, but detected {len(npu_ids)} NPUs. Will use the first NPU (ID: {npu_ids[0]}) to connect to the data system"
             )
 
         self._ds_client = DsTensorClient(
-            host=host, port=port, device_id=device_id, connect_timeout_ms=60000
+            host=host, port=port, device_id=0, connect_timeout_ms=60000
         )
         self._ds_client.init()
 
