@@ -153,7 +153,7 @@ class TrainController:
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
         self._worker_group_callbacks_to_propagate = (
-            [report_handler, self._pg_cleaner_callback]
+            [report_handler]
             + [
                 c
                 for c in self._callbacks

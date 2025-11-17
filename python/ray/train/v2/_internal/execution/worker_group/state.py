@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
 
 import ray
 from ray.actor import ActorHandle
@@ -22,14 +22,12 @@ class WorkerGroupState:
             These should always be in sorted order by world rank.
         placement_group: The placement group for the worker group.
         sync_actor: The synchronization actor for the worker group.
-        reaper_actor: Optional[ActorHandle]
     """
 
     start_time: float
     placement_group: PlacementGroup
     workers: List[Worker]
     sync_actor: ActorHandle
-    reaper_actor: Optional[ActorHandle] = None
 
     @property
     def num_workers(self) -> int:
@@ -37,13 +35,6 @@ class WorkerGroupState:
 
     def shutdown(self):
         _shutdown_workers(self.workers)
-        # Stop reaper first to avoid concurrent cleanup.
-        if self.reaper_actor:
-            try:
-                print(">>> worker group state, we entered here to stop reaper in graceful shutdown")
-                ray.get(self.reaper_actor.stop.remote())
-            except Exception:
-                pass
         _shutdown_placement_group(self.placement_group)
         _shutdown_sync_actor(self.sync_actor)
 
@@ -85,12 +76,6 @@ class WorkerGroupStateBuilder:
         self.sync_actor = sync_actor
         return self
 
-    def with_reaper_actor(
-        self, reaper_actor: ActorHandle
-    ) -> "WorkerGroupStateBuilder":
-        self.reaper_actor = reaper_actor
-        return self
-
     def build(self) -> WorkerGroupState:
         required_attrs = {
             "placement_group": self.placement_group,
@@ -107,7 +92,6 @@ class WorkerGroupStateBuilder:
             placement_group=self.placement_group,
             workers=self.workers,
             sync_actor=self.sync_actor,
-            reaper_actor=self.reaper_actor,
         )
 
     def shutdown(self):
@@ -120,12 +104,6 @@ class WorkerGroupStateBuilder:
         if self.sync_actor:
             _shutdown_sync_actor(self.sync_actor)
             self.sync_actor = None
-        if self.reaper_actor:
-            try:
-                ray.get(self.reaper_actor.stop.remote())
-            except Exception:
-                pass
-            self.reaper_actor = None
 
 
 def _shutdown_workers(workers: List[Worker], patience_s: float = 5):
