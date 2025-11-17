@@ -27,6 +27,19 @@ class Depset:
     pre_hooks: Optional[List[str]] = None
     include_setuptools: Optional[bool] = False
 
+    def __post_init__(self):
+        if self.operation == "expand":
+            if not self.depsets:
+                raise ValueError(
+                    f"Depset validation error for depset {self.name} in config {self.config_name}: 'depsets' must be provided when operation == 'expand'"
+                )
+
+        if self.operation == "subset":
+            if not self.source_depset:
+                raise ValueError(
+                    f"Depset validation error for depset {self.name} in config {self.config_name}: 'source_depset' must be provided when operation == 'subset'"
+                )
+
 
 def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
     if isinstance(obj, str):

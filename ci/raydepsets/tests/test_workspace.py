@@ -179,5 +179,39 @@ def test_invalid_build_arg_set_in_config():
         )
 
 
+def test_invalid_expand_depset():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        copy_data_to_tmpdir(tmpdir)
+        with unittest.TestCase().assertRaises(ValueError) as e:
+            Depset(
+                name="invalid_expand_depset",
+                operation="expand",
+                depsets=[],
+                output="requirements_compiled_invalid_expand_depset.txt",
+                config_name="test.depsets.yaml",
+            )
+        assert (
+            "Depset validation error for depset invalid_expand_depset in config test.depsets.yaml: 'depsets' must be provided when operation == 'expand'"
+            in str(e.exception)
+        )
+
+
+def test_invalid_subset_depset():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        copy_data_to_tmpdir(tmpdir)
+        with unittest.TestCase().assertRaises(ValueError) as e:
+            Depset(
+                name="invalid_subset_depset",
+                operation="subset",
+                source_depset=None,
+                output="requirements_compiled_invalid_subset_depset.txt",
+                config_name="test.depsets.yaml",
+            )
+        assert (
+            "Depset validation error for depset invalid_subset_depset in config test.depsets.yaml: 'source_depset' must be provided when operation == 'subset'"
+            in str(e.exception)
+        )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
