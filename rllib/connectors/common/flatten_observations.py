@@ -227,16 +227,18 @@ class FlattenObservations(ConnectorV2):
         self._input_obs_base_struct = get_base_struct_from_space(
             self.input_observation_space
         )
-        # Remove keys, if necessary.
-        if self._keys_to_remove:
-            self._input_obs_base_struct = {
-                k: v
-                for k, v in self._input_obs_base_struct.items()
-                if k not in self._keys_to_remove
-            }
+
         if self._multi_agent:
             spaces = {}
             for agent_id, space in self._input_obs_base_struct.items():
+                # Remove keys, if necessary.
+                # TODO (simon): Maybe allow to remove different keys for different agents.
+                if self._keys_to_remove:
+                    self._input_obs_base_struct[agent_id] = {
+                        k: v
+                        for k, v in self._input_obs_base_struct[agent_id].items()
+                        if k not in self._keys_to_remove
+                    }
                 if self._agent_ids and agent_id not in self._agent_ids:
                     spaces[agent_id] = self._input_obs_base_struct[agent_id]
                 else:
@@ -253,6 +255,13 @@ class FlattenObservations(ConnectorV2):
                     )
             return gym.spaces.Dict(spaces)
         else:
+            # Remove keys, if necessary.
+            if self._keys_to_remove:
+                self._input_obs_base_struct = {
+                    k: v
+                    for k, v in self._input_obs_base_struct.items()
+                    if k not in self._keys_to_remove
+                }
             sample = flatten_inputs_to_1d_tensor(
                 tree.map_structure(
                     lambda s: s.sample(),
@@ -296,6 +305,10 @@ class FlattenObservations(ConnectorV2):
         self._multi_agent = multi_agent
         self._agent_ids = agent_ids
         self._as_learner_connector = as_learner_connector
+
+        assert keys_to_remove is None or (
+            keys_to_remove and isinstance(input_observation_space, gym.spaces.Dict)
+        ), "When using `keys_to_remove` the observation space must be of type `gym.spaces.Dict`."
         self._keys_to_remove = keys_to_remove or []
 
         super().__init__(input_observation_space, input_action_space, **kwargs)
