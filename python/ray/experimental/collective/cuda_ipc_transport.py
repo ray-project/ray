@@ -172,5 +172,5 @@ class CudaIpcTransport(TensorTransportManager):
         )
 
     @staticmethod
-    def garbage_collect(tensor_transport_meta: CudaIpcTransportMetadata):
+    def garbage_collect(obj_id: str, tensor_transport_meta: CudaIpcTransportMetadata):
         pass
