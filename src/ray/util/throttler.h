@@ -30,7 +30,7 @@ class Throttler {
         // Subtracting interval so the first run is possible.
         last_run_ns_(now_() - interval_ns) {}
 
-  bool RunIfPossible() {
+  bool CheckAndUpdateIfPossible() {
     auto now = now_();
     if (now - last_run_ns_ >= interval_ns_) {
       last_run_ns_ = now;

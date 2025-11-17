@@ -703,7 +703,7 @@ int main(int argc, char *argv[]) {
           // callback is called from the plasma store thread.
           // This will help keep node manager lock-less.
           main_service.post([&]() { node_manager->SetShouldGlobalGC(); },
-                            "NodeManager.GlobalGC");
+                            "NodeManager.SetShouldGlobalGC");
         },
         /*add_object_callback=*/
         [&](const ray::ObjectInfo &object_info) {

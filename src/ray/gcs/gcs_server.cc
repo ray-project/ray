@@ -964,7 +964,8 @@ void GcsServer::TryGlobalGC() {
   // To avoid spurious triggers, only those after two consecutive
   // detections and under throttling are sent out (similar to
   // `NodeManager::WarnResourceDeadlock()`).
-  if (task_pending_schedule_detected_++ > 0 && global_gc_throttler_->RunIfPossible()) {
+  if (task_pending_schedule_detected_++ > 0 &&
+      global_gc_throttler_->CheckAndUpdateIfPossible()) {
     syncer::CommandsSyncMessage commands_sync_message;
     commands_sync_message.set_should_global_gc(true);
 

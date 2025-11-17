@@ -216,7 +216,8 @@ NodeManager::NodeManager(
       local_object_manager_(local_object_manager),
       leased_workers_(leased_workers),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
-      high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
+      plasma_store_usage_trigger_gc_threshold_(
+          RayConfig::instance().plasma_store_usage_trigger_gc_threshold()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
       cluster_resource_scheduler_(cluster_resource_scheduler),
@@ -2882,15 +2883,15 @@ void NodeManager::HandleGlobalGC(rpc::GlobalGCRequest request,
 
 void NodeManager::TriggerLocalOrGlobalGCIfNeeded() {
   // If plasma store is under high pressure, we should try to schedule a global gc.
-  const bool plasma_high_pressure =
-      object_manager_.GetUsedMemoryPercentage() > high_plasma_storage_usage_;
-  if (plasma_high_pressure && global_gc_throttler_.RunIfPossible()) {
+  const bool plasma_high_pressure = object_manager_.GetUsedMemoryPercentage() >
+                                    plasma_store_usage_trigger_gc_threshold_;
+  if (plasma_high_pressure && global_gc_throttler_.CheckAndUpdateIfPossible()) {
     SetShouldGlobalGC();
   }
 
   if (should_global_gc_) {
-    // Always increment the sync message version number so that all GC commands
-    // are sent indiscriminately.
+    // Always increment the sync message version number so that old GC commands can be
+    // dropped + gc doesn't happen twice on retransmission.
     gc_command_sync_version_++;
     ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
     should_global_gc_ = false;
@@ -2901,7 +2902,7 @@ void NodeManager::TriggerLocalOrGlobalGCIfNeeded() {
       absl::GetCurrentTimeNanos() - local_gc_throttler_.LastRunTime() >
       local_gc_interval_ns_;
   if ((local_gc_triggered_by_global_gc_ || local_gc_trigger) &&
-      local_gc_throttler_.RunIfPossible()) {
+      local_gc_throttler_.CheckAndUpdateIfPossible()) {
     auto all_workers = worker_pool_.GetAllRegisteredWorkers();
     for (auto &driver : worker_pool_.GetAllRegisteredDrivers()) {
       all_workers.push_back(std::move(driver));

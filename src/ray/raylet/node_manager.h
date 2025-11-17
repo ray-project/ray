@@ -850,8 +850,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Interval at which local gc will be triggered regardless of global gc
   const uint64_t local_gc_interval_ns_;
 
-  /// When plasma storage usage is high, we'll run gc to reduce it.
-  double high_plasma_storage_usage_;
+  /// If plasma store usage percentage exceeds this number, we'll trigger global gc to
+  /// reduce it.
+  double plasma_store_usage_trigger_gc_threshold_;
 
   /// Throttler for local gc
   Throttler local_gc_throttler_;
@@ -928,9 +929,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// The socket to listen on for new clients.
   local_stream_socket socket_;
-
-  /// The last time the node triggered global gc
-  uint64_t last_global_gc_triggered_at_ns_ = 0;
 };
 
 }  // namespace ray::raylet

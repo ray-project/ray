@@ -21,13 +21,13 @@
 TEST(ThrottlerTest, BasicTest) {
   int64_t now = 100;
   ray::Throttler throttler(5, [&now] { return now; });
-  EXPECT_TRUE(throttler.RunIfPossible());
+  EXPECT_TRUE(throttler.CheckAndUpdateIfPossible());
   now += 5;
-  EXPECT_TRUE(throttler.RunIfPossible());
+  EXPECT_TRUE(throttler.CheckAndUpdateIfPossible());
   now += 1;
-  EXPECT_FALSE(throttler.RunIfPossible());
+  EXPECT_FALSE(throttler.CheckAndUpdateIfPossible());
   now += 4;
-  EXPECT_TRUE(throttler.RunIfPossible());
+  EXPECT_TRUE(throttler.CheckAndUpdateIfPossible());
   now += 5;
-  EXPECT_TRUE(throttler.RunIfPossible());
+  EXPECT_TRUE(throttler.CheckAndUpdateIfPossible());
 }
