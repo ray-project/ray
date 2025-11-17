@@ -36,7 +36,7 @@ depsets:
 # Second, expand it into LLM test dependencies.
   - name: compiled_ray_llm_test_depset_${PYTHON_VERSION}_${CUDA_CODE}
     <<: *common_settings
-    operation: expand
+    operation: compile
     requirements:
       - python/requirements.txt
       - python/requirements/cloud-requirements.txt
@@ -46,7 +46,8 @@ depsets:
     constraints:
       - python/deplocks/llm/ray_test_${PYTHON_VERSION}_${CUDA_CODE}.lock
     output: python/deplocks/llm/rayllm_test_${PYTHON_VERSION}_${CUDA_CODE}.lock
-
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
 # Third, subset the base test dependencies into Ray dependencies.
   - name: compiled_ray_depset_${PYTHON_VERSION}_${CUDA_CODE}
     <<: *common_settings

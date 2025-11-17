@@ -216,8 +216,10 @@ attrs==25.1.0 \
     --hash=sha256:c75a69e28a550a7e93789579c22aa26b0f5b83b75dc4e08fe092980051e1090a
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   -r python/requirements/cloud-requirements.txt
     #   aiohttp
     #   jsonschema
+    #   openlineage-python
     #   referencing
 audioread==3.0.1 \
     --hash=sha256:4cdce70b8adc0da0a3c9e0d85fb10b3ace30fbdf8d1670fd443929b61d117c33 \
@@ -395,6 +397,12 @@ botocore==1.32.7 \
     #   -r python/requirements/cloud-requirements.txt
     #   boto3
     #   s3transfer
+build==1.3.0 \
+    --hash=sha256:698edd0ea270bde950f53aed21f3a0135672206f3911e0176261a31e0e07b397 \
+    --hash=sha256:7145f0b5061ba90a1500d60bd1b13ca0a8a4cebdd0cc16ed8adf1c0e739f43b4
+    # via
+    #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   openlineage-python
 cachetools==5.5.2 \
     --hash=sha256:1a661caa9175d26759571b2e19580f9d6393969e5dfca11fdb1f947a23e640d4 \
     --hash=sha256:d26a22bcc62eb95c3beabd9f1ee5e820d3d2704fe2967cbe350e20c8ffcd3f0a
@@ -1429,7 +1437,9 @@ hf-xet==1.1.5 ; platform_machine == 'aarch64' or platform_machine == 'amd64' or 
 httpcore==1.0.9 \
     --hash=sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55 \
     --hash=sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8
-    # via httpx
+    # via
+    #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   httpx
 httplib2==0.20.4 \
     --hash=sha256:58a98e45b4b1a48273073f905d2961666ecf0fbac4250ea5b47aef259eb5c585 \
     --hash=sha256:8b6a905cb1c79eefd03f8669fd993c36dc341f7c558f056cb5a33b5c2f458543
@@ -1481,13 +1491,15 @@ httptools==0.6.4 \
     --hash=sha256:f9eb89ecf8b290f2e293325c646a211ff1c2493222798bb80a530c5e7502494f \
     --hash=sha256:fc411e1c0a7dcd2f902c7c48cf079947a7e65b5485dea9decb82b9105ca71a43
     # via uvicorn
-httpx==0.28.1 \
-    --hash=sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc \
-    --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
+httpx==0.27.2 \
+    --hash=sha256:7bb2708e112d8fdd7829cd4243970f0c223274051cb35ee80c03301ee29a3df0 \
+    --hash=sha256:f7c2be1d2f3c3c3160d441802406b206c2b76f5947b11115e6df10c6c65e66c2
     # via
+    #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   -r python/requirements/llm/llm-test-requirements.txt
     #   fastapi
     #   openai
+    #   openlineage-python
 huggingface-hub==0.34.3 \
     --hash=sha256:5444550099e2d86e68b2898b09e85878fbd788fc2957b506c6a79ce060e39492 \
     --hash=sha256:d58130fd5aa7408480681475491c0abd7e835442082fbc3ef4d45b6c39f83853
@@ -2607,6 +2619,11 @@ opencv-python-headless==4.11.0.86 \
     # via
     #   mistral-common
     #   vllm
+openlineage-python==1.40.0 \
+    --hash=sha256:1351780af0c9af9d943e74aade26c92c623f2cd26f334cf515fa1cfacef3f349
+    # via
+    #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   -r python/requirements/cloud-requirements.txt
 opentelemetry-api==1.34.1 \
     --hash=sha256:64f0bd06d42824843731d05beea88d4d4b6ae59f9fe347ff7dfa2cc14233bbb3 \
     --hash=sha256:b7df4cb0830d5a6c29ad0c0691dbae874d8daefa934b8b1d642de48323d32a8c
@@ -2691,6 +2708,7 @@ packaging==23.0 \
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
+    #   build
     #   huggingface-hub
     #   ipykernel
     #   jupyter-server
@@ -2701,6 +2719,7 @@ packaging==23.0 \
     #   lazy-loader
     #   lm-format-enforcer
     #   nbconvert
+    #   openlineage-python
     #   pooch
     #   pytest
     #   ray
@@ -3494,6 +3513,12 @@ pyparsing==3.1.1 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   httplib2
+pyproject-hooks==1.2.0 \
+    --hash=sha256:1e859bd5c40fae9448642dd871adf459e5e2084186e8d2c2a79a824c970da1f8 \
+    --hash=sha256:9e5c6bfa8dcc30091c74b0cf803c81fdd29d94f01992a7707bc97babb1141913
+    # via
+    #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   build
 pytest==7.4.4 \
     --hash=sha256:2cf0005922c6ace4a3e2ec8b4080eb0d9753fdc93107415332f50ce9e7994280 \
     --hash=sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8
@@ -3526,6 +3551,7 @@ python-dateutil==2.8.2 \
     #   botocore
     #   celery
     #   jupyter-client
+    #   openlineage-python
     #   pandas
 python-dotenv==1.0.1 \
     --hash=sha256:e324ee90a023d808f1959c46bcbc04446a10ced277783dc6ee09987c37ec10ca \
@@ -3609,6 +3635,7 @@ pyyaml==6.0.1 \
     #   jupyter-events
     #   jupytext
     #   lm-format-enforcer
+    #   openlineage-python
     #   ray
     #   transformers
     #   uvicorn
@@ -3816,9 +3843,9 @@ regex==2024.11.6 \
     #   tiktoken
     #   transformers
     #   vllm
-requests==2.32.3 \
-    --hash=sha256:55365417734eb18255590a9ff9eb97e9e1da868d4ccd6402399eaf68af20a760 \
-    --hash=sha256:70761cfe03c773ceb22aa2f671b4757976145175cdfca038c02654d061d6dcc6
+requests==2.32.5 \
+    --hash=sha256:2462f94637a34fd532264295e186976db0f5d453d1cdd31473c85a6a161affb6 \
+    --hash=sha256:dbba0bac56e100853db0ea71b82b4dfd5fe2bf6d3754a8893c3af500cec7d7cf
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   -r python/requirements/cloud-requirements.txt
@@ -3831,6 +3858,7 @@ requests==2.32.3 \
     #   jupyterlab-server
     #   mistral-common
     #   msal
+    #   openlineage-python
     #   pooch
     #   ray
     #   smart-open
@@ -4295,6 +4323,7 @@ sniffio==1.3.1 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   anyio
+    #   httpx
     #   openai
 snowballstemmer==2.2.0 \
     --hash=sha256:09b16deb8547d3412ad7b590689584cd0fe25ec8db3be37788be3810cbf19cb1 \
