@@ -382,7 +382,7 @@ PSUTIL_PROCESS_ATTRS = (
         "cpu_times",
         "cmdline",
         "memory_info",
-        "memory_full_info",
+        # "memory_full_info",
     ]
     + ["num_fds"]
     if sys.platform != "win32"
