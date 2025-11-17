@@ -27,7 +27,7 @@ print(f"Repartitioning dataset into {num_partitions_large} blocks...")
 ds_large = ds_large.repartition(num_blocks=num_partitions_large)
 
 
-processor_config = vLLMEngineProcessorConfig(
+processor_config_large = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     engine_kwargs=dict(
         max_model_len=256,  # estimate system prompt + user prompt + output tokens (+ reasoning tokens if any)
@@ -72,14 +72,14 @@ def postprocess(row: dict[str, Any]) -> dict[str, Any]:
 
 
 # Build the LLM processor with the configuration and functions.
-processor = build_llm_processor(
-    processor_config,
+processor_large = build_llm_processor(
+    processor_config_large,
     preprocess=preprocess,
     postprocess=postprocess,
 )
 
 # Run the same processor on the larger dataset.
-processed_large = processor(ds_large)
+processed_large = processor_large(ds_large)
 processed_large = processed_large.materialize()
 # Display the first 3 entries to verify the output.
 sampled = processed_large.take(3)

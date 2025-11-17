@@ -251,11 +251,10 @@ You can control the dataset size through the `LARGE_DATASET_LIMIT` environment v
 ```python
 import os
 
+# The dataset has ~2M rows
 # Configure how many images to process (default: 1M for demonstration).
 dataset_limit = int(os.environ.get("LARGE_DATASET_LIMIT", 1_000_000))
-print(f"Scaling dataset to: {dataset_limit:,} rows...")
-
-# Apply the limit to the dataset.
+print(f"Processing {dataset_limit:,} rows... (or the whole dataset if you picked >2M)")
 ds_large = ds.limit(dataset_limit)
 ```
 
@@ -263,19 +262,19 @@ You can scale the number of concurrent replicas based on the compute available i
 
 
 ```python
-processor_config = vLLMEngineProcessorConfig(
+processor_config_large = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     engine_kwargs=dict(
         max_model_len= 256, # estimate system prompt + user prompt + output tokens (+ reasoning tokens if any)
     ),
     batch_size=256,
-    accelerator_type="L4",
+    accelerator_type="L4", # Or upgrade to larger GPU
     concurrency=10, # Deploy 10 replicas across 10 GPUs to maximize throughput
 )
 
 # Build the LLM processor with the configuration and functions.
-processor = build_llm_processor(
-    processor_config,
+processor_large = build_llm_processor(
+    processor_config_large,
     preprocess=preprocess,
     postprocess=postprocess,
 )
@@ -291,10 +290,12 @@ print(f"Repartitioning dataset into {num_partitions_large} blocks...")
 ds_large = ds_large.repartition(num_blocks=num_partitions_large)
 ```
 
+Execute the new pipeline
+
 
 ```python
 # Run the same processor on the larger dataset.
-processed_large = processor(ds_large)
+processed_large = processor_large(ds_large)
 processed_large = processed_large.materialize()
 
 print(f"\nProcessed {processed_large.count()} rows successfully.")
