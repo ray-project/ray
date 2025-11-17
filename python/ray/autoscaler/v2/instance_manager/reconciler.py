@@ -175,7 +175,7 @@ class Reconciler:
                 When there's an error from the cloud provider for launch failure so
                 that the instance becomes ALLOCATION_FAILED.
             3. ALLOCATED -> ALLOCATION_TIMEOUT:
-                when an instance has been allocated to a cloud instance, but is stuck in
+                When an instance has been allocated to a cloud instance, but is stuck in
                 this state. For example, a kubernetes pod remains pending due to
                 insufficient resources.
             4.  * -> RAY_RUNNING:
