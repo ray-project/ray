@@ -78,7 +78,13 @@ class ImageClassificationParquetRayDataLoaderFactory(
             train_ds = train_ds.limit(self.get_dataloader_config().limit_training_rows)
 
         if self.get_dataloader_config().move_collate_to_ray_data:
-            train_ds = train_ds.batcher_and_collate(collate_fn_ray_data, batch_size=self.get_dataloader_config().train_batch_size, batch_format="pyarrow", udf_modifying_row_count=True)
+            train_ds = train_ds.map_batches(
+                collate_fn_ray_data,
+                batch_size=self.get_dataloader_config().train_batch_size,
+                batch_format="pyarrow",
+                enforce_input_output_block_size=True,
+                udf_modifying_row_count=True,
+            )
 
         # Create validation dataset without random transforms
         val_ds = ray.data.read_parquet(
