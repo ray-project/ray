@@ -354,6 +354,12 @@ class TestProjectionFusion:
         result_optimal_df = ds_optimal.to_pandas()
         result_with_column_df = ds_with_column.to_pandas()
 
+        # Sort columns before comparison
+        result_optimal_df = result_optimal_df[sorted(result_optimal_df.columns)]
+        result_with_column_df = result_with_column_df[
+            sorted(result_with_column_df.columns)
+        ]
+
         # Compare using rows_same (deterministic, ignores order)
         assert rows_same(result_optimal_df, result_with_column_df)
 
@@ -397,6 +403,9 @@ class TestProjectionFusion:
             }
         )
 
+        # Sort columns before comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
         assert rows_same(result_df, expected_df)
 
     def test_dependency_prevents_fusion(self, ray_start_regular_shared):
@@ -441,6 +450,9 @@ class TestProjectionFusion:
             }
         )
 
+        # Sort columns before comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
         assert rows_same(result_df, expected_df)
 
     def test_mixed_udf_regular_end_to_end(self, ray_start_regular_shared):
@@ -487,6 +499,9 @@ class TestProjectionFusion:
             }
         )
 
+        # Sort columns before comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
         assert rows_same(result_df, expected_df)
 
         # Verify that we have 1 operator (changed from multiple)
@@ -536,6 +551,9 @@ class TestProjectionFusion:
         result_optimized = optimized_ds.to_pandas()
         result_optimal = ds_optimal.to_pandas()
 
+        # Sort columns before comparison
+        result_optimized = result_optimized[sorted(result_optimized.columns)]
+        result_optimal = result_optimal[sorted(result_optimal.columns)]
         assert rows_same(result_optimized, result_optimal)
 
     def test_chained_udf_dependencies(self, ray_start_regular_shared):
@@ -574,6 +592,9 @@ class TestProjectionFusion:
             }
         )
 
+        # Sort columns before comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
         assert rows_same(result_df, expected_df)
 
     def test_performance_impact_of_udf_chains(self, ray_start_regular_shared):

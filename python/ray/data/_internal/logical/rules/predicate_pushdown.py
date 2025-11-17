@@ -94,9 +94,16 @@ class PredicatePushdown(Rule):
                 return False
 
         # Check if filter references computed columns or renamed source columns
+        from ray.data.expressions import AliasExpr
+
         for expr in projection_op.exprs:
+            # Only AliasExpr can be computed columns or renames
+            if not isinstance(expr, AliasExpr):
+                continue
+            # Check computed column: with_column('d', 4) creates AliasExpr(lit(4), 'd')
             if expr.name in predicate_columns and not _is_renaming_expr(expr):
                 return False  # Computed column
+            # Check renamed source: rename({'b': 'B'}) - filter shouldn't use old name 'b'
             if _is_renaming_expr(expr) and expr.expr.name in predicate_columns:
                 return False  # Old name after rename
 
