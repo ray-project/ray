@@ -94,8 +94,6 @@ processor_config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     engine_kwargs=dict(
         max_model_len= 256, # estimate system prompt + user prompt + output tokens (+ reasoning tokens if any)
-        max_num_batched_tokens=16384, # so we can batch many rows together
-        max_num_seqs=128, # so we can batch many rows together
     ),
     batch_size=128,
     accelerator_type="L4",
@@ -194,7 +192,7 @@ Save your batch inference code as `batch_inference.py`, then create a job config
 
 ```yaml
 # job.yaml
-name: llm-batch-inference-text
+name: my-llm-batch-inference-text
 entrypoint: python batch_inference_text.py
 image_uri: anyscale/ray-llm:2.51.1-py311-cu128
 compute_config:
@@ -202,7 +200,7 @@ compute_config:
     instance_type: m5.2xlarge
   worker_nodes:
     - instance_type: g6.2xlarge
-      min_nodes: 1
+      min_nodes: 0
       max_nodes: 10
 working_dir: .
 max_retries: 2
@@ -222,10 +220,10 @@ Track your job's progress in the Anyscale Console or through the CLI:
 
 ```bash
 # Check job status
-anyscale job status --name llm-batch-inference-text
+anyscale job status --name my-llm-batch-inference-text
 
 # View logs
-anyscale job logs --name llm-batch-inference-text
+anyscale job logs --name my-llm-batch-inference-text
 ```
 
 The Ray Dashboard remains available for detailed monitoring. To access it, go over your Anyscale Job in your console.  
