@@ -6,6 +6,7 @@ from pkg_resources import parse_version
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
+from ray.data._internal.util import rows_same
 from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col, lit, udf
@@ -1163,8 +1164,8 @@ def test_with_column_callable_class_udf_with_constructor_args(
     expected_5 = pd.DataFrame({"id": list(range(10)), "plus_five": list(range(5, 15))})
     expected_10 = pd.DataFrame({"id": list(range(10)), "plus_ten": list(range(10, 20))})
 
-    pd.testing.assert_frame_equal(result_5, expected_5, check_dtype=False)
-    pd.testing.assert_frame_equal(result_10, expected_10, check_dtype=False)
+    assert rows_same(result_5, expected_5)
+    assert rows_same(result_10, expected_10)
 
 
 @pytest.mark.skipif(
@@ -1211,7 +1212,7 @@ def test_with_column_multiple_callable_class_udfs(ray_start_regular_shared):
         }
     )
 
-    pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+    assert rows_same(result_df, expected_df)
 
 
 @pytest.mark.skipif(
@@ -1296,7 +1297,7 @@ def test_with_column_callable_class_udf_with_compute_strategy(
     result_df = result.to_pandas()
     expected_df = pd.DataFrame({"id": list(range(10)), "result": list(range(5, 15))})
 
-    pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+    assert rows_same(result_df, expected_df)
 
 
 @pytest.mark.skipif(
@@ -1332,7 +1333,7 @@ def test_with_column_async_callable_class_udf(ray_start_regular_shared):
     result_df = result.to_pandas()
     expected_df = pd.DataFrame({"id": list(range(10)), "result": list(range(5, 15))})
 
-    pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+    assert rows_same(result_df, expected_df)
 
 
 @pytest.mark.skipif(
@@ -1423,7 +1424,7 @@ def test_with_column_multiple_async_callable_class_udfs(ray_start_regular_shared
         }
     )
 
-    pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+    assert rows_same(result_df, expected_df)
 
 
 @pytest.mark.skipif(
@@ -1476,7 +1477,7 @@ def test_with_column_async_generator_udf_multiple_yields(ray_start_regular_share
         }
     )
 
-    pd.testing.assert_frame_equal(result_df, expected_after_fix, check_dtype=False)
+    assert rows_same(result_df, expected_after_fix)
 
 
 if __name__ == "__main__":
