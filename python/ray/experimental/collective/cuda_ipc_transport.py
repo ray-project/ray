@@ -28,12 +28,7 @@ class CudaIpcTransport(TensorTransportManager):
         return True
 
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
-        try:
-            import torch
-
-            return torch.cuda.is_available()
-        except Exception:
-            return False
+        return True
 
     @staticmethod
     def extract_tensor_transport_metadata(
@@ -122,6 +117,7 @@ class CudaIpcTransport(TensorTransportManager):
     @staticmethod
     def recv_multiple_tensors(
         tensors,
+        obj_id: str,
         tensor_transport_metadata: CudaIpcTransportMetadata,
         communicator_metadata: CudaIpcCommunicatorMetadata,
     ):
@@ -159,6 +155,7 @@ class CudaIpcTransport(TensorTransportManager):
                 # Reconstruct the tensor
                 func, args = ipc_handle
                 list_args = list(args)
+                # Fields specified in https://github.com/pytorch/pytorch/blob/1495b35d29512f303ab37780760c5e692158514b/torch/multiprocessing/reductions.py#L155
                 # Update device ID to match current process's device mapping
                 list_args[6] = device
                 tensor = func(*list_args)

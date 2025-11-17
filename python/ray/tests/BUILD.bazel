@@ -637,6 +637,7 @@ py_test_module_list(
     size = "medium",
     env = {"RAY_PYTEST_USE_GPU": "1"},
     files = [
+        "gpu_objects/test_gpu_objects_ipc.py",
         "gpu_objects/test_gpu_objects_nccl.py",
         "gpu_objects/test_gpu_objects_nixl.py",
     ],
