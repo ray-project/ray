@@ -118,8 +118,6 @@ def test_get_best_checkpoint():
 
 def test_get_best_checkpoint_nested_metrics():
     """Test that get_best_checkpoint works with nested metric dictionaries.
-
-    RLlib uses nested metric structure like {"env_runners": {"episode_return_mean": value}}
     """
     # Test with nested metric structure
     res = Result(
