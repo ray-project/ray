@@ -511,18 +511,55 @@ spec:
   # A simple Serve config with two deployments
   serveConfigV2: |
     applications:
-      - name: demo_app
-        import_path: demo.deployment_graph
-        route_prefix: /demo
+      - name: fruit_app
+        import_path: fruit.deployment_graph
+        route_prefix: /fruit
+        runtime_env:
+          working_dir: "https://github.com/ray-project/test_dag/archive/78b4a5da38796123d9f9ffff59bab2792a043e95.zip"
         deployments:
-          - name: ServiceA
+          - name: MangoStand
+            num_replicas: 2
+            max_replicas_per_node: 1
+            user_config:
+              price: 3
+            ray_actor_options:
+              num_cpus: 0.1
+          - name: OrangeStand
+            num_replicas: 1
+            user_config:
+              price: 2
+            ray_actor_options:
+              num_cpus: 0.1
+          - name: PearStand
+            num_replicas: 1
+            user_config:
+              price: 1
+            ray_actor_options:
+              num_cpus: 0.1
+          - name: FruitMarket
             num_replicas: 1
             ray_actor_options:
               num_cpus: 0.1
-          - name: ServiceB
+      - name: math_app
+        import_path: conditional_dag.serve_dag
+        route_prefix: /calc
+        runtime_env:
+          working_dir: "https://github.com/ray-project/test_dag/archive/78b4a5da38796123d9f9ffff59bab2792a043e95.zip"
+        deployments:
+          - name: Adder
             num_replicas: 1
+            user_config:
+              increment: 3
             ray_actor_options:
               num_cpus: 0.1
+          - name: Multiplier
+            num_replicas: 1
+            user_config:
+              factor: 5
+            ray_actor_options:
+              num_cpus: 0.1
+          - name: Router
+            num_replicas: 1
   rayClusterConfig:
     rayVersion: "2.46.0"
     enableInTreeAutoscaling: true
