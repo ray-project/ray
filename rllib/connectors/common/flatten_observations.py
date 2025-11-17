@@ -2,11 +2,14 @@ from typing import Any, Collection, Dict, List, Optional
 
 import gymnasium as gym
 import numpy as np
+import tree  # pip install dm_tree
+from gymnasium.spaces import Box
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.numpy import flatten_inputs_to_1d_tensor
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import AgentID, EpisodeType
 from ray.util.annotations import PublicAPI
@@ -221,8 +224,6 @@ class FlattenObservations(ConnectorV2):
         input_observation_space,
         input_action_space,
     ) -> gym.Space:
-        # TODO (simon, mark): check if the base structs are still needed or can be
-        # replaced by the spaces themselvesnusing gymnasium utils.
         self._input_obs_base_struct = get_base_struct_from_space(
             self.input_observation_space
         )
@@ -232,10 +233,7 @@ class FlattenObservations(ConnectorV2):
             for agent_id, space in self._input_obs_base_struct.items():
                 # Remove keys, if necessary.
                 # TODO (simon): Maybe allow to remove different keys for different agents.
-                if (
-                    isinstance(self.input_observation_space[agent_id], gym.spaces.Dict)
-                    and self._keys_to_remove
-                ):
+                if self._keys_to_remove:
                     self._input_obs_base_struct[agent_id] = {
                         k: v
                         for k, v in self._input_obs_base_struct[agent_id].items()
@@ -244,22 +242,35 @@ class FlattenObservations(ConnectorV2):
                 if self._agent_ids and agent_id not in self._agent_ids:
                     spaces[agent_id] = self._input_obs_base_struct[agent_id]
                 else:
-                    spaces[agent_id] = gym.spaces.flatten_space(
-                        self.input_observation_space[agent_id]
+                    sample = flatten_inputs_to_1d_tensor(
+                        tree.map_structure(
+                            lambda s: s.sample(),
+                            self._input_obs_base_struct[agent_id],
+                        ),
+                        self._input_obs_base_struct[agent_id],
+                        batch_axis=False,
+                    )
+                    spaces[agent_id] = Box(
+                        float("-inf"), float("inf"), (len(sample),), np.float32
                     )
             return gym.spaces.Dict(spaces)
         else:
             # Remove keys, if necessary.
-            if (
-                isinstance(self.input_observation_space, gym.spaces.Dict)
-                and self._keys_to_remove
-            ):
+            if self._keys_to_remove:
                 self._input_obs_base_struct = {
                     k: v
                     for k, v in self._input_obs_base_struct.items()
                     if k not in self._keys_to_remove
                 }
-            return gym.spaces.flatten_space(self.input_observation_space)
+            sample = flatten_inputs_to_1d_tensor(
+                tree.map_structure(
+                    lambda s: s.sample(),
+                    self._input_obs_base_struct,
+                ),
+                self._input_obs_base_struct,
+                batch_axis=False,
+            )
+            return Box(float("-inf"), float("inf"), (len(sample),), np.float32)
 
     def __init__(
         self,
@@ -297,12 +308,12 @@ class FlattenObservations(ConnectorV2):
 
         assert keys_to_remove is None or (
             keys_to_remove
-            and (
-                isinstance(input_observation_space, gym.spaces.Dict)
-                # Note, not all agent must have dictionary observation spaces.
-                or any(
+            and isinstance(input_observation_space, gym.spaces.Dict)
+            or (
+                multi_agent
+                and any(
                     isinstance(agent_space, gym.spaces.Dict)
-                    for agent_space in input_action_space
+                    for agent_space in self.input_observation_space
                 )
             )
         ), "When using `keys_to_remove` the observation space must be of type `gym.spaces.Dict`."
@@ -327,23 +338,20 @@ class FlattenObservations(ConnectorV2):
             ):
 
                 def _map_fn(obs, _sa_episode=sa_episode):
-                    # Remove keys from dictionaries if necessary.
+                    # Remove keys, if necessary.
                     obs = [self._remove_keys_from_dict(o, sa_episode) for o in obs]
-                    batch_size = len(sa_episode)
-                    return (
-                        np.array(
-                            [
-                                gym.spaces.utils.flatten(
-                                    self._input_observation_space, o
-                                )
-                                for o in obs
-                            ]
-                        )
-                        .reshape(batch_size, -1)
-                        .copy()
-                    )
 
-                # Add the transformed observations to the batch.
+                    batch_size = len(sa_episode)
+                    flattened_obs = flatten_inputs_to_1d_tensor(
+                        inputs=obs,
+                        # In the multi-agent case, we need to use the specific agent's
+                        # space struct, not the multi-agent observation space dict.
+                        spaces_struct=self._input_obs_base_struct,
+                        # Our items are individual observations (no batch axis present).
+                        batch_axis=False,
+                    )
+                    return flattened_obs.reshape(batch_size, -1).copy()
+
                 self.add_n_batch_items(
                     batch=batch,
                     column=Columns.OBS,
@@ -359,10 +367,10 @@ class FlattenObservations(ConnectorV2):
             for sa_episode in self.single_agent_episode_iterator(
                 episodes, agents_that_stepped_only=True
             ):
-                # Get the last observation to transform.
                 last_obs = sa_episode.get_observations(-1)
-                # Remove keys from dicts if necessary.
+                # Remove keys, if necessary.
                 last_obs = self._remove_keys_from_dict(last_obs, sa_episode)
+
                 if self._multi_agent:
                     if (
                         self._agent_ids is not None
@@ -370,12 +378,22 @@ class FlattenObservations(ConnectorV2):
                     ):
                         flattened_obs = last_obs
                     else:
-                        flattened_obs = gym.spaces.utils.flatten(
-                            self.input_observation_space[sa_episode.agent_id], last_obs
+                        flattened_obs = flatten_inputs_to_1d_tensor(
+                            inputs=last_obs,
+                            # In the multi-agent case, we need to use the specific agent's
+                            # space struct, not the multi-agent observation space dict.
+                            spaces_struct=self._input_obs_base_struct[
+                                sa_episode.agent_id
+                            ],
+                            # Our items are individual observations (no batch axis present).
+                            batch_axis=False,
                         )
                 else:
-                    flattened_obs = gym.spaces.utils.flatten(
-                        self.input_observation_space, last_obs
+                    flattened_obs = flatten_inputs_to_1d_tensor(
+                        inputs=last_obs,
+                        spaces_struct=self._input_obs_base_struct,
+                        # Our items are individual observations (no batch axis present).
+                        batch_axis=False,
                     )
 
                 # Write new observation directly back into the episode.
