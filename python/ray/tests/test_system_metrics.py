@@ -7,7 +7,8 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
-    raw_metrics,
+    PrometheusTimeseries,
+    raw_metric_timeseries,
 )
 
 METRIC_CONFIG = {
@@ -32,8 +33,10 @@ def test_unintentional_worker_failures_metric(shutdown_only):
     # unintentional
     actor2.exit.remote()
 
+    timeseries = PrometheusTimeseries()
+
     def verify():
-        metrics = raw_metrics(context)
+        metrics = raw_metric_timeseries(context, timeseries)
         for sample in metrics["ray_unintentional_worker_failures_total"]:
             assert sample.value == 1
         return True
