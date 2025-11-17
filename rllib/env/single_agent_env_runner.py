@@ -160,8 +160,15 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
     ) -> List[SingleAgentEpisode]:
         """Runs and returns a sample (n timesteps or m episodes) on the env(s).
 
+        If neither `num_timesteps` nor `num_episodes` are provided and the config
+        `batch_mode` is "truncate_episodes" then
+        `config.get_rollout_fragment_length(self.worker_index) * self.num_envs`
+        timesteps will be sampled.
+
         Args:
             num_timesteps: The number of timesteps to sample during this call.
+                The episodes returned will contain the total timesteps greater than or
+                equal to num_timesteps and less than num_timesteps + num_envs_per_env_runner.
                 Note that only one of `num_timesteps` or `num_episodes` may be provided.
             num_episodes: The number of episodes to sample during this call.
                 Note that only one of `num_timesteps` or `num_episodes` may be provided.
@@ -174,7 +181,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             random_actions: If True, actions will be sampled randomly (from the action
                 space of the environment). If False (default), actions or action
                 distribution parameters are computed by the RLModule.
-            force_reset: Whether to force-reset all (vector) environments before
+            force_reset: Whether to force-reset all vectorized environments before
                 sampling. Useful if you would like to collect a clean slate of new
                 episodes via this call. Note that when sampling n episodes
                 (`num_episodes != None`), this is fixed to True.
@@ -208,6 +215,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # desired timesteps/episodes to sample and exploration behavior.
             if explore is None:
                 explore = self.config.explore
+
             if (
                 num_timesteps is None
                 and num_episodes is None
@@ -220,6 +228,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
             # Sample n timesteps.
             if num_timesteps is not None:
+                assert num_timesteps >= 0
                 samples = self._sample(
                     num_timesteps=num_timesteps,
                     explore=explore,
@@ -228,6 +237,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 )
             # Sample m episodes.
             elif num_episodes is not None:
+                assert num_episodes >= 0
                 samples = self._sample(
                     num_episodes=num_episodes,
                     explore=explore,
