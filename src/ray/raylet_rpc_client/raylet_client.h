@@ -39,8 +39,7 @@ namespace rpc {
 
 /// Raylet client is responsible for communication with raylet. It implements
 /// [RayletClientInterface] and works on worker registration, lease management, etc.
-class RayletClient : public RayletClientInterface,
-                     public std::enable_shared_from_this<RayletClient> {
+class RayletClient : public RayletClientInterface {
  public:
   /// Connect to the raylet.
   ///
