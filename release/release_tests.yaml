@@ -4154,7 +4154,6 @@
         - VLLM_DISABLE_COMPILE_CACHE=1
       type: llm-cu128
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
-      python_depset: llm_batch/llm_batch_py311_cu128.lock
     cluster_compute: llm_single_node_benchmark_l4.yaml
 
   run:
