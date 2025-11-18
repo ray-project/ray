@@ -27,9 +27,11 @@ def extract_resource_kwargs(
 
 
 def normalize_cpu_stage_concurrency(
-    concurrency: Union[int, Tuple[int, int]]
+    concurrency: Optional[Union[int, Tuple[int, int]]]
 ) -> Tuple[int, int]:
     """Normalize concurrency for CPU stages (int -> (1, int) for autoscaling)."""
+    if concurrency is None:
+        return (1, 1)  # Default to minimal autoscaling pool
     if isinstance(concurrency, int):
         return (1, concurrency)
     return concurrency
