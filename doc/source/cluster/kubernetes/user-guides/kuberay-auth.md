@@ -37,7 +37,8 @@ When enabled, the KubeRay operator will:
 * Automatically set the `RAY_AUTH_TOKEN` and `RAY_AUTH_MODE` environment variables on all Ray containers.
 
 If you are using a KubeRay version older than v1.5.1, you can enable token authentication by creating a Kubernetes Secret containing
-your token and configuring the RAY_AUTH_MODE and RAY_AUTH_TOKEN environment variables.
+your token and configuring the `RAY_AUTH_MODE` and `RAY_AUTH_TOKEN` environment variables.
+
 ```bash
 kubectl create secret generic ray-cluster-with-auth --from-literal=auth_token=$(openssl rand -base64 32)
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.auth-manual.yaml
@@ -54,7 +55,7 @@ ray job submit --address http://localhost:8265  -- python -c "import ray; ray.in
 
 You may see an error similar to this:
 
-```
+```bash
 ...
 ...
 RuntimeError: Authentication required: Unauthorized: Missing authentication token
@@ -62,28 +63,29 @@ RuntimeError: Authentication required: Unauthorized: Missing authentication toke
 The Ray cluster requires authentication, but no token was provided.
 
 Please provide an authentication token using one of these methods:
-  1. Set the RAY_AUTH_TOKEN environment variable
-  2. Set the RAY_AUTH_TOKEN_PATH environment variable (pointing to a token file)
-  3. Create a token file at the default location: ~/.ray/auth_token
+  1. Set the `RAY_AUTH_TOKEN` environment variable.
+  2. Set the `RAY_AUTH_TOKEN_PATH` environment variable (pointing to a file containing the token).
+  3. Create a token file at the default location: `~/.ray/auth_token`.
 ```
 
 This error confirms that the Ray cluster requires authentication.
 
-## Accessing your Ray cluster with Ray CLI
+## Accessing your Ray cluster with the Ray CLI
 
-To access your Ray cluster using Ray CLI, you need to configure the following environment variables:
-* RAY_AUTH_MODE: this configures the Ray CLI to set the necessary authorization headers for token authentication
-* RAY_AUTH_TOKEN: this contains the token that will be used for authentication. 
-* RAY_AUTH_TOKEN_PATH: if RAY_AUTH_TOKEN is not set, Ray CLI will check the path in this environment variable for tokens.   
+To access your Ray cluster using the Ray CLI, you need to configure the following environment variables:
+* `RAY_AUTH_MODE`: this configures the Ray CLI to set the necessary authorization headers for token authentication
+* `RAY_AUTH_TOKEN`: this contains the token that will be used for authentication. 
+* `RAY_AUTH_TOKEN_PATH`: if `RAY_AUTH_TOKEN` is not set, the Ray CLI will instead read the token from this path.
 
 Submit a job with an authenticated Ray CLI:
-```
+
+```bash
 export RAY_AUTH_MODE=token
 export RAY_AUTH_TOKEN=$(kubectl get secrets ray-cluster-with-auth --template={{.data.auth_token}} | base64 -d)
 ray job submit --address http://localhost:8265  -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
 ```
 
-The job should now succeed, and you should see output similar to this:
+The job should now succeed and you should see output similar to this:
 
 ```bash
 Job submission server address: http://localhost:8265
