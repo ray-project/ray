@@ -211,6 +211,7 @@ class InstanceUtilTest(unittest.TestCase):
             Instance.RAY_STOPPED,
             Instance.TERMINATING,
             Instance.TERMINATION_FAILED,
+            Instance.ALLOCATION_TIMEOUT,
         }
         for s in positive_status:
             instance.status = s
