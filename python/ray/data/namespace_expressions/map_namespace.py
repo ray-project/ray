@@ -28,17 +28,16 @@ class _MapNamespace:
 
     def keys(self) -> "UDFExpr":
         """Return a list of keys for each map."""
-        return_dtype = DataType(object)
+        # Infer return type from map's key type.
+        return_dtype = DataType(object)  # fallback
+        if self._expr.data_type.is_arrow_type():
+            arrow_type = self._expr.data_type.to_arrow_dtype()
+            if pyarrow.types.is_map(arrow_type):
+                return_dtype = DataType.list(DataType.from_arrow(arrow_type.key_type))
 
         @pyarrow_udf(return_dtype=return_dtype)
         def _keys(arr: pyarrow.Array) -> pyarrow.Array:
-            py_lists = []
-            for item in arr:
-                if item is None:
-                    py_lists.append(None)
-                else:
-                    py_lists.append(list(item.keys))
-            return pyarrow.array(py_lists)
+            return pc.map_keys(arr)
 
         return _keys(self._expr)
 
