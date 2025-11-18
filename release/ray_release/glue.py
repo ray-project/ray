@@ -22,7 +22,6 @@ from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
 from ray_release.command_runner.command_runner import CommandRunner
-from ray_release.command_runner.job_runner import JobRunner
 from ray_release.config import (
     DEFAULT_AUTOSUSPEND_MINS,
     DEFAULT_BUILD_TIMEOUT,
@@ -36,7 +35,6 @@ from ray_release.exception import (
     CommandTimeout,
     PrepareCommandError,
     PrepareCommandTimeout,
-    ReleaseTestConfigError,
     ReleaseTestSetupError,
     TestCommandError,
     TestCommandTimeout,
@@ -54,16 +52,6 @@ from ray_release.signal_handling import (
 )
 from ray_release.template import get_working_dir, load_test_cluster_compute
 from ray_release.test import Test
-
-type_str_to_command_runner = {
-    "job": JobRunner,
-    "anyscale_job": AnyscaleJobRunner,
-}
-
-command_runner_to_cluster_manager = {
-    JobRunner: FullClusterManager,
-    AnyscaleJobRunner: MinimalClusterManager,
-}
 
 DEFAULT_RUN_TYPE = "anyscale_job"
 TIMEOUT_BUFFER_MINUTES = 15
@@ -107,16 +95,9 @@ def _load_test_configuration(
     os.chdir(working_dir)
 
     run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
+    if run_type == DEFAULT_RUN_TYPE:
+        raise ValueError(f"Run type {run_type} is not supported; use {DEFAULT_RUN_TYPE} instead.")
 
-    command_runner_cls = type_str_to_command_runner.get(run_type)
-    if not command_runner_cls:
-        raise ReleaseTestConfigError(
-            f"Unknown command runner type: {run_type}. Must be one of "
-            f"{list(type_str_to_command_runner.keys())}"
-        )
-
-    cluster_manager_cls = command_runner_to_cluster_manager[command_runner_cls]
-    logger.info(f"Got command runner cls: {command_runner_cls}")
     # Extra tags to be set on resources on cloud provider's side
     extra_tags = _get_extra_tags_from_env()
     # We don't need other attributes as they can be derived from the name
@@ -128,13 +109,13 @@ def _load_test_configuration(
 
     # Instantiate managers and command runner
     try:
-        cluster_manager = cluster_manager_cls(
+        cluster_manager = MinimalClusterManager(
             test,
             anyscale_project,
             smoke_test=smoke_test,
             log_streaming_limit=log_streaming_limit,
         )
-        command_runner = command_runner_cls(
+        command_runner = AnyscaleJobRunner(
             cluster_manager,
             JobFileManager(cluster_manager=cluster_manager),
             working_dir,

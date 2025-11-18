@@ -135,17 +135,8 @@ class GlueTest(unittest.TestCase):
         class MockCommandRunner(MockReturn, CommandRunner):
             return_dict = self.cluster_manager_return
 
-            def __init__(
-                self,
-                cluster_manager: ClusterManager,
-                file_manager: FileManager,
-                working_dir,
-                sdk=None,
-                artifact_path: Optional[str] = None,
-            ):
-                super(MockCommandRunner, self).__init__(
-                    cluster_manager, file_manager, this_tempdir
-                )
+            def __init__(self):
+                super(MockCommandRunner, self).__init__()
                 self.return_dict = this_command_runner_return
 
         class MockFileManager(MockReturn, FileManager):
