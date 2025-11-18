@@ -80,7 +80,7 @@ class AgentManager {
   }
   ~AgentManager();
 
-  pid_t GetPid()
+  pid_t GetPid();
 
  private:
   void StartAgent(AddProcessToCgroupHook add_to_cgroup);

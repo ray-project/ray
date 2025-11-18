@@ -122,8 +122,8 @@ AgentManager::~AgentManager() {
   }
 }
 
-pid_t GetPid(){
-  return process_.GetPid()
+pid_t AgentManager::GetPid(){
+  return process_.GetId();
 }
 
 

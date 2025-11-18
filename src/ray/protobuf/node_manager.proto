@@ -545,6 +545,10 @@ service NodeManagerService {
   // Failure: Will retry with the default timeout 1000ms. If fails, reply return an empty
   // list.
   rpc GetWorkerPIDs(GetWorkerPIDsRequest) returns (GetWorkerPIDsReply);
+  // Get the PIDs of dashboard and runtime env agent currently alive that are managed by the local Raylet.
+  // Failure: Will retry with the default timeout 1000ms. If fails, reply return an empty
+  // list.
+  rpc GetAgentPIDs(GetAgentPIDsRequest) returns (GetAgentPIDsReply);
   // Request from the GCS actor manager or actor scheduler that the worker shut down
   // without completing outstanding work.
   // Failure: Retries, it's idempotent.
