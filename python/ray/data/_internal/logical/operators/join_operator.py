@@ -101,8 +101,8 @@ class Join(
     def get_referenced_keys(self) -> List[List[str]]:
         """Return join keys for left and right sides as List[List[str]].
 
-        For semi/anti joins, only one side's keys are needed since only one side
-        is output.
+        For semi/anti joins, we still need the columns that are referenced,
+        so those need to be specified here as well.
         """
         left_keys = list(self._left_key_columns)
         right_keys = list(self._right_key_columns)
