@@ -336,6 +336,9 @@ void RayletClient::PinObjectIDs(
   if (!generator_id.IsNil()) {
     request.set_generator_id(generator_id.Binary());
   }
+
+  // NOTE: this callback can execute after the RayletClient instance is destroyed, so
+  // we capture the shared_ptr to `pins_in_flight_` instead of `this`.
   pins_in_flight_->fetch_add(1);
   auto rpc_callback = [callback, pins_in_flight = pins_in_flight_](
                           Status status, rpc::PinObjectIDsReply &&reply) {
