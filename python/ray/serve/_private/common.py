@@ -815,7 +815,6 @@ class DecisionRecord(BaseModel):
     timestamp_str: str
     current_num_replicas: int
     target_num_replicas: int
-    reason: str
 
 
 class DeploymentSnapshot(BaseModel):
@@ -856,14 +855,17 @@ class DeploymentSnapshot(BaseModel):
         """Return True if scaling-related fields are equal.
 
         Used for autoscaling snapshot log deduplication. Compares only:
-        timestamp_str, app, deployment.
+        target_replicas, min_replicas, max_replicas, scaling_status
         """
         if not isinstance(other, DeploymentSnapshot):
             return False
         return (
-            self.timestamp_str == other.timestamp_str
-            and self.app == other.app
+            self.app == other.app
             and self.deployment == other.deployment
+            and self.target_replicas == other.target_replicas
+            and self.min_replicas == other.min_replicas
+            and self.max_replicas == other.max_replicas
+            and self.scaling_status == other.scaling_status
         )
 
 

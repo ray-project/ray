@@ -252,7 +252,6 @@ class DeploymentAutoscalingState:
                 timestamp_str=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 current_num_replicas=autoscaling_context.current_num_replicas,
                 target_num_replicas=decision_num_replicas,
-                reason=f"current={autoscaling_context.current_num_replicas}, target={decision_num_replicas}",
             )
         )
 
