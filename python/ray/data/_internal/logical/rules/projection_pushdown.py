@@ -657,7 +657,7 @@ class ProjectionPushdown(Rule):
             all_keys.update(keys)
 
         # Check if all keys are in the output projection
-        if all_keys and not all(key in column_rename_map.keys() for key in all_keys):
+        if all_keys and any(key not in column_rename_map.keys() for key in all_keys):
             return _create_downstream_selection_project(
                 column_rename_map=column_rename_map,
                 input_op=new_op,
