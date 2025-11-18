@@ -10,6 +10,11 @@ jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 
 # Deploy a reasoning LLM
 
+<div align="left">
+<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Freasoning-llm"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/reasoning-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+</div>
+
 A reasoning LLM handles tasks that require deeper analysis or step-by-step thought. It generates intermediate reasoning before arriving at a final answer, making it better suited for situations where careful logic or structured problem-solving is more important than speed or efficiency.
 
 This tutorial deploys a reasoning LLM using Ray Serve LLM.  
@@ -43,7 +48,7 @@ If your input is clear and complete, a standard model is usually faster and more
 
 Reasoning models often separate *reasoning* from the *final answer* using tags like `<think>...</think>`. Without a proper parser, this reasoning may end up in the `content` field instead of the dedicated `reasoning_content` field.
 
-To extract reasoning correctly, configure a `reasoning_parser` in your Ray Serve deployment. This tells vLLM how to isolate the model’s thought process from the rest of the output.
+To extract reasoning correctly, configure a `reasoning_parser` in your Ray Serve deployment. This tells vLLM how to isolate the model’s thought process from the rest of the output.  
 **Note:** For example, *QwQ* uses the `deepseek-r1` parser. Other models may require different parsers. See the [vLLM docs](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#supported-models) or your model's documentation to find a supported parser, or [build your own](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#how-to-support-a-new-reasoning-model) if needed.
 
 ```yaml
@@ -104,8 +109,9 @@ llm_config = LLMConfig(
         model_id="my-qwq-32B",
         model_source="Qwen/QwQ-32B",
     ),
-    accelerator_type="A100-40G",
+    accelerator_type="L40S", # Or "A100-40G"
     deployment_config=dict(
+        # Increase number of replicas for higher throughput/concurrency.
         autoscaling_config=dict(
             min_replicas=1,
             max_replicas=2,
@@ -114,7 +120,8 @@ llm_config = LLMConfig(
     ### Uncomment if your model is gated and needs your Hugging Face token to access it
     # runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),
     engine_kwargs=dict(
-        tensor_parallel_size=8, max_model_len=32768, reasoning_parser="deepseek_r1"
+        # 4 GPUs is enough but you can increase tensor_parallel_size to fit larger models.
+        tensor_parallel_size=4, max_model_len=32768, reasoning_parser="deepseek_r1"
     ),
 )
 
@@ -122,7 +129,7 @@ app = build_openai_app({"llm_configs": [llm_config]})
 
 ```
 
-**Note:** Before moving to a production setup, migrate to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: production guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, migrate to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs - Quickstart Examples: Production Guide](https://docs.ray.io/en/latest/serve/llm/quick-start.html#production-deployment) for an example.
 
 ---
 
@@ -149,8 +156,7 @@ Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) t
 In a terminal, run:  
 
 
-```bash
-%%bash
+```python
 serve run serve_qwq_32b:app --non-blocking
 ```
 
@@ -165,8 +171,7 @@ Your endpoint is available locally at `http://localhost:8000` and you can use a 
 Example curl:
 
 
-```bash
-%%bash
+```python
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer FAKE_KEY" \
   -H "Content-Type: application/json" \
@@ -181,10 +186,10 @@ Example Python:
 from urllib.parse import urljoin
 from openai import OpenAI
 
-api_key = "FAKE_KEY"
-base_url = "http://localhost:8000"
+API_KEY = "FAKE_KEY"
+BASE_URL = "http://localhost:8000"
 
-client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
+client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
 response = client.chat.completions.create(
     model="my-qwq-32B",
@@ -206,8 +211,7 @@ If you configure a valid reasoning parser, the reasoning output should appear in
 Shutdown your LLM service:
 
 
-```bash
-%%bash
+```python
 serve shutdown -y
 ```
 
@@ -216,7 +220,7 @@ serve shutdown -y
 
 ## Deploy to production with Anyscale services
 
-For production, use Anyscale services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#deploy-to-production-with-anyscale-services) for an example with a medium-sized model like the *QwQ-32&nbsp;B* used here.
+For production, use Anyscale services to deploy your Ray Serve app on a dedicated cluster without code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploy a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#deploy-to-production-with-anyscale-services) for an example with a medium-sized model like the *QwQ-32&nbsp;B* used here.
 
 ---
 
@@ -230,10 +234,10 @@ Reasoning models may take longer to begin generating the main content. You can s
 from urllib.parse import urljoin
 from openai import OpenAI
 
-api_key = <YOUR-TOKEN-HERE>
-base_url = <YOUR-ENDPOINT-HERE>
+API_KEY = "FAKE_KEY"
+BASE_URL = "http://localhost:8000"
 
-client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
+client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
 # Example: Complex query with thinking process
 response = client.chat.completions.create(

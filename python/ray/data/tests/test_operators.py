@@ -1,12 +1,15 @@
 import collections
 import gc
+import itertools
 import random
 import time
-from typing import Any, Iterable, List
+from typing import Any, Callable, Iterable, List, Optional
 from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray
@@ -28,20 +31,30 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import (
+    BlockRefBundler,
     MapOperator,
-    _BlockRefBundler,
+    _per_block_limit_fn,
 )
 from ray.data._internal.execution.operators.map_transformer import (
-    create_map_transformer_from_block_fn,
+    BlockMapTransformFn,
+    MapTransformCallable,
+    MapTransformer,
 )
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
+from ray.data._internal.execution.progress_manager import SubProgressBar
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.logical.optimizers import get_execution_plan
+from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import Timer
 from ray.data.block import Block, BlockAccessor
-from ray.data.context import DataContext
+from ray.data.context import (
+    DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
+    DataContext,
+)
 from ray.data.tests.util import run_one_op_task, run_op_tasks_sync
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.tests.conftest import *  # noqa
@@ -55,6 +68,28 @@ def _get_blocks(bundle: RefBundle, output_list: List[Block]):
 def _mul2_transform(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
     for block in block_iter:
         yield pd.DataFrame({"id": [b * 2 for b in block["id"]]})
+
+
+def create_map_transformer_from_block_fn(
+    block_fn: MapTransformCallable[Block, Block],
+    init_fn: Optional[Callable[[], None]] = None,
+    output_block_size_option: Optional[OutputBlockSizeOption] = None,
+    disable_block_shaping: bool = False,
+):
+    """Create a MapTransformer from a single block-based transform function.
+
+    This method should only be used for testing and legacy compatibility.
+    """
+    return MapTransformer(
+        [
+            BlockMapTransformFn(
+                block_fn,
+                output_block_size_option=output_block_size_option,
+                disable_block_shaping=disable_block_shaping,
+            ),
+        ],
+        init_fn=init_fn,
+    )
 
 
 _mul2_map_data_prcessor = create_map_transformer_from_block_fn(_mul2_transform)
@@ -121,15 +156,22 @@ def test_all_to_all_operator():
         dummy_all_transform,
         input_op,
         DataContext.get_current(),
-        target_max_block_size=DataContext.get_current().target_max_block_size,
+        target_max_block_size_override=DataContext.get_current().target_max_block_size,
         num_outputs=2,
         sub_progress_bar_names=["Test1", "Test2"],
         name="TestAll",
     )
 
     # Initialize progress bar.
-    num_bars = op.initialize_sub_progress_bars(0)
-    assert num_bars == 2, num_bars
+    for name in op.get_sub_progress_bar_names():
+        pg = SubProgressBar(
+            name=name,
+            total=op.num_output_rows_total(),
+            enabled=False,
+            progress=None,
+            tid=None,
+        )
+        op.set_sub_progress_bar(name, pg)
 
     # Feed data.
     op.start(ExecutionOptions())
@@ -145,7 +187,6 @@ def test_all_to_all_operator():
     stats = op.get_stats()
     assert "FooStats" in stats
     assert op.completed()
-    op.close_sub_progress_bars()
 
 
 def test_num_outputs_total():
@@ -172,7 +213,7 @@ def test_num_outputs_total():
         dummy_all_transform,
         input_op=op1,
         data_context=DataContext.get_current(),
-        target_max_block_size=DataContext.get_current().target_max_block_size,
+        target_max_block_size_override=DataContext.get_current().target_max_block_size,
         name="TestAll",
     )
     assert op2.num_outputs_total() is None
@@ -287,7 +328,7 @@ def test_split_operator(ray_start_regular_shared, equal, chunk_size):
 
 
 @pytest.mark.parametrize("equal", [False, True])
-@pytest.mark.parametrize("random_seed", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+@pytest.mark.parametrize("random_seed", list(range(10)))
 def test_split_operator_random(ray_start_regular_shared, equal, random_seed):
     random.seed(random_seed)
     inputs = make_ref_bundles([[i] * random.randint(0, 10) for i in range(100)])
@@ -369,6 +410,133 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
     assert "all objects local" in op.progress_str()
 
 
+@pytest.mark.parametrize("equal", [False, True])
+@pytest.mark.parametrize("random_seed", list(range(10)))
+def test_split_operator_with_locality(ray_start_regular_shared, equal, random_seed):
+    """Test locality-based dispatching with equal=True and equal=False modes.
+
+    This test verifies that the OutputSplitter:
+    1. Correctly buffers data to ensure equal distribution when equal=True
+    2. Respects locality hints in both modes
+    3. Yields blocks incrementally when locality is matched (streaming behavior)
+    4. The fix ensures that _can_safely_dispatch correctly calculates remaining
+       buffer requirements.
+    """
+
+    random.seed(random_seed)
+
+    # Create bundles with varying sizes to test buffer management
+    input_bundles = make_ref_bundles([[i] * random.randint(1, 10) for i in range(100)])
+    num_inputs = sum(x.num_rows() for x in input_bundles)
+
+    input_op = InputDataBuffer(DataContext.get_current(), input_bundles)
+    op = OutputSplitter(
+        input_op,
+        3,
+        equal=equal,
+        data_context=DataContext.get_current(),
+        locality_hints=["node0", "node1", "node2"],
+    )
+
+    # Mock locality function: distribute items across 3 nodes
+    def _map_row_to_node(first_row_id_val) -> str:
+        return f"node{first_row_id_val % 3}"
+
+    def _get_fake_bundle_loc(bundle):
+        block = ray.get(bundle.block_refs[0])
+        first_row_id_val = block["id"][0]
+        return [_map_row_to_node(first_row_id_val)]
+
+    op._get_locations = _get_fake_bundle_loc
+
+    # Feed data and implement streaming exec
+    output_splits = [[] for _ in range(3)]
+    yielded_incrementally = 0
+
+    op.start(ExecutionOptions(actor_locality_enabled=True))
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+
+        # Drain some outputs to simulate streaming consumption
+        while op.has_next():
+            yielded_incrementally += 1
+
+            ref = op.get_next()
+
+            assert ref.owns_blocks, ref
+
+            for block_ref in ref.block_refs:
+                output_splits[ref.output_split_idx].extend(
+                    list(ray.get(block_ref)["id"])
+                )
+
+    op.all_inputs_done()
+
+    # Collect remaining outputs
+    while op.has_next():
+        ref = op.get_next()
+
+        assert ref.owns_blocks, ref
+
+        for block_ref in ref.block_refs:
+            output_splits[ref.output_split_idx].extend(list(ray.get(block_ref)["id"]))
+
+    # Verify streaming behavior: outputs should be yielded before all inputs are done
+    # With locality hints, we should see outputs during input phase
+    assert yielded_incrementally > 0, (
+        f"Expected incremental output with locality hints, but got 0 outputs during "
+        f"{len(input_bundles)} input blocks. This suggests buffering all data instead of streaming."
+    )
+
+    # Verify equal distribution when equal=True
+    if equal:
+        actual = [len(output_splits[i]) for i in range(3)]
+        expected = [num_inputs // 3] * 3
+        assert (
+            actual == expected
+        ), f"Expected equal distribution {expected}, got {actual}"
+    else:
+        # In non-equal mode, verify all data is output with correct row IDs
+        all_output_row_ids = set(itertools.chain.from_iterable(output_splits))
+
+        # Reconstruct expected row IDs from the input bundles
+        expected_row_ids = set()
+        for b in input_bundles:
+            id_col = ray.get(b.block_refs[0])["id"]
+            expected_row_ids.update(list(id_col))
+
+        assert all_output_row_ids == expected_row_ids
+
+    # Verify locality was respected (most items should be on their preferred node)
+    locality_hits = 0
+    total = 0
+
+    for split_idx in range(3):
+        actual_node = f"node{split_idx}"
+
+        for row_id in output_splits[split_idx]:
+            total += 1
+            expected_node = _map_row_to_node(row_id)
+
+            assert expected_node in ["node0", "node1", "node2"], expected_node
+
+            if expected_node == actual_node:
+                locality_hits += 1
+
+    # Should have excellent locality since bundles are dispatched based on locality hints.
+    # With perfect locality we'd get 100%, but buffering for equal distribution and
+    # occasional forced dispatches when buffer is full may cause some misses.
+    # We expect at least 85% locality hit rate, which validates the feature is working.
+    locality_ratio = locality_hits / total if total > 0 else 0
+
+    # NOTE: 90% is an observed locality ratio that should be fixed for this test
+    assert locality_ratio >= 0.85, (
+        f"Locality ratio {locality_ratio:.2f} too low. "
+        f"Expected >=85% with locality-aware dispatching. "
+        f"Hits: {locality_hits}/{total}"
+    )
+
+
 def test_map_operator_actor_locality_stats(ray_start_regular_shared):
     # Create with inputs.
     input_op = InputDataBuffer(
@@ -447,8 +615,15 @@ def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
 
 @pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("preserve_order", [False, True])
+@pytest.mark.parametrize(
+    "target_max_block_size,num_expected_blocks", [(1, 10), (2**20, 1), (None, 1)]
+)
 def test_map_operator_output_unbundling(
-    ray_start_regular_shared, use_actors, preserve_order
+    ray_start_regular_shared,
+    use_actors,
+    preserve_order,
+    target_max_block_size,
+    num_expected_blocks,
 ):
     # Tests that the MapOperator's output queue unbundles the bundles returned from
     # tasks; this facilitates features such as dynamic block splitting.
@@ -461,8 +636,16 @@ def test_map_operator_output_unbundling(
         DataContext.get_current(), make_ref_bundles([[i] for i in range(10)])
     )
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
+
+    transformer = create_map_transformer_from_block_fn(
+        noop,
+        output_block_size_option=OutputBlockSizeOption.of(
+            target_max_block_size=target_max_block_size,
+        ),
+    )
+
     op = MapOperator.create(
-        create_map_transformer_from_block_fn(noop),
+        transformer,
         input_op=input_op,
         data_context=DataContext.get_current(),
         name="TestMapper",
@@ -487,7 +670,7 @@ def test_map_operator_output_unbundling(
     outputs = []
     while op.has_next():
         outputs.append(op.get_next())
-    assert len(outputs) == 10
+    assert len(outputs) == num_expected_blocks
     assert op.completed()
 
 
@@ -600,8 +783,13 @@ def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_ove
         (3, 5, 4, 3),
         # DataContext.max_tasks_in_flight_per_actor takes precedence
         (None, 5, 4, 5),
-        # Max tasks in-flight is derived as max_concurrency x 2
-        (None, None, 4, 8),
+        # Max tasks in-flight is derived as max_concurrency x 4
+        (
+            None,
+            None,
+            4,
+            4 * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
+        ),
     ],
 )
 def test_actor_pool_map_operator_should_add_input(
@@ -617,7 +805,7 @@ def test_actor_pool_map_operator_should_add_input(
     ctx = DataContext.get_current()
     ctx.max_tasks_in_flight_per_actor = max_tasks_in_flight_ctx
 
-    input_op = InputDataBuffer(ctx, make_ref_bundles([[i] for i in range(10)]))
+    input_op = InputDataBuffer(ctx, make_ref_bundles([[i] for i in range(20)]))
 
     compute_strategy = ActorPoolStrategy(
         size=1,
@@ -786,6 +974,58 @@ def test_limit_operator(ray_start_regular_shared):
         assert limit_op.completed(), limit
 
 
+def test_limit_operator_memory_leak_fix(ray_start_regular_shared, tmp_path):
+    """Test that LimitOperator properly drains upstream output queues.
+
+    This test verifies the memory leak fix by directly using StreamingExecutor
+    to access the actual topology and check queued blocks after execution.
+    """
+    for i in range(100):
+        data = [{"id": i * 5 + j, "value": f"row_{i * 5 + j}"} for j in range(5)]
+        table = pa.Table.from_pydict(
+            {"id": [row["id"] for row in data], "value": [row["value"] for row in data]}
+        )
+        parquet_file = tmp_path / f"test_data_{i}.parquet"
+        pq.write_table(table, str(parquet_file))
+
+    parquet_files = [str(tmp_path / f"test_data_{i}.parquet") for i in range(100)]
+
+    ds = (
+        ray.data.read_parquet(parquet_files, override_num_blocks=100)
+        .limit(5)
+        .map(lambda x: x)
+    )
+
+    execution_plan = ds._plan
+    physical_plan = get_execution_plan(execution_plan._logical_plan)
+
+    # Use StreamingExecutor directly to have access to the actual topology
+    executor = StreamingExecutor(DataContext.get_current())
+    output_iterator = executor.execute(physical_plan.dag)
+
+    # Collect all results and count rows
+    total_rows = 0
+    for bundle in output_iterator:
+        for block_ref in bundle.block_refs:
+            block = ray.get(block_ref)
+            total_rows += block.num_rows
+    assert (
+        total_rows == 5
+    ), f"Expected exactly 5 rows after limit(5), but got {total_rows}"
+
+    # Find the ReadParquet operator's OpState
+    topology = executor._topology
+    read_parquet_op_state = None
+    for op, op_state in topology.items():
+        if "ReadParquet" in op.name:
+            read_parquet_op_state = op_state
+            break
+
+    # Check the output queue size
+    output_queue_size = len(read_parquet_op_state.output_queue)
+    assert output_queue_size == 0, f"Expected 0 items, but got {output_queue_size}."
+
+
 def _get_bundles(bundle: RefBundle):
     output = []
     for block_ref in bundle.block_refs:
@@ -905,7 +1145,7 @@ def _make_ref_bundles(raw_bundles: List[List[List[Any]]]) -> List[RefBundle]:
 )
 def test_block_ref_bundler_basic(target, in_bundles, expected_bundles):
     # Test that the bundler creates the expected output bundles.
-    bundler = _BlockRefBundler(target)
+    bundler = BlockRefBundler(target)
     bundles = _make_ref_bundles(in_bundles)
     out_bundles = []
     for bundle in bundles:
@@ -923,7 +1163,7 @@ def test_block_ref_bundler_basic(target, in_bundles, expected_bundles):
     # Assert expected output
     assert out_bundles == expected_bundles
     # Assert that all bundles have been ingested
-    assert bundler.num_bundles() == 0
+    assert bundler.num_blocks() == 0
 
     for bundle, expected in zip(out_bundles, expected_bundles):
         assert bundle == expected
@@ -942,7 +1182,7 @@ def test_block_ref_bundler_uniform(
 ):
     # Test that the bundler creates the expected number of bundles with the expected
     # size.
-    bundler = _BlockRefBundler(target)
+    bundler = BlockRefBundler(target)
     data = np.arange(n)
     pre_bundles = [arr.tolist() for arr in np.array_split(data, num_bundles)]
     bundles = make_ref_bundles(pre_bundles)
@@ -981,7 +1221,12 @@ def test_operator_metrics():
             yield pd.DataFrame({"id": [i]})
 
     op = MapOperator.create(
-        create_map_transformer_from_block_fn(map_fn),
+        create_map_transformer_from_block_fn(
+            map_fn,
+            output_block_size_option=OutputBlockSizeOption.of(
+                target_max_block_size=1,
+            ),
+        ),
         input_op=input_op,
         data_context=DataContext.get_current(),
         name="TestEstimatedNumBlocks",
@@ -1036,7 +1281,21 @@ def test_operator_metrics():
         assert metrics.obj_store_mem_freed == metrics.bytes_task_inputs_processed, i
 
 
-def test_map_estimated_num_output_bundles():
+@pytest.mark.parametrize(
+    "target_max_block_size, expected_num_outputs_per_task",
+    [
+        # 5 blocks (8b each) // 1 = 5 outputs / task
+        [1, 5],
+        # 5 blocks (8b each) // 1024 = 1 output / task
+        [1024, 1],
+        # All outputs combined in a single output
+        [None, 1],
+    ],
+)
+def test_map_estimated_num_output_bundles(
+    target_max_block_size,
+    expected_num_outputs_per_task,
+):
     # Test map operator estimation
     input_op = InputDataBuffer(
         DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
@@ -1047,8 +1306,17 @@ def test_map_estimated_num_output_bundles():
             yield pd.DataFrame({"id": [i]})
 
     min_rows_per_bundle = 10
+    # 100 inputs -> 100 / 10 = 10 tasks
+    num_tasks = 10
+
     op = MapOperator.create(
-        create_map_transformer_from_block_fn(yield_five),
+        create_map_transformer_from_block_fn(
+            yield_five,
+            # Limit single block to hold no more than 1 byte
+            output_block_size_option=OutputBlockSizeOption.of(
+                target_max_block_size=target_max_block_size,
+            ),
+        ),
         input_op=input_op,
         data_context=DataContext.get_current(),
         name="TestEstimatedNumBlocks",
@@ -1061,26 +1329,38 @@ def test_map_estimated_num_output_bundles():
         if op.metrics.num_inputs_received % min_rows_per_bundle == 0:
             # enough inputs for a task bundle
             run_op_tasks_sync(op)
-            assert op._estimated_num_output_bundles == 50
+            assert (
+                op._estimated_num_output_bundles
+                == expected_num_outputs_per_task * num_tasks
+            )
 
     op.all_inputs_done()
 
-    # 100 inputs -> 100 / 10 = 10 tasks -> 10 * 5 = 50 output blocks
-    assert op._estimated_num_output_bundles == 50
+    assert op._estimated_num_output_bundles == expected_num_outputs_per_task * num_tasks
 
 
 def test_map_estimated_blocks_split():
     # Test read output splitting
+
+    min_rows_per_bundle = 10
+    input_op = InputDataBuffer(
+        DataContext.get_current(),
+        make_ref_bundles(
+            [[i, i + 1] for i in range(100)]
+        ),  # create 2-row blocks so split_blocks can split into 2 blocks
+    )
+
     def yield_five(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
         for i in range(5):
             yield pd.DataFrame({"id": [i]})
 
-    min_rows_per_bundle = 10
-    input_op = InputDataBuffer(
-        DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
-    )
     op = MapOperator.create(
-        create_map_transformer_from_block_fn(yield_five),
+        create_map_transformer_from_block_fn(
+            yield_five,
+            # NOTE: Disable output block-shaping to keep blocks from being
+            #       combined
+            disable_block_shaping=True,
+        ),
         input_op=input_op,
         data_context=DataContext.get_current(),
         name="TestEstimatedNumBlocksSplit",
@@ -1234,6 +1514,47 @@ def test_input_data_buffer_does_not_free_inputs():
     # `InputDataBuffer` should still hold a reference to the input block even after
     # `get_next` is called.
     assert len(gc.get_referrers(block_ref)) > 0
+
+
+@pytest.mark.parametrize(
+    "blocks_data,per_block_limit,expected_output",
+    [
+        # Test case 1: Single block, limit less than block size
+        ([[1, 2, 3, 4, 5]], 3, [[1, 2, 3]]),
+        # Test case 2: Single block, limit equal to block size
+        ([[1, 2, 3]], 3, [[1, 2, 3]]),
+        # Test case 3: Single block, limit greater than block size
+        ([[1, 2]], 5, [[1, 2]]),
+        # Test case 4: Multiple blocks, limit spans across blocks
+        ([[1, 2], [3, 4], [5, 6]], 3, [[1, 2], [3]]),
+        # Test case 5: Multiple blocks, limit exactly at block boundary
+        ([[1, 2], [3, 4]], 2, [[1, 2]]),
+        # Test case 6: Empty blocks
+        ([], 5, []),
+        # Test case 7: Zero limit
+        ([[1, 2, 3]], 0, []),
+    ],
+)
+def test_per_block_limit_fn(blocks_data, per_block_limit, expected_output):
+    """Test the _per_block_limit_fn function with various inputs."""
+    import pandas as pd
+
+    # Convert test data to pandas blocks
+    blocks = [pd.DataFrame({"value": data}) for data in blocks_data]
+
+    # Create a mock TaskContext
+    ctx = TaskContext(op_name="test", task_idx=0, target_max_block_size_override=None)
+
+    # Call the function
+    result_blocks = list(_per_block_limit_fn(blocks, ctx, per_block_limit))
+
+    # Convert result back to lists for comparison
+    result_data = []
+    for block in result_blocks:
+        block_data = block["value"].tolist()
+        result_data.append(block_data)
+
+    assert result_data == expected_output
 
 
 if __name__ == "__main__":

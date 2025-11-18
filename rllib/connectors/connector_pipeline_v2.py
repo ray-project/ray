@@ -7,7 +7,7 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.metrics import TIMERS, CONNECTOR_PIPELINE_TIMER, CONNECTOR_TIMERS
+from ray.rllib.utils.metrics import CONNECTOR_PIPELINE_TIMER, CONNECTOR_TIMERS, TIMERS
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.metrics.utils import to_snake_case
 from ray.rllib.utils.typing import EpisodeType, StateDict

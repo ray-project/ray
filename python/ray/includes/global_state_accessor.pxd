@@ -24,7 +24,7 @@ from ray.includes.optional cimport (
     optional
 )
 
-cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
+cdef extern from "ray/gcs_rpc_client/global_state_accessor.h" nogil:
     cdef cppclass CGlobalStateAccessor "ray::gcs::GlobalStateAccessor":
         CGlobalStateAccessor(const CGcsClientOptions&)
         c_bool Connect()
@@ -70,7 +70,7 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
 cdef extern from * namespace "ray::gcs" nogil:
     """
     #include <thread>
-    #include "ray/gcs/gcs_server/store_client_kv.h"
+    #include "ray/gcs/store_client_kv.h"
     #include "ray/gcs/store_client/redis_store_client.h"
     #include "ray/util/raii.h"
     namespace ray {

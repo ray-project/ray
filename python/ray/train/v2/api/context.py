@@ -69,26 +69,20 @@ class TrainContext(ABC):
 
         .. testcode::
 
-            import ray
-            from ray import train
-            from ray.train import ScalingConfig
-            from ray.train.tensorflow import TensorflowTrainer
+            import ray.train
+            from ray.train.torch import TorchTrainer
 
             NUM_WORKERS = 2
 
-            def train_loop_per_worker(config):
-                assert train.get_context().get_world_size() == NUM_WORKERS
+            def train_fn_per_worker(config):
+                assert ray.train.get_context().get_world_size() == NUM_WORKERS
 
-            trainer = TensorflowTrainer(
-                train_loop_per_worker,
-                scaling_config=ScalingConfig(num_workers=NUM_WORKERS),
+            trainer = TorchTrainer(
+                train_fn_per_worker,
+                scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
             )
             trainer.fit()
 
-        .. testoutput::
-            :hide:
-
-            ...
         """
         pass
 
@@ -98,25 +92,19 @@ class TrainContext(ABC):
 
         .. testcode::
 
-            import ray
-            from ray import train
-            from ray.train import ScalingConfig
-            from ray.train.tensorflow import TensorflowTrainer
+            import ray.train
+            from ray.train.torch import TorchTrainer
 
-            def train_loop_per_worker(config):
-                if train.get_context().get_world_rank() == 0:
+            def train_fn_per_worker(config):
+                if ray.train.get_context().get_world_rank() == 0:
                     print("Worker 0")
 
-            trainer = TensorflowTrainer(
-                train_loop_per_worker,
-                scaling_config=ScalingConfig(num_workers=2),
+            trainer = TorchTrainer(
+                train_fn_per_worker,
+                scaling_config=ray.train.ScalingConfig(num_workers=2),
             )
             trainer.fit()
 
-        .. testoutput::
-            :hide:
-
-            ...
         """
         pass
 
@@ -126,28 +114,19 @@ class TrainContext(ABC):
 
         .. testcode::
 
-            import torch
-
-            import ray
-            from ray import train
-            from ray.train import ScalingConfig
+            import ray.train
             from ray.train.torch import TorchTrainer
 
-            def train_loop_per_worker(config):
-                if torch.cuda.is_available():
-                    torch.cuda.set_device(train.get_context().get_local_rank())
-                ...
+            def train_fn_per_worker(config):
+                if ray.train.get_context().get_local_rank() == 0:
+                    print("Local rank 0 worker")
 
             trainer = TorchTrainer(
-                train_loop_per_worker,
-                scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
+                train_fn_per_worker,
+                scaling_config=ray.train.ScalingConfig(num_workers=2),
             )
             trainer.fit()
 
-        .. testoutput::
-            :hide:
-
-            ...
         """
         pass
 
@@ -159,24 +138,18 @@ class TrainContext(ABC):
 
             .. testcode::
 
-                import ray
-                from ray import train
-                from ray.train import ScalingConfig
+                import ray.train
                 from ray.train.torch import TorchTrainer
 
-                def train_loop_per_worker():
-                    print(train.get_context().get_local_world_size())
+                def train_fn_per_worker():
+                    print(ray.train.get_context().get_local_world_size())
 
                 trainer = TorchTrainer(
-                    train_loop_per_worker,
-                    scaling_config=ScalingConfig(num_workers=1),
+                    train_fn_per_worker,
+                    scaling_config=ray.train.ScalingConfig(num_workers=2),
                 )
                 trainer.fit()
 
-            .. testoutput::
-                :hide:
-
-                ...
         """
         pass
 
@@ -188,24 +161,18 @@ class TrainContext(ABC):
 
             .. testcode::
 
-                import ray
-                from ray import train
-                from ray.train import ScalingConfig
+                import ray.train
                 from ray.train.torch import TorchTrainer
 
-                def train_loop_per_worker():
-                    print(train.get_context().get_node_rank())
+                def train_fn_per_worker():
+                    print(ray.train.get_context().get_node_rank())
 
                 trainer = TorchTrainer(
-                    train_loop_per_worker,
-                    scaling_config=ScalingConfig(num_workers=1),
+                    train_fn_per_worker,
+                    scaling_config=ray.train.ScalingConfig(num_workers=1),
                 )
                 trainer.fit()
 
-            .. testoutput::
-                :hide:
-
-                ...
         """
         pass
 
@@ -216,12 +183,13 @@ class TrainContext(ABC):
         context which gives advanced access to the filesystem and paths
         configured through `RunConfig`.
 
-        NOTE: This is a developer API, and the `StorageContext` interface may change
+        NOTE: This is a DeveloperAPI, and the `StorageContext` interface may change
         without notice between minor versions.
         """
         pass
 
 
+@DeveloperAPI
 class DistributedTrainContext(TrainContext):
     """Implementation of TrainContext for distributed mode."""
 
@@ -247,33 +215,43 @@ class DistributedTrainContext(TrainContext):
         return get_internal_train_context().get_storage()
 
 
+@DeveloperAPI
 class LocalTrainContext(TrainContext):
     """Implementation of TrainContext for local mode."""
 
     def __init__(
         self,
         experiment_name: str,
+        world_size: int = 1,
+        world_rank: int = 0,
+        local_rank: int = 0,
+        local_world_size: int = 1,
+        node_rank: int = 0,
     ):
         self.experiment_name = experiment_name
+        self.world_size = world_size
+        self.world_rank = world_rank
+        self.local_rank = local_rank
+        self.local_world_size = local_world_size
+        self.node_rank = node_rank
 
     def get_experiment_name(self) -> str:
         return self.experiment_name
 
     def get_world_size(self) -> int:
-        return 1
+        return self.world_size
 
     def get_world_rank(self) -> int:
-        return 0
+        return self.world_rank
 
     def get_local_rank(self) -> int:
-        return 0
+        return self.local_rank
 
     def get_local_world_size(self) -> int:
-        return 1
+        return self.local_world_size
 
     def get_node_rank(self) -> int:
-        """For local mode, we only use one node."""
-        return 0
+        return self.node_rank
 
     def get_storage(self):
         raise NotImplementedError("Local storage context not yet implemented. ")

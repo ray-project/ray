@@ -1,38 +1,57 @@
 import json
 import os
 import re
-import tempfile
 import shlex
-from typing import TYPE_CHECKING, Any, Dict, Optional, List
+import shutil
+import tempfile
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from ray_release.cloud_util import (
+    convert_abfss_uri_to_https,
+    generate_tmp_cloud_storage_path,
+    upload_working_dir_to_azure,
+)
 from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.command_runner.job_runner import JobRunner
+from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.exception import (
-    TestCommandTimeout,
-    TestCommandError,
+    FetchResultError,
+    JobBrokenError,
+    JobNoLogsError,
     JobOutOfRetriesError,
+    JobTerminatedBeforeStartError,
+    JobTerminatedError,
+    LogsError,
     PrepareCommandError,
     PrepareCommandTimeout,
-    JobBrokenError,
-    FetchResultError,
-    JobTerminatedBeforeStartError,
-    JobNoLogsError,
-    JobTerminatedError,
+    TestCommandError,
+    TestCommandTimeout,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.job_manager import AnyscaleJobManager
 from ray_release.logger import logger
 from ray_release.util import (
-    join_cloud_storage_paths,
-    generate_tmp_cloud_storage_path,
-    get_anyscale_sdk,
+    AZURE_CLOUD_STORAGE,
+    AZURE_STORAGE_CONTAINER,
     S3_CLOUD_STORAGE,
+    get_anyscale_sdk,
 )
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
 TIMEOUT_RETURN_CODE = 124
+
+
+def _join_cloud_storage_paths(*paths: str):
+    paths = list(paths)
+    if len(paths) > 1:
+        for i in range(1, len(paths)):
+            while paths[i][0] == "/":
+                paths[i] = paths[i][1:]
+    joined_path = os.path.join(*paths)
+    while joined_path[-1] == "/":
+        joined_path = joined_path[:-1]
+    return joined_path
 
 
 def _get_env_str(env: Dict[str, str]) -> str:
@@ -43,7 +62,7 @@ def _get_env_str(env: Dict[str, str]) -> str:
     return env_str
 
 
-class AnyscaleJobRunner(JobRunner):
+class AnyscaleJobRunner(CommandRunner):
     def __init__(
         self,
         cluster_manager: ClusterManager,
@@ -61,7 +80,7 @@ class AnyscaleJobRunner(JobRunner):
         self.job_manager = AnyscaleJobManager(cluster_manager)
 
         self.last_command_scd_id = None
-        self.path_in_bucket = join_cloud_storage_paths(
+        self.path_in_bucket = _join_cloud_storage_paths(
             "working_dirs",
             self.cluster_manager.test.get_name().replace(" ", "_"),
             generate_tmp_cloud_storage_path(),
@@ -72,10 +91,19 @@ class AnyscaleJobRunner(JobRunner):
             "ANYSCALE_CLOUD_STORAGE_PROVIDER",
             S3_CLOUD_STORAGE,
         )
-        self.upload_path = join_cloud_storage_paths(
-            f"{cloud_storage_provider}://{self.file_manager.bucket}",
-            self.path_in_bucket,
-        )
+
+        if cloud_storage_provider == AZURE_CLOUD_STORAGE:
+            # Azure ABFSS involves container and account name in the path
+            # and in a specific format/order.
+            self.upload_path = _join_cloud_storage_paths(
+                f"{AZURE_CLOUD_STORAGE}://{AZURE_STORAGE_CONTAINER}@{self.file_manager.bucket}.dfs.core.windows.net",
+                self.path_in_bucket,
+            )
+        else:
+            self.upload_path = _join_cloud_storage_paths(
+                f"{cloud_storage_provider}://{self.file_manager.bucket}",
+                self.path_in_bucket,
+            )
         self.output_json = "/tmp/output.json"
         self.prepare_commands = []
         self._wait_for_nodes_timeout = 0
@@ -88,9 +116,14 @@ class AnyscaleJobRunner(JobRunner):
         self._artifact_path = artifact_path
         self._artifact_uploaded = artifact_path is not None
 
+    def _copy_script_to_working_dir(self, script_name):
+        script = os.path.join(os.path.dirname(__file__), f"_{script_name}")
+        shutil.copy(script, script_name)
+
     def prepare_remote_env(self):
         self._copy_script_to_working_dir("anyscale_job_wrapper.py")
-        super().prepare_remote_env()
+        self._copy_script_to_working_dir("wait_cluster.py")
+        self._copy_script_to_working_dir("prometheus_metrics.py")
 
     def run_prepare_command(
         self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
@@ -227,17 +260,44 @@ class AnyscaleJobRunner(JobRunner):
         no_raise_on_timeout_str = (
             " --test-no-raise-on-timeout" if not raise_on_timeout else ""
         )
+        results_cloud_storage_uri = _join_cloud_storage_paths(
+            self.upload_path, self._RESULT_OUTPUT_JSON
+        )
+        metrics_cloud_storage_uri = _join_cloud_storage_paths(
+            self.upload_path, self._METRICS_OUTPUT_JSON
+        )
+        output_cloud_storage_uri = _join_cloud_storage_paths(
+            self.upload_path, self.output_json
+        )
+        upload_cloud_storage_uri = self.upload_path
+        # Convert ABFSS URI to HTTPS URI for Azure
+        # since azcopy doesn't support ABFSS.
+        # azcopy is used to fetch these artifacts on Buildkite
+        # after job is done.
+        if self.upload_path.startswith(AZURE_CLOUD_STORAGE):
+            results_cloud_storage_uri = convert_abfss_uri_to_https(
+                results_cloud_storage_uri
+            )
+            metrics_cloud_storage_uri = convert_abfss_uri_to_https(
+                metrics_cloud_storage_uri
+            )
+            output_cloud_storage_uri = convert_abfss_uri_to_https(
+                output_cloud_storage_uri
+            )
+            upload_cloud_storage_uri = convert_abfss_uri_to_https(
+                upload_cloud_storage_uri
+            )
         full_command = (
             f"python anyscale_job_wrapper.py '{command}' "
             f"--test-workload-timeout {timeout}{no_raise_on_timeout_str} "
             "--results-cloud-storage-uri "
-            f"'{join_cloud_storage_paths(self.upload_path, self._RESULT_OUTPUT_JSON)}' "
+            f"'{results_cloud_storage_uri}' "
             "--metrics-cloud-storage-uri "
             f"'"
-            f"{join_cloud_storage_paths(self.upload_path, self._METRICS_OUTPUT_JSON)}' "
+            f"{metrics_cloud_storage_uri}' "
             "--output-cloud-storage-uri "
-            f"'{join_cloud_storage_paths(self.upload_path, self.output_json)}' "
-            f"--upload-cloud-storage-uri '{self.upload_path}' "
+            f"'{output_cloud_storage_uri}' "
+            f"--upload-cloud-storage-uri '{upload_cloud_storage_uri}' "
             f"--prepare-commands {prepare_commands_shell} "
             f"--prepare-commands-timeouts {prepare_commands_timeouts_shell} "
         )
@@ -256,11 +316,19 @@ class AnyscaleJobRunner(JobRunner):
             - self._wait_for_nodes_timeout
             + 900,
         )
+        working_dir = "."
+        # If running on Azure, upload working dir to Azure blob storage first
+        if self.upload_path.startswith(AZURE_CLOUD_STORAGE):
+            azure_file_path = upload_working_dir_to_azure(
+                working_dir=os.getcwd(), azure_directory_uri=self.upload_path
+            )
+            working_dir = azure_file_path
+            logger.info(f"Working dir uploaded to {working_dir}")
 
         job_status_code, time_taken = self.job_manager.run_and_wait(
             full_command,
             full_env,
-            working_dir=".",
+            working_dir=working_dir,
             upload_path=self.upload_path,
             timeout=int(timeout),
             pip=pip,
@@ -275,6 +343,12 @@ class AnyscaleJobRunner(JobRunner):
         )
 
         return time_taken
+
+    def get_last_logs_ex(self) -> Optional[str]:
+        try:
+            return self.job_manager.get_last_logs()
+        except Exception as e:
+            raise LogsError(f"Could not get last logs: {e}") from e
 
     def _fetch_json(self, path: str) -> Dict[str, Any]:
         try:
@@ -304,7 +378,7 @@ class AnyscaleJobRunner(JobRunner):
                 "Could not fetch results from session as they were not uploaded."
             )
         return self._fetch_json(
-            join_cloud_storage_paths(self.path_in_bucket, self._RESULT_OUTPUT_JSON)
+            _join_cloud_storage_paths(self.path_in_bucket, self._RESULT_OUTPUT_JSON)
         )
 
     def fetch_metrics(self) -> Dict[str, Any]:
@@ -313,7 +387,7 @@ class AnyscaleJobRunner(JobRunner):
                 "Could not fetch metrics from session as they were not uploaded."
             )
         return self._fetch_json(
-            join_cloud_storage_paths(self.path_in_bucket, self._METRICS_OUTPUT_JSON)
+            _join_cloud_storage_paths(self.path_in_bucket, self._METRICS_OUTPUT_JSON)
         )
 
     def fetch_artifact(self):
@@ -343,7 +417,7 @@ class AnyscaleJobRunner(JobRunner):
         # and put it under `self._DEFAULT_ARTIFACTS_DIR`.
         artifact_file_name = os.path.basename(self._artifact_path)
         self.file_manager.download_from_cloud(
-            join_cloud_storage_paths(
+            _join_cloud_storage_paths(
                 self.path_in_bucket, self._USER_GENERATED_ARTIFACT
             ),
             os.path.join(self._DEFAULT_ARTIFACTS_DIR, artifact_file_name),
@@ -351,7 +425,7 @@ class AnyscaleJobRunner(JobRunner):
 
     def fetch_output(self) -> Dict[str, Any]:
         return self._fetch_json(
-            join_cloud_storage_paths(self.path_in_bucket, self.output_json),
+            _join_cloud_storage_paths(self.path_in_bucket, self.output_json),
         )
 
     def cleanup(self):

@@ -51,13 +51,6 @@ load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_
 
 hedron_compile_commands_setup()
 
-http_archive(
-    name = "rules_python",
-    sha256 = "c68bdc4fbec25de5b5493b8819cfc877c4ea299c0dcb15c244c5a00208cde311",
-    strip_prefix = "rules_python-0.31.0",
-    url = "https://github.com/bazelbuild/rules_python/releases/download/0.31.0/rules_python-0.31.0.tar.gz",
-)
-
 load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
 python_register_toolchains(
@@ -66,7 +59,14 @@ python_register_toolchains(
     register_toolchains = False,
 )
 
+python_register_toolchains(
+    name = "python3_10",
+    python_version = "3.10",
+    register_toolchains = False,
+)
+
 load("@python3_9//:defs.bzl", python39 = "interpreter")
+load("@python3_10//:defs.bzl", python310 = "interpreter")
 load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
 
 pip_install_dependencies()
@@ -79,15 +79,25 @@ pip_parse(
     requirements_lock = "//release:requirements_buildkite.txt",
 )
 
+# For CI scripts use only; not for ray testing.
+pip_parse(
+    name = "py_deps_py310",
+    python_interpreter_target = python310,
+    requirements_lock = "//release:requirements_py310.txt",
+)
+
 load("@py_deps_buildkite//:requirements.bzl", install_py_deps_buildkite = "install_deps")
+load("@py_deps_py310//:requirements.bzl", install_py_deps_py310 = "install_deps")
 
 install_py_deps_buildkite()
+install_py_deps_py310()
 
-register_toolchains("//:python_toolchain")
+register_toolchains("//bazel:py39_toolchain")
 
 register_execution_platforms(
     "@local_config_platform//:host",
-    "//:hermetic_python_platform",
+    "//bazel:py39_platform",
+    "//bazel:py310_platform",
 )
 
 http_archive(
@@ -125,8 +135,8 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 """,
-    sha256 = "2c4392591fe9469d006452ef22f32712f35087d87fb1764ec03e23544eb8770d",
-    urls = ["https://github.com/astral-sh/uv/releases/download/0.8.10/uv-x86_64-unknown-linux-gnu.tar.gz"],
+    sha256 = "920cbcaad514cc185634f6f0dcd71df5e8f4ee4456d440a22e0f8c0f142a8203",
+    urls = ["https://github.com/astral-sh/uv/releases/download/0.8.17/uv-x86_64-unknown-linux-gnu.tar.gz"],
 )
 
 http_archive(
@@ -138,8 +148,8 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 """,
-    sha256 = "5200278ae00b5c0822a7db7a99376b2167e8e9391b29c3de22f9e4fdebc9c0e8",
-    urls = ["https://github.com/astral-sh/uv/releases/download/0.8.10/uv-aarch64-apple-darwin.tar.gz"],
+    sha256 = "e4d4859d7726298daa4c12e114f269ff282b2cfc2b415dc0b2ca44ae2dbd358e",
+    urls = ["https://github.com/astral-sh/uv/releases/download/0.8.17/uv-aarch64-apple-darwin.tar.gz"],
 )
 
 http_archive(

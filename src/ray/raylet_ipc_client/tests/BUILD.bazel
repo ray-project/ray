@@ -1,0 +1,16 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "client_connection_test",
+    size = "small",
+    srcs = ["client_connection_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/raylet_ipc_client:client_connection",
+        "//src/ray/util:network_util",
+        "@boost//:asio",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

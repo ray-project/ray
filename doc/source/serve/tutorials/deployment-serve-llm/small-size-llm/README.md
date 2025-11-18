@@ -10,10 +10,14 @@ jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 
 # Deploy a small-sized LLM
 
-A small LLM runs on a single node with 1–2 GPUs, making it fast, inexpensive, and simple to use. It’s ideal for prototyping, lightweight applications, latency-critical use cases, cost-sensitive deployments, and environments with limited resources where efficiency matters more than peak accuracy.
+<div align="left">
+<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Fsmall-size-llm"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/small-size-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+</div>
 
+This tutorial shows you how to deploy and serve a small language model in production with Ray Serve LLM. A small LLM runs on a single node with 1–2 GPUs, making it fast, inexpensive, and simple to use. This tutorial deploys Llama-3.1-8&nbsp;B, a small-sized LLM with 8&nbsp;B parameters. It's ideal for prototyping, lightweight applications, latency-critical use cases, cost-sensitive deployments, and environments with limited resources where efficiency matters more than peak accuracy.
 
-For larger models, see [Deploying a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html) or [Deploying a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
+For larger models, see [Deploy a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html) or [Deploy a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
 
 ---
 
@@ -21,7 +25,7 @@ For larger models, see [Deploying a medium-sized LLM](https://docs.ray.io/en/lat
 
 Ray Serve LLM provides multiple [Python APIs](https://docs.ray.io/en/latest/serve/api/index.html#llm-api) for defining your application. Use [`build_openai_app`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.build_openai_app.html#ray.serve.llm.build_openai_app) to build a full application from your [`LLMConfig`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LLMConfig.html#ray.serve.llm.LLMConfig) object.
 
-Set your Hugging Face token in the config file to access gated models like `Llama-3.1`.
+Set your Hugging Face token in the config file to access gated models such as `Llama-3.1`.
 
 
 ```python
@@ -52,7 +56,7 @@ app = build_openai_app({"llm_configs": [llm_config]})
 
 ```
 
-**Note:** Before moving to a production setup, migrate to using a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, migrate to using a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs - Quickstart Examples: Production Guide](https://docs.ray.io/en/latest/serve/llm/quick-start.html#production-deployment) for an example.
 
 ---
 
@@ -80,8 +84,7 @@ Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) t
 In a terminal, run:  
 
 
-```bash
-%%bash
+```python
 export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
 serve run serve_llama_3_1_8b:app --non-blocking
 ```
@@ -97,8 +100,7 @@ Your endpoint is available locally at `http://localhost:8000`. You can use a pla
 Example curl:
 
 
-```bash
-%%bash
+```python
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer FAKE_KEY" \
   -H "Content-Type: application/json" \
@@ -113,10 +115,10 @@ Example Python:
 from urllib.parse import urljoin
 from openai import OpenAI
 
-api_key = "FAKE_KEY"
-base_url = "http://localhost:8000"
+API_KEY = "FAKE_KEY"
+BASE_URL = "http://localhost:8000"
 
-client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
+client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
 response = client.chat.completions.create(
     model="my-llama-3.1-8b",
@@ -138,8 +140,7 @@ for chunk in response:
 Shutdown your LLM service: 
 
 
-```bash
-%%bash
+```python
 serve shutdown -y
 ```
 
@@ -175,8 +176,7 @@ applications:
 Deploy your service with the following command. Make sure to forward your Hugging Face token:
 
 
-```bash
-%%bash
+```python
 anyscale service deploy -f service.yaml --env HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
 ```
 
@@ -208,7 +208,7 @@ You can also retrieve both from the service page in the Anyscale Console. Click 
 
 ### Access the Serve LLM dashboard
 
-See [Enable LLM monitoring](#enable-llm-monitoring) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM Dashboard from an Anyscale Service:
+See [Monitor your deployment](#monitor-your-deployment) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM Dashboard from an Anyscale Service:
 1. In the Anyscale console, go to your **Service** or **Workspace**.
 2. Navigate to the **Metrics** tab.
 3. Expand **View in Grafana** and click **Serve LLM Dashboard**.
@@ -220,37 +220,45 @@ See [Enable LLM monitoring](#enable-llm-monitoring) for instructions on enabling
 Shutdown your Anyscale Service:
 
 
-```bash
-%%bash
+```python
 anyscale service terminate -n deploy-llama-3-8b
 ```
 
 
 ---
 
-## Enable LLM monitoring
+## Monitor your deployment
 
-The *Serve LLM Dashboard* offers deep visibility into model performance, latency, and system behavior, including:
+Ray Serve LLM provides comprehensive monitoring through the Serve LLM Dashboard. This dashboard visualizes key metrics including:
 
-- Token throughput (tokens/sec).
-- Latency metrics: Time To First Token (TTFT), Time Per Output Token (TPOT).
-- KV cache utilization.
+- **Time to First Token (TTFT)**: Latency before the first token is generated.
+- **Time Per Output Token (TPOT)**: Average latency per generated token.
+- **Token throughput**: Total tokens generated per second.
+- **GPU cache utilization**: Percentage of KV cache memory in use.
+- **Request latency**: End-to-end request duration.
 
-To enable these metrics, go to your LLM config and set `log_engine_metrics: true`. Ensure vLLM V1 is active with `VLLM_USE_V1: "1"`.
+To enable engine-level metrics, set `log_engine_metrics: true` in your LLM configuration. This is enabled by default starting with Ray 2.51.0.
 
-**Note:** `VLLM_USE_V1: "1"` is the default value with `ray >= 2.48.0` and can be omitted.
-```yaml
-applications:
-- ...
-  args:
-    llm_configs:
-      - ...
-        runtime_env:
-          env_vars:
-            VLLM_USE_V1: "1"
-        ...
-        log_engine_metrics: true
+The following example shows how to enable monitoring:
+
+```python
+llm_config = LLMConfig(
+    # ... other config ...
+    log_engine_metrics=True,  # Enable detailed metrics
+)
 ```
+
+### Access the dashboard
+
+To view metrics in an Anyscale Service or Workspace:
+
+1. Navigate to your **Service** or **Workspace** page.
+2. Open the **Metrics** tab.
+3. Expand **View in Grafana** and select **Serve LLM Dashboard**.
+
+For a detailed explanation of each metric and how to interpret them for your workload, see [Understand LLM latency and throughput metrics](https://docs.anyscale.com/llm/serving/benchmarking/metrics).
+
+For comprehensive monitoring strategies and best practices, see the [Observability and monitoring guide](https://docs.ray.io/en/latest/serve/llm/user-guides/observability.html).
 
 ---
 
@@ -278,14 +286,14 @@ Quantizing your model (for example, to FP8) reduces the model's memory footprint
 **Use Tensor Parallelism**  
 Distribute the model across multiple GPUs with `tensor_parallel_size > 1`.
 
-**Note:** Latency may rise if GPUs don’t have strong GPU interconnect like NVLink.
+**Note:** Latency may rise if GPUs don't have strong GPU interconnect such as NVLink.
 
 **Upgrade to GPUs with more memory**  
 Some GPUs provide significantly more room for KV cache and allow for higher concurrency out of the box.
 
 **Scale with more Replicas**  
-In addition to tuning per-GPU concurrency, you can scale *horizontally* by increasing the number of replicas in your config.  
-Each replica runs on its own GPU, so raising the replica count increases the total number of concurrent requests your service can handle, especially under sustained or bursty traffic.
+In addition to tuning per-replica concurrency, you can scale *horizontally* by increasing the number of replicas in your config.  
+Raising the replica count increases the total number of concurrent requests your service can handle, especially under sustained or bursty traffic.
 ```yaml
 deployment_config:
   autoscaling_config:
@@ -295,19 +303,17 @@ deployment_config:
 
 *For more details on tuning strategies, hardware guidance, and serving configurations, see [Choose a GPU for LLM serving](https://docs.anyscale.com/llm/serving/gpu-guidance) and [Tune parameters for LLMs on Anyscale services](https://docs.anyscale.com/llm/serving/parameter-tuning).*
 
+
 ---
 
 ## Troubleshooting
 
-**Hugging Face authentication errors**  
-Some models, such as Llama-3.1, are gated and require prior authorization from the organization. See your model’s documentation for instructions on obtaining access.
-
-**Out-of-memory errors**  
-Out-of-memory (OOM) errors are one of the most common failure modes when deploying LLMs, especially as model sizes and context length increase.  
-See this [Troubleshooting Guide](https://docs.anyscale.com/overview) for common errors and how to fix them.
+If you encounter issues when deploying your LLM, such as out-of-memory errors, authentication problems, or slow performance, consult the [Troubleshooting Guide](https://docs.anyscale.com/llm/serving/troubleshooting) for solutions to common problems.
 
 ---
 
 ## Summary
 
-In this tutorial, you deployed a small-sized LLM with Ray Serve LLM, from development to production. You learned how to configure Ray Serve LLM, deploy your service on your Ray cluster, and how to send requests. You also learned how to monitor your app and common troubleshooting issues.
+In this tutorial, you deployed a small-sized LLM with Ray Serve LLM, from development to production. You learned how to configure and deploy your service, send requests, monitor performance metrics, and optimize concurrency.
+
+To learn more, take the [LLM Serving Foundations](https://courses.anyscale.com/courses/llm-serving-foundations) course or explore [LLM batch inference](https://docs.anyscale.com/llm/batch-inference) for offline workloads. For larger models, see [Deploy a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html) or [Deploy a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).

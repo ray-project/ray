@@ -2,8 +2,8 @@
 import os
 import sys
 import unittest
-from unittest.mock import patch
 from queue import Queue
+from unittest.mock import patch
 
 import pytest  # noqa
 

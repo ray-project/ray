@@ -1,7 +1,6 @@
 import logging
 import threading
 import time
-from dataclasses import replace
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
@@ -18,7 +17,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 if TYPE_CHECKING:
     import pyarrow
 
-    from ray.data import Dataset
+    from ray.data.dataset import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -225,7 +224,12 @@ class SplitCoordinator:
 
             schema = next_bundle.schema
             block = next_bundle.blocks[-1]
-            next_bundle = replace(next_bundle, blocks=next_bundle.blocks[:-1])
+            next_bundle = RefBundle(
+                blocks=next_bundle.blocks[:-1],
+                schema=next_bundle.schema,
+                owns_blocks=next_bundle.owns_blocks,
+                output_split_idx=next_bundle.output_split_idx,
+            )
 
             # Accumulate any remaining blocks in next_bundle map as needed.
             with self._lock:

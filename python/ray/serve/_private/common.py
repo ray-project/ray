@@ -101,8 +101,40 @@ ApplicationName = str
 
 @dataclass
 class EndpointInfo:
+    """Metadata about a deployment's HTTP/gRPC endpoint.
+
+    This represents the public routing interface for a deployment. It's created when
+    a deployment is registered with a route prefix and broadcast to all proxies via
+    the long poll mechanism (ROUTE_TABLE namespace).
+
+    Flow:
+        1. Created in ApplicationState when deployment is applied
+        2. Stored in EndpointState (controller's source of truth)
+        3. Broadcast to all ProxyActors via long poll (ROUTE_TABLE)
+        4. Cached in ProxyRouter for request routing
+        5. Used to route incoming HTTP/gRPC requests to correct deployments
+        6. Used to determine route patterns for accurate metrics tagging
+
+    Key Difference from DeploymentInfo:
+        - EndpointInfo: Just HTTP/gRPC routing metadata (shared with proxies)
+        - DeploymentInfo: Complete deployment config (replicas, resources, etc.)
+
+    Attributes:
+        route: The route prefix for this deployment (e.g., "/api").
+        app_is_cross_language: Whether the deployment uses a different language
+            than the proxy (e.g., Java deployment with Python proxy). This affects
+            how the proxy serializes/deserializes requests.
+        route_patterns: List of all ASGI route patterns for this deployment
+            (e.g., ["/", "/users/{user_id}", "/items/{item_id}/details"]).
+            Used by proxies to match incoming requests to specific route patterns
+            for accurate metrics tagging. This avoids high cardinality by using
+            parameterized patterns instead of individual request paths.
+            Only populated for deployments with ASGI apps (FastAPI/Starlette).
+    """
+
     route: str
     app_is_cross_language: bool = False
+    route_patterns: Optional[List[str]] = None
 
 
 # Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts
@@ -546,7 +578,7 @@ class RunningReplicaInfo:
     node_id: Optional[str]
     node_ip: Optional[str]
     availability_zone: Optional[str]
-    actor_handle: ActorHandle
+    actor_name: str
     max_ongoing_requests: int
     is_cross_language: bool = False
     multiplexed_model_ids: List[str] = field(default_factory=list)
@@ -565,7 +597,7 @@ class RunningReplicaInfo:
                 [
                     self.replica_id.to_full_id_str(),
                     self.node_id if self.node_id else "",
-                    str(self.actor_handle._actor_id),
+                    self.actor_name,
                     str(self.max_ongoing_requests),
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
@@ -588,6 +620,10 @@ class RunningReplicaInfo:
                 self._hash == other._hash,
             ]
         )
+
+    def get_actor_handle(self) -> ActorHandle:
+        actor_handle = ray.get_actor(self.actor_name, namespace=SERVE_NAMESPACE)
+        return actor_handle
 
 
 @dataclass(frozen=True)
@@ -754,3 +790,94 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
     "Converting by-value DeploymentResponses to ObjectRefs is not supported. "
     "Use handle.options(_by_reference=True) to enable it."
 )
+
+RUNNING_REQUESTS_KEY = "running_requests"
+ONGOING_REQUESTS_KEY = "ongoing_requests"
+QUEUED_REQUESTS_KEY = "queued_requests"
+
+
+@dataclass(order=True)
+class TimeStampedValue:
+    timestamp: float
+    value: float = field(compare=False)
+
+
+# Type alias for time series data
+TimeSeries = List[TimeStampedValue]
+
+
+@dataclass
+class HandleMetricReport:
+    """Report from a deployment handle on queued and ongoing requests.
+
+    Args:
+        deployment_id: The deployment ID of the deployment handle.
+        handle_id: The handle ID of the deployment handle.
+        actor_id: If the deployment handle (from which this metric was
+            sent) lives on an actor, the ID of that actor.
+        handle_source: Describes what kind of entity holds this
+            deployment handle: a Serve proxy, a Serve replica, or
+            unknown.
+        aggregated_queued_requests: average number of queued requests at the
+            handle over the past look_back_period_s seconds.
+        queued_requests: list of values of queued requests at the
+            handle over the past look_back_period_s seconds. This is a list because
+            we take multiple measurements over time.
+        aggregated_metrics: A map of metric name to the aggregated value over the past
+            look_back_period_s seconds at the handle for each replica.
+        metrics: A map of metric name to the list of values running at that handle for each replica
+            over the past look_back_period_s seconds. This is a list because
+            we take multiple measurements over time.
+        timestamp: The time at which this report was created.
+    """
+
+    deployment_id: DeploymentID
+    handle_id: str
+    actor_id: str
+    handle_source: DeploymentHandleSource
+    aggregated_queued_requests: float
+    queued_requests: TimeSeries
+    aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
+    metrics: Dict[str, Dict[ReplicaID, TimeSeries]]
+    timestamp: float
+
+    @property
+    def total_requests(self) -> float:
+        """Total number of queued and running requests."""
+        return self.aggregated_queued_requests + sum(
+            self.aggregated_metrics.get(RUNNING_REQUESTS_KEY, {}).values()
+        )
+
+    @property
+    def is_serve_component_source(self) -> bool:
+        """Whether the handle source is a Serve actor.
+
+        More specifically, this returns whether a Serve actor tracked
+        by the controller holds the deployment handle that sent this
+        report. If the deployment handle lives on a driver, a Ray task,
+        or an actor that's not a Serve replica, then this returns False.
+        """
+        return self.handle_source in [
+            DeploymentHandleSource.PROXY,
+            DeploymentHandleSource.REPLICA,
+        ]
+
+
+@dataclass
+class ReplicaMetricReport:
+    """Report from a replica on ongoing requests.
+
+    Args:
+        replica_id: The replica ID of the replica.
+        aggregated_metrics: A map of metric name to the aggregated value over the past
+            look_back_period_s seconds at the replica.
+        metrics: A map of metric name to the list of values running at that replica
+            over the past look_back_period_s seconds. This is a list because
+            we take multiple measurements over time.
+        timestamp: The time at which this report was created.
+    """
+
+    replica_id: ReplicaID
+    aggregated_metrics: Dict[str, float]
+    metrics: Dict[str, TimeSeries]
+    timestamp: float

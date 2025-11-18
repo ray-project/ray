@@ -80,10 +80,10 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
   if (status.ok()) {
     auto actor_handle = std::make_unique<ActorHandle>(actor_table_data, task_spec);
     actor_id = actor_handle->GetActorID();
-    AddNewActorHandle(std::move(actor_handle),
-                      call_site,
-                      caller_address,
-                      /*owned*/ false);
+    EmplaceNewActorHandle(std::move(actor_handle),
+                          call_site,
+                          caller_address,
+                          /*owned*/ false);
   } else {
     // Use a NIL actor ID to signal that the actor wasn't found.
     RAY_LOG(DEBUG) << "Failed to look up actor with name: " << name;
@@ -119,16 +119,34 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
   return actor_handles_.find(actor_id) != actor_handles_.end();
 }
 
-bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                     const std::string &call_site,
-                                     const rpc::Address &caller_address,
-                                     bool owned) {
+std::shared_ptr<ActorHandle> ActorManager::GetActorHandleIfExists(
+    const ActorID &actor_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = actor_handles_.find(actor_id);
+  if (it != actor_handles_.end()) {
+    return it->second;
+  }
+  return nullptr;
+}
+
+bool ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                                         const std::string &call_site,
+                                         const rpc::Address &caller_address,
+                                         bool owned) {
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+
+  {
+    absl::MutexLock lock(&mutex_);
+    if (actor_handles_.contains(actor_id)) {
+      return false;
+    }
+  }
+
   // Detached actor doesn't need ref counting.
   if (owned) {
     reference_counter_.AddOwnedObject(actor_creation_return_id,
-                                      /*inner_ids=*/{},
+                                      /*contained_ids=*/{},
                                       caller_address,
                                       call_site,
                                       /*object_size*/ -1,
@@ -203,7 +221,7 @@ void ActorManager::WaitForActorRefDeleted(
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the gcs server can destroy the actor.
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-  if (!reference_counter_.SetObjectRefDeletedCallback(actor_creation_return_id,
+  if (!reference_counter_.AddObjectRefDeletedCallback(actor_creation_return_id,
                                                       callback)) {
     RAY_LOG(DEBUG).WithField(actor_id) << "ActorID reference already gone";
     callback(actor_creation_return_id);
@@ -298,7 +316,7 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
                 this,
                 std::placeholders::_1,
                 std::placeholders::_2);
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+  gcs_client_->Actors().AsyncSubscribe(
       actor_id,
       actor_notification_callback,
       [this, actor_id, cached_actor_name](Status status) {
@@ -313,7 +331,7 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
             cached_actor_name_to_ids_.emplace(cached_actor_name, actor_id);
           }
         }
-      }));
+      });
 }
 
 void ActorManager::MarkActorKilledOrOutOfScope(

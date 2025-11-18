@@ -1,15 +1,14 @@
 import logging
 import re
 import warnings
-import os
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-from typing import Dict, Any, List, Optional, Tuple, Union
-
+from ray._private.ray_constants import env_bool
 from ray._raylet import (
     Count as CythonCount,
-    Sum as CythonSum,
-    Histogram as CythonHistogram,
     Gauge as CythonGauge,
+    Histogram as CythonHistogram,
+    Sum as CythonSum,
 )  # noqa: E402
 
 # Sum is used for CythonCount because it allows incrementing by positive
@@ -73,6 +72,14 @@ class Metric:
         for key in self._tag_keys:
             if not isinstance(key, str):
                 raise TypeError(f"Tag keys must be str, got {type(key)}.")
+
+        if ":" in self._name:
+            warnings.warn(
+                f"Metric name {self._name} contains a : character, which is no longer allowed. "
+                f"Please migrate to the new metric name format. "
+                f"This will be an error in the future.",
+                FutureWarning,
+            )
 
     def set_default_tags(self, default_tags: Dict[str, str]):
         """Set default tags of metrics.
@@ -191,7 +198,14 @@ class Counter(Metric):
         if self._discard_metric:
             self._metric = None
         else:
-            if os.environ.get("RAY_enable_open_telemetry") == "1":
+            if env_bool("RAY_enable_open_telemetry", False):
+                """
+                For the previous opencensus implementation, we used Sum to support
+                exporting Counter as a gauge metric. We'll drop that feature in the
+                new opentelemetry implementation.
+                """
+                self._metric = CythonSum(self._name, self._description, self._tag_keys)
+            else:
                 """
                 For the new opentelemetry implementation, we'll correctly use Counter
                 rather than Sum.
@@ -199,13 +213,6 @@ class Counter(Metric):
                 self._metric = CythonCount(
                     self._name, self._description, self._tag_keys
                 )
-            else:
-                """
-                For the previous opencensus implementation, we used Sum to support
-                exporting Counter as a gauge metric. We'll drop that feature in the
-                new opentelemetry implementation.
-                """
-                self._metric = CythonSum(self._name, self._description, self._tag_keys)
 
     def __reduce__(self):
         deserializer = self.__class__

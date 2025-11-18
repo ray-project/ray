@@ -10,5 +10,7 @@ srcs:
   - python/requirements.txt
   - python/requirements_compiled.txt
   - python/requirements/test-requirements.txt
+build_args:
+  - RAYCI_DISABLE_JAVA
 tags:
   - cr.ray.io/rayproject/oss-ci-base_build

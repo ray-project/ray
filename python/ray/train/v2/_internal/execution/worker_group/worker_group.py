@@ -1,4 +1,5 @@
 import collections
+import copy
 import logging
 import os
 import traceback
@@ -11,13 +12,14 @@ from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.runtime_env import RuntimeEnv
+from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train.v2._internal.constants import (
-    DEFAULT_REPORT_BARRIER_TIMEOUT_S,
-    DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
+    COLLECTIVE_TIMEOUT_S_ENV_VAR,
+    COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+    DEFAULT_COLLECTIVE_TIMEOUT_S,
+    DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
     DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
     DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
-    REPORT_BARRIER_TIMEOUT_S_ENV_VAR,
-    REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
     WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
     get_env_vars_to_propagate,
@@ -99,7 +101,7 @@ class WorkerGroupContext:
     bundle_label_selector: Optional[Dict[str, str]] = None
 
 
-class WorkerGroup:
+class WorkerGroup(BaseWorkerGroup):
     _worker_cls = RayTrainWorker
 
     @classmethod
@@ -175,12 +177,12 @@ class WorkerGroup:
                 DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
             )
         )
-        self._report_barrier_timeout_s = env_float(
-            REPORT_BARRIER_TIMEOUT_S_ENV_VAR, DEFAULT_REPORT_BARRIER_TIMEOUT_S
+        self._collective_timeout_s = env_float(
+            COLLECTIVE_TIMEOUT_S_ENV_VAR, DEFAULT_COLLECTIVE_TIMEOUT_S
         )
-        self._report_barrier_warn_interval_s = env_float(
-            REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
-            DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
+        self._collective_warn_interval_s = env_float(
+            COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+            DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
         )
 
     ################################################################################
@@ -307,8 +309,8 @@ class WorkerGroup:
                     soft=False,
                 )
             ).remote(
-                timeout_s=self._report_barrier_timeout_s,
-                warn_interval_s=self._report_barrier_warn_interval_s,
+                timeout_s=self._collective_timeout_s,
+                warn_interval_s=self._collective_warn_interval_s,
             )
             worker_group_state_builder.with_sync_actor(sync_actor)
 
@@ -565,7 +567,7 @@ class WorkerGroup:
                 error = WorkerHealthCheckTimeoutError(error_msg)
 
             poll_task_to_result[hanging_poll] = WorkerStatus(
-                running=True, error=error, training_result=None
+                running=True, error=error, training_report=None
             )
 
         for done_poll in done_polls:
@@ -584,7 +586,7 @@ class WorkerGroup:
                 poll_result = WorkerStatus(
                     running=False,
                     error=WorkerHealthCheckFailedError(error_msg, failure=e),
-                    training_result=None,
+                    training_report=None,
                 )
 
             poll_task_to_result[done_poll] = poll_result
@@ -713,6 +715,10 @@ class WorkerGroup:
     def __len__(self) -> int:
         self._assert_active()
         return len(self.get_workers())
+
+    def get_resources_per_worker(self) -> dict:
+        """Get the resources allocated per worker."""
+        return copy.deepcopy(self._worker_group_context.resources_per_worker)
 
     #########################################################################################
     # Static Utility Methods

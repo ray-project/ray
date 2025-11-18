@@ -22,6 +22,8 @@ def get_deploy_args(
     deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     route_prefix: Optional[str] = None,
+    serialized_autoscaling_policy_def: Optional[bytes] = None,
+    serialized_request_router_cls: Optional[bytes] = None,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -44,6 +46,8 @@ def get_deploy_args(
         "route_prefix": route_prefix,
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
         "ingress": ingress,
+        "serialized_autoscaling_policy_def": serialized_autoscaling_policy_def,
+        "serialized_request_router_cls": serialized_request_router_cls,
     }
 
     return controller_deploy_args
@@ -98,11 +102,27 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
     Returns: a hash of the import path and (application level) runtime env representing
             the code version of the application.
     """
+    request_router_configs = [
+        deployment.request_router_config
+        for deployment in app_config.deployments
+        if isinstance(deployment.request_router_config, dict)
+    ]
+    deployment_autoscaling_policies = [
+        deployment_config.autoscaling_config.get("policy", None)
+        for deployment_config in app_config.deployments
+        if isinstance(deployment_config.autoscaling_config, dict)
+    ]
     encoded = json.dumps(
         {
             "import_path": app_config.import_path,
             "runtime_env": app_config.runtime_env,
             "args": app_config.args,
+            # NOTE: trigger a change in the code version when
+            # application level autoscaling policy is changed or
+            # any one of the deployment level autoscaling policy is changed
+            "autoscaling_policy": app_config.autoscaling_policy,
+            "deployment_autoscaling_policies": deployment_autoscaling_policies,
+            "request_router_configs": request_router_configs,
         },
         sort_keys=True,
     ).encode("utf-8")

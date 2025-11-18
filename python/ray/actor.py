@@ -302,13 +302,6 @@ class _RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, 
 
 @overload
 def method(
-    __method: Callable[[Any], _Ret],
-) -> _RemoteMethodNoArgs[_Ret]:
-    ...
-
-
-@overload
-def method(
     __method: Callable[[Any, _T0], _Ret],
 ) -> _RemoteMethod0[_Ret, _T0]:
     ...
@@ -379,6 +372,13 @@ def method(
 
 @overload
 def method(
+    __method: Callable[[Any], _Ret],
+) -> _RemoteMethodNoArgs[_Ret]:
+    ...
+
+
+@overload
+def method(
     *,
     num_returns: Optional[Union[int, Literal["streaming"]]] = None,
     concurrency_group: Optional[str] = None,
@@ -434,13 +434,18 @@ def method(*args, **kwargs):
             to use for the actor method. By default, the actor is
             single-threaded and runs all actor tasks on the same thread.
             See :ref:`Defining Concurrency Groups <defining-concurrency-groups>`.
-        tensor_transport: [Experimental] The tensor transport protocol to
+        tensor_transport: [Alpha] The tensor transport protocol to
             use for the actor method. The valid values are "OBJECT_STORE"
-            (default), "NCCL", or "GLOO" (case-insensitive). torch.Tensors
-            returned by this task will be sent to other tasks using the
-            specified transport. NCCL and GLOO transports require first creating
-            a collective with the involved actors using
-            `ray.experimental.collective.create_collective_group`.
+            (default), "NCCL", "GLOO", or "NIXL" (case-insensitive). If a
+            non-object store transport is specified, Ray will store a
+            *reference* instead of a copy of any torch.Tensors found inside
+            values returned by this task, and the tensors will be sent directly
+            to other tasks using the specified transport. NCCL and GLOO
+            transports require first creating a collective with the involved
+            actors using
+            :func:`ray.experimental.collective.create_collective_group`.
+            See :ref:`Ray Direct Transport (RDT) <direct-transport>` for more
+            details.
     """
     valid_kwargs = [
         "num_returns",
@@ -894,6 +899,7 @@ class ActorMethod:
             "is_generator": self._is_generator,
             "generator_backpressure_num_objects": self._generator_backpressure_num_objects,  # noqa
             "enable_task_events": self._enable_task_events,
+            "_tensor_transport": self._tensor_transport,
         }
 
     def __setstate__(self, state):
@@ -907,6 +913,7 @@ class ActorMethod:
             state["generator_backpressure_num_objects"],
             state["enable_task_events"],
             state["decorator"],
+            state["_tensor_transport"],
         )
 
 
@@ -1067,7 +1074,12 @@ class _ActorClassMetadata:
         resources: The default resources required by the actor creation task.
         label_selector: The labels required for the node on which this actor
             can be scheduled on. The label selector consist of key-value pairs, where the keys
-            are label names and the value are expressions consisting of an operator with label values or just a value to indicate equality.
+            are label names and the value are expressions consisting of an operator with label
+            values or just a value to indicate equality.
+        fallback_strategy: If specified, expresses soft constraints through a list of decorator
+            options to fall back on when scheduling on a node. Decorator options are evaluated
+            together during scheduling. The first satisfied dict of options is used. Currently
+            only `label_selector` is a supported option.
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
             See :ref:`accelerator types <accelerator_types>`.
@@ -1098,6 +1110,7 @@ class _ActorClassMetadata:
         object_store_memory,
         resources,
         label_selector,
+        fallback_strategy,
         accelerator_type,
         runtime_env,
         concurrency_groups,
@@ -1119,6 +1132,7 @@ class _ActorClassMetadata:
         self.object_store_memory = object_store_memory
         self.resources = resources
         self.label_selector = label_selector
+        self.fallback_strategy = fallback_strategy
         self.accelerator_type = accelerator_type
         self.runtime_env = runtime_env
         self.concurrency_groups = concurrency_groups
@@ -1166,6 +1180,7 @@ def _process_option_dict(actor_options, has_tensor_transport_methods):
         if _filled_options.get("concurrency_groups", None) is None:
             _filled_options["concurrency_groups"] = {}
         _filled_options["concurrency_groups"]["_ray_system"] = 1
+        _filled_options["concurrency_groups"]["_ray_system_error"] = 1
 
     return _filled_options
 
@@ -1356,6 +1371,8 @@ class ActorClass(Generic[T]):
                 This is a dictionary mapping strings (resource names) to floats.
             label_selector (Dict[str, str]): If specified, requires that the actor run
                 on a node which meets the specified label conditions (equals, in, not in, etc.).
+            fallback_strategy (List[Dict[str, Any]]): If specified, expresses soft constraints
+                through a list of decorator options to fall back on when scheduling on a node.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
                 See :ref:`accelerator types <accelerator_types>`.
@@ -1422,9 +1439,6 @@ class ActorClass(Generic[T]):
                 placement group based scheduling;
                 `NodeAffinitySchedulingStrategy`:
                 node id based affinity scheduling.
-            _metadata: Extended options for Ray libraries. For example,
-                _metadata={"workflows.io/options": <workflow options>} for
-                Ray workflows.
             enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported. Defaults to True.
 
@@ -1672,6 +1686,20 @@ class ActorClass(Generic[T]):
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args, kwargs)
 
+        use_placement_group = scheduling_strategy is not None and isinstance(
+            scheduling_strategy, PlacementGroupSchedulingStrategy
+        )
+        is_restartable = max_restarts > 0 or max_restarts == -1
+        if use_placement_group and detached and is_restartable:
+            # TODO(kevin85421): Checking `max_restarts > 0` is because Ray Serve currently schedules detached actors with
+            # placement groups. Adding the check avoids printing this warning for all Ray Serve applications. In the future,
+            # we should consider raising an error instead of a warning, but this is a breaking change.
+            logger.warning(
+                "Scheduling a restartable detached actor with a placement group is not recommended "
+                "because Ray will kill the actor when the placement group is removed and the actor will "
+                "not be able to be restarted."
+            )
+
         if scheduling_strategy is None or isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
         ):
@@ -1794,7 +1822,9 @@ class ActorClass(Generic[T]):
             enable_task_events=enable_task_events,
             labels=actor_options.get("_labels"),
             label_selector=actor_options.get("label_selector"),
+            fallback_strategy=actor_options.get("fallback_strategy"),
             allow_out_of_order_execution=allow_out_of_order_execution,
+            enable_tensor_transport=meta.enable_tensor_transport,
         )
 
         if _actor_launch_hook:
@@ -1892,6 +1922,7 @@ class ActorHandle(Generic[T]):
         _ray_actor_creation_function_descriptor: The function descriptor
             of the actor creation task.
         _ray_allow_out_of_order_execution: Whether the actor can execute tasks out of order.
+        _ray_enable_tensor_transport: Whether tensor transport is enabled for this actor.
     """
 
     def __init__(
