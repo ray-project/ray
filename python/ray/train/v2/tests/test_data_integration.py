@@ -336,6 +336,7 @@ def test_per_dataset_execution_options_dict(ray_start_4_cpus):
     train_ds = ray.data.range(NUM_ROWS)
     val_ds = ray.data.range(NUM_ROWS)
     test_ds = ray.data.range(NUM_ROWS)
+    test_ds_2 = ray.data.range(NUM_ROWS)
 
     # Create different execution options for different datasets
     train_options = ExecutionOptions()
@@ -359,9 +360,7 @@ def test_per_dataset_execution_options_dict(ray_start_4_cpus):
         train_shard = ray.train.get_dataset_shard("train")
         val_shard = ray.train.get_dataset_shard("val")
         test_shard = ray.train.get_dataset_shard("test")
-
-        # Compute default options in the worker context where DataContext is set
-        default_options = ray.train.DataConfig.default_ingest_options()
+        test_shard_2 = ray.train.get_dataset_shard("test_2")
 
         # Verify each dataset in the dict gets its specific options
         assert train_shard.get_context().execution_options.preserve_order is True
@@ -378,24 +377,29 @@ def test_per_dataset_execution_options_dict(ray_start_4_cpus):
         # Verify dataset not in the dict gets default options
         assert (
             test_shard.get_context().execution_options.preserve_order
-            == default_options.preserve_order
+            == test_shard_2.get_context().execution_options.preserve_order
         )
         assert (
             test_shard.get_context().execution_options.verbose_progress
-            == default_options.verbose_progress
+            == test_shard_2.get_context().execution_options.verbose_progress
         )
         assert (
             test_shard.get_context().execution_options.resource_limits.cpu
-            == default_options.resource_limits.cpu
+            == test_shard_2.get_context().execution_options.resource_limits.cpu
         )
         assert (
             test_shard.get_context().execution_options.resource_limits.gpu
-            == default_options.resource_limits.gpu
+            == test_shard_2.get_context().execution_options.resource_limits.gpu
         )
 
     trainer = DataParallelTrainer(
         train_fn,
-        datasets={"train": train_ds, "val": val_ds, "test": test_ds},
+        datasets={
+            "train": train_ds,
+            "val": val_ds,
+            "test": test_ds,
+            "test_2": test_ds_2,
+        },
         dataset_config=data_config,
         scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
     )
