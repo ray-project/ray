@@ -48,7 +48,7 @@ RayletClient::RayletClient(const rpc::Address &address,
           /*server_unavailable_timeout_callback=*/
           std::move(raylet_unavailable_timeout_callback),
           /*server_name=*/std::string("Raylet ") + address.ip_address())),
-          pins_in_flight_(std::make_shared<std::atomic<int64_t>>(0)) {}
+      pins_in_flight_(std::make_shared<std::atomic<int64_t>>(0)) {}
 
 void RayletClient::RequestWorkerLease(
     const rpc::LeaseSpec &lease_spec,

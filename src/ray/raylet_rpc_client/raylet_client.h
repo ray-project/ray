@@ -187,7 +187,8 @@ class RayletClient : public RayletClientInterface {
   ResourceMappingType resource_ids_;
 
   /// The number of object ID pin RPCs currently in flight.
-  /// NOTE: `shared_ptr` because it is captured in a callback that can outlive this instance.
+  /// NOTE: `shared_ptr` because it is captured in a callback that can outlive this
+  /// instance.
   std::shared_ptr<std::atomic<int64_t>> pins_in_flight_;
 };
 
