@@ -4,9 +4,9 @@ from enum import Enum
 from typing import Optional, Union
 
 import ray
+from ray._common.filters import CoreContextFilter
+from ray._common.formatters import JSONFormatter
 from ray._private.log import PlainRayHandler
-from ray._private.ray_logging.filters import CoreContextFilter
-from ray._private.ray_logging.formatters import JSONFormatter
 from ray.train.v2._internal.execution.context import TrainContext, TrainRunContext
 from ray.train.v2._internal.util import get_module_name
 

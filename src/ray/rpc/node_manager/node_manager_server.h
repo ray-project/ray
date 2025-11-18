@@ -19,12 +19,13 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/grpc_server.h"
-#include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace rpc {
+
+class ServerCallFactory;
 
 /// TODO(vitsai): Remove this when auth is implemented for node manager
 #define RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(METHOD) \
@@ -57,7 +58,8 @@ namespace rpc {
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetObjectsInfo)                 \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerFailureCause)          \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RegisterMutableObject)          \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PushMutableObject)
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PushMutableObject)              \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerPIDs)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -65,7 +67,7 @@ class NodeManagerServiceHandler {
   /// Handlers. For all of the following handlers, the implementations can
   /// handle the request asynchronously. When handling is done, the
   /// `send_reply_callback` should be called. See
-  /// src/ray/raylet_client/node_manager_client.h and
+  /// src/ray/rpc/raylet/raylet_client.cc and
   /// src/ray/protobuf/node_manager.proto for a description of the
   /// functionality of each handler.
   ///
@@ -181,6 +183,10 @@ class NodeManagerServiceHandler {
   virtual void HandlePushMutableObject(PushMutableObjectRequest request,
                                        PushMutableObjectReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetWorkerPIDs(GetWorkerPIDsRequest request,
+                                   GetWorkerPIDsReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

@@ -19,10 +19,11 @@
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/lease/lease.h"
 #include "ray/raylet/scheduling/internal.h"
 
 namespace ray {
+class RayLease;
+
 namespace raylet {
 
 // Forward declaration
@@ -51,6 +52,12 @@ class LocalLeaseManagerInterface {
       std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message) = 0;
+
+  /// Similar to `CancelLeases`. The only difference is that this method does not send
+  /// RequestWorkerLease replies for those cancelled leases.
+  /// \return A list of cancelled leases.
+  virtual std::vector<std::shared_ptr<internal::Work>> CancelLeasesWithoutReply(
+      std::function<bool(const std::shared_ptr<internal::Work> &)> predicate) = 0;
 
   virtual const absl::flat_hash_map<SchedulingClass,
                                     std::deque<std::shared_ptr<internal::Work>>>
@@ -111,6 +118,11 @@ class NoopLocalLeaseManager : public LocalLeaseManagerInterface {
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message) override {
     return false;
+  }
+
+  std::vector<std::shared_ptr<internal::Work>> CancelLeasesWithoutReply(
+      std::function<bool(const std::shared_ptr<internal::Work> &)> predicate) override {
+    return {};
   }
 
   const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>

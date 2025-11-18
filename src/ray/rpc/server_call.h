@@ -27,8 +27,9 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/rpc/metrics.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "ray/stats/metric.h"
-#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace rpc {
@@ -52,16 +53,6 @@ void DrainServerCallExecutor();
 /// you need to regenerate the executor
 /// because they are global.
 void ResetServerCallExecutor();
-
-/// Represents the callback function to be called when a `ServiceHandler` finishes
-/// handling a request.
-/// \param status The status would be returned to client.
-/// \param success Success callback which will be invoked when the reply is successfully
-/// sent to the client.
-/// \param failure Failure callback which will be invoked when the reply fails to be
-/// sent to the client.
-using SendReplyCallback = std::function<void(
-    Status status, std::function<void()> success, std::function<void()> failure)>;
 
 /// Represents state of a `ServerCall`.
 enum class ServerCallState {
@@ -194,7 +185,7 @@ class ServerCallImpl : public ServerCall {
     // TODO(Yi Cheng) call_name_ sometimes get corrunpted due to memory issues.
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     if (record_metrics_) {
-      ray::stats::STATS_grpc_server_req_new.Record(1.0, call_name_);
+      grpc_server_req_new_counter_.Record(1.0, {{"Method", call_name_}});
     }
   }
 
@@ -227,7 +218,7 @@ class ServerCallImpl : public ServerCall {
 
     start_time_ = absl::GetCurrentTimeNanos();
     if (record_metrics_) {
-      ray::stats::STATS_grpc_server_req_handling.Record(1.0, call_name_);
+      grpc_server_req_handling_counter_.Record(1.0, {{"Method", call_name_}});
     }
     if (!io_service_.stopped()) {
       io_service_.post([this, auth_success] { HandleRequestImpl(auth_success); },
@@ -288,8 +279,8 @@ class ServerCallImpl : public ServerCall {
 
   void OnReplySent() override {
     if (record_metrics_) {
-      ray::stats::STATS_grpc_server_req_finished.Record(1.0, call_name_);
-      ray::stats::STATS_grpc_server_req_succeeded.Record(1.0, call_name_);
+      grpc_server_req_finished_counter_.Record(1.0, {{"Method", call_name_}});
+      grpc_server_req_succeeded_counter_.Record(1.0, {{"Method", call_name_}});
     }
     if (send_reply_success_callback_ && !io_service_.stopped()) {
       io_service_.post(
@@ -301,8 +292,8 @@ class ServerCallImpl : public ServerCall {
 
   void OnReplyFailed() override {
     if (record_metrics_) {
-      ray::stats::STATS_grpc_server_req_finished.Record(1.0, call_name_);
-      ray::stats::STATS_grpc_server_req_failed.Record(1.0, call_name_);
+      grpc_server_req_finished_counter_.Record(1.0, {{"Method", call_name_}});
+      grpc_server_req_failed_counter_.Record(1.0, {{"Method", call_name_}});
     }
     if (send_reply_failure_callback_ && !io_service_.stopped()) {
       io_service_.post(
@@ -320,8 +311,8 @@ class ServerCallImpl : public ServerCall {
     EventTracker::RecordEnd(std::move(stats_handle_));
     auto end_time = absl::GetCurrentTimeNanos();
     if (record_metrics_) {
-      ray::stats::STATS_grpc_server_req_process_time_ms.Record(
-          (end_time - start_time_) / 1000000.0, call_name_);
+      grpc_server_req_process_time_ms_histogram_.Record(
+          (end_time - start_time_) / 1000000.0, {{"Method", call_name_}});
     }
   }
 
@@ -393,6 +384,18 @@ class ServerCallImpl : public ServerCall {
 
   /// If true, the server call will generate gRPC server metrics.
   bool record_metrics_;
+
+  ray::stats::Histogram grpc_server_req_process_time_ms_histogram_{
+      GetGrpcServerReqProcessTimeMsHistogramMetric()};
+  ray::stats::Count grpc_server_req_new_counter_{GetGrpcServerReqNewCounterMetric()};
+  ray::stats::Count grpc_server_req_handling_counter_{
+      GetGrpcServerReqHandlingCounterMetric()};
+  ray::stats::Count grpc_server_req_finished_counter_{
+      GetGrpcServerReqFinishedCounterMetric()};
+  ray::stats::Count grpc_server_req_succeeded_counter_{
+      GetGrpcServerReqSucceededCounterMetric()};
+  ray::stats::Count grpc_server_req_failed_counter_{
+      GetGrpcServerReqFailedCounterMetric()};
 
   template <class T1, class T2, class T3, class T4, AuthType T5>
   friend class ServerCallFactoryImpl;

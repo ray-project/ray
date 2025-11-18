@@ -12,4 +12,4 @@ transformers==4.36.2
 accelerate==0.28.0
 
 # Cloud storage tools
-s3fs==2023.5.0
+s3fs==2023.12.1

@@ -14,7 +14,6 @@
 
 #include "ray/raylet/lease_dependency_manager.h"
 
-#include <list>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -24,14 +23,11 @@
 #include "gtest/gtest.h"
 #include "mock/ray/object_manager/object_manager.h"
 #include "ray/common/test_utils.h"
+#include "ray/observability/fake_metric.h"
 
 namespace ray {
 
 namespace raylet {
-
-using ::testing::_;
-using ::testing::InSequence;
-using ::testing::Return;
 
 class CustomMockObjectManager : public MockObjectManager {
  public:
@@ -69,7 +65,9 @@ class CustomMockObjectManager : public MockObjectManager {
 class LeaseDependencyManagerTest : public ::testing::Test {
  public:
   LeaseDependencyManagerTest()
-      : object_manager_mock_(), lease_dependency_manager_(object_manager_mock_) {}
+      : object_manager_mock_(),
+        fake_task_by_state_counter_(),
+        lease_dependency_manager_(object_manager_mock_, fake_task_by_state_counter_) {}
 
   int64_t NumWaiting(const std::string &lease_name) {
     return lease_dependency_manager_.waiting_leases_counter_.Get({lease_name, false});
@@ -92,8 +90,21 @@ class LeaseDependencyManagerTest : public ::testing::Test {
   }
 
   CustomMockObjectManager object_manager_mock_;
+  ray::observability::FakeGauge fake_task_by_state_counter_;
   LeaseDependencyManager lease_dependency_manager_;
 };
+
+TEST_F(LeaseDependencyManagerTest, TestRecordMetrics) {
+  auto obj_id = ObjectID::FromRandom();
+  lease_dependency_manager_.RequestLeaseDependencies(
+      LeaseID::FromRandom(), ObjectIdsToRefs({obj_id}), {"foo", false});
+  lease_dependency_manager_.HandleObjectLocal(obj_id);
+  lease_dependency_manager_.RecordMetrics();
+  auto tag_to_value = fake_task_by_state_counter_.GetTagToValue();
+  // 3 states: PENDING_NODE_ASSIGNMENT, PENDING_ARGS_FETCH, PENDING_OBJ_STORE_MEM_AVAIL
+  ASSERT_EQ(tag_to_value.size(), 3);
+  ASSERT_EQ(tag_to_value.begin()->first.at("Name"), "foo");
+}
 
 /// Test requesting the dependencies for a lease. The dependency manager should
 /// return the lease ID as ready once all of its arguments are local.
@@ -229,36 +240,35 @@ TEST_F(LeaseDependencyManagerTest, TestLeaseArgEviction) {
   AssertNoLeaks();
 }
 
-/// Test `ray.get`. Worker calls ray.get on {oid1}, then {oid1, oid2}, then
-/// {oid1, oid2, oid3}.
-TEST_F(LeaseDependencyManagerTest, TestGet) {
+TEST_F(LeaseDependencyManagerTest, TestCancelingSingleGetRequestForWorker) {
   WorkerID worker_id = WorkerID::FromRandom();
-  int num_arguments = 3;
-  std::vector<ObjectID> arguments;
-  for (int i = 0; i < num_arguments; i++) {
-    // Add the new argument to the list of dependencies to subscribe to.
+  int num_requests = 5;
+  std::vector<GetRequestId> requests;
+  for (int i = 0; i < num_requests; i++) {
     ObjectID argument_id = ObjectID::FromRandom();
-    arguments.push_back(argument_id);
-    // Subscribe to the lease's dependencies. All arguments except the last are
-    // duplicates of previous subscription calls. Each argument should only be
-    // requested from the node manager once.
-    auto prev_pull_reqs = object_manager_mock_.active_get_requests;
-    lease_dependency_manager_.StartOrUpdateGetRequest(worker_id,
-                                                      ObjectIdsToRefs(arguments));
-    // Previous pull request for this get should be canceled upon each new
-    // bundle.
-    ASSERT_EQ(object_manager_mock_.active_get_requests.size(), 1);
-    ASSERT_NE(object_manager_mock_.active_get_requests, prev_pull_reqs);
+    requests.emplace_back(lease_dependency_manager_.StartGetRequest(
+        worker_id, ObjectIdsToRefs({argument_id})));
   }
+  ASSERT_EQ(object_manager_mock_.active_get_requests.size(), num_requests);
+  for (int i = 0; i < num_requests; i++) {
+    lease_dependency_manager_.CancelGetRequest(worker_id, requests[i]);
+    ASSERT_EQ(object_manager_mock_.active_get_requests.size(), num_requests - (i + 1));
+  }
+  AssertNoLeaks();
+}
 
-  // Nothing happens if the same bundle is requested.
-  auto prev_pull_reqs = object_manager_mock_.active_get_requests;
-  lease_dependency_manager_.StartOrUpdateGetRequest(worker_id,
-                                                    ObjectIdsToRefs(arguments));
-  ASSERT_EQ(object_manager_mock_.active_get_requests, prev_pull_reqs);
-
-  // Cancel the pull request once the worker cancels the `ray.get`.
+TEST_F(LeaseDependencyManagerTest, TestCancelingAllGetRequestsForWorker) {
+  WorkerID worker_id = WorkerID::FromRandom();
+  int num_requests = 5;
+  std::vector<GetRequestId> requests;
+  for (int i = 0; i < num_requests; i++) {
+    ObjectID argument_id = ObjectID::FromRandom();
+    requests.emplace_back(lease_dependency_manager_.StartGetRequest(
+        worker_id, ObjectIdsToRefs({argument_id})));
+  }
+  ASSERT_EQ(object_manager_mock_.active_get_requests.size(), num_requests);
   lease_dependency_manager_.CancelGetRequest(worker_id);
+  ASSERT_EQ(object_manager_mock_.active_get_requests.size(), 0);
   AssertNoLeaks();
 }
 

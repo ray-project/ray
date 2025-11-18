@@ -76,7 +76,7 @@ def train_func(use_ray: bool, config: dict):
                 super()._handle(logs, when)
 
         # NOTE: We shouldn't checkpoint to be identical to the vanilla TF run.
-        callbacks = [CustomReportCallback(checkpoint_on=[])]
+        callbacks = [CustomReportCallback()]
     else:
         callbacks = []
 
@@ -107,8 +107,6 @@ def train_tf_ray_air(
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
 ) -> Tuple[float, float, float]:
-    # This function is kicked off by the main() function and runs a full training
-    # run using Ray AIR.
     from ray.train.tensorflow import TensorflowTrainer
     from ray.train import ScalingConfig
 
@@ -120,7 +118,6 @@ def train_tf_ray_air(
         train_loop_per_worker=train_loop,
         train_loop_config=config,
         scaling_config=ScalingConfig(
-            trainer_resources={"CPU": 0},
             num_workers=num_workers,
             resources_per_worker={"CPU": cpus_per_worker},
             use_gpu=use_gpu,

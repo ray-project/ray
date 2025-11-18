@@ -6,6 +6,7 @@ import functools
 import logging
 import threading
 from typing import Callable, Any, Union
+from _collections_abc import GenericAlias
 
 import ray
 import cython
@@ -34,6 +35,7 @@ def _set_future_helper(
 
 
 cdef class ObjectRef(BaseID):
+    __class_getitem__ = classmethod(GenericAlias) # should match how typing.Generic works
 
     def __cinit__(self):
         self.in_core_worker = False
@@ -97,7 +99,8 @@ cdef class ObjectRef(BaseID):
     def call_site(self):
         return decode(self.call_site_data)
 
-    def size(self):
+    @classmethod
+    def size(cls):
         return CObjectID.Size()
 
     def _set_id(self, id):

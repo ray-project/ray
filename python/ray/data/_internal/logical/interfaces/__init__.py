@@ -1,4 +1,4 @@
-from .logical_operator import LogicalOperator
+from .logical_operator import LogicalOperator, LogicalOperatorSupportsProjectionPushdown
 from .logical_plan import LogicalPlan
 from .operator import Operator
 from .optimizer import Optimizer, Rule
@@ -15,4 +15,5 @@ __all__ = [
     "Plan",
     "Rule",
     "SourceOperator",
+    "LogicalOperatorSupportsProjectionPushdown",
 ]

@@ -1,15 +1,24 @@
 import abc
 import math
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import numpy as np
+import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
-from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
+from ray.data.block import (
+    AggType,
+    Block,
+    BlockAccessor,
+    BlockColumnAccessor,
+    KeyType,
+    T,
+    U,
+)
 from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
-    from ray.data import Schema
+    from ray.data.dataset import Schema
 
 
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
@@ -880,6 +889,88 @@ class Unique(AggregateFnV2):
             return {x}
 
 
+@PublicAPI
+class ValueCounter(AggregateFnV2):
+    """Counts the number of times each value appears in a column.
+
+    This aggregation computes value counts for a specified column, similar to pandas'
+    `value_counts()` method. It returns a dictionary with two lists: "values" containing
+    the unique values found in the column, and "counts" containing the corresponding
+    count for each value.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import ValueCounter
+
+            # Create a dataset with repeated values
+            ds = ray.data.from_items([
+                {"category": "A"}, {"category": "B"}, {"category": "A"},
+                {"category": "C"}, {"category": "A"}, {"category": "B"}
+            ])
+
+            # Count occurrences of each category
+            result = ds.aggregate(ValueCounter(on="category"))
+            # result: {'value_counter(category)': {'values': ['A', 'B', 'C'], 'counts': [3, 2, 1]}}
+
+            # Using with groupby
+            ds = ray.data.from_items([
+                {"group": "X", "category": "A"}, {"group": "X", "category": "B"},
+                {"group": "Y", "category": "A"}, {"group": "Y", "category": "A"}
+            ])
+            result = ds.groupby("group").aggregate(ValueCounter(on="category")).take_all()
+            # result: [{'group': 'X', 'value_counter(category)': {'values': ['A', 'B'], 'counts': [1, 1]}},
+            #          {'group': 'Y', 'value_counter(category)': {'values': ['A'], 'counts': [2]}}]
+
+    Args:
+        on: The name of the column to count values in. Must be provided.
+        alias_name: Optional name for the resulting column. If not provided,
+            defaults to "value_counter({column_name})".
+    """
+
+    def __init__(
+        self,
+        on: str,
+        alias_name: Optional[str] = None,
+    ):
+        super().__init__(
+            alias_name if alias_name else f"value_counter({str(on)})",
+            on=on,
+            ignore_nulls=True,
+            zero_factory=lambda: {"values": [], "counts": []},
+        )
+
+    def aggregate_block(self, block: Block) -> Dict[str, List]:
+
+        col_accessor = BlockColumnAccessor.for_column(block[self._target_col_name])
+        return col_accessor.value_counts()
+
+    def combine(
+        self,
+        current_accumulator: Dict[str, List],
+        new_accumulator: Dict[str, List],
+    ) -> Dict[str, List]:
+
+        values = current_accumulator["values"]
+        counts = current_accumulator["counts"]
+
+        # Build a value → index map once (avoid repeated lookups)
+        value_to_index = {v: i for i, v in enumerate(values)}
+
+        for v_new, c_new in zip(new_accumulator["values"], new_accumulator["counts"]):
+            if v_new in value_to_index:
+                idx = value_to_index[v_new]
+                counts[idx] += c_new
+            else:
+                value_to_index[v_new] = len(values)
+                values.append(v_new)
+                counts.append(c_new)
+
+        return current_accumulator
+
+
 def _null_safe_zero_factory(zero_factory, ignore_nulls: bool):
     """NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
 
@@ -1001,3 +1092,280 @@ def _null_safe_combine(
                 return combine(cur, new)
 
     return _safe_combine
+
+
+@PublicAPI(stability="alpha")
+class MissingValuePercentage(AggregateFnV2):
+    """Calculates the percentage of null values in a column.
+
+    This aggregation computes the percentage of null (missing) values in a dataset column.
+    It treats both None values and NaN values as null. The result is a percentage value
+    between 0.0 and 100.0, where 0.0 means no missing values and 100.0 means all values
+    are missing.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import MissingValuePercentage
+
+            # Create a dataset with some missing values
+            ds = ray.data.from_items([
+                {"value": 1}, {"value": None}, {"value": 3},
+                {"value": None}, {"value": 5}
+            ])
+
+            # Calculate missing value percentage
+            result = ds.aggregate(MissingValuePercentage(on="value"))
+            # result: 40.0 (2 out of 5 values are missing)
+
+            # Using with groupby
+            ds = ray.data.from_items([
+                {"group": "A", "value": 1}, {"group": "A", "value": None},
+                {"group": "B", "value": 3}, {"group": "B", "value": None}
+            ])
+            result = ds.groupby("group").aggregate(MissingValuePercentage(on="value")).take_all()
+            # result: [{'group': 'A', 'missing_pct(value)': 50.0},
+            #          {'group': 'B', 'missing_pct(value)': 50.0}]
+
+    Args:
+        on: The name of the column to calculate missing value percentage on.
+        alias_name: Optional name for the resulting column. If not provided,
+            defaults to "missing_pct({column_name})".
+    """
+
+    def __init__(
+        self,
+        on: str,
+        alias_name: Optional[str] = None,
+    ):
+        # Initialize with a list accumulator [null_count, total_count]
+        super().__init__(
+            alias_name if alias_name else f"missing_pct({str(on)})",
+            on=on,
+            ignore_nulls=False,  # Include nulls for this calculation
+            zero_factory=lambda: [0, 0],  # Our AggType is a simple list
+        )
+
+    def aggregate_block(self, block: Block) -> List[int]:
+        column_accessor = BlockColumnAccessor.for_column(block[self._target_col_name])
+
+        total_count = column_accessor.count(ignore_nulls=False)
+
+        null_count = pc.sum(
+            pc.is_null(column_accessor._as_arrow_compatible(), nan_is_null=True)
+        ).as_py()
+
+        # Return our accumulator
+        return [null_count, total_count]
+
+    def combine(self, current_accumulator: List[int], new: List[int]) -> List[int]:
+        # Merge two accumulators by summing their components
+        assert len(current_accumulator) == len(new) == 2
+        return [
+            current_accumulator[0] + new[0],  # Sum null counts
+            current_accumulator[1] + new[1],  # Sum total counts
+        ]
+
+    def finalize(self, accumulator: List[int]) -> Optional[float]:
+        # Calculate the final percentage
+        if accumulator[1] == 0:
+            return None
+        return (accumulator[0] / accumulator[1]) * 100.0
+
+
+@PublicAPI(stability="alpha")
+class ZeroPercentage(AggregateFnV2):
+    """Calculates the percentage of zero values in a numeric column.
+
+    This aggregation computes the percentage of zero values in a numeric dataset column.
+    It can optionally ignore null values when calculating the percentage. The result is
+    a percentage value between 0.0 and 100.0, where 0.0 means no zero values and 100.0
+    means all non-null values are zero.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import ZeroPercentage
+
+            # Create a dataset with some zero values
+            ds = ray.data.from_items([
+                {"value": 0}, {"value": 1}, {"value": 0},
+                {"value": 3}, {"value": 0}
+            ])
+
+            # Calculate zero value percentage
+            result = ds.aggregate(ZeroPercentage(on="value"))
+            # result: 60.0 (3 out of 5 values are zero)
+
+            # With null values and ignore_nulls=True (default)
+            ds = ray.data.from_items([
+                {"value": 0}, {"value": None}, {"value": 0},
+                {"value": 3}, {"value": 0}
+            ])
+            result = ds.aggregate(ZeroPercentage(on="value", ignore_nulls=True))
+            # result: 75.0 (3 out of 4 non-null values are zero)
+
+            # Using with groupby
+            ds = ray.data.from_items([
+                {"group": "A", "value": 0}, {"group": "A", "value": 1},
+                {"group": "B", "value": 0}, {"group": "B", "value": 0}
+            ])
+            result = ds.groupby("group").aggregate(ZeroPercentage(on="value")).take_all()
+            # result: [{'group': 'A', 'zero_pct(value)': 50.0},
+            #          {'group': 'B', 'zero_pct(value)': 100.0}]
+
+    Args:
+        on: The name of the column to calculate zero value percentage on.
+            Must be a numeric column.
+        ignore_nulls: Whether to ignore null values when calculating the percentage.
+            If True (default), null values are excluded from both numerator and denominator.
+            If False, null values are included in the denominator but not the numerator.
+        alias_name: Optional name for the resulting column. If not provided,
+            defaults to "zero_pct({column_name})".
+
+    """
+
+    def __init__(
+        self,
+        on: str,
+        ignore_nulls: bool = True,
+        alias_name: Optional[str] = None,
+    ):
+        # Initialize with a list accumulator [zero_count, non_null_count]
+        super().__init__(
+            alias_name if alias_name else f"zero_pct({str(on)})",
+            on=on,
+            ignore_nulls=ignore_nulls,
+            zero_factory=lambda: [0, 0],
+        )
+
+    def aggregate_block(self, block: Block) -> List[int]:
+        column_accessor = BlockColumnAccessor.for_column(block[self._target_col_name])
+
+        count = column_accessor.count(ignore_nulls=self._ignore_nulls)
+
+        if count == 0:
+            return [0, 0]
+
+        arrow_compatible = column_accessor._as_arrow_compatible()
+        # Use PyArrow compute to count zeros
+        # First create a boolean mask for zero values
+        zero_mask = pc.equal(arrow_compatible, 0)
+
+        # Sum the boolean mask to get count of True values (zeros)
+        zero_count = pc.sum(zero_mask).as_py() or 0
+
+        return [zero_count, count]
+
+    def combine(self, current_accumulator: List[int], new: List[int]) -> List[int]:
+        return [
+            current_accumulator[0] + new[0],  # Sum zero counts
+            current_accumulator[1] + new[1],  # Sum non-null counts
+        ]
+
+    def finalize(self, accumulator: List[int]) -> Optional[float]:
+        if accumulator[1] == 0:
+            return None
+        return (accumulator[0] / accumulator[1]) * 100.0
+
+
+@PublicAPI(stability="alpha")
+class ApproximateQuantile(AggregateFnV2):
+    def _require_datasketches(self):
+        try:
+            from datasketches import kll_floats_sketch  # type: ignore[import]
+        except ImportError as exc:
+            raise ImportError(
+                "ApproximateQuantile requires the `datasketches` package. "
+                "Install it with `pip install datasketches`."
+            ) from exc
+        return kll_floats_sketch
+
+    def __init__(
+        self,
+        on: str,
+        quantiles: List[float],
+        quantile_precision: int = 800,
+        alias_name: Optional[str] = None,
+    ):
+        """
+        Computes the approximate quantiles of a column by using a datasketches kll_floats_sketch.
+        https://datasketches.apache.org/docs/KLL/KLLSketch.html
+
+        The accuracy of the KLL quantile sketch is a function of the configured quantile precision, which also affects
+        the overall size of the sketch.
+        The KLL Sketch has absolute error. For example, a specified rank accuracy of 1% at the
+        median (rank = 0.50) means that the true quantile (if you could extract it from the set)
+        should be between getQuantile(0.49) and getQuantile(0.51). This same 1% error applied at a
+        rank of 0.95 means that the true quantile should be between getQuantile(0.94) and getQuantile(0.96).
+        In other words, the error is a fixed +/- epsilon for the entire range of ranks.
+
+        Typical single-sided rank error by quantile_precision (use for getQuantile/getRank):
+            - quantile_precision=100 → ~2.61%
+            - quantile_precision=200 → ~1.33%
+            - quantile_precision=400 → ~0.68%
+            - quantile_precision=800 → ~0.35%
+
+        See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
+
+        Null values in the target column are ignored when constructing the sketch.
+
+        Example:
+
+            .. testcode::
+
+                import ray
+                from ray.data.aggregate import ApproximateQuantile
+
+                # Create a dataset with some values
+                ds = ray.data.from_items(
+                    [{"value": 20.0}, {"value": 40.0}, {"value": 60.0},
+                    {"value": 80.0}, {"value": 100.0}]
+                )
+
+                result = ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.1, 0.5, 0.9]))
+                # Result: {'approx_quantile(value)': [20.0, 60.0, 100.0]}
+
+
+        Args:
+            on: The name of the column to calculate the quantile on. Must be a numeric column.
+            quantiles: The list of quantiles to compute. Must be between 0 and 1 inclusive. For example, quantiles=[0.5] computes the median. Null entries in the source column are skipped.
+            quantile_precision: Controls the accuracy and memory footprint of the sketch (K in KLL); higher values yield lower error but use more memory. Defaults to 800. See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
+            alias_name: Optional name for the resulting column. If not provided, defaults to "approx_quantile({column_name})".
+        """
+        self._sketch_cls = self._require_datasketches()
+        self._quantiles = quantiles
+        self._quantile_precision = quantile_precision
+        super().__init__(
+            alias_name if alias_name else f"approx_quantile({str(on)})",
+            on=on,
+            ignore_nulls=True,
+            zero_factory=lambda: self.zero(quantile_precision).serialize(),
+        )
+
+    def zero(self, quantile_precision: int):
+        return self._sketch_cls(k=quantile_precision)
+
+    def aggregate_block(self, block: Block) -> bytes:
+        block_acc = BlockAccessor.for_block(block)
+        table = block_acc.to_arrow()
+        column = table.column(self.get_target_column())
+        sketch = self.zero(self._quantile_precision)
+        for value in column:
+            # we ignore nulls here
+            if value.as_py() is not None:
+                sketch.update(float(value.as_py()))
+        return sketch.serialize()
+
+    def combine(self, current_accumulator: bytes, new: bytes) -> bytes:
+        combined = self.zero(self._quantile_precision)
+        combined.merge(self._sketch_cls.deserialize(current_accumulator))
+        combined.merge(self._sketch_cls.deserialize(new))
+        return combined.serialize()
+
+    def finalize(self, accumulator: bytes) -> List[float]:
+        return self._sketch_cls.deserialize(accumulator).get_quantiles(self._quantiles)

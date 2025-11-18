@@ -9,9 +9,13 @@ from enum import Enum, unique
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray.dashboard.utils as dashboard_utils
-from ray._private.ray_constants import env_integer
-from ray.core.generated.common_pb2 import TaskStatus, TaskType
-from ray.core.generated.gcs_pb2 import TaskEvents
+
+# TODO(aguo): Instead of a version check, modify the below models
+# to use pydantic BaseModel instead of dataclass.
+# In pydantic 2, dataclass no longer needs the `init=True` kwarg to
+# generate an __init__ method. Additionally, it will raise an error if
+# it detects `init=True` to be set.
+from ray._common.pydantic_compat import IS_PYDANTIC_2
 from ray._private.custom_types import (
     TypeActorStatus,
     TypeNodeStatus,
@@ -22,15 +26,11 @@ from ray._private.custom_types import (
     TypeWorkerExitType,
     TypeWorkerType,
 )
-from ray.util.state.exception import RayStateApiException
+from ray._private.ray_constants import env_integer
+from ray.core.generated.common_pb2 import TaskStatus, TaskType
+from ray.core.generated.gcs_pb2 import TaskEvents
 from ray.dashboard.modules.job.pydantic_models import JobDetails
-
-# TODO(aguo): Instead of a version check, modify the below models
-# to use pydantic BaseModel instead of dataclass.
-# In pydantic 2, dataclass no longer needs the `init=True` kwarg to
-# generate an __init__ method. Additionally, it will raise an error if
-# it detects `init=True` to be set.
-from ray._common.pydantic_compat import IS_PYDANTIC_2
+from ray.util.state.exception import RayStateApiException
 
 try:
     from pydantic.dataclasses import dataclass

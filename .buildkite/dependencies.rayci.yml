@@ -19,10 +19,23 @@ steps:
     job_env: oss-ci-base_test-py3.11
     depends_on: oss-ci-base_test-multipy
 
-  - label: ":tapioca: build: raydepsets: compile LLM dependencies"
-    key: raydepsets_compile_llm_dependencies
+  - label: ":tapioca: build: raydepsets: compile all dependencies"
+    key: raydepsets_compile_all_dependencies
     tags: always
     instance_type: small
-    command: ./ci/test_compile_llm_requirements.sh
-    job_env: oss-ci-base_test-py3.11
-    depends_on: oss-ci-base_test-multipy
+    commands:
+      # TODO: add raydepsets build all command
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayllm.depsets.yaml --check
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayimg.depsets.yaml --check
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/release_multimodal_inference_benchmarks_tests.depsets.yaml --check
+    job_env: manylinux
+    depends_on: manylinux
+
+  - label: ":tapioca: build: raydepsets: compile doc dependencies"
+    key: raydepsets_compile_doc_dependencies
+    tags: always
+    instance_type: medium
+    commands:
+      - bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/docs.depsets.yaml --check
+    job_env: manylinux
+    depends_on: manylinux

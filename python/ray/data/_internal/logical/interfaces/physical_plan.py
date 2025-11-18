@@ -4,8 +4,8 @@ from .logical_operator import LogicalOperator
 from .plan import Plan
 
 if TYPE_CHECKING:
-    from ray.data import DataContext
     from ray.data._internal.execution.interfaces import PhysicalOperator
+    from ray.data.context import DataContext
 
 
 class PhysicalPlan(Plan):

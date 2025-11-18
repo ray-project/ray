@@ -1,0 +1,6 @@
+daft==0.6.2
+numpy==1.26.4
+accelerate==1.10.1
+transformers==4.56.2
+torchaudio==2.7.0
+soundfile==0.13.1

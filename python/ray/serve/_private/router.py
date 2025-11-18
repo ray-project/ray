@@ -25,9 +25,11 @@ import ray
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
 from ray.serve._private.common import (
+    RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
     DeploymentID,
     DeploymentTargetInfo,
+    HandleMetricReport,
     ReplicaID,
     RequestMetadata,
     RunningReplicaInfo,
@@ -35,7 +37,6 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
@@ -46,6 +47,7 @@ from ray.serve._private.metrics_utils import (
     QUEUED_REQUESTS_KEY,
     InMemoryMetricsStore,
     MetricsPusher,
+    TimeStampedValue,
 )
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import PendingRequest, RequestRouter
@@ -260,29 +262,22 @@ class RouterMetricsManager:
             if self.should_send_scaled_to_zero_optimized_push(curr_num_replicas):
                 self.push_autoscaling_metrics_to_controller()
 
-            if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-                # Record number of queued + ongoing requests at regular
-                # intervals into the in-memory metrics store
-                self.metrics_pusher.register_or_update_task(
-                    self.RECORD_METRICS_TASK_NAME,
-                    self._add_autoscaling_metrics_point,
-                    min(
-                        RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-                        autoscaling_config.metrics_interval_s,
-                    ),
-                )
-                # Push metrics to the controller periodically.
-                self.metrics_pusher.register_or_update_task(
-                    self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
-                    self.push_autoscaling_metrics_to_controller,
+            # Record number of queued + ongoing requests at regular
+            # intervals into the in-memory metrics store
+            self.metrics_pusher.register_or_update_task(
+                self.RECORD_METRICS_TASK_NAME,
+                self._add_autoscaling_metrics_point,
+                min(
+                    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
                     autoscaling_config.metrics_interval_s,
-                )
-            else:
-                self.metrics_pusher.register_or_update_task(
-                    self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
-                    self.push_autoscaling_metrics_to_controller,
-                    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
-                )
+                ),
+            )
+            # Push metrics to the controller periodically.
+            self.metrics_pusher.register_or_update_task(
+                self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
+                self.push_autoscaling_metrics_to_controller,
+                autoscaling_config.metrics_interval_s,
+            )
 
         else:
             if self.metrics_pusher:
@@ -360,20 +355,40 @@ class RouterMetricsManager:
 
         These metrics are used by the controller for autoscaling.
         """
-
-        self._controller_handle.record_handle_metrics.remote(
-            send_timestamp=time.time(),
-            deployment_id=self._deployment_id,
-            handle_id=self._handle_id,
-            actor_id=self._self_actor_id,
-            handle_source=self._handle_source,
-            **self._get_aggregated_requests(),
+        self._controller_handle.record_autoscaling_metrics_from_handle.remote(
+            self._get_metrics_report()
         )
 
     def _add_autoscaling_metrics_point(self):
         """Adds metrics point for queued and running requests at replicas.
 
         Also prunes keys in the in memory metrics store with outdated datapoints.
+
+        ┌─────────────────────────────────────────────────────────────────┐
+        │  Handle-based metrics collection                                │
+        ├─────────────────────────────────────────────────────────────────┤
+        │                                                                 │
+        │  Client                Handle              Replicas             │
+        │  ┌──────┐            ┌────────┐          ┌─────────┐           │
+        │  │  App │───────────>│ Handle │─────────>│ Replica │           │
+        │  │      │  Requests  │        │ Forwards │    1    │           │
+        │  └──────┘            │ Tracks │          └─────────┘           │
+        │                      │ Queued │                                │
+        │                      │   +    │          ┌─────────┐           │
+        │                      │Running │─────────>│ Replica │           │
+        │                      │Requests│ Forwards │    2    │           │
+        │                      └────────┘          └─────────┘           │
+        │                          │                                      │
+        │                          │ Push metrics                         │
+        │                          └─────────────────> Controller         │
+        │                                                                 │
+        └─────────────────────────────────────────────────────────────────┘
+
+        :::{note}
+        The long-term plan is to deprecate handle-based metrics collection in favor of
+        replica-based collection. Replica-based collection will become the default in a
+        future release. Queued requests will be continues to be tracked at the handle.
+        :::
         """
 
         timestamp = time.time()
@@ -389,25 +404,61 @@ class RouterMetricsManager:
         start_timestamp = time.time() - self.autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(start_timestamp)
 
-    def _get_aggregated_requests(self):
+    def _get_metrics_report(self) -> HandleMetricReport:
+        timestamp = time.time()
         running_requests = dict()
+        avg_running_requests = dict()
+        look_back_period = self.autoscaling_config.look_back_period_s
+        self.metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
+        avg_queued_requests = self.metrics_store.aggregate_avg([QUEUED_REQUESTS_KEY])[0]
+        if avg_queued_requests is None:
+            # If the queued requests timeseries is empty, we set the
+            # average to the current number of queued requests.
+            avg_queued_requests = self.num_queued_requests
+        # If the queued requests timeseries is empty, we set the number of data points to 1.
+        # This is to avoid division by zero.
+        num_data_points = self.metrics_store.timeseries_count(QUEUED_REQUESTS_KEY) or 1
+        queued_requests = self.metrics_store.data.get(
+            QUEUED_REQUESTS_KEY, [TimeStampedValue(timestamp, self.num_queued_requests)]
+        )
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
-            look_back_period = self.autoscaling_config.look_back_period_s
-            self.metrics_store.prune_keys_and_compact_data(
-                time.time() - look_back_period
-            )
-            running_requests = {
-                replica_id: self.metrics_store.aggregate_avg([replica_id])[0]
-                # If data hasn't been recorded yet, return current
-                # number of queued and ongoing requests.
-                or num_requests
-                for replica_id, num_requests in self.num_requests_sent_to_replicas.items()  # noqa: E501
-            }
+            for replica_id, num_requests in self.num_requests_sent_to_replicas.items():
+                # Calculate avg running requests.
+                # NOTE (abrar): The number of data points from queued requests is often higher than
+                # those from running requests. This is because replica metrics are only collected
+                # once a replica is up, whereas queued request metrics are collected continuously
+                # as long as the handle is alive. To approximate the true average of ongoing requests,
+                # we should normalize by using the same number of data points for both queued and
+                # running request time series.
+                running_requests_sum = self.metrics_store.aggregate_sum([replica_id])[0]
+                if running_requests_sum is None:
+                    # If the running requests timeseries is empty, we set the sum
+                    # to the current number of requests.
+                    running_requests_sum = num_requests
+                avg_running_requests[replica_id] = (
+                    running_requests_sum / num_data_points
+                )
+                # Get running requests data
+                running_requests[replica_id] = self.metrics_store.data.get(
+                    replica_id, [TimeStampedValue(timestamp, num_requests)]
+                )
+        handle_metric_report = HandleMetricReport(
+            deployment_id=self._deployment_id,
+            handle_id=self._handle_id,
+            actor_id=self._self_actor_id,
+            handle_source=self._handle_source,
+            aggregated_queued_requests=avg_queued_requests,
+            queued_requests=queued_requests,
+            aggregated_metrics={
+                RUNNING_REQUESTS_KEY: avg_running_requests,
+            },
+            metrics={
+                RUNNING_REQUESTS_KEY: running_requests,
+            },
+            timestamp=timestamp,
+        )
 
-        return {
-            "queued_requests": self.num_queued_requests,
-            "running_requests": running_requests,
-        }
+        return handle_metric_report
 
     async def shutdown(self):
         """Shutdown metrics manager gracefully."""
@@ -599,7 +650,10 @@ class AsyncioRouter:
 
             # Log usage telemetry to indicate that custom request router
             # feature is being used in this cluster.
-            if self._request_router_class is not PowerOfTwoChoicesRequestRouter:
+            if (
+                self._request_router_class.__name__
+                != PowerOfTwoChoicesRequestRouter.__name__
+            ):
                 ServeUsageTag.CUSTOM_REQUEST_ROUTER_USED.record("1")
         return self._request_router
 

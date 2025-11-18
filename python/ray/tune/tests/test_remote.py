@@ -3,7 +3,6 @@ import unittest
 from unittest.mock import patch
 
 import ray
-import ray.train
 from ray.tune import choice, register_trainable, run, run_experiments
 from ray.tune.experiment import Experiment, Trial
 from ray.tune.result import TIMESTEPS_TOTAL

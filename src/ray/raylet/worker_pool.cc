@@ -33,7 +33,9 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/status.h"
+#include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 #include "ray/stats/metric_defs.h"
+#include "ray/util/container_util.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 #include "ray/util/time.h"
@@ -102,7 +104,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external,
                        std::function<absl::Time()> get_time,
-                       bool enable_resource_isolation)
+                       AddProcessToCgroupHook add_to_cgroup_hook)
     : worker_startup_token_counter_(0),
       io_service_(&io_service),
       node_id_(node_id),
@@ -124,7 +126,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       get_time_(std::move(get_time)),
-      enable_resource_isolation_(enable_resource_isolation) {
+      add_to_cgroup_hook_(std::move(add_to_cgroup_hook)) {
   RAY_CHECK_GT(maximum_startup_concurrency_, 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
@@ -443,12 +445,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                   serialized_preload_python_modules);
   }
 
-  // Pass resource isolation flag to python worker.
-  if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER) {
-    worker_command_args.emplace_back(absl::StrFormat(
-        "--enable-resource-isolation=%s", enable_resource_isolation_ ? "true" : "false"));
-  }
-
   // We use setproctitle to change python worker process title,
   // causing the process's /proc/PID/environ being empty.
   // Add `SPT_NOENV` env to prevent setproctitle breaking /proc/PID/environ.
@@ -674,7 +670,17 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     RAY_LOG(DEBUG) << debug_info;
   }
 
-  Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
+  // Workers should be placed into their own process groups (if enabled) to enable
+  // per-worker cleanup via killpg on worker death.
+  const bool new_process_group = RayConfig::instance().process_group_cleanup_enabled();
+  Process child(argv.data(),
+                io_service_,
+                ec,
+                /*decouple=*/false,
+                env,
+                /*pipe_to_stdin=*/false,
+                add_to_cgroup_hook_,
+                new_process_group);
   if (!child.IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
     if (ec.value() == 24) {
@@ -799,6 +805,20 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
   auto process = Process::FromPid(pid);
   worker->SetProcess(process);
+#if !defined(_WIN32)
+  // Save the worker's actual PGID at registration for safe cleanup later.
+  // If setpgrp() succeeded in the child, pgid will equal pid; otherwise it will be the
+  // parent's PGID. We save whatever the OS reports and will validate again at cleanup.
+  pid_t pgid = -1;
+  errno = 0;
+  pgid = getpgid(pid);
+  if (pgid != -1) {
+    worker->SetSavedProcessGroupId(pgid);
+  } else {
+    RAY_LOG(WARNING) << "getpgid(" << pid
+                     << ") failed at registration: " << strerror(errno);
+  }
+#endif
 
   // The port that this worker's gRPC server should listen on. 0 if the worker
   // should bind on a random port.
@@ -824,6 +844,10 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   // Send the reply immediately for worker registrations.
   send_reply_callback(Status::OK(), port);
   return Status::OK();
+}
+
+bool IsInternalNamespace(const std::string &ray_namespace) {
+  return absl::StartsWith(ray_namespace, kRayInternalNamespacePrefix);
 }
 
 void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) {
@@ -887,6 +911,13 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
   const auto job_id = driver->GetAssignedJobId();
+  // A subset of the Ray Dashboard Modules are registered as drivers under an
+  // internal namespace. These are system processes and therefore, do not need to be moved
+  // into the workers cgroup.
+  if (!IsInternalNamespace(job_config.ray_namespace())) {
+    add_to_cgroup_hook_(std::to_string(driver->GetProcess().GetId()));
+  }
+
   HandleJobStarted(job_id, job_config);
 
   if (driver->GetLanguage() == Language::JAVA) {
@@ -1638,7 +1669,7 @@ bool WorkerPool::IsWorkerAvailableForScheduling() const {
 }
 
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers(
-    bool filter_dead_drivers) const {
+    bool filter_dead_drivers, bool filter_system_drivers) const {
   std::vector<std::shared_ptr<WorkerInterface>> drivers;
 
   for (const auto &entry : states_by_lang_) {
@@ -1650,6 +1681,14 @@ std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDriver
       if (filter_dead_drivers && driver->IsDead()) {
         continue;
       }
+
+      if (filter_system_drivers) {
+        auto job_config = GetJobConfig(driver->GetAssignedJobId());
+        if (job_config.has_value() && IsInternalNamespace(job_config->ray_namespace())) {
+          continue;
+        }
+      }
+
       drivers.push_back(driver);
     }
   }

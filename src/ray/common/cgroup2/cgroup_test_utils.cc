@@ -62,11 +62,18 @@ ray::StatusOr<std::unique_ptr<TempCgroupDirectory>> TempCgroupDirectory::Create(
 }
 
 TempCgroupDirectory::~TempCgroupDirectory() noexcept(false) {
-  RAY_CHECK(rmdir(path_.c_str()) != -1) << absl::StrFormat(
-      "Failed to delete a cgroup directory at %s with error %s. Please manually "
-      "delete it with rmdir.",
-      path_,
-      strerror(errno));
+  // TODO(#54703): This can be refactored to disarm the destructor so that when you delete
+  // a cgroup created with TempCgroupDirectory and delete it outside the handler, this
+  // will not attempt to delete it.
+  if (rmdir(path_.c_str()) == -1) {
+    if (errno != ENOENT) {
+      RAY_LOG(WARNING) << absl::StrFormat(
+          "Failed to delete a cgroup directory at %s with error %s. Please manually "
+          "delete it with rmdir.",
+          path_,
+          strerror(errno));
+    }
+  }
 }
 
 ray::StatusOr<std::unique_ptr<TempDirectory>> TempDirectory::Create() {

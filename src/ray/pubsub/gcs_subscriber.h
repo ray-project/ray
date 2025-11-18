@@ -18,7 +18,7 @@
 #include <string>
 #include <utility>
 
-#include "ray/common/gcs_callbacks.h"
+#include "ray/common/gcs_callback_types.h"
 #include "ray/pubsub/subscriber_interface.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -56,6 +56,10 @@ class GcsSubscriber {
 
   void SubscribeAllNodeInfo(const gcs::ItemCallback<rpc::GcsNodeInfo> &subscribe,
                             const gcs::StatusCallback &done);
+
+  void SubscribeAllNodeAddressAndLiveness(
+      const gcs::ItemCallback<rpc::GcsNodeAddressAndLiveness> &subscribe,
+      const gcs::StatusCallback &done);
 
   Status SubscribeAllWorkerFailures(
       const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe,

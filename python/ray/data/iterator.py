@@ -297,24 +297,57 @@ class DataIterator(abc.ABC):
             {'id': tensor([4, 5, 6, 7])}
             {'id': tensor([ 8,  9, 10, 11])}
 
-            Use the ``collate_fn`` to customize how the tensor batch is created.
+            Use the ``ArrowBatchCollateFn`` to customize how the tensor batch is created
+            from an Arrow batch.
 
-            >>> from typing import Any, Dict
+            >>> import pyarrow as pa
             >>> import torch
-            >>> import numpy as np
             >>> import ray
-            >>> def collate_fn(batch: Dict[str, np.ndarray]) -> Any:
-            ...     return torch.stack(
-            ...         [torch.as_tensor(array) for array in batch.values()],
-            ...         axis=1
-            ...     )
+            >>> from ray.data.collate_fn import ArrowBatchCollateFn
+            >>> class CustomArrowBatchCollateFn(ArrowBatchCollateFn):
+            ...     def __call__(self, batch: pa.Table) -> torch.Tensor:
+            ...         return torch.as_tensor(batch["col_1"].to_numpy() + 5)
             >>> iterator = ray.data.from_items([
             ...     {"col_1": 1, "col_2": 2},
             ...     {"col_1": 3, "col_2": 4}]).iterator()
-            >>> for batch in iterator.iter_torch_batches(collate_fn=collate_fn):
+            >>> for batch in iterator.iter_torch_batches(collate_fn=CustomArrowBatchCollateFn()):
             ...     print(batch)
-            tensor([[1, 2],
-                    [3, 4]])
+            tensor([6, 8])
+
+            Use the ``NumpyBatchCollateFn`` to customize how the tensor batch is created
+            from a Numpy batch.
+
+            >>> from typing import Dict
+            >>> import numpy as np
+            >>> import torch
+            >>> import ray
+            >>> from ray.data.collate_fn import NumpyBatchCollateFn
+            >>> class CustomNumpyBatchCollateFn(NumpyBatchCollateFn):
+            ...     def __call__(self, batch: Dict[str, np.ndarray]) -> torch.Tensor:
+            ...         return torch.as_tensor(batch["col_1"] + 5)
+            >>> iterator = ray.data.from_items([
+            ...     {"col_1": 1, "col_2": 2},
+            ...     {"col_1": 3, "col_2": 4}]).iterator()
+            >>> for batch in iterator.iter_torch_batches(collate_fn=CustomNumpyBatchCollateFn()):
+            ...     print(batch)
+            tensor([6, 8])
+
+            Use the ``PandasBatchCollateFn`` to customize how the tensor batch is created
+            from a Pandas batch.
+
+            >>> import pandas as pd
+            >>> import torch
+            >>> import ray
+            >>> from ray.data.collate_fn import PandasBatchCollateFn
+            >>> class CustomPandasBatchCollateFn(PandasBatchCollateFn):
+            ...     def __call__(self, batch: pd.DataFrame) -> torch.Tensor:
+            ...         return torch.as_tensor(batch["col_1"].to_numpy() + 5)
+            >>> iterator = ray.data.from_items([
+            ...     {"col_1": 1, "col_2": 2},
+            ...     {"col_1": 3, "col_2": 4}]).iterator()
+            >>> for batch in iterator.iter_torch_batches(collate_fn=CustomPandasBatchCollateFn()):
+            ...     print(batch)
+            tensor([6, 8])
 
         Time complexity: O(1)
 
@@ -375,6 +408,7 @@ class DataIterator(abc.ABC):
         """
 
         from ray.train.torch import get_device
+        from ray.train.utils import _in_ray_train_worker
 
         if collate_fn is not None and (dtypes is not None or device != "auto"):
             raise ValueError(
@@ -391,7 +425,7 @@ class DataIterator(abc.ABC):
         if device == "auto":
             # Use the appropriate device for Ray Train, or falls back to CPU if
             # Ray Train is not being used.
-            device = get_device()
+            device = get_device() if _in_ray_train_worker() else "cpu"
 
         from ray.air._internal.torch_utils import (
             move_tensors_to_device,

@@ -36,10 +36,10 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/runtime_env_manager.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/ipc/client_connection.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/raylet/runtime_env_agent_client.h"
-#include "ray/raylet/worker.h"
+#include "ray/raylet/worker_interface.h"
+#include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/stats/metric.h"
 
 namespace ray {
@@ -48,6 +48,9 @@ namespace raylet {
 
 using WorkerCommandMap =
     absl::flat_hash_map<Language, std::vector<std::string>, std::hash<int>>;
+
+// TODO(#54703): Put this type in a separate target.
+using AddProcessToCgroupHook = std::function<void(const std::string &)>;
 
 enum PopWorkerStatus {
   // OK.
@@ -216,7 +219,7 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
       std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client) = 0;
 
   virtual std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
-      bool filter_dead_drivers = false) const = 0;
+      bool filter_dead_drivers = false, bool filter_system_drivers = false) const = 0;
 
   virtual Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
                                 const rpc::JobConfig &job_config,
@@ -304,24 +307,26 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
   /// \param get_time A callback to get the current time in milliseconds.
-  /// \param enable_resource_isolation If true, core worker enables resource isolation by
-  /// adding itself into appropriate cgroup.
-  WorkerPool(instrumented_io_context &io_service,
-             const NodeID &node_id,
-             std::string node_address,
-             std::function<int64_t()> get_num_cpus_available,
-             int num_prestarted_python_workers,
-             int maximum_startup_concurrency,
-             int min_worker_port,
-             int max_worker_port,
-             const std::vector<int> &worker_ports,
-             gcs::GcsClient &gcs_client,
-             const WorkerCommandMap &worker_commands,
-             std::string native_library_path,
-             std::function<void()> starting_worker_timeout_callback,
-             int ray_debugger_external,
-             std::function<absl::Time()> get_time,
-             bool enable_resource_isolation);
+  /// \param add_to_cgroup_hook A lifecycle hook that the forked worker process will
+  /// execute becoming a worker process. The hook adds a newly forked process into
+  /// the appropriate cgroup.
+  WorkerPool(
+      instrumented_io_context &io_service,
+      const NodeID &node_id,
+      std::string node_address,
+      std::function<int64_t()> get_num_cpus_available,
+      int num_prestarted_python_workers,
+      int maximum_startup_concurrency,
+      int min_worker_port,
+      int max_worker_port,
+      const std::vector<int> &worker_ports,
+      gcs::GcsClient &gcs_client,
+      const WorkerCommandMap &worker_commands,
+      std::string native_library_path,
+      std::function<void()> starting_worker_timeout_callback,
+      int ray_debugger_external,
+      std::function<absl::Time()> get_time,
+      AddProcessToCgroupHook add_to_cgroup_hook = [](const std::string &) {});
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   ~WorkerPool() override;
@@ -514,10 +519,14 @@ class WorkerPool : public WorkerPoolInterface {
   ///
   /// \param filter_dead_drivers whether or not if this method will filter dead drivers
   /// that are still registered.
+  /// \param filter_system_drivers whether or not if this method will filter system
+  /// drivers. A system driver is a driver with job config namespace starting with
+  /// "__ray_internal__".
   ///
   /// \return A list containing all the drivers.
   std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
-      bool filter_dead_drivers = false) const override;
+      bool filter_dead_drivers = false,
+      bool filter_system_drivers = false) const override;
 
   /// Returns debug string for class.
   ///
@@ -912,9 +921,7 @@ class WorkerPool : public WorkerPoolInterface {
   int64_t process_failed_pending_registration_ = 0;
   int64_t process_failed_runtime_env_setup_failed_ = 0;
 
-  // If true, core worker enables resource isolation by adding itself into appropriate
-  // cgroup after it is created.
-  bool enable_resource_isolation_ = false;
+  AddProcessToCgroupHook add_to_cgroup_hook_;
 
   /// Ray metrics
   ray::stats::Sum ray_metric_num_workers_started_{

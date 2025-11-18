@@ -33,6 +33,10 @@ ci_pipeline:
   postmerge:
     - hi
     - three
+release_image_step:
+  ray: anyscalebuild
+  ray_ml: anyscalemlbuild
+  ray_llm: anyscalellmbuild
 """
 
 
@@ -56,6 +60,9 @@ def test_init_global_config() -> None:
         assert config["byod_ray_cr_repo"] == "ray"
         assert config["byod_ray_ml_cr_repo"] == "ray-ml"
         assert config["byod_ray_llm_cr_repo"] == "ray-llm"
+        assert config["release_image_step_ray"] == "anyscalebuild"
+        assert config["release_image_step_ray_ml"] == "anyscalemlbuild"
+        assert config["release_image_step_ray_llm"] == "anyscalellmbuild"
 
 
 if __name__ == "__main__":

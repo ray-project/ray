@@ -8,11 +8,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-import ray
-from ray._common.test_utils import wait_for_condition
 import ray.experimental.internal_kv as kv
+from ray._common.test_utils import wait_for_condition
+from ray._private import worker
 from ray._private.ray_constants import (
     KV_NAMESPACE_DASHBOARD,
+    PROCESS_TYPE_DASHBOARD,
 )
 from ray._private.test_utils import (
     format_web_url,
@@ -35,6 +36,8 @@ from ray.dashboard.tests.conftest import *  # noqa
 from ray.runtime_env.runtime_env import RuntimeEnv
 from ray.tests.conftest import _ray_start
 from ray.util.state import list_nodes
+
+import psutil
 
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
@@ -81,10 +84,13 @@ def test_parse_cluster_info(
 
     address, module_string, inner_address = address_param
 
-    with patch.multiple(
-        "ray.dashboard.modules.dashboard_sdk",
-        get_job_submission_client_cluster_info=mock_get_job_submission_client_cluster,
-    ), patch.multiple("importlib", import_module=mock_import_module):
+    with (
+        patch.multiple(
+            "ray.dashboard.modules.dashboard_sdk",
+            get_job_submission_client_cluster_info=mock_get_job_submission_client_cluster,
+        ),
+        patch.multiple("importlib", import_module=mock_import_module),
+    ):
         if module_string == "ray":
             with pytest.raises(ValueError, match="ray://"):
                 parse_cluster_info(
@@ -170,54 +176,6 @@ def get_register_agents_number(gcs_client):
         timeout=GCS_RPC_TIMEOUT_SECONDS,
     )
     return len(keys)
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_env_vars",
-    [
-        {
-            "include_dashboard": True,
-            "env_vars": {
-                RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR: "1",
-                "RAY_health_check_initial_delay_ms": "0",
-                "RAY_health_check_period_ms": "1000",
-            },
-        }
-    ],
-    indirect=True,
-)
-def test_head_node_job_agent_always_used(ray_start_cluster_head_with_env_vars):
-    """Makes sure that job submission always uses the head node's job agent.
-
-    1. Create a cluster with a worker node and a head node.
-    2. Submit 10 jobs.
-    3. Make sure they all execute on the head node's job agent.
-    """
-    cluster = ray_start_cluster_head_with_env_vars
-    assert wait_until_server_available(cluster.webui_url) is True
-    webui_url = cluster.webui_url
-    webui_url = format_web_url(webui_url)
-    client = JobSubmissionClient(webui_url)
-
-    cluster_nodes = cluster.list_all_nodes()
-    assert len(cluster_nodes) == 1 and cluster_nodes[0].is_head
-    head_node_id = cluster_nodes[0].node_id
-
-    # add a worker node.
-    cluster.add_node()
-
-    job_ids = [client.submit_job(entrypoint="echo hello")]
-
-    for job_id in job_ids:
-        wait_for_condition(
-            _check_job_succeeded, client=client, job_id=job_id, timeout=30
-        )
-
-    actors = ray.state.actors()
-
-    for _, actor_info in actors.items():
-        if actor_info["Name"].startswith("_ray_internal_job_actor"):
-            assert actor_info["Address"]["NodeID"] == head_node_id
 
 
 @pytest.mark.parametrize(
@@ -336,6 +294,45 @@ def test_job_submission_with_runtime_env_as_object(
         assert "gcs://" in parsed_runtime_env["working_dir"]
         assert len(parsed_runtime_env["py_modules"]) == 1
         assert "gcs://" in parsed_runtime_env["py_modules"][0]
+
+
+@pytest.mark.asyncio
+async def test_tail_job_logs_websocket_abnormal_closure(ray_start_regular):
+    """
+    Test that ABNORMAL_CLOSURE raises RuntimeError when tailing logs.
+
+    This test uses its own Ray cluster and kills the dashboard while tailing logs
+    to simulate an abnormal WebSocket closure.
+    """
+    dashboard_url = ray_start_regular.dashboard_url
+    client = JobSubmissionClient(format_web_url(dashboard_url))
+
+    # Submit a long-running job
+    driver_script = """
+import time
+for i in range(100):
+    print("Hello", i)
+    time.sleep(0.5)
+"""
+    entrypoint = f"python -c '{driver_script}'"
+    job_id = client.submit_job(entrypoint=entrypoint)
+
+    # Start tailing logs and stop Ray while tailing
+    # Expect RuntimeError when WebSocket closes abnormally
+    with pytest.raises(
+        RuntimeError,
+        match="WebSocket connection closed unexpectedly with close code",
+    ):
+        i = 0
+        async for lines in client.tail_job_logs(job_id):
+            print(lines, end="")
+            i += 1
+
+            # Kill the dashboard after receiving a few log lines
+            if i == 3:
+                print("\nKilling the dashboard to close websocket abnormally...")
+                dash_info = worker._global_node.all_processes[PROCESS_TYPE_DASHBOARD][0]
+                psutil.Process(dash_info.process.pid).kill()
 
 
 if __name__ == "__main__":

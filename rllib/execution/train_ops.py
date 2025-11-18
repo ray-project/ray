@@ -6,7 +6,7 @@ from typing import Dict
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
     NUM_AGENT_STEPS_TRAINED,
