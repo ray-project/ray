@@ -1212,6 +1212,9 @@ OPERATOR_BLOCK_SIZE_BYTES_PANEL = Panel(
     fill=0,
     stack=False,
     template=PanelTemplate.BAR_CHART,
+    # We hide the X axis because the values are too large to fit and they are not useful.
+    # We also cannot format it to higher units so it has too many digits.
+    hideXAxis=True,
 )
 
 OPERATOR_BLOCK_SIZE_ROWS_PANEL = Panel(
@@ -1229,6 +1232,9 @@ OPERATOR_BLOCK_SIZE_ROWS_PANEL = Panel(
     fill=0,
     stack=False,
     template=PanelTemplate.BAR_CHART,
+    # We hide the X axis because the values are too large to fit and they are not useful.
+    # We also cannot format it to higher units so it has too many digits.
+    hideXAxis=True,
 )
 
 OPERATOR_PANELS = [
