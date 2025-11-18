@@ -27,13 +27,13 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_manager_interface.h"
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/observability/metric_interface.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -41,8 +41,6 @@
 
 namespace ray {
 namespace core {
-
-using std::literals::operator""sv;
 
 class ActorManager;
 
@@ -189,6 +187,7 @@ class TaskManager : public TaskManagerInterface {
           const ActorID &)> get_actor_rpc_client_callback,
       std::shared_ptr<gcs::GcsClient> gcs_client,
       ray::observability::MetricInterface &task_by_state_counter,
+      ray::observability::MetricInterface &total_lineage_bytes_gauge,
       FreeActorObjectCallback free_actor_object_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
@@ -201,16 +200,17 @@ class TaskManager : public TaskManagerInterface {
         get_actor_rpc_client_callback_(std::move(get_actor_rpc_client_callback)),
         gcs_client_(std::move(gcs_client)),
         task_by_state_counter_(task_by_state_counter),
+        total_lineage_bytes_gauge_(total_lineage_bytes_gauge),
         free_actor_object_callback_(std::move(free_actor_object_callback)) {
     task_counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key)
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
               task_by_state_counter_.Record(
                   task_counter_.Get(key),
-                  {{"State"sv, rpc::TaskStatus_Name(std::get<1>(key))},
-                   {"Name"sv, std::get<0>(key)},
-                   {"IsRetry"sv, std::get<2>(key) ? "1" : "0"},
-                   {"Source"sv, "owner"}});
+                  {{"State", rpc::TaskStatus_Name(std::get<1>(key))},
+                   {"Name", std::get<0>(key)},
+                   {"IsRetry", std::get<2>(key) ? "1" : "0"},
+                   {"Source", "owner"}});
             });
     reference_counter_.SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
@@ -813,6 +813,10 @@ class TaskManager : public TaskManagerInterface {
   // - IsRetry: whether the task is a retry
   // - Source: component reporting, e.g., "core_worker", "executor", or "pull_manager"
   observability::MetricInterface &task_by_state_counter_;
+
+  /// Metric to track the total amount of memory used to store task specs for lineage
+  /// reconstruction.
+  observability::MetricInterface &total_lineage_bytes_gauge_;
 
   /// Callback to free GPU object from the in-actor object store.
   FreeActorObjectCallback free_actor_object_callback_;

@@ -279,6 +279,8 @@ if setup_spec.type == SetupType.RAY:
         ],
         "tune": [
             "pandas",
+            # TODO: Remove pydantic dependency from tune once tune doesn't import train
+            pydantic_dep,
             "tensorboardX>=1.9",
             "requests",
             *pyarrow_deps,
@@ -374,13 +376,16 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm>=0.11.0",
+                "vllm[audio]>=0.11.0",
+                "nixl>=0.6.1",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
                 # async-timeout is a backport of asyncio.timeout for python < 3.11
                 "async-timeout; python_version < '3.11'",
                 "typer",
+                "meson",
+                "pybind11",
                 "hf_transfer",
             ]
             + setup_spec.extras["data"]
@@ -397,9 +402,7 @@ if setup_spec.type == SetupType.RAY:
 # new releases candidates.
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        # Click 8.3.0 does not work with copy.deepcopy on Python 3.10
-        # TODO(aslonnie): https://github.com/ray-project/ray/issues/56747
-        "click>=7.0, !=8.3.0",
+        "click>=7.0",
         "filelock",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",

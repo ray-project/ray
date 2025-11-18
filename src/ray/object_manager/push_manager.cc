@@ -17,8 +17,6 @@
 #include <string>
 #include <utility>
 
-#include "ray/stats/metric_defs.h"
-
 namespace ray {
 
 void PushManager::StartPush(const NodeID &dest_id,
@@ -106,10 +104,9 @@ void PushManager::HandleNodeRemoved(const NodeID &node_id) {
 }
 
 void PushManager::RecordMetrics() const {
-  ray::stats::STATS_push_manager_num_pushes_remaining.Record(
-      NumPushRequestsWithChunksToSend());
-  ray::stats::STATS_push_manager_chunks.Record(NumChunksInFlight(), "InFlight");
-  ray::stats::STATS_push_manager_chunks.Record(NumChunksRemaining(), "Remaining");
+  push_manager_num_pushes_remaining_gauge_.Record(NumPushRequestsWithChunksToSend());
+  push_manager_chunks_gauge_.Record(NumChunksInFlight(), {{"Type", "InFlight"}});
+  push_manager_chunks_gauge_.Record(NumChunksRemaining(), {{"Type", "Remaining"}});
 }
 
 std::string PushManager::DebugString() const {

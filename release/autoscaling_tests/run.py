@@ -70,7 +70,6 @@ def run(local):
 
     results = {
         "time": time.time() - start_time,
-        "success": "1",
     }
     if "TEST_OUTPUT_JSON" in os.environ:
         with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_file:

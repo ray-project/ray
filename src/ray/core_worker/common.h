@@ -22,6 +22,8 @@
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/scheduling/fallback_strategy.h"
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -72,8 +74,9 @@ struct TaskOptions {
       std::string serialized_runtime_env_info_p = "{}",
       bool enable_task_events_p = kDefaultTaskEventEnabled,
       std::unordered_map<std::string, std::string> labels_p = {},
-      std::unordered_map<std::string, std::string> label_selector_p = {},
-      rpc::TensorTransport tensor_transport_p = rpc::TensorTransport::OBJECT_STORE)
+      LabelSelector label_selector_p = {},
+      rpc::TensorTransport tensor_transport_p = rpc::TensorTransport::OBJECT_STORE,
+      std::vector<FallbackOption> fallback_strategy_p = {})
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
@@ -83,6 +86,7 @@ struct TaskOptions {
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
         label_selector(std::move(label_selector_p)),
+        fallback_strategy(std::move(fallback_strategy_p)),
         tensor_transport(tensor_transport_p) {}
 
   /// The name of this task.
@@ -106,7 +110,9 @@ struct TaskOptions {
   bool enable_task_events = kDefaultTaskEventEnabled;
   std::unordered_map<std::string, std::string> labels;
   // The label constraints of the node to schedule this task.
-  std::unordered_map<std::string, std::string> label_selector;
+  LabelSelector label_selector;
+  // A list of fallback options defining scheduling strategies.
+  std::vector<FallbackOption> fallback_strategy;
   // The tensor transport (e.g., NCCL, GLOO, etc.) to use for this task.
   rpc::TensorTransport tensor_transport;
 };
@@ -132,7 +138,8 @@ struct ActorCreationOptions {
                        bool enable_tensor_transport_p = false,
                        bool enable_task_events_p = kDefaultTaskEventEnabled,
                        std::unordered_map<std::string, std::string> labels_p = {},
-                       std::unordered_map<std::string, std::string> label_selector_p = {})
+                       LabelSelector label_selector_p = {},
+                       std::vector<FallbackOption> fallback_strategy_p = {})
       : max_restarts(max_restarts_p),
         max_task_retries(max_task_retries_p),
         max_concurrency(max_concurrency_p),
@@ -152,7 +159,8 @@ struct ActorCreationOptions {
         scheduling_strategy(std::move(scheduling_strategy_p)),
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
-        label_selector(std::move(label_selector_p)) {
+        label_selector(std::move(label_selector_p)),
+        fallback_strategy(std::move(fallback_strategy_p)) {
     // Check that resources is a subset of placement resources.
     for (auto &resource : resources) {
       auto it = this->placement_resources.find(resource.first);
@@ -210,7 +218,9 @@ struct ActorCreationOptions {
   const bool enable_task_events = kDefaultTaskEventEnabled;
   const std::unordered_map<std::string, std::string> labels;
   // The label constraints of the node to schedule this actor.
-  const std::unordered_map<std::string, std::string> label_selector;
+  const LabelSelector label_selector;
+  // A list of scheduling options defining fallback strategies for scheduling.
+  const std::vector<FallbackOption> fallback_strategy;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;
