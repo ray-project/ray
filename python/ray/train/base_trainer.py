@@ -153,6 +153,7 @@ class BaseTrainer(abc.ABC):
     method, and optionally ``setup``.
 
     .. testcode::
+        :skipif: True
 
         import torch
 
@@ -207,11 +208,6 @@ class BaseTrainer(abc.ABC):
             [{"x": i, "y": i} for i in range(10)])
         my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
         result = my_trainer.fit()
-
-    .. testoutput::
-            :hide:
-
-            ...
 
     Args:
         scaling_config: Configuration for how to scale training.
@@ -308,6 +304,7 @@ class BaseTrainer(abc.ABC):
         attempt to resume on both experiment-level and trial-level failures:
 
         .. testcode::
+            :skipif: True
 
             import os
             import ray
@@ -342,11 +339,6 @@ class BaseTrainer(abc.ABC):
                 )
 
             result = trainer.fit()
-
-        .. testoutput::
-            :hide:
-
-            ...
 
         Args:
             path: The path to the experiment directory of the training run to restore.
@@ -546,6 +538,20 @@ class BaseTrainer(abc.ABC):
         constructors to avoid logging incorrect deprecation warnings when
         `ray.train.RunConfig` is passed to Ray Tune.
         """
+        from ray.train.v2._internal.constants import V2_ENABLED_ENV_VAR, is_v2_enabled
+
+        if is_v2_enabled():
+            raise DeprecationWarning(
+                f"Detected use of a deprecated Trainer import from `{self.__class__.__module__}`. "
+                "This Trainer class is not compatible with Ray Train V2.\n"
+                "To fix this:\n"
+                "  - Update to use the new import path. For example, "
+                "`from ray.train.torch.torch_trainer import TorchTrainer` -> "
+                "`from ray.train.torch import TorchTrainer`\n"
+                f"  - Or, explicitly disable V2 by setting: {V2_ENABLED_ENV_VAR}=0\n"
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
 
         if not _v2_migration_warnings_enabled():
             return

@@ -6,7 +6,6 @@ import signal
 import sys
 import time
 import warnings
-from collections import defaultdict
 from pprint import pformat
 from unittest.mock import MagicMock
 
@@ -16,18 +15,19 @@ import requests
 from google.protobuf.timestamp_pb2 import Timestamp
 
 import ray
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, find_free_port
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.metrics_agent import (
     Gauge as MetricsAgentGauge,
     PrometheusServiceDiscoveryWriter,
 )
-from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
+from ray._private.ray_constants import (
+    PROMETHEUS_SERVICE_DISCOVERY_FILE,
+)
 from ray._private.test_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,
     fetch_prometheus_timeseries,
-    find_free_port,
     get_log_batch,
     raw_metric_timeseries,
 )
@@ -40,6 +40,7 @@ from ray.core.generated.events_event_aggregator_service_pb2 import (
     TaskEventsMetadata,
 )
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
+from ray.dashboard.modules.aggregator.constants import CONSUMER_TAG_KEY
 from ray.dashboard.modules.aggregator.tests.test_aggregator_agent import (
     get_event_aggregator_grpc_stub,
 )
@@ -143,11 +144,15 @@ _DASHBOARD_METRICS = [
 ]
 
 _EVENT_AGGREGATOR_METRICS = [
-    "ray_event_aggregator_agent_events_received_total",
-    "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total",
-    "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
-    "ray_event_aggregator_agent_events_published_total",
-    "ray_event_aggregator_agent_events_filtered_out_total",
+    "ray_aggregator_agent_events_received_total",
+    "ray_aggregator_agent_published_events_total",
+    "ray_aggregator_agent_filtered_events_total",
+    "ray_aggregator_agent_queue_dropped_events_total",
+    "ray_aggregator_agent_consecutive_failures_since_last_success",
+    "ray_aggregator_agent_time_since_last_success_seconds",
+    "ray_aggregator_agent_publish_latency_seconds_bucket",
+    "ray_aggregator_agent_publish_latency_seconds_count",
+    "ray_aggregator_agent_publish_latency_seconds_sum",
 ]
 
 _NODE_METRICS = [
@@ -200,7 +205,6 @@ def _setup_cluster_for_test(request, ray_start_cluster):
             "event_stats_print_interval_ms": 500,
             "event_stats": True,
             "enable_metrics_collection": enable_metrics_collection,
-            "enable_open_telemetry": os.getenv("RAY_enable_open_telemetry") == "1",
         }
     )
     # Add worker nodes.
@@ -309,19 +313,9 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         # The list of custom or user defined metrics. Open Telemetry backend does not
         # support exporting Counter as Gauge, so we skip some metrics in that case.
         custom_metrics = (
-            [
-                "test_counter",
-                "test_counter_total",
-                "test_driver_counter",
-                "test_driver_counter_total",
-                "test_gauge",
-            ]
-            if os.environ.get("RAY_enable_open_telemetry") != "1"
-            else [
-                "test_counter_total",
-                "test_driver_counter_total",
-                "test_gauge",
-            ]
+            "test_counter_total",
+            "test_driver_counter_total",
+            "test_gauge",
         )
 
         # Make sure our user defined metrics exist and have the correct types
@@ -434,7 +428,7 @@ def test_metrics_export_node_metrics(shutdown_only):
             samples = avail_metrics[metric]
             for sample in samples:
                 components.add(sample.labels["Component"])
-        assert components == {"gcs", "raylet", "agent", "ray::IDLE"}
+        assert components == {"gcs", "raylet", "agent", "ray::IDLE", sys.executable}
 
         avail_metrics = set(avail_metrics)
 
@@ -489,6 +483,7 @@ def httpserver_listen_address():
                 # Turn off task events generation to avoid the task events from the
                 # cluster impacting the test result
                 "RAY_task_events_report_interval_ms": 0,
+                "RAY_enable_open_telemetry": "true",
             },
         },
     ],
@@ -513,11 +508,15 @@ def test_metrics_export_event_aggregator_agent(
         metric_descriptors = timeseries.metric_descriptors
         metrics_names = metric_descriptors.keys()
         event_aggregator_metrics = [
-            "ray_event_aggregator_agent_events_received_total",
-            "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total",
-            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total",
-            "ray_event_aggregator_agent_events_published_total",
-            "ray_event_aggregator_agent_events_filtered_out_total",
+            "ray_aggregator_agent_events_received_total",
+            "ray_aggregator_agent_published_events_total",
+            "ray_aggregator_agent_filtered_events_total",
+            "ray_aggregator_agent_queue_dropped_events_total",
+            "ray_aggregator_agent_consecutive_failures_since_last_success",
+            "ray_aggregator_agent_time_since_last_success_seconds",
+            "ray_aggregator_agent_publish_latency_seconds_bucket",
+            "ray_aggregator_agent_publish_latency_seconds_count",
+            "ray_aggregator_agent_publish_latency_seconds_sum",
         ]
         return all(metric in metrics_names for metric in event_aggregator_metrics)
 
@@ -525,11 +524,7 @@ def test_metrics_export_event_aggregator_agent(
         fetch_prometheus_timeseries(prom_addresses, timeseries)
         metric_samples = timeseries.metric_samples.values()
         expected_metrics_values = {
-            "ray_event_aggregator_agent_events_received_total": 3.0,
-            "ray_event_aggregator_agent_events_failed_to_add_to_aggregator_total": 0.0,
-            "ray_event_aggregator_agent_events_dropped_at_event_aggregator_total": 1.0,
-            "ray_event_aggregator_agent_events_published_total": 1.0,
-            "ray_event_aggregator_agent_events_filtered_out_total": 1.0,
+            "ray_aggregator_agent_events_received_total": 3.0,
         }
         for descriptor, expected_value in expected_metrics_values.items():
             samples = [m for m in metric_samples if m.name == descriptor]
@@ -539,7 +534,24 @@ def test_metrics_export_event_aggregator_agent(
                 return False
         return True
 
-    wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
+    def test_case_publisher_specific_metrics_correct(publisher_name: str):
+        fetch_prometheus_timeseries(prom_addresses, timeseries)
+        metric_samples = timeseries.metric_samples.values()
+        expected_metrics_values = {
+            "ray_aggregator_agent_published_events_total": 1.0,
+            "ray_aggregator_agent_filtered_events_total": 1.0,
+            "ray_aggregator_agent_queue_dropped_events_total": 1.0,
+        }
+        for descriptor, expected_value in expected_metrics_values.items():
+            samples = [m for m in metric_samples if m.name == descriptor]
+            if not samples:
+                return False
+            if (
+                samples[0].value != expected_value
+                or samples[0].labels[CONSUMER_TAG_KEY] != publisher_name
+            ):
+                return False
+        return True
 
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
@@ -586,7 +598,15 @@ def test_metrics_export_event_aggregator_agent(
     stub.AddEvents(request)
     wait_for_condition(lambda: len(httpserver.log) == 1)
 
+    wait_for_condition(test_case_stats_exist, timeout=30, retry_interval_ms=1000)
+
     wait_for_condition(test_case_value_correct, timeout=30, retry_interval_ms=1000)
+
+    wait_for_condition(
+        lambda: test_case_publisher_specific_metrics_correct("http_publisher"),
+        timeout=30,
+        retry_interval_ms=1000,
+    )
 
 
 def test_operation_stats(monkeypatch, shutdown_only):
@@ -713,64 +733,6 @@ def test_histogram(_setup_cluster_for_test):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_enable_open_telemetry") == "1",
-    reason="OpenTelemetry backend does not support Counter exported as gauge.",
-)
-def test_counter_exported_as_gauge(shutdown_only):
-    # Test to make sure Counter emits the right Prometheus metrics
-    context = ray.init()
-    timeseries = PrometheusTimeseries()
-
-    @ray.remote
-    class Actor:
-        def __init__(self):
-            self.counter = Counter("test_counter", description="desc")
-            self.counter.inc(2.0)
-            self.counter.inc(3.0)
-
-            self.counter_with_total_suffix = Counter(
-                "test_counter2_total", description="desc2"
-            )
-            self.counter_with_total_suffix.inc(1.5)
-
-    _ = Actor.remote()
-
-    def check_metrics():
-        metrics_page = "localhost:{}".format(
-            context.address_info["metrics_export_port"]
-        )
-        fetch_prometheus_timeseries([metrics_page], timeseries)
-        metric_descriptors = timeseries.metric_descriptors
-        metric_samples = timeseries.metric_samples.values()
-        metric_samples_by_name = defaultdict(list)
-        for metric_sample in metric_samples:
-            metric_samples_by_name[metric_sample.name].append(metric_sample)
-
-        assert "ray_test_counter" in metric_descriptors
-        assert metric_descriptors["ray_test_counter"].type == "gauge"
-        assert (
-            metric_descriptors["ray_test_counter"].documentation
-            == "(DEPRECATED, use ray_test_counter_total metric instead) desc"
-        )
-        assert metric_samples_by_name["ray_test_counter"][-1].value == 5.0
-
-        assert "ray_test_counter_total" in metric_descriptors
-        assert metric_descriptors["ray_test_counter_total"].type == "counter"
-        assert metric_descriptors["ray_test_counter_total"].documentation == "desc"
-        assert metric_samples_by_name["ray_test_counter_total"][-1].value == 5.0
-
-        assert "ray_test_counter2_total" in metric_descriptors
-        assert metric_descriptors["ray_test_counter2_total"].type == "counter"
-        assert metric_descriptors["ray_test_counter2_total"].documentation == "desc2"
-        assert metric_samples_by_name["ray_test_counter2_total"][-1].value == 1.5
-
-        return True
-
-    wait_for_condition(check_metrics, timeout=60)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
 def test_counter(monkeypatch, shutdown_only):
     # Test to make sure we don't export counter as gauge
     # if RAY_EXPORT_COUNTER_AS_GAUGE is 0
@@ -855,6 +817,7 @@ def test_per_func_name_stats(shutdown_only):
                 components.add(sample.labels["Component"])
         print(components)
         assert {
+            sys.executable,  # driver process
             "raylet",
             "agent",
             "ray::Actor",

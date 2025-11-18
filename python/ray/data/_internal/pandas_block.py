@@ -34,6 +34,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DataContext
+from ray.data.expressions import Expr
 
 if TYPE_CHECKING:
     import pandas
@@ -173,8 +174,33 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
     ) -> Optional[U]:
         return self._column.quantile(q=q)
 
+    def value_counts(self) -> Optional[Dict[str, List]]:
+        value_counts = self._column.value_counts()
+        if len(value_counts) == 0:
+            return None
+        return {
+            "values": value_counts.index.tolist(),
+            "counts": value_counts.values.tolist(),
+        }
+
+    def hash(self) -> BlockColumn:
+
+        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+
+        first_non_null = next((x for x in self._column if x is not None), None)
+        if isinstance(first_non_null, TensorArrayElement):
+            self._column = self._column.apply(lambda x: x.to_numpy())
+
+        import polars as pl
+
+        df = pl.from_pandas(self._column.to_frame())
+        hashes = df.hash_rows().cast(pl.Int64, wrap_numerical=True)
+        return hashes.to_pandas()
+
     def unique(self) -> BlockColumn:
+
         pd = lazy_import_pandas()
+
         try:
             return pd.Series(self._column.unique())
         except ValueError as e:
@@ -186,7 +212,18 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
                 raise
 
     def flatten(self) -> BlockColumn:
-        return self._column.list.flatten()
+        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+
+        first_non_null = next((x for x in self._column if x is not None), None)
+        if isinstance(first_non_null, TensorArrayElement):
+            self._column = self._column.apply(
+                lambda x: x.to_numpy() if isinstance(x, TensorArrayElement) else x
+            )
+
+        return self._column.explode(ignore_index=True)
+
+    def dropna(self) -> BlockColumn:
+        return self._column.dropna()
 
     def sum_of_squared_diffs_from_mean(
         self,
@@ -217,6 +254,14 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
 
     def _is_all_null(self):
         return not self._column.notna().any()
+
+    def is_composed_of_lists(self, types: Optional[Tuple] = None) -> bool:
+        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+
+        if not types:
+            types = (list, np.ndarray, TensorArrayElement)
+        first_non_null = next((x for x in self._column if x is not None), None)
+        return isinstance(first_non_null, types)
 
 
 class PandasBlockBuilder(TableBlockBuilder):
@@ -289,8 +334,10 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.columns.tolist()
 
     def fill_column(self, name: str, value: Any) -> Block:
-        assert name not in self._table.columns
-
+        # Check if value is array-like - if so, use upsert_column logic
+        if isinstance(value, (pd.Series, np.ndarray)):
+            return self.upsert_column(name, value)
+        # Scalar value - use original fill_column logic
         return self._table.assign(**{name: value})
 
     @staticmethod
@@ -315,6 +362,9 @@ class PandasBlockAccessor(TableBlockAccessor):
         table = self._table.take(indices)
         table.reset_index(drop=True, inplace=True)
         return table
+
+    def drop(self, columns: List[str]) -> Block:
+        return self._table.drop(columns, axis="columns")
 
     def select(self, columns: List[str]) -> "pandas.DataFrame":
         if not all(isinstance(col, str) for col in columns):
@@ -505,6 +555,9 @@ class PandasBlockAccessor(TableBlockAccessor):
 
                 # Determine the sample size based on max_sample_count
                 sample_size = min(total_size, max_sample_count)
+                # Skip size calculation for empty columns
+                if sample_size == 0:
+                    continue
                 # Following codes can also handel case that sample_size == total_size
                 sampled_data = self._table[column].sample(n=sample_size).values
 
@@ -617,3 +670,18 @@ class PandasBlockAccessor(TableBlockAccessor):
                 yield row.as_pydict()
             else:
                 yield row
+
+    def filter(self, predicate_expr: "Expr") -> "pandas.DataFrame":
+        """Filter rows based on a predicate expression."""
+        if self._table.empty:
+            return self._table
+
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            eval_expr,
+        )
+
+        # Evaluate the expression to get a boolean mask
+        mask = eval_expr(predicate_expr, self._table)
+
+        # Use pandas boolean indexing
+        return self._table[mask]

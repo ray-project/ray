@@ -21,19 +21,19 @@ ray_cc_test(
         "//src/ray/observability:ray_actor_definition_event",
         "//src/ray/observability:ray_actor_lifecycle_event",
         "//src/ray/observability:ray_driver_job_definition_event",
-        "//src/ray/observability:ray_driver_job_execution_event",
+        "//src/ray/observability:ray_driver_job_lifecycle_event",
         "//src/ray/observability:ray_event_recorder",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
 ray_cc_test(
-    name = "ray_driver_job_execution_event_test",
+    name = "ray_driver_job_lifecycle_event_test",
     size = "small",
-    srcs = ["ray_driver_job_execution_event_test.cc"],
+    srcs = ["ray_driver_job_lifecycle_event_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/observability:ray_driver_job_execution_event",
+        "//src/ray/observability:ray_driver_job_lifecycle_event",
         "@com_google_googletest//:gtest_main",
     ],
 )

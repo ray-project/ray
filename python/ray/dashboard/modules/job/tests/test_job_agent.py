@@ -428,7 +428,10 @@ async def test_tail_job_logs_with_echo(job_sdk_client):
     async for lines in agent_client.tail_job_logs(job_id):
         print(lines, end="")
         for line in lines.strip().split("\n"):
-            if "Runtime env is setting up." in line:
+            if (
+                "Runtime env is setting up." in line
+                or "Running entrypoint for job" in line
+            ):
                 continue
             assert line.split(" ") == ["Hello", str(i)]
             i += 1
@@ -539,7 +542,7 @@ async def test_job_log_in_multiple_node(
             assert wait_until_server_available(agent_address)
             client = JobAgentSubmissionClient(format_web_url(agent_address))
             resp = await client.get_job_logs_internal(job_id)
-            assert result_log in resp.logs, resp.logs
+            assert result_log in resp.logs, f"logs: {resp.logs}"
 
             job_check_status[index] = True
         return True

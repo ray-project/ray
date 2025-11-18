@@ -20,12 +20,12 @@ from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from urllib.parse import quote
 
 import requests
 import yaml
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.services as services
@@ -48,6 +48,7 @@ from ray.core.generated import (
 )
 from ray.util.queue import Empty, Queue, _QueueActor
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.util.state import get_actor, list_actors
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -562,11 +563,10 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     while time.time() - start_time < timeout:
         if (
             len(
-                [
-                    _
-                    for _ in ray._private.state.actors().values()
-                    if state is None or _["State"] == state
-                ]
+                list_actors(
+                    filters=[("state", "=", state)] if state else None,
+                    limit=num_actors,
+                )
             )
             >= num_actors
         ):
@@ -577,14 +577,14 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
 
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     actor_id = actor._actor_id.hex()
-    current_num_restarts = ray._private.state.actors(actor_id)["NumRestarts"]
+    current_num_restarts = get_actor(id=actor_id).num_restarts
     ray.kill(actor)
     start = time.time()
     while time.time() - start <= timeout:
-        actor_status = ray._private.state.actors(actor_id)
+        actor_state = get_actor(id=actor_id)
         if (
-            actor_status["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
-            or actor_status["NumRestarts"] > current_num_restarts
+            actor_state.state == "DEAD"
+            or actor_state.num_restarts > current_num_restarts
         ):
             return
         time.sleep(retry_interval_ms / 1000.0)
@@ -654,8 +654,29 @@ class MetricSamplePattern:
         return True
 
 
+@dataclass
+class PrometheusTimeseries:
+    """A collection of timeseries from multiple addresses. Each timeseries is a
+    collection of samples with the same metric name and labels. Concretely:
+    - components_dict: a dictionary of addresses to the Component labels
+    - metric_descriptors: a dictionary of metric names to the Metric object
+    - metric_samples: the latest value of each label
+    """
+
+    components_dict: Dict[str, Set[str]] = field(default_factory=dict)
+    metric_descriptors: Dict[str, Metric] = field(default_factory=dict)
+    metric_samples: Dict[frozenset, Sample] = field(default_factory=dict)
+
+    def flush(self):
+        self.components_dict.clear()
+        self.metric_descriptors.clear()
+        self.metric_samples.clear()
+
+
 def get_metric_check_condition(
-    metrics_to_check: List[MetricSamplePattern], export_addr: Optional[str] = None
+    metrics_to_check: List[MetricSamplePattern],
+    timeseries: PrometheusTimeseries,
+    export_addr: Optional[str] = None,
 ) -> Callable[[], bool]:
     """A condition to check if a prometheus metrics reach a certain value.
 
@@ -665,6 +686,7 @@ def get_metric_check_condition(
     Args:
         metrics_to_check: A list of MetricSamplePattern. The fields that
             aren't `None` will be matched.
+        timeseries: A PrometheusTimeseries object to store the metrics.
         export_addr: Optional address to export metrics to.
 
     Returns:
@@ -677,7 +699,9 @@ def get_metric_check_condition(
 
     def f():
         for metric_pattern in metrics_to_check:
-            _, _, metric_samples = fetch_prometheus([prom_addr])
+            metric_samples = fetch_prometheus_timeseries(
+                [prom_addr], timeseries
+            ).metric_samples.values()
             for metric_sample in metric_samples:
                 if metric_pattern.matches(metric_sample):
                     break
@@ -993,25 +1017,6 @@ def fetch_prometheus(prom_addresses):
     return components_dict, metric_descriptors, metric_samples
 
 
-@dataclass
-class PrometheusTimeseries:
-    """A collection of timeseries from multiple addresses. Each timeseries is a
-    collection of samples with the same metric name and labels. Concretely:
-    - components_dict: a dictionary of addresses to the Component labels
-    - metric_descriptors: a dictionary of metric names to the Metric object
-    - metric_samples: the latest value of each label
-    """
-
-    components_dict: Dict[str, Set[str]] = field(default_factory=defaultdict)
-    metric_descriptors: Dict[str, Metric] = field(default_factory=defaultdict)
-    metric_samples: Dict[frozenset, Sample] = field(default_factory=defaultdict)
-
-    def flush(self):
-        self.components_dict.clear()
-        self.metric_descriptors.clear()
-        self.metric_samples.clear()
-
-
 def fetch_prometheus_timeseries(
     prom_addreses: List[str],
     result: PrometheusTimeseries,
@@ -1060,20 +1065,6 @@ def fetch_prometheus_metric_timeseries(
     return samples_by_name
 
 
-def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
-    """Return prometheus metrics from a RayContext
-
-    Args:
-        info: Ray context returned from ray.init()
-
-    Returns:
-        Dict from metric name to a list of samples for the metrics
-    """
-    metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
-    print("Fetch metrics from", metrics_page)
-    return fetch_prometheus_metrics([metrics_page])
-
-
 def raw_metric_timeseries(
     info: RayContext, result: PrometheusTimeseries
 ) -> Dict[str, List[Any]]:
@@ -1081,6 +1072,29 @@ def raw_metric_timeseries(
     metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
     print("Fetch metrics from", metrics_page)
     return fetch_prometheus_metric_timeseries([metrics_page], result)
+
+
+def get_system_metric_for_component(
+    system_metric: str, component: str, prometheus_server_address: str
+) -> List[float]:
+    """Get the system metric for a given component from a Prometheus server address.
+    Please note:
+    - This function requires the availability of the Prometheus server. Therefore, it
+    requires the server address.
+    - It assumes the system metric has a `Component` label and `pid` label. `pid` is the
+    process id, so it can be used to uniquely identify the process.
+    """
+    session_name = os.path.basename(
+        ray._private.worker._global_node.get_session_dir_path()
+    )
+    query = f"sum({system_metric}{{Component='{component}',SessionName='{session_name}'}}) by (pid)"
+    resp = requests.get(
+        f"{prometheus_server_address}/api/v1/query?query={quote(query)}"
+    )
+    if resp.status_code != 200:
+        raise Exception(f"Failed to query Prometheus: {resp.status_code}")
+    result = resp.json()
+    return [float(item["value"][1]) for item in result["data"]["result"]]
 
 
 def get_test_config_path(config_file_name):
@@ -1827,14 +1841,6 @@ def job_hook(**kwargs):
     sys.exit(0)
 
 
-def find_free_port() -> int:
-    sock = socket.socket()
-    sock.bind(("", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return port
-
-
 def wandb_setup_api_key_hook():
     """
     Example external hook to set up W&B API key in
@@ -1847,12 +1853,13 @@ def wandb_setup_api_key_hook():
 def get_node_stats(raylet, num_retry=5, timeout=2):
     import grpc
 
+    from ray._private.grpc_utils import init_grpc_channel
     from ray.core.generated import node_manager_pb2_grpc
 
     raylet_address = build_address(
         raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
     )
-    channel = ray._private.utils.init_grpc_channel(raylet_address)
+    channel = init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     for _ in range(num_retry):
         try:
@@ -1868,12 +1875,13 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
 
 # Gets resource usage assuming gcs is local.
 def get_resource_usage(gcs_address, timeout=10):
+    from ray._private.grpc_utils import init_grpc_channel
     from ray.core.generated import gcs_service_pb2_grpc
 
     if not gcs_address:
         gcs_address = ray.worker._global_node.gcs_address
 
-    gcs_channel = ray._private.utils.init_grpc_channel(
+    gcs_channel = init_grpc_channel(
         gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=False
     )
 
@@ -2088,3 +2096,12 @@ def _execute_command_on_node(command: str, node_ip: str):
     except subprocess.CalledProcessError as e:
         print("Exit code:", e.returncode)
         print("Stderr:", e.stderr)
+
+
+RPC_FAILURE_MAP = {
+    "request": "100:0:0",
+    "response": "0:100:0",
+    "in_flight": "0:0:100",
+}
+
+RPC_FAILURE_TYPES = list(RPC_FAILURE_MAP.keys())

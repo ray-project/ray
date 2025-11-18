@@ -8,11 +8,13 @@ from ray.serve._private.metrics_utils import (
     InMemoryMetricsStore,
     MetricsPusher,
     TimeStampedValue,
+    aggregate_timeseries,
     merge_instantaneous_total,
     merge_timeseries_dicts,
     time_weighted_average,
 )
 from ray.serve._private.test_utils import MockAsyncTimer
+from ray.serve.config import AggregationFunction
 
 
 class TestMetricsPusher:
@@ -160,8 +162,6 @@ class TestInMemoryMetricsStore:
         s.add_metrics_point({"m1": 1}, timestamp=1)
         s.add_metrics_point({"m1": 2}, timestamp=2)
         assert s.aggregate_avg(["m1"]) == (1.5, 1)
-        assert s.aggregate_max(["m1"]) == (2, 1)
-        assert s.aggregate_min(["m1"]) == (1, 1)
         assert s.get_latest("m1") == 2
 
     def test_out_of_order_insert(self):
@@ -172,14 +172,10 @@ class TestInMemoryMetricsStore:
         s.add_metrics_point({"m1": 2}, timestamp=2)
         s.add_metrics_point({"m1": 4}, timestamp=4)
         assert s.aggregate_avg(["m1"]) == (3, 1)
-        assert s.aggregate_max(["m1"]) == (5, 1)
-        assert s.aggregate_min(["m1"]) == (1, 1)
 
     def test_window_start_timestamp(self):
         s = InMemoryMetricsStore()
         assert s.aggregate_avg(["m1"]) == (None, 0)
-        assert s.aggregate_max(["m1"]) == (None, 0)
-        assert s.aggregate_min(["m1"]) == (None, 0)
 
         s.add_metrics_point({"m1": 1}, timestamp=2)
         assert s.aggregate_avg(["m1"]) == (1, 1)
@@ -193,19 +189,11 @@ class TestInMemoryMetricsStore:
         assert s.aggregate_avg(["m1"]) == (1.5, 1)
         assert s.aggregate_avg(["m2"]) == (-1.5, 1)
         assert s.aggregate_avg(["m1", "m2"]) == (0, 2)
-        assert s.aggregate_max(["m1"]) == (2, 1)
-        assert s.aggregate_max(["m2"]) == (-1, 1)
-        assert s.aggregate_max(["m1", "m2"]) == (2, 2)
-        assert s.aggregate_min(["m1"]) == (1, 1)
-        assert s.aggregate_min(["m2"]) == (-2, 1)
-        assert s.aggregate_min(["m1", "m2"]) == (-2, 2)
 
     def test_empty_key_mix(self):
         s = InMemoryMetricsStore()
         s.add_metrics_point({"m1": 1}, timestamp=1)
         assert s.aggregate_avg(["m1", "m2"]) == (1, 1)
-        assert s.aggregate_max(["m1", "m2"]) == (1, 1)
-        assert s.aggregate_min(["m1", "m2"]) == (1, 1)
         assert s.aggregate_avg(["m2"]) == (None, 0)
 
     def test_prune_keys_and_compact_data(self):
@@ -218,6 +206,85 @@ class TestInMemoryMetricsStore:
         assert len(s.data["m1"]) == 2 and s.data["m1"] == s._get_datapoints("m1", 1.1)
         assert len(s.data["m2"]) == 2 and s.data["m2"] == s._get_datapoints("m2", 1.1)
         assert len(s.data["m3"]) == 1 and s.data["m3"] == s._get_datapoints("m3", 1.1)
+
+
+class TestAggregateTimeseries:
+    def test_aggregate_timeseries_empty(self):
+        assert aggregate_timeseries([], AggregationFunction.MEAN) is None
+        assert aggregate_timeseries([], AggregationFunction.MAX) is None
+        assert aggregate_timeseries([], AggregationFunction.MIN) is None
+
+    def test_aggregate_timeseries_mean(self):
+        assert (
+            aggregate_timeseries([TimeStampedValue(1.0, 5.0)], AggregationFunction.MEAN)
+            == 5.0
+        )
+        assert (
+            aggregate_timeseries(
+                [TimeStampedValue(1.0, 5.0), TimeStampedValue(2.0, 10.0)],
+                AggregationFunction.MEAN,
+            )
+            == 7.5
+        )
+        assert (
+            aggregate_timeseries(
+                [
+                    TimeStampedValue(1.0, 5.0),
+                    TimeStampedValue(2.0, 10.0),
+                    TimeStampedValue(3.0, 15.0),
+                ],
+                AggregationFunction.MEAN,
+            )
+            == 10.0
+        )
+
+    def test_aggregate_timeseries_max(self):
+        assert (
+            aggregate_timeseries([TimeStampedValue(1.0, 5.0)], AggregationFunction.MAX)
+            == 5.0
+        )
+        assert (
+            aggregate_timeseries(
+                [TimeStampedValue(1.0, 5.0), TimeStampedValue(2.0, 10.0)],
+                AggregationFunction.MAX,
+            )
+            == 10.0
+        )
+        assert (
+            aggregate_timeseries(
+                [
+                    TimeStampedValue(1.0, 5.0),
+                    TimeStampedValue(2.0, 10.0),
+                    TimeStampedValue(3.0, 15.0),
+                ],
+                AggregationFunction.MAX,
+            )
+            == 15.0
+        )
+
+    def test_aggregate_timeseries_min(self):
+        assert (
+            aggregate_timeseries([TimeStampedValue(1.0, 5.0)], AggregationFunction.MIN)
+            == 5.0
+        )
+        assert (
+            aggregate_timeseries(
+                [TimeStampedValue(1.0, 5.0), TimeStampedValue(2.0, 10.0)],
+                AggregationFunction.MIN,
+            )
+            == 5.0
+        )
+        assert (
+            aggregate_timeseries(
+                [
+                    TimeStampedValue(1.0, 5.0),
+                    TimeStampedValue(2.0, 10.0),
+                    TimeStampedValue(3.0, 15.0),
+                ],
+                AggregationFunction.MIN,
+            )
+            == 5.0
+        )
 
 
 class TestInstantaneousMerge:
@@ -553,6 +620,119 @@ class TestInstantaneousMerge:
         print(f"Full series average: {full_avg:.2f}")
         print(f"Early period average (0-10s): {early_avg:.2f}")
         print(f"Late period average (20-30s): {late_avg:.2f}")
+
+    def test_merge_instantaneous_total_timestamp_rounding(self):
+        """Test that timestamps are rounded to 10ms precision."""
+        series1 = [
+            TimeStampedValue(1.001234, 5.0),  # Should round to 1.00
+            TimeStampedValue(2.005678, 7.0),  # Should round to 2.01
+            TimeStampedValue(3.009999, 3.0),  # Should round to 3.01
+        ]
+        series2 = [
+            TimeStampedValue(1.504321, 2.0),  # Should round to 1.50
+            TimeStampedValue(2.008765, 4.0),  # Should round to 2.01
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        # Verify timestamps are rounded to 2 decimal places (10ms precision)
+        expected_timestamps = [1.00, 1.50, 2.01, 3.01]
+        actual_timestamps = [point.timestamp for point in result]
+
+        assert len(actual_timestamps) == len(expected_timestamps)
+        for actual, expected in zip(actual_timestamps, expected_timestamps):
+            assert actual == expected, f"Expected {expected}, got {actual}"
+
+        # Verify values are correct with rounded timestamps
+        expected = [
+            TimeStampedValue(1.00, 5.0),  # series1 starts
+            TimeStampedValue(1.50, 7.0),  # series2 starts: 5+2=7
+            TimeStampedValue(
+                2.01, 11.0
+            ),  # s1 becomes 7, s2 becomes 4. Total: 7 + 4 = 11.0
+            TimeStampedValue(3.01, 7.0),  # series1 changes: 11+(3-7)=7
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_instantaneous_total_combine_same_timestamp(self):
+        """Test that datapoints with same rounded timestamp are combined."""
+        # Create series where multiple events round to the same timestamp
+        series1 = [
+            TimeStampedValue(1.001, 5.0),  # Rounds to 1.00
+            TimeStampedValue(1.004, 7.0),  # Also rounds to 1.00
+            TimeStampedValue(2.000, 10.0),  # Rounds to 2.00
+        ]
+        series2 = [
+            TimeStampedValue(1.002, 3.0),  # Rounds to 1.00
+            TimeStampedValue(1.005, 4.0),  # Also rounds to 1.00
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        # Should only have unique rounded timestamps
+        timestamps = [point.timestamp for point in result]
+        assert timestamps == [
+            1.00,
+            2.00,
+        ], f"Expected [1.00, 2.00], got {timestamps}"
+
+        # The value at 1.00 should be the final state after all changes at that rounded time
+        # Order of events at rounded timestamp 1.00:
+        # - series1: 0->5 (t=1.001)
+        # - series2: 0->3 (t=1.002)
+        # - series1: 5->7 (t=1.004)
+        # - series2: 3->4 (t=1.005)
+        # Final state: series1=7, series2=4, total=11
+        expected = [
+            TimeStampedValue(1.00, 11.0),  # Final combined state at rounded timestamp
+            TimeStampedValue(2.00, 14.0),  # series1 changes: 11+(10-7)=14
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_instantaneous_total_edge_cases_rounding(self):
+        """Test edge cases for timestamp rounding and combination."""
+        # Test rounding edge cases
+        series1 = [
+            TimeStampedValue(1.004999, 5.0),  # Should round to 1.0
+            TimeStampedValue(1.005000, 7.0),  # Should round to 1.0 (round half to even)
+            TimeStampedValue(1.005001, 9.0),  # Should round to 1.01
+        ]
+
+        result = merge_instantaneous_total([series1])
+
+        # Should have two distinct rounded timestamps
+        expected_timestamps = [1.0, 1.01]
+        actual_timestamps = [point.timestamp for point in result]
+        assert actual_timestamps == expected_timestamps
+
+        # Values should reflect the changes
+        # Both 1.004999 and 1.005000 round to 1.0, so they get combined
+        # Order: 1.004999 (0->5), then 1.005000 (5->7) - final value at 1.0 is 7.0
+        # Then 1.005001 (7->9) rounds to 1.01 - value at 1.01 is 9.0
+        expected = [
+            TimeStampedValue(
+                1.0, 7.0
+            ),  # Final state after all changes that round to 1.0 (1.004999: 0->5, 1.005000: 5->7)
+            TimeStampedValue(1.01, 9.0),  # State after change at 1.005001 (7->9)
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_instantaneous_total_no_changes_filtered(self):
+        """Test that zero-change events are filtered even with rounding."""
+        series1 = [
+            TimeStampedValue(1.001, 5.0),  # Rounds to 1.00
+            TimeStampedValue(1.004, 5.0),  # Also rounds to 1.00, no change
+            TimeStampedValue(2.000, 7.0),  # Rounds to 2.00, change
+        ]
+
+        result = merge_instantaneous_total([series1])
+
+        # Should only include points where value actually changed
+        expected = [
+            TimeStampedValue(1.00, 5.0),  # Initial value
+            TimeStampedValue(2.00, 7.0),  # Value change
+        ]
+        assert_timeseries_equal(result, expected)
 
 
 if __name__ == "__main__":

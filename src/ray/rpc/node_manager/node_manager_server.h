@@ -15,9 +15,12 @@
 #pragma once
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/grpc_server.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
@@ -29,7 +32,8 @@ class ServerCallFactory;
 
 /// TODO(vitsai): Remove this when auth is implemented for node manager
 #define RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(METHOD) \
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH(NodeManagerService, METHOD, -1, AuthType::NO_AUTH)
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH(                   \
+      NodeManagerService, METHOD, -1, ClusterIdAuthType::NO_AUTH)
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
 #define RAY_NODE_MANAGER_RPC_HANDLERS                                  \
@@ -58,7 +62,9 @@ class ServerCallFactory;
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetObjectsInfo)                 \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerFailureCause)          \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RegisterMutableObject)          \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PushMutableObject)
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PushMutableObject)              \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerPIDs)                  \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(KillLocalActor)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -182,6 +188,14 @@ class NodeManagerServiceHandler {
   virtual void HandlePushMutableObject(PushMutableObjectRequest request,
                                        PushMutableObjectReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetWorkerPIDs(GetWorkerPIDsRequest request,
+                                   GetWorkerPIDsReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleKillLocalActor(KillLocalActorRequest request,
+                                    KillLocalActorReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.
@@ -201,7 +215,8 @@ class NodeManagerGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
+      const ClusterID &cluster_id,
+      const std::optional<AuthenticationToken> &auth_token) override {
     RAY_NODE_MANAGER_RPC_HANDLERS
   }
 

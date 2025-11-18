@@ -83,6 +83,9 @@ class PlacementGroupResourceManager {
   /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.
   absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>, pair_hash>
       bundle_spec_map_;
+
+  friend bool IsBundleRegistered(const PlacementGroupResourceManager &manager,
+                                 const BundleID &bundle_id);
 };
 
 /// Associated with new scheduler.

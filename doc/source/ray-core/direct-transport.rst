@@ -1,7 +1,5 @@
 .. _direct-transport:
 
-.. TODO: asyncio not yet supported.
-.. TODO: wait_tensor_freed
 
 **************************
 Ray Direct Transport (RDT)
@@ -14,12 +12,12 @@ For example, passing a CUDA ``torch.Tensor`` from one Ray task to another would 
 *Ray Direct Transport (RDT)* is a new feature that allows Ray to store and pass objects directly between Ray actors.
 This feature augments the familiar Ray :class:`ObjectRef <ray.ObjectRef>` API by:
 
-- Keeping GPU data in GPU memory until a transfer is needed
+- Keeping GPU data in GPU memory until a transfer is necessary
 - Avoiding expensive serialization and copies to and from the Ray object store
 - Using efficient data transports like collective communication libraries (`Gloo <https://github.com/pytorch/gloo>`__ or `NCCL <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`__) or point-to-point RDMA (via `NVIDIA's NIXL <https://github.com/ai-dynamo/nixl>`__) to transfer data directly between devices, including both CPU and GPUs
 
 .. note::
-   RDT is currently in **alpha**. Not all Ray Core APIs are supported yet. Future releases may introduce breaking API changes. See the :ref:`limitations <limitations>` section for more details.
+   RDT is currently in **alpha** and doesn't support all Ray Core APIs yet. Future releases may introduce breaking API changes. See the :ref:`limitations <limitations>` section for more details.
 
 Getting started
 ===============
@@ -149,6 +147,48 @@ Therefore, users need to specify the Ray object store as the tensor transport ex
    :start-after: __gloo_get_start__
    :end-before: __gloo_get_end__
 
+Object mutability
+^^^^^^^^^^^^^^^^^
+
+Unlike objects in the Ray object store, RDT objects are *mutable*, meaning that Ray only holds a reference to the tensor and will not copy it until a transfer is requested.
+This means that if the actor that returns a tensor also keeps a reference to the tensor, and the actor later modifies it in place while Ray is still storing the tensor reference, it's possible that some or all of the changes may be seen by receiving actors.
+
+Here is an example of what can go wrong:
+
+.. literalinclude:: doc_code/direct_transport_gloo.py
+   :language: python
+   :start-after: __gloo_wait_tensor_freed_bad_start__
+   :end-before: __gloo_wait_tensor_freed_bad_end__
+
+In this example, the sender actor returns a tensor to Ray, but it also keeps a reference to the tensor in its local state.
+Then, in `sender.increment_and_sum_stored_tensor`, the sender actor modifies the tensor in place while Ray is still holding the tensor reference.
+Then, the `receiver.increment_and_sum` task receives the modified tensor instead of the original, so the assertion fails.
+
+To fix this kind of error, use the :func:`ray.experimental.wait_tensor_freed <ray.experimental.wait_tensor_freed>` function to wait for Ray to release all references to the tensor, so that the actor can safely write to the tensor again.
+:func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` will unblock once all tasks that depend on the tensor have finished executing and all corresponding `ObjectRefs` have gone out of scope.
+Ray tracks tasks that depend on the tensor by keeping track of which tasks take the `ObjectRef` corresponding to the tensor as an argument.
+
+Here's a fixed version of the earlier example.
+
+.. literalinclude:: doc_code/direct_transport_gloo.py
+   :language: python
+   :start-after: __gloo_wait_tensor_freed_start__
+   :end-before: __gloo_wait_tensor_freed_end__
+
+The main changes are:
+1. `sender` calls :func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` before modifying the tensor in place.
+2. The driver skips :func:`ray.get <ray.get>` because :func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` blocks until all `ObjectRefs` pointing to the tensor are freed, so calling :func:`ray.get <ray.get>` here would cause a deadlock.
+3. The driver calls `del tensor` to release its reference to the tensor. Again, this is necessary because :func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` blocks until all `ObjectRefs` pointing to the tensor are freed.
+
+When an RDT `ObjectRef` is passed back to the same actor that produced it, Ray passes back a *reference* to the tensor instead of a copy. Therefore, the same kind of bug can occur.
+To help catch such cases, Ray will print a warning if an RDT object is passed to the actor that produced it and a different actor, like so:
+
+.. literalinclude:: doc_code/direct_transport_gloo.py
+   :language: python
+   :start-after: __gloo_object_mutability_warning_start__
+   :end-before: __gloo_object_mutability_warning_end__
+
+
 Usage with NCCL (NVIDIA GPUs only)
 ----------------------------------
 
@@ -239,6 +279,7 @@ RDT is currently in alpha and currently has the following limitations, which may
 
 * Support for ``torch.Tensor`` objects only.
 * Support for Ray actors only, not Ray tasks.
+* Not yet compatible with `asyncio <https://docs.python.org/3/library/asyncio.html>`__. Follow the `tracking issue <https://github.com/ray-project/ray/issues/56398>`__ for updates.
 * Support for the following transports: Gloo, NCCL, and NIXL.
 * Support for CPUs and NVIDIA GPUs only.
 * RDT objects are *mutable*. This means that Ray only holds a reference to the tensor, and will not copy it until a transfer is requested. Thus, if the application code also keeps a reference to a tensor before returning it, and modifies the tensor in place, then some or all of the changes may be seen by the receiving actor.
@@ -249,11 +290,29 @@ For collective-based tensor transports (Gloo and NCCL):
 * Similarly, the process that created the collective group cannot serialize and pass RDT :class:`ray.ObjectRefs <ray.ObjectRef>` to other Ray tasks or actors. Instead, the :class:`ray.ObjectRef`\s can only be passed as direct arguments to other actor tasks, and those actors must be in the same collective group.
 * Each actor can only be in one collective group per tensor transport at a time.
 * No support for :func:`ray.put <ray.put>`.
-* If a system-level error occurs during a collective operation, the collective group will be destroyed and the actors will no longer be able to communicate via the collective group. Note that application-level errors, i.e. exceptions raised by user code, will not destroy the collective group and will instead be propagated to any dependent task(s), as for non-RDT Ray objects. System-level errors include:
 
+
+Due to a known issue, for NIXL, we currently do not support storing different GPU objects at the same actor, where the objects contain an overlapping but not equal set of tensors. To support this pattern, ensure that the first `ObjectRef` has gone out of scope before storing the same tensor(s) again in a second object.
+
+.. literalinclude:: doc_code/direct_transport_nixl.py
+   :language: python
+   :start-after: __nixl_limitations_start__
+   :end-before: __nixl_limitations_end__
+
+Error handling
+==============
+
+* Application-level errors, i.e. exceptions raised by user code, will not destroy the collective group and will instead be propagated to any dependent task(s), as for non-RDT Ray objects.
+
+* If a system-level error occurs during a GLOO or NCCL collective operation, the collective group will be destroyed and the actors will be killed to prevent any hanging.
+
+* If a system-level error occurs during a NIXL transfer, Ray or NIXL will abort the transfer with an exception and Ray will raise the exception in the dependent task or on the ray.get on the NIXL ref.
+
+* System-level errors include:
    * Errors internal to the third-party transport, e.g., NCCL network errors
-   * Actor and node failure
-   * Tensors returned by the user that are located on an unsupported device, e.g., a CPU tensor when using NCCL
+   * Actor or node failures
+   * Transport errors due to tensor device / transport mismatches, e.g., a CPU tensor when using NCCL
+   * Ray RDT object fetch timeouts (can be overridden by setting the ``RAY_rdt_fetch_fail_timeout_milliseconds`` environment variable)
    * Any unexpected system bugs
 
 
