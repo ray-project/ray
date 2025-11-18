@@ -1667,6 +1667,40 @@ def unzip(data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
     return tuple(map(list, zip(*data)))
 
 
+def _sort_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Sort DataFrame by all columns, handling unhashable types."""
+    df = df.copy()
+
+    def to_sortable(x):
+        if isinstance(x, (list, np.ndarray)):
+            return tuple(to_sortable(i) for i in x)
+        if isinstance(x, dict):
+            return tuple(sorted((k, to_sortable(v)) for k, v in x.items()))
+        return x
+
+    sort_cols = []
+    temp_cols = []
+    # Sort by all columns to ensure deterministic order.
+    columns = sorted(df.columns)
+
+    for col in columns:
+        if df[col].dtype == "object":
+            # Create a temporary column for sorting to handle unhashable types.
+            temp_col = f"__sort_proxy_{col}__"
+            df[temp_col] = df[col].map(to_sortable)
+            sort_cols.append(temp_col)
+            temp_cols.append(temp_col)
+        else:
+            sort_cols.append(col)
+
+    sorted_df = df.sort_values(sort_cols)
+
+    if temp_cols:
+        sorted_df = sorted_df.drop(columns=temp_cols)
+
+    return sorted_df
+
+
 def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     """Check if two DataFrames have the same rows.
 
@@ -1674,13 +1708,16 @@ def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     order of rows. This is useful for testing Ray Data because its interface doesn't
     usually guarantee the order of rows.
     """
-    if len(actual) == len(expected) == 0:
+    if len(actual) != len(expected):
+        return False
+
+    if len(actual) == 0:
         return True
 
     try:
         pd.testing.assert_frame_equal(
-            actual.sort_values(sorted(actual.columns)).reset_index(drop=True),
-            expected.sort_values(sorted(expected.columns)).reset_index(drop=True),
+            _sort_df(actual).reset_index(drop=True),
+            _sort_df(expected).reset_index(drop=True),
             check_dtype=False,
         )
         return True

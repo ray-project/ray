@@ -4,6 +4,11 @@ import pytest
 
 from ray.data.datatype import DataType
 
+# Skip all tests if PyArrow version is less than 19.0
+pytestmark = pytest.mark.skipif(
+    pa.__version__ < "19.0", reason="DataType tests require PyArrow >= 19.0"
+)
+
 
 class TestDataTypeFactoryMethods:
     """Test the generated factory methods."""
