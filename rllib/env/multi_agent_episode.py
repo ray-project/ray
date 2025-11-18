@@ -2215,7 +2215,7 @@ class MultiAgentEpisode:
 
             # Extract and preserve __common__ infos if present.
             if "__common__" in inf:
-                self._hanging_infos_end["__common__"] = inf["__common__"]
+                self._hanging_infos_end["__common__"] = inf.pop("__common__")
 
             for agent_id, agent_obs in obs.items():
                 all_agent_ids.add(agent_id)
