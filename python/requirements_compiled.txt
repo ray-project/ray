@@ -236,6 +236,7 @@ boto==2.49.0
 boto3==1.29.7
     # via
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   aim
     #   aiobotocore
@@ -383,6 +384,8 @@ crc32c==2.3
     # via -r python/requirements/ml/data-requirements.txt
 crcmod==1.7
     # via gsutil
+croniter==6.0.0
+    # via -r python/requirements/ml/data-test-requirements.txt
 cryptography==44.0.3 ; sys_platform != "darwin"
     # via
     #   -r python/requirements/test-requirements.txt
@@ -1809,6 +1812,7 @@ python-dateutil==2.8.2
     #   arrow
     #   botocore
     #   celery
+    #   croniter
     #   freezegun
     #   google-cloud-bigquery
     #   graphene
@@ -1841,6 +1845,7 @@ pytz==2022.7.1
     #   -r python/requirements/test-requirements.txt
     #   aim
     #   clickhouse-connect
+    #   croniter
     #   pandas
     #   snowflake-connector-python
 pyu2f==0.1.5
@@ -1910,6 +1915,7 @@ requests==2.32.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   adal
     #   aim
