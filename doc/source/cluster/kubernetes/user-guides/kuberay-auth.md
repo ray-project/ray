@@ -38,7 +38,7 @@ When enabled, the KubeRay operator will:
 
 If you are using a KubeRay version older than v1.5.1, you can enable token authentication by creating a Kubernetes Secret containing
 your token and configuring the RAY_AUTH_MODE and RAY_AUTH_TOKEN environment variables.
-```
+```bash
 kubectl create secret generic ray-cluster-with-auth --from-literal=auth_token=$(openssl rand -base64 32)
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.auth-manual.yaml
 ```
