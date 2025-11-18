@@ -789,34 +789,41 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
             });
       };
 
-  auto *node_info = gcs_client_->Nodes().GetNodeAddressAndLiveness(
-      node_id, /*filter_dead_nodes=*/false);
-  if (node_info == nullptr) {
-    gcs_client_->Nodes().AsyncGetAllNodeAddressAndLiveness(
-        [do_cancel_local_task = std::move(do_cancel_local_task), node_id](
-            const Status &status,
-            std::vector<rpc::GcsNodeAddressAndLiveness> &&nodes) mutable {
-          if (!status.ok()) {
-            RAY_LOG(INFO) << "Failed to get node info from GCS";
-            return;
-          }
-          if (nodes.empty() || nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
-            RAY_LOG(INFO).WithField(node_id)
-                << "Not sending CancelLocalTask because node is dead";
-            return;
-          }
-          do_cancel_local_task(nodes[0]);
-        },
-        -1,
-        {node_id});
-    return;
-  }
-  if (node_info->state() == rpc::GcsNodeInfo::DEAD) {
-    RAY_LOG(INFO).WithField(node_id)
-        << "Not sending CancelLocalTask because node is dead";
-    return;
-  }
-  do_cancel_local_task(*node_info);
+  // Cancel can execute on the user's python thread, but the GCS node cache is updated on
+  // the io service thread and is not thread-safe. Hence we need to post the entire
+  // cache access to the io service thread.
+  boost::asio::post(
+      cancel_retry_timer_.get_executor(),
+      [this, do_cancel_local_task = std::move(do_cancel_local_task), node_id]() mutable {
+        auto *node_info = gcs_client_->Nodes().GetNodeAddressAndLiveness(
+            node_id, /*filter_dead_nodes=*/false);
+        if (node_info == nullptr) {
+          gcs_client_->Nodes().AsyncGetAllNodeAddressAndLiveness(
+              [do_cancel_local_task = std::move(do_cancel_local_task), node_id](
+                  const Status &status,
+                  std::vector<rpc::GcsNodeAddressAndLiveness> &&nodes) mutable {
+                if (!status.ok()) {
+                  RAY_LOG(INFO) << "Failed to get node info from GCS";
+                  return;
+                }
+                if (nodes.empty() || nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
+                  RAY_LOG(INFO).WithField(node_id)
+                      << "Not sending CancelLocalTask because node is dead";
+                  return;
+                }
+                do_cancel_local_task(nodes[0]);
+              },
+              -1,
+              {node_id});
+          return;
+        }
+        if (node_info->state() == rpc::GcsNodeInfo::DEAD) {
+          RAY_LOG(INFO).WithField(node_id)
+              << "Not sending CancelLocalTask because node is dead";
+          return;
+        }
+        do_cancel_local_task(*node_info);
+      });
 }
 
 void NormalTaskSubmitter::RequestOwnerToCancelTask(const ObjectID &object_id,
