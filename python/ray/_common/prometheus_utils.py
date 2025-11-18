@@ -12,6 +12,8 @@ from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 import requests
 
+from ray._private.worker import RayContext
+
 try:
     from prometheus_client.core import Metric
     from prometheus_client.parser import Sample, text_string_to_metric_families
@@ -35,9 +37,9 @@ class PrometheusTimeseries:
     - metric_samples: the latest value of each label
     """
 
-    components_dict: Dict[str, Set[str]] = field(default_factory=defaultdict)
-    metric_descriptors: Dict[str, Metric] = field(default_factory=defaultdict)
-    metric_samples: Dict[frozenset, Sample] = field(default_factory=defaultdict)
+    components_dict: Dict[str, Set[str]] = field(default_factory=dict)
+    metric_descriptors: Dict[str, Metric] = field(default_factory=dict)
+    metric_samples: Dict[frozenset, Sample] = field(default_factory=dict)
 
     def flush(self):
         self.components_dict.clear()
@@ -80,6 +82,29 @@ def fetch_from_prom_server(
     )
     response.raise_for_status()
     return response.json()
+
+
+def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
+    """Return prometheus metrics from a RayContext
+
+    Args:
+        info: Ray context returned from ray.init()
+
+    Returns:
+        Dict from metric name to a list of samples for the metrics
+    """
+    metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
+    print("Fetch metrics from", metrics_page)
+    return fetch_prometheus_metrics([metrics_page])
+
+
+def raw_metric_timeseries(
+    info: RayContext, result: PrometheusTimeseries
+) -> Dict[str, List[Any]]:
+    """Return prometheus timeseries from a RayContext"""
+    metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
+    print("Fetch metrics from", metrics_page)
+    return fetch_prometheus_metric_timeseries([metrics_page], result)
 
 
 def fetch_from_prom_exporter(prom_addresses: List[str]) -> Iterator[Tuple[str, str]]:
@@ -175,15 +200,6 @@ def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
 def fetch_prometheus_metric_timeseries(
     prom_addresses: List[str], result: PrometheusTimeseries
 ) -> Dict[str, List[Any]]:
-    """Fetch prometheus metrics and return as timeseries data.
-
-    Args:
-        prom_addresses: List of addresses to fetch metrics from.
-        result: PrometheusTimeseries object to update.
-
-    Returns:
-        Dict mapping from metric name to list of samples for the metric.
-    """
     samples = fetch_prometheus_timeseries(
         prom_addresses, result
     ).metric_samples.values()

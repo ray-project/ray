@@ -3754,6 +3754,7 @@ class DeploymentStateManager:
                     logger.warning(
                         f"Failed to set prometheus handler for replica {replica.replica_id}: {e}"
                     )
+
     def get_deployment_outbound_deployments(
         self, deployment_id: DeploymentID
     ) -> Optional[List[DeploymentID]]:
