@@ -665,66 +665,63 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
                                task_spec.GetDependencyIds(),
                                task_spec.GetRuntimeEnvHash());
-  NodeID node_id;
-  std::string executor_worker_id;
-  {
-    absl::MutexLock lock(&mu_);
-    generators_to_resubmit_.erase(task_id);
 
-    // For idempotency.
-    if (cancelled_tasks_.contains(task_id)) {
-      // The task cancel is already in progress. We don't need to do anything.
-      return;
-    }
+  absl::MutexLock lock(&mu_);
+  generators_to_resubmit_.erase(task_id);
 
-    task_manager_.MarkTaskCanceled(task_id);
-    if (!task_manager_.IsTaskPending(task_id)) {
-      // The task is finished or failed so marking the task as cancelled is sufficient.
-      return;
-    }
-
-    auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-    auto &scheduling_tasks = scheduling_key_entry.task_queue;
-    // This cancels tasks that have completed dependencies and are awaiting
-    // a worker lease.
-    if (!scheduling_tasks.empty()) {
-      for (auto spec = scheduling_tasks.begin(); spec != scheduling_tasks.end(); spec++) {
-        if (spec->TaskId() == task_id) {
-          scheduling_tasks.erase(spec);
-          CancelWorkerLeaseIfNeeded(scheduling_key);
-          task_manager_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
-          return;
-        }
-      }
-    }
-
-    // This will get removed either when the RPC call to cancel is returned, when all
-    // dependencies are resolved, or when dependency resolution is successfully cancelled.
-    RAY_CHECK(cancelled_tasks_.emplace(task_id).second);
-    auto rpc_client_address = executing_tasks_.find(task_id);
-    if (rpc_client_address == executing_tasks_.end()) {
-      if (failed_tasks_pending_failure_cause_.contains(task_id)) {
-        // We are waiting for the task failure cause. Do not fail it here; instead,
-        // wait for the cause to come in and then handle it appropriately.
-      } else {
-        // This case is reached for tasks that have unresolved dependencies.
-        if (resolver_.CancelDependencyResolution(task_id)) {
-          // ResolveDependencies callback will never be called if dependency resolution
-          // was successfully cancelled, so need to remove from the set here.
-          cancelled_tasks_.erase(task_id);
-        }
-        task_manager_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
-      }
-      if (scheduling_key_entry.CanDelete()) {
-        // We can safely remove the entry keyed by scheduling_key from the
-        // scheduling_key_entries_ hashmap.
-        scheduling_key_entries_.erase(scheduling_key);
-      }
-      return;
-    }
-    node_id = NodeID::FromBinary(rpc_client_address->second.node_id());
-    executor_worker_id = rpc_client_address->second.worker_id();
+  // For idempotency.
+  if (cancelled_tasks_.contains(task_id)) {
+    // The task cancel is already in progress. We don't need to do anything.
+    return;
   }
+
+  task_manager_.MarkTaskCanceled(task_id);
+  if (!task_manager_.IsTaskPending(task_id)) {
+    // The task is finished or failed so marking the task as cancelled is sufficient.
+    return;
+  }
+
+  auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+  auto &scheduling_tasks = scheduling_key_entry.task_queue;
+  // This cancels tasks that have completed dependencies and are awaiting
+  // a worker lease.
+  if (!scheduling_tasks.empty()) {
+    for (auto spec = scheduling_tasks.begin(); spec != scheduling_tasks.end(); spec++) {
+      if (spec->TaskId() == task_id) {
+        scheduling_tasks.erase(spec);
+        CancelWorkerLeaseIfNeeded(scheduling_key);
+        task_manager_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
+        return;
+      }
+    }
+  }
+
+  // This will get removed either when the RPC call to cancel is returned, when all
+  // dependencies are resolved, or when dependency resolution is successfully cancelled.
+  RAY_CHECK(cancelled_tasks_.emplace(task_id).second);
+  auto rpc_client_address = executing_tasks_.find(task_id);
+  if (rpc_client_address == executing_tasks_.end()) {
+    if (failed_tasks_pending_failure_cause_.contains(task_id)) {
+      // We are waiting for the task failure cause. Do not fail it here; instead,
+      // wait for the cause to come in and then handle it appropriately.
+    } else {
+      // This case is reached for tasks that have unresolved dependencies.
+      if (resolver_.CancelDependencyResolution(task_id)) {
+        // ResolveDependencies callback will never be called if dependency resolution
+        // was successfully cancelled, so need to remove from the set here.
+        cancelled_tasks_.erase(task_id);
+      }
+      task_manager_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
+    }
+    if (scheduling_key_entry.CanDelete()) {
+      // We can safely remove the entry keyed by scheduling_key from the
+      // scheduling_key_entries_ hashmap.
+      scheduling_key_entries_.erase(scheduling_key);
+    }
+    return;
+  }
+  auto node_id = NodeID::FromBinary(rpc_client_address->second.node_id());
+  auto executor_worker_id = rpc_client_address->second.worker_id();
 
   auto do_cancel_local_task =
       [this,
@@ -754,7 +751,7 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
              force_kill,
              recursive](const Status &status,
                         const rpc::CancelLocalTaskReply &reply) mutable {
-              absl::MutexLock lock(&mu_);
+              absl::MutexLock callback_lock(&mu_);
               cancelled_tasks_.erase(task_spec.TaskId());
               if (!status.ok()) {
                 RAY_LOG(DEBUG) << "CancelLocalTask RPC failed for task "
