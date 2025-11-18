@@ -120,7 +120,7 @@ def setup():
         instance_status_update_subscribers=[mock_subscriber],
     )
 
-    cloud_resource_monitor = CloudResourceMonitor(instance_storage)
+    cloud_resource_monitor = CloudResourceMonitor()
 
     yield instance_manager, instance_storage, mock_subscriber, cloud_resource_monitor
 
