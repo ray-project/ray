@@ -230,7 +230,7 @@ def _generate_panel_template(
     template["linewidth"] = panel.linewidth
 
     if panel.hideXAxis:
-        template["xaxis"]["show"] = False
+        template.setdefault("xaxis", {})["show"] = False
 
     # Handle stacking visualization
     if panel.stack is True:
