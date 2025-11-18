@@ -466,7 +466,8 @@ class NormalTaskSubmitterTest : public testing::Test {
         actor_creator(std::make_shared<FakeActorCreator>()),
         lease_policy(std::make_unique<MockLeasePolicy>()),
         lease_policy_ptr(lease_policy.get()),
-        mock_gcs_client_(std::make_shared<gcs::MockGcsClient>()) {
+        mock_gcs_client_(std::make_shared<gcs::MockGcsClient>()),
+        io_work_(boost::asio::make_work_guard(io_context)) {
     address.set_node_id(local_node_id.Binary());
     lease_policy_ptr->SetNodeID(local_node_id);
   }
@@ -531,6 +532,7 @@ class NormalTaskSubmitterTest : public testing::Test {
   MockLeasePolicy *lease_policy_ptr = nullptr;
   std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
   instrumented_io_context io_context;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
   ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
 };
 
@@ -688,6 +690,9 @@ TEST_F(NormalTaskSubmitterTest, TestCancellationWhileHandlingTaskFailure) {
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
   // Cancel the task while GetWorkerFailureCause has not been completed.
   submitter.CancelTask(task, true, false);
+  // ReplyPushTask removes the task from the executing_tasks_ map hence
+  // we don't need to trigger CancelLocalTask RPC.
+  RAY_CHECK(!io_context.poll_one());
   // Completing the GetWorkerFailureCause call. Check that the reply runs without error
   // and FailPendingTask is not called.
   ASSERT_TRUE(raylet_client->ReplyGetWorkerFailureCause());
@@ -1770,6 +1775,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
 
   // Try force kill, exiting the worker
   submitter.CancelTask(task, true, false);
+  RAY_CHECK(io_context.poll_one());
   ASSERT_EQ(raylet_client->cancel_local_task_requests.front().intended_task_id(),
             task.TaskIdBinary());
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("workerdying"), true));
@@ -1788,6 +1794,7 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
 
   // Try non-force kill, worker returns normally
   submitter.CancelTask(task, false, false);
+  RAY_CHECK(io_context.poll_one());
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->cancel_local_task_requests.back().intended_task_id(),
             task.TaskIdBinary());
@@ -1810,6 +1817,9 @@ TEST_F(NormalTaskSubmitterTest, TestKillPendingTask) {
 
   submitter.SubmitTask(task);
   submitter.CancelTask(task, true, false);
+  // We haven't been granted a worker lease yet, so the task is not executing.
+  // So we don't need to trigger CancelLocalTask RPC.
+  RAY_CHECK(!io_context.poll_one());
   ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -1838,6 +1848,9 @@ TEST_F(NormalTaskSubmitterTest, TestKillResolvingTask) {
   submitter.SubmitTask(task);
   ASSERT_EQ(task_manager->num_inlined_dependencies, 0);
   submitter.CancelTask(task, true, false);
+  // We haven't been granted a worker lease yet, so the task is not executing.
+  // So we don't need to trigger CancelLocalTask RPC.
+  RAY_CHECK(!io_context.poll_one());
   auto data = GenerateRandomObject();
   store->Put(*data, obj1, /*has_reference=*/true);
   WaitForObjectIdInMemoryStore(*store, obj1);
@@ -1888,6 +1901,7 @@ TEST_F(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) 
   submitter.SubmitTask(task);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, local_node_id));
   submitter.CancelTask(task, /*force_kill=*/false, /*recursive=*/true);
+  RAY_CHECK(io_context.poll_one());
   ASSERT_FALSE(submitter.QueueGeneratorForResubmit(task));
   raylet_client->ReplyCancelLocalTask();
   ASSERT_TRUE(submitter.QueueGeneratorForResubmit(task));
@@ -1906,6 +1920,7 @@ TEST_F(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) 
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, local_node_id));
   ASSERT_TRUE(submitter.QueueGeneratorForResubmit(task2));
   submitter.CancelTask(task2, /*force_kill=*/false, /*recursive=*/true);
+  RAY_CHECK(io_context.poll_one());
   ASSERT_TRUE(worker_client->ReplyPushTask());
   raylet_client->ReplyCancelLocalTask(Status::OK(),
                                       /*attempt_succeeded=*/true,
