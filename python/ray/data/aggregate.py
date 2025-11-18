@@ -1510,6 +1510,10 @@ class ApproximateTopK(AggregateFnV2):
         return self._frequent_strings_sketch(lg_max_k=log_capacity)
 
     def aggregate_block(self, block: Block) -> bytes:
+        # Note: The datasketches Python bindings only expose frequent_strings_sketch
+        # (not type-specific variants like frequent_ints_sketch). We use pickle
+        # serialization as a workaround, which is less performant than native
+        # type-specific sketches. Revisit if type-specific bindings are added.
         block_acc = BlockAccessor.for_block(block)
         table = block_acc.to_arrow()
         column = table.column(self.get_target_column())
