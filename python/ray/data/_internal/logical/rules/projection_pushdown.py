@@ -497,6 +497,7 @@ class ProjectionPushdown(Rule):
 
         if not (
             isinstance(op_to_pass_through, LogicalOperatorSupportsProjectionPassThrough)
+            and op_to_pass_through.supports_projection_pass_through()
             and is_simple_projection
         ):
             return op
@@ -528,7 +529,8 @@ class ProjectionPushdown(Rule):
                 input_op.infer_schema() is not None
                 for input_op in op_to_pass_through.input_dependencies
             )
-            # Check if there are any non-trivial renames
+            # Check if there are any non-trivial renames. The difference with simple
+            # projection is that it doesn't contain alias(new_name)
             has_nontrivial_renames = any(
                 old != new for old, new in filtered_old_to_new_name_map.items()
             )

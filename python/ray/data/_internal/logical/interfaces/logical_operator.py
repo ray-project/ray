@@ -117,6 +117,12 @@ class LogicalOperatorSupportsProjectionPassThrough(LogicalOperator):
     that allow projections to *pass through* them.
     """
 
+    def supports_projection_pass_through(self) -> bool:
+        """Operators can provide additional info on when a projection pass through can
+        occur.
+        """
+        return True
+
     def requires_schema_based_branch_selection(self) -> bool:
         """Returns True if projection pass-through requires schema analysis per branch.
 
