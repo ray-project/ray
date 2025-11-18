@@ -30,7 +30,7 @@ def _to_pil(obj: Any) -> Image.Image:
     if isinstance(obj, Image.Image):
         return obj
     if isinstance(obj, (bytes, bytearray)):
-        return Image.open(BytesIO(obj)).convert("RGB")
+        return Image.open(BytesIO(obj)).convert("RGBA")
     raise ValueError(f"Unsupported image type: {type(obj)!r}")
 
 
