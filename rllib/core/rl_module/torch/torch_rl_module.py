@@ -130,7 +130,19 @@ class TorchRLModule(nn.Module, RLModule):
         # these keys (strict=False). This is most likely due to `state` coming from
         # an `inference_only=False` RLModule, while `self` is an `inference_only=True`
         # RLModule.
-        self.load_state_dict(convert_to_torch_tensor(state), strict=False)
+        missing_keys, unexpected_keys = self.load_state_dict(
+            convert_to_torch_tensor(state), strict=False
+        )
+
+        # For inference_only modules, missing_keys should always be empty.
+        # If there are missing keys, it means the target module expects parameters
+        # that don't exist in the source, indicating an architecture mismatch.
+        if self.inference_only and missing_keys:
+            raise ValueError(
+                "Architecture mismatch detected when loading state into inference_only module! "
+                f"Missing parameters (not found in source state): {list(missing_keys)} "
+                "This usually indicates the learner and env-runner have different architectures."
+            )
 
     @OverrideToImplementCustomLogic
     @override(RLModule)
