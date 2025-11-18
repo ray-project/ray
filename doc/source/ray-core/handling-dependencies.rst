@@ -505,7 +505,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   Note: Setting a local directory per-task or per-actor is currently unsupported; it can only be set per-job (i.e., in ``ray.init()``).
 
-  Note: By default, if the local directory contains a ``.gitignore`` and/or ``.rayignore`` file, the files and paths specified in both will not be uploaded to the cluster. To disable the ``.gitignore`` from being considered, set ``RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1`` on the machine doing the uploading.
+  Note: By default, if the local directory contains a ``.gitignore`` and/or ``.rayignore`` file, the specified files are not uploaded to the cluster. To disable the ``.gitignore`` from being considered, set ``RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1`` on the machine doing the uploading.
 
   Note: If the local directory contains symbolic links, Ray follows the links and the files they point to are uploaded to the cluster.
 
@@ -532,7 +532,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   Note: Setting options (1), (3) and (4) per-task or per-actor is currently unsupported, it can only be set per-job (i.e., in ``ray.init()``).
 
-  Note: For option (1), by default, if the local directory contains a ``.gitignore`` and/or ``.rayignore`` file, the files and paths specified in both will not be uploaded to the cluster. To disable the ``.gitignore`` from being considered, set ``RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1`` on the machine doing the uploading.
+  Note: For option (1), by default, if the local directory contains a ``.gitignore`` and/or ``.rayignore`` file, the specified files are not uploaded to the cluster. To disable the ``.gitignore`` from being considered, set ``RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1`` on the machine doing the uploading.
 
 
 - ``py_executable`` (str): Specifies the executable used for running the Ray workers. It can include arguments as well. The executable can be
