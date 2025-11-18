@@ -679,9 +679,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                            rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetAgentPIDs` request.
-  void NodeManager::HandleGetWorkerPIDs(rpc::GetAgentPIDsRequest request,
-                                        rpc::GetAgentPIDsReply *reply,
-                                        rpc::SendReplyCallback send_reply_callback)
+  void HandleGetAgentPIDs(rpc::GetAgentPIDsRequest request,
+                          rpc::GetAgentPIDsReply *reply,
+                          rpc::SendReplyCallback send_reply_callback);
 
   /// Checks the local socket connection for all registered workers and drivers.
   /// If any of them have disconnected unexpectedly (i.e., we receive a SIGHUP),
