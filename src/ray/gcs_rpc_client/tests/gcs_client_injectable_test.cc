@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/gcs_rpc_client/accessor_factory_interface.h"
 #include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
 #include "ray/gcs_rpc_client/accessors/actor_info_accessor_interface.h"
+#include "ray/gcs_rpc_client/accessors/internal_kv_accessor.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/gcs_rpc_client/gcs_client_context.h"
 
@@ -153,7 +156,7 @@ class MixedAccessorFactory : public AccessorFactoryInterface {
 
   std::unique_ptr<InternalKVAccessorInterface> CreateInternalKVAccessor(
       GcsClientContext *context) override {
-    return nullptr;
+    return std::make_unique<InternalKVAccessor>(context);
   }
 };
 
