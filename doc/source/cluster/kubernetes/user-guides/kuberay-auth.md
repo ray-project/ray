@@ -1,6 +1,6 @@
 (kuberay-auth)=
 
-# Configure Ray clusters with token authentication
+# Configure Ray clusters to use token authentication
 
 This guide demonstrates how to enable Ray token authentication with KubeRay.
 
@@ -53,11 +53,9 @@ kubectl port-forward svc/ray-cluster-with-auth-head-svc 8265:8265 &
 ray job submit --address http://localhost:8265  -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
 ```
 
-You may see an error similar to this:
+You should see an error similar to this:
 
 ```bash
-...
-...
 RuntimeError: Authentication required: Unauthorized: Missing authentication token
 
 The Ray cluster requires authentication, but no token was provided.
@@ -75,7 +73,7 @@ This error confirms that the Ray cluster requires authentication.
 To access your Ray cluster using the Ray CLI, you need to configure the following environment variables:
 * `RAY_AUTH_MODE`: this configures the Ray CLI to set the necessary authorization headers for token authentication
 * `RAY_AUTH_TOKEN`: this contains the token that will be used for authentication. 
-* `RAY_AUTH_TOKEN_PATH`: if `RAY_AUTH_TOKEN` is not set, the Ray CLI will instead read the token from this path.
+* `RAY_AUTH_TOKEN_PATH`: if `RAY_AUTH_TOKEN` is not set, the Ray CLI will instead read the token from this path (defaults to `~/.ray/auth_token`).
 
 Submit a job with an authenticated Ray CLI:
 
