@@ -12,7 +12,8 @@ from ray._private.state_api_test_utils import (
     verify_failed_task,
 )
 from ray._private.test_utils import (
-    raw_metrics,
+    PrometheusTimeseries,
+    raw_metric_timeseries,
 )
 from ray._private.worker import RayContext
 from ray.exceptions import RuntimeEnvSetupError
@@ -27,7 +28,9 @@ _SYSTEM_CONFIG = {
 }
 
 
-def aggregate_task_event_metric(info: RayContext) -> Dict:
+def aggregate_task_event_metric(
+    info: RayContext, timeseries: PrometheusTimeseries
+) -> Dict:
     """
     Aggregate metrics of task events into:
         {
@@ -39,7 +42,7 @@ def aggregate_task_event_metric(info: RayContext) -> Dict:
                 ray_gcs_task_manager_task_events_dropped STATUS_EVENT,
         }
     """
-    res = raw_metrics(info)
+    res = raw_metric_timeseries(info, timeseries)
     task_events_info = defaultdict(int)
     if "ray_gcs_task_manager_task_events_dropped" in res:
         for sample in res["ray_gcs_task_manager_task_events_dropped"]:
@@ -68,8 +71,10 @@ def test_status_task_events_metrics(shutdown_only):
     for _ in range(10):
         ray.get(f.remote())
 
+    timeseries = PrometheusTimeseries()
+
     def verify():
-        metric = aggregate_task_event_metric(info)
+        metric = aggregate_task_event_metric(info, timeseries)
         assert metric["REPORTED"] >= 10, (
             "At least 10 tasks events should be reported. "
             "Could be more than 10 with multiple flush."

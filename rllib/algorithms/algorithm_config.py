@@ -327,7 +327,7 @@ class AlgorithmConfig(_Config):
         self.num_envs_per_env_runner = 1
         # TODO (sven): Once new ormsgpack system in place, replace the string
         #  with proper `gym.envs.registration.VectorizeMode.SYNC`.
-        self.gym_env_vectorize_mode = "SYNC"
+        self.gym_env_vectorize_mode = "sync"
         self.num_cpus_per_env_runner = 1
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
@@ -1043,6 +1043,8 @@ class AlgorithmConfig(_Config):
                             "`device` is a (torch) device.\n"
                         )
                     val_ = self._env_to_module_connector(env)
+                else:
+                    raise e
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1843,7 +1845,7 @@ class AlgorithmConfig(_Config):
         create_local_env_runner: Optional[bool] = NotProvided,
         create_env_on_local_worker: Optional[bool] = NotProvided,
         num_envs_per_env_runner: Optional[int] = NotProvided,
-        gym_env_vectorize_mode: Optional[str] = NotProvided,
+        gym_env_vectorize_mode: Optional[Union[str, gym.VectorizeMode]] = NotProvided,
         num_cpus_per_env_runner: Optional[int] = NotProvided,
         num_gpus_per_env_runner: Optional[Union[float, int]] = NotProvided,
         custom_resources_per_env_runner: Optional[dict] = NotProvided,
@@ -1903,10 +1905,13 @@ class AlgorithmConfig(_Config):
                 actions through RLModule inference, which can improve performance
                 for inference-bottlenecked workloads.
             gym_env_vectorize_mode: The gymnasium vectorization mode for vector envs.
-                Must be a `gymnasium.envs.registration.VectorizeMode` (enum) value.
+                Must be a `gymnasium.VectorizeMode` (enum) value.
                 Default is SYNC. Set this to ASYNC to parallelize the individual sub
                 environments within the vector. This can speed up your EnvRunners
-                significantly when using heavier environments.
+                significantly when using heavier environments. Set this to
+                VECTOR_ENTRY_POINT in case your env creator, also known as
+                "gym entry point", already returns a gym.vector.VectorEnv and you
+                don't need RLlib to vectorize the environments for the runners.
             num_cpus_per_env_runner: Number of CPUs to allocate per EnvRunner.
             num_gpus_per_env_runner: Number of GPUs to allocate per EnvRunner. This can
                 be fractional. This is usually needed only if your env itself requires a
@@ -4570,6 +4575,7 @@ class AlgorithmConfig(_Config):
                     rl_module_specs=module_specs,
                     modules_to_load=current_rl_module_spec.modules_to_load,
                     load_state_path=current_rl_module_spec.load_state_path,
+                    model_config=current_rl_module_spec.model_config,
                 )
 
             # Default is multi-agent and user wants to override it -> Don't use the
@@ -4614,6 +4620,7 @@ class AlgorithmConfig(_Config):
                     },
                     modules_to_load=current_rl_module_spec.modules_to_load,
                     load_state_path=current_rl_module_spec.load_state_path,
+                    model_config=current_rl_module_spec.model_config,
                 )
 
         # Fill in the missing values from the specs that we already have. By combining
@@ -4817,14 +4824,13 @@ class AlgorithmConfig(_Config):
 
     def _validate_env_runner_settings(self) -> None:
         allowed_vectorize_modes = set(
-            list(gym.envs.registration.VectorizeMode.__members__.keys())
-            + list(gym.envs.registration.VectorizeMode.__members__.values())
+            list(gym.VectorizeMode) + [mode.value for mode in gym.VectorizeMode]
         )
         if self.gym_env_vectorize_mode not in allowed_vectorize_modes:
             self._value_error(
-                f"`gym_env_vectorize_mode` ({self.gym_env_vectorize_mode}) must be a "
-                "member of `gym.envs.registration.VectorizeMode`! Allowed values "
-                f"are {allowed_vectorize_modes}."
+                f"`gym_env_vectorize_mode` ({self.gym_env_vectorize_mode}) "
+                "must be a member of `gymnasium.VectorizeMode`! "
+                f"Allowed values are {allowed_vectorize_modes}."
             )
 
     def _validate_callbacks_settings(self) -> None:
