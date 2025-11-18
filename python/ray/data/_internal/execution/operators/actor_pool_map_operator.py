@@ -166,7 +166,7 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
-        # HACK: Without this, all actors show up as `_MapWorker` in Grafana, so we can't
+        # HACK: Without this, all actors show up as `_MapWorker` in Grafana, so we can’t
         # tell which operator they belong to. To fix that, we dynamically create a new
         # class per operator with a unique name.
         self._map_worker_cls = type(f"MapWorker({self.name})", (_MapWorker,), {})
@@ -1029,7 +1029,7 @@ class _ActorPool(AutoscalingActorPool):
     def get_logical_ids(self) -> List[str]:
         """Get the logical IDs for pending and running actors in the actor pool.
 
-        We can't use Ray Core actor IDs because we need to identify actors by labels,
+        We can’t use Ray Core actor IDs because we need to identify actors by labels,
         but labels must be set before creation, and actor IDs aren't available until
         after.
         """
