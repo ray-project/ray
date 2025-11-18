@@ -1547,6 +1547,6 @@ class ApproximateTopK(AggregateFnV2):
         ).get_frequent_items(frequent_items_error_type.NO_FALSE_NEGATIVES)
 
         return [
-            {column: pickle.loads(bytes.fromhex(str(item[0]))), "count": int(item[1])}
+            {column: pickle.loads(bytes.fromhex(item[0])), "count": item[1]}
             for item in frequent_items[: self.k]
         ]
