@@ -321,6 +321,11 @@ class MultiAgentEpisode:
         assert self.env_t == self.env_t_started == 0
         infos = infos or {}
 
+        # Extract and store the "__common__" key from infos if present.
+        # This key contains infos that are common to all agents.
+        if "__common__" in infos:
+            self._hanging_infos_end["__common__"] = infos.pop("__common__")
+
         # Note, all agents will have an initial observation, some may have an initial
         # info dict as well.
         for agent_id, agent_obs in observations.items():
