@@ -649,9 +649,9 @@ warehouse_dataset = warehouse_dataset.rename_columns({
 # They help with data lineage and debugging
 warehouse_dataset = (
     warehouse_dataset
-    .with_column("processing_date", processing_date)       # When was this processed?
-    .with_column("pipeline_version", "1.0")               # Which version of pipeline?
-    .with_column("processing_engine", "ray_data")         # What tool processed it?
+    .with_column("processing_date", lit(processing_date))       # When was this processed?
+    .with_column("pipeline_version", lit("1.0"))               # Which version of pipeline?
+    .with_column("processing_engine", lit("ray_data"))         # What tool processed it?
 )
 ```
 
