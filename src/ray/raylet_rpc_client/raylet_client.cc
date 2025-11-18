@@ -335,10 +335,11 @@ void RayletClient::PinObjectIDs(
   if (!generator_id.IsNil()) {
     request.set_generator_id(generator_id.Binary());
   }
+  auto self = shared_from_this();
   pins_in_flight_++;
-  auto rpc_callback = [this, callback = std::move(callback)](
+  auto rpc_callback = [self, callback = std::move(callback)](
                           Status status, rpc::PinObjectIDsReply &&reply) {
-    pins_in_flight_--;
+    self->pins_in_flight_--;
     callback(status, std::move(reply));
   };
   INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
