@@ -1677,8 +1677,6 @@ def _sort_df(df: pd.DataFrame) -> pd.DataFrame:
             return tuple(to_sortable(i) for i in x)
         if isinstance(x, dict):
             return tuple(sorted((k, to_sortable(v)) for k, v in x.items()))
-        if isinstance(x, set):
-            return tuple(sorted(to_sortable(i) for i in x))
         return x
 
     sort_cols = []
