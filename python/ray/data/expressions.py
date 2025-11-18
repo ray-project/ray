@@ -1061,6 +1061,7 @@ __all__ = [
     "_ListNamespace",
     "_StringNamespace",
     "_StructNamespace",
+    "_DatetimeNamespace",
 ]
 
 
@@ -1078,4 +1079,8 @@ def __getattr__(name: str):
         from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 
         return _StructNamespace
+    elif name == "_DatetimeNamespace":
+        from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
+
+        return _DatetimeNamespace
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
