@@ -479,7 +479,7 @@ class RaySystemError(RayError):
 
 @PublicAPI
 class RayAuthenticationError(RayError):
-    """Indicates that an authentication error occurred. only applicable when RAY_AUTH_MODE is not disabled."""
+    """Indicates that an authentication error occurred. only applicable when `RAY_AUTH_MODE` is not set to `disabled`."""
 
     def __init__(self, message: str):
         """Initialize RayAuthenticationError.

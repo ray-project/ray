@@ -104,21 +104,18 @@ def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, 
 
 
 def format_authentication_http_error(status: int, body: str) -> Optional[str]:
-    """Return a user-friendly authentication error message, if applicable.
+    """Return a user-friendly authentication error message, if applicable."""
 
-    Args:
-        status: HTTP status code
-        body: Response body text
+    if status == 401:
+        return "Authentication required: {body}\n\n{details}".format(
+            body=body,
+            details=authentication_constants.TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
+        )
 
-    Returns:
-        Formatted error message if auth-related (401/403), None otherwise
-    """
-    if status == 401:  # Unauthorized - missing token
-        return (
-            authentication_constants.TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE
-        )  # noqa: E501
+    if status == 403:
+        return "Authentication failed: {body}\n\n{details}".format(
+            body=body,
+            details=authentication_constants.TOKEN_INVALID_ERROR_MESSAGE,
+        )
 
-    if status == 403:  # Forbidden - invalid token
-        return authentication_constants.TOKEN_INVALID_ERROR_MESSAGE
-
-    return None  # Not an auth error, let caller handle it
+    return None
