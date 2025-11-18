@@ -28,7 +28,7 @@ Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the lates
 ## Deploy a Ray cluster with token authentication
 
 If you are using KubeRay v1.5.1 or newer, you can use the `authOptions` API in RayCluster to enable token authentication:
-```
+```bash
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.auth.yaml
 ```
 
