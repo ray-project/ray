@@ -49,7 +49,7 @@ Scheduling Strategies
 ---------------------
 
 Tasks or actors support a :func:`scheduling_strategy <ray.remote>` option to specify the strategy used to decide the best node among feasible nodes.
-Currently the supported strategies are the followings.
+Currently the supported strategies are the following.
 
 "DEFAULT"
 ~~~~~~~~~
