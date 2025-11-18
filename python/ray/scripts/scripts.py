@@ -2768,6 +2768,7 @@ def get_auth_token(generate):
     # Print token to stdout (for piping) without newline
     click.echo(token, nl=False)
 
+
 cli.add_command(dashboard)
 cli.add_command(debug)
 cli.add_command(start)
