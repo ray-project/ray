@@ -432,7 +432,7 @@ class ProjectionPushdown(Rule):
                             columns = list(current_projection.values())
                         else:
                             # No existing projection - get all columns from schema
-                            schema = input_op._cached_output_metadata.schema
+                            schema = input_op.infer_schema()
                             if schema is not None:
                                 columns = schema.names
                             else:
