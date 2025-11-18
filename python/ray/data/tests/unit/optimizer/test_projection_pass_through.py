@@ -333,10 +333,10 @@ class TestProjectionPassThroughUnit:
             ("left_outer", [["id"], ["id"]]),
             ("right_outer", [["id"], ["id"]]),
             ("full_outer", [["id"], ["id"]]),
-            ("left_semi", [["id"], []]),  # Only left in output
-            ("right_semi", [[], ["id"]]),  # Only right in output
-            ("left_anti", [["id"], []]),  # Only left in output
-            ("right_anti", [[], ["id"]]),  # Only right in output
+            ("left_semi", [["id"], ["id"]]),  # Only left in output
+            ("right_semi", [["id"], ["id"]]),  # Only right in output
+            ("left_anti", [["id"], ["id"]]),  # Only left in output
+            ("right_anti", [["id"], ["id"]]),  # Only right in output
         ],
     )
     @pytest.mark.parametrize(
