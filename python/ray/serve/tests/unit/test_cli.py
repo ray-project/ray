@@ -157,21 +157,37 @@ class TestEnumSerialization:
             )
             temp_path = f.name
 
+        output_path = None
         try:
             import_path = f"{pathlib.Path(temp_path).stem}:app"
+            with NamedTemporaryFile(
+                mode="w", suffix=".yaml", delete=False
+            ) as output_file:
+                output_path = output_file.name
+
             result = runner.invoke(
-                build, [import_path, "--app-dir", str(pathlib.Path(temp_path).parent)]
+                build,
+                [
+                    import_path,
+                    "--app-dir",
+                    str(pathlib.Path(temp_path).parent),
+                    "--output-path",
+                    output_path,
+                ],
             )
             assert result.exit_code == 0, result.output
 
-            config = yaml.safe_load(result.output)
-            agg_func = config["applications"][0]["deployments"][0]["deployment_config"][
+            with open(output_path, "r") as f:
+                config = yaml.safe_load(f)
+            agg_func = config["applications"][0]["deployments"][0][
                 "autoscaling_config"
             ]["aggregation_function"]
             assert agg_func == "mean"
             assert isinstance(agg_func, str)
         finally:
             os.unlink(temp_path)
+            if output_path:
+                os.unlink(output_path)
 
 
 if __name__ == "__main__":
