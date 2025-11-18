@@ -24,7 +24,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
-#include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/util/network_util.h"
@@ -403,7 +403,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
           nodes = std::move(result);
           promise.set_value(status.ok());
         },
-        gcs::GetGcsTimeoutMs());
+        rpc::GetGcsTimeoutMs());
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return nodes;
   }
