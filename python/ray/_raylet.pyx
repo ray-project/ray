@@ -2279,7 +2279,7 @@ cdef CRayStatus check_signals() nogil:
     return CRayStatus.OK()
 
 
-cdef void gc_collect(c_bool triggered_by_global_gc) nogil:
+cdef void gc_collect() nogil:
      with gil:
         if RayConfig.instance().start_python_gc_manager_thread():
             start = time.perf_counter()
@@ -2706,7 +2706,7 @@ cdef class CoreWorker:
 
         self._gc_thread = None
         if RayConfig.instance().start_python_gc_manager_thread():
-            self._gc_thread = PythonGCThread(min_interval_s=ray_constants.RAY_GC_MIN_COLLECT_INTERVAL)
+            self._gc_thread = PythonGCThread()
             self._gc_thread.start()
 
     def shutdown_driver(self):

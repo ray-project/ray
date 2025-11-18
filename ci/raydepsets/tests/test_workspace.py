@@ -165,7 +165,7 @@ def test_invalid_build_arg_set_in_config():
         )
         write_to_config_file(
             tmpdir,
-            depset,
+            [depset],
             "test.depsets.yaml",
             build_arg_sets=["invalid_build_arg_set"],
         )

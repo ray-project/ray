@@ -274,6 +274,12 @@ class TrainController:
                 self._health_check_interval_s - time_since_last_poll, 0
             )
             await asyncio.sleep(remaining_time)
+            if self.get_state().is_terminal():
+                logger.debug(
+                    f"Controller is unexpectedly in terminal state {self.get_state()} after "
+                    "sleeping and before polling workers. Exiting actor."
+                )
+                ray.actor.exit_actor()
 
         status = self._worker_group.poll_status(timeout=self._health_check_interval_s)
         self._latest_poll_time = time_monotonic()
