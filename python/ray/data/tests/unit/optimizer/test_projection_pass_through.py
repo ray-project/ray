@@ -4,7 +4,7 @@ Tests the logical plan transformations for operators that support
 LogicalOperatorSupportsProjectionPassThrough.
 """
 
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Union as UnionType
 
 import pytest
 
@@ -47,6 +47,9 @@ class TestProjectionPassThroughUnit:
             schema_dict: Optional dict mapping column names to types for mocking schema.
                         If None, creates InputData without schema.
                         If provided, creates a mock operator with schema.
+
+        Returns:
+            InputData operator (with or without mocked schema).
         """
         if schema_dict is None:
             return InputData(input_data=[])
@@ -115,7 +118,7 @@ class TestProjectionPassThroughUnit:
 
     def _assert_keys_renamed_correctly(
         self,
-        optimized_dag: LogicalOperatorSupportsProjectionPassThrough | Project,
+        optimized_dag: UnionType[LogicalOperatorSupportsProjectionPassThrough, Project],
         operator_class: type[LogicalOperator],
         expected_keys: List[List[str]],
     ):
@@ -324,55 +327,47 @@ class TestProjectionPassThroughUnit:
     # Join tests
 
     @pytest.mark.parametrize(
-        "exprs,is_complex,expect_downstream,expected_keys",
+        "join_type,expected_keys_template",
         [
-            # Keys in output (no rename)
-            (
-                [col("id"), col("left_value")._rename("lv"), col("right_value")],
-                False,
-                False,
-                [["id"], ["id"]],
-            ),
-            (
-                [col("id")._rename("id"), col("left_value"), col("right_value")],
-                False,
-                False,
-                [["id"], ["id"]],
-            ),
+            ("inner", [["id"], ["id"]]),
+            ("left_outer", [["id"], ["id"]]),
+            ("right_outer", [["id"], ["id"]]),
+            ("full_outer", [["id"], ["id"]]),
+            ("left_semi", [["id"], []]),  # Only left in output
+            ("right_semi", [[], ["id"]]),  # Only right in output
+            ("left_anti", [["id"], []]),  # Only left in output
+            ("right_anti", [[], ["id"]]),  # Only right in output
+        ],
+    )
+    @pytest.mark.parametrize(
+        "exprs,is_complex,expect_downstream",
+        [
+            # Keys in output
+            ([col("id"), col("left_value")._rename("lv")], False, False),
+            ([col("id")._rename("id"), col("left_value")], False, False),
             # Keys NOT in output (needs downstream project)
-            (
-                [col("left_value")._rename("lv"), col("right_value")._rename("rv")],
-                False,
-                True,
-                [["id"], ["id"]],
-            ),
-            ([col("left_value"), col("right_value")], False, True, [["id"], ["id"]]),
+            ([col("left_value")._rename("lv")], False, True),
+            ([col("left_value")], False, True),
             # Complex expressions
-            (
-                [(col("left_value") + col("right_value")).alias("combined")],
-                True,
-                False,
-                None,
-            ),
-            ([(col("left_value") * 2).alias("doubled")], True, False, None),
+            ([(col("left_value") * 2).alias("doubled")], True, False),
         ],
         ids=[
             "keys_in_mixed",
             "keys_in__rename",
             "keys_out__rename",
             "keys_out_simple",
-            "complex_add",
-            "complex_mult",
+            "complex",
         ],
     )
     def test_join(
         self,
+        join_type: str,
+        expected_keys_template: List[List[str]],
         exprs: List[Expr],
         is_complex: bool,
         expect_downstream: bool,
-        expected_keys: List[List[str]],
     ):
-        """Test Join with various configurations."""
+        """Test Join with various configurations and join types."""
         # Create inputs with mocked schema
         left_schema = {"id": "int", "left_value": "str"}
         right_schema = {"id": "int", "right_value": "str"}
@@ -383,7 +378,7 @@ class TestProjectionPassThroughUnit:
         join_op = Join(
             left_input_op=left_op,
             right_input_op=right_op,
-            join_type="inner",
+            join_type=join_type,
             left_key_columns=("id",),
             right_key_columns=("id",),
             num_partitions=2,
@@ -402,10 +397,10 @@ class TestProjectionPassThroughUnit:
         else:
             # Verify Join structure and keys
             assert optimized_plan.dag is not None
-            if expected_keys:
-                self._assert_keys_renamed_correctly(
-                    optimized_plan.dag, Join, expected_keys
-                )
+            # Use the template for expected keys
+            self._assert_keys_renamed_correctly(
+                optimized_plan.dag, Join, expected_keys_template
+            )
 
     def test_join_mixed_schema_with_renames_short_circuits(self):
         """Test Join with mixed schema and renames short-circuits (doesn't optimize).

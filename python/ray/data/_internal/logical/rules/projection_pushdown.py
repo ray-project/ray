@@ -320,23 +320,20 @@ def _get_columns_to_rename_for_input(
 
     Returns None if schema is required but unavailable.
     """
-    match (use_schema_analysis, schema is None):
-        case (True, True):
-            # Schema-based analysis required but schema unavailable
-            return None
-
-        case (True, False):
-            # Schema-based: Only push columns that exist in this input (Join, Zip)
-            input_schema_cols: Set[str] = set(schema.names)
-            # Columns in both projection and input.
-            projected_cols_in_input: Set[str] = (
-                set(column_rename_map.keys()) & input_schema_cols
-            )
-            return list(projected_cols_in_input | set(input_op_referenced_keys))
-
-        case (False, _):
-            # Non-schema-based: Push all columns to all branches
-            return list(set(column_rename_map.keys()) | set(input_op_referenced_keys))
+    if use_schema_analysis and schema is None:
+        # Case 1: Schema-based analysis required but schema unavailable
+        return None
+    elif use_schema_analysis and schema is not None:
+        # Case 2: Schema-based: Only push columns that exist in this input (Join, Zip)
+        input_schema_cols: Set[str] = set(schema.names)
+        # Columns in both projection and input.
+        projected_cols_in_input: Set[str] = (
+            set(column_rename_map.keys()) & input_schema_cols
+        )
+        return list(projected_cols_in_input | set(input_op_referenced_keys))
+    else:
+        # Case 3: Non-schema-based: Push all columns to all branches
+        return list(set(column_rename_map.keys()) | set(input_op_referenced_keys))
 
 
 class ProjectionPushdown(Rule):
@@ -455,7 +452,8 @@ class ProjectionPushdown(Rule):
                 else:
                     # Specific columns selected - build projection_map with renames applied
                     projection_map = {
-                        col: output_column_rename_map[col] for col in required_columns
+                        col: output_column_rename_map.get(col, col)
+                        for col in required_columns
                     }
 
                 # Apply projection to the read op

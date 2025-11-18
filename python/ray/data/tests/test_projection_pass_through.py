@@ -20,14 +20,14 @@ class TestProjectionPassThroughE2E:
         "operator_name",
         ["randomize_blocks", "random_shuffle", "repartition", "union"],
     )
-    @pytest.mark.parametrize("use_rename", [True, False])
-    @pytest.mark.parametrize("use_complex_expr", [True, False])
+    @pytest.mark.parametrize("has_rename", [True, False])
+    @pytest.mark.parametrize("has_complex_expr", [True, False])
     def test_operators_without_keys_e2e(
         self,
         ray_start_regular_shared_2_cpus,
         operator_name,
-        use_rename,
-        use_complex_expr,
+        has_rename,
+        has_complex_expr,
     ):
         """Test projection pass-through for operators without keys."""
         # Create base datasets
@@ -44,13 +44,12 @@ class TestProjectionPassThroughE2E:
             ds2 = ray.data.from_items([{"a": 7, "b": 8, "c": 9}])
             ds = ds.union(ds2)
 
-        # Apply projection
-        if use_complex_expr:
-            # Complex expression (should prevent pass-through)
+        # Apply projection based on flags
+        if has_complex_expr:
             ds = ds.with_column("sum", col("a") + col("b"))
             ds = ds.select_columns(["sum", "c"])
             expected_keys = {"sum", "c"}
-        elif use_rename:
+        elif has_rename:
             ds = ds.rename_columns({"a": "x", "b": "y"})
             ds = ds.select_columns(["x", "y"])
             expected_keys = {"x", "y"}
@@ -67,15 +66,15 @@ class TestProjectionPassThroughE2E:
 
     @pytest.mark.parametrize("operator_name", ["repartition", "sort"])
     @pytest.mark.parametrize("keys_in_output", [True, False])
-    @pytest.mark.parametrize("use_rename", [True, False])
-    @pytest.mark.parametrize("use_complex_expr", [True, False])
+    @pytest.mark.parametrize("has_rename", [True, False])
+    @pytest.mark.parametrize("has_complex_expr", [True, False])
     def test_operators_with_keys_e2e(
         self,
         ray_start_regular_shared_2_cpus,
         operator_name,
         keys_in_output,
-        use_rename,
-        use_complex_expr,
+        has_rename,
+        has_complex_expr,
     ):
         """Test projection pass-through for operators with keys (Sort, Repartition)."""
         ds = ray.data.from_items(
@@ -92,15 +91,13 @@ class TestProjectionPassThroughE2E:
         elif operator_name == "sort":
             ds = ds.sort("id")
 
-        # Apply projection
-        if use_complex_expr:
-            # Complex expression (should prevent pass-through)
+        # Apply projection based on flags
+        if has_complex_expr:
             ds = ds.with_column("computed", col("value") * 2)
             ds = ds.select_columns(["computed", "name"])
             expected_keys = {"computed", "name"}
         elif keys_in_output:
-            # Include keys in output
-            if use_rename:
+            if has_rename:
                 ds = ds.rename_columns({"id": "identifier", "name": "nm"})
                 ds = ds.select_columns(["identifier", "nm"])
                 expected_keys = {"identifier", "nm"}
@@ -108,8 +105,7 @@ class TestProjectionPassThroughE2E:
                 ds = ds.select_columns(["id", "name"])
                 expected_keys = {"id", "name"}
         else:
-            # Exclude keys from output
-            if use_rename:
+            if has_rename:
                 ds = ds.rename_columns({"name": "nm", "value": "val"})
                 ds = ds.select_columns(["nm", "val"])
                 expected_keys = {"nm", "val"}
@@ -124,8 +120,8 @@ class TestProjectionPassThroughE2E:
         for item in result:
             assert set(item.keys()) == expected_keys
 
-        # For sort, verify order is preserved
-        if operator_name == "sort" and not use_complex_expr:
+        # For sort without complex expressions, verify order is preserved
+        if operator_name == "sort" and not has_complex_expr:
             if "name" in result[0]:
                 assert result[0]["name"] == "A"
                 assert result[1]["name"] == "B"
@@ -135,19 +131,95 @@ class TestProjectionPassThroughE2E:
                 assert result[1]["nm"] == "B"
                 assert result[2]["nm"] == "C"
 
-    # Join tests
-
-    @pytest.mark.parametrize("keys_in_output", [True, False])
-    @pytest.mark.parametrize("use_rename", [True, False])
-    @pytest.mark.parametrize("use_complex_expr", [True, False])
+    @pytest.mark.parametrize(
+        "join_type,projection_fn,expected_keys",
+        [
+            # Inner join - simple selection
+            (
+                "inner",
+                lambda ds: ds.select_columns(["id", "left_value"]),
+                {"id", "left_value"},
+            ),
+            # Inner join - with rename
+            (
+                "inner",
+                lambda ds: ds.rename_columns({"left_value": "lv"}).select_columns(
+                    ["id", "lv"]
+                ),
+                {"id", "lv"},
+            ),
+            # Inner join - keys not in output
+            (
+                "inner",
+                lambda ds: ds.select_columns(["left_value", "right_value"]),
+                {"left_value", "right_value"},
+            ),
+            # Inner join - complex expression
+            (
+                "inner",
+                lambda ds: ds.with_column("doubled", col("id") * 2).select_columns(
+                    ["doubled", "left_value"]
+                ),
+                {"doubled", "left_value"},
+            ),
+            # Left semi - simple
+            (
+                "left_semi",
+                lambda ds: ds.select_columns(["id", "left_value"]),
+                {"id", "left_value"},
+            ),
+            # Left semi - with rename
+            (
+                "left_semi",
+                lambda ds: ds.rename_columns({"left_value": "lv"}).select_columns(
+                    ["id", "lv"]
+                ),
+                {"id", "lv"},
+            ),
+            # Left semi - keys not in output
+            ("left_semi", lambda ds: ds.select_columns(["left_value"]), {"left_value"}),
+            # Right semi - simple
+            (
+                "right_semi",
+                lambda ds: ds.select_columns(["id", "right_value"]),
+                {"id", "right_value"},
+            ),
+            # Right semi - with rename
+            (
+                "right_semi",
+                lambda ds: ds.rename_columns({"right_value": "rv"}).select_columns(
+                    ["id", "rv"]
+                ),
+                {"id", "rv"},
+            ),
+            # Right semi - keys not in output
+            (
+                "right_semi",
+                lambda ds: ds.select_columns(["right_value"]),
+                {"right_value"},
+            ),
+        ],
+        ids=[
+            "inner_simple",
+            "inner_rename",
+            "inner_keys_out",
+            "inner_complex",
+            "left_semi_simple",
+            "left_semi_rename",
+            "left_semi_keys_out",
+            "right_semi_simple",
+            "right_semi_rename",
+            "right_semi_keys_out",
+        ],
+    )
     def test_join_e2e(
         self,
         ray_start_regular_shared_2_cpus,
-        keys_in_output,
-        use_rename,
-        use_complex_expr,
+        join_type,
+        projection_fn,
+        expected_keys,
     ):
-        """Test Join with various projection configurations."""
+        """Test Join with various projection configurations and join types."""
         left_ds = ray.data.from_items(
             [
                 {"id": 1, "left_value": "a"},
@@ -163,43 +235,23 @@ class TestProjectionPassThroughE2E:
             ]
         )
 
-        ds = left_ds.join(right_ds, join_type="inner", num_partitions=2, on=("id",))
+        ds = left_ds.join(right_ds, join_type=join_type, num_partitions=2, on=("id",))
 
-        if use_complex_expr:
-            # Complex expression (should prevent pass-through)
-            ds = ds.with_column("combined", col("left_value") + col("right_value"))
-            ds = ds.select_columns(["combined", "id"])
-            expected_keys = {"combined", "id"}
-        elif keys_in_output:
-            # Include join keys in output
-            if use_rename:
-                ds = ds.rename_columns({"id": "identifier", "left_value": "lv"})
-                ds = ds.select_columns(["identifier", "lv", "right_value"])
-                expected_keys = {"identifier", "lv", "right_value"}
-            else:
-                ds = ds.select_columns(["id", "left_value", "right_value"])
-                expected_keys = {"id", "left_value", "right_value"}
-        else:
-            # Exclude join keys from output
-            if use_rename:
-                ds = ds.rename_columns({"left_value": "lv", "right_value": "rv"})
-                ds = ds.select_columns(["lv", "rv"])
-                expected_keys = {"lv", "rv"}
-            else:
-                ds = ds.select_columns(["left_value", "right_value"])
-                expected_keys = {"left_value", "right_value"}
+        # Apply projection using the function
+        ds = projection_fn(ds)
 
         result = ds.take_all()
         assert len(result) == 3
+
         for item in result:
             assert set(item.keys()) == expected_keys
 
     # Zip tests
 
-    @pytest.mark.parametrize("use_rename", [True, False])
-    @pytest.mark.parametrize("use_complex_expr", [True, False])
+    @pytest.mark.parametrize("has_rename", [True, False])
+    @pytest.mark.parametrize("has_complex_expr", [True, False])
     def test_zip_e2e(
-        self, ray_start_regular_shared_2_cpus, use_rename, use_complex_expr
+        self, ray_start_regular_shared_2_cpus, has_rename, has_complex_expr
     ):
         """End-to-end test for Zip with projection."""
         left_ds = ray.data.from_items([{"a": 1, "b": 2}, {"a": 3, "b": 4}])
@@ -207,28 +259,26 @@ class TestProjectionPassThroughE2E:
 
         ds = left_ds.zip(right_ds)
 
-        if use_complex_expr:
-            # Complex expression
+        # Apply projection based on flags
+        if has_complex_expr:
             ds = ds.with_column("product", col("a") * col("c"))
             ds = ds.select_columns(["product", "b"])
-            expected_keys = {"product", "b"}
-            result = ds.take_all()
-            assert len(result) == 2
-            for item in result:
-                assert set(item.keys()) == expected_keys
-        elif use_rename:
+            expected_first = {"product": 5, "b": 2}
+            expected_second = {"product": 21, "b": 4}
+        elif has_rename:
             ds = ds.rename_columns({"a": "x", "c": "z"})
             ds = ds.select_columns(["x", "z"])
-            result = ds.take_all()
-            assert len(result) == 2
-            assert result[0] == {"x": 1, "z": 5}
-            assert result[1] == {"x": 3, "z": 7}
+            expected_first = {"x": 1, "z": 5}
+            expected_second = {"x": 3, "z": 7}
         else:
             ds = ds.select_columns(["a", "c"])
-            result = ds.take_all()
-            assert len(result) == 2
-            assert result[0] == {"a": 1, "c": 5}
-            assert result[1] == {"a": 3, "c": 7}
+            expected_first = {"a": 1, "c": 5}
+            expected_second = {"a": 3, "c": 7}
+
+        result = ds.take_all()
+        assert len(result) == 2
+        assert result[0] == expected_first
+        assert result[1] == expected_second
 
     # Integration tests combining multiple operators
 

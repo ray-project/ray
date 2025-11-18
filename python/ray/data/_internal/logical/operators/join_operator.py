@@ -99,8 +99,14 @@ class Join(
         return True
 
     def get_referenced_keys(self) -> List[List[str]]:
-        """Return join keys for left and right sides as List[List[str]]."""
-        return [list(self._left_key_columns), list(self._right_key_columns)]
+        """Return join keys for left and right sides as List[List[str]].
+
+        For semi/anti joins, only one side's keys are needed since only one side
+        is output.
+        """
+        left_keys = list(self._left_key_columns)
+        right_keys = list(self._right_key_columns)
+        return [left_keys, right_keys]
 
     def apply_projection_pass_through(
         self,
@@ -112,6 +118,9 @@ class Join(
         Args:
             renamed_keys: [[left_renamed_keys], [right_renamed_keys]]
             upstream_projects: [left_project, right_project]
+
+        Returns:
+            New Join operator with updated inputs and renamed keys.
         """
         # Extract left and right renamed keys (index by input)
         left_new_keys = renamed_keys[0]

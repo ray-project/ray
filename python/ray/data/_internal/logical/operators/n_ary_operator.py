@@ -60,6 +60,9 @@ class Zip(NAry, LogicalOperatorSupportsProjectionPassThrough):
         Args:
             renamed_keys: Empty lists for Zip (no keys to rename)
             upstream_projects: List of projects, one per input
+
+        Returns:
+            New Zip operator with updated inputs.
         """
         return Zip(*upstream_projects)
 
