@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import urllib.parse
+import uuid
 from queue import Empty, Full, Queue
 from types import ModuleType
 from typing import (
@@ -1676,6 +1677,8 @@ def _sort_df(df: pd.DataFrame) -> pd.DataFrame:
             return tuple(to_sortable(i) for i in x)
         if isinstance(x, dict):
             return tuple(sorted((k, to_sortable(v)) for k, v in x.items()))
+        if isinstance(x, set):
+            return tuple(sorted(to_sortable(i) for i in x))
         return x
 
     sort_cols = []
@@ -1686,7 +1689,8 @@ def _sort_df(df: pd.DataFrame) -> pd.DataFrame:
     for col in columns:
         if df[col].dtype == "object":
             # Create a temporary column for sorting to handle unhashable types.
-            temp_col = f"__sort_proxy_{col}__"
+            # Use UUID to avoid collisions with existing column names.
+            temp_col = f"__sort_proxy_{uuid.uuid4().hex}_{col}__"
             df[temp_col] = df[col].map(to_sortable)
             sort_cols.append(temp_col)
             temp_cols.append(temp_col)
