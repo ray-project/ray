@@ -583,3 +583,9 @@ RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", True)
 RDT_FETCH_FAIL_TIMEOUT_SECONDS = (
     env_integer("RAY_rdt_fetch_fail_timeout_milliseconds", 60000) / 1000
 )
+
+# The default maximum size of the http request entity.
+# Used to overwrite the _client_max_size of BaseRequest.
+RAY_HTTP_REQUEST_ENTITY_MAX_SIZE = env_integer(
+    "RAY_HTTP_REQUEST_ENTITY_MAX_SIZE", 1024**2
+)
