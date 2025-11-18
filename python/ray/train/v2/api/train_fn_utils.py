@@ -229,7 +229,9 @@ def get_all_reported_checkpoints(
             trainer.fit()
 
     Args:
-        consistency_mode: Read semantics for checkpoint retrieval. Defaults to VALIDATED.
+        consistency_mode: Read semantics for checkpoint retrieval during an ongoing run.
+            Defaults to CheckpointConsistencyMode.VALIDATED.
+            See :class:`~ray.train.CheckpointConsistencyMode` for more details.
 
     Returns:
         List of ReportedCheckpoint objects that represent the checkpoints and
