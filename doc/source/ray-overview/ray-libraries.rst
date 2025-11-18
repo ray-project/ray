@@ -20,6 +20,27 @@ more information.
 
     .. grid-item-card::
 
+        .. figure:: ../images/rayai_logo.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/rayai-labs/agentic-ray?style=social)]
+                :target: https://github.com/rayai-labs/agentic-ray
+
+            Agentic-Ray is a scalable runtime for AI Agents, MCP Servers, and coding sandboxes orchestrated with Ray. It enables distributed resource-aware tool execution across Ray clusters with framework-agnostic agent adapters and secure gVisor-sandboxed environments for executing AI-generated code.
+
+        +++
+        .. button-link:: https://rayai.com
+            :color: primary
+            :outline:
+            :expand:
+
+            Agentic-Ray Integration
+
+
+    .. grid-item-card::
+
         .. figure:: ../images/airflow_logo_full.png
             :class: card-figure
 
