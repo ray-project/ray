@@ -669,7 +669,7 @@ First, install the required dependencies:
 
 Set your Hugging Face token to authenticate. While public datasets can be read without
 a token, Hugging Face rate limits are more aggressive without a token. To read Hugging
-Face datasets without a token, simply set the filesystem arguemnt to ``HfFileSystem()``.
+Face datasets without a token, simply set the filesystem argument to ``HfFileSystem()``.
 
 .. code-block:: console
 
