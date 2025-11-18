@@ -1091,6 +1091,7 @@ class TestReconciler:
             Instance.RAY_STOPPED,
             Instance.TERMINATION_FAILED,
             Instance.QUEUED,
+            Instance.ALLOCATION_TIMEOUT,
         }
         no_op_statuses = all_status - reconciled_stuck_statuses - transient_statuses
 
