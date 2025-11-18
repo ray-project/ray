@@ -1680,9 +1680,9 @@ def test_cluster_lifecycle_tracking(monkeypatch, ray_start_cluster, reset_usage_
         )
         assert stored_restart_count == 0
 
-        # Simulate a restart by calling put_cluster_metadata again
+        # Simulate a restart by calling put_cluster_metadata with ray_init_cluster=True
         # (which calls _get_cluster_lifecycle_metadata internally)
-        ray_usage_lib.put_cluster_metadata(gcs_client, ray_init_cluster=False)
+        ray_usage_lib.put_cluster_metadata(gcs_client, ray_init_cluster=True)
 
         # After "restart", restart_count should be incremented
         (
@@ -1692,8 +1692,8 @@ def test_cluster_lifecycle_tracking(monkeypatch, ray_start_cluster, reset_usage_
         assert first_seen_after == first_seen  # First seen timestamp should not change
         assert restart_count_after == 1  # Restart count should be incremented
 
-        # Verify idempotency - calling multiple times should be safe
-        ray_usage_lib.put_cluster_metadata(gcs_client, ray_init_cluster=False)
+        # Verify subsequent calls with ray_init_cluster=True increment the restart count
+        ray_usage_lib.put_cluster_metadata(gcs_client, ray_init_cluster=True)
         (
             first_seen_idempotent,
             restart_count_idempotent,
