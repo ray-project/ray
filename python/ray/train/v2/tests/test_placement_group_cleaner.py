@@ -36,12 +36,16 @@ def test_placement_group_cleaner_basic_lifecycle():
     """Test that the PlacementGroupCleaner can be launched and stopped."""
 
     # Launch cleaner as detached
-    cleaner = PlacementGroupCleaner.options(
-        name="test_pg_cleaner",
-        namespace="test",
-        lifetime="detached",
-        get_if_exists=False,
-    ).remote(check_interval_s=0.1)
+    cleaner = (
+        ray.remote(num_cpus=0, max_concurrency=2)(PlacementGroupCleaner)
+        .options(
+            name="test_pg_cleaner",
+            namespace="test",
+            lifetime="detached",
+            get_if_exists=False,
+        )
+        .remote(check_interval_s=0.1)
+    )
 
     # Create a mock controller
     controller = MockController.remote()
@@ -85,12 +89,16 @@ def test_pg_cleaner_cleans_up_on_controller_death():
     """Test that the PG cleaner removes PG when controller dies."""
 
     # Launch cleaner as detached
-    cleaner = PlacementGroupCleaner.options(
-        name="test_pg_cleaner_cleanup",
-        namespace="test",
-        lifetime="detached",
-        get_if_exists=False,
-    ).remote(check_interval_s=0.1)
+    cleaner = (
+        ray.remote(num_cpus=0, max_concurrency=2)(PlacementGroupCleaner)
+        .options(
+            name="test_pg_cleaner_cleanup",
+            namespace="test",
+            lifetime="detached",
+            get_if_exists=False,
+        )
+        .remote(check_interval_s=0.1)
+    )
 
     # Create a mock controller
     controller = MockController.remote()
@@ -131,12 +139,16 @@ def test_pg_cleaner_cleans_up_on_controller_death():
 def test_pg_cleaner_handles_missing_controller():
     """Test that cleaner handles case where controller is not registered."""
 
-    cleaner = PlacementGroupCleaner.options(
-        name="test_pg_cleaner_no_controller",
-        namespace="test",
-        lifetime="detached",
-        get_if_exists=False,
-    ).remote(check_interval_s=0.1)
+    cleaner = (
+        ray.remote(num_cpus=0, max_concurrency=2)(PlacementGroupCleaner)
+        .options(
+            name="test_pg_cleaner_no_controller",
+            namespace="test",
+            lifetime="detached",
+            get_if_exists=False,
+        )
+        .remote(check_interval_s=0.1)
+    )
 
     # Try to start monitoring without registering controller
     result = ray.get(cleaner.start_monitoring.remote())
@@ -151,12 +163,16 @@ def test_pg_cleaner_handles_missing_controller():
 def test_pg_cleaner_handles_duplicate_start():
     """Test that cleaner handles duplicate start_monitoring calls."""
 
-    cleaner = PlacementGroupCleaner.options(
-        name="test_pg_cleaner_duplicate",
-        namespace="test",
-        lifetime="detached",
-        get_if_exists=False,
-    ).remote(check_interval_s=0.1)
+    cleaner = (
+        ray.remote(num_cpus=0, max_concurrency=2)(PlacementGroupCleaner)
+        .options(
+            name="test_pg_cleaner_duplicate",
+            namespace="test",
+            lifetime="detached",
+            get_if_exists=False,
+        )
+        .remote(check_interval_s=0.1)
+    )
 
     controller = MockController.remote()
     controller_id = ray.get(controller.get_actor_id.remote())

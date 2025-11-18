@@ -58,7 +58,6 @@ class WorkerGroupStateBuilder:
         self.placement_group = None
         self.workers = None
         self.sync_actor = None
-        self.reaper_actor = None
 
     def with_placement_group(
         self, placement_group: PlacementGroup
