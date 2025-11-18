@@ -26,7 +26,7 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
     """Given a list of object references, returns how many are already on the local
     node, how many require fetching from another node, and how many have unknown
     locations. If `DataContext.get_current().enable_get_object_locations_for_metrics` is
-    False, this will return `(-1, -1, -1)` as getting object locations is disabled."""
+    False, this will return `(0, 0, 0)` as getting object locations is disabled."""
     current_node_id = ray.get_runtime_context().get_node_id()
 
     ctx = ray.data.DataContext.get_current()
@@ -43,7 +43,7 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
             "Set `DataContext.get_current().enable_get_object_locations_for_metrics=True` to enable this."
         )
 
-    return -1, -1, -1
+    return 0, 0, 0
 
 
 def resolve_block_refs(
@@ -62,8 +62,6 @@ def resolve_block_refs(
 
     for block_ref in block_ref_iter:
         current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
-        if current_hit < 0:
-            continue
         hits += current_hit
         misses += current_miss
         unknowns += current_unknown
