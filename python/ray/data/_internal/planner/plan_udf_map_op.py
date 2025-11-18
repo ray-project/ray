@@ -156,6 +156,7 @@ def plan_streaming_repartition_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
     compute = get_compute(op._compute)
+    #TODO(xgui): consolidate to use BatchMapTransformFn(disabled_block_shaping=True) to avoid confusion here
     transform_fn = BlockMapTransformFn(
         lambda blocks, ctx: blocks,
         output_block_size_option=OutputBlockSizeOption.of(
