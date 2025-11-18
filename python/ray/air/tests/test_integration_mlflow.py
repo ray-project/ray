@@ -36,7 +36,7 @@ def clear_env_vars():
     os.environ.pop("MLFLOW_EXPERIMENT_ID", None)
 
 
-class SetupMLflowTestDistributed(unittest.TestCase):
+class SetupMLflowTrainTuneTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=4)
 
