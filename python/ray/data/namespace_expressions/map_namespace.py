@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import pyarrow
+import pyarrow.compute as pc
 
 from ray.data.datatype import DataType
 from ray.data.expressions import pyarrow_udf
