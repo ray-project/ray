@@ -147,7 +147,8 @@ message InstanceUpdateEvent {
 
   /// Additional metadata for the update event.
 
-  // The instance type for QUEUED/REQUESTED/ALLOCATED/ALLOCATION_TIMEOUT/RAY_RUNNING event.
+  // The instance type for QUEUED/REQUESTED/ALLOCATED/ALLOCATION_TIMEOUT/RAY_RUNNING
+  // event.
   optional string instance_type = 5;
   // Cloud instance id for ALLOCATED event.
   optional string cloud_instance_id = 6;
