@@ -216,7 +216,6 @@ attrs==25.1.0 \
     --hash=sha256:c75a69e28a550a7e93789579c22aa26b0f5b83b75dc4e08fe092980051e1090a
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
-    #   -r python/requirements/cloud-requirements.txt
     #   aiohttp
     #   jsonschema
     #   openlineage-python
