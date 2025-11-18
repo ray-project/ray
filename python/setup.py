@@ -797,8 +797,9 @@ if __name__ == "__main__":
         ],
         packages=setup_spec.get_packages(),
         cmdclass={"build_ext": build_ext},
-        # The BinaryDistribution argument triggers build_ext.
-        distclass=BinaryDistribution,
+        distclass=(
+            BinaryDistribution if setup_spec.build_type != BuildType.DEPS_ONLY else None
+        ),
         install_requires=setup_spec.install_requires,
         setup_requires=["cython >= 3.0.12", "pip", "wheel"],
         extras_require=setup_spec.extras,
