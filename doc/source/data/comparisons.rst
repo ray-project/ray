@@ -21,7 +21,7 @@ How does Ray Data compare to other solutions for offline inference?
 
 .. dropdown:: Distributed Data Processing Frameworks: Apache Spark and Daft
 
-    Ray Data handles many of the same batch processing workloads as `Apache Spark <https://spark.apache.org/>`_ and `Daft <https://www.getdaft.io>`_, but with a streaming paradigm that is better suited for GPU workloads for deep learning inference.
+    Ray Data handles many of the same batch processing workloads as `Apache Spark <https://spark.apache.org/>`_ and `Daft <https://www.daft.ai>`_, but with a streaming paradigm that is better suited for GPU workloads for deep learning inference.
 
     However, Ray Data doesn't have a SQL interface unlike Spark and Daft.
 
