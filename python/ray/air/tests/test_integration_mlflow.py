@@ -7,9 +7,11 @@ from unittest.mock import MagicMock, patch
 
 from mlflow.tracking import MlflowClient
 
+import ray.tune
 from ray._private.dict import flatten_dict
 from ray.air._internal.mlflow import _MLflowLoggerUtil
 from ray.air.integrations.mlflow import MLflowLoggerCallback, _NoopModule, setup_mlflow
+from ray.train.torch import TorchTrainer
 
 
 class MockTrial(
@@ -31,6 +33,41 @@ class Mock_MLflowLoggerUtil(_MLflowLoggerUtil):
 def clear_env_vars():
     os.environ.pop("MLFLOW_EXPERIMENT_NAME", None)
     os.environ.pop("MLFLOW_EXPERIMENT_ID", None)
+
+
+class SetupMLflowTestDistributed(unittest.TestCase):
+    def setUp(self):
+        assert os.environ.get("RAY_TRAIN_V2_ENABLED", None) == "1"
+        ray.init(num_cpus=4, runtime_env={"env_vars": {"RAY_TRAIN_V2_ENABLED": "1"}})
+
+    def tearDown(self) -> None:
+        ray.shutdown()
+
+    def test_setup_mlflow_in_train_worker(self):
+        """Test that setup_mlflow works in a Train worker"""
+
+        def train_func(config):
+            setup_mlflow(
+                experiment_name="test_exp", create_experiment_if_not_exists=True
+            )
+
+        trainer = TorchTrainer(
+            train_func,
+        )
+        trainer.fit()
+
+    def test_setup_mlflow_in_tune_trial(self):
+        """Test that setup_mlflow works in a Tune trial"""
+
+        def train_func(config):
+            setup_mlflow(
+                experiment_name="test_exp", create_experiment_if_not_exists=True
+            )
+
+        tuner = ray.tune.Tuner(
+            train_func,
+        )
+        tuner.fit()
 
 
 class MLflowTest(unittest.TestCase):

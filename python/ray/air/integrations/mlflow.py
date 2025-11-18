@@ -59,7 +59,7 @@ def setup_mlflow(
     mlflow. All other workers will return a noop client, so that logging is not
     duplicated in a distributed run. This can be disabled by passing
     ``rank_zero_only=False``, which will then initialize mlflow in every training
-    worker.
+    worker. Note: For Ray Tune trials, all workers will initialize mlflow as there is no concept of worker ranks.
 
     This function will return the ``mlflow`` module or a noop module for
     non-rank zero workers ``if rank_zero_only=True``. By using
@@ -152,10 +152,8 @@ def setup_mlflow(
             context = ray.tune.get_context()
         else:
             context = ray.train.get_context()
-
-        # Do a try-catch here if we are not in a train session
-        if rank_zero_only and context.get_world_rank() != 0:
-            return _NoopModule()
+            if rank_zero_only and context.get_world_rank() != 0:
+                return _NoopModule()
 
         default_trial_id = context.get_trial_id()
         default_trial_name = context.get_trial_name()
