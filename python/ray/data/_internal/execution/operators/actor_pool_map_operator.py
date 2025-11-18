@@ -1030,7 +1030,7 @@ class _ActorPool(AutoscalingActorPool):
         """Get the logical IDs for pending and running actors in the actor pool.
 
         We can’t use Ray Core actor IDs because we need to identify actors by labels,
-        but labels must be set before creation, and actor IDs aren't available until
+        but labels must be set before creation, and actor IDs aren’t available until
         after.
         """
         return list(self._actor_to_logical_id.values())
