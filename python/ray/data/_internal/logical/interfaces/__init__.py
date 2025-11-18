@@ -1,8 +1,10 @@
 from .logical_operator import (
     LogicalOperator,
     LogicalOperatorHasShuffleKeys,
+    LogicalOperatorSupportsPredicatePassThrough,
     LogicalOperatorSupportsPredicatePushdown,
     LogicalOperatorSupportsProjectionPushdown,
+    PredicatePassThroughBehavior,
 )
 from .logical_plan import LogicalPlan
 from .operator import Operator
@@ -23,4 +25,6 @@ __all__ = [
     "LogicalOperatorSupportsProjectionPushdown",
     "LogicalOperatorHasShuffleKeys",
     "LogicalOperatorSupportsPredicatePushdown",
+    "LogicalOperatorSupportsPredicatePassThrough",
+    "PredicatePassThroughBehavior",
 ]

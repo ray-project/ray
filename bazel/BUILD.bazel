@@ -63,6 +63,8 @@ config_setting(
     ],
 )
 
+# Hermetic python environment, currently only used for CI infra and scripts.
+
 py_runtime(
     name = "py39_runtime",
     interpreter = python39,
@@ -79,7 +81,7 @@ py_runtime_pair(
 
 toolchain(
     name = "py39_toolchain",
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = [":py39"],
     toolchain = ":py39_runtime_pair",
     toolchain_type = "@bazel_tools//tools/python:toolchain_type",
 )
@@ -100,7 +102,35 @@ py_runtime_pair(
 
 toolchain(
     name = "py310_toolchain",
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = [":py310"],
     toolchain = ":py310_runtime_pair",
     toolchain_type = "@bazel_tools//tools/python:toolchain_type",
+)
+
+constraint_setting(name = "python_version")
+
+constraint_value(
+    name = "py39",
+    constraint_setting = ":python_version",
+    visibility = ["//visibility:public"],
+)
+
+constraint_value(
+    name = "py310",
+    constraint_setting = ":python_version",
+    visibility = ["//visibility:public"],
+)
+
+platform(
+    name = "py39_platform",
+    constraint_values = [":py39"],
+    parents = ["@local_config_platform//:host"],
+    visibility = ["//visibility:private"],
+)
+
+platform(
+    name = "py310_platform",
+    constraint_values = [":py310"],
+    parents = ["@local_config_platform//:host"],
+    visibility = ["//visibility:private"],
 )
