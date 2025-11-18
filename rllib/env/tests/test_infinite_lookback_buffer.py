@@ -2,6 +2,7 @@ import unittest
 
 import gymnasium as gym
 import numpy as np
+import pytest
 
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.utils.spaces.space_utils import batch, get_dummy_batch_for_space
@@ -12,11 +13,11 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
     space = gym.spaces.Dict(
         {
             "a": gym.spaces.Discrete(4),
-            "b": gym.spaces.Box(-1.0, 1.0, (2, 3), np.float32),
+            "b": gym.spaces.Box(0.0, 3.0, (2, 3), np.float32),
             "c": gym.spaces.Tuple(
                 [
-                    gym.spaces.MultiDiscrete([2, 3]),
-                    gym.spaces.Box(-1.0, 1.0, (1,), np.float32),
+                    gym.spaces.MultiDiscrete([4, 4]),
+                    gym.spaces.Box(0.0, 3.0, (1,), np.float32),
                 ]
             ),
         }
@@ -30,7 +31,7 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
     buffer_0_one_hot = {
         "a": np.array([0.0, 0.0, 0.0, 0.0], np.float32),
         "b": np.array([[0, 0, 0], [0, 0, 0]], np.float32),
-        "c": (np.array([0, 0, 0, 0, 0]), np.array([0], np.float32)),
+        "c": (np.array([0, 0, 0, 0, 0, 0, 0, 0]), np.array([0], np.float32)),
     }
     buffer_1 = {
         "a": 1,
@@ -596,6 +597,53 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
         # Actual buffer has been changed by our set above.
         check(buffer.data[2], self.buffer_1)
         check(buffer.data[3], self.buffer_3)
+
+
+@pytest.mark.parametrize(
+    "space",
+    [
+        gym.spaces.Discrete(5),
+        gym.spaces.Box(0, 1, shape=()),
+        gym.spaces.Box(0, 1, shape=(2, 2)),
+        gym.spaces.MultiDiscrete([2, 3]),
+        gym.spaces.MultiDiscrete(np.array([[2, 3], [4, 5]])),
+        gym.spaces.Dict(a=gym.spaces.Discrete(4), b=gym.spaces.Box(0, 1, shape=(2, 2))),
+        gym.spaces.Dict(
+            a=gym.spaces.MultiDiscrete(np.array([2, 3])),
+            b=gym.spaces.Dict(
+                b=gym.spaces.Discrete(4), c=gym.spaces.Box(0, 1, shape=(2, 2))
+            ),
+        ),
+        gym.spaces.Tuple([gym.spaces.Discrete(4), gym.spaces.Box(0, 1, shape=(2, 2))]),
+        gym.spaces.Tuple(
+            [
+                gym.spaces.Discrete(4),
+                gym.spaces.Tuple(
+                    [gym.spaces.Discrete(4), gym.spaces.Box(0, 1, shape=(2, 2))]
+                ),
+            ]
+        ),
+    ],
+)
+def test_get_set_state(space):
+    buffer = InfiniteLookbackBuffer(
+        data=[space.sample() for _ in range(5)],
+    )
+    state = buffer.get_state()
+    roundtrip_buffer = InfiniteLookbackBuffer.from_state(state)
+    assert buffer == roundtrip_buffer
+
+    for _ in range(3):
+        buffer.append(space.sample())
+
+    # finalize
+    buffer.finalize()
+    state = buffer.get_state()
+    roundtrip_buffer = InfiniteLookbackBuffer.from_state(state)
+    assert buffer == roundtrip_buffer
+
+    for _ in range(3):
+        buffer.append(space.sample())
 
 
 if __name__ == "__main__":

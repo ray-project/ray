@@ -21,6 +21,8 @@ decord
 snowflake-connector-python>=3.15.0
 pyiceberg[sql-sqlite]==0.10.0
 clickhouse-connect
+kafka-python
 pybase64
 hudi==0.4.0
 datasketches
+testcontainers[kafka]

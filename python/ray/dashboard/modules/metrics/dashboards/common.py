@@ -500,6 +500,7 @@ class Panel:
     linewidth: int = 1
     grid_pos: Optional[GridPos] = None
     template: Optional[PanelTemplate] = PanelTemplate.GRAPH
+    hideXAxis: bool = False
 
 
 @DeveloperAPI

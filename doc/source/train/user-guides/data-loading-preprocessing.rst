@@ -502,6 +502,7 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
 
 .. testcode::
 
+    import base64
     import numpy as np
     from tempfile import TemporaryDirectory
 
@@ -542,16 +543,22 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
                 checkpoint=Checkpoint.from_directory(temp_dir),
             )
 
+    # Serialize the preprocessor. Since serialize() returns bytes,
+    # convert to base64 string for JSON compatibility.
+    serialized_preprocessor = base64.b64encode(scaler.serialize()).decode("ascii")
+
     my_trainer = TorchTrainer(
         train_loop_per_worker,
         scaling_config=ScalingConfig(num_workers=2),
         datasets={"train": dataset},
-        metadata={"preprocessor_pkl": scaler.serialize()},
+        metadata={"preprocessor_pkl": serialized_preprocessor},
     )
 
     # Get the fitted preprocessor back from the result metadata.
     metadata = my_trainer.fit().checkpoint.get_metadata()
-    print(StandardScaler.deserialize(metadata["preprocessor_pkl"]))
+    # Decode from base64 before deserializing
+    serialized_data = base64.b64decode(metadata["preprocessor_pkl"])
+    print(StandardScaler.deserialize(serialized_data))
 
 
 This example persists the fitted preprocessor using the ``Trainer(metadata={...})`` constructor argument. This arg specifies a dict that is available from ``TrainContext.get_metadata()`` and ``checkpoint.get_metadata()`` for checkpoints that the Trainer saves. This design enables the recreation of the fitted preprocessor for inference.

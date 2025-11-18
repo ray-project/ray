@@ -131,6 +131,7 @@ ReplicaMetadata = Tuple[
     int,
     ReplicaRank,  # rank
     Optional[List[str]],  # route_patterns
+    Optional[List[DeploymentID]],  # outbound_deployments
 ]
 
 
@@ -604,10 +605,50 @@ class ReplicaBase(ABC):
             self._grpc_port,
             current_rank,
             route_patterns,
+            self.list_outbound_deployments(),
         )
 
     def get_dynamically_created_handles(self) -> Set[DeploymentID]:
         return self._dynamically_created_handles
+
+    def list_outbound_deployments(self) -> List[DeploymentID]:
+        """List all outbound deployment IDs this replica calls into.
+
+        This includes:
+        - Handles created via get_deployment_handle()
+        - Handles passed as init args/kwargs to the deployment constructor
+
+        This is used to determine which deployments are reachable from this replica.
+        The list of DeploymentIDs can change over time as new handles can be created at runtime.
+        Also its not guaranteed that the list of DeploymentIDs are identical across replicas
+        because it depends on user code.
+
+        Returns:
+            A list of DeploymentIDs that this replica calls into.
+        """
+        seen_deployment_ids: Set[DeploymentID] = set()
+
+        # First, collect dynamically created handles
+        for deployment_id in self.get_dynamically_created_handles():
+            seen_deployment_ids.add(deployment_id)
+
+        # Get the init args/kwargs
+        init_args = self._user_callable_wrapper._init_args
+        init_kwargs = self._user_callable_wrapper._init_kwargs
+
+        # Use _PyObjScanner to find all DeploymentHandle objects in:
+        # The init_args and init_kwargs (handles might be passed as init args)
+        scanner = _PyObjScanner(source_type=DeploymentHandle)
+        try:
+            handles = scanner.find_nodes((init_args, init_kwargs))
+
+            for handle in handles:
+                deployment_id = handle.deployment_id
+                seen_deployment_ids.add(deployment_id)
+        finally:
+            scanner.clear()
+
+        return list(seen_deployment_ids)
 
     def _set_internal_replica_context(
         self, *, servable_object: Callable = None, rank: ReplicaRank = None
@@ -1219,45 +1260,6 @@ class ReplicaActor:
         """
         return self._replica_impl.get_num_ongoing_requests()
 
-    def list_outbound_deployments(self) -> List[DeploymentID]:
-        """List all outbound deployment IDs this replica calls into.
-
-        This includes:
-        - Handles created via get_deployment_handle()
-        - Handles passed as init args/kwargs to the deployment constructor
-
-        This is used to determine which deployments are reachable from this replica.
-        The list of DeploymentIDs can change over time as new handles can be created at runtime.
-        Also its not guaranteed that the list of DeploymentIDs are identical across replicas
-        because it depends on user code.
-
-        Returns:
-            A list of DeploymentIDs that this replica calls into.
-        """
-        seen_deployment_ids: Set[DeploymentID] = set()
-
-        # First, collect dynamically created handles
-        for deployment_id in self._replica_impl.get_dynamically_created_handles():
-            seen_deployment_ids.add(deployment_id)
-
-        # Get the init args/kwargs
-        init_args = self._replica_impl._user_callable_wrapper._init_args
-        init_kwargs = self._replica_impl._user_callable_wrapper._init_kwargs
-
-        # Use _PyObjScanner to find all DeploymentHandle objects in:
-        # The init_args and init_kwargs (handles might be passed as init args)
-        scanner = _PyObjScanner(source_type=DeploymentHandle)
-        try:
-            handles = scanner.find_nodes((init_args, init_kwargs))
-
-            for handle in handles:
-                deployment_id = handle.deployment_id
-                seen_deployment_ids.add(deployment_id)
-        finally:
-            scanner.clear()
-
-        return list(seen_deployment_ids)
-
     async def is_allocated(self) -> str:
         """poke the replica to check whether it's alive.
 
@@ -1280,6 +1282,9 @@ class ReplicaActor:
             ray.util.get_node_instance_id(),
             get_component_logger_file_path(),
         )
+
+    def list_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        return self._replica_impl.list_outbound_deployments()
 
     async def initialize_and_get_metadata(
         self, deployment_config: DeploymentConfig = None, _after: Optional[Any] = None
