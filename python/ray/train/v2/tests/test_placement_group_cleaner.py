@@ -172,3 +172,9 @@ def test_pg_cleaner_handles_duplicate_start():
 
     # Stop
     ray.get(cleaner.stop.remote(), timeout=2.0)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
