@@ -2,7 +2,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections import Counter
 from dataclasses import dataclass, field
-from enum import Enum, auto
+from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 from zlib import crc32
 
@@ -1379,23 +1379,6 @@ class TaskResult(BaseModel):
 
 
 @PublicAPI(stability="alpha")
-class AsyncCapability(Enum):
-    """
-    Enum defining different async capabilities a TaskProcessor can support.
-
-    Each capability represents an async operation that an adapter may or may not
-    support. Use TaskProcessorAdapter.supports_async_capability() to check if
-    a specific capability is available before using the corresponding async method.
-    """
-
-    ENQUEUE_TASK = auto()  # Ability to enqueue tasks asynchronously
-    GET_TASK_STATUS = auto()  # Ability to retrieve task status asynchronously
-    CANCEL_TASK = auto()  # Ability to cancel tasks asynchronously
-    GET_METRICS = auto()  # Ability to retrieve metrics asynchronously
-    HEALTH_CHECK = auto()  # Ability to perform health checks asynchronously
-
-
-@PublicAPI(stability="alpha")
 class TaskProcessorAdapter(ABC):
     """
     Abstract base class for task processing adapters.
@@ -1408,44 +1391,8 @@ class TaskProcessorAdapter(ABC):
         """
         Initialize the TaskProcessorAdapter.
 
-        Sets up an empty set of async capabilities. Subclasses should add their
-        supported async capabilities to self._async_capabilities in their __init__
-        method.
         """
-        self._async_capabilities: Set[AsyncCapability] = set()
-
-    @property
-    def async_capabilities(self) -> Set[AsyncCapability]:
-        """
-        Get the set of async capabilities supported by this adapter.
-
-        Returns:
-            Set[AsyncCapability]: A copy of the set containing all async capabilities
-            supported by this adapter. Modifying the returned set will not affect
-            the adapter's capabilities.
-        """
-        return self._async_capabilities.copy()
-
-    def supports_async_capability(self, capability: AsyncCapability) -> bool:
-        """
-        Check if this adapter supports a specific async capability.
-
-        Args:
-            capability: The AsyncCapability enum value to check for.
-
-        Returns:
-            bool: True if the capability is supported, False otherwise.
-        """
-        return capability in self._async_capabilities
-
-    def supports_any_async(self) -> bool:
-        """
-        Check if this adapter supports any async operations.
-
-        Returns:
-            bool: True if at least one async capability is supported, False if this is a sync-only adapter.
-        """
-        return len(self._async_capabilities) > 0
+        pass
 
     @abstractmethod
     def initialize(self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY):
@@ -1574,13 +1521,8 @@ class TaskProcessorAdapter(ABC):
             TaskResult: Object containing task ID, status, and other metadata.
 
         Raises:
-            NotImplementedError: If async enqueue is not supported by this adapter.
+            NotImplementedError: If subclass didn't implement enqueue_task_async function
         """
-        if not self.supports_async_capability(AsyncCapability.ENQUEUE_TASK):
-            raise NotImplementedError(
-                f"{self.__class__.__name__} does not support async task enqueueing. "
-                f"Use enqueue_task_sync() instead or check supports_async_capability() first."
-            )
 
         raise NotImplementedError("Subclass must implement enqueue_task_async function")
 
@@ -1595,13 +1537,8 @@ class TaskProcessorAdapter(ABC):
             TaskResult: Object containing current task status, result, and other metadata.
 
         Raises:
-            NotImplementedError: If async status retrieval is not supported by this adapter.
+            NotImplementedError: If subclass didn't implement get_task_status_async function
         """
-        if not self.supports_async_capability(AsyncCapability.GET_TASK_STATUS):
-            raise NotImplementedError(
-                f"{self.__class__.__name__} does not support async task status retrieval. "
-                f"Use get_task_status_sync() instead or check supports_async_capability() first."
-            )
 
         raise NotImplementedError(
             "Subclass must implement get_task_status_async function"
@@ -1615,13 +1552,8 @@ class TaskProcessorAdapter(ABC):
             task_id: Unique identifier of the task to cancel.
 
         Raises:
-            NotImplementedError: If async task cancellation is not supported by this adapter.
+            NotImplementedError: If subclass didn't implement cancel_task_async function
         """
-        if not self.supports_async_capability(AsyncCapability.CANCEL_TASK):
-            raise NotImplementedError(
-                f"{self.__class__.__name__} does not support async task cancellation. "
-                f"Check supports_async_capability() first."
-            )
 
         raise NotImplementedError("Subclass must implement cancel_task_async function")
 
@@ -1633,13 +1565,8 @@ class TaskProcessorAdapter(ABC):
             Dict[str, Any]: Adapter-specific metrics data.
 
         Raises:
-            NotImplementedError: If async metrics retrieval is not supported by this adapter.
+            NotImplementedError: If subclass didn't implement get_metrics_async function
         """
-        if not self.supports_async_capability(AsyncCapability.GET_METRICS):
-            raise NotImplementedError(
-                f"{self.__class__.__name__} does not support async metrics retrieval. "
-                f"Check supports_async_capability() first."
-            )
 
         raise NotImplementedError("Subclass must implement get_metrics_async function")
 
@@ -1651,13 +1578,8 @@ class TaskProcessorAdapter(ABC):
             List[Dict]: Health status information for workers/components.
 
         Raises:
-            NotImplementedError: If async health check is not supported by this adapter.
+            NotImplementedError: If subclass didn't implement health_check_async function
         """
-        if not self.supports_async_capability(AsyncCapability.HEALTH_CHECK):
-            raise NotImplementedError(
-                f"{self.__class__.__name__} does not support async health check. "
-                f"Check supports_async_capability() first."
-            )
 
         raise NotImplementedError("Subclass must implement health_check_async function")
 
@@ -1668,4 +1590,19 @@ class ScaleDeploymentRequest(BaseModel):
 
     target_num_replicas: NonNegativeInt = Field(
         description="The target number of replicas for the deployment."
+    )
+
+
+@PublicAPI(stability="alpha")
+class ReplicaRank(BaseModel):
+    """Replica rank model."""
+
+    rank: int = Field(
+        description="Global rank of the replica across all nodes scoped to the deployment."
+    )
+
+    node_rank: int = Field(description="Rank of the node in the deployment.")
+
+    local_rank: int = Field(
+        description="Rank of the replica on the node scoped to the deployment."
     )

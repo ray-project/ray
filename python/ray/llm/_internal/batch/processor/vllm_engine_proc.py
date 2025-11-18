@@ -29,6 +29,7 @@ from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.common.utils.download_utils import (
+    STREAMING_LOAD_FORMATS,
     NodeModelDownloadable,
     download_model_files,
 )
@@ -105,9 +106,12 @@ def build_vllm_engine_processor(
     chat_template_kwargs: Optional[Dict[str, Any]] = None,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
+    preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+    postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
     telemetry_agent: Optional[TelemetryAgent] = None,
 ) -> Processor:
     """Construct a Processor and configure stages.
+
     Args:
         config: The configuration for the processor.
         chat_template_kwargs: The optional kwargs to pass to apply_chat_template.
@@ -116,8 +120,11 @@ def build_vllm_engine_processor(
             required fields for the following processing stages.
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict).
+        preprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            preprocess stage (e.g., num_cpus, memory, concurrency).
+        postprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            postprocess stage (e.g., num_cpus, memory, concurrency).
         telemetry_agent: An optional telemetry agent for collecting usage telemetry.
-
 
     Returns:
         The constructed processor.
@@ -220,10 +227,16 @@ def build_vllm_engine_processor(
             )
         )
 
+    # We download the config files here so that we can report the underlying architecture to the telemetry system.
+    # This should be a lightweight operation.
+    if config.engine_kwargs.get("load_format", None) in STREAMING_LOAD_FORMATS:
+        download_model_mode = NodeModelDownloadable.EXCLUDE_SAFETENSORS
+    else:
+        download_model_mode = NodeModelDownloadable.TOKENIZER_ONLY
     model_path = download_model_files(
         model_id=config.model_source,
         mirror_config=None,
-        download_model=NodeModelDownloadable.TOKENIZER_ONLY,
+        download_model=download_model_mode,
         download_extra_files=False,
     )
     hf_config = transformers.AutoConfig.from_pretrained(
@@ -255,6 +268,8 @@ def build_vllm_engine_processor(
         stages,
         preprocess=preprocess,
         postprocess=postprocess,
+        preprocess_map_kwargs=preprocess_map_kwargs,
+        postprocess_map_kwargs=postprocess_map_kwargs,
     )
     return processor
 

@@ -24,7 +24,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
-#include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/util/network_util.h"
@@ -39,13 +39,9 @@ namespace ray {
 class GcsClientTest : public ::testing::TestWithParam<bool> {
  public:
   GcsClientTest() : no_redis_(GetParam()) {
-    // core_worker_rpc_server_reconnect_timeout_s is needed for
-    // TestEvictExpiredDestroyedActors since the actors get stuck until the unavailable
-    // callback fires and don't get cleaned up
     RayConfig::instance().initialize(
         absl::Substitute(R"(
 {
-  "core_worker_rpc_server_reconnect_timeout_s": 0,
   "maximum_gcs_destroyed_actor_cached_count": 10,
   "maximum_gcs_dead_node_cached_count": 10,
   "gcs_storage": $0
@@ -109,6 +105,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         /*storage_operation_latency_in_ms_histogram=*/
         storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/storage_operation_count_counter_,
+        scheduler_placement_time_ms_histogram_,
     };
 
     gcs_server_ = std::make_unique<gcs::GcsServer>(
@@ -196,6 +193,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         /*storage_operation_latency_in_ms_histogram=*/
         storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/storage_operation_count_counter_,
+        scheduler_placement_time_ms_histogram_,
     };
 
     gcs_server_.reset(
@@ -224,7 +222,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       auto status = stub->CheckAlive(&context, request, &reply);
       // If it is in memory, we don't have the new token until we connect again.
       if (!((!no_redis_ && status.ok()) ||
-            (no_redis_ && GrpcStatusToRayStatus(status).IsAuthError()))) {
+            (no_redis_ && GrpcStatusToRayStatus(status).IsUnauthenticated()))) {
         RAY_LOG(WARNING) << "Unable to reach GCS: " << status.error_code() << " "
                          << status.error_message();
         continue;
@@ -237,8 +235,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   bool SubscribeToAllJobs(
       const gcs::SubscribeCallback<JobID, rpc::JobTableData> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Jobs().AsyncSubscribeAll(
-        subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Jobs().AsyncSubscribeAll(
+        subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -273,15 +271,14 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       const ActorID &actor_id,
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-        actor_id, subscribe, [&promise](Status status) {
-          promise.set_value(status.ok());
-        }));
+    gcs_client_->Actors().AsyncSubscribe(actor_id, subscribe, [&promise](Status status) {
+      promise.set_value(status.ok());
+    });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   void UnsubscribeActor(const ActorID &actor_id) {
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(actor_id));
+    gcs_client_->Actors().AsyncUnsubscribe(actor_id);
   }
 
   void WaitForActorUnsubscribed(const ActorID &actor_id) {
@@ -379,9 +376,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool RegisterSelf(const rpc::GcsNodeInfo &local_node_info) {
-    Status status = gcs_client_->Nodes().RegisterSelf(local_node_info, nullptr);
-    return status.ok();
+  void RegisterSelf(rpc::GcsNodeInfo local_node_info) {
+    gcs_client_->Nodes().RegisterSelf(std::move(local_node_info), nullptr);
   }
 
   bool RegisterNode(const rpc::GcsNodeInfo &node_info) {
@@ -391,9 +387,11 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  void UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
+  void UnregisterSelf(const NodeID &node_id,
+                      const rpc::NodeDeathInfo &node_death_info,
                       std::function<void()> unregister_done_callback) {
-    gcs_client_->Nodes().UnregisterSelf(node_death_info, unregister_done_callback);
+    gcs_client_->Nodes().UnregisterSelf(
+        node_id, node_death_info, unregister_done_callback);
   }
 
   std::vector<rpc::GcsNodeInfo> GetNodeInfoList() {
@@ -405,7 +403,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
           nodes = std::move(result);
           promise.set_value(status.ok());
         },
-        gcs::GetGcsTimeoutMs());
+        rpc::GetGcsTimeoutMs());
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return nodes;
   }
@@ -427,8 +425,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   bool SubscribeToWorkerFailures(
       const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
-        subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
+        subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -486,6 +484,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   observability::FakeHistogram storage_operation_latency_in_ms_histogram_;
   observability::FakeCounter storage_operation_count_counter_;
   observability::FakeCounter fake_dropped_events_counter_;
+  observability::FakeHistogram scheduler_placement_time_ms_histogram_;
 };
 
 INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientTest, testing::Bool());
@@ -620,11 +619,8 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   ASSERT_TRUE(SubscribeToNodeChange(on_subscribe));
 
   // Register local node to GCS.
-  ASSERT_TRUE(RegisterSelf(*gcs_node1_info));
+  RegisterSelf(*gcs_node1_info);
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfId(), node1_id);
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().node_id(), gcs_node1_info->node_id());
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().state(), gcs_node1_info->state());
 
   // Register a node to GCS.
   auto gcs_node2_info = GenNodeInfo();
@@ -646,11 +642,8 @@ TEST_P(GcsClientTest, TestUnregisterNode) {
   NodeID node_id = NodeID::FromBinary(gcs_node_info->node_id());
 
   // Register local node to GCS.
-  ASSERT_TRUE(RegisterSelf(*gcs_node_info));
+  RegisterSelf(*gcs_node_info);
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfId(), node_id);
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().node_id(), gcs_node_info->node_id());
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().state(), gcs_node_info->state());
 
   // Unregister local node from GCS.
   rpc::NodeDeathInfo node_death_info;
@@ -659,7 +652,7 @@ TEST_P(GcsClientTest, TestUnregisterNode) {
   node_death_info.set_reason_message(reason_message);
 
   std::promise<bool> promise;
-  UnregisterSelf(node_death_info, [&promise]() { promise.set_value(true); });
+  UnregisterSelf(node_id, node_death_info, [&promise]() { promise.set_value(true); });
   WaitReady(promise.get_future(), timeout_ms_);
 
   auto node_list = GetNodeInfoList();
@@ -1000,7 +993,7 @@ TEST_P(GcsClientTest, TestGcsEmptyAuth) {
   auto status = stub->GetClusterId(&context, request, &reply);
 
   // We expect the wrong cluster ID
-  EXPECT_TRUE(GrpcStatusToRayStatus(status).IsAuthError());
+  EXPECT_TRUE(GrpcStatusToRayStatus(status).IsUnauthenticated());
 }
 
 TEST_P(GcsClientTest, TestGcsAuth) {
