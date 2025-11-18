@@ -2210,6 +2210,7 @@ def hive_partitioned_dataset(tmp_path):
     [
         # Single operations
         ("select",),
+        ("select_partition_and_data",),
         ("rename_partition",),
         ("rename_data",),
         ("rename_partition_and_data",),
@@ -2266,13 +2267,13 @@ def test_hive_partitioned_parquet_operations(
     class ColumnTracker:
         """Helper to track column names as they get renamed."""
 
-        def __init__(self) -> None:
-            self.names: dict[str, str] = {
-                "country": "country",
-                "year": "year",
-                "id": "id",
-                "value": "value",
-            }
+        def __init__(self, columns: list[str]) -> None:
+            """Initialize tracker with column names.
+
+            Args:
+                columns: List of column names to track (identity mapping initially).
+            """
+            self.names: dict[str, str] = {col: col for col in columns}
 
         def __getitem__(self, key: str) -> str:
             return self.names[key]
@@ -2281,6 +2282,143 @@ def test_hive_partitioned_parquet_operations(
             """Update column names based on rename map."""
             self.names.update(rename_map)
 
+    def _apply_rename(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+        base_rename_map: dict[str, str],
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply rename operation to pandas DataFrame or Ray Dataset."""
+        rename_map = {cols[k]: v for k, v in base_rename_map.items()}
+        cols.rename(rename_map)
+        return (
+            data.rename_columns(rename_map)
+            if is_ray_ds
+            else data.rename(columns=rename_map)
+        )
+
+    def _apply_select(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply select operation."""
+        selected_cols = [
+            cols["id"],
+            cols["value"],
+            cols["score"],
+            cols["country"],
+            cols["year"],
+        ]
+        return data.select_columns(selected_cols) if is_ray_ds else data[selected_cols]
+
+    def _apply_select_partition_and_data(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply select partition and data operation (selects only country and id)."""
+        selected_cols = [
+            cols["country"],
+            cols["id"],
+        ]
+        return data.select_columns(selected_cols) if is_ray_ds else data[selected_cols]
+
+    def _apply_rename_partition(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply rename partition operation."""
+        base_rename_map = {"country": "country_renamed", "year": "year_renamed"}
+        return _apply_rename(data, cols, is_ray_ds, base_rename_map)
+
+    def _apply_rename_data(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply rename data operation."""
+        base_rename_map = {"id": "id_renamed", "value": "value_renamed"}
+        return _apply_rename(data, cols, is_ray_ds, base_rename_map)
+
+    def _apply_rename_partition_and_data(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply rename partition and data operation."""
+        base_rename_map = {
+            "country": "country_renamed",
+            "year": "year_renamed",
+            "id": "id_renamed",
+            "value": "value_renamed",
+        }
+        return _apply_rename(data, cols, is_ray_ds, base_rename_map)
+
+    def _apply_filter_partition(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply filter partition operation."""
+        if is_ray_ds:
+            return data.filter(expr=(col(cols["country"]) == "country_0"))
+        else:
+            return data[data[cols["country"]] == "country_0"]
+
+    def _apply_filter_data(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply filter data operation."""
+        if is_ray_ds:
+            return data.filter(expr=(col(cols["score"]) >= 10))
+        else:
+            return data[data[cols["score"]] >= 10]
+
+    def _apply_filter_partition_and_data(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply filter partition and data operation."""
+        if is_ray_ds:
+            return data.filter(
+                expr=(col(cols["country"]) == "country_0") & (col(cols["score"]) >= 10)
+            )
+        else:
+            return data[
+                (data[cols["country"]] == "country_0") & (data[cols["score"]] >= 10)
+            ]
+
+    def _apply_with_column(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply with_column operation."""
+        if is_ray_ds:
+            return data.with_column("new_col", col(cols["score"]) * 2)
+        else:
+            data = data.copy()
+            data["new_col"] = data[cols["score"]] * 2
+            return data
+
+    # Dispatch dictionary mapping operation names to their handlers
+    op_handlers = {
+        "select": _apply_select,
+        "select_partition_and_data": _apply_select_partition_and_data,
+        "rename_partition": _apply_rename_partition,
+        "rename_data": _apply_rename_data,
+        "rename_partition_and_data": _apply_rename_partition_and_data,
+        "filter_partition": _apply_filter_partition,
+        "filter_data": _apply_filter_data,
+        "filter_partition_and_data": _apply_filter_partition_and_data,
+        "with_column": _apply_with_column,
+    }
+
     def apply_operation(
         data: Union[pd.DataFrame, "ray.data.Dataset"],
         op: str,
@@ -2288,92 +2426,18 @@ def test_hive_partitioned_parquet_operations(
         is_ray_ds: bool = False,
     ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
         """Apply a single operation to pandas DataFrame or Ray Dataset."""
-        if op == "select":
-            selected_cols = [
-                cols["id"],
-                cols["value"],
-                "score",
-                cols["country"],
-                cols["year"],
-            ]
-            return (
-                data.select_columns(selected_cols) if is_ray_ds else data[selected_cols]
-            )
-
-        elif op == "rename_partition":
-            rename_map = {"country": "country_renamed", "year": "year_renamed"}
-            rename_map = {cols[k]: v for k, v in rename_map.items()}
-            cols.rename(rename_map)
-            return (
-                data.rename_columns(rename_map)
-                if is_ray_ds
-                else data.rename(columns=rename_map)
-            )
-
-        elif op == "rename_data":
-            rename_map = {"id": "id_renamed", "value": "value_renamed"}
-            rename_map = {cols[k]: v for k, v in rename_map.items()}
-            cols.rename(rename_map)
-            return (
-                data.rename_columns(rename_map)
-                if is_ray_ds
-                else data.rename(columns=rename_map)
-            )
-
-        elif op == "rename_partition_and_data":
-            rename_map = {
-                "country": "country_renamed",
-                "year": "year_renamed",
-                "id": "id_renamed",
-                "value": "value_renamed",
-            }
-            rename_map = {cols[k]: v for k, v in rename_map.items()}
-            cols.rename(rename_map)
-            return (
-                data.rename_columns(rename_map)
-                if is_ray_ds
-                else data.rename(columns=rename_map)
-            )
-
-        elif op == "filter_partition":
-            if is_ray_ds:
-                return data.filter(expr=(col(cols["country"]) == "country_0"))
-            else:
-                return data[data[cols["country"]] == "country_0"]
-
-        elif op == "filter_data":
-            if is_ray_ds:
-                return data.filter(expr=(col("score") >= 10))
-            else:
-                return data[data["score"] >= 10]
-
-        elif op == "filter_partition_and_data":
-            if is_ray_ds:
-                return data.filter(
-                    expr=(col(cols["country"]) == "country_0") & (col("score") >= 10)
-                )
-            else:
-                return data[
-                    (data[cols["country"]] == "country_0") & (data["score"] >= 10)
-                ]
-
-        elif op == "with_column":
-            if is_ray_ds:
-                return data.with_column("new_col", col("score") * 2)
-            else:
-                data = data.copy()
-                data["new_col"] = data["score"] * 2
-                return data
+        handler = op_handlers[op]
+        return handler(data, cols, is_ray_ds)
 
     # Apply operations to pandas DataFrame for expected results
     expected_df = base_df.copy()
-    expected_cols = ColumnTracker()
+    expected_cols = ColumnTracker(list(base_df.columns))
     for op in operations:
         expected_df = apply_operation(expected_df, op, expected_cols, is_ray_ds=False)
 
     # Apply operations to Ray Dataset
     ds = ray.data.read_parquet(partitioned_path)
-    ds_cols = ColumnTracker()
+    ds_cols = ColumnTracker(list(base_df.columns))
     for op in operations:
         ds = apply_operation(ds, op, ds_cols, is_ray_ds=True)
 
