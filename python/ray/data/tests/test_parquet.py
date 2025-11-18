@@ -2225,6 +2225,9 @@ def hive_partitioned_dataset(tmp_path):
         ("select", "rename_partition_and_data"),
         ("select", "filter_partition"),
         ("select", "filter_data"),
+        # Test narrowing projection: select all columns, then narrow to exclude some partition columns
+        ("select", "select_partition_and_data"),
+        ("select", "select_data_only"),
         ("rename_partition", "filter_partition"),
         ("rename_partition", "filter_data"),
         ("rename_data", "filter_partition"),

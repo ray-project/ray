@@ -279,10 +279,16 @@ class ParquetDatasource(Datasource):
         self._to_batches_kwargs = to_batch_kwargs
         # Store as projection_map (identity mapping if columns specified, None otherwise)
         # Note: Empty list [] means no columns, None means all columns
-        if data_columns is None:
+        # Include partition columns in projection_map if they were requested, so that
+        # projection pushdown can properly track them
+        if data_columns is None and partition_columns is None:
             self._projection_map = None
         else:
-            self._projection_map = {col: col for col in data_columns}
+            self._projection_map = {}
+            if data_columns is not None:
+                self._projection_map.update({col: col for col in data_columns})
+            if partition_columns is not None:
+                self._projection_map.update({col: col for col in partition_columns})
         self._partition_columns = partition_columns
         self._read_schema = schema
         self._file_schema = pq_ds.schema
@@ -471,21 +477,17 @@ class ParquetDatasource(Datasource):
     def _get_partition_columns_from_projection(self) -> Optional[List[str]]:
         """Extract partition columns from projection map.
 
-        This method extracts partition columns from _projection_map when
-        _partition_columns wasn't set during initialization (i.e., when
-        projection pushdown added partition columns to the projection).
+        This method extracts partition columns from _projection_map, which is the
+        source of truth after projection pushdown. Since partition columns are now
+        included in _projection_map during initialization when requested, we can
+        reliably extract them from the map.
 
         Returns:
             List of partition column names in the projection, None if there's
-            no projection (meaning include all partition columns), or [] if
-            projection exists but contains no partition columns (meaning include
-            no partition columns).
+            no projection or user only specified data columns (meaning include all
+            partition columns), or [] if projection pushdown excluded partition
+            columns (meaning include no partition columns).
         """
-        # If _partition_columns was set during initialization, use it
-        if self._partition_columns is not None:
-            return self._partition_columns
-
-        # Otherwise, extract partition columns from _projection_map
         if self._projection_map is None:
             return None
 
@@ -494,11 +496,21 @@ class ParquetDatasource(Datasource):
             return None
 
         # Extract partition columns that are in the projection map
-        # Return empty list if no partition columns are in projection (distinct from None)
         partition_cols = [
             col for col in self._projection_map.keys() if col in partition_cols_set
         ]
-        return partition_cols
+
+        # If partition columns are found in projection map, return them
+        if partition_cols:
+            return partition_cols
+
+        # No partition columns in projection map:
+        # - If _partition_columns is None: user only specified data columns during
+        #   initialization, so include all partition columns (return None)
+        # - If _partition_columns is not None: partition columns were requested during
+        #   initialization but are missing from _projection_map, which means projection
+        #   pushdown excluded them, so exclude all partition columns (return [])
+        return None if self._partition_columns is None else []
 
     def _get_data_columns(self) -> Optional[List[str]]:
         """Extract data columns from projection map, excluding partition columns.
