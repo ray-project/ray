@@ -221,6 +221,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                         "nodes": {
                             "autoscaling_app": {
                                 "name": "autoscaling_app",
+                                "app_name": "default",
                                 "outbound_deployments": [],
                                 "is_ingress": True,
                             }

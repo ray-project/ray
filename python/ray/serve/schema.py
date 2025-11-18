@@ -1111,13 +1111,16 @@ class APIType(str, Enum):
 
 @PublicAPI(stability="alpha")
 class DeploymentNode(BaseModel):
-    """Represents a node in the deployment DAG.
+    """Represents a node in the deployment topology.
 
     Each node represents a deployment and tracks which other deployments it calls.
     """
 
     name: str = Field(description="The name of the deployment.")
-    # using DeploymentID instead of deployment name because outbound dependencies can be in different apps
+    app_name: str = Field(
+        description="The name of the application this deployment belongs to."
+    )
+    # using name and app_name instead of just deployment name because outbound dependencies can be in different apps
     outbound_deployments: List[dict] = Field(
         default_factory=list,
         description="The deployment IDs that this deployment calls (outbound dependencies).",

@@ -962,6 +962,7 @@ class ApplicationState:
             # Create node for this deployment
             node = DeploymentNode(
                 name=deployment_name,
+                app_name=self._name,
                 outbound_deployments=[
                     {"name": dep.name, "app_name": dep.app_name}
                     for dep in outbound_deployment

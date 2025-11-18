@@ -51,6 +51,7 @@ class TestDeploymentTopology:
             "nodes": {
                 "Ingress": {
                     "name": "Ingress",
+                    "app_name": "test_app",
                     "is_ingress": True,
                     "outbound_deployments": [
                         {"name": "Downstream", "app_name": "test_app"}
@@ -58,6 +59,7 @@ class TestDeploymentTopology:
                 },
                 "Downstream": {
                     "name": "Downstream",
+                    "app_name": "test_app",
                     "is_ingress": False,
                     "outbound_deployments": [],
                 },
@@ -126,6 +128,7 @@ class TestDeploymentTopology:
             "nodes": {
                 "Ingress": {
                     "name": "Ingress",
+                    "app_name": "test_app",
                     "is_ingress": True,
                     "outbound_deployments": [
                         {"name": "ServiceA", "app_name": "test_app"}
@@ -133,6 +136,7 @@ class TestDeploymentTopology:
                 },
                 "ServiceA": {
                     "name": "ServiceA",
+                    "app_name": "test_app",
                     "is_ingress": False,
                     "outbound_deployments": [
                         {"name": "ServiceB", "app_name": "test_app"}
@@ -140,6 +144,7 @@ class TestDeploymentTopology:
                 },
                 "ServiceB": {
                     "name": "ServiceB",
+                    "app_name": "test_app",
                     "is_ingress": False,
                     "outbound_deployments": [
                         {"name": "ServiceC", "app_name": "test_app"}
@@ -147,6 +152,7 @@ class TestDeploymentTopology:
                 },
                 "ServiceC": {
                     "name": "ServiceC",
+                    "app_name": "test_app",
                     "is_ingress": False,
                     "outbound_deployments": [],
                 },
@@ -215,6 +221,7 @@ class TestDeploymentTopology:
             "nodes": {
                 "Ingress": {
                     "name": "Ingress",
+                    "app_name": "test_app",
                     "is_ingress": True,
                     "outbound_deployments": [
                         {"name": "Service1", "app_name": "test_app"},
@@ -224,16 +231,19 @@ class TestDeploymentTopology:
                 },
                 "Service1": {
                     "name": "Service1",
+                    "app_name": "test_app",
                     "is_ingress": False,
                     "outbound_deployments": [],
                 },
                 "Service2": {
                     "name": "Service2",
+                    "app_name": "test_app",
                     "is_ingress": False,
                     "outbound_deployments": [],
                 },
                 "Service3": {
                     "name": "Service3",
+                    "app_name": "test_app",
                     "is_ingress": False,
                     "outbound_deployments": [],
                 },
@@ -314,6 +324,7 @@ class TestDeploymentTopology:
             "nodes": {
                 "Ingress": {
                     "name": "Ingress",
+                    "app_name": "test_app",
                     "is_ingress": True,
                     "outbound_deployments": [
                         {"name": "ServiceA", "app_name": "test_app"},
@@ -322,6 +333,7 @@ class TestDeploymentTopology:
                 },
                 "ServiceA": {
                     "name": "ServiceA",
+                    "app_name": "test_app",
                     "is_ingress": False,
                     "outbound_deployments": [
                         {"name": "Database", "app_name": "test_app"}
@@ -329,6 +341,7 @@ class TestDeploymentTopology:
                 },
                 "ServiceB": {
                     "name": "ServiceB",
+                    "app_name": "test_app",
                     "is_ingress": False,
                     "outbound_deployments": [
                         {"name": "Database", "app_name": "test_app"}
@@ -336,6 +349,7 @@ class TestDeploymentTopology:
                 },
                 "Database": {
                     "name": "Database",
+                    "app_name": "test_app",
                     "is_ingress": False,
                     "outbound_deployments": [],
                 },
@@ -395,6 +409,7 @@ class TestDeploymentTopology:
             "nodes": {
                 "App1Service": {
                     "name": "App1Service",
+                    "app_name": "app1",
                     "is_ingress": True,
                     "outbound_deployments": [
                         {"name": "App2Service", "app_name": "app2"}
@@ -410,6 +425,7 @@ class TestDeploymentTopology:
             "nodes": {
                 "App2Service": {
                     "name": "App2Service",
+                    "app_name": "app2",
                     "is_ingress": True,
                     "outbound_deployments": [],
                 },
@@ -470,6 +486,7 @@ class TestDeploymentTopology:
             "nodes": {
                 "Standalone": {
                     "name": "Standalone",
+                    "app_name": "test_app",
                     "is_ingress": True,
                     "outbound_deployments": [],
                 },
@@ -515,6 +532,7 @@ class TestDeploymentTopology:
             "nodes": {
                 "Ingress": {
                     "name": "Ingress",
+                    "app_name": "test_app",
                     "is_ingress": True,
                     "outbound_deployments": [
                         {"name": "ServiceA", "app_name": "test_app"}
@@ -522,6 +540,7 @@ class TestDeploymentTopology:
                 },
                 "ServiceA": {
                     "name": "ServiceA",
+                    "app_name": "test_app",
                     "is_ingress": False,
                     "outbound_deployments": [],
                 },
@@ -563,6 +582,7 @@ class TestDeploymentTopology:
             "nodes": {
                 "IngressV2": {
                     "name": "IngressV2",
+                    "app_name": "test_app",
                     "is_ingress": True,
                     "outbound_deployments": [
                         {"name": "ServiceB", "app_name": "test_app"}
@@ -570,6 +590,7 @@ class TestDeploymentTopology:
                 },
                 "ServiceB": {
                     "name": "ServiceB",
+                    "app_name": "test_app",
                     "is_ingress": False,
                     "outbound_deployments": [],
                 },
@@ -641,6 +662,7 @@ class TestDeploymentTopology:
             "nodes": {
                 "FastAPIIngress": {
                     "name": "FastAPIIngress",
+                    "app_name": "test_app",
                     "is_ingress": True,
                     "outbound_deployments": [
                         {"name": "BackendService", "app_name": "test_app"}
@@ -648,6 +670,7 @@ class TestDeploymentTopology:
                 },
                 "BackendService": {
                     "name": "BackendService",
+                    "app_name": "test_app",
                     "is_ingress": False,
                     "outbound_deployments": [],
                 },
@@ -712,11 +735,13 @@ class TestDeploymentTopology:
             "nodes": {
                 "Ingress": {
                     "name": "Ingress",
+                    "app_name": "test_app",
                     "is_ingress": True,
                     "outbound_deployments": [],
                 },
                 "ServiceA": {
                     "name": "ServiceA",
+                    "app_name": "test_app",
                     "is_ingress": False,
                     "outbound_deployments": [],
                 },
@@ -804,6 +829,7 @@ class TestDeploymentTopology:
             "nodes": {
                 "Ingress": {
                     "name": "Ingress",
+                    "app_name": "test_app",
                     "is_ingress": True,
                     "outbound_deployments": [
                         {"name": "FailingService", "app_name": "test_app"}
@@ -811,11 +837,13 @@ class TestDeploymentTopology:
                 },
                 "FailingService": {
                     "name": "FailingService",
+                    "app_name": "test_app",
                     "is_ingress": False,
                     "outbound_deployments": [],
                 },
                 "ServiceB": {
                     "name": "ServiceB",
+                    "app_name": "test_app",
                     "is_ingress": False,
                     "outbound_deployments": [],
                 },
