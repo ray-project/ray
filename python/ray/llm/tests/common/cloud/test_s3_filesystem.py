@@ -436,7 +436,9 @@ class TestS3FileSystemIntegration:
     def test_list_subfolders_real_s3(self):
         """Test listing subfolders from real S3 bucket."""
         # Test listing subfolders in the parent directory which has actual subfolders
-        folders = S3FileSystem.list_subfolders("s3://air-example-data/rayllm-ossci/")
+        folders = S3FileSystem.list_subfolders(
+            "s3://anonymous@air-example-data/rayllm-ossci/"
+        )
         # Verify we get expected subfolders
         assert isinstance(folders, list)
         assert "meta-Llama-3.2-1B-Instruct" in folders
@@ -446,7 +448,7 @@ class TestS3FileSystemIntegration:
         """Test getting a file from real S3 bucket."""
         # Test getting a small config file
         content = S3FileSystem.get_file(
-            "s3://air-example-data/rayllm-ossci/meta-Llama-3.2-1B-Instruct/config.json"
+            "s3://anonymous@air-example-data/rayllm-ossci/meta-Llama-3.2-1B-Instruct/config.json"
         )
         assert content is not None
         assert isinstance(content, str)
@@ -460,7 +462,7 @@ class TestS3FileSystemIntegration:
             # Download files excluding safetensors
             S3FileSystem.download_files(
                 tempdir,
-                "s3://air-example-data/rayllm-ossci/meta-Llama-3.2-1B-Instruct/",
+                "s3://anonymous@air-example-data/rayllm-ossci/meta-Llama-3.2-1B-Instruct/",
                 suffixes_to_exclude=[".safetensors"],
             )
 
@@ -487,7 +489,7 @@ class TestS3FileSystemIntegration:
             # Download only .json files
             S3FileSystem.download_files(
                 tempdir,
-                "s3://air-example-data/rayllm-ossci/meta-Llama-3.2-1B-Instruct/",
+                "s3://anonymous@air-example-data/rayllm-ossci/meta-Llama-3.2-1B-Instruct/",
                 substrings_to_include=[".json"],
             )
 

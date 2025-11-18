@@ -45,6 +45,7 @@ def is_remote_path(path: str) -> bool:
         or path.startswith("gs://")
         or path.startswith("abfss://")
         or path.startswith("azure://")
+        or path.startswith("pyarrow-")
     )
 
 

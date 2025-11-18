@@ -278,7 +278,7 @@ class PyArrowFileSystem(BaseCloudFileSystem):
 
             return subfolders
         except Exception as e:
-            logger.info(f"Error listing subfolders in {folder_uri}: {e}")
+            logger.error(f"Error listing subfolders in {folder_uri}: {e}")
             return []
 
     @staticmethod
