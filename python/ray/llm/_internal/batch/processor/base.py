@@ -210,12 +210,12 @@ class OfflineProcessorConfig(ProcessorConfig):
                     "or `chat_template_stage={'enabled': True, 'chat_template': '...'}`. "
                     "This will raise an error in a future version."
                 )
-            enabled_value = values.get("apply_chat_template")
-            enabled = enabled_value if enabled_value is not None else True
-            stage: Dict[str, Any] = {"enabled": enabled}
-            if values.get("chat_template") is not None:
-                stage["chat_template"] = values["chat_template"]
-            values["chat_template_stage"] = stage
+                enabled_value = values.get("apply_chat_template")
+                enabled = enabled_value if enabled_value is not None else True
+                stage: Dict[str, Any] = {"enabled": enabled}
+                if values.get("chat_template") is not None:
+                    stage["chat_template"] = values["chat_template"]
+                values["chat_template_stage"] = stage
 
         # Other stages: simple boolean-to-stage mapping
         stage_mappings = [
