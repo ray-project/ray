@@ -1,12 +1,14 @@
 import numpy as np
 import pyarrow as pa
 import pytest
+from packaging import version
 
 from ray.data.datatype import DataType
 
 # Skip all tests if PyArrow version is less than 19.0
 pytestmark = pytest.mark.skipif(
-    pa.__version__ < "19.0", reason="DataType tests require PyArrow >= 19.0"
+    version.parse(pa.__version__) < version.parse("19.0.0"),
+    reason="DataType tests require PyArrow >= 19.0",
 )
 
 
