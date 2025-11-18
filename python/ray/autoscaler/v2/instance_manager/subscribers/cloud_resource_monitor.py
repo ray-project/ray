@@ -53,7 +53,10 @@ class CloudResourceMonitor(InstanceUpdatedSubscriber):
         for event in events:
             if event.new_instance_status == Instance.ALLOCATION_TIMEOUT:
                 self.allocation_timeout(event)
-            elif event.new_instance_status == Instance.RAY_RUNNING:
+            elif (
+                event.new_instance_status == Instance.RAY_RUNNING
+                and event.instance_type
+            ):
                 self.allocation_succeeded(event)
 
     def get_resource_availabilities(self) -> Dict[NodeType, float]:

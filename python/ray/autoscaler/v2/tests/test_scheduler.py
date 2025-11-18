@@ -2666,7 +2666,7 @@ def test_get_nodes_with_resource_availabilities():
             max_worker_nodes=10,
         ),
         "type_gpu4": NodeTypeConfig(
-            name="type_gpu3",
+            name="type_gpu4",
             resources={"CPU": 1, "GPU": 1, "gpu4": 1},
             min_worker_nodes=0,
             max_worker_nodes=10,
