@@ -109,3 +109,16 @@ Tailing logs until the job exits (disable with --no-wait):
 Job 'raysubmit_...' succeeded
 ------------------------------------------
 ```
+
+## Viewing the Ray dashboard (optional)
+To view the Ray dashboard from your browser, first port forward to from your local machine to the cluster:
+
+```bash
+kubectl port-forward svc/ray-cluster-with-auth-head-svc 8265:8265 &
+```
+
+Then open `localhost:8265` in your browser. You will be prompted to provide the auth token for the cluster, which can be retrieved with:
+
+```bash
+kubectl get secrets ray-cluster-with-auth --template={{.data.auth_token}} | base64 -d
+```
