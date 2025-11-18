@@ -31,14 +31,13 @@ class DataConfig:
                 Can be set to "all" or a list of dataset names. Defaults to "all",
                 i.e. split all datasets.
             execution_options: The execution options to pass to Ray Data. Can be either:
-                1. A single ExecutionOptions object, which will be applied to all datasets.
-                2. A dict mapping dataset names to ExecutionOptions. If a dataset name is
-                   not in the dict, it will default to `DataConfig.default_ingest_options()`.
-                By default, the options will be optimized for data ingest. When overriding this,
-                base your options off of `DataConfig.default_ingest_options()`.
-            enable_shard_locality: If true, when sharding the datasets across Train
-                workers, locality will be considered to minimize cross-node data transfer.
-                This is on by default.
+                1. A single ExecutionOptions object that is applied to all datasets.
+                2. A dict mapping dataset names to ExecutionOptions. If a dataset name
+                is not in the dict, it defaults to ``DataConfig.default_ingest_options()``.
+                By default, the options are optimized for data ingest. When overriding,
+                base your options off ``DataConfig.default_ingest_options()``.
+            enable_shard_locality: If true, dataset sharding across Train workers will
+                consider locality to minimize cross-node data transfer. Enabled by default.
         """
         if isinstance(datasets_to_split, list) or datasets_to_split == "all":
             self._datasets_to_split = datasets_to_split

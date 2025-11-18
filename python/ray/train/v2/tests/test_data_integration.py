@@ -328,8 +328,7 @@ def test_per_dataset_execution_options_single(ray_start_4_cpus):
 
 
 def test_per_dataset_execution_options_dict(ray_start_4_cpus):
-    """Test that a dict of ExecutionOptions maps to specific datasets, and datasets
-    not in the dict get default ingest options. Also tests resource limits."""
+    """Test that a dict of ExecutionOptions maps to specific datasets, and datasets not in the dict get default ingest options. Also tests resource limits."""
     NUM_ROWS = 100
     NUM_WORKERS = 2
 
