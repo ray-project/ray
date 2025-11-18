@@ -486,6 +486,13 @@ class Expr(ABC):
 
         return _StructNamespace(self)
 
+    @property
+    def dt(self) -> "_DatetimeNamespace":
+        """Access datetime operations for this expression."""
+        from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
+
+        return _DatetimeNamespace(self)
+
     def _unalias(self) -> "Expr":
         return self
 
