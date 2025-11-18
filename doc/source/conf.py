@@ -32,10 +32,9 @@ from custom_directives import (  # noqa
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-assert not os.path.exists("../../python/ray/_raylet.so"), (
-    "_raylet.so should not be imported for the purpose for doc build, "
-    "please rename the file to _raylet.so.bak and try again."
-)
+assert not os.path.exists(
+    "../../python/ray/_raylet.so"
+), "_raylet.so should not be imported for the purpose for doc build, please rename the file to _raylet.so.bak and try again."
 sys.path.insert(0, os.path.abspath("../../python/"))
 
 # -- General configuration ------------------------------------------------
@@ -130,9 +129,15 @@ nb_output_folder = "_build/jupyter_execute"
 nitpicky = True
 nitpick_ignore_regex = [
     ("py:obj", "ray.actor.T"),
+    ("py:obj", "ray.data.aggregate.AccumulatorType"),
+    ("py:obj", "ray.data.aggregate.SupportsRichComparisonType"),
+    ("py:obj", "ray.data.aggregate.AggOutputType"),
     ("py:class", ".*"),
     # Workaround for https://github.com/sphinx-doc/sphinx/issues/10974
     ("py:obj", "ray\\.data\\.datasource\\.datasink\\.WriteReturnType"),
+    # UnknownPreprocessorError is an internal exception not exported in public API
+    ("py:exc", "UnknownPreprocessorError"),
+    ("py:exc", "ray\\.data\\.preprocessors\\.version_support\\.UnknownPreprocessorError"),
 ]
 
 # Cache notebook outputs in _build/.jupyter_cache
@@ -322,7 +327,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """Join us at Ray Summit 2025 — <a target="_blank" href="https://www.anyscale.com/ray-summit/2025?utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Register early and save.</a><button type="button" id="close-banner" aria-label="Close banner">&times;</button>""",
+    "announcement": """Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a><button type="button" id="close-banner" aria-label="Close banner">&times;</button>""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
@@ -648,6 +653,7 @@ autodoc_mock_imports = [
     "numpy",
     "pandas",
     "pyarrow",
+    "pyarrow.compute",
     "pytorch_lightning",
     "scipy",
     "setproctitle",

@@ -44,7 +44,7 @@ def mock_map_op(
         compute_strategy=compute_strategy,
         name=name,
     )
-    op.start = MagicMock(side_effect=lambda _: None)
+    op.start(ExecutionOptions())
     if incremental_resource_usage is not None:
         op.incremental_resource_usage = MagicMock(
             return_value=incremental_resource_usage
