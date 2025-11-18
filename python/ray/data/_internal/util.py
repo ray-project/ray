@@ -1669,7 +1669,7 @@ def unzip(data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
 
 
 def _sort_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Sort DataFrame by all columns, handling unhashable types."""
+    """Sort DataFrame by columns and rows, and also handle unhashable types."""
     df = df.copy()
 
     def to_sortable(x):
