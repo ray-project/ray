@@ -61,10 +61,9 @@ def resolve_block_refs(
     unknowns = 0
 
     for block_ref in block_ref_iter:
-        locality_stats = _calculate_ref_hits([block_ref])
-        if all(s < 0 for s in locality_stats):
+        current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
+        if current_hit < 0:
             continue
-        current_hit, current_miss, current_unknown = locality_stats
         hits += current_hit
         misses += current_miss
         unknowns += current_unknown
