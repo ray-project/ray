@@ -61,7 +61,7 @@ wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/
 
 mkdir -p /usr/local/python
 # Install Python 3.9 using uv
-UV_PYTHON_VERSION=3.9
+UV_PYTHON_VERSION=3.10
 uv python install --install-dir /usr/local/python "$UV_PYTHON_VERSION"
 
 export UV_PYTHON_INSTALL_DIR=/usr/local/python

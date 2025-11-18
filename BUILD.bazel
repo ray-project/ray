@@ -22,7 +22,7 @@ package(
 
 alias(
     name = "hermetic_python",
-    actual = "//bazel:py39",
+    actual = "//bazel:py310",
     visibility = ["//visibility:public"],
 )
 
