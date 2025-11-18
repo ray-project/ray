@@ -47,8 +47,9 @@ class StreamSplitDataIterator(DataIterator):
         See also: `Dataset.streaming_split`.
         """
         # To avoid deadlock, the concurrency on this actor must be set to at least `n`.
+        # We add 1 to the concurrency to allow for a shutdown_executor thread to run.
         coord_actor = SplitCoordinator.options(
-            max_concurrency=n,
+            max_concurrency=n + 1,
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
