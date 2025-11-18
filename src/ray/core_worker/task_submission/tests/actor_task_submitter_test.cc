@@ -20,11 +20,15 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/reference_counter.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/fake_actor_creator.h"
+#include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/fake_subscriber.h"
 
 namespace ray::core {
 
@@ -92,7 +96,18 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
         store_(std::make_shared<CoreWorkerMemoryStore>(io_context)),
         task_manager_(std::make_shared<MockTaskManagerInterface>()),
         io_work(io_context.get_executor()),
-        reference_counter_(std::make_shared<MockReferenceCounter>()),
+        publisher_(std::make_unique<pubsub::FakePublisher>()),
+        subscriber_(std::make_unique<pubsub::FakeSubscriber>()),
+        fake_owned_object_count_gauge_(),
+        fake_owned_object_size_gauge_(),
+        reference_counter_(std::make_shared<ReferenceCounter>(
+            rpc::Address(),
+            publisher_.get(),
+            subscriber_.get(),
+            /*is_node_dead=*/[](const NodeID &) { return false; },
+            fake_owned_object_count_gauge_,
+            fake_owned_object_size_gauge_,
+            /*lineage_pinning_enabled=*/false)),
         submitter_(
             *client_pool_,
             *store_,
@@ -115,7 +130,11 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
   std::shared_ptr<MockTaskManagerInterface> task_manager_;
   instrumented_io_context io_context;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
-  std::shared_ptr<MockReferenceCounter> reference_counter_;
+  std::unique_ptr<pubsub::FakePublisher> publisher_;
+  std::unique_ptr<pubsub::FakeSubscriber> subscriber_;
+  ray::observability::FakeGauge fake_owned_object_count_gauge_;
+  ray::observability::FakeGauge fake_owned_object_size_gauge_;
+  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   ActorTaskSubmitter submitter_;
 };
 
@@ -219,6 +238,8 @@ TEST_P(ActorTaskSubmitterTest, TestDependencies) {
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   task2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
       obj2.Binary());
+  reference_counter_->AddOwnedObject(obj1, {}, addr, "", 0, false, true);
+  reference_counter_->AddOwnedObject(obj2, {}, addr, "", 0, false, true);
 
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.
@@ -232,11 +253,11 @@ TEST_P(ActorTaskSubmitterTest, TestDependencies) {
   auto data = GenerateRandomObject();
 
   // Each Put schedules a callback onto io_context, and let's run it.
-  store_->Put(*data, obj1);
+  store_->Put(*data, obj1, reference_counter_->HasReference(obj1));
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
-  store_->Put(*data, obj2);
+  store_->Put(*data, obj2, reference_counter_->HasReference(obj2));
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
@@ -266,6 +287,8 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   task2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
       obj2.Binary());
+  reference_counter_->AddOwnedObject(obj1, {}, addr, "", 0, false, true);
+  reference_counter_->AddOwnedObject(obj2, {}, addr, "", 0, false, true);
 
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.
@@ -280,12 +303,12 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
     // submission.
     auto data = GenerateRandomObject();
     // task2 is submitted first as we allow out of order execution.
-    store_->Put(*data, obj2);
+    store_->Put(*data, obj2, reference_counter_->HasReference(obj2));
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 1);
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(1));
     // then task1 is submitted
-    store_->Put(*data, obj1);
+    store_->Put(*data, obj1, reference_counter_->HasReference(obj1));
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 2);
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(1, 0));
@@ -293,10 +316,10 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
     // Put the dependencies in the store in the opposite order of task
     // submission.
     auto data = GenerateRandomObject();
-    store_->Put(*data, obj2);
+    store_->Put(*data, obj2, reference_counter_->HasReference(obj2));
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 0);
-    store_->Put(*data, obj1);
+    store_->Put(*data, obj1, reference_counter_->HasReference(obj1));
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 2);
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
