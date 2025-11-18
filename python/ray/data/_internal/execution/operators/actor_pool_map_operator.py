@@ -172,8 +172,6 @@ class ActorPoolMapOperator(MapOperator):
         self._map_worker_cls = type(f"MapWorker({self.name})", (_MapWorker,), {})
         # Cached actor class.
         self._actor_cls = None
-        # Whether no more submittable bundles will be added.
-        self._inputs_done = False
         self._actor_locality_enabled: Optional[bool] = None
 
         # Locality metrics
@@ -385,13 +383,6 @@ class ActorPoolMapOperator(MapOperator):
         # Call base implementation to handle any leftover bundles. This may or may not
         # trigger task dispatch.
         super().all_inputs_done()
-
-        # Mark inputs as done so future task dispatch will kill all inactive workers
-        # once the bundle queue is exhausted.
-        self._inputs_done = True
-
-        # Immediately dispatch any queued bundles after inputs are done
-        self._dispatch_tasks()
 
         if self._metrics.num_inputs_received < self._actor_pool.min_size():
             warnings.warn(

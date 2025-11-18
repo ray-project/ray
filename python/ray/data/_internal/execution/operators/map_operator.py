@@ -689,17 +689,17 @@ class BlockRefBundler(BaseRefBundler):
         self._bundle_buffer_size_bytes = 0
         self._finalized = False
 
-    def num_blocks(self):
+    def num_blocks(self) -> int:
         return sum(len(b.block_refs) for b in self._bundle_buffer)
 
     def add_bundle(self, bundle: RefBundle):
-        """Add a bundle to the bundler."""
+        """Add a new input bundle to the bundler."""
         self._bundle_buffer.append(bundle)
         self._bundle_buffer_size += self._get_bundle_size(bundle)
         self._bundle_buffer_size_bytes += bundle.size_bytes()
 
     def has_bundle(self) -> bool:
-        """Returns whether the bundler has a bundle."""
+        """Return whether the bundler currently holds a full bundle ready to emit."""
         return self._bundle_buffer and (
             self._min_rows_per_bundle is None
             or self._bundle_buffer_size >= self._min_rows_per_bundle
@@ -707,21 +707,20 @@ class BlockRefBundler(BaseRefBundler):
         )
 
     def size_bytes(self) -> int:
+        """Estimate the total size in bytes of buffered bundles."""
         return self._bundle_buffer_size_bytes
 
-    def get_next_bundle(
-        self,
-    ) -> Tuple[List[RefBundle], RefBundle]:
-        """Gets the next bundle.
+    def get_next_bundle(self) -> Tuple[List[RefBundle], RefBundle]:
+        """Pop and return the next bundled input ready for task submission.
 
         Returns:
-            A two-tuple. The first element is a list of bundles that were combined into
-            the output bundle. The second element is the output bundle.
+            A two-tuple. The first element is a list of bundles that were
+            combined into the output bundle. The second element is the output bundle.
         """
         assert self.has_bundle()
 
+        # Short-circuit if no row target was defined.
         if self._min_rows_per_bundle is None:
-            # Short-circuit if no bundle row target was defined.
             assert len(self._bundle_buffer) == 1
             bundle = self._bundle_buffer[0]
             self._bundle_buffer = []
@@ -735,31 +734,29 @@ class BlockRefBundler(BaseRefBundler):
 
         for idx, bundle in enumerate(self._bundle_buffer):
             bundle_size = self._get_bundle_size(bundle)
-
-            # Add bundle to the output buffer so long as either
-            #   - Output buffer size is still 0
-            #   - Output buffer doesn't exceeds the `_min_rows_per_bundle` threshold
+            # Allow adding to output_buffer if:
+            # - the buffer is still empty (avoid empty bundle),
+            # - it does not exceed the min_rows threshold,
+            # - or we have finalized the bundler (flush everything).
             if (
                 output_buffer_size < self._min_rows_per_bundle
                 or output_buffer_size == 0
+                or self._finalized
             ):
                 output_buffer.append(bundle)
                 output_buffer_size += bundle_size
             else:
                 remainder = self._bundle_buffer[idx:]
+                break
 
         self._bundle_buffer = remainder
-        self._bundle_buffer_size = sum(
-            self._get_bundle_size(bundle) for bundle in remainder
-        )
-        self._bundle_buffer_size_bytes = sum(
-            bundle.size_bytes() for bundle in remainder
-        )
+        self._bundle_buffer_size = sum(self._get_bundle_size(b) for b in remainder)
+        self._bundle_buffer_size_bytes = sum(b.size_bytes() for b in remainder)
 
         return list(output_buffer), _merge_ref_bundles(*output_buffer)
 
     def done_adding_bundles(self):
-        """Indicate that no more RefBundles will be added to this bundler."""
+        """Signal that no additional bundles will be added to the bundler."""
         self._finalized = True
 
     @staticmethod
