@@ -22,7 +22,6 @@ from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
 from ray_release.command_runner.command_runner import CommandRunner
-from ray_release.command_runner.job_runner import JobRunner
 from ray_release.config import (
     DEFAULT_AUTOSUSPEND_MINS,
     DEFAULT_BUILD_TIMEOUT,
@@ -56,12 +55,11 @@ from ray_release.template import get_working_dir, load_test_cluster_compute
 from ray_release.test import Test
 
 type_str_to_command_runner = {
-    "job": JobRunner,
+    "job": AnyscaleJobRunner,
     "anyscale_job": AnyscaleJobRunner,
 }
 
 command_runner_to_cluster_manager = {
-    JobRunner: FullClusterManager,
     AnyscaleJobRunner: MinimalClusterManager,
 }
 
