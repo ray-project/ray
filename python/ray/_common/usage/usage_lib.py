@@ -62,12 +62,22 @@ import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient
 from ray.core.generated import gcs_pb2, usage_pb2
 from ray.experimental.internal_kv import (
+    _internal_kv_get,
     _internal_kv_initialized,
     _internal_kv_put,
 )
 
 logger = logging.getLogger(__name__)
 TagKey = usage_pb2.TagKey
+
+# Constants for validation and limits
+MIN_REASONABLE_TIMESTAMP_MS = 946684800000  # Jan 1, 2000
+MAX_FUTURE_SKEW_MS = 3600000  # 1 hour
+MAX_REASONABLE_RESTART_COUNT = 1000000  # Prevent integer overflow issues
+MAX_CONNECTOR_NAME_LENGTH = 100
+MAX_CONNECTORS = 1000
+MAX_TRAINER_TYPE_LENGTH = 50
+MAX_TRAINER_TYPES = 100
 
 #################
 # Internal APIs #
@@ -151,6 +161,10 @@ class UsageStatsToReport:
     libc_version: Optional[str] = None
     #: The hardwares that are used (e.g. Intel Xeon).
     hardware_usages: Optional[List[str]] = None
+    #: Timestamp (ms) when this cluster_id was first seen in the environment.
+    cluster_first_seen_timestamp_ms: Optional[int] = None
+    #: Number of times this cluster has been restarted (increments on each restart).
+    cluster_restart_count: Optional[int] = None
 
 
 @dataclass(init=True)
@@ -271,6 +285,149 @@ def record_hardware_usage(hardware_usage: str):
     """Record hardware usage (e.g. which CPU model is used)"""
     assert _internal_kv_initialized()
     _put_hardware_usage(hardware_usage)
+
+
+def record_data_connector_usage(connector_name: str):
+    """Record Ray Data connector usage (e.g. 'read_parquet', 'read_csv').
+
+    This tracks which Ray Data connectors are used in the cluster.
+    The connector names are stored as a JSON list in the telemetry report.
+
+    Args:
+        connector_name: The name of the connector (e.g., 'read_parquet').
+    """
+    if not _internal_kv_initialized():
+        return
+
+    # Validate and sanitize input
+    if not connector_name or not isinstance(connector_name, str):
+        logger.debug(f"Invalid connector_name: {connector_name}")
+        return
+
+    connector_name = connector_name.strip()
+    if not connector_name:
+        return
+
+    # Limit length to prevent abuse
+    if len(connector_name) > MAX_CONNECTOR_NAME_LENGTH:
+        logger.warning(
+            f"Connector name too long, truncating: {connector_name[:MAX_CONNECTOR_NAME_LENGTH]}"
+        )
+        connector_name = connector_name[:MAX_CONNECTOR_NAME_LENGTH]
+
+    try:
+        current_value = _get_extra_usage_tag("data_connectors_used")
+        if current_value:
+            try:
+                connectors = json.loads(current_value)
+                if not isinstance(connectors, list):
+                    logger.warning("data_connectors_used is not a list, resetting")
+                    connectors = []
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning(
+                    f"Failed to parse data_connectors_used JSON: {e}, resetting"
+                )
+                connectors = []
+        else:
+            connectors = []
+
+        # Limit list size to prevent unbounded growth
+        if len(connectors) >= MAX_CONNECTORS:
+            logger.warning(
+                f"Too many connectors tracked ({len(connectors)}), skipping {connector_name}"
+            )
+            return
+
+        if connector_name not in connectors:
+            connectors.append(connector_name)
+            record_extra_usage_tag(
+                TagKey.DATA_CONNECTORS_USED, json.dumps(sorted(connectors))
+            )
+    except Exception as e:
+        logger.debug(f"Failed to record data connector usage: {e}")
+
+
+def record_trainer_type_usage(trainer_type: str):
+    """Record Ray Train trainer framework type usage (e.g. 'pytorch', 'xgboost').
+
+    This tracks which trainer framework types are used in the cluster.
+    The trainer types are stored as a JSON list in the telemetry report.
+
+    Args:
+        trainer_type: The framework type (e.g., 'pytorch', 'xgboost', 'tensorflow').
+    """
+    if not _internal_kv_initialized():
+        return
+
+    # Validate and sanitize input
+    if not trainer_type or not isinstance(trainer_type, str):
+        logger.debug(f"Invalid trainer_type: {trainer_type}")
+        return
+
+    trainer_type = trainer_type.strip().lower()  # Normalize to lowercase
+    if not trainer_type:
+        return
+
+    # Limit length to prevent abuse
+    if len(trainer_type) > MAX_TRAINER_TYPE_LENGTH:
+        logger.warning(
+            f"Trainer type too long, truncating: {trainer_type[:MAX_TRAINER_TYPE_LENGTH]}"
+        )
+        trainer_type = trainer_type[:MAX_TRAINER_TYPE_LENGTH]
+
+    try:
+        current_value = _get_extra_usage_tag("trainer_types_used")
+        if current_value:
+            try:
+                trainer_types = json.loads(current_value)
+                if not isinstance(trainer_types, list):
+                    logger.warning("trainer_types_used is not a list, resetting")
+                    trainer_types = []
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning(
+                    f"Failed to parse trainer_types_used JSON: {e}, resetting"
+                )
+                trainer_types = []
+        else:
+            trainer_types = []
+
+        # Limit list size to prevent unbounded growth
+        if len(trainer_types) >= MAX_TRAINER_TYPES:
+            logger.warning(
+                f"Too many trainer types tracked ({len(trainer_types)}), skipping {trainer_type}"
+            )
+            return
+
+        if trainer_type not in trainer_types:
+            trainer_types.append(trainer_type)
+            record_extra_usage_tag(
+                TagKey.TRAINER_TYPES_USED, json.dumps(sorted(trainer_types))
+            )
+    except Exception as e:
+        logger.debug(f"Failed to record trainer type usage: {e}")
+
+
+def _get_extra_usage_tag(key: str) -> Optional[str]:
+    """Get an extra usage tag value from internal KV.
+
+    Args:
+        key: The key name (without prefix).
+
+    Returns:
+        The tag value as a string, or None if not found.
+    """
+    try:
+        if not _internal_kv_initialized():
+            return None
+        full_key = f"{usage_constant.EXTRA_USAGE_TAG_PREFIX}{key}".encode()
+        namespace = usage_constant.USAGE_STATS_NAMESPACE.encode()
+        value = _internal_kv_get(full_key, namespace=namespace)
+        if value:
+            return value.decode("utf-8")
+        return None
+    except Exception as e:
+        logger.debug(f"Failed to get extra usage tag {key}: {e}")
+        return None
 
 
 def record_library_usage(library_usage: str):
@@ -518,10 +675,207 @@ def set_usage_stats_enabled_via_env_var(enabled) -> None:
     os.environ[usage_constant.USAGE_STATS_ENABLED_ENV_VAR] = "1" if enabled else "0"
 
 
+def _get_cluster_lifecycle_kv_value(gcs_client: GcsClient, key: bytes) -> Optional[int]:
+    """Get an integer value from cluster lifecycle KV store.
+
+    Args:
+        gcs_client: The GCS client to perform KV operations.
+        key: The KV key to read.
+
+    Returns:
+        The integer value, or None if not found or on error.
+    """
+    try:
+        value_bytes = gcs_client.internal_kv_get(
+            key, namespace=ray_constants.KV_NAMESPACE_CLUSTER
+        )
+        if not value_bytes:
+            return None
+
+        # Decode and validate encoding
+        try:
+            value_str = value_bytes.decode("utf-8")
+        except UnicodeDecodeError as e:
+            logger.warning(f"Invalid UTF-8 encoding in KV value: {e}")
+            return None
+
+        # Strip whitespace before parsing
+        value_str = value_str.strip()
+        if not value_str:
+            return None
+
+        # Parse integer with validation
+        try:
+            value = int(value_str)
+        except ValueError as e:
+            logger.warning(f"Invalid integer value in KV: {value_str[:50]}, error: {e}")
+            return None
+
+        # Validate: timestamps should be reasonable
+        if key == usage_constant.CLUSTER_FIRST_SEEN_TIMESTAMP_KEY:
+            current_ms = int(time.time() * 1000)
+            # Reject unreasonably old (before 2000) or too far in future (1 hour clock skew)
+            if value < MIN_REASONABLE_TIMESTAMP_MS:
+                logger.warning(
+                    f"Invalid first_seen_timestamp (too old): {value}, current: {current_ms}"
+                )
+                return None
+            if value > current_ms + MAX_FUTURE_SKEW_MS:
+                logger.warning(
+                    f"Invalid first_seen_timestamp (too far future): {value}, current: {current_ms}"
+                )
+                return None
+
+        # Validate: restart count should be non-negative and reasonable
+        elif key == usage_constant.CLUSTER_RESTART_COUNT_KEY:
+            if value < 0:
+                logger.warning(f"Invalid restart_count (negative): {value}")
+                return None
+            if value > MAX_REASONABLE_RESTART_COUNT:
+                logger.warning(f"Invalid restart_count (unreasonably large): {value}")
+                return None
+
+        return value
+    except Exception as e:
+        logger.debug(f"Failed to get cluster lifecycle KV value: {e}")
+        return None
+
+
+def _get_cluster_lifecycle_metadata(gcs_client: GcsClient) -> tuple[int, int]:
+    """Initialize or update cluster lifecycle metadata.
+
+    If this is the first time this cluster_id is seen, initialize the values.
+    Otherwise, increment the restart count.
+
+    This function is idempotent and handles race conditions by retrying
+    restart count increments.
+
+    Args:
+        gcs_client: The GCS client to perform KV operations.
+
+    Returns:
+        Tuple of (first_seen_timestamp_ms, restart_count).
+    """
+    current_timestamp_ms = int(time.time() * 1000)
+
+    # Try to get existing first_seen_timestamp
+    first_seen_timestamp_ms = _get_cluster_lifecycle_kv_value(
+        gcs_client, usage_constant.CLUSTER_FIRST_SEEN_TIMESTAMP_KEY
+    )
+
+    if first_seen_timestamp_ms is None:
+        # Brand new cluster - try to initialize atomically
+        first_seen_timestamp_ms = current_timestamp_ms
+        try:
+            # Use overwrite=False to make initialization atomic
+            # If this fails (key already exists), another process initialized it
+            gcs_client.internal_kv_put(
+                usage_constant.CLUSTER_FIRST_SEEN_TIMESTAMP_KEY,
+                str(first_seen_timestamp_ms).encode(),
+                overwrite=False,
+                namespace=ray_constants.KV_NAMESPACE_CLUSTER,
+            )
+            # Successfully initialized - this is a new cluster
+            restart_count = 0
+        except Exception as e:
+            # Key might already exist (race condition) or GCS error
+            logger.debug(f"Failed to initialize first_seen_timestamp: {e}")
+            # Try to read it again - another process may have set it
+            first_seen_timestamp_ms = _get_cluster_lifecycle_kv_value(
+                gcs_client, usage_constant.CLUSTER_FIRST_SEEN_TIMESTAMP_KEY
+            )
+            if first_seen_timestamp_ms is None:
+                # Still None - use current timestamp as fallback
+                first_seen_timestamp_ms = current_timestamp_ms
+            restart_count = None  # Will be determined below
+    else:
+        # Existing cluster - restart count will be incremented below
+        restart_count = None
+
+    # Increment restart count with retry logic to handle race conditions
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            # Get current restart count
+            current_restart_count = _get_cluster_lifecycle_kv_value(
+                gcs_client, usage_constant.CLUSTER_RESTART_COUNT_KEY
+            )
+            if restart_count is None:
+                restart_count = (current_restart_count or 0) + 1
+                # Validate restart count before storing
+                if restart_count < 0:
+                    logger.warning(
+                        f"Invalid restart_count calculated: {restart_count}, using 0"
+                    )
+                    restart_count = 0
+            else:
+                # If restart_count was already set (new cluster), use it
+                pass
+
+            # Update restart count
+            gcs_client.internal_kv_put(
+                usage_constant.CLUSTER_RESTART_COUNT_KEY,
+                str(restart_count).encode(),
+                overwrite=True,
+                namespace=ray_constants.KV_NAMESPACE_CLUSTER,
+            )
+            break
+        except Exception as e:
+            if attempt < max_retries - 1:
+                # Exponential backoff: 10ms, 20ms, 40ms, 80ms, 160ms
+                backoff_ms = 0.01 * (2**attempt)
+                time.sleep(backoff_ms)
+                logger.debug(
+                    f"Retrying restart count update (attempt {attempt + 1}/{max_retries}): {e}"
+                )
+            else:
+                logger.warning(
+                    f"Failed to update restart count after {max_retries} attempts: {e}"
+                )
+                # Fallback: use 0 if we can't determine, but preserve first_seen_timestamp
+                if restart_count is None:
+                    restart_count = 0
+
+    return first_seen_timestamp_ms, restart_count
+
+
+def _get_cluster_lifecycle_metadata_to_report(
+    gcs_client: GcsClient,
+) -> tuple[Optional[int], Optional[int]]:
+    """Get cluster lifecycle metadata for reporting.
+
+    This function is safe to call multiple times and handles errors gracefully.
+
+    Args:
+        gcs_client: The GCS client to perform KV operations.
+
+    Returns:
+        Tuple of (first_seen_timestamp_ms, restart_count) or (None, None) if not found.
+    """
+    try:
+        first_seen_timestamp_ms = _get_cluster_lifecycle_kv_value(
+            gcs_client, usage_constant.CLUSTER_FIRST_SEEN_TIMESTAMP_KEY
+        )
+        if first_seen_timestamp_ms is None:
+            return None, None
+
+        restart_count = _get_cluster_lifecycle_kv_value(
+            gcs_client, usage_constant.CLUSTER_RESTART_COUNT_KEY
+        )
+        # Default to 0 if restart_count is None (cluster was just initialized)
+        return (
+            first_seen_timestamp_ms,
+            restart_count if restart_count is not None else 0,
+        )
+    except Exception as e:
+        logger.debug(f"Failed to get cluster lifecycle metadata for reporting: {e}")
+        return None, None
+
+
 def put_cluster_metadata(gcs_client: GcsClient, *, ray_init_cluster: bool) -> dict:
     """Generate the cluster metadata and store it to GCS.
 
-    It is a blocking API.
+    It is a blocking API. This function is idempotent and safe to call multiple times.
 
     Params:
         gcs_client: The GCS client to perform KV operation PUT.
@@ -534,12 +888,26 @@ def put_cluster_metadata(gcs_client: GcsClient, *, ray_init_cluster: bool) -> di
         The cluster metadata.
     """
     metadata = _generate_cluster_metadata(ray_init_cluster=ray_init_cluster)
-    gcs_client.internal_kv_put(
-        usage_constant.CLUSTER_METADATA_KEY,
-        json.dumps(metadata).encode(),
-        overwrite=True,
-        namespace=ray_constants.KV_NAMESPACE_CLUSTER,
-    )
+    try:
+        gcs_client.internal_kv_put(
+            usage_constant.CLUSTER_METADATA_KEY,
+            json.dumps(metadata).encode(),
+            overwrite=True,
+            namespace=ray_constants.KV_NAMESPACE_CLUSTER,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to put cluster metadata: {e}")
+        raise
+
+    # Initialize or update cluster lifecycle tracking
+    # This is done separately so metadata can still be written even if lifecycle tracking fails
+    if usage_stats_enabled():
+        try:
+            _get_cluster_lifecycle_metadata(gcs_client)
+        except Exception as e:
+            # Log but don't fail - lifecycle tracking is best-effort
+            logger.debug(f"Failed to update cluster lifecycle metadata: {e}")
+
     return metadata
 
 
@@ -912,6 +1280,10 @@ def generate_report_data(
 
     cluster_metadata = get_cluster_metadata(gcs_client)
     cluster_status_to_report = get_cluster_status_to_report(gcs_client)
+    (
+        cluster_first_seen_timestamp_ms,
+        cluster_restart_count,
+    ) = _get_cluster_lifecycle_metadata_to_report(gcs_client)
 
     data = UsageStatsToReport(
         schema_version=usage_constant.SCHEMA_VERSION,
@@ -944,6 +1316,8 @@ def generate_report_data(
         total_num_running_jobs=get_total_num_running_jobs_to_report(gcs_client),
         libc_version=cluster_metadata.get("libc_version"),
         hardware_usages=get_hardware_usages_to_report(gcs_client),
+        cluster_first_seen_timestamp_ms=cluster_first_seen_timestamp_ms,
+        cluster_restart_count=cluster_restart_count,
     )
     return data
 

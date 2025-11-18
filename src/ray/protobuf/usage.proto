@@ -163,6 +163,12 @@ enum TagKey {
   // Logical operators, stored in JSON format with operator name and count.
   // Example: {"MapBatches": 2, "Filter": 1}
   DATA_LOGICAL_OPS = 400;
+  // Data connectors used, stored in JSON format as a list of connector names.
+  // Example: ["read_parquet", "read_csv", "read_json"]
+  DATA_CONNECTORS_USED = 401;
+  // Trainer types used, stored in JSON format as a list of framework types.
+  // Example: ["pytorch", "xgboost", "tensorflow"]
+  TRAINER_TYPES_USED = 402;
 
   // AIR
   // Name of AIR trainer, or "Custom" if user-defined.

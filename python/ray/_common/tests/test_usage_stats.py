@@ -71,6 +71,8 @@ schema = {
         "extra_usage_tags": {"type": ["null", "object"]},
         "total_num_nodes": {"type": ["null", "integer"]},
         "total_num_running_jobs": {"type": ["null", "integer"]},
+        "cluster_first_seen_timestamp_ms": {"type": ["null", "integer"]},
+        "cluster_restart_count": {"type": ["null", "integer"]},
     },
     "additionalProperties": False,
 }
@@ -1646,6 +1648,101 @@ def test_get_cloud_azure_not_detected_as_aws():
             "This is the critical bug where status_code != 404 accepted "
             "Azure's 400 response to AWS query."
         )
+
+
+def test_cluster_lifecycle_tracking(monkeypatch, ray_start_cluster, reset_usage_stats):
+    """Test cluster lifecycle tracking (first_seen_timestamp and restart_count)."""
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
+        ray.init(address=cluster.address)
+
+        gcs_client = ray.experimental.internal_kv.internal_kv_get_gcs_client()
+
+        # First cluster start - should initialize lifecycle metadata
+        (
+            first_seen,
+            restart_count,
+        ) = ray_usage_lib._get_cluster_lifecycle_metadata_to_report(gcs_client)
+        assert first_seen is not None
+        assert first_seen > 0
+        assert restart_count == 0  # First start, no restarts yet
+
+        # Verify values are stored correctly
+        stored_first_seen = ray_usage_lib._get_cluster_lifecycle_kv_value(
+            gcs_client, usage_constants.CLUSTER_FIRST_SEEN_TIMESTAMP_KEY
+        )
+        assert stored_first_seen == first_seen
+
+        stored_restart_count = ray_usage_lib._get_cluster_lifecycle_kv_value(
+            gcs_client, usage_constants.CLUSTER_RESTART_COUNT_KEY
+        )
+        assert stored_restart_count == 0
+
+        # Simulate a restart by calling put_cluster_metadata again
+        # (which calls _get_cluster_lifecycle_metadata internally)
+        ray_usage_lib.put_cluster_metadata(gcs_client, ray_init_cluster=False)
+
+        # After "restart", restart_count should be incremented
+        (
+            first_seen_after,
+            restart_count_after,
+        ) = ray_usage_lib._get_cluster_lifecycle_metadata_to_report(gcs_client)
+        assert first_seen_after == first_seen  # First seen timestamp should not change
+        assert restart_count_after == 1  # Restart count should be incremented
+
+        # Verify idempotency - calling multiple times should be safe
+        ray_usage_lib.put_cluster_metadata(gcs_client, ray_init_cluster=False)
+        (
+            first_seen_idempotent,
+            restart_count_idempotent,
+        ) = ray_usage_lib._get_cluster_lifecycle_metadata_to_report(gcs_client)
+        assert first_seen_idempotent == first_seen
+        assert restart_count_idempotent == 2  # Incremented again
+
+
+def test_cluster_lifecycle_tracking_in_report(
+    monkeypatch, ray_start_cluster, reset_usage_stats, tmp_path
+):
+    """Test that cluster lifecycle fields are included in usage report."""
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
+        ray.init(address=cluster.address)
+
+        cluster_config_file_path = tmp_path / "ray_bootstrap_config.yaml"
+        cluster_config_file_path.write_text(
+            """
+cluster_name: test
+max_workers: 1
+provider:
+    type: aws
+"""
+        )
+        cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+            cluster_config_file_path
+        )
+
+        gcs_client = ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        report_data = ray_usage_lib.generate_report_data(
+            cluster_config_to_report,
+            0,
+            0,
+            0,
+            gcs_client.address,
+            gcs_client.cluster_id.hex(),
+        )
+
+        # Verify lifecycle fields are present in report
+        assert report_data.cluster_first_seen_timestamp_ms is not None
+        assert report_data.cluster_first_seen_timestamp_ms > 0
+        assert report_data.cluster_restart_count is not None
+        assert report_data.cluster_restart_count >= 0
+
+        # Validate against schema
+        validate(instance=asdict(report_data), schema=schema)
 
 
 if __name__ == "__main__":
