@@ -105,7 +105,7 @@ def build_sglang_engine_processor(
 
     # Resolve and build ChatTemplateStage if enabled
     chat_template_stage_cfg = resolve_stage_config(
-        getattr(config, "chat_template_stage", config.apply_chat_template),
+        config.chat_template_stage,
         ChatTemplateStageConfig,
         processor_defaults,
     )
