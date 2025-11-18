@@ -354,12 +354,14 @@ def test_per_dataset_execution_options_dict(ray_start_4_cpus):
     }
 
     data_config = ray.train.DataConfig(execution_options=execution_options_dict)
-    default_options = ray.train.DataConfig.default_ingest_options()
 
     def train_fn():
         train_shard = ray.train.get_dataset_shard("train")
         val_shard = ray.train.get_dataset_shard("val")
         test_shard = ray.train.get_dataset_shard("test")
+
+        # Compute default options in the worker context where DataContext is set
+        default_options = ray.train.DataConfig.default_ingest_options()
 
         # Verify each dataset in the dict gets its specific options
         assert train_shard.get_context().execution_options.preserve_order is True

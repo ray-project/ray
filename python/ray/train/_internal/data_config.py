@@ -20,7 +20,7 @@ class DataConfig:
         self,
         datasets_to_split: Union[Literal["all"], List[str]] = "all",
         execution_options: Optional[
-            ExecutionOptions | Dict[str, ExecutionOptions]
+            Union[ExecutionOptions, Dict[str, ExecutionOptions]]
         ] = None,
         enable_shard_locality: bool = True,
     ):
