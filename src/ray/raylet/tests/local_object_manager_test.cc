@@ -30,7 +30,6 @@
 #include "ray/common/id.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
-#include "ray/gcs_rpc_client/accessor.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/subscriber.h"
