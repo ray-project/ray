@@ -9,10 +9,16 @@ from typing import Any
 import pandas as pd
 import pyarrow as pa
 import pytest
+from packaging import version
 
 import ray
 from ray.data._internal.util import rows_same
 from ray.data.expressions import col
+
+pytestmark = pytest.mark.skipif(
+    version.parse(pa.__version__) < version.parse("19.0.0"),
+    reason="Namespace expressions tests require PyArrow >= 19.0",
+)
 
 
 def _create_dataset(
