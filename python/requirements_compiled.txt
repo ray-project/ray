@@ -137,7 +137,6 @@ async-timeout==4.0.3
     # via redis
 attrs==25.1.0
     # via
-    #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   aiohttp
     #   glom
