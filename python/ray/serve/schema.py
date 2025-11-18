@@ -1600,3 +1600,9 @@ class ReplicaRank(BaseModel):
     rank: int = Field(
         description="Global rank of the replica across all nodes scoped to the deployment."
     )
+
+    node_rank: int = Field(description="Rank of the node in the deployment.")
+
+    local_rank: int = Field(
+        description="Rank of the replica on the node scoped to the deployment."
+    )
