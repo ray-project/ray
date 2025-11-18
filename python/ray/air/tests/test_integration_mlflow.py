@@ -38,8 +38,7 @@ def clear_env_vars():
 
 class SetupMLflowTestDistributed(unittest.TestCase):
     def setUp(self):
-        assert os.environ.get("RAY_TRAIN_V2_ENABLED", None) == "1"
-        ray.init(num_cpus=4, runtime_env={"env_vars": {"RAY_TRAIN_V2_ENABLED": "1"}})
+        ray.init(num_cpus=4)
 
     def tearDown(self) -> None:
         ray.shutdown()
@@ -68,7 +67,8 @@ class SetupMLflowTestDistributed(unittest.TestCase):
         tuner = Tuner(
             train_func,
         )
-        tuner.fit()
+        result_grid = tuner.fit()
+        assert all(res.error is None for res in result_grid)
 
 
 class MLflowTest(unittest.TestCase):
