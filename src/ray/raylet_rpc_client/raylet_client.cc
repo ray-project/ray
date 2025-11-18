@@ -337,7 +337,7 @@ void RayletClient::PinObjectIDs(
     request.set_generator_id(generator_id.Binary());
   }
   pins_in_flight_->fetch_add(1);
-  auto rpc_callback = [callback = std::move(callback), pins_in_flight = pins_in_flight_](
+  auto rpc_callback = [callback, pins_in_flight = pins_in_flight_](
                           Status status, rpc::PinObjectIDsReply &&reply) {
     pins_in_flight->fetch_sub(1);
     callback(status, std::move(reply));
