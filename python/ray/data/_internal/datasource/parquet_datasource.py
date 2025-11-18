@@ -1,3 +1,4 @@
+import functools
 import logging
 import math
 import os
@@ -451,7 +452,8 @@ class ParquetDatasource(Datasource):
 
         return (data_columns or []) + (partition_columns or [])
 
-    def _get_partition_columns_set(self) -> set:
+    @functools.cached_property
+    def _partition_columns_set(self) -> set:
         """Get the set of partition column names.
 
         Returns:
@@ -474,8 +476,10 @@ class ParquetDatasource(Datasource):
         projection pushdown added partition columns to the projection).
 
         Returns:
-            List of partition column names in the projection, or None if no
-            partition columns are projected or if there's no projection.
+            List of partition column names in the projection, None if there's
+            no projection (meaning include all partition columns), or [] if
+            projection exists but contains no partition columns (meaning include
+            no partition columns).
         """
         # If _partition_columns was set during initialization, use it
         if self._partition_columns is not None:
@@ -485,15 +489,16 @@ class ParquetDatasource(Datasource):
         if self._projection_map is None:
             return None
 
-        partition_cols_set = self._get_partition_columns_set()
+        partition_cols_set = self._partition_columns_set
         if not partition_cols_set:
             return None
 
         # Extract partition columns that are in the projection map
+        # Return empty list if no partition columns are in projection (distinct from None)
         partition_cols = [
             col for col in self._projection_map.keys() if col in partition_cols_set
         ]
-        return partition_cols if partition_cols else None
+        return partition_cols
 
     def _get_data_columns(self) -> Optional[List[str]]:
         """Extract data columns from projection map, excluding partition columns.
@@ -509,7 +514,7 @@ class ParquetDatasource(Datasource):
             return None
 
         # Get partition columns and filter them out from the projection
-        partition_cols = self._get_partition_columns_set()
+        partition_cols = self._partition_columns_set
         data_cols = [
             col for col in self._projection_map.keys() if col not in partition_cols
         ]
@@ -529,7 +534,7 @@ class ParquetDatasource(Datasource):
         """
         # Check if predicate references any partition columns
         referenced_cols = set(get_column_references(predicate_expr))
-        partition_cols = self._get_partition_columns_set()
+        partition_cols = self._partition_columns_set
 
         if referenced_cols & partition_cols:
             # Don't push down predicates on partition columns

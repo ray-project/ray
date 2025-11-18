@@ -2211,6 +2211,7 @@ def hive_partitioned_dataset(tmp_path):
         # Single operations
         ("select",),
         ("select_partition_and_data",),
+        ("select_data_only",),
         ("rename_partition",),
         ("rename_data",),
         ("rename_partition_and_data",),
@@ -2324,6 +2325,19 @@ def test_hive_partitioned_parquet_operations(
         ]
         return data.select_columns(selected_cols) if is_ray_ds else data[selected_cols]
 
+    def _apply_select_data_only(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply select data only operation (selects only data columns, no partition columns)."""
+        selected_cols = [
+            cols["id"],
+            cols["value"],
+            cols["score"],
+        ]
+        return data.select_columns(selected_cols) if is_ray_ds else data[selected_cols]
+
     def _apply_rename_partition(
         data: Union[pd.DataFrame, "ray.data.Dataset"],
         cols: ColumnTracker,
@@ -2410,6 +2424,7 @@ def test_hive_partitioned_parquet_operations(
     op_handlers = {
         "select": _apply_select,
         "select_partition_and_data": _apply_select_partition_and_data,
+        "select_data_only": _apply_select_data_only,
         "rename_partition": _apply_rename_partition,
         "rename_data": _apply_rename_data,
         "rename_partition_and_data": _apply_rename_partition_and_data,
