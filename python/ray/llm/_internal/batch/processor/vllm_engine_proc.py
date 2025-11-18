@@ -154,7 +154,7 @@ def build_vllm_engine_processor(
 
     # Resolve and build PrepareImageStage if enabled
     image_stage_cfg = resolve_stage_config(
-        getattr(config, "prepare_image_stage", config.has_image),
+        config.prepare_image_stage,
         PrepareImageStageConfig,
         processor_defaults,
     )
