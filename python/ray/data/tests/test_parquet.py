@@ -2,7 +2,7 @@ import os
 import shutil
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -2167,6 +2167,243 @@ def test_read_parquet_with_columns_selectivity(
     assert set(ds.schema().names) == set(columns), (
         f"Column selection {columns} with batch_size={batch_size} "
         f"returned columns {ds.schema().names}"
+    )
+
+
+@pytest.fixture
+def hive_partitioned_dataset(tmp_path):
+    """Create a Hive-partitioned Parquet dataset for testing."""
+    # Create test data with multiple partitions
+    num_partitions = 3
+    rows_per_partition = 10
+    data = []
+    for partition_val in range(num_partitions):
+        for i in range(rows_per_partition):
+            data.append(
+                {
+                    "id": partition_val * rows_per_partition + i,
+                    "value": f"val_{partition_val}_{i}",
+                    "score": partition_val * 10 + i,
+                    "country": f"country_{partition_val % 2}",
+                    "year": 2020 + partition_val,
+                }
+            )
+
+    # Create base DataFrame
+    base_df = pd.DataFrame(data)
+
+    # Write as Hive-partitioned Parquet
+    partitioned_path = os.path.join(tmp_path, "partitioned_data")
+    table = pa.Table.from_pandas(base_df)
+    pq.write_to_dataset(
+        table,
+        root_path=partitioned_path,
+        partition_cols=["country", "year"],
+        existing_data_behavior="overwrite_or_ignore",
+    )
+
+    return partitioned_path, base_df
+
+
+@pytest.mark.parametrize(
+    "operations",
+    [
+        # Single operations
+        ("select",),
+        ("rename_partition",),
+        ("rename_data",),
+        ("rename_partition_and_data",),
+        ("filter_partition",),
+        ("filter_data",),
+        ("filter_partition_and_data",),
+        ("with_column",),
+        # Two-operation combinations
+        ("select", "rename_partition"),
+        ("select", "rename_data"),
+        ("select", "rename_partition_and_data"),
+        ("select", "filter_partition"),
+        ("select", "filter_data"),
+        ("rename_partition", "filter_partition"),
+        ("rename_partition", "filter_data"),
+        ("rename_data", "filter_partition"),
+        ("rename_data", "filter_data"),
+        ("rename_partition_and_data", "filter_partition_and_data"),
+        ("with_column", "rename_partition"),
+        ("with_column", "rename_data"),
+        ("with_column", "filter_data"),
+        # Three-operation combinations
+        ("select", "rename_partition", "filter_partition"),
+        ("select", "rename_data", "filter_data"),
+        ("select", "rename_partition_and_data", "filter_partition_and_data"),
+        ("rename_partition", "filter_partition", "with_column"),
+        ("rename_data", "filter_data", "with_column"),
+        # Four-operation combinations
+        (
+            "select",
+            "rename_partition_and_data",
+            "filter_partition_and_data",
+            "with_column",
+        ),
+    ],
+    ids=lambda ops: "_".join(ops) if isinstance(ops, tuple) else ops,
+)
+def test_hive_partitioned_parquet_operations(
+    ray_start_regular_shared,
+    hive_partitioned_dataset,
+    operations,
+):
+    """Test various operations on Hive-partitioned Parquet datasets.
+
+    This test verifies that select_columns, rename_columns, filter, and with_column
+    work correctly with Hive-partitioned datasets, including combinations of operations.
+    All operations are tested without materializing to ensure projection pushdown works.
+    """
+    from ray.data.expressions import col
+
+    partitioned_path, base_df = hive_partitioned_dataset
+
+    # Define operations with their implementations for both pandas and Ray
+    class ColumnTracker:
+        """Helper to track column names as they get renamed."""
+
+        def __init__(self) -> None:
+            self.names: dict[str, str] = {
+                "country": "country",
+                "year": "year",
+                "id": "id",
+                "value": "value",
+            }
+
+        def __getitem__(self, key: str) -> str:
+            return self.names[key]
+
+        def rename(self, rename_map: dict[str, str]) -> None:
+            """Update column names based on rename map."""
+            self.names.update(rename_map)
+
+    def apply_operation(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        op: str,
+        cols: ColumnTracker,
+        is_ray_ds: bool = False,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply a single operation to pandas DataFrame or Ray Dataset."""
+        if op == "select":
+            selected_cols = [
+                cols["id"],
+                cols["value"],
+                "score",
+                cols["country"],
+                cols["year"],
+            ]
+            return (
+                data.select_columns(selected_cols) if is_ray_ds else data[selected_cols]
+            )
+
+        elif op == "rename_partition":
+            rename_map = {"country": "country_renamed", "year": "year_renamed"}
+            rename_map = {cols[k]: v for k, v in rename_map.items()}
+            cols.rename(rename_map)
+            return (
+                data.rename_columns(rename_map)
+                if is_ray_ds
+                else data.rename(columns=rename_map)
+            )
+
+        elif op == "rename_data":
+            rename_map = {"id": "id_renamed", "value": "value_renamed"}
+            rename_map = {cols[k]: v for k, v in rename_map.items()}
+            cols.rename(rename_map)
+            return (
+                data.rename_columns(rename_map)
+                if is_ray_ds
+                else data.rename(columns=rename_map)
+            )
+
+        elif op == "rename_partition_and_data":
+            rename_map = {
+                "country": "country_renamed",
+                "year": "year_renamed",
+                "id": "id_renamed",
+                "value": "value_renamed",
+            }
+            rename_map = {cols[k]: v for k, v in rename_map.items()}
+            cols.rename(rename_map)
+            return (
+                data.rename_columns(rename_map)
+                if is_ray_ds
+                else data.rename(columns=rename_map)
+            )
+
+        elif op == "filter_partition":
+            if is_ray_ds:
+                return data.filter(expr=(col(cols["country"]) == "country_0"))
+            else:
+                return data[data[cols["country"]] == "country_0"]
+
+        elif op == "filter_data":
+            if is_ray_ds:
+                return data.filter(expr=(col("score") >= 10))
+            else:
+                return data[data["score"] >= 10]
+
+        elif op == "filter_partition_and_data":
+            if is_ray_ds:
+                return data.filter(
+                    expr=(col(cols["country"]) == "country_0") & (col("score") >= 10)
+                )
+            else:
+                return data[
+                    (data[cols["country"]] == "country_0") & (data["score"] >= 10)
+                ]
+
+        elif op == "with_column":
+            if is_ray_ds:
+                return data.with_column("new_col", col("score") * 2)
+            else:
+                data = data.copy()
+                data["new_col"] = data["score"] * 2
+                return data
+
+    # Apply operations to pandas DataFrame for expected results
+    expected_df = base_df.copy()
+    expected_cols = ColumnTracker()
+    for op in operations:
+        expected_df = apply_operation(expected_df, op, expected_cols, is_ray_ds=False)
+
+    # Apply operations to Ray Dataset
+    ds = ray.data.read_parquet(partitioned_path)
+    ds_cols = ColumnTracker()
+    for op in operations:
+        ds = apply_operation(ds, op, ds_cols, is_ray_ds=True)
+
+    # Convert to pandas and normalize for comparison
+    actual_df = ds.to_pandas()
+
+    # Normalize column types (partition columns are strings in Parquet)
+    for col_name in ["country", "country_renamed", "year", "year_renamed"]:
+        if col_name in expected_df.columns:
+            expected_df[col_name] = expected_df[col_name].astype(str)
+        if col_name in actual_df.columns:
+            actual_df[col_name] = actual_df[col_name].astype(str)
+
+    # Sort both DataFrames for consistent comparison
+    sort_cols = sorted(set(expected_df.columns) & set(actual_df.columns))
+    expected_df = expected_df.sort_values(by=sort_cols).reset_index(drop=True)
+    actual_df = actual_df.sort_values(by=sort_cols).reset_index(drop=True)
+
+    # Ensure column order matches
+    actual_df = actual_df[expected_df.columns]
+
+    # Verify results match
+    assert rows_same(actual_df, expected_df), (
+        f"Operations {operations} produced different results.\n"
+        f"Expected columns: {list(expected_df.columns)}\n"
+        f"Actual columns: {list(actual_df.columns)}\n"
+        f"Expected shape: {expected_df.shape}\n"
+        f"Actual shape: {actual_df.shape}\n"
+        f"Expected head:\n{expected_df.head()}\n"
+        f"Actual head:\n{actual_df.head()}"
     )
 
 

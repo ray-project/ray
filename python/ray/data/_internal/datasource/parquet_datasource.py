@@ -25,6 +25,9 @@ from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
 )
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
@@ -52,6 +55,7 @@ from ray.data.datasource.partitioning import (
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
 )
+from ray.data.expressions import Expr
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -445,6 +449,64 @@ class ParquetDatasource(Datasource):
             return None
 
         return (data_columns or []) + (self._partition_columns or [])
+
+    def _get_partition_columns_set(self) -> set:
+        """Get the set of partition column names.
+
+        Returns:
+            Set of partition column names. Empty set if no partitioning.
+        """
+        if self._partition_columns is not None:
+            return set(self._partition_columns)
+
+        if self._partitioning is not None and self._pq_paths:
+            parse = PathPartitionParser(self._partitioning)
+            return set(parse(self._pq_paths[0]).keys())
+
+        return set()
+
+    def _get_data_columns(self) -> Optional[List[str]]:
+        """Extract data columns from projection map, excluding partition columns.
+
+        Partition columns aren't in the physical file schema, so they must be
+        filtered out before passing to PyArrow's to_batches().
+
+        Returns:
+            List of data column names to read from files, or None if no projection.
+            Can return empty list if only partition columns are projected.
+        """
+        if self._projection_map is None:
+            return None
+
+        # Get partition columns and filter them out from the projection
+        partition_cols = self._get_partition_columns_set()
+        data_cols = [
+            col for col in self._projection_map.keys() if col not in partition_cols
+        ]
+
+        return data_cols
+
+    def apply_predicate(
+        self,
+        predicate_expr: Expr,
+    ) -> "ParquetDatasource":
+        """Apply a predicate to this datasource, separating partition column predicates.
+
+        Partition column predicates aren't pushed down to PyArrow since partition
+        columns aren't in the physical file schema. If a predicate references partition
+        columns, we return self unchanged so the Filter operator remains in the plan
+        and can be applied after partition columns are added.
+        """
+        # Check if predicate references any partition columns
+        referenced_cols = set(get_column_references(predicate_expr))
+        partition_cols = self._get_partition_columns_set()
+
+        if referenced_cols & partition_cols:
+            # Don't push down predicates on partition columns
+            return self
+
+        # Predicate only references data columns - use mixin's apply_predicate
+        return super().apply_predicate(predicate_expr)
 
     def _estimate_in_mem_size(self, fragments: List[_ParquetFragment]) -> int:
         in_mem_size = sum([f.file_size for f in fragments]) * self._encoding_ratio

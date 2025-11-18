@@ -187,9 +187,14 @@ class Read(
         return self._datasource.get_current_predicate()
 
     def apply_predicate(self, predicate_expr: Expr) -> "Read":
-        clone = copy.copy(self)
-
         predicated_datasource = self._datasource.apply_predicate(predicate_expr)
+
+        # If datasource is unchanged (e.g., predicate references partition columns
+        # that can't be pushed down), return self unchanged so Filter operator remains
+        if predicated_datasource is self._datasource:
+            return self
+
+        clone = copy.copy(self)
         clone._datasource = predicated_datasource
         clone._datasource_or_legacy_reader = predicated_datasource
 
