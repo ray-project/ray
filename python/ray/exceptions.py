@@ -493,15 +493,6 @@ class RayAuthenticationError(RayError):
         super().__init__(message)
 
     def __str__(self) -> str:
-        try:
-            from ray._private.authentication.authentication_utils import (
-                get_authentication_mode,
-            )
-
-            auth_mode = get_authentication_mode().value
-        except Exception:
-            auth_mode = "unknown"
-
         error_msg = f"{self.message}\n\n"
         error_msg += "For more information, see: https://docs.ray.io/en/latest/ray-security/auth.html"
         return error_msg
