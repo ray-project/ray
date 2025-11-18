@@ -66,6 +66,7 @@ class InstanceUtil:
             Instance.TERMINATING,
             Instance.RAY_INSTALL_FAILED,
             Instance.TERMINATION_FAILED,
+            Instance.ALLOCATION_TIMEOUT,
         }
 
     @staticmethod
