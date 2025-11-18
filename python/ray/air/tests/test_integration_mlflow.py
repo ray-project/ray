@@ -7,11 +7,12 @@ from unittest.mock import MagicMock, patch
 
 from mlflow.tracking import MlflowClient
 
-import ray.tune
+import ray
 from ray._private.dict import flatten_dict
 from ray.air._internal.mlflow import _MLflowLoggerUtil
 from ray.air.integrations.mlflow import MLflowLoggerCallback, _NoopModule, setup_mlflow
 from ray.train.torch import TorchTrainer
+from ray.tune import Tuner
 
 
 class MockTrial(
@@ -64,7 +65,7 @@ class SetupMLflowTestDistributed(unittest.TestCase):
                 experiment_name="test_exp", create_experiment_if_not_exists=True
             )
 
-        tuner = ray.tune.Tuner(
+        tuner = Tuner(
             train_func,
         )
         tuner.fit()
