@@ -12,7 +12,7 @@ from ray.rllib.core import COMPONENT_RL_MODULE, Columns
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import unflatten_dict
 
 
@@ -27,6 +27,14 @@ class TestOfflinePreLearner(unittest.TestCase):
         Columns.TRUNCATEDS,
         "n_step",
     ]
+
+    @classmethod
+    def setUpClass(cls):
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
 
     def setUp(self) -> None:
         data_path = "tests/data/cartpole/cartpole-v1_large"
@@ -55,10 +63,6 @@ class TestOfflinePreLearner(unittest.TestCase):
                 train_batch_size_per_learner=256,
             )
         )
-        ray.init()
-
-    def tearDown(self) -> None:
-        ray.shutdown()
 
     def test_offline_prelearner_buffer_class(self):
         """Tests using a user-defined buffer class with kwargs."""
@@ -232,21 +236,21 @@ class TestOfflinePreLearner(unittest.TestCase):
         # The `OfflinePreLearner`'s episode buffer should buffer all data
         # and sample the exact size requested by the user, i.e.
         # `train_batch_size_per_learner`
-        batch = oplr(batch)
+        batch = unflatten_dict(oplr(batch))
 
         # Ensure all transformations worked and we have a `MultiAgentBatch`.
-        self.assertIsInstance(batch["batch"][0], MultiAgentBatch)
+        self.assertIsInstance(batch, dict)
         # Ensure that we have as many environment steps as the train batch size.
         self.assertEqual(
-            batch["batch"][0][DEFAULT_POLICY_ID].count,
+            batch[DEFAULT_POLICY_ID][Columns.REWARDS].shape[0],
             self.config.train_batch_size_per_learner,
         )
         # Ensure all keys are available and the length of each value is the
         # train batch size.
         for key in self.EXPECTED_KEYS:
-            self.assertIn(key, batch["batch"][0][DEFAULT_POLICY_ID])
+            self.assertIn(key, batch[DEFAULT_POLICY_ID])
             self.assertEqual(
-                len(batch["batch"][0][DEFAULT_POLICY_ID][key]),
+                len(batch[DEFAULT_POLICY_ID][key]),
                 self.config.train_batch_size_per_learner,
             )
 
@@ -298,12 +302,12 @@ class TestOfflinePreLearner(unittest.TestCase):
             module_state=module_state,
             spaces=algo.offline_data.spaces[INPUT_ENV_SPACES],
         )
-        # Sample a `MultiAgentBatch`.
-        batch = oplr(episode_batch)
+        # Sample a batch.
+        batch = unflatten_dict(oplr(episode_batch))
 
         # Assert that we have indeed a batch of `train_batch_size_per_learner`.
         self.assertEqual(
-            batch["batch"][0][DEFAULT_POLICY_ID].count,
+            batch[DEFAULT_POLICY_ID][Columns.REWARDS].shape[0],
             self.config.train_batch_size_per_learner,
         )
 
