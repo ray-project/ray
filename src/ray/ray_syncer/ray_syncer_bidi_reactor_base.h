@@ -93,8 +93,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     } else {
       // Start or restart the batch timer
       if (!batch_timer_active_) {
-        RAY_LOG(INFO) << "Batch timer expires after " << max_batch_delay_ms_.count()
-                      << " ms";
+        RAY_LOG(DEBUG) << "Batch timer expires after " << max_batch_delay_ms_.count()
+                       << " ms";
         batch_timer_active_ = true;
         batch_timer_.expires_after(max_batch_delay_ms_);
         batch_timer_.async_wait([this](const boost::system::error_code &ec) {
@@ -110,7 +110,11 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     return true;
   }
 
-  virtual ~RaySyncerBidiReactorBase() = default;
+  virtual ~RaySyncerBidiReactorBase() {
+    if (batch_timer_active_) {
+      batch_timer_.cancel();
+    }
+  }
 
   void StartPull() {
     receiving_message_batch_ = std::make_shared<RaySyncMessageBatch>();
