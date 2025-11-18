@@ -1731,6 +1731,8 @@ pyparsing==3.1.1
     #   pydot
     #   pyiceberg
     #   torch-geometric
+pypdf2==3.0.1
+    # via -r python/requirements/ml/data-test-requirements.txt
 pyro-api==0.1.2
     # via pyro-ppl
 pyro-ppl==1.9.1

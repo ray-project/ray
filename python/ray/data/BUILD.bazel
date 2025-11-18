@@ -665,6 +665,20 @@ py_test(
 )
 
 py_test(
+    name = "test_pdf",
+    size = "medium",
+    srcs = ["tests/test_pdf.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_iterator",
     size = "small",
     srcs = ["tests/test_iterator.py"],
