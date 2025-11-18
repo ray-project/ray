@@ -485,6 +485,13 @@ class Expr(ABC):
         from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 
         return _StructNamespace(self)
+    
+    @property
+    def arr(self) -> "_ArrayNamespace":
+        """Access fixed‑size array operations for this expression."""
+        from ray.data.namespace_expressions.arr_namespace import _ArrayNamespace
+        
+        return _ArrayNamespace(self)
 
     def _unalias(self) -> "Expr":
         return self
