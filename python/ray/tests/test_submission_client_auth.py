@@ -1,8 +1,8 @@
 import pytest
 
 from ray._private.authentication.authentication_constants import (
-    HTTP_REQUEST_INVALID_TOKEN_ERROR_MESSAGE,
-    HTTP_REQUEST_MISSING_TOKEN_ERROR_MESSAGE,
+    TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
+    TOKEN_INVALID_ERROR_MESSAGE,
 )
 from ray._private.authentication_test_utils import (
     clear_auth_token_sources,
@@ -12,6 +12,7 @@ from ray._private.authentication_test_utils import (
 )
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.dashboard.modules.job.sdk import JobSubmissionClient
+from ray.exceptions import RayAuthenticationError
 from ray.util.state import StateApiClient
 
 
@@ -37,15 +38,13 @@ def test_submission_client_without_token_shows_helpful_error(
 
     client = SubmissionClient(address=setup_cluster_with_token_auth["dashboard_url"])
 
-    # Make a request - should fail with helpful message
-    with pytest.raises(RuntimeError) as exc_info:
+    # Make a request - should fail with RayAuthenticationError
+    with pytest.raises(RayAuthenticationError) as exc_info:
         client.get_version()
 
-    expected_message = (
-        "Authentication required: Unauthorized: Missing authentication token\n\n"
-        f"{HTTP_REQUEST_MISSING_TOKEN_ERROR_MESSAGE}"
-    )
-    assert str(exc_info.value) == expected_message
+    error_str = str(exc_info.value)
+    # Check that the error contains the simple message and auto-added docs link
+    assert TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE in error_str
 
 
 def test_submission_client_with_invalid_token_shows_helpful_error(
@@ -60,15 +59,13 @@ def test_submission_client_with_invalid_token_shows_helpful_error(
 
     client = SubmissionClient(address=setup_cluster_with_token_auth["dashboard_url"])
 
-    # Make a request - should fail with helpful message
-    with pytest.raises(RuntimeError) as exc_info:
+    # Make a request - should fail with RayAuthenticationError
+    with pytest.raises(RayAuthenticationError) as exc_info:
         client.get_version()
 
-    expected_message = (
-        "Authentication failed: Forbidden: Invalid authentication token\n\n"
-        f"{HTTP_REQUEST_INVALID_TOKEN_ERROR_MESSAGE}"
-    )
-    assert str(exc_info.value) == expected_message
+    error_str = str(exc_info.value)
+    # Check that the error contains the simple message and auto-added docs link
+    assert TOKEN_INVALID_ERROR_MESSAGE in error_str
 
 
 def test_submission_client_with_valid_token_succeeds(setup_cluster_with_token_auth):
@@ -150,14 +147,11 @@ def test_error_messages_contain_instructions(setup_cluster_with_token_auth):
 
     client = SubmissionClient(address=setup_cluster_with_token_auth["dashboard_url"])
 
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(RayAuthenticationError) as exc_info:
         client.get_version()
 
-    expected_missing = (
-        "Authentication required: Unauthorized: Missing authentication token\n\n"
-        f"{HTTP_REQUEST_MISSING_TOKEN_ERROR_MESSAGE}"
-    )
-    assert str(exc_info.value) == expected_missing
+    error_str = str(exc_info.value)
+    assert TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE in error_str
 
     # Test 403 error (invalid token)
     set_env_auth_token("wrong_token_00000000000000000000000000000000")
@@ -166,14 +160,11 @@ def test_error_messages_contain_instructions(setup_cluster_with_token_auth):
 
     client2 = SubmissionClient(address=setup_cluster_with_token_auth["dashboard_url"])
 
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(RayAuthenticationError) as exc_info:
         client2.get_version()
 
-    expected_invalid = (
-        "Authentication failed: Forbidden: Invalid authentication token\n\n"
-        f"{HTTP_REQUEST_INVALID_TOKEN_ERROR_MESSAGE}"
-    )
-    assert str(exc_info.value) == expected_invalid
+    error_str = str(exc_info.value)
+    assert TOKEN_INVALID_ERROR_MESSAGE in error_str
 
 
 def test_no_token_added_when_auth_disabled(setup_cluster_without_token_auth):

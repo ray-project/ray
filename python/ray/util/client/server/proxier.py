@@ -32,6 +32,7 @@ from ray._private.tls_utils import add_port_to_grpc_server
 from ray._private.utils import detect_fate_sharing_support
 from ray._raylet import GcsClient
 from ray.cloudpickle.compat import pickle
+from ray.exceptions import RayAuthenticationError
 from ray.job_config import JobConfig
 from ray.util.client.common import (
     CLIENT_SERVER_MAX_THREADS,
@@ -287,7 +288,7 @@ class ProxyManager:
 
                 formatted_error = format_authentication_http_error(e.code, body or "")
                 if formatted_error:
-                    raise RuntimeError(formatted_error) from e
+                    raise RayAuthenticationError(formatted_error) from e
 
                 # Treat non-auth HTTP errors like URLError (retry with backoff)
                 last_exception = e

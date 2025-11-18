@@ -477,6 +477,36 @@ class RaySystemError(RayError):
         return error_msg
 
 
+@PublicAPI
+class RayAuthenticationError(RayError):
+    """Indicates that an authentication error occurred. only applicable when RAY_AUTH_MODE is not disabled."""
+
+    def __init__(self, message: str):
+        """Initialize RayAuthenticationError.
+
+        Args:
+            message: Error message describing the authentication failure
+        """
+        self.message = message
+        # Always hide traceback for cleaner output
+        self.__suppress_context__ = True
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        try:
+            from ray._private.authentication.authentication_utils import (
+                get_authentication_mode,
+            )
+
+            auth_mode = get_authentication_mode().value
+        except Exception:
+            auth_mode = "unknown"
+
+        error_msg = f"{self.message}\n\n"
+        error_msg += "For more information, see: https://docs.ray.io/en/latest/ray-security/auth.html"
+        return error_msg
+
+
 @DeveloperAPI
 class UserCodeException(RayError):
     """Indicates that an exception occurred while executing user code.
@@ -963,4 +993,5 @@ RAY_EXCEPTION_TYPES = [
     OufOfBandObjectRefSerializationException,
     RayCgraphCapacityExceeded,
     UnserializableException,
+    RayAuthenticationError,
 ]

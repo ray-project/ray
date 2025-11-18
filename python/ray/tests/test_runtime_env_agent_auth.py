@@ -8,6 +8,10 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray._private.authentication.authentication_constants import (
+    TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
+    TOKEN_INVALID_ERROR_MESSAGE,
+)
 from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
     get_auth_headers_if_auth_enabled,
@@ -66,7 +70,7 @@ def test_runtime_env_agent_requires_auth_missing_token(setup_cluster_with_token_
     body = exc_info.value.read().decode("utf-8", "ignore")
     assert "Missing authentication token" in body
     formatted = format_authentication_http_error(401, body)
-    assert formatted.startswith("Authentication required")
+    assert formatted == TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE
 
 
 def test_runtime_env_agent_rejects_invalid_token(setup_cluster_with_token_auth):
@@ -92,7 +96,7 @@ def test_runtime_env_agent_rejects_invalid_token(setup_cluster_with_token_auth):
     body = exc_info.value.read().decode("utf-8", "ignore")
     assert "Invalid authentication token" in body
     formatted = format_authentication_http_error(403, body)
-    assert formatted.startswith("Authentication failed")
+    assert formatted == TOKEN_INVALID_ERROR_MESSAGE
 
 
 def test_runtime_env_agent_accepts_valid_token(setup_cluster_with_token_auth):

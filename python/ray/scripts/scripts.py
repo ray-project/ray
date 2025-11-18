@@ -2735,14 +2735,10 @@ def get_auth_token(generate):
     # Check if token auth mode is enabled and provide guidance if not
     if get_authentication_mode() != AuthenticationMode.TOKEN:
         click.echo(
-            "Note: Token authentication is not currently enabled.",
+            "Token authentication is not currently enabled. To enable token authentication, set: export RAY_AUTH_MODE=token\n For more instructions, see: https://docs.ray.io/en/latest/ray-security/auth.html",
             err=True,
         )
-        click.echo(
-            "To enable token authentication, set: export RAY_AUTH_MODE=token",
-            err=True,
-        )
-        click.echo("", err=True)
+        sys.exit(1)
 
     # Try to load existing token
     loader = AuthenticationTokenLoader.instance()
@@ -2768,6 +2764,8 @@ def get_auth_token(generate):
 
     # Print token to stdout (for piping) without newline
     click.echo(token, nl=False)
+    # Print newline to stderr for clean terminal display (doesn't affect piping)
+    click.echo("", err=True)
 
 
 def add_command_alias(command, name, hidden):
