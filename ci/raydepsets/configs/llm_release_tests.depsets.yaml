@@ -22,7 +22,7 @@ depsets:
     requirements:
       - release/llm_tests/batch/requirements.in
     constraints:
-      - /tmp/ray-deps/requirements_compiled.txt
+      - python/deplocks/llm/rayllm_${PYTHON_VERSION}_${CUDA_CODE}.lock
     output: release/ray_release/byod/llm_batch/llm_batch_${PYTHON_VERSION}_${CUDA_CODE}.lock
     pre_hooks:
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
