@@ -440,12 +440,13 @@ void RayletClient::CancelLeasesWithResourceShapes(
 void RayletClient::NotifyGCSRestart(
     const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) {
   rpc::NotifyGCSRestartRequest request;
-  INVOKE_RPC_CALL(NodeManagerService,
-                  NotifyGCSRestart,
-                  request,
-                  callback,
-                  grpc_client_,
-                  /*method_timeout_ms*/ -1);
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            NotifyGCSRestart,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
 }
 
 void RayletClient::GetSystemConfig(
@@ -489,6 +490,18 @@ void RayletClient::GetWorkerPIDs(
                             client_callback,
                             grpc_client_,
                             timeout_ms);
+}
+
+void RayletClient::KillLocalActor(
+    const rpc::KillLocalActorRequest &request,
+    const rpc::ClientCallback<rpc::KillLocalActorReply> &callback) {
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            KillLocalActor,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
 }
 
 }  // namespace rpc

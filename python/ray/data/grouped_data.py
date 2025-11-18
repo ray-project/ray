@@ -1,3 +1,4 @@
+from collections.abc import Iterator as IteratorABC
 from functools import partial
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
@@ -98,7 +99,7 @@ class GroupedData:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        zero_copy_batch: bool = False,
+        zero_copy_batch: bool = True,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         fn_args: Optional[Iterable[Any]] = None,
@@ -301,7 +302,7 @@ class GroupedData:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
-            udf_modifying_row_count=True,
+            udf_modifying_row_count=False,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
@@ -538,7 +539,10 @@ class GroupedData:
 
 
 def _apply_udf_to_groups(
-    udf: Callable[[DataBatch, ...], DataBatch],
+    udf: Union[
+        Callable[[DataBatch, ...], DataBatch],
+        Callable[[DataBatch, ...], Iterator[DataBatch]],
+    ],
     block: Block,
     keys: List[str],
     batch_format: Optional[str],
@@ -548,7 +552,8 @@ def _apply_udf_to_groups(
     """Apply UDF to groups of rows having the same set of values of the specified
     columns (keys).
 
-    NOTE: This function is defined at module level to avoid capturing closures and make it serializable."""
+    NOTE: This function is defined at module level to avoid capturing closures and make it serializable.
+    """
     block_accessor = BlockAccessor.for_block(block)
 
     boundaries = block_accessor._get_group_boundaries_sorted(keys)
@@ -560,7 +565,17 @@ def _apply_udf_to_groups(
         # Convert corresponding block of each group to batch format here,
         # because the block format here can be different from batch format
         # (e.g. block is Arrow format, and batch is NumPy format).
-        yield udf(group_block_accessor.to_batch_format(batch_format), *args, **kwargs)
+        result = udf(
+            group_block_accessor.to_batch_format(batch_format), *args, **kwargs
+        )
+
+        # Check if the UDF returned an iterator/generator.
+        if isinstance(result, IteratorABC):
+            # If so, yield each item from the iterator.
+            yield from result
+        else:
+            # Otherwise, yield the single result.
+            yield result
 
 
 # Backwards compatibility alias.
