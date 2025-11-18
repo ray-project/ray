@@ -35,6 +35,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.14"
     instance_type: builder-arm64
     env:
       PYTHON_VERSION: "{{matrix}}"
@@ -48,6 +49,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.14"
     instance_type: builder-arm64
     env:
       PYTHON_VERSION: "{{matrix}}"
@@ -68,6 +70,7 @@ steps:
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.14"
         cuda:
           - "11.7.1-cudnn8"
           - "11.8.0-cudnn8"
@@ -93,6 +96,7 @@ steps:
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.14"
         cuda:
           - "11.7.1-cudnn8"
           - "11.8.0-cudnn8"
@@ -120,6 +124,7 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
+      - "3.14"
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
@@ -140,6 +145,7 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
+      - "3.14"
     depends_on:
       - manylinux-aarch64
       - forge-aarch64
@@ -170,6 +176,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.14"
 
   - label: ":tapioca: build: ray py{{matrix}} docker (aarch64)"
     key: ray_images_aarch64
@@ -196,6 +203,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.14"
 
   - label: ":ray: core: wheel-aarch64 tests"
     tags: linux_wheels
