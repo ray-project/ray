@@ -226,104 +226,92 @@ Notice!!! Please set the environment variable `HABANA_VISIBLE_MODULES` carefully
 
 The terminal should print logs as the deployment starts up:
 ```text
-2025-11-17 18:46:18,455 INFO scripts.py:507 -- Running import path: 'intel_gaudi_inference_serve_deepspeed:entrypoint'.
+2025-11-19 23:07:48,004 INFO scripts.py:507 -- Running import path: 'intel_gaudi_inference_serve_deepspeed:entrypoint'.
 Calling add_step_closure function does not have any effect. It's lazy mode only functionality. (warning logged once)
 Calling mark_step function does not have any effect. It's lazy mode only functionality. (warning logged once)
 Calling iter_mark_step function does not have any effect. It's lazy mode only functionality. (warning logged once)
-2025-11-17 18:46:22,135 INFO worker.py:1832 -- Connecting to existing Ray cluster at address: 100.83.67.100:6379...
-2025-11-17 18:46:22,146 INFO worker.py:2003 -- Connected to Ray cluster. View the dashboard at http://127.0.0.1:8265
+2025-11-19 23:07:51,292 INFO worker.py:1832 -- Connecting to existing Ray cluster at address: 100.83.67.100:6379...
+2025-11-19 23:07:51,303 INFO worker.py:2003 -- Connected to Ray cluster. View the dashboard at http://127.0.0.1:8265
 /usr/local/lib/python3.12/dist-packages/ray/_private/worker.py:2051: FutureWarning: Tip: In future versions of Ray, Ray will no longer override accelerator visible devices env var if num_gpus=0 or num_gpus=None (default). To enable this behavior and turn off this error message, set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
   warnings.warn(
-INFO 2025-11-17 18:46:22,172 serve 19827 -- Connecting to existing Serve app in namespace "serve". New http options will not be applied.
-INFO 2025-11-17 18:46:22,180 serve 19827 -- Connecting to existing Serve app in namespace "serve". New http options will not be applied.
-(ServeController pid=1666) INFO 2025-11-17 18:46:22,269 controller 1666 -- Deploying new version of Deployment(name='DeepSpeedLlamaModel', app='default') (initial target replicas: 1).
-(ProxyActor pid=1665) INFO 2025-11-17 18:46:22,272 proxy 100.83.67.100 -- Got updated endpoints: {Deployment(name='DeepSpeedLlamaModel', app='default'): EndpointInfo(route='/', app_is_cross_language=False)}.
-(ServeController pid=1666) INFO 2025-11-17 18:46:22,372 controller 1666 -- Removing 1 replica from Deployment(name='LlamaModel', app='default').
-(ServeController pid=1666) INFO 2025-11-17 18:46:22,372 controller 1666 -- Adding 1 replica to Deployment(name='DeepSpeedLlamaModel', app='default').
-(ServeController pid=1666) INFO 2025-11-17 18:46:24,441 controller 1666 -- Replica(id='fik7t5uv', deployment='LlamaModel', app='default') is stopped.
-(ServeReplica:default:DeepSpeedLlamaModel pid=1664) Calling add_step_closure function does not have any effect. It's lazy mode only functionality. (warning logged once)
-(ServeReplica:default:DeepSpeedLlamaModel pid=1664) Calling mark_step function does not have any effect. It's lazy mode only functionality. (warning logged once)
-(ServeReplica:default:DeepSpeedLlamaModel pid=1664) Calling iter_mark_step function does not have any effect. It's lazy mode only functionality. (warning logged once)
-(DeepSpeedInferenceWorker pid=20003) Initializing conditional components...
-(DeepSpeedInferenceWorker pid=20003) Using HPU fused kernel for apply_rotary_pos_emb
-(DeepSpeedInferenceWorker pid=20003) Using HPU fused kernel for RMSNorm
-(DeepSpeedInferenceWorker pid=20003) Using HPU fused kernel for apply_rotary_pos_emb
-(DeepSpeedInferenceWorker pid=20003) Using HPU fused kernel for RMSNorm
-(DeepSpeedInferenceWorker pid=20001) [2025-11-17 18:46:38,172] [INFO] [real_accelerator.py:225:get_accelerator] Setting ds_accelerator to hpu (auto detect)
-(DeepSpeedInferenceWorker pid=20001) /usr/local/lib/python3.12/dist-packages/torch/distributed/distributed_c10d.py:4631: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user.
-(DeepSpeedInferenceWorker pid=20001)   warnings.warn(  # warn only once
-(pid=20005) Calling add_step_closure function does not have any effect. It's lazy mode only functionality. (warning logged once) [repeated 8x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication, or see https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#log-deduplication for more options.)
-(pid=20005) Calling mark_step function does not have any effect. It's lazy mode only functionality. (warning logged once) [repeated 8x across cluster]
-(pid=20005) Calling iter_mark_step function does not have any effect. It's lazy mode only functionality. (warning logged once) [repeated 8x across cluster]
+INFO 2025-11-19 23:07:55,175 serve 103800 -- Started Serve in namespace "serve".
+INFO 2025-11-19 23:07:55,183 serve 103800 -- Connecting to existing Serve app in namespace "serve". New http options will not be applied.
+(ProxyActor pid=103914) INFO 2025-11-19 23:07:55,127 proxy 100.83.67.100 -- Proxy starting on node f8a9040f72956ae476357ef18a828e58782aac96d5b0c1ab80fcaceb (HTTP port: 8000).
+(ProxyActor pid=103914) INFO 2025-11-19 23:07:55,173 proxy 100.83.67.100 -- Got updated endpoints: {}.
+(ServeController pid=103911) INFO 2025-11-19 23:07:55,257 controller 103911 -- Deploying new version of Deployment(name='DeepSpeedLlamaModel', app='default') (initial target replicas: 1).
+(ProxyActor pid=103914) INFO 2025-11-19 23:07:55,259 proxy 100.83.67.100 -- Got updated endpoints: {Deployment(name='DeepSpeedLlamaModel', app='default'): EndpointInfo(route='/', app_is_cross_language=False)}.
+(ProxyActor pid=103914) INFO 2025-11-19 23:07:55,264 proxy 100.83.67.100 -- Started <ray.serve._private.router.SharedRouterLongPollClient object at 0x7f8c55d635f0>.
+(ServeController pid=103911) INFO 2025-11-19 23:07:55,362 controller 103911 -- Adding 1 replica to Deployment(name='DeepSpeedLlamaModel', app='default').
+(ServeReplica:default:DeepSpeedLlamaModel pid=103912) Calling add_step_closure function does not have any effect. It's lazy mode only functionality. (warning logged once)
+(ServeReplica:default:DeepSpeedLlamaModel pid=103912) Calling mark_step function does not have any effect. It's lazy mode only functionality. (warning logged once)
+(ServeReplica:default:DeepSpeedLlamaModel pid=103912) Calling iter_mark_step function does not have any effect. It's lazy mode only functionality. (warning logged once)
+(DeepSpeedInferenceWorker pid=119844) Initializing conditional components...
+(DeepSpeedInferenceWorker pid=119844) Using HPU fused kernel for apply_rotary_pos_emb
+(DeepSpeedInferenceWorker pid=119844) Using HPU fused kernel for RMSNorm
+(DeepSpeedInferenceWorker pid=119844) Using HPU fused kernel for apply_rotary_pos_emb
+(DeepSpeedInferenceWorker pid=119844) Using HPU fused kernel for RMSNorm
+(DeepSpeedInferenceWorker pid=119845) [2025-11-19 23:08:10,967] [INFO] [real_accelerator.py:225:get_accelerator] Setting ds_accelerator to hpu (auto detect)
+(DeepSpeedInferenceWorker pid=119845) /usr/local/lib/python3.12/dist-packages/torch/distributed/distributed_c10d.py:4631: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user.
+(DeepSpeedInferenceWorker pid=119845)   warnings.warn(  # warn only once
 Fetching 15 files: 100%|██████████| 15/15 [00:00<00:00, 177724.75it/s]
-(DeepSpeedInferenceWorker pid=20003) ============================= HPU PT BRIDGE CONFIGURATION ON RANK = 0 =============
-(DeepSpeedInferenceWorker pid=20003)  PT_HPU_LAZY_MODE = 0
-(DeepSpeedInferenceWorker pid=20003)  PT_HPU_RECIPE_CACHE_CONFIG = ,false,1024,false
-(DeepSpeedInferenceWorker pid=20003)  PT_HPU_MAX_COMPOUND_OP_SIZE = 9223372036854775807
-(DeepSpeedInferenceWorker pid=20003)  PT_HPU_LAZY_ACC_PAR_MODE = 0
-(DeepSpeedInferenceWorker pid=20003)  PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES = 0
-(DeepSpeedInferenceWorker pid=20003)  PT_HPU_EAGER_PIPELINE_ENABLE = 1
-(DeepSpeedInferenceWorker pid=20003)  PT_HPU_EAGER_COLLECTIVE_PIPELINE_ENABLE = 1
-(DeepSpeedInferenceWorker pid=20003)  PT_HPU_ENABLE_LAZY_COLLECTIVES = 1
-(DeepSpeedInferenceWorker pid=20003) ---------------------------: System Configuration :---------------------------
-(DeepSpeedInferenceWorker pid=20003) Num CPU Cores : 160
-(DeepSpeedInferenceWorker pid=20003) CPU RAM       : 1007 GB
-(DeepSpeedInferenceWorker pid=20003) ------------------------------------------------------------------------------
-(DeepSpeedInferenceWorker pid=20003) /usr/local/lib/python3.12/dist-packages/torch/distributed/distributed_c10d.py:4631: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user.  [repeated 7x across cluster]
-(DeepSpeedInferenceWorker pid=20003)   warnings.warn(  # warn only once [repeated 7x across cluster]
+(DeepSpeedInferenceWorker pid=119841) ============================= HPU PT BRIDGE CONFIGURATION ON RANK = 0 =============
+(DeepSpeedInferenceWorker pid=119841)  PT_HPU_LAZY_MODE = 1
+(DeepSpeedInferenceWorker pid=119841)  PT_HPU_RECIPE_CACHE_CONFIG = ,false,1024,false
+(DeepSpeedInferenceWorker pid=119841)  PT_HPU_MAX_COMPOUND_OP_SIZE = 9223372036854775807
+(DeepSpeedInferenceWorker pid=119841)  PT_HPU_LAZY_ACC_PAR_MODE = 0
+(DeepSpeedInferenceWorker pid=119841)  PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES = 0
+(DeepSpeedInferenceWorker pid=119841)  PT_HPU_EAGER_PIPELINE_ENABLE = 1
+(DeepSpeedInferenceWorker pid=119841)  PT_HPU_EAGER_COLLECTIVE_PIPELINE_ENABLE = 1
+(DeepSpeedInferenceWorker pid=119841)  PT_HPU_ENABLE_LAZY_COLLECTIVES = 1
+(DeepSpeedInferenceWorker pid=119841) ---------------------------: System Configuration :---------------------------
+(DeepSpeedInferenceWorker pid=119841) Num CPU Cores : 160
+(DeepSpeedInferenceWorker pid=119841) CPU RAM       : 1007 GB
+(DeepSpeedInferenceWorker pid=119841) ------------------------------------------------------------------------------
+(DeepSpeedInferenceWorker pid=119841) /usr/local/lib/python3.12/dist-packages/torch/distributed/distributed_c10d.py:4631: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user.  [repeated 7x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication, or see https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#log-deduplication for more options.)
+(DeepSpeedInferenceWorker pid=119841)   warnings.warn(  # warn only once [repeated 7x across cluster]
 Loading 15 checkpoint shards:   0%|          | 0/15 [00:00<?, ?it/s]
-(DeepSpeedInferenceWorker pid=20002) [2025-11-17 18:46:44,773] [INFO] [logging.py:107:log_dist] [Rank -1] DeepSpeed info: version=0.16.1+hpu.synapse.v1.22.0, git-hash=9b8097e3, git-branch=1.22.0
-(DeepSpeedInferenceWorker pid=20002) [2025-11-17 18:46:44,784] [INFO] [logging.py:107:log_dist] [Rank -1] quantize_bits = 8 mlp_extra_grouping = False, quantize_groups = 1
-(DeepSpeedInferenceWorker pid=20002) [2025-11-17 18:46:44,791] [INFO] [comm.py:652:init_distributed] cdb=None
-(DeepSpeedInferenceWorker pid=20007) Initializing conditional components... [repeated 7x across cluster]
-(DeepSpeedInferenceWorker pid=20007) Using HPU fused kernel for apply_rotary_pos_emb [repeated 14x across cluster]
-(DeepSpeedInferenceWorker pid=20007) Using HPU fused kernel for RMSNorm [repeated 14x across cluster]
-(DeepSpeedInferenceWorker pid=20007) [2025-11-17 18:46:40,521] [INFO] [real_accelerator.py:225:get_accelerator] Setting ds_accelerator to hpu (auto detect) [repeated 7x across cluster]
-Loading 15 checkpoint shards:   7%|▋         | 1/15 [00:00<00:12,  1.11it/s]
-(ServeController pid=1666) WARNING 2025-11-17 18:46:52,471 controller 1666 -- Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize.
-(ServeController pid=1666) This may be caused by a slow __init__ or reconfigure method.
-Fetching 15 files: 100%|██████████| 15/15 [00:00<00:00, 173318.35it/s] [repeated 8x across cluster]
+(DeepSpeedInferenceWorker pid=119841) [2025-11-19 23:08:17,597] [INFO] [logging.py:107:log_dist] [Rank -1] DeepSpeed info: version=0.16.1+hpu.synapse.v1.22.0, git-hash=9b8097e3, git-branch=1.22.0
+(DeepSpeedInferenceWorker pid=119841) [2025-11-19 23:08:17,601] [INFO] [logging.py:107:log_dist] [Rank -1] quantize_bits = 8 mlp_extra_grouping = False, quantize_groups = 1
+(DeepSpeedInferenceWorker pid=119841) [2025-11-19 23:08:17,630] [INFO] [comm.py:652:init_distributed] cdb=None
+(DeepSpeedInferenceWorker pid=119840) Initializing conditional components... [repeated 7x across cluster]
+(DeepSpeedInferenceWorker pid=119840) Using HPU fused kernel for apply_rotary_pos_emb [repeated 14x across cluster]
+(DeepSpeedInferenceWorker pid=119840) Using HPU fused kernel for RMSNorm [repeated 14x across cluster]
+(DeepSpeedInferenceWorker pid=119840) [2025-11-19 23:08:13,003] [INFO] [real_accelerator.py:225:get_accelerator] Setting ds_accelerator to hpu (auto detect) [repeated 7x across cluster]
+(ServeController pid=103911) WARNING 2025-11-19 23:08:25,428 controller 103911 -- Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize.
+(ServeController pid=103911) This may be caused by a slow __init__ or reconfigure method.
+Fetching 15 files: 100%|██████████| 15/15 [00:00<00:00, 174278.56it/s] [repeated 8x across cluster]
 Loading 15 checkpoint shards:   0%|          | 0/15 [00:00<?, ?it/s] [repeated 7x across cluster]
-Loading 15 checkpoint shards:   7%|▋         | 1/15 [00:01<00:14,  1.00s/it] [repeated 7x across cluster]
-Loading 15 checkpoint shards:  13%|█▎        | 2/15 [00:14<01:48,  8.31s/it]
-Loading 15 checkpoint shards:  13%|█▎        | 2/15 [00:14<01:50,  8.52s/it]
-Loading 15 checkpoint shards:  20%|██        | 3/15 [00:25<01:53,  9.49s/it] [repeated 7x across cluster]
-Loading 15 checkpoint shards:  27%|██▋       | 4/15 [00:35<01:45,  9.55s/it] [repeated 8x across cluster]
-(ServeController pid=1666) WARNING 2025-11-17 18:47:22,507 controller 1666 -- Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize.
-(ServeController pid=1666) This may be caused by a slow __init__ or reconfigure method.
-Loading 15 checkpoint shards:  33%|███▎      | 5/15 [00:45<01:38,  9.82s/it] [repeated 7x across cluster]
-Loading 15 checkpoint shards:  40%|████      | 6/15 [00:54<01:25,  9.50s/it] [repeated 8x across cluster]
-Loading 15 checkpoint shards:  40%|████      | 6/15 [00:59<01:34, 10.48s/it] [repeated 6x across cluster]
-Loading 15 checkpoint shards:  47%|████▋     | 7/15 [01:05<01:20, 10.02s/it] [repeated 2x across cluster]
-(ServeController pid=1666) WARNING 2025-11-17 18:47:52,553 controller 1666 -- Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize.
-(ServeController pid=1666) This may be caused by a slow __init__ or reconfigure method.
-Loading 15 checkpoint shards:  40%|████      | 6/15 [01:12<01:57, 13.02s/it] [repeated 7x across cluster]
-Loading 15 checkpoint shards:  53%|█████▎    | 8/15 [01:17<01:10, 10.01s/it] [repeated 3x across cluster]
-Loading 15 checkpoint shards:  60%|██████    | 9/15 [01:25<01:00, 10.02s/it] [repeated 6x across cluster]
-Loading 15 checkpoint shards:  60%|██████    | 9/15 [01:31<01:03, 10.59s/it] [repeated 5x across cluster]
-Loading 15 checkpoint shards:  67%|██████▋   | 10/15 [01:37<00:49, 10.00s/it] [repeated 4x across cluster]
-(ServeController pid=1666) WARNING 2025-11-17 18:48:22,586 controller 1666 -- Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize.
-(ServeController pid=1666) This may be caused by a slow __init__ or reconfigure method.
-Loading 15 checkpoint shards:  60%|██████    | 9/15 [01:43<01:06, 11.09s/it] [repeated 6x across cluster]
-Loading 15 checkpoint shards:  73%|███████▎  | 11/15 [01:48<00:39,  9.85s/it] [repeated 5x across cluster]
-Loading 15 checkpoint shards:  80%|████████  | 12/15 [01:56<00:30, 10.16s/it] [repeated 4x across cluster]
-Loading 15 checkpoint shards:  73%|███████▎  | 11/15 [02:01<00:40, 10.23s/it] [repeated 7x across cluster]
-Loading 15 checkpoint shards:  87%|████████▋ | 13/15 [02:07<00:19,  9.67s/it] [repeated 4x across cluster]
-(ServeController pid=1666) WARNING 2025-11-17 18:48:52,656 controller 1666 -- Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize.
-(ServeController pid=1666) This may be caused by a slow __init__ or reconfigure method.
-Loading 15 checkpoint shards:  93%|█████████▎| 14/15 [02:15<00:09,  9.59s/it]
-Loading 15 checkpoint shards:  80%|████████  | 12/15 [02:11<00:30, 10.09s/it] [repeated 4x across cluster]
-Loading 15 checkpoint shards:  93%|█████████▎| 14/15 [02:19<00:09,  9.71s/it] [repeated 6x across cluster]
-Loading 15 checkpoint shards:  87%|████████▋ | 13/15 [02:20<00:19,  9.83s/it]
-Loading 15 checkpoint shards: 100%|██████████| 15/15 [02:26<00:00,  9.73s/it] [repeated 6x across cluster]
-(ServeController pid=1666) WARNING 2025-11-17 18:49:22,664 controller 1666 -- Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize.
-(ServeController pid=1666) This may be caused by a slow __init__ or reconfigure method.
-Loading 15 checkpoint shards:  93%|█████████▎| 14/15 [02:30<00:09,  9.82s/it] [repeated 9x across cluster]
-(DeepSpeedInferenceWorker pid=20002) Warning: hpu graphs in eager mode is not supported, ignoring
-(DeepSpeedInferenceWorker pid=20005) [2025-11-17 18:46:44,773] [INFO] [logging.py:107:log_dist] [Rank -1] DeepSpeed info: version=0.16.1+hpu.synapse.v1.22.0, git-hash=9b8097e3, git-branch=1.22.0 [repeated 7x across cluster]
-(DeepSpeedInferenceWorker pid=20005) [2025-11-17 18:46:44,785] [INFO] [logging.py:107:log_dist] [Rank -1] quantize_bits = 8 mlp_extra_grouping = False, quantize_groups = 1 [repeated 7x across cluster]
-(DeepSpeedInferenceWorker pid=20005) [2025-11-17 18:46:44,792] [INFO] [comm.py:652:init_distributed] cdb=None [repeated 7x across cluster]
-INFO 2025-11-17 18:49:25,635 serve 19827 -- Application 'default' is ready at http://127.0.0.1:8000/.
+Loading 15 checkpoint shards:   7%|▋         | 1/15 [00:08<01:55,  8.27s/it]
+Loading 15 checkpoint shards:  13%|█▎        | 2/15 [00:16<01:45,  8.12s/it] [repeated 8x across cluster]
+Loading 15 checkpoint shards:  20%|██        | 3/15 [00:24<01:36,  8.07s/it] [repeated 8x across cluster]
+Loading 15 checkpoint shards:  27%|██▋       | 4/15 [00:32<01:29,  8.17s/it] [repeated 8x across cluster]
+(ServeController pid=103911) WARNING 2025-11-19 23:08:55,478 controller 103911 -- Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize.
+(ServeController pid=103911) This may be caused by a slow __init__ or reconfigure method.
+Loading 15 checkpoint shards:  27%|██▋       | 4/15 [00:35<01:38,  8.97s/it] [repeated 7x across cluster]
+Loading 15 checkpoint shards:  33%|███▎      | 5/15 [00:45<01:32,  9.28s/it] [repeated 7x across cluster]
+Loading 15 checkpoint shards:  40%|████      | 6/15 [00:50<01:16,  8.45s/it] [repeated 4x across cluster]
+Loading 15 checkpoint shards:  47%|████▋     | 7/15 [00:57<01:05,  8.20s/it] [repeated 6x across cluster]
+Loading 15 checkpoint shards:  47%|████▋     | 7/15 [01:02<01:10,  8.84s/it] [repeated 6x across cluster]
+(ServeController pid=103911) WARNING 2025-11-19 23:09:25,503 controller 103911 -- Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize.
+(ServeController pid=103911) This may be caused by a slow __init__ or reconfigure method.
+Loading 15 checkpoint shards:  53%|█████▎    | 8/15 [01:07<00:58,  8.40s/it] [repeated 6x across cluster]
+Loading 15 checkpoint shards:  53%|█████▎    | 8/15 [01:13<01:04,  9.28s/it] [repeated 3x across cluster]
+Loading 15 checkpoint shards:  60%|██████    | 9/15 [01:19<00:51,  8.54s/it] [repeated 7x across cluster]
+Loading 15 checkpoint shards:  67%|██████▋   | 10/15 [01:27<00:42,  8.41s/it] [repeated 8x across cluster]
+Loading 15 checkpoint shards:  73%|███████▎  | 11/15 [01:35<00:33,  8.34s/it] [repeated 8x across cluster]
+(ServeController pid=103911) WARNING 2025-11-19 23:09:55,564 controller 103911 -- Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize.
+(ServeController pid=103911) This may be caused by a slow __init__ or reconfigure method.
+Loading 15 checkpoint shards:  80%|████████  | 12/15 [01:43<00:25,  8.38s/it] [repeated 8x across cluster]
+Loading 15 checkpoint shards:  93%|█████████▎| 14/15 [01:46<00:05,  5.81s/it]
+Loading 15 checkpoint shards:  80%|████████  | 12/15 [01:48<00:26,  8.95s/it] [repeated 7x across cluster]
+Loading 15 checkpoint shards:  93%|█████████▎| 14/15 [01:49<00:06,  6.04s/it] [repeated 5x across cluster]
+Loading 15 checkpoint shards:  87%|████████▋ | 13/15 [01:52<00:16,  8.34s/it]
+Loading 15 checkpoint shards: 100%|██████████| 15/15 [01:57<00:00,  7.83s/it] [repeated 11x across cluster]
+Loading 15 checkpoint shards:  87%|████████▋ | 13/15 [01:57<00:18,  9.06s/it]
+Loading 15 checkpoint shards: 100%|██████████| 15/15 [02:07<00:00,  7.21s/it] [repeated 6x across cluster]
+(ServeController pid=103911) WARNING 2025-11-19 23:10:25,632 controller 103911 -- Deployment 'DeepSpeedLlamaModel' in application 'default' has 1 replicas that have taken more than 30s to initialize.
+(ServeController pid=103911) This may be caused by a slow __init__ or reconfigure method.
+INFO 2025-11-19 23:10:26,558 serve 103800 -- Application 'default' is ready at http://127.0.0.1:8000/.
 ```
 
 Use the same code snippet introduced in the single HPU example to send generation requests. Here's an example output:
@@ -339,6 +327,3 @@ In this kingdom, there was a beautiful princess named Lily. She was kind, gentle
 
 One day, a wicked sorcerer cast a spell on the kingdom
 ```
-
-## Next Steps
-See [llm-on-ray](https://github.com/intel/llm-on-ray) for more ways to customize and deploy LLMs at scale.
