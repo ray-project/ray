@@ -368,9 +368,13 @@ class ParquetDatasource(Datasource):
         # columns manually.
         data_columns, partition_columns = None, None
         if columns is not None:
-            data_columns, partition_columns = _infer_data_and_partition_columns(
-                columns, pq_ds.fragments[0], partitioning
-            )
+            if pq_ds.fragments:
+                data_columns, partition_columns = _infer_data_and_partition_columns(
+                    columns, pq_ds.fragments[0], partitioning
+                )
+            else:
+                # Empty dataset - can't infer columns without fragments
+                data_columns, partition_columns = [], []
 
         if to_batch_kwargs is None:
             to_batch_kwargs = {}
@@ -660,7 +664,6 @@ class ParquetDatasource(Datasource):
         split_result = _split_predicate_by_columns(predicate_expr, partition_cols)
 
         # Apply partition pruning if we have a partition predicate
-        datasource = self
         if (
             split_result.partition_predicate is not None
             and self._partitioning is not None
@@ -677,19 +680,21 @@ class ParquetDatasource(Datasource):
                     pruned_fragments.append(fragment)
                     pruned_paths.append(path)
 
-            # Create new datasource with pruned fragments
-            import copy
-
-            datasource = copy.copy(self)
-            datasource._pq_fragments = pruned_fragments
-            datasource._pq_paths = pruned_paths
+            # Apply partition pruning directly to self
+            self._pq_fragments = pruned_fragments
+            self._pq_paths = pruned_paths
 
         if split_result.data_predicate is None:
             # Only partition predicates - pruning applied, but Filter operator
             # still needed for correctness (in case evaluation was conservative)
-            return datasource
+            # Return self (not a copy) to preserve the Filter operator
+            return self
 
         # Push down data predicates to PyArrow for the pruned fragments
+        # Create a copy only if we need to push down data predicates
+        import copy
+
+        datasource = copy.copy(self)
         return super(ParquetDatasource, datasource).apply_predicate(
             split_result.data_predicate
         )

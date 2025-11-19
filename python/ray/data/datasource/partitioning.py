@@ -1,6 +1,5 @@
 import posixpath
 import urllib.parse
-from collections.abc import Collection
 from dataclasses import dataclass
 from enum import Enum
 from typing import (
@@ -318,7 +317,7 @@ class PathPartitionParser:
 
             # Extract boolean result from array-like types
             # Check for specific array types to avoid issues with strings (which are iterable)
-            if isinstance(result, (pa.Array, pa.ChunkedArray, np.ndarray, Collection)):
+            if isinstance(result, (pa.Array, pa.ChunkedArray, np.ndarray)):
                 return bool(result[0])
 
             # Import pandas here to avoid circular dependencies
