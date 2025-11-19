@@ -99,6 +99,7 @@ const Wrapper =
               serverTimeZone: undefined,
               currentTimeZone: undefined,
               themeMode: "light",
+              // eslint-disable-next-line @typescript-eslint/no-empty-function
               toggleTheme: () => {},
             }}
           >

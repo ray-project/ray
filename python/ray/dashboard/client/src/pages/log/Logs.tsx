@@ -219,7 +219,7 @@ export const StateApiLogsFilesList = ({
                       size="small"
                       sx={{
                         verticalAlign: "baseline",
-                        '& svg': { color: 'text.secondary' }
+                        '& svg': { color: 'text.secondary' },
                       }}
                     >
                       <RiDownload2Line size={16} />

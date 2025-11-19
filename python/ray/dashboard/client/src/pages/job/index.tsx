@@ -119,8 +119,8 @@ const JobList = () => {
                 height: 35,
                 width: 150,
                 '& .MuiSvgIcon-root': {
-                  color: 'text.secondary'
-                }
+                  color: 'text.secondary',
+                },
               }}
               options={["PENDING", "RUNNING", "SUCCEEDED", "STOPPED", "FAILED"]}
               onInputChange={(event, value) =>

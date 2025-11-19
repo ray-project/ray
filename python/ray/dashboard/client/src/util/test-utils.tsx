@@ -26,6 +26,7 @@ export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
     serverTimeZone: undefined,
     currentTimeZone: undefined,
     themeMode: "light",
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
     toggleTheme: () => {},
   };
 
