@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <optional>
 
 #include "ray/object_manager/object_reader.h"
 
