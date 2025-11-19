@@ -153,10 +153,6 @@ class Repartition(
         self._keys = keys
         self._sort = sort
 
-    def get_partition_keys(self) -> Optional[List[str]]:
-        """Return the partition keys for this repartition operation."""
-        return self._keys
-
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         assert isinstance(self._input_dependencies[0], LogicalOperator)
@@ -195,10 +191,6 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
         )
         self._sort_key = sort_key
         self._batch_format = batch_format
-
-    def get_partition_keys(self) -> Optional[List[str]]:
-        """Return the columns used for sorting as partition keys."""
-        return self._sort_key._columns
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
@@ -242,12 +234,3 @@ class Aggregate(AbstractAllToAll):
         self._aggs = aggs
         self._num_partitions = num_partitions
         self._batch_format = batch_format
-
-    def get_partition_keys(self) -> Optional[List[str]]:
-        """Return the groupby keys for this aggregate operation."""
-        if self._key is None:
-            return None
-        elif isinstance(self._key, str):
-            return [self._key]
-        else:
-            return self._key
