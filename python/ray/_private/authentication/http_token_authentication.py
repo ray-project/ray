@@ -43,12 +43,20 @@ def get_token_auth_middleware(
         ):
             return await handler(request)
 
-        # Check Authorization header first (for API clients)
+        # Try to get authentication token from multiple sources (in priority order):
+        # 1. Standard "Authorization" header (for API clients, SDKs)
+        # 2. Fallback "X-Ray-Authorization" header (for proxies and KubeRay)
+        # 3. Cookie (for web dashboard sessions)
+
         auth_header = request.headers.get(
             authentication_constants.AUTHORIZATION_HEADER_NAME, ""
         )
 
-        # If no Authorization header, check cookie (for web dashboard)
+        if not auth_header:
+            auth_header = request.headers.get(
+                authentication_constants.RAY_AUTHORIZATION_HEADER_NAME, ""
+            )
+
         if not auth_header:
             token = request.cookies.get(
                 authentication_constants.AUTHENTICATION_TOKEN_COOKIE_NAME
