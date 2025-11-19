@@ -52,6 +52,7 @@ repos:
     hooks:
       - id: pydoclint
         name: pydoclint-local
+        language_version: python3.10
         stages: [pre-commit, pre-push]
         args: [
           --style=google,
@@ -76,6 +77,7 @@ repos:
     hooks:
       - id: pydoclint
         name: pydoclint-ci
+        language_version: python3.10
         stages: [manual]
         args: [
           --style=google,
