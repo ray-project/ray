@@ -3,6 +3,7 @@ import time
 import pytest
 
 import ray
+from ray.exceptions import RayActorError
 from ray.train.v2._internal.execution.controller.placement_group_cleaner import (
     PlacementGroupCleaner,
 )
@@ -70,8 +71,11 @@ def test_placement_group_cleaner_basic_lifecycle():
     # Controller is still alive, so PG should still exist
     assert pg.id is not None
 
-    # Stop the cleaner gracefully
-    ray.get(cleaner.stop.remote(), timeout=2.0)
+    # Stop the cleaner gracefully; tolerate the actor exiting itself.
+    try:
+        ray.get(cleaner.stop.remote(), timeout=2.0)
+    except RayActorError:
+        pass
 
     # PG should still exist after graceful stop
     try:
@@ -80,7 +84,10 @@ def test_placement_group_cleaner_basic_lifecycle():
     except Exception as e:
         pytest.fail(f"Placement group should still exist after graceful stop: {e}")
     finally:
-        ray.get(controller.shutdown.remote())
+        try:
+            ray.get(controller.shutdown.remote())
+        except RayActorError:
+            pass
 
 
 def test_pg_cleaner_cleans_up_on_controller_death():
@@ -159,7 +166,10 @@ def test_pg_cleaner_handles_duplicate_start():
     assert result2 is False
 
     # Stop
-    ray.get(cleaner.stop.remote(), timeout=2.0)
+    try:
+        ray.get(cleaner.stop.remote(), timeout=2.0)
+    except RayActorError:
+        pass
 
 
 if __name__ == "__main__":

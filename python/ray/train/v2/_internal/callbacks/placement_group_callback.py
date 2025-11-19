@@ -2,6 +2,7 @@ import logging
 from typing import TYPE_CHECKING, Optional
 
 import ray
+from ray.exceptions import RayActorError
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     WorkerGroupCallback,
@@ -113,7 +114,12 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
 
         try:
             # Stop the cleaner gracefully (it won't clean up the PG)
-            ray.get(self._cleaner.stop.remote(), timeout=1.0)
+            stop_timeout_s = max(2.0, self._check_interval_s * 2)
+            ray.get(self._cleaner.stop.remote(), timeout=stop_timeout_s)
+        except RayActorError:
+            logger.debug(
+                "PlacementGroupCleaner exited before stop completed; ignoring."
+            )
         except Exception as e:
             logger.warning(f"Failed to stop PlacementGroupCleaner gracefully: {e}")
         finally:
