@@ -1,6 +1,9 @@
-import uuid
+import secrets
 
 
-# TODO: this is a placeholder for the actual authentication token generator. Will be replaced with a proper implementation.
 def generate_new_authentication_token() -> str:
-    return uuid.uuid4().hex
+    """Generate an authentication token for the cluster.
+
+    256 bits of entropy is considered sufficient to be durable to brute force attacks.
+	"""
+    return secrets.token_hex(32)
