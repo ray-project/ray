@@ -114,7 +114,7 @@ class DataConfig:
 
         locality_hints = worker_node_ids if self._enable_shard_locality else None
         for name, ds in datasets.items():
-            execution_options = self._clone_and_get_execution_options(name)
+            execution_options = self._get_execution_options(name)
 
             if execution_options.is_resource_limits_default():
                 # If "resource_limits" is not overriden by the user,
