@@ -45,7 +45,7 @@ def get_token_auth_middleware(
 
         # Try to get authentication token from multiple sources (in priority order):
         # 1. Standard "Authorization" header (for API clients, SDKs)
-        # 2. Custom "X-Ray-Auth" header (for proxies and KubeRay)
+        # 2. Fallback "X-Ray-Authorization" header (for proxies and KubeRay)
         # 3. Cookie (for web dashboard sessions)
 
         auth_header = request.headers.get(
