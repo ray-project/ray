@@ -145,6 +145,7 @@ steps:
       - data
       - skip-on-premerge
       - oss
+      - disabled
     instance_type: medium
     parallelism: 2
     commands:
@@ -161,6 +162,7 @@ steps:
       - data
       - skip-on-premerge
       - oss
+      - disabled
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
@@ -210,7 +212,7 @@ steps:
         --except-tags gpu,post_wheel_build,doctest,dask
         --parallelism-per-worker 2
         --skip-ray-installation
-    depends_on: datalbuild-multipy
+    depends_on: databuild-multipy
 
   - label: ":database: data: dask doc tests"
     tags:
@@ -269,7 +271,7 @@ steps:
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... data
-        --build-name databuild-py3.10
+        --build-name datalbuild-py3.10
         --python-version 3.10
         --parallelism-per-worker 3
     depends_on: datalbuild-multipy
@@ -286,7 +288,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... data --run-flaky-tests
         --parallelism-per-worker 3
-        --build-name databuild-py3.10
+        --build-name datalbuild-py3.10
         --python-version 3.10
         --except-tags gpu_only,gpu
     depends_on: datalbuild-multipy
