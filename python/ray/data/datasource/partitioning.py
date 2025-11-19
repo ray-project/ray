@@ -2,12 +2,24 @@ import posixpath
 import urllib.parse
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Type,
+    Union,
+)
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
+
+    from ray.data.expressions import Expr
 
 
 PartitionDataType = Type[Union[int, float, str, bool]]
@@ -253,6 +265,63 @@ class PathPartitionParser:
             partitions[field] = _cast_value(partitions[field], data_type)
 
         return partitions
+
+    def evaluate_predicate_on_partition(self, path: str, predicate: "Expr") -> bool:
+        """Evaluate a predicate expression against partition values from a path.
+
+        This method enables partition pruning by evaluating predicates that reference
+        partition columns against the partition values parsed from file paths.
+
+        Args:
+            path: File path to parse partition values from.
+            predicate: Expression that references partition columns.
+
+        Returns:
+            True if the partition satisfies the predicate (should read the file),
+            False if it doesn't (can skip the file for partition pruning).
+
+        Examples:
+            >>> parser = PathPartitionParser(Partitioning("hive"))
+            >>> path = "data/country=US/year=2020/file.parquet"
+            >>> predicate = col("country") == "US"
+            >>> parser.evaluate_predicate_on_partition(path, predicate)
+            True
+
+            >>> predicate = col("country") == "UK"
+            >>> parser.evaluate_predicate_on_partition(path, predicate)
+            False
+        """
+        import pyarrow as pa
+
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            NativeExpressionEvaluator,
+        )
+
+        # Parse partition values from the file path
+        partition_values = self(path)
+
+        if not partition_values:
+            # Unpartitioned file - conservatively include it
+            return True
+
+        try:
+            # Create a single-row table with partition values
+            partition_table = pa.table(
+                {col: [val] for col, val in partition_values.items()}
+            )
+
+            # Evaluate using Ray Data's native evaluator
+            evaluator = NativeExpressionEvaluator(partition_table)
+            result = evaluator.visit(predicate)
+
+            # Extract boolean result
+            if isinstance(result, Iterable):
+                return bool(result[0])
+            else:
+                return bool(result)
+        except Exception:
+            # If evaluation fails, conservatively include the file
+            return True
 
     @property
     def scheme(self) -> Partitioning:

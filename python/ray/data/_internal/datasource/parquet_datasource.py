@@ -1,4 +1,3 @@
-import functools
 import logging
 import math
 import os
@@ -56,7 +55,7 @@ from ray.data.datasource.partitioning import (
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
 )
-from ray.data.expressions import Expr
+from ray.data.expressions import BinaryExpr, Expr, Operation
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -163,6 +162,115 @@ def check_for_legacy_tensor_type(schema):
                 "`RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1` on *all* nodes."
                 "To learn more, see https://github.com/ray-project/ray/issues/41314."
             )
+
+
+@dataclass
+class _SplitPredicateResult:
+    """Result of splitting a predicate by column type.
+
+    Attributes:
+        data_predicate: Expression containing only data column predicates
+            (for PyArrow pushdown), or None if no data predicates exist.
+        partition_predicate: Expression containing only partition column predicates
+            (for partition pruning), or None if no partition predicates exist.
+    """
+
+    data_predicate: Optional[Expr]
+    partition_predicate: Optional[Expr]
+
+
+def _split_predicate_by_columns(
+    predicate: Expr,
+    partition_columns: set,
+) -> _SplitPredicateResult:
+    """Split a predicate into data-only and partition-only parts.
+
+    This function extracts both data column predicates and partition column
+    predicates from AND chains, enabling both PyArrow pushdown (data part) and
+    partition pruning (partition part).
+
+    Args:
+        predicate: The predicate expression to analyze.
+        partition_columns: Set of partition column names.
+
+    Returns:
+        _SplitPredicateResult containing:
+        - data_predicate: Expression with only data columns (for PyArrow pushdown),
+          or None if no data predicates can be extracted.
+        - partition_predicate: Expression with only partition columns (for pruning),
+          or None if no partition predicates can be extracted.
+
+    Examples:
+        Pure data predicate:
+
+        >>> result = _split_predicate_by_columns(col("data1") > 5, {"partition_col"})
+        >>> result.data_predicate  # col("data1") > 5
+        >>> result.partition_predicate  # None
+
+        Pure partition predicate:
+
+        >>> result = _split_predicate_by_columns(col("partition_col") == "US", {"partition_col"})
+        >>> result.data_predicate  # None
+        >>> result.partition_predicate  # col("partition_col") == "US"
+
+        Mixed AND - can split both parts:
+
+        >>> result = _split_predicate_by_columns(
+        ...     (col("data1") > 5) & (col("partition_col") == "US"),
+        ...     {"partition_col"}
+        ... )
+        >>> result.data_predicate  # col("data1") > 5
+        >>> result.partition_predicate  # col("partition_col") == "US"
+
+        Mixed OR - can't split safely:
+
+        >>> result = _split_predicate_by_columns(
+        ...     (col("data1") > 5) | (col("partition_col") == "US"),
+        ...     {"partition_col"}
+        ... )
+        >>> result.data_predicate  # None
+        >>> result.partition_predicate  # None
+    """
+    referenced_cols = set(get_column_references(predicate))
+    data_cols = referenced_cols - partition_columns
+    partition_cols_in_predicate = referenced_cols & partition_columns
+
+    if not partition_cols_in_predicate:
+        # Pure data predicate
+        return _SplitPredicateResult(data_predicate=predicate, partition_predicate=None)
+
+    if not data_cols:
+        # Pure partition predicate
+        return _SplitPredicateResult(data_predicate=None, partition_predicate=predicate)
+
+    # Mixed predicate - try to split if it's an AND chain
+    if isinstance(predicate, BinaryExpr) and predicate.op == Operation.AND:
+        # Recursively split left and right sides
+        left_result = _split_predicate_by_columns(predicate.left, partition_columns)
+        right_result = _split_predicate_by_columns(predicate.right, partition_columns)
+
+        # Helper to combine predicates from both sides
+        def combine_predicates(
+            left: Optional[Expr], right: Optional[Expr]
+        ) -> Optional[Expr]:
+            if left and right:
+                return left & right
+            return left or right
+
+        data_predicate = combine_predicates(
+            left_result.data_predicate, right_result.data_predicate
+        )
+        partition_predicate = combine_predicates(
+            left_result.partition_predicate, right_result.partition_predicate
+        )
+
+        return _SplitPredicateResult(
+            data_predicate=data_predicate, partition_predicate=partition_predicate
+        )
+
+    # For OR, NOT, or other operations with mixed columns,
+    # we can't safely split - must evaluate the full predicate together
+    return _SplitPredicateResult(data_predicate=None, partition_predicate=None)
 
 
 class ParquetDatasource(Datasource):
@@ -289,7 +397,25 @@ class ParquetDatasource(Datasource):
                 self._projection_map.update({col: col for col in data_columns})
             if partition_columns is not None:
                 self._projection_map.update({col: col for col in partition_columns})
-        self._partition_columns = partition_columns
+
+        # Eagerly compute the actual partition columns for _partition_columns.
+        # This ensures _partition_columns is always a list (never None).
+        actual_partition_columns = partition_columns
+        if partition_columns is None and partitioning is not None and pq_ds.fragments:
+            parse = PathPartitionParser(partitioning)
+            parsed_partitions = parse(pq_ds.fragments[0].path)
+            if parsed_partitions:
+                actual_partition_columns = list(parsed_partitions.keys())
+
+        # Store selected partition columns. Always a list (never None) representing
+        # the actual partition columns to include.
+        self._partition_columns = (
+            actual_partition_columns if actual_partition_columns is not None else []
+        )
+        # Track whether partition columns were explicitly part of the user's column selection
+        self._partition_columns_selected = (
+            partition_columns is not None and len(self._partition_columns) > 0
+        )
         self._read_schema = schema
         self._file_schema = pq_ds.schema
         self._partition_schema = _get_partition_columns_schema(
@@ -401,7 +527,7 @@ class ParquetDatasource(Datasource):
                 self._default_batch_size,
                 self._get_data_columns(),
                 self.get_column_renames(),
-                self._get_partition_columns_from_projection(),
+                self._get_partition_columns(),
                 self._read_schema,
                 self._include_paths,
                 self._partitioning,
@@ -452,29 +578,13 @@ class ParquetDatasource(Datasource):
         # NOTE: In case there's no projection both file and partition columns
         #       will be none
         data_columns = self._get_data_columns()
-        partition_columns = self._get_partition_columns_from_projection()
+        partition_columns = self._get_partition_columns()
         if data_columns is None and partition_columns is None:
             return None
 
         return (data_columns or []) + (partition_columns or [])
 
-    @functools.cached_property
-    def _partition_columns_set(self) -> set:
-        """Get the set of partition column names.
-
-        Returns:
-            Set of partition column names. Empty set if no partitioning.
-        """
-        if self._partition_columns is not None:
-            return set(self._partition_columns)
-
-        if self._partitioning is not None and self._pq_paths:
-            parse = PathPartitionParser(self._partitioning)
-            return set(parse(self._pq_paths[0]).keys())
-
-        return set()
-
-    def _get_partition_columns_from_projection(self) -> Optional[List[str]]:
+    def _get_partition_columns(self) -> Optional[List[str]]:
         """Extract partition columns from projection map.
 
         This method extracts partition columns from _projection_map, which is the
@@ -484,33 +594,29 @@ class ParquetDatasource(Datasource):
 
         Returns:
             List of partition column names in the projection, None if there's
-            no projection or user only specified data columns (meaning include all
-            partition columns), or [] if projection pushdown excluded partition
-            columns (meaning include no partition columns).
+            no projection or user didn't request specific partition columns
+            (meaning include all partition columns), or [] if projection pushdown
+            excluded partition columns (meaning include no partition columns).
         """
         if self._projection_map is None:
             return None
 
-        partition_cols_set = self._partition_columns_set
-        if not partition_cols_set:
+        if not self._partition_columns:
             return None
 
         # Extract partition columns that are in the projection map
         partition_cols = [
-            col for col in self._projection_map.keys() if col in partition_cols_set
+            col for col in self._projection_map.keys() if col in self._partition_columns
         ]
 
         # If partition columns are found in projection map, return them
         if partition_cols:
             return partition_cols
 
-        # No partition columns in projection map:
-        # - If _partition_columns is None: user only specified data columns during
-        #   initialization, so include all partition columns (return None)
-        # - If _partition_columns is not None: partition columns were requested during
-        #   initialization but are missing from _projection_map, which means projection
-        #   pushdown excluded them, so exclude all partition columns (return [])
-        return None if self._partition_columns is None else []
+        # No partition columns in projection map. If user originally selected
+        # partition columns, they were excluded by projection pushdown (return []).
+        # Otherwise, include all partition columns (return None).
+        return [] if self._partition_columns_selected else None
 
     def _get_data_columns(self) -> Optional[List[str]]:
         """Extract data columns from projection map, excluding partition columns.
@@ -526,7 +632,7 @@ class ParquetDatasource(Datasource):
             return None
 
         # Get partition columns and filter them out from the projection
-        partition_cols = self._partition_columns_set
+        partition_cols = self._partition_columns
         data_cols = [
             col for col in self._projection_map.keys() if col not in partition_cols
         ]
@@ -537,23 +643,56 @@ class ParquetDatasource(Datasource):
         self,
         predicate_expr: Expr,
     ) -> "ParquetDatasource":
-        """Apply a predicate to this datasource, separating partition column predicates.
+        """Apply a predicate with data pushdown and partition pruning.
 
-        Partition column predicates aren't pushed down to PyArrow since partition
-        columns aren't in the physical file schema. If a predicate references partition
-        columns, we return self unchanged so the Filter operator remains in the plan
-        and can be applied after partition columns are added.
+        This method optimizes predicates in three ways:
+        1. Data predicates → pushed to PyArrow (row-level filtering)
+        2. Partition predicates → used for partition pruning (file-level filtering)
+        3. Mixed predicates → both optimizations applied together
         """
-        # Check if predicate references any partition columns
-        referenced_cols = set(get_column_references(predicate_expr))
-        partition_cols = self._partition_columns_set
+        partition_cols = set(self._partition_columns)
 
-        if referenced_cols & partition_cols:
-            # Don't push down predicates on partition columns
-            return self
+        if not partition_cols:
+            # No partition columns - can push down everything normally
+            return super().apply_predicate(predicate_expr)
 
-        # Predicate only references data columns - use mixin's apply_predicate
-        return super().apply_predicate(predicate_expr)
+        # Split predicate into data and partition parts
+        split_result = _split_predicate_by_columns(predicate_expr, partition_cols)
+
+        # Apply partition pruning if we have a partition predicate
+        datasource = self
+        if (
+            split_result.partition_predicate is not None
+            and self._partitioning is not None
+        ):
+            parser = PathPartitionParser(self._partitioning)
+            pruned_fragments = []
+            pruned_paths = []
+
+            for fragment, path in zip(self._pq_fragments, self._pq_paths):
+                # Evaluate partition predicate - skip if it doesn't match
+                if parser.evaluate_predicate_on_partition(
+                    path, split_result.partition_predicate
+                ):
+                    pruned_fragments.append(fragment)
+                    pruned_paths.append(path)
+
+            # Create new datasource with pruned fragments
+            import copy
+
+            datasource = copy.copy(self)
+            datasource._pq_fragments = pruned_fragments
+            datasource._pq_paths = pruned_paths
+
+        if split_result.data_predicate is None:
+            # Only partition predicates - pruning applied, but Filter operator
+            # still needed for correctness (in case evaluation was conservative)
+            return datasource
+
+        # Push down data predicates to PyArrow for the pruned fragments
+        return super(ParquetDatasource, datasource).apply_predicate(
+            split_result.data_predicate
+        )
 
     def _estimate_in_mem_size(self, fragments: List[_ParquetFragment]) -> int:
         in_mem_size = sum([f.file_size for f in fragments]) * self._encoding_ratio

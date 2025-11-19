@@ -20,6 +20,7 @@ from ray.data.datasource.partitioning import (
     PartitionStyle,
     PathPartitionFilter,
 )
+from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -903,6 +904,86 @@ def test_field_types(partition_value, expected_type):
 
     assert set(partitions.keys()) == {"key"}
     assert isinstance(partitions["key"], expected_type)
+
+
+@pytest.mark.parametrize(
+    "path,predicate,expected_result,description",
+    [
+        # Simple equality matches
+        ("country=US/file.parquet", col("country") == "US", True, "Exact match"),
+        ("country=US/file.parquet", col("country") == "UK", False, "No match"),
+        # AND predicates
+        (
+            "country=US/year=2020/file.parquet",
+            (col("country") == "US") & (col("year") == "2020"),
+            True,
+            "AND both match",
+        ),
+        (
+            "country=US/year=2020/file.parquet",
+            (col("country") == "US") & (col("year") == "2021"),
+            False,
+            "AND one doesn't match",
+        ),
+        # OR predicates
+        (
+            "country=US/file.parquet",
+            (col("country") == "US") | (col("country") == "UK"),
+            True,
+            "OR first matches",
+        ),
+        (
+            "country=FR/file.parquet",
+            (col("country") == "US") | (col("country") == "UK"),
+            False,
+            "OR neither matches",
+        ),
+        # Comparison operators
+        ("year=2020/file.parquet", col("year") > "2019", True, "Greater than"),
+        ("year=2020/file.parquet", col("year") < "2019", False, "Less than"),
+        # NOT operator
+        ("country=US/file.parquet", ~(col("country") == "UK"), True, "NOT false"),
+        ("country=US/file.parquet", ~(col("country") == "US"), False, "NOT true"),
+        # IS_IN operator
+        (
+            "country=US/file.parquet",
+            col("country").is_in(["US", "UK"]),
+            True,
+            "IS_IN matches",
+        ),
+        (
+            "country=FR/file.parquet",
+            col("country").is_in(["US", "UK"]),
+            False,
+            "IS_IN no match",
+        ),
+        (
+            "year=2020/file.parquet",
+            col("year").is_in(["2019", "2020", "2021"]),
+            True,
+            "IS_IN with multiple values",
+        ),
+    ],
+)
+def test_evaluate_predicate_on_partition(path, predicate, expected_result, description):
+    """Test partition predicate evaluation for automatic partition pruning."""
+    parser = PathPartitionParser(Partitioning("hive"))
+    result = parser.evaluate_predicate_on_partition(path, predicate)
+
+    assert (
+        result == expected_result
+    ), f"{description}: Expected {expected_result}, got {result}"
+
+
+def test_evaluate_predicate_on_unpartitioned_file():
+    """Test that unpartitioned files are conservatively included."""
+    parser = PathPartitionParser(Partitioning("hive"))
+    # Unpartitioned file should always return True (conservative)
+    result = parser.evaluate_predicate_on_partition(
+        "data.parquet", col("country") == "US"
+    )
+
+    assert result is True
 
 
 if __name__ == "__main__":
