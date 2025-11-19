@@ -140,8 +140,6 @@ class GroupManager(object):
             logger.debug("Creating NIXL Backend: '{}'...".format(group_name))
             g = NixlBackend()
         elif backend == types.Backend.HCCL:
-            # _check_backend_availability(backend)
-            # logger.debug("Creating HCCL group: '{}'...".format(group_name))
             # Rendezvous: ensure a MASTER_ADDR:MASTER_PORT is published in internal_kv.
             metadata_key = _get_master_addr_key(group_name)
             if rank == 0:

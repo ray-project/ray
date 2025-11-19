@@ -157,7 +157,7 @@ class HCCLGroup(BaseGroup):
             if default_backend == "hccl":  # if same backend, simply use existing group
                 self._pg = default_pg
             else:  # otherwise create separate group
-                self._pg = dist.new_group(ranks=list(range(world_size)))
+                self._pg = dist.new_group(ranks=list(range(world_size)), backend='hccl')
 
         super(HCCLGroup, self).__init__(world_size, rank, group_name)
         self._dev_comm_map = {}
@@ -368,12 +368,15 @@ class HCCLGroup(BaseGroup):
                     npuStream_t(stream.npu_stream),
                 )
                 stream.synchronize()
+            assert (
+                exec_result == 0
+            ), f"Failed to execute `HcclReduceScatter`. Error code: {exec_result}."
 
         input_flattened = [
             _flatten_for_scatter_gather(tensor_list, copy=True)
             for tensor_list in tensor_lists
         ]
-
+        
         self._collective(input_flattened, tensors, collective_fn)
 
     def send(self, tensors, send_options=SendOptions()):
@@ -614,7 +617,7 @@ class HCCLGroup(BaseGroup):
             )
             assert (
                 exec_result == 0
-            ), f"Ranke {self.rank} Failed to execute `HcclCommInitRootInfo`. Error code: {exec_result}."
+            ), f"Failed to execute `HcclCommInitRootInfo`. Error code: {exec_result}."
 
             stream = torch.npu.Stream()
 
