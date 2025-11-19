@@ -65,8 +65,8 @@ class DataConfig:
         self._num_train_cpus = num_train_cpus
         self._num_train_gpus = num_train_gpus
 
-    def _clone_and_get_execution_options(self, dataset_name: str) -> ExecutionOptions:
-        """Get the execution options for a given dataset name."""
+    def _get_execution_options(self, dataset_name: str) -> ExecutionOptions:
+        """Return a copy of the configured execution options for a given dataset name."""
         if isinstance(self._execution_options, dict):
             res = self._execution_options.get(
                 dataset_name, DataConfig.default_ingest_options()
