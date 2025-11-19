@@ -1569,7 +1569,7 @@ class HashShuffleAggregator:
 
     def finalize(
         self, partition_id: int
-    ) -> Generator[Union[Block, "BlockMetadataWithSchema"], None]:
+    ) -> Generator[Union[Block, "BlockMetadataWithSchema"], None, None]:
 
         with self._lock:
             exec_stats_builder = BlockExecStats.builder()
