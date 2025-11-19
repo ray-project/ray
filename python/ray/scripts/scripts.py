@@ -2757,8 +2757,6 @@ def get_auth_token(generate):
 
     # Get raw token value
     token = loader.get_raw_token()
-    if not token:
-        raise click.ClickException("Failed to load authentication token.")
 
     # Print token to stdout (for piping) without newline
     click.echo(token, nl=False)
