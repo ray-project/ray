@@ -165,6 +165,7 @@ class SplitCoordinator:
         def gen_epochs():
             while True:
                 self._executor = self._base_dataset._plan.create_executor()
+                self._base_dataset._plan.increment_run_index()
                 output_iterator = execute_to_legacy_bundle_iterator(
                     self._executor, dataset._plan
                 )

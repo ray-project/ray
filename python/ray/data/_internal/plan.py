@@ -101,8 +101,11 @@ class ExecutionPlan:
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
         executor = StreamingExecutor(self._context, self.get_dataset_id())
-        self._run_index += 1
         return executor
+
+    def increment_run_index(self):
+        """Increment the suffix qualifier of a dataset during epoch training."""
+        self._run_index += 1
 
     def __repr__(self) -> str:
         return (
