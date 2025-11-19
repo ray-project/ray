@@ -908,7 +908,9 @@ RAY_CONFIG(int64_t,
 /// reply path is light enough that 2 threads is sufficient.
 RAY_CONFIG(int64_t,
            core_worker_num_server_call_thread,
-           std::min<int64_t>(2, (int64_t)std::thread::hardware_concurrency()))
+           std::min((int64_t)2,
+                    std::max((int64_t)1,
+                             (int64_t)(std::thread::hardware_concurrency() / 4U))))
 
 /// Use madvise to prevent worker/raylet coredumps from including
 /// the mapped plasma pages.
