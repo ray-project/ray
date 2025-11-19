@@ -56,3 +56,38 @@ refs = sender.produce.remote([tensor1, tensor2])
 ref1 = receiver.consume_with_nixl.remote(refs)
 print(ray.get(ref1))
 # __nixl_put__and_get_end__
+
+
+# __nixl_limitations_start__
+from ray.exceptions import ActorDiedError
+
+@ray.remote(num_gpus=1)
+class Actor:
+    def __init__(self):
+        self.tensor1 = torch.tensor([1, 2, 3])
+        self.tensor2 = torch.tensor([4, 5, 6])
+        self.tensor3 = torch.tensor([7, 8, 9])
+
+    @ray.method(tensor_transport="nixl")
+    def send_dict1(self):
+        return {"round1-1": self.tensor1, "round1-2": self.tensor2}
+
+    @ray.method(tensor_transport="nixl")
+    def send_dict2(self):
+        return {"round2-1": self.tensor1, "round2-3": self.tensor3}
+
+    def sum_dict(self, dict):
+        return sum(v.sum().item() for v in dict.values())
+
+
+sender, receiver = Actor.remote(), Actor.remote()
+ref1 = sender.send_dict1.remote()
+result1 = receiver.sum_dict.remote(ref1)
+print(ray.get(result1))
+ref2 = sender.send_dict2.remote()
+result2 = receiver.sum_dict.remote(ref2)
+try:
+    print(ray.get(result2))
+except ValueError as e:
+    print("Error caught:", e)
+# __nixl_limitations_end__

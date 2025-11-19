@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional
 
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
@@ -7,7 +7,11 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
+from ray.data._internal.execution.operators.map_operator import (
+    BaseRefBundler,
+    MapOperator,
+    _map_task,
+)
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.context import DataContext
@@ -24,7 +28,8 @@ class TaskPoolMapOperator(MapOperator):
         name: str = "TaskPoolMap",
         target_max_block_size_override: Optional[int] = None,
         min_rows_per_bundle: Optional[int] = None,
-        concurrency: Optional[int] = None,
+        ref_bundler: Optional[BaseRefBundler] = None,
+        max_concurrency: Optional[int] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
@@ -41,7 +46,8 @@ class TaskPoolMapOperator(MapOperator):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
-            concurrency: The maximum number of Ray tasks to use concurrently,
+            ref_bundler: The ref bundler to use for this operator.
+            max_concurrency: The maximum number of Ray tasks to use concurrently,
                 or None to use as many tasks as possible.
             supports_fusion: Whether this operator supports fusion with other operators.
             map_task_kwargs: A dictionary of kwargs to pass to the map task. You can
@@ -61,12 +67,17 @@ class TaskPoolMapOperator(MapOperator):
             name,
             target_max_block_size_override,
             min_rows_per_bundle,
+            ref_bundler,
             supports_fusion,
             map_task_kwargs,
             ray_remote_args_fn,
             ray_remote_args,
         )
-        self._concurrency = concurrency
+
+        if max_concurrency is not None and max_concurrency <= 0:
+            raise ValueError(f"max_concurrency have to be > 0 (got {max_concurrency})")
+
+        self._max_concurrency = max_concurrency
 
         # NOTE: Unlike static Ray remote args, dynamic arguments extracted from the
         #       blocks themselves are going to be passed inside `fn.options(...)`
@@ -108,17 +119,13 @@ class TaskPoolMapOperator(MapOperator):
             data_context,
             ctx,
             *bundle.block_refs,
+            slices=bundle.slices,
             **self.get_map_task_kwargs(),
         )
         self._submit_data_task(gen, bundle)
 
     def progress_str(self) -> str:
         return ""
-
-    def min_max_resource_requirements(
-        self,
-    ) -> Tuple[ExecutionResources, ExecutionResources]:
-        return self.incremental_resource_usage(), ExecutionResources.for_limits()
 
     def current_processor_usage(self) -> ExecutionResources:
         num_active_workers = self.num_active_tasks()
@@ -131,40 +138,37 @@ class TaskPoolMapOperator(MapOperator):
         return ExecutionResources()
 
     def incremental_resource_usage(self) -> ExecutionResources:
+        return self.per_task_resource_allocation().copy(
+            object_store_memory=(
+                self._metrics.obj_store_mem_max_pending_output_per_task or 0
+            ),
+        )
+
+    def per_task_resource_allocation(self) -> ExecutionResources:
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0),
             gpu=self._ray_remote_args.get("num_gpus", 0),
             memory=self._ray_remote_args.get("memory", 0),
-            object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
-            or 0,
         )
-
-    def per_task_resource_allocation(
-        self: "PhysicalOperator",
-    ) -> ExecutionResources:
-        return self.incremental_resource_usage()
-
-    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
-        return self._concurrency
 
     def min_scheduling_resources(
         self: "PhysicalOperator",
     ) -> ExecutionResources:
         return self.incremental_resource_usage()
 
-    def get_concurrency(self) -> Optional[int]:
-        return self._concurrency
+    def get_max_concurrency_limit(self) -> Optional[int]:
+        return self._max_concurrency
 
     def all_inputs_done(self):
         super().all_inputs_done()
 
         if (
-            self._concurrency is not None
-            and self._metrics.num_inputs_received < self._concurrency
+            self._max_concurrency is not None
+            and self._metrics.num_inputs_received < self._max_concurrency
         ):
             warnings.warn(
                 f"The maximum number of concurrent tasks for '{self.name}' is set to "
-                f"{self._concurrency}, but the operator only received "
+                f"{self._max_concurrency}, but the operator only received "
                 f"{self._metrics.num_inputs_received} input(s). This means that the "
                 f"operator can launch at most {self._metrics.num_inputs_received} "
                 "task(s), which is less than the concurrency limit. You might be able "

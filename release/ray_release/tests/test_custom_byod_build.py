@@ -1,8 +1,9 @@
 import sys
-import pytest
 from unittest.mock import patch
 
+import pytest
 from click.testing import CliRunner
+
 from ray_release.scripts.custom_byod_build import main
 
 

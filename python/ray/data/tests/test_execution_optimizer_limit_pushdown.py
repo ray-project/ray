@@ -1,9 +1,13 @@
 import sys
+from typing import Any, Dict, List
 
 import pandas as pd
 import pytest
 
 import ray
+from ray.data import Dataset
+from ray.data._internal.logical.interfaces import Plan
+from ray.data._internal.util import rows_same
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
@@ -12,12 +16,17 @@ from ray.tests.conftest import *  # noqa
 
 
 def _check_valid_plan_and_result(
-    ds,
-    expected_plan,
-    expected_result,
+    ds: Dataset,
+    expected_plan: Plan,
+    expected_result: List[Dict[str, Any]],
     expected_physical_plan_ops=None,
+    check_ordering=True,
 ):
-    assert ds.take_all() == expected_result
+    actual_result = ds.take_all()
+    if check_ordering:
+        assert actual_result == expected_result
+    else:
+        assert rows_same(pd.DataFrame(actual_result), pd.DataFrame(expected_result))
     assert ds._plan._logical_plan.dag.dag_str == expected_plan
 
     expected_physical_plan_ops = expected_physical_plan_ops or []
@@ -56,11 +65,11 @@ def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
         ds, "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)]", [{"id": 0}]
     )
 
-    # Test 3: Limit should not push through MapBatches operations
+    # Test 3: Limit should push through MapBatches operations
     ds = ray.data.range(100, override_num_blocks=100).map_batches(f2).limit(1)
     _check_valid_plan_and_result(
         ds,
-        "Read[ReadRange] -> MapBatches[MapBatches(f2)] -> Limit[limit=1]",
+        "Read[ReadRange] -> Limit[limit=1] -> MapBatches[MapBatches(f2)]",
         [{"id": 0}],
     )
 
@@ -80,6 +89,7 @@ def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
         ds,
         "Read[ReadRange] -> Limit[limit=5] -> Project[Project]",
         [{"id": i} for i in range(5)],
+        check_ordering=False,
     )
 
     # Test 6: Limit should stop at Sort operations (AllToAll)
@@ -408,10 +418,10 @@ def test_limit_pushdown_union_maps_projects(ray_start_regular_shared_2_cpus):
 
     expected_plan = (
         "Read[ReadRange] -> "
-        "MapBatches[MapBatches(<lambda>)] -> Limit[limit=3] -> MapRows[Map(<lambda>)] -> "
+        "Limit[limit=3] -> MapBatches[MapBatches(<lambda>)] -> MapRows[Map(<lambda>)] -> "
         "Project[Project], "
         "Read[ReadRange] -> "
-        "MapBatches[MapBatches(<lambda>)] -> Limit[limit=3] -> MapRows[Map(<lambda>)] -> "
+        "Limit[limit=3] -> MapBatches[MapBatches(<lambda>)] -> MapRows[Map(<lambda>)] -> "
         "Project[Project] -> Union[Union] -> Limit[limit=3]"
     )
 
@@ -488,6 +498,37 @@ def test_limit_pushdown_preserves_map_behavior(ray_start_regular_shared_2_cpus):
     # Both should have the expected transformation applied
     expected = [{"id": i + 1} for i in range(10)]
     assert result_with == expected
+
+
+@pytest.mark.parametrize(
+    "udf_modifying_row_count,expected_plan",
+    [
+        (
+            False,
+            "Read[ReadRange] -> Limit[limit=10] -> MapBatches[MapBatches(<lambda>)]",
+        ),
+        (
+            True,
+            "Read[ReadRange] -> MapBatches[MapBatches(<lambda>)] -> Limit[limit=10]",
+        ),
+    ],
+)
+def test_limit_pushdown_udf_modifying_row_count_with_map_batches(
+    ray_start_regular_shared_2_cpus,
+    udf_modifying_row_count,
+    expected_plan,
+):
+    """Test that limit pushdown preserves the row count with map batches."""
+    ds = (
+        ray.data.range(100)
+        .map_batches(lambda x: x, udf_modifying_row_count=udf_modifying_row_count)
+        .limit(10)
+    )
+    _check_valid_plan_and_result(
+        ds,
+        expected_plan,
+        [{"id": i} for i in range(10)],
+    )
 
 
 if __name__ == "__main__":

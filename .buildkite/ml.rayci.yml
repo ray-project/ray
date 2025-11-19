@@ -6,11 +6,14 @@ depends_on:
 steps:
   # builds
   - name: minbuild-ml
-    label: "wanda: minbuild-ml-py39"
+    label: "wanda: minbuild-ml-py{{matrix}}"
     wanda: ci/docker/min.build.wanda.yaml
     depends_on: oss-ci-base_build
+    matrix:
+      - "3.9"
+      - "3.10"
     env:
-      PYTHON_VERSION: "3.9"
+      PYTHON_VERSION: "{{matrix}}"
       EXTRA_DEPENDENCY: ml
     tags: cibase
 
@@ -157,7 +160,6 @@ steps:
       - oss
     instance_type: medium
     commands:
-      - pip install -U boto3==1.28.70 awscli==1.29.70
       - $(python ci/env/setup_credentials.py)
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
         --parallelism-per-worker 3
@@ -295,7 +297,6 @@ steps:
       - oss
     instance_type: medium
     commands:
-      - pip install -U boto3==1.28.70 awscli==1.29.70
       - $(python ci/env/setup_credentials.py)
       - bazel run //ci/ray_ci:test_in_docker -- //... ml --run-flaky-tests
         --parallelism-per-worker 3

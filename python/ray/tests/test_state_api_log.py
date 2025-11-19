@@ -1282,6 +1282,54 @@ def test_log_get(ray_start_cluster):
         return True
 
     wait_for_condition(verify)
+
+    """
+    Test ANSI escape codes are filtered in logs
+    """
+    NO_COLOR_MESSAGE = "test message: no color"
+    UNCOLORED_MESSAGE = "test message: red green blue"
+    COLORED_MESSAGE = (
+        UNCOLORED_MESSAGE.replace("red", "\033[0;31mred\033[0m")
+        .replace("green", "\033[0;32mgreen\033[0m")
+        .replace("blue", "\033[0;34mblue\033[0m")
+    )
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            print(NO_COLOR_MESSAGE)
+            print(COLORED_MESSAGE)
+
+    actor = Actor.remote()
+    actor_id = actor._actor_id.hex()
+
+    def verify():
+        lines_wo_ansi = get_log(actor_id=actor_id, suffix="out", filter_ansi_code=True)
+        joined_lines_wo_ansi = "".join(lines_wo_ansi)
+        assert NO_COLOR_MESSAGE in joined_lines_wo_ansi
+        assert UNCOLORED_MESSAGE in joined_lines_wo_ansi
+        assert COLORED_MESSAGE not in joined_lines_wo_ansi
+
+        lines_w_ansi = get_log(actor_id=actor_id, suffix="out")
+        joined_lines_w_ansi = "".join(lines_w_ansi)
+        assert NO_COLOR_MESSAGE in joined_lines_w_ansi
+        assert UNCOLORED_MESSAGE not in joined_lines_w_ansi
+        assert COLORED_MESSAGE in joined_lines_w_ansi
+
+        # If a random value is set as a path query string for `filter_ansi_code`,
+        # it should be treated as default behavior
+        lines_rand_val = get_log(
+            actor_id=actor_id, suffix="out", filter_ansi_code="random value"
+        )
+        joined_lines_rand_val = "".join(lines_rand_val)
+        lines_default = get_log(actor_id=actor_id, suffix="out", filter_ansi_code=None)
+        joined_lines_default = "".join(lines_default)
+        assert joined_lines_rand_val == joined_lines_default, joined_lines_default
+
+        return True
+
+    wait_for_condition(verify)
+
     ##############################
     # Test binary files and encodings.
     ##############################

@@ -51,13 +51,30 @@ Signed-by: /etc/apt/keyrings/microsoft.gpg" | sudo tee /etc/apt/sources.list.d/a
 
 apt-get update
 apt-get install -y \
-  awscli docker-ce-cli nodejs build-essential python-is-python3 \
+  awscli nodejs build-essential python-is-python3 \
   python3-pip openjdk-8-jre wget jq \
+  "docker-ce-cli=5:28.5.2-1~ubuntu.22.04~jammy" \
   azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
+
+# Install uv
+wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+
+mkdir -p /usr/local/python
+# Install Python 3.9 using uv
+UV_PYTHON_VERSION=3.10
+uv python install --install-dir /usr/local/python "$UV_PYTHON_VERSION"
+
+export UV_PYTHON_INSTALL_DIR=/usr/local/python
+# Make Python from uv the default by creating symlinks
+UV_PYTHON_BIN="$(uv python find --no-project "$UV_PYTHON_VERSION")"
+echo "uv python binary location: $UV_PYTHON_BIN"
+ln -s "$UV_PYTHON_BIN" "/usr/local/bin/python${UV_PYTHON_VERSION}"
+ln -s "$UV_PYTHON_BIN" /usr/local/bin/python3
+ln -s "$UV_PYTHON_BIN" /usr/local/bin/python
 
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
-python -m pip install pip==25.0 cffi==1.16.0
+uv pip install --system pip==25.0 cffi==1.16.0
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.
@@ -99,4 +116,4 @@ EOF
 CMD ["echo", "ray forge"]
 
 
-# last update: 2025-10-08
+# last update: 2025-11-12

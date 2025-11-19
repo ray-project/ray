@@ -1,5 +1,4 @@
 import os
-import platform
 import subprocess
 import sys
 import tempfile
@@ -11,7 +10,6 @@ import yaml
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.runtime_env import dependency_utils
-from ray._private.runtime_env.conda import _get_conda_dict_with_ray_inserted
 from ray._private.runtime_env.dependency_utils import (
     INTERNAL_PIP_FILENAME,
     MAX_INTERNAL_PIP_FILENAME_TRIES,
@@ -21,42 +19,12 @@ from ray._private.test_utils import (
     check_local_files_gced,
     generate_runtime_env_dict,
 )
-from ray.runtime_env import RuntimeEnv
 from ray.util.state import list_tasks
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
     # packages and fall back all the dependencies to current python's site.
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
-
-
-def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):
-    # Disable dev mode to prevent Ray dependencies being automatically inserted
-    # into the conda dict.
-    if os.environ.get("RAY_RUNTIME_ENV_LOCAL_DEV_MODE") is not None:
-        monkeypatch.delenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE")
-    if os.environ.get("RAY_CI_POST_WHEEL_TESTS") is not None:
-        monkeypatch.delenv("RAY_CI_POST_WHEEL_TESTS")
-    monkeypatch.setattr(ray, "__version__", "1.9.0")
-    monkeypatch.setattr(ray, "__commit__", "92599d9127e228fe8d0a2d94ca75754ec21c4ae4")
-    monkeypatch.setattr(sys, "version_info", (3, 9, 7, "final", 0))
-    # Simulate running on an M1 Mac.
-    monkeypatch.setattr(sys, "platform", "darwin")
-    monkeypatch.setattr(platform, "machine", lambda: "arm64")
-
-    input_conda = {"dependencies": ["blah", "pip", {"pip": ["pip_pkg"]}]}
-    runtime_env = RuntimeEnv(conda=input_conda)
-    output_conda = _get_conda_dict_with_ray_inserted(runtime_env)
-    # M1 wheels are not uploaded to AWS S3.  So rather than have an S3 URL
-    # inserted as a dependency, we should just have the string "ray==1.9.0".
-    assert output_conda == {
-        "dependencies": [
-            "blah",
-            "pip",
-            {"pip": ["ray==1.9.0", "ray[default]", "pip_pkg"]},
-            "python=3.9.7",
-        ]
-    }
 
 
 @pytest.mark.skipif(

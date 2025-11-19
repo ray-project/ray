@@ -56,7 +56,7 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
   RAY_CORE_WORKER_RPC_PROXY(ReportGeneratorItemReturns)
   RAY_CORE_WORKER_RPC_PROXY(KillActor)
   RAY_CORE_WORKER_RPC_PROXY(CancelTask)
-  RAY_CORE_WORKER_RPC_PROXY(RemoteCancelTask)
+  RAY_CORE_WORKER_RPC_PROXY(CancelRemoteTask)
   RAY_CORE_WORKER_RPC_PROXY(RegisterMutableObjectReader)
   RAY_CORE_WORKER_RPC_PROXY(GetCoreWorkerStats)
   RAY_CORE_WORKER_RPC_PROXY(LocalGC)

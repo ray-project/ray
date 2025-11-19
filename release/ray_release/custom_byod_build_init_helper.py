@@ -1,11 +1,13 @@
-from typing import List, Tuple, Dict
-import yaml
+import hashlib
 import os
+from typing import Dict, List, Optional, Tuple
+
+import yaml
+
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
 from ray_release.test import Test
-from ray_release.util import AZURE_REGISTRY_NAME
-import hashlib
+from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX, AZURE_REGISTRY_NAME
 
 
 def generate_custom_build_step_key(image: str) -> str:
@@ -78,20 +80,20 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
                 f"bazelisk run //release:custom_byod_build -- --image-name {image} --base-image {base_image} {f'--post-build-script {post_build_script}' if post_build_script else ''} {f'--python-depset {python_depset}' if python_depset else ''}",
             ],
         }
-        step["depends_on"] = get_prerequisite_step(image)
+        step["depends_on"] = get_prerequisite_step(image, base_image)
         build_config["steps"].append(step)
 
-    logger.info(f"Build config: {build_config}")
-    print("writing to file: ", destination_file)
     with open(destination_file, "w") as f:
         yaml.dump(build_config, f, default_flow_style=False, sort_keys=False)
 
 
-def get_prerequisite_step(image: str) -> str:
+def get_prerequisite_step(image: str, base_image: str) -> Optional[str]:
     """Get the base image build step for a job that depends on it."""
     config = get_global_config()
     image_repository, _ = image.split(":")
     image_name = image_repository.split("/")[-1]
+    if base_image.startswith(ANYSCALE_RAY_IMAGE_PREFIX):
+        return "forge"
     if image_name == "ray-ml":
         return config["release_image_step_ray_ml"]
     elif image_name == "ray-llm":

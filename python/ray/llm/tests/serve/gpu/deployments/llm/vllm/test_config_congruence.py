@@ -19,7 +19,7 @@ from vllm.config import VllmConfig
 from vllm.entrypoints.openai.api_server import build_async_engine_client
 from vllm.platforms.interface import DeviceCapability
 
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
+from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.util import remove_placement_group
 from ray.util.placement_group import placement_group_table
