@@ -95,14 +95,17 @@ class Join(
         self._aggregator_ray_remote_args = aggregator_ray_remote_args
 
     def supports_projection_pass_through(self) -> bool:
-        """Adding a suffix to resulting join tables is currently not handled
-        correctly. For example, if a user selects columns with suffix we would need to
-        know
-            1. Whether the column they selected has been renamed with _suffix. This _suffix
-            name can also collide with an existing columns.
-            2. Selection with duplicate column names (pyarrow has quirky behavior
-            on the output schema depending on what columns you select. If you select
-            a non-duplicated column name, it works. If you don't, it doesn't work)
+        """Currently, projection pass through is broken for joins when:
+            1. User provides a left or right suffix that is non-empty
+            2. left and right table share a column name
+        As a result, the joined table would contain columns with additional suffixes.
+
+        If a user selects a column with a _suffix we would need to handle whether
+        the column they selected has been renamed with _suffix. This _suffix
+        name can also collide with an existing columns pre-join.
+
+        Therefore, we are disabling projection pass through for joins for the
+        time being.
         """
         return not self._left_columns_suffix and not self._right_columns_suffix
 

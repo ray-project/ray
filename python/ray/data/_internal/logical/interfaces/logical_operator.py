@@ -110,7 +110,7 @@ class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
 
 
 class LogicalOperatorSupportsProjectionPassThrough(LogicalOperator):
-    """Mixin for operators supporting projection pushthrough
+    """Mixin for operators supporting projection passthrough
 
     This is distinct from LogicalOperatorSupportsProjectionPushdown, which is for
     operators that can *accept* predicates (like Read). This trait is for operators
@@ -129,8 +129,8 @@ class LogicalOperatorSupportsProjectionPassThrough(LogicalOperator):
         When True (i.e: Join, Zip): Use schema analysis to determine which columns go to which branch.
         When False (all others): Push same columns to all branches.
 
-        This is needed because because some operators do not change/update the schema, so we can
-        completely ignore the schema during projection pass through.
+        This is needed because because some operators do not change/update the schema, so if the schema
+        doesn't exist, we can safely ignore the schema during projection pass through.
         """
         return False
 
