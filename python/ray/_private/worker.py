@@ -575,6 +575,7 @@ class Worker:
 
     @property
     def current_temp_dir(self):
+        self.check_connected()
         return self.node.temp_dir
 
     @property
@@ -1980,6 +1981,23 @@ def init(
             metrics_export_port=_metrics_export_port,
         )
         try:
+            # check if we are on the same node as the head node
+            if _node_ip_address is not None:
+                node_ip_address = _node_ip_address
+            else:
+                node_ip_address = ray._private.services.get_node_ip_address()
+            if bootstrap_address.split(":")[0] != node_ip_address or (
+                address is not None
+                and (
+                    address.split(":")[0] != "127.0.0.1"
+                    and address.split(":")[0] != node_ip_address
+                )
+            ):
+                logger.warning(
+                    "Ignore if this node has the default or same temp_dir as the head node. "
+                    + "Connecting a driver process to a non-head node with custom temp_dir is not supported."
+                )
+
             _global_node = ray._private.node.Node(
                 ray_params,
                 head=False,

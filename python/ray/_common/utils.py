@@ -245,16 +245,22 @@ def resolve_user_ray_temp_dir(gcs_address: str, node_id: str):
     # Attempt to fetch temp dir as specified by --temp-dir at creation time.
     if gcs_address is not None and node_id is not None:
         gcs_client = GcsClient(gcs_address)
-        node_info = next(
-            iter(
-                gcs_client.get_all_node_info(
-                    filters=[
-                        ("node_id", "=", node_id),
-                        ("state", "=", "ALIVE"),
-                    ]
-                ).values()
+        try:
+            node_info = next(
+                iter(
+                    gcs_client.get_all_node_info(
+                        filters=[
+                            ("node_id", "=", node_id),
+                            ("state", "=", "ALIVE"),
+                        ]
+                    ).values()
+                )
             )
-        )
+        except Exception as e:
+            raise Exception(
+                f"Failed to get node info from GCS when fetching tempdir for node {node_id}: {e}"
+            )
+
         if node_info is not None:
             temp_dir = getattr(node_info, "temp_dir", None)
             if temp_dir is not None:

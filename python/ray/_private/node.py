@@ -500,8 +500,6 @@ class Node:
                         "either GCS or head node's raylet may not have started successfully."
                     )
 
-        logger.info(f"Setting temp dir to: {self.temp_dir}")
-
         try_to_create_directory(self.temp_dir)
 
         # Assumes session_name is resolved before _init_temp is called

@@ -1025,6 +1025,8 @@ int main(int argc, char *argv[]) {
     auto instance_type_name = std::getenv(kNodeCloudInstanceTypeNameEnv);
     self_node_info.set_instance_type_name(instance_type_name ? instance_type_name : "");
 
+    RAY_LOG(INFO) << "Setting temp dir to: " << temp_dir;
+
     node_manager->Start(std::move(self_node_info));
   });
 
