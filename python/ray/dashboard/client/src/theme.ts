@@ -99,6 +99,7 @@ export const lightTheme = createTheme(basicTheme, {
       main: "#D32F2F",
     },
     warning: {
+      main: "#ED6C02",
       light: "#cfcf08",
     },
     text: {
