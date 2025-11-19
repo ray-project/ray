@@ -36,6 +36,9 @@ nvm use "$NODE_VERSION"
 npm install -g @bazel/bazelisk
 ln -sf "$(which bazelisk)" /usr/local/bin/bazel
 
+# Symlink Python 3.11 into /usr/bin for build scripts
+ln -sf /opt/python/cp311-cp311/bin/python3 /usr/bin/python3
+
 {
   echo "build --config=ci"
   echo "build --announce_rc"
