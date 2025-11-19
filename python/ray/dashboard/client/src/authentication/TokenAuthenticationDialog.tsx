@@ -70,11 +70,11 @@ export const TokenAuthenticationDialog: React.FC<TokenAuthenticationDialogProps>
 
     // Different messages based on whether this is initial auth or re-auth.
     const title = "Authentication Token Required";
-    const message = (
-        hasExistingToken
-            ? "The existing authentication token is invalid."
-            : "Token authentication is enabled."
-    ) + " Provide the matching authentication token for this cluster.\n- Local clusters: use `ray get-auth-token` to retrieve it.\n- Remote clusters: you must retrieve the token that was used when creating the cluster.\n\nSee: https://docs.ray.io/en/latest/ray-security/auth.html";
+    const message =
+      (hasExistingToken
+        ? "The existing authentication token is invalid."
+        : "Token authentication is enabled.") +
+      " Provide the matching authentication token for this cluster.\n- Local clusters: use `ray get-auth-token` to retrieve it.\n- Remote clusters: you must retrieve the token that was used when creating the cluster.\n\nSee: https://docs.ray.io/en/latest/ray-security/auth.html";
 
     return (
       <Dialog
