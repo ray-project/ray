@@ -269,7 +269,7 @@ def test_cancel_local_task_rpc_retry_and_idempotency(
     Verify that the RPC is idempotent when network failures occur.
     When force_kill=True, verify the worker process is actually killed using psutil.
     """
-    ray.init(num_cpus=2)
+    ray.init(num_cpus=1)
     signaler = SignalActor.remote()
 
     @ray.remote(num_cpus=1)

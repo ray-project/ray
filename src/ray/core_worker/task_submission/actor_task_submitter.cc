@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "ray/common/protobuf_utils.h"
+#include "ray/core_worker/task_submission/task_submission_util.h"
 #include "ray/util/time.h"
 
 namespace ray {
@@ -912,17 +913,16 @@ std::string ActorTaskSubmitter::DebugString(const ActorID &actor_id) const {
   return stream.str();
 }
 
-void ActorTaskSubmitter::RetryCancelTask(TaskSpecification task_spec,
-                                         bool recursive,
-                                         int64_t milliseconds) {
+void ActorTaskSubmitter::RetryCancelTask(TaskSpecification task_spec, bool recursive) {
+  auto delay_ms = RayConfig::instance().cancellation_retry_ms();
   RAY_LOG(DEBUG).WithField(task_spec.TaskId())
-      << "Task cancelation will be retried in " << milliseconds << " ms";
+      << "Task cancelation will be retried in " << delay_ms << " ms";
   execute_after(
       io_service_,
       [this, task_spec = std::move(task_spec), recursive] {
         CancelTask(task_spec, recursive);
       },
-      std::chrono::milliseconds(milliseconds));
+      std::chrono::milliseconds(delay_ms));
 }
 
 void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive) {
@@ -997,7 +997,7 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
   // an executor tells us to stop retrying.
 
   // If there's no client, it means actor is not created yet.
-  // Retry in 1 second.
+  // Retry after the configured delay.
   NodeID node_id;
   std::string executor_worker_id;
   {
@@ -1006,7 +1006,7 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
     auto queue = client_queues_.find(actor_id);
     RAY_CHECK(queue != client_queues_.end());
     if (!queue->second.client_address_.has_value()) {
-      RetryCancelTask(task_spec, recursive, 1000);
+      RetryCancelTask(task_spec, recursive);
       return;
     }
     node_id = NodeID::FromBinary(queue->second.client_address_.value().node_id());
@@ -1034,61 +1034,29 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
             [this, task_spec = std::move(task_spec), recursive](
                 const Status &status, const rpc::CancelLocalTaskReply &reply) mutable {
               if (!status.ok()) {
-                RAY_LOG(DEBUG) << "CancelLocalTask RPC failed for task "
-                               << task_spec.TaskId() << ": " << status.ToString()
-                               << " due to node death";
+                RAY_LOG(INFO) << "CancelLocalTask RPC failed for task "
+                              << task_spec.TaskId() << ": " << status.ToString()
+                              << " due to node death";
                 return;
               } else {
-                RAY_LOG(DEBUG) << "CancelLocalTask RPC response received for "
-                               << task_spec.TaskId()
-                               << " with attempt_succeeded: " << reply.attempt_succeeded()
-                               << " requested_task_running: "
-                               << reply.requested_task_running();
+                RAY_LOG(INFO) << "CancelLocalTask RPC response received for "
+                              << task_spec.TaskId()
+                              << " with attempt_succeeded: " << reply.attempt_succeeded()
+                              << " requested_task_running: "
+                              << reply.requested_task_running();
               }
-              // Keep retrying every 2 seconds until a task is officially
-              // finished.
+              // Keep retrying until a task is officially finished.
               if (!reply.attempt_succeeded()) {
-                RetryCancelTask(std::move(task_spec), recursive, 2000);
+                RetryCancelTask(std::move(task_spec), recursive);
               }
             });
       };
 
-  // Cancel can execute on the user's python thread, but the GCS node cache is updated on
-  // the io service thread and is not thread-safe. Hence we need to post the entire
-  // cache access to the io service thread.
-  io_service_.post(
-      [this, do_cancel_local_task = std::move(do_cancel_local_task), node_id]() mutable {
-        // Check GCS node cache. If node info is not in the cache, query the GCS instead.
-        auto *node_info = gcs_client_->Nodes().GetNodeAddressAndLiveness(
-            node_id, /*filter_dead_nodes=*/false);
-        if (node_info == nullptr) {
-          gcs_client_->Nodes().AsyncGetAllNodeAddressAndLiveness(
-              [do_cancel_local_task = std::move(do_cancel_local_task), node_id](
-                  const Status &status,
-                  std::vector<rpc::GcsNodeAddressAndLiveness> &&nodes) mutable {
-                if (!status.ok()) {
-                  RAY_LOG(INFO) << "Failed to get node info from GCS";
-                  return;
-                }
-                if (nodes.empty() || nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
-                  RAY_LOG(INFO).WithField(node_id)
-                      << "Not sending CancelLocalTask because node is dead";
-                  return;
-                }
-                do_cancel_local_task(nodes[0]);
-              },
-              -1,
-              {node_id});
-          return;
-        }
-        if (node_info->state() == rpc::GcsNodeInfo::DEAD) {
-          RAY_LOG(INFO).WithField(node_id)
-              << "Not sending CancelLocalTask because node is dead";
-          return;
-        }
-        do_cancel_local_task(*node_info);
-      },
-      "ActorTaskSubmitter.CancelTask");
+  PostCancelLocalTask(gcs_client_,
+                      io_service_,
+                      node_id,
+                      std::move(do_cancel_local_task),
+                      "ActorTaskSubmitter.CancelTask");
 }
 
 bool ActorTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {

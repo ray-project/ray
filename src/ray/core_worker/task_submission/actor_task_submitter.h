@@ -236,8 +236,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \param recursive If true, it will cancel all child tasks.
   void CancelTask(TaskSpecification task_spec, bool recursive);
 
-  /// Retry the CancelTask in milliseconds.
-  void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
+  /// Retry the CancelTask after a configured delay.
+  void RetryCancelTask(TaskSpecification task_spec, bool recursive);
 
   /// Queue the streaming generator up for resubmission.
   /// \return true if the task is still executing and the submitter agrees to resubmit

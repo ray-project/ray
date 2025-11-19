@@ -556,7 +556,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         // OBJECT_STORE.
         return rpc::TensorTransport::OBJECT_STORE;
       },
-      boost::asio::steady_timer(io_service_),
+      io_service_,
       *scheduler_placement_time_ms_histogram_);
 
   auto report_locality_data_callback = [this](

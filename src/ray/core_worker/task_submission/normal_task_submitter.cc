@@ -22,8 +22,10 @@
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/common/protobuf_utils.h"
+#include "ray/core_worker/task_submission/task_submission_util.h"
 #include "ray/util/time.h"
 
 namespace ray {
@@ -754,30 +756,26 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
               absl::MutexLock callback_lock(&mu_);
               cancelled_tasks_.erase(task_spec.TaskId());
               if (!status.ok()) {
-                RAY_LOG(DEBUG) << "CancelLocalTask RPC failed for task "
-                               << task_spec.TaskId() << ": " << status.ToString()
-                               << " due to node death";
+                RAY_LOG(INFO) << "CancelLocalTask RPC failed for task "
+                              << task_spec.TaskId() << ": " << status.ToString()
+                              << " due to node death";
                 return;
               } else {
-                RAY_LOG(DEBUG) << "CancelLocalTask RPC response received for "
-                               << task_spec.TaskId()
-                               << " with attempt_succeeded: " << reply.attempt_succeeded()
-                               << " requested_task_running: "
-                               << reply.requested_task_running();
+                RAY_LOG(INFO) << "CancelLocalTask RPC response received for "
+                              << task_spec.TaskId()
+                              << " with attempt_succeeded: " << reply.attempt_succeeded()
+                              << " requested_task_running: "
+                              << reply.requested_task_running();
               }
               if (!reply.attempt_succeeded()) {
                 if (reply.requested_task_running()) {
-                  if (cancel_retry_timer_.expiry().time_since_epoch() <=
-                      std::chrono::high_resolution_clock::now().time_since_epoch()) {
-                    cancel_retry_timer_.expires_after(boost::asio::chrono::milliseconds(
-                        RayConfig::instance().cancellation_retry_ms()));
-                  }
-                  cancel_retry_timer_.async_wait(
-                      boost::bind(&NormalTaskSubmitter::CancelTask,
-                                  this,
-                                  std::move(task_spec),
-                                  force_kill,
-                                  recursive));
+                  execute_after(
+                      io_service_,
+                      [this, task_spec = std::move(task_spec), force_kill, recursive] {
+                        CancelTask(task_spec, force_kill, recursive);
+                      },
+                      std::chrono::milliseconds(
+                          RayConfig::instance().cancellation_retry_ms()));
                 } else {
                   RAY_LOG(DEBUG) << "Attempt to cancel task " << task_spec.TaskId()
                                  << " in a worker that doesn't have this task.";
@@ -786,41 +784,7 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
             });
       };
 
-  // Cancel can execute on the user's python thread, but the GCS node cache is updated on
-  // the io service thread and is not thread-safe. Hence we need to post the entire
-  // cache access to the io service thread.
-  boost::asio::post(
-      cancel_retry_timer_.get_executor(),
-      [this, do_cancel_local_task = std::move(do_cancel_local_task), node_id]() mutable {
-        auto *node_info = gcs_client_->Nodes().GetNodeAddressAndLiveness(
-            node_id, /*filter_dead_nodes=*/false);
-        if (node_info == nullptr) {
-          gcs_client_->Nodes().AsyncGetAllNodeAddressAndLiveness(
-              [do_cancel_local_task = std::move(do_cancel_local_task), node_id](
-                  const Status &status,
-                  std::vector<rpc::GcsNodeAddressAndLiveness> &&nodes) mutable {
-                if (!status.ok()) {
-                  RAY_LOG(INFO) << "Failed to get node info from GCS";
-                  return;
-                }
-                if (nodes.empty() || nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
-                  RAY_LOG(INFO).WithField(node_id)
-                      << "Not sending CancelLocalTask because node is dead";
-                  return;
-                }
-                do_cancel_local_task(nodes[0]);
-              },
-              -1,
-              {node_id});
-          return;
-        }
-        if (node_info->state() == rpc::GcsNodeInfo::DEAD) {
-          RAY_LOG(INFO).WithField(node_id)
-              << "Not sending CancelLocalTask because node is dead";
-          return;
-        }
-        do_cancel_local_task(*node_info);
-      });
+  PostCancelLocalTask(gcs_client_, io_service_, node_id, std::move(do_cancel_local_task));
 }
 
 void NormalTaskSubmitter::RequestOwnerToCancelTask(const ObjectID &object_id,
