@@ -843,25 +843,13 @@ void CoreWorker::InternalHeartbeat() {
 }
 
 void CoreWorker::RecordMetrics() {
-  {
-    absl::MutexLock lock(&mutex_);
-    if (shutdown_state_ != ray::core::ShutdownState::kRunning) {
-      return;
-    }
-  }
-
-  try {
-    if (task_manager_) {
-      task_manager_->RecordMetrics();
-    }
-    task_counter_.RecordMetrics();
-    if (memory_store_) {
-      memory_store_->RecordMetrics();
-    }
-    reference_counter_->RecordMetrics();
-  } catch (const std::exception &e) {
-    RAY_LOG(WARNING) << "Failed to record metrics: " << e.what();
-  }
+  // Record metrics for owned tasks.
+  task_manager_->RecordMetrics();
+  // Record metrics for executed tasks.
+  task_counter_.RecordMetrics();
+  // Record worker heap memory metrics.
+  memory_store_->RecordMetrics();
+  reference_counter_->RecordMetrics();
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
@@ -3970,14 +3958,22 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
 
     // Do force kill after reply callback sent.
     if (force_kill) {
-      // We grab the lock again to make sure that we are force-killing the correct
-      // task. This is guaranteed not to deadlock because ForceExit should not
-      // require any other locks.
-      absl::MutexLock lock(&mutex_);
-      if (main_thread_task_id_ == task_id) {
+      bool should_force_exit = false;
+      std::string task_name;
+      {
+        // We grab the lock to make sure that we are force-killing the correct task.
+        // We must release the lock before calling ForceExit, because ForceExit
+        // also tries to acquire mutex_ to disconnect the services.
+        absl::MutexLock lock(&mutex_);
+        if (main_thread_task_id_ == task_id) {
+          should_force_exit = true;
+          task_name = main_thread_task_name_;
+        }
+      }
+      if (should_force_exit) {
         ForceExit(rpc::WorkerExitType::INTENDED_USER_EXIT,
                   absl::StrCat("The worker exits because the task ",
-                               main_thread_task_name_,
+                               task_name,
                                " has received a force ray.cancel request."));
       }
     }
