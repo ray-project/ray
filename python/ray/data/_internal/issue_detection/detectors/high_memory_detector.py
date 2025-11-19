@@ -41,7 +41,8 @@ class HighMemoryIssueDetector(IssueDetector):
     _MEMORY_PER_CORE_ESTIMATE = 4 * 1024**3
 
     def __init__(self, executor: "StreamingExecutor", ctx: "DataContext"):
-        super().__init__(executor, ctx)
+        self._executor = executor
+        self._ctx = ctx
         self._detector_cfg = ctx.issue_detectors_config.high_memory_detector_config
 
         self._initial_memory_requests: Dict[MapOperator, int] = {}
@@ -50,6 +51,18 @@ class HighMemoryIssueDetector(IssueDetector):
                 self._initial_memory_requests[op] = (
                     op._get_dynamic_ray_remote_args().get("memory") or 0
                 )
+
+    @classmethod
+    def for_executor(cls, executor: "StreamingExecutor") -> "HighMemoryIssueDetector":
+        """Factory method to create a HighMemoryIssueDetector from a StreamingExecutor.
+
+        Args:
+            executor: The StreamingExecutor instance to extract dependencies from.
+
+        Returns:
+            An instance of HighMemoryIssueDetector.
+        """
+        return cls(executor, executor._data_context)
 
     def detect(self) -> List[Issue]:
         issues = []
