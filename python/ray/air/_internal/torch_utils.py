@@ -418,7 +418,7 @@ def concat_tensors_to_device(
 
     Args:
         tensor_sequence: Sequence of tensors to stack
-        device: The device to move tensors to
+        device: The device to move tensors to. If None, tensors are not moved.
         non_blocking: If True, perform device transfer without forcing a
             synchronization.
 
@@ -435,6 +435,12 @@ def concat_tensors_to_device(
     ), "All items must be torch.Tensor. Found invalid types: " + str(
         [type(t) for t in tensor_sequence if not isinstance(t, torch.Tensor)]
     )
+
+    # If there is only one tensor and its device already matches, return it directly.
+    if len(tensor_sequence) == 1 and (
+        device is None or tensor_sequence[0].device == torch.device(device)
+    ):
+        return tensor_sequence[0]
 
     first_dtype = tensor_sequence[0].dtype
     assert all(t.dtype == first_dtype for t in tensor_sequence), (
