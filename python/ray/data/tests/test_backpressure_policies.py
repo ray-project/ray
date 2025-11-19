@@ -257,8 +257,8 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         # Calculate budget so ratio < threshold
         # budget / (usage + budget) < threshold
         # budget < threshold * usage / (1 - threshold)
-        mock_budget.object_store_memory = int(
-            threshold * 1000 / (1 - threshold) - 1
+        mock_budget.object_store_memory = max(
+            0, int(threshold * 1000 / (1 - threshold) - 1)
         )  # below threshold
 
         mock_resource_manager.get_op_usage.return_value = mock_usage
@@ -317,8 +317,8 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         # Calculate budget so ratio < threshold
         # budget / (usage + budget) < threshold
         # budget < threshold * usage / (1 - threshold)
-        mock_budget.object_store_memory = int(
-            threshold * 1000 / (1 - threshold) - 1
+        mock_budget.object_store_memory = max(
+            0, int(threshold * 1000 / (1 - threshold) - 1)
         )  # below threshold
 
         mock_resource_manager.get_op_usage.return_value = mock_usage
