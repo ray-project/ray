@@ -74,7 +74,7 @@ export const TokenAuthenticationDialog: React.FC<TokenAuthenticationDialogProps>
         hasExistingToken
             ? "The existing authentication token is invalid."
             : "Token authentication is enabled."
-    ) + " Provide the matching authentication token for this cluster.\n- Local clusters: the token is written to `~/.ray/auth_token` by default. Use `ray get-auth-token` to retrieve it.\n- Remote clusters: you must retrieve the token that was used when creating the cluster.\n\nSee: https://docs.ray.io/en/latest/ray-security/auth.html";
+    ) + " Provide the matching authentication token for this cluster.\n- Local clusters: use `ray get-auth-token` to retrieve it.\n- Remote clusters: you must retrieve the token that was used when creating the cluster.\n\nSee: https://docs.ray.io/en/latest/ray-security/auth.html";
 
     return (
       <Dialog
