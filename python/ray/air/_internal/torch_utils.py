@@ -420,8 +420,8 @@ def arrow_batch_to_tensors(
                 base_iterator=iter(numpy_batch.items()),
                 fn=process_columns,
                 preserve_ordering=False,
-                num_workers=max(num_workers, 1),
-                buffer_size=max(num_workers, 1),
+                num_workers=num_workers,
+                buffer_size=num_workers,
             )
             return dict(processed_cols)
         else:
