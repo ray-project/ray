@@ -10,11 +10,11 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import (
     Any,
-    AsyncGenerator,
     Callable,
     DefaultDict,
     Deque,
     Dict,
+    Generator,
     List,
     Optional,
     Set,
@@ -1569,7 +1569,7 @@ class HashShuffleAggregator:
 
     def finalize(
         self, partition_id: int
-    ) -> AsyncGenerator[Union[Block, "BlockMetadataWithSchema"], None]:
+    ) -> Generator[Union[Block, "BlockMetadataWithSchema"], None]:
 
         with self._lock:
             exec_stats_builder = BlockExecStats.builder()
