@@ -26,7 +26,7 @@ from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.utils import split_address
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.job.common import uri_to_http_components
-from ray.exceptions import RayAuthenticationError
+from ray.exceptions import AuthenticationError
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 try:
@@ -324,7 +324,7 @@ class SubmissionClient:
             response.status_code, response.text
         )
         if formatted_error:
-            raise RayAuthenticationError(formatted_error)
+            raise AuthenticationError(formatted_error)
 
         return response
 

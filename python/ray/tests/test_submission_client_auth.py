@@ -12,7 +12,7 @@ from ray._private.authentication_test_utils import (
 )
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.dashboard.modules.job.sdk import JobSubmissionClient
-from ray.exceptions import RayAuthenticationError
+from ray.exceptions import AuthenticationError
 from ray.util.state import StateApiClient
 
 
@@ -38,8 +38,8 @@ def test_submission_client_without_token_shows_helpful_error(
 
     client = SubmissionClient(address=setup_cluster_with_token_auth["dashboard_url"])
 
-    # Make a request - should fail with RayAuthenticationError
-    with pytest.raises(RayAuthenticationError) as exc_info:
+    # Make a request - should fail with AuthenticationError
+    with pytest.raises(AuthenticationError) as exc_info:
         client.get_version()
 
     error_str = str(exc_info.value)
@@ -59,8 +59,8 @@ def test_submission_client_with_invalid_token_shows_helpful_error(
 
     client = SubmissionClient(address=setup_cluster_with_token_auth["dashboard_url"])
 
-    # Make a request - should fail with RayAuthenticationError
-    with pytest.raises(RayAuthenticationError) as exc_info:
+    # Make a request - should fail with AuthenticationError
+    with pytest.raises(AuthenticationError) as exc_info:
         client.get_version()
 
     error_str = str(exc_info.value)
@@ -147,7 +147,7 @@ def test_error_messages_contain_instructions(setup_cluster_with_token_auth):
 
     client = SubmissionClient(address=setup_cluster_with_token_auth["dashboard_url"])
 
-    with pytest.raises(RayAuthenticationError) as exc_info:
+    with pytest.raises(AuthenticationError) as exc_info:
         client.get_version()
 
     error_str = str(exc_info.value)
@@ -160,7 +160,7 @@ def test_error_messages_contain_instructions(setup_cluster_with_token_auth):
 
     client2 = SubmissionClient(address=setup_cluster_with_token_auth["dashboard_url"])
 
-    with pytest.raises(RayAuthenticationError) as exc_info:
+    with pytest.raises(AuthenticationError) as exc_info:
         client2.get_version()
 
     error_str = str(exc_info.value)

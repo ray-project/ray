@@ -40,4 +40,4 @@ Exceptions
     ray.exceptions.RaySystemError
     ray.exceptions.NodeDiedError
     ray.exceptions.UnserializableException
-    ray.exceptions.RayAuthenticationError
+    ray.exceptions.AuthenticationError

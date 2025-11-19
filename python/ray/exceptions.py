@@ -478,16 +478,18 @@ class RaySystemError(RayError):
 
 
 @PublicAPI
-class RayAuthenticationError(RayError):
-    """Indicates that an authentication error occurred. only applicable when `RAY_AUTH_MODE` is not set to `disabled`."""
+class AuthenticationError(RayError):
+    """Indicates that an authentication error occurred.
+
+    Most commonly, this is caused by a missing or mismatching token set on the client
+    (e.g., a Ray CLI command interacting with a remote cluster).
+
+    Only applicable when `RAY_AUTH_MODE` is not set to `disabled`.
+    """
 
     def __init__(self, message: str):
-        """Initialize RayAuthenticationError.
-
-        Args:
-            message: Error message describing the authentication failure
-        """
         self.message = message
+
         # Always hide traceback for cleaner output
         self.__suppress_context__ = True
         super().__init__(message)
@@ -984,5 +986,5 @@ RAY_EXCEPTION_TYPES = [
     OufOfBandObjectRefSerializationException,
     RayCgraphCapacityExceeded,
     UnserializableException,
-    RayAuthenticationError,
+    AuthenticationError,
 ]
