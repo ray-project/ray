@@ -193,12 +193,16 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         mock_resource_manager = MagicMock()
 
         # Mock object store memory usage ratio above threshold
+        # Ratio = budget / (usage + budget) > OBJECT_STORE_USAGE_RATIO
         threshold = ConcurrencyCapBackpressurePolicy.OBJECT_STORE_USAGE_RATIO
         mock_usage = MagicMock()
         mock_usage.object_store_memory = 1000  # usage
         mock_budget = MagicMock()
+        # Calculate budget so ratio > threshold
+        # budget / (usage + budget) > threshold
+        # budget > threshold * usage / (1 - threshold)
         mock_budget.object_store_memory = int(
-            1000 * (threshold + 0.1)
+            threshold * 1000 / (1 - threshold) + 1
         )  # budget above threshold
 
         mock_resource_manager.get_op_usage.return_value = mock_usage
@@ -211,11 +215,23 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         )
         policy.enable_dynamic_output_queue_size_backpressure = True
 
+        # Initialize EWMA state to verify it's not updated when ratio > threshold
+        initial_level = 100.0
+        initial_dev = 20.0
+        policy._q_level_nbytes[map_op] = initial_level
+        policy._q_level_dev[map_op] = initial_dev
+
         # Should skip dynamic backpressure and use basic cap check
+        # EWMA state should not be updated (early return)
         self.assertTrue(policy.can_add_input(map_op))  # 3 < 5
+        self.assertEqual(policy._q_level_nbytes[map_op], initial_level)
+        self.assertEqual(policy._q_level_dev[map_op], initial_dev)
 
         map_op.metrics.num_tasks_running = 5
         self.assertFalse(policy.can_add_input(map_op))  # 5 >= 5
+        # EWMA state should still not be updated
+        self.assertEqual(policy._q_level_nbytes[map_op], initial_level)
+        self.assertEqual(policy._q_level_dev[map_op], initial_dev)
 
     def test_can_add_input_with_object_store_memory_usage_ratio_below_threshold(self):
         """Test can_add_input when object store memory usage ratio is below threshold."""
@@ -233,12 +249,16 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         mock_resource_manager = MagicMock()
 
         # Mock object store memory usage ratio below threshold
+        # Ratio = budget / (usage + budget) < OBJECT_STORE_USAGE_RATIO
         threshold = ConcurrencyCapBackpressurePolicy.OBJECT_STORE_USAGE_RATIO
         mock_usage = MagicMock()
         mock_usage.object_store_memory = 1000  # usage
         mock_budget = MagicMock()
+        # Calculate budget so ratio < threshold
+        # budget / (usage + budget) < threshold
+        # budget < threshold * usage / (1 - threshold)
         mock_budget.object_store_memory = int(
-            1000 * (threshold - 0.05)
+            threshold * 1000 / (1 - threshold) - 1
         )  # below threshold
 
         mock_resource_manager.get_op_usage.return_value = mock_usage
@@ -258,14 +278,23 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         policy.enable_dynamic_output_queue_size_backpressure = True
 
         # Should proceed with dynamic backpressure logic
-        # Initialize EWMA state for the operator
-        policy._q_level_nbytes[map_op] = 300.0
-        policy._q_level_dev[map_op] = 50.0
+        # Initialize EWMA state for the operator with a different level
+        # so we can verify the update happens (queue size is 300)
+        initial_level = 200.0
+        initial_dev = 50.0
+        policy._q_level_nbytes[map_op] = initial_level
+        policy._q_level_dev[map_op] = initial_dev
 
         result = policy.can_add_input(map_op)
-        # With queue size 300 in hold region (level=300, dev=50, bounds=[200, 400]),
-        # should hold current level, so running=3 < effective_cap=3 should be False
+        # With queue size 300, initial level=200, dev=50, bounds=[100, 300]
+        # Queue size 300 is at upper bound, so should backoff
+        # running=3 < effective_cap should be False
         self.assertFalse(result)
+        # EWMA state should be updated when ratio < threshold
+        # Level should move toward 300 (queue size)
+        self.assertNotEqual(policy._q_level_nbytes[map_op], initial_level)
+        # Dev should also be updated
+        self.assertNotEqual(policy._q_level_dev[map_op], initial_dev)
 
     def test_can_add_input_effective_cap_calculation(self):
         """Test that effective cap calculation works correctly with different queue sizes."""
