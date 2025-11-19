@@ -4,7 +4,9 @@ from typing import Dict, List
 
 import ray
 import ray.train
+from ray.actor import ActorHandle
 from ray.data import DataIterator
+from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data.context import DataContext
 from ray.train.v2._internal.data_integration.interfaces import (
     DatasetShardMetadata,
@@ -46,7 +48,7 @@ class DatasetsCallback(WorkerGroupCallback):
         self._datasets = train_run_context.datasets
         self._data_config = copy.deepcopy(train_run_context.dataset_config)
         self._scaling_config = train_run_context.scaling_config
-        self._coordinator_actors: List[ray.actor.ActorHandle] = []
+        self._coordinator_actors: List[ActorHandle] = []
 
         # Capture the current DataContext to propagate it to
         # the Train workers later.
@@ -65,18 +67,21 @@ class DatasetsCallback(WorkerGroupCallback):
         these resources logically from its available pool."""
         return scaling_config.total_resources
 
-    def _save_coordinator_actors(
+    def _get_coordinator_actors(
         self, ds_iterators_per_rank: List[Dict[str, DataIterator]]
-    ):
+    ) -> List[ActorHandle]:
         """
-        Save each unique SplitCoordinator actor handle given the iterators per rank.
+        Returns a list of each unique SplitCoordinator actor handle given the iterators per rank.
         These handles will later be used to call shutdown on the actors.
         """
+        coordinator_actors = []
         for rank_iterators in ds_iterators_per_rank:
             for iterator in rank_iterators.values():
-                coord = getattr(iterator, "_coord_actor", None)
-                if coord is not None and coord not in self._coordinator_actors:
-                    self._coordinator_actors.append(coord)
+                if isinstance(iterator, StreamSplitDataIterator):
+                    coord = iterator._coord_actor
+                    if coord is not None and coord not in self._coordinator_actors:
+                        coordinator_actors.append(coord)
+        return coordinator_actors
 
     def _shutdown_data_executors(self):
         """Eagerly shutdown the data executors of the split coordinator actors."""
@@ -116,7 +121,7 @@ class DatasetsCallback(WorkerGroupCallback):
         )
         assert len(ds_iterators_per_rank) == world_size
 
-        self._save_coordinator_actors(ds_iterators_per_rank)
+        self._coordinator_actors = self._get_coordinator_actors(ds_iterators_per_rank)
 
         shard_providers_per_rank = [
             RayDatasetShardProvider(ds_iterators=ds_iterators_per_rank[rank])
