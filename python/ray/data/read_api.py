@@ -4488,7 +4488,9 @@ def read_kafka(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        timeout_ms: Timeout in milliseconds to poll to until reaching end_offset (default 10000ms).
+        timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).
+            If the read task does not reach end_offset within the timeout, it will stop polling and return the messages
+            it has read so far.
 
     Returns:
         A :class:`~ray.data.Dataset` containing Kafka messages with the following schema:

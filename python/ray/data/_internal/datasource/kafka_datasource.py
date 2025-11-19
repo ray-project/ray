@@ -250,7 +250,9 @@ class KafkaDatasource(Datasource):
                 - int: Offset number
                 - str: "latest"
             kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
-            timeout_ms: Timeout in milliseconds to poll to until reaching end_offset (default 10000ms/10s).
+            timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).
+                If the read task does not reach end_offset within the timeout, it will stop polling and return the messages
+                it has read so far.
 
         Raises:
             ValueError: If required configuration is missing.
@@ -436,6 +438,10 @@ class KafkaDatasource(Datasource):
                             # Check if overall timeout has been reached
                             elapsed_time = time.time() - start_time
                             if elapsed_time >= timeout_seconds:
+                                logger.warning(
+                                    f"Kafka read task timed out after {timeout_ms}ms while reading partition {partition_id} of topic {topic_name}; "
+                                    f"end_offset {end_off} was not reached. Returning {len(records)} messages collected so far."
+                                )
                                 break
 
                             # Check if we've reached the end_offset before polling
