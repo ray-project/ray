@@ -26,13 +26,11 @@ class CheckpointConsistencyMode(Enum):
     """Read semantics for checkpoint retrieval during an ongoing run.
 
     Members:
-        LIVE: View the currently uploaded checkpoints without blocking.
-        UPLOADED: Block until the checkpoint from the latest ray.train.report
-            has been uploaded.
+        COMMITTED: Block until the checkpoint from the latest ray.train.report
+            has been uploaded and committed.
         VALIDATED: Block until the checkpoint from the latest ray.train.report
             has been uploaded and validated.
     """
 
-    LIVE = "LIVE"
-    UPLOADED = "UPLOADED"
+    COMMITTED = "COMMITTED"
     VALIDATED = "VALIDATED"

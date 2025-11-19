@@ -386,7 +386,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             A list of ReportedCheckpoint objects that represent the checkpoints and
             corresponding metrics reported by the workers.
         """
-        if consistency_mode == CheckpointConsistencyMode.UPLOADED:
+        if consistency_mode == CheckpointConsistencyMode.COMMITTED:
             async with self._condition:
                 await self._condition.wait_for(
                     lambda: self._current_report_index == current_report_index
@@ -397,7 +397,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                     lambda: self._current_report_index == current_report_index
                     and not self._pending_training_results
                 )
-        elif consistency_mode != CheckpointConsistencyMode.LIVE:
+        else:
             raise ValueError(
                 f"Unexpected CheckpointConsistencyMode: {consistency_mode}"
             )

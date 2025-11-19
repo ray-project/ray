@@ -1,13 +1,12 @@
 import os
 import shutil
-import tempfile
-import time
 from unittest.mock import create_autospec
 
 import pytest
 
 import ray
 import ray.cloudpickle as ray_pickle
+from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
@@ -371,102 +370,52 @@ def test_report_checkpoint_upload_fn(tmp_path):
 
 
 def test_get_all_reported_checkpoints_all_consistency_modes():
-    @ray.remote
-    class StateActor:
-        def __init__(self):
-            self.called_live = False
-            self.called_uploaded = False
-
-        def set_called_live(self):
-            self.called_live = True
-
-        def set_called_uploaded(self):
-            self.called_uploaded = True
-
-        def get_called_live(self):
-            return self.called_live
-
-        def get_called_uploaded(self):
-            return self.called_uploaded
-
-    state_actor = StateActor.remote()
+    signal_actor = create_remote_signal_actor(ray).remote()
 
     def train_fn(config):
-        state_actor = config["state_actor"]
-
-        def checkpoint_upload_fn(checkpoint, checkpoint_dir_name):
-            while True:
-                if ray.get(state_actor.get_called_live.remote()):
-                    break
-                time.sleep(0.1)
-            return Checkpoint(
-                ray.train.get_context()
-                .get_storage()
-                .build_checkpoint_path_from_name("placeholder")
-            )
+        signal_actor = config["signal_actor"]
 
         def validate_fn(checkpoint, config):
-            while True:
-                if ray.get(state_actor.get_called_uploaded.remote()):
-                    break
-                time.sleep(0.1)
+            ray.get(signal_actor.wait.remote())
             return {
-                "validation_score": 200,
+                "validation_score": 100,
             }
 
         if ray.train.get_context().get_world_rank() == 0:
+            # Assert that we get committed checkpoints
             with create_dict_checkpoint({}) as cp1:
                 ray.train.report(
                     metrics={"training_score": 1},
                     checkpoint=cp1,
+                    validate_fn=validate_fn,
                 )
-            # Dummy barrier to ensure checkpoint 1 uploaded
-            ray.train.get_all_reported_checkpoints(
-                consistency_mode=CheckpointConsistencyMode.UPLOADED
-            )
-            tmpdir = tempfile.mkdtemp()
-            cp2 = Checkpoint.from_directory(tmpdir)
-            ray.train.report(
-                metrics={"training_score": 2},
-                checkpoint=cp2,
-                validate_fn=validate_fn,
-                checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
-                checkpoint_upload_fn=checkpoint_upload_fn,
-            )
             assert [
                 reported_checkpoint.metrics
                 for reported_checkpoint in ray.train.get_all_reported_checkpoints(
-                    consistency_mode=CheckpointConsistencyMode.LIVE
-                )
-            ] == [{"training_score": 1}]
-            state_actor.set_called_live.remote()
-            assert [
-                reported_checkpoint.metrics
-                for reported_checkpoint in ray.train.get_all_reported_checkpoints(
-                    consistency_mode=CheckpointConsistencyMode.UPLOADED
+                    consistency_mode=CheckpointConsistencyMode.COMMITTED
                 )
             ] == [
                 {"training_score": 1},
-                {"training_score": 2},
             ]
-            state_actor.set_called_uploaded.remote()
+
+            # Assert that we get validated chceckpoints
+            # modoru: replace with signal actor
+            signal_actor.send.remote()
             assert [
                 reported_checkpoint.metrics
                 for reported_checkpoint in ray.train.get_all_reported_checkpoints(
                     consistency_mode=CheckpointConsistencyMode.VALIDATED
                 )
             ] == [
-                {"training_score": 1},
-                {"training_score": 2, "validation_score": 200},
+                {"training_score": 1, "validation_score": 100},
             ]
         else:
-            ray.train.report(metrics={}, checkpoint=None)
             ray.train.report(metrics={}, checkpoint=None)
 
     trainer = DataParallelTrainer(
         train_fn,
         scaling_config=ScalingConfig(num_workers=2),
-        train_loop_config={"state_actor": state_actor},
+        train_loop_config={"signal_actor": signal_actor},
     )
     trainer.fit()
 
