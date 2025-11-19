@@ -452,7 +452,7 @@ def test_get_auth_token_cli(use_generate):
 
         # Verify token is printed to stdout
         token = result.stdout.strip()
-        assert len(token) == 32, f"Token should be 32 chars, got {len(token)}"
+        assert len(token) == 32, token
         assert all(c in "0123456789abcdef" for c in token), "Token should be hex"
 
         if not use_generate:
