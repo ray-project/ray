@@ -621,6 +621,9 @@ redoc = [
 
 redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"
 
+# Enable automatic generation of stub pages when using autosummary with :toctree:
+autosummary_generate = True
+
 autosummary_filename_map = {
     "ray.serve.deployment": "ray.serve.deployment_decorator",
     "ray.serve.Deployment": "ray.serve.Deployment",
