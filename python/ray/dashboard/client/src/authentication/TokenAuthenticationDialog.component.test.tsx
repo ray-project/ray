@@ -21,10 +21,10 @@ describe("TokenAuthenticationDialog", () => {
     );
 
     expect(
-      screen.getByText("Token Authentication Required"),
+      screen.getByText("Authentication Token Required"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/token authentication is enabled for this cluster/i),
+      screen.getByText(/token authentication is enabled/i),
     ).toBeInTheDocument();
   });
 
@@ -38,10 +38,10 @@ describe("TokenAuthenticationDialog", () => {
     );
 
     expect(
-      screen.getByText("Token Authentication Required"),
+      screen.getByText("Authentication Token Required"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/authentication token is invalid or has expired/i),
+      screen.getByText(/the existing authentication token is invalid/i),
     ).toBeInTheDocument();
   });
 
@@ -200,7 +200,7 @@ describe("TokenAuthenticationDialog", () => {
 
     // Dialog should not be visible
     expect(
-      screen.queryByText("Token Authentication Required"),
+      screen.queryByText("Authentication Token Required"),
     ).not.toBeInTheDocument();
   });
 });
