@@ -51,8 +51,8 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     RAMPUP_FACTOR = env_float("RAY_DATA_CONCURRENCY_CAP_RAMPUP_FACTOR", 1)
     # Threshold for per-Op object store budget (available) vs total
     # (available / total) ratio to enable dynamic output queue size backpressure.
-    OBJECT_STORE_USAGE_RATIO = env_float(
-        "RAY_DATA_CONCURRENCY_CAP_OBJECT_STORE_USAGE_RATIO", 0.1
+    OBJECT_STORE_BUDGET_RATIO = env_float(
+        "RAY_DATA_CONCURRENCY_CAP_OBJECT_STORE_BUDGET_RATIO", 0.1
     )
 
     def __init__(self, *args, **kwargs):
@@ -93,7 +93,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             dynamic_output_queue_size_backpressure_configs = (
                 f", EWMA_ALPHA={self.EWMA_ALPHA}, K_DEV={self.K_DEV}, "
                 f"BACKOFF_FACTOR={self.BACKOFF_FACTOR}, RAMPUP_FACTOR={self.RAMPUP_FACTOR}, "
-                f"OBJECT_STORE_USAGE_RATIO={self.OBJECT_STORE_USAGE_RATIO}"
+                f"OBJECT_STORE_BUDGET_RATIO={self.OBJECT_STORE_BUDGET_RATIO}"
             )
         logger.debug(
             f"ConcurrencyCapBackpressurePolicy caps: {self._concurrency_caps}, "
@@ -161,7 +161,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             if (
                 op_budget.object_store_memory
                 / (op_usage.object_store_memory + op_budget.object_store_memory)
-                > self.OBJECT_STORE_USAGE_RATIO
+                > self.OBJECT_STORE_BUDGET_RATIO
             ):
                 # If the objectstore budget (available) to total
                 # ratio is above threshold (10%), skip dynamic output queue size
