@@ -233,7 +233,7 @@ if setup_spec.type == SetupType.RAY:
     pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3"
     setup_spec.extras = {
         "cgraph": [
-            "cupy-cuda12x; sys_platform != 'darwin'",
+            "cupy-cuda12x>=13.4.0; sys_platform != 'darwin'",
         ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:
