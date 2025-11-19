@@ -17,6 +17,7 @@ from pyarrow.fs import FSSpecHandler, PyFileSystem
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
@@ -2307,6 +2308,10 @@ def hive_partitioned_dataset(tmp_path):
         ),
     ],
     ids=lambda ops: "_".join(ops) if isinstance(ops, tuple) else ops,
+)
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="Hive partitioned parquet operations require pyarrow >= 14.0.0",
 )
 def test_hive_partitioned_parquet_operations(
     ray_start_regular_shared,
