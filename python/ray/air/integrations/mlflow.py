@@ -149,11 +149,11 @@ def setup_mlflow(
 
     try:
         if _in_tune_session():
-            context = ray.tune.get_context()
+            context: ray.tune.TuneContext = ray.tune.get_context()
             default_trial_id = context.get_trial_id()
             default_trial_name = context.get_trial_name()
         else:
-            context = ray.train.get_context()
+            context: ray.train.TrainContext = ray.train.get_context()
             if rank_zero_only and context.get_world_rank() != 0:
                 return _NoopModule()
     except RuntimeError:
