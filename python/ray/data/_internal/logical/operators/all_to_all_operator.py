@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
-    LogicalOperatorHasShuffleKeys,
     LogicalOperatorSupportsPredicatePassThrough,
     PredicatePassThroughBehavior,
 )
@@ -119,7 +118,6 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
 class Repartition(
     AbstractAllToAll,
     LogicalOperatorSupportsPredicatePassThrough,
-    LogicalOperatorHasShuffleKeys,
 ):
     """Logical operator for repartition."""
 

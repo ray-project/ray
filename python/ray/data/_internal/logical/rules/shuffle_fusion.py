@@ -2,7 +2,6 @@ import logging
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
-    LogicalOperatorHasShuffleKeys,
     LogicalPlan,
     Operator,
     Rule,
@@ -83,35 +82,11 @@ def _disconnect_op_from_dag(curr_op: Operator):
     # curr_op is now disconnected
 
 
-def _keys_can_fuse(
-    prev_op: LogicalOperatorHasShuffleKeys,
-    op: LogicalOperatorHasShuffleKeys,
-) -> bool:
-    """Check if prev and curr operators can fuse based on key matching.
-    This helper function is used to compare if two shuffle operators
-    have compatible keys to fuse together."""
-    # Get parent keys based on operator type
-    prev_keys = prev_op.get_partition_keys()
-
-    # Get child keys based on operator type
-    op_keys = op.get_partition_keys()
-
-    # Compare keys: either both match or both are None
-    if prev_keys and op_keys:
-        return set(prev_keys) == set(op_keys)
-    elif prev_keys is None and op_keys is None:
-        return True
-    else:
-        return False
-
-
 # Helper functions for each fusion pattern
 def _try_repartition_repartition_fusion(
-    prev_op: LogicalOperator, op: LogicalOperator, fused_name: str
+    prev_op: Repartition, op: Repartition, fused_name: str
 ) -> LogicalOperator:
     """Fuse Repartition -> Repartition operations."""
-    if not _keys_can_fuse(prev_op, op):
-        return op
 
     _disconnect_op_from_dag(prev_op)
     # If one of the operators full shuffles, then new_op should too.

@@ -1,6 +1,5 @@
 from .logical_operator import (
     LogicalOperator,
-    LogicalOperatorHasShuffleKeys,
     LogicalOperatorSupportsPredicatePassThrough,
     LogicalOperatorSupportsPredicatePushdown,
     LogicalOperatorSupportsProjectionPushdown,
@@ -23,7 +22,6 @@ __all__ = [
     "Rule",
     "SourceOperator",
     "LogicalOperatorSupportsProjectionPushdown",
-    "LogicalOperatorHasShuffleKeys",
     "LogicalOperatorSupportsPredicatePushdown",
     "LogicalOperatorSupportsPredicatePassThrough",
     "PredicatePassThroughBehavior",
