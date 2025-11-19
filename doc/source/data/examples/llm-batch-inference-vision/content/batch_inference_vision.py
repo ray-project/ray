@@ -19,11 +19,8 @@ print("Dataset loaded successfully.")
 print("Limiting dataset to 10,000 images for initial processing.")
 ds_small = ds.limit(10_000)
 
-# Repartition the dataset to enable parallelism across multiple workers (GPUs).
-# By default, a large remote file might be read into a single block. Repartitioning
-# splits the data into a specified number of blocks, allowing Ray to process them
-# in parallel.
-num_partitions = 64
+# Repartition the dataset to increase parallelism across multiple workers.
+num_partitions = 128
 print(f"Repartitioning dataset into {num_partitions} blocks for parallelism...")
 ds_small = ds_small.repartition(num_blocks=num_partitions)
 

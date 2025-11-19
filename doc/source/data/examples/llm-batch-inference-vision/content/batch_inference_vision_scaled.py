@@ -19,13 +19,10 @@ print("Dataset loaded successfully.")
 
 # The BLIP3o/BLIP3o-Pretrain-Short-Caption dataset contains ~5M of images.
 # Configure how many images to process (default: 1M for demonstration).
-dataset_limit = int(os.environ.get("LARGE_DATASET_LIMIT", 1_000_000))
-print(f"Processing {dataset_limit:,} images from the dataset...")
+print(f"Processing 1M images... (or the whole dataset if you picked >5M)")
+ds_large = ds.limit(1_000_000)
 
-# Apply the limit to the dataset.
-ds_large = ds.limit(dataset_limit)
-
-# Repartition for better parallelism.
+# Repartition the dataset to increase parallelism across multiple workers.
 num_partitions_large = 128
 print(f"Repartitioning dataset into {num_partitions_large} blocks for parallelism...")
 ds_large = ds_large.repartition(num_blocks=num_partitions_large)

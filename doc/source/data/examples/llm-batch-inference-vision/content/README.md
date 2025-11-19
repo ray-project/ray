@@ -279,8 +279,7 @@ The dashboard shows:
 
 ## Scale up to larger datasets
 
-Your Ray Data processing pipeline can easily scale up to process more images. By default, this section processes 1M images.  
-You can control the dataset size through the `LARGE_DATASET_LIMIT` environment variable.
+Your Ray Data processing pipeline can easily scale up to process more images. By default, this section processes 1M images.
 
 
 ```python
@@ -288,9 +287,8 @@ import os
 
 # The BLIP3o/BLIP3o-Pretrain-Short-Caption dataset has ~5M images
 # Configure how many images to process (default: 1M for demonstration).
-dataset_limit = int(os.environ.get("LARGE_DATASET_LIMIT", 1_000_000))
-print(f"Processing {dataset_limit:,} images... (or the whole dataset if you picked >5M)")
-ds_large = ds.limit(dataset_limit)
+print(f"Processing 1M images... (or the whole dataset if you picked >5M)")
+ds_large = ds.limit(1_000_000)
 ```
 
 You can scale the number of concurrent replicas based on the compute available in your cluster. In this case, each replica is a copy of your Qwen-VL model and fits in a single L4 GPU.
@@ -312,16 +310,6 @@ processor_large = build_llm_processor(
     preprocess=preprocess,
     postprocess=postprocess,
 )
-```
-
-With additional replicas, repartition your dataset into more blocks for better parallelism. Ray data can efficiently schedule those smaller blocks across all your additional replicas.
-
-
-```python
-# Repartition for better parallelism.
-num_partitions_large = 128
-print(f"Repartitioning dataset into {num_partitions_large} blocks for parallelism...")
-ds_large = ds_large.repartition(num_blocks=num_partitions_large)
 ```
 
 Execute the new pipeline
@@ -373,15 +361,23 @@ For vision models, smaller batch sizes (8-32) often work better due to memory co
 **Optimize image loading**  
 Pre-resize images to a consistent size to reduce memory usage and improve throughput.
 
-**Repartition strategically**  
-Use more partitions (blocks) than the number of workers to enable better load balancing.
+**Tune preprocessing and inference stage parallelism**  
+Use `repartition()` to control parallelism during your preprocessing stage. On the other hand, the number of inference tasks is determined by `dataset_size / batch_size`, where `batch_size` controls how many rows are grouped for each vLLM engine call. Ensure you have enough tasks to keep all workers busy and enable efficient load balancing.
 
-**Enable checkpointing**  
-For very large datasets, configure checkpointing to recover from failures:
+**Use quantization to reduce memory footprint**  
+Quantization reduces model precision to save GPU memory and improve throughput. vLLM supports multiple quantization formats through the `quantization` parameter in `engine_kwargs`. Common options include FP8 (8-bit floating point) and INT4 (4-bit integer), which can reduce memory usage by 2-4x with minimal accuracy loss. For example:
 
 ```python
-processed = processor(ds_large).materialize(
-    checkpoint_path="s3://my-bucket/checkpoints/"
+processor_config = vLLMEngineProcessorConfig(
+    model_source="Qwen/Qwen2.5-VL-3B-Instruct",
+    engine_kwargs={
+        "quantization": "fp8",  # Or "awq", "gptq", etc.
+        "max_model_len": 8192,
+    },
+    batch_size=16,
+    accelerator_type="L4",
+    concurrency=4,
+    has_image=True,
 )
 ```
 

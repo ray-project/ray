@@ -54,17 +54,16 @@ ds.show(limit=2)
 
 For this initial example, limit the dataset to 10,000 rows for faster processing and testing. Later, you can scale up to process the full dataset.
 
+By default, a large remote file might be read into few blocks, limiting parallelism in the next steps. Instead, you can repartition the data into a specified number of blocks to ensure good enough parallelization in rest of the pipeline.
+
 
 ```python
 # Limit the dataset to 10,000 rows for this example.
 print("Limiting dataset to 10,000 rows for initial processing.")
 ds_small = ds.limit(10_000)
 
-# Repartition the dataset to enable parallelism across multiple workers (GPUs).
-# By default, a large remote file might be read into a single block. Repartitioning
-# splits the data into a specified number of blocks, allowing Ray to process them
-# in parallel.
-num_partitions = 64
+# Repartition the dataset to increase parallelism across multiple workers.
+num_partitions = 128
 print(f"Repartitioning dataset into {num_partitions} blocks for parallelism...")
 ds_small = ds_small.repartition(num_blocks=num_partitions)
 ```
@@ -82,7 +81,7 @@ This example uses the `unsloth/Llama-3.1-8B-Instruct` model. The configuration s
 - `engine_kwargs`: vLLM engine parameters such as tensor parallelism and memory settings.
 - `batch_size`: Number of requests to batch together (set to 256 for small prompts and outputs).
 - `accelerator_type`: GPU type to use (L4 in this case).
-- `concurrency`: Number of parallel workers (4 replicas).
+- `concurrency`: Number of parallel workers.
 
 **Note:** Because the input prompts and expected output token lengths are small, `batch_size=256` is appropriate. However, depending on your workload, a large batch size can lead to increased idle GPU time when decoding long sequences. Adjust this value to find the optimal trade-off between throughput and latency.
 
@@ -244,8 +243,7 @@ The dashboard shows:
 
 ## Scale up to larger datasets
 
-Your Ray Data processing pipeline can easily scale up to process more data. By default, this section processes 1M rows.  
-You can control the dataset size through the `LARGE_DATASET_LIMIT` environment variable.
+Your Ray Data processing pipeline can easily scale up to process more data. By default, this section processes 1M rows.
 
 
 ```python
@@ -253,12 +251,11 @@ import os
 
 # The dataset has ~2M rows
 # Configure how many images to process (default: 1M for demonstration).
-dataset_limit = int(os.environ.get("LARGE_DATASET_LIMIT", 1_000_000))
-print(f"Processing {dataset_limit:,} rows... (or the whole dataset if you picked >2M)")
-ds_large = ds.limit(dataset_limit)
+print(f"Processing 1M rows... (or the whole dataset if you picked >2M)")
+ds_large = ds.limit(1_000_000)
 ```
 
-You can scale the number of concurrent replicas based on the compute available in your cluster. In this case, each replica is a copy of your Llama model and fits in a single L4 GPU.
+You can scale the number of concurrent workers based on the compute available in your cluster. In this case, each replica is a copy of your Llama model and fits in a single L4 GPU.
 
 
 ```python
@@ -269,7 +266,7 @@ processor_config_large = vLLMEngineProcessorConfig(
     ),
     batch_size=256,
     accelerator_type="L4", # Or upgrade to larger GPU
-    concurrency=10, # Deploy 10 replicas across 10 GPUs to maximize throughput
+    concurrency=10, # Deploy 10 workers across 10 GPUs to maximize throughput
 )
 
 # Build the LLM processor with the configuration and functions.
@@ -278,16 +275,6 @@ processor_large = build_llm_processor(
     preprocess=preprocess,
     postprocess=postprocess,
 )
-```
-
-With additional replicas, repartition your dataset into more blocks for better parallelism. Ray data can efficiently schedule those smaller blocks across all your additional replicas.
-
-
-```python
-# Repartition for better parallelism.
-num_partitions_large = 128
-print(f"Repartitioning dataset into {num_partitions_large} blocks...")
-ds_large = ds_large.repartition(num_blocks=num_partitions_large)
 ```
 
 Execute the new pipeline
@@ -307,7 +294,7 @@ pprint(processed_large.take(3))
 
 When scaling to larger datasets, consider these optimizations tips:
 
-**Analyze your pipeline**
+**Analyze your pipeline**  
 Use *stats()* to analyze each steps in your pipeline and identify any bottlenecks.
 ```python
 processed = processor(ds).materialize()
@@ -334,17 +321,24 @@ Dataset throughput:
 Increase the `concurrency` parameter to add more parallel workers.
 
 **Tune batch size**  
-Larger batch sizes improve throughput but increase memory usage.
+Larger batch sizes may improve throughput but increase memory usage.
 
-**Repartition strategically**  
-Use more partitions (blocks) than the number of workers to enable better load balancing.
+**Tune preprocessing and inference stage parallelism**  
+Use `repartition()` to control parallelism during your preprocessing stage. On the other hand, the number of inference tasks is determined by `dataset_size / batch_size`, where `batch_size` controls how many rows are grouped for each vLLM engine call. Ensure you have enough tasks to keep all workers busy and enable efficient load balancing.
 
-**Enable checkpointing**  
-For very large datasets, configure checkpointing to recover from failures.
+**Use quantization to reduce memory footprint**  
+Quantization reduces model precision to save GPU memory and improve throughput. vLLM supports multiple quantization formats through the `quantization` parameter in `engine_kwargs`. Common options include FP8 (8-bit floating point) and INT4 (4-bit integer), which can reduce memory usage by 2-4x with minimal accuracy loss. For example:
 
 ```python
-processed = processor(ds_large).materialize(
-    checkpoint_path="s3://my-bucket/checkpoints/"
+processor_config = vLLMEngineProcessorConfig(
+    model_source="meta-llama/Llama-3.1-70B-Instruct",
+    engine_kwargs={
+        "quantization": "fp8",  # Or "awq", "gptq", etc.
+        "max_model_len": 8192,
+    },
+    batch_size=128,
+    accelerator_type="L4",
+    concurrency=4,
 )
 ```
 

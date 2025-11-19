@@ -15,13 +15,10 @@ ds = ray.data.read_csv(path)
 
 
 # Configure how many images to process (default: 1M for demonstration).
-dataset_limit = int(os.environ.get("LARGE_DATASET_LIMIT", 1_000_000))
-print(f"Scaling dataset to: {dataset_limit:,} rows...")
+print(f"Processing 1M rows... (or the whole dataset if you picked >2M)")
+ds_large = ds.limit(1_000_000)
 
-# Apply the limit to the dataset.
-ds_large = ds.limit(dataset_limit)
-
-# Repartition for better parallelism.
+# Repartition the dataset to increase parallelism across multiple workers.
 num_partitions_large = 128
 print(f"Repartitioning dataset into {num_partitions_large} blocks...")
 ds_large = ds_large.repartition(num_blocks=num_partitions_large)
