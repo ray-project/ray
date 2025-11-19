@@ -79,7 +79,7 @@ class DatasetsCallback(WorkerGroupCallback):
             for iterator in rank_iterators.values():
                 if isinstance(iterator, StreamSplitDataIterator):
                     coord = iterator._coord_actor
-                    if coord is not None and coord not in self._coordinator_actors:
+                    if coord is not None and coord not in coordinator_actors:
                         coordinator_actors.append(coord)
         return coordinator_actors
 
