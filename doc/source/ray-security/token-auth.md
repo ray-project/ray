@@ -30,6 +30,8 @@ Ray checks for tokens in the following order, highest priority first:
 2. `RAY_AUTH_TOKEN_PATH` environment variable, which provides a path to a token file.
 3. The default location, `~/.ray/auth_token`.
 
+When managing multiple tokens, we recommend storing them in local files and using the `RAY_AUTH_TOKEN_PATH` environment variable rather than setting the `RAY_AUTH_TOKEN` value directly to avoid accidentally leaking the token.
+
 ## Security considerations
 
 Ray transmits the authentication token as an HTTP header, which is transmitted in plaintext when using insecure `http` connections. We recommend enabling some form of encryption whenever exposing a Ray cluster over the network. Consider the following:
