@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict, Optional
 
 from ray.data.block import UserDefinedFunction
@@ -10,6 +11,8 @@ from ray.llm._internal.batch.processor import (
     vLLMEngineProcessorConfig as _vLLMEngineProcessorConfig,
 )
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
@@ -381,6 +384,29 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
 
 
 @PublicAPI(stability="alpha")
+def build_llm_processor(
+    config: ProcessorConfig,
+    preprocess: Optional[UserDefinedFunction] = None,
+    postprocess: Optional[UserDefinedFunction] = None,
+    preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+    postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+    builder_kwargs: Optional[Dict[str, Any]] = None,
+) -> Processor:
+    """
+    [DEPRECATED] Prefer build_processor. Build a LLM processor using the given config.
+    """
+    logger.warning("build_llm_processor is deprecated. Prefer build_processor instead.")
+    return build_processor(
+        config,
+        preprocess,
+        postprocess,
+        preprocess_map_kwargs,
+        postprocess_map_kwargs,
+        builder_kwargs,
+    )
+
+
+@PublicAPI(stability="alpha")
 def build_processor(
     config: ProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
@@ -389,7 +415,7 @@ def build_processor(
     postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
     builder_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Processor:
-    """Build a LLM processor using the given config.
+    """Build a processor using the given config.
 
     Args:
         config: The processor config. Supports nested stage configs for per-stage
