@@ -333,20 +333,6 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "process_cleanup_test",
-    srcs = ["process_cleanup_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        "//src/ray/common:id",
-        "//src/ray/common/tests:testing",
-        "//src/ray/util:filesystem",
-        "//src/ray/util:process_cleaner",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
     name = "process_spawn_pg_test",
     srcs = ["process_spawn_pg_test.cc"],
     tags = [
@@ -371,17 +357,6 @@ ray_cc_test(
         "//src/ray/util:scoped_dup2_wrapper",
         "//src/ray/util:temporary_directory",
         "@boost//:iostreams",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "invoke_once_token_test",
-    size = "small",
-    srcs = ["invoke_once_token_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        "//src/ray/util:invoke_once_token",
         "@com_google_googletest//:gtest_main",
     ],
 )
