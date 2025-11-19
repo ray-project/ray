@@ -21,7 +21,6 @@ class Depset:
     override_flags: Optional[List[str]] = None
     append_flags: Optional[List[str]] = None
     requirements: Optional[List[str]] = None
-    packages: Optional[List[str]] = None
     source_depset: Optional[str] = None
     depsets: Optional[List[str]] = None
     pre_hooks: Optional[List[str]] = None
@@ -54,7 +53,6 @@ def _dict_to_depset(depset: dict, config_name: str) -> Depset:
         override_flags=depset.get("override_flags", []),
         append_flags=depset.get("append_flags", []),
         pre_hooks=depset.get("pre_hooks", []),
-        packages=depset.get("packages", []),
         include_setuptools=depset.get("include_setuptools", False),
         config_name=config_name,
     )

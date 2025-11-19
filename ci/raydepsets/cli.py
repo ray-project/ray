@@ -237,14 +237,10 @@ class DependencySetManager:
                 depset = self.build_graph.nodes[node]["depset"]
                 self.execute_depset(depset)
 
-    def exec_uv_cmd(
-        self, cmd: str, args: List[str], stdin: Optional[bytes] = None
-    ) -> str:
+    def exec_uv_cmd(self, cmd: str, args: List[str]) -> str:
         cmd = [self._uv_binary, "pip", cmd, *args]
         click.echo(f"Executing command: {' '.join(cmd)}")
-        status = subprocess.run(
-            cmd, cwd=self.workspace.dir, input=stdin, capture_output=True
-        )
+        status = subprocess.run(cmd, cwd=self.workspace.dir, capture_output=True)
         if status.returncode != 0:
             raise RuntimeError(
                 f"Failed to execute command: {' '.join(cmd)} with error: {status.stderr.decode('utf-8')}"
@@ -273,7 +269,6 @@ class DependencySetManager:
                 output=depset.output,
                 append_flags=depset.append_flags,
                 override_flags=depset.override_flags,
-                packages=depset.packages,
                 include_setuptools=depset.include_setuptools,
             )
         elif depset.operation == "subset":
@@ -306,13 +301,11 @@ class DependencySetManager:
         output: str,
         append_flags: Optional[List[str]] = None,
         override_flags: Optional[List[str]] = None,
-        packages: Optional[List[str]] = None,
         requirements: Optional[List[str]] = None,
         include_setuptools: Optional[bool] = False,
     ):
         """Compile a dependency set."""
         args = DEFAULT_UV_FLAGS.copy()
-        stdin = None
         if not include_setuptools:
             args.extend(_flatten_flags(["--unsafe-package setuptools"]))
         if self._uv_cache_dir:
@@ -327,13 +320,9 @@ class DependencySetManager:
         if requirements:
             for requirement in sorted(requirements):
                 args.extend([requirement])
-        if packages:
-            # need to add a dash to process stdin
-            args.append("-")
-            stdin = _get_bytes(packages)
         if output:
             args.extend(["-o", output])
-        self.exec_uv_cmd("compile", args, stdin)
+        self.exec_uv_cmd("compile", args)
 
     def subset(
         self,
@@ -426,10 +415,6 @@ class DependencySetManager:
     def cleanup(self):
         if self.temp_dir:
             shutil.rmtree(self.temp_dir)
-
-
-def _get_bytes(packages: List[str]) -> bytes:
-    return ("\n".join(packages) + "\n").encode("utf-8")
 
 
 def _get_depset(depsets: List[Depset], name: str) -> Depset:
