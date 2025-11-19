@@ -251,8 +251,8 @@ class SplitCoordinator:
                 if self._executor is not None:
                     self._executor.shutdown(force=False)
             except Exception:
-                logger.debug(
-                    "Failed to explicitly shutdown executor on SplitCoordinator shutdown."
+                logger.exception(
+                    "Failed to shut down the Ray Data executor."
                 )
 
     def _barrier(self, split_idx: int) -> int:
