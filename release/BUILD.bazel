@@ -1,4 +1,4 @@
-load("@py_deps_buildkite//:requirements.bzl", bk_require = "requirement")
+load("@py_deps_py310//:requirements.bzl", bk_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
@@ -253,7 +253,7 @@ py_binary(
         ["**/*.py"],
         exclude = ["ray_release/tests/*.py"],
     ),
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [":ray_release"],
 )
 
@@ -490,7 +490,7 @@ py_test(
     name = "test_alerts",
     size = "small",
     srcs = ["ray_release/tests/test_alerts.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -505,7 +505,7 @@ py_test(
     name = "test_anyscale_job_manager",
     size = "small",
     srcs = ["ray_release/tests/test_anyscale_job_manager.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -520,7 +520,7 @@ py_test(
     name = "test_anyscale_job_wrapper",
     size = "small",
     srcs = ["ray_release/tests/test_anyscale_job_wrapper.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -549,7 +549,7 @@ py_test(
         "cluster_tests/cpt_autoscaling_1-3_aws.yaml",
         "ray_release/tests/test_collection_data.yaml",
     ],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -568,7 +568,7 @@ py_test(
     data = [
         "ray_release/configs/oss_config.yaml",
     ],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -587,7 +587,7 @@ py_test(
     data = [
         "ray_release/configs/oss_config.yaml",
     ],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -605,7 +605,7 @@ py_test(
     data = [
         "ray_release/configs/oss_config.yaml",
     ],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -623,7 +623,7 @@ py_test(
     data = [
         "ray_release/configs/oss_config.yaml",
     ],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -644,7 +644,7 @@ py_test(
         "ray_release/tests/sample_5_tests.yaml",
         "ray_release/tests/sample_tests.yaml",
     ],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -659,7 +659,7 @@ py_test(
     name = "test_cluster_manager",
     size = "small",
     srcs = ["ray_release/tests/test_cluster_manager.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -685,7 +685,7 @@ py_test(
         "//python/ray/autoscaler/azure:test_configs",
         "//python/ray/autoscaler/gcp:test_configs",
     ],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -700,7 +700,7 @@ py_test(
     name = "test_env",
     size = "small",
     srcs = ["ray_release/tests/test_env.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -715,7 +715,7 @@ py_test(
     name = "test_global_config",
     size = "small",
     srcs = ["ray_release/tests/test_global_config.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -731,7 +731,7 @@ py_test(
     name = "test_glue",
     size = "small",
     srcs = ["ray_release/tests/test_glue.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -747,7 +747,7 @@ py_test(
     name = "test_log_aggregator",
     size = "small",
     srcs = ["ray_release/tests/test_log_aggregator.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -762,7 +762,7 @@ py_test(
     name = "test_result",
     size = "small",
     srcs = ["ray_release/tests/test_result.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -783,7 +783,7 @@ py_test(
         "ray_release/tests/_test_run_release_test_sh.py",
         "run_release_test.sh",
     ],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -798,7 +798,7 @@ py_test(
     name = "test_state_machine",
     size = "small",
     srcs = ["ray_release/tests/test_state_machine.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -813,7 +813,7 @@ py_test(
     name = "test_kuberay_util",
     size = "small",
     srcs = ["ray_release/tests/test_kuberay_util.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -831,7 +831,7 @@ py_test(
     data = [
         "ray_release/configs/oss_config.yaml",
     ],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -850,7 +850,7 @@ py_test(
     data = [
         "ray_release/configs/oss_config.yaml",
     ],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -865,7 +865,7 @@ py_test(
     name = "test_retry",
     size = "small",
     srcs = ["ray_release/tests/test_retry.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -879,7 +879,7 @@ py_test(
 py_test(
     name = "test_template",
     srcs = ["ray_release/tests/test_template.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -893,7 +893,7 @@ py_test(
 py_test(
     name = "test_cloud_util",
     srcs = ["ray_release/tests/test_cloud_util.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "release_unit",
         "team:ci",
@@ -913,7 +913,7 @@ py_binary(
         "//python/ray/autoscaler/aws:test_configs",
         "//python/ray/autoscaler/gcp:test_configs",
     ],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [
         ":ray_release",
     ],
@@ -932,7 +932,7 @@ py_library(
 py_binary(
     name = "custom_byod_build",
     srcs = ["ray_release/scripts/custom_byod_build.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [
         ":ray_release",
     ],
@@ -952,7 +952,7 @@ py_binary(
     name = "custom_image_build_and_test_init",
     srcs = ["ray_release/scripts/custom_image_build_and_test_init.py"],
     data = glob(["release_*.yaml"]),
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [
         ":ray_release",
     ],

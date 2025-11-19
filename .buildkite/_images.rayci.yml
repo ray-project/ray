@@ -14,6 +14,7 @@ steps:
       - "3.12"
     env:
       PYTHON_VERSION: "{{matrix}}"
+      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix}}.lock"
       ARCH_SUFFIX: ""
 
   - name: raycpubaseextra
@@ -56,6 +57,7 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
+      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix.python}}.lock"
       ARCH_SUFFIX: ""
 
   - name: raycudabaseextra
