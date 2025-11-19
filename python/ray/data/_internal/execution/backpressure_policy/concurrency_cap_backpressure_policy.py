@@ -155,7 +155,6 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         if (
             op_usage is not None
             and op_budget is not None
-            and op_budget.object_store_memory > 0
             and op_usage.object_store_memory > 0
         ):
             if (

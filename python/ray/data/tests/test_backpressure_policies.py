@@ -287,8 +287,8 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
 
         result = policy.can_add_input(map_op)
         # With queue size 300, initial level=200, dev=50, bounds=[100, 300]
-        # Queue size 300 is at upper bound, so should backoff
-        # running=3 < effective_cap should be False
+        # Queue size 300 is at the upper bound, so should hold.
+        # running=3 < effective_cap=3 should be False
         self.assertFalse(result)
         # EWMA state should be updated when ratio < threshold
         # Level should move toward 300 (queue size)
@@ -314,8 +314,11 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         mock_usage = MagicMock()
         mock_usage.object_store_memory = 1000
         mock_budget = MagicMock()
+        # Calculate budget so ratio < threshold
+        # budget / (usage + budget) < threshold
+        # budget < threshold * usage / (1 - threshold)
         mock_budget.object_store_memory = int(
-            1000 * (threshold - 0.05)
+            threshold * 1000 / (1 - threshold) - 1
         )  # below threshold
 
         mock_resource_manager.get_op_usage.return_value = mock_usage
