@@ -1,3 +1,4 @@
+import logging
 import posixpath
 import urllib.parse
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
 
 
 PartitionDataType = Type[Union[int, float, str, bool]]
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -302,8 +304,10 @@ class PathPartitionParser:
         partition_values = self(path)
 
         if not partition_values:
-            # Unpartitioned file - conservatively include it
-            return True
+            # Unpartitioned file - exclude it when filtering on partition columns
+            # If the predicate references partition columns and the file doesn't have
+            # partition values in its path, we can't determine if it matches
+            return False
 
         try:
             # Create a single-row table with partition values
@@ -329,7 +333,12 @@ class PathPartitionParser:
             # Scalar result (shouldn't happen with table evaluation, but handle conservatively)
             return bool(result)
         except Exception:
-            # If evaluation fails, conservatively include the file
+            logger.debug(
+                "Failed to evaluate predicate on partition for path %s, "
+                "conservatively including file.",
+                path,
+                exc_info=True,
+            )
             return True
 
     @property

@@ -978,12 +978,13 @@ def test_evaluate_predicate_on_partition(path, predicate, expected_result, descr
 def test_evaluate_predicate_on_unpartitioned_file():
     """Test that unpartitioned files are conservatively included."""
     parser = PathPartitionParser(Partitioning("hive"))
-    # Unpartitioned file should always return True (conservative)
+    # Unpartitioned file should return False when filtering on partition columns
+    # (we can't determine if it matches the predicate without partition values)
     result = parser.evaluate_predicate_on_partition(
         "data.parquet", col("country") == "US"
     )
 
-    assert result is True
+    assert result is False
 
 
 if __name__ == "__main__":

@@ -684,14 +684,8 @@ class ParquetDatasource(Datasource):
             self._pq_fragments = pruned_fragments
             self._pq_paths = pruned_paths
 
-        if split_result.data_predicate is None:
-            # Only partition predicates - pruning applied, but Filter operator
-            # still needed for correctness (in case evaluation was conservative)
-            # Return self (not a copy) to preserve the Filter operator
-            return self
-
-        # Push down data predicates to PyArrow for the pruned fragments
-        # Create a copy only if we need to push down data predicates
+        # Mixed predicate: partition pruning applied + data predicate pushdown
+        # Create a copy and push down the data predicate to PyArrow
         import copy
 
         datasource = copy.copy(self)
