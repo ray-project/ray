@@ -797,7 +797,7 @@ if __name__ == "__main__":
         ],
         packages=setup_spec.get_packages(),
         cmdclass={"build_ext": build_ext},
-        distclass=(
+        distclass=(  # Avoid building extensions for deps-only builds.
             BinaryDistribution if setup_spec.build_type != BuildType.DEPS_ONLY else None
         ),
         install_requires=setup_spec.install_requires,
