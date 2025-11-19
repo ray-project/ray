@@ -6,7 +6,7 @@ import os
 import runfiles
 import pytest
 
-_REPO_NAME = "io_ray"
+_REPO_NAME = "_main"
 
 _runfiles = runfiles.Create()
 
@@ -25,7 +25,7 @@ docs = [
     ExternalDoc(
         file="pytorch_tutorials_hyperparameter_tuning_tutorial.py",
         digest="04f8bab9fda98bceaf541984482faacab7bd8d35d6e5850ae610bfea08709743",
-        ref="https://pytorch.org/tutorials/beginner/hyperparameter_tuning_tutorial.html"
+        ref="https://pytorch.org/tutorials/beginner/hyperparameter_tuning_tutorial.html",
     ),
 ]
 
