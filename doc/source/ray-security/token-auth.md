@@ -56,7 +56,7 @@ To enable authentication on your local machine for development, set the `RAY_AUT
 
 ### Local development with ray.init()
 
-When you run the command `ray.init(address=auto)` after setting `RAY_AUTH_MODE=token` as an environment variable, Ray handles authentication automatically:
+When you run a script containing `ray.init()` after setting `RAY_AUTH_MODE=token` as an environment variable, Ray handles authentication automatically:
 
 - If a token doesn't already exist at `~/.ray/auth_token`, Ray generates a token and saves it to the file. A log message displays to confirm token creation.
 - If a token already exists at `~/.ray/auth_token`, Ray reuses the existing token automatically.
@@ -68,7 +68,7 @@ $ export RAY_AUTH_MODE=token
 $ python -c "import ray;ray.init()"
 ```
 
-On first run this command, or another script that initializes Ray, will log a line similar to the following:
+On the first run, this command (or any other script that initializes Ray) will log a line similar to the following:
 
 ```bash
 Generated new authentication token and saved to /Users/<username>/.ray/auth_token
@@ -119,7 +119,7 @@ If you're using a hosted version of Ray, contact your customer support for authe
 Anyscale manages authentication automatically for users.
 :::
 
-### Ray clusters on remote virutal machines
+### Ray clusters on remote virtual machines
 
 This section provides instructions for using `ray up` to launch a remote cluster on virtual machines with token authentication enabled.
 
@@ -182,9 +182,9 @@ ray up cluster.yaml
 
 Connecting to the Ray dashboard configures secure SSH port forwarding between your local machine and the Ray cluster. Complete this step even if you don't plan to use the dashboard for monitoring.
 
-Run the following command to intialized the Ray dashboard for your cluster:
+Run the following command to set up port forwarding for the Ray dashboard port (`8265` by default):
 
-```
+```bash
 ray dashboard cluster.yaml
 ```
 
@@ -212,7 +212,7 @@ If you have a custom deployment where you run `ray start` on multiple nodes, you
 
 #### Step 1: Generate a token
 
-Generate a token a single machine using the following command:
+Generate a token on a single machine using the following command:
 
 ```bash
 ray get-auth-token --generate
