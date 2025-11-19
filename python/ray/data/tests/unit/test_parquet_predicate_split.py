@@ -331,4 +331,6 @@ def test_split_predicate_by_columns(test_case: PredicateSplitTestCase):
 
 
 if __name__ == "__main__":
-    pytest.main(["-v", __file__])
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
