@@ -88,7 +88,7 @@ class DatasetsCallback(WorkerGroupCallback):
                 logger.debug("Failed to shutdown data executor within 5 seconds.")
             except Exception:
                 logger.debug(
-                    "Failed to invoke remote shutdown of split coordinator executor."
+                    "Failed to invoke remote shutdown of the Ray Data executor."
                 )
 
     # --------------------------
