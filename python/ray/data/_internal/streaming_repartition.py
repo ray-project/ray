@@ -17,6 +17,7 @@ from ray.data._internal.execution.operators.map_operator import BaseRefBundler
     3. Determine the slice needed from the final bundle so the ready bundle holds an exact multiple of the target rows.
     4. Submit that ready bundle to a remote map task; the task slices each block according to the slice metadata stored in the RefBundle (the bundle now contains n × target rows for n ≥ 1).
     5. We configured the `OutputBlockSizeOption.target_num_rows_per_block` to the target number of rows per block in plan_streaming_repartition_op so the output buffer further splits the n × target rows into n blocks of exactly the target size.
+       Note: the output buffer only splits a bundle when its row num exceeds `target_rows × MAX_SAFE_ROWS_PER_BLOCK_FACTOR` (default 1.5). Because we split bundles into target-row blocks, `MAX_SAFE_ROWS_PER_BLOCK_FACTOR` must stay < 2 to output the target-row blocks.
     6. Once upstream input is exhausted, flush any leftover pending bundles and repeat steps 1‑5 for the tail.
     7. The resulting blocks have lengths `[target, …, target, (total_rows % target)]`; ordering isn’t guaranteed, but the remainder block appears near the end.
 
