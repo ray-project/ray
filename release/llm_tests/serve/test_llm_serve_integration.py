@@ -124,7 +124,7 @@ def is_default_app_running():
         return False
 
 
-@pytest.mark.parametrize("model_name", ["deepseek-ai/DeepSeek-V2-Lite"])
+@pytest.mark.parametrize("model_name", ["deepseek-ai/DeepSeek-V3"])
 def test_deepseek_model(model_name):
     """
     Test that the deepseek model can be loaded successfully.
