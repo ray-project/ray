@@ -4,6 +4,7 @@ from contextlib import contextmanager, nullcontext
 from typing import Any, Callable, Dict, Iterator, Optional
 
 import ray
+from ray._private.ray_constants import env_integer
 from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
 from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
@@ -20,9 +21,7 @@ from ray.data._internal.stats import DatasetStats, _StatsManager
 from ray.data._internal.util import make_async_gen
 from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
-from ray._private.ray_constants import env_integer
 from ray.types import ObjectRef
-
 
 DEFAULT_FORMAT_THEADPOOL_NUM_WORKERS = env_integer(
     "RAY_DATA_DEFAULT_FORMAT_THEADPOOL_NUM_WORKERS", 4
