@@ -7,12 +7,13 @@ from typing import (
     Any,
     Callable,
     Dict,
-    Iterable,
     List,
     Optional,
     Type,
     Union,
 )
+
+import numpy as np
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -314,11 +315,19 @@ class PathPartitionParser:
             evaluator = NativeExpressionEvaluator(partition_table)
             result = evaluator.visit(predicate)
 
-            # Extract boolean result
-            if isinstance(result, Iterable):
+            # Extract boolean result from array-like types
+            # Check for specific array types to avoid issues with strings (which are iterable)
+            if isinstance(result, (pa.Array, pa.ChunkedArray, np.ndarray)):
                 return bool(result[0])
-            else:
-                return bool(result)
+
+            # Import pandas here to avoid circular dependencies
+            import pandas as pd
+
+            if isinstance(result, pd.Series):
+                return bool(result.iloc[0])
+
+            # Scalar result (shouldn't happen with table evaluation, but handle conservatively)
+            return bool(result)
         except Exception:
             # If evaluation fails, conservatively include the file
             return True
