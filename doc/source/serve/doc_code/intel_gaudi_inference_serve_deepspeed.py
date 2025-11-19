@@ -170,6 +170,7 @@ class RayTextIteratorStreamer(TextStreamer):
 # __deploy_def_start__
 # We need to set these variables for this example.
 HABANA_ENVS = {
+    "PT_HPU_LAZY_MODE": "1",
     "PT_HPU_LAZY_ACC_PAR_MODE": "0",
     "PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES": "0",
     "PT_HPU_ENABLE_WEIGHT_CPU_PERMUTE": "0",
