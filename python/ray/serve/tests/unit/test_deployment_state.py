@@ -1,6 +1,6 @@
 import sys
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from unittest.mock import Mock, patch
 
 import pytest
@@ -54,6 +54,7 @@ from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_string,
 )
+from ray.serve.schema import ReplicaRank
 from ray.util.placement_group import validate_placement_group
 
 # Global variable that is fetched during controller recovery that
@@ -64,7 +65,7 @@ from ray.util.placement_group import validate_placement_group
 # loop, so we can't "mark" a replica dead through a method. This global
 # state is cleared after each test that uses the fixtures in this file.
 dead_replicas_context = set()
-replica_rank_context = {}
+replica_rank_context: Dict[str, ReplicaRank] = {}
 TEST_DEPLOYMENT_ID = DeploymentID(name="test_deployment", app_name="test_app")
 TEST_DEPLOYMENT_ID_2 = DeploymentID(name="test_deployment_2", app_name="test_app")
 
@@ -76,7 +77,7 @@ class MockReplicaActorWrapper:
         version: DeploymentVersion,
     ):
         self._replica_id = replica_id
-
+        self._actor_name = replica_id.to_full_id_str()
         # Will be set when `start()` is called.
         self.started = False
         # Will be set when `recover()` is called.
@@ -107,6 +108,7 @@ class MockReplicaActorWrapper:
         self._initialization_latency_s = -1
         self._docs_path = None
         self._rank = replica_rank_context.get(replica_id.unique_id, None)
+        self._assign_rank_callback = None
 
     @property
     def is_cross_language(self) -> bool:
@@ -225,10 +227,15 @@ class MockReplicaActorWrapper:
     def set_actor_id(self, actor_id: str):
         self._actor_id = actor_id
 
-    def start(self, deployment_info: DeploymentInfo, rank: int):
+    def start(
+        self,
+        deployment_info: DeploymentInfo,
+        assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
+    ):
         self.started = True
-        self._rank = rank
-        replica_rank_context[self._replica_id.unique_id] = rank
+        self._assign_rank_callback = assign_rank_callback
+        self._rank = assign_rank_callback(self._replica_id.unique_id)
+        replica_rank_context[self._replica_id.unique_id] = self._rank
 
         def _on_scheduled_stub(*args, **kwargs):
             pass
@@ -246,13 +253,13 @@ class MockReplicaActorWrapper:
         )
 
     @property
-    def rank(self) -> Optional[int]:
+    def rank(self) -> Optional[ReplicaRank]:
         return self._rank
 
     def reconfigure(
         self,
         version: DeploymentVersion,
-        rank: int = None,
+        rank: ReplicaRank = None,
     ):
         self.started = True
         updating = self.version.requires_actor_reconfigure(version)
@@ -309,6 +316,13 @@ class MockReplicaActorWrapper:
 
     def get_routing_stats(self) -> Dict[str, Any]:
         return {}
+
+    def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        return getattr(self, "_outbound_deployments", None)
+
+    @property
+    def route_patterns(self) -> Optional[List[str]]:
+        return None
 
 
 def deployment_info(
@@ -2677,7 +2691,9 @@ class TestActorReplicaWrapper:
         )
         max_ongoing_requests = DEFAULT_MAX_CONCURRENCY_ASYNC + 1
         d_info, _ = deployment_info(max_ongoing_requests=max_ongoing_requests)
-        replica_scheduling_request = actor_replica.start(d_info, rank=0)
+        replica_scheduling_request = actor_replica.start(
+            d_info, assign_rank_callback=lambda x: 0
+        )
         assert (
             "max_concurrency" in replica_scheduling_request.actor_options
             and replica_scheduling_request.actor_options["max_concurrency"]
@@ -5430,10 +5446,18 @@ class TestDeploymentRankManagerIntegrationE2E:
         # Simulate very scattered ranks in global context: 0, 3, 7, 10
         global replica_rank_context
         replica_rank_context.clear()
-        replica_rank_context[replica_ids[0].unique_id] = 0
-        replica_rank_context[replica_ids[1].unique_id] = 3
-        replica_rank_context[replica_ids[2].unique_id] = 7
-        replica_rank_context[replica_ids[3].unique_id] = 10
+        replica_rank_context[replica_ids[0].unique_id] = ReplicaRank(
+            rank=0, node_rank=-1, local_rank=-1
+        )
+        replica_rank_context[replica_ids[1].unique_id] = ReplicaRank(
+            rank=3, node_rank=-1, local_rank=-1
+        )
+        replica_rank_context[replica_ids[2].unique_id] = ReplicaRank(
+            rank=7, node_rank=-1, local_rank=-1
+        )
+        replica_rank_context[replica_ids[3].unique_id] = ReplicaRank(
+            rank=10, node_rank=-1, local_rank=-1
+        )
 
         # Simulate controller crashed! Create a new deployment state manager
         # with the existing replica IDs to trigger recovery
@@ -5594,6 +5618,144 @@ class TestDeploymentRankManagerIntegrationE2E:
             1,
             2,
         }, f"Expected ranks [0, 1, 2], got {ranks_mapping.values()}"
+
+
+class TestGetOutboundDeployments:
+    def test_basic_outbound_deployments(self, mock_deployment_state_manager):
+        """Test that outbound deployments are returned."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+
+        deployment_id = DeploymentID(name="test_deployment", app_name="test_app")
+        b_info_1, _ = deployment_info(num_replicas=1)
+        dsm.deploy(deployment_id, b_info_1)
+
+        # Create a RUNNING replica
+        ds = dsm._deployment_states[deployment_id]
+        dsm.update()  # Transitions to STARTING
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()  # Transitions to RUNNING
+
+        # Set outbound deployments on the mock replica
+        running_replicas = ds._replicas.get([ReplicaState.RUNNING])
+        assert len(running_replicas) == 1
+        d1 = DeploymentID(name="dep1", app_name="test_app")
+        d2 = DeploymentID(name="dep2", app_name="test_app")
+        running_replicas[0]._actor._outbound_deployments = [d1, d2]
+
+        outbound_deployments = ds.get_outbound_deployments()
+        assert outbound_deployments == [d1, d2]
+
+        # Verify it's accessible through DeploymentStateManager
+        assert dsm.get_deployment_outbound_deployments(deployment_id) == [
+            d1,
+            d2,
+        ]
+
+    def test_deployment_state_manager_returns_none_for_nonexistent_deployment(
+        self, mock_deployment_state_manager
+    ):
+        """Test that DeploymentStateManager returns None for nonexistent deployments."""
+        (
+            create_dsm,
+            timer,
+            cluster_node_info_cache,
+            autoscaling_state_manager,
+        ) = mock_deployment_state_manager
+        dsm = create_dsm()
+
+        deployment_id = DeploymentID(name="nonexistent", app_name="test_app")
+        assert dsm.get_deployment_outbound_deployments(deployment_id) is None
+
+    def test_returns_none_if_replicas_are_not_running(
+        self, mock_deployment_state_manager
+    ):
+        """Test that DeploymentStateManager returns None if replicas are not running."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+
+        deployment_id = DeploymentID(name="test_deployment", app_name="test_app")
+        b_info_1, _ = deployment_info(num_replicas=2)
+        dsm.deploy(deployment_id, b_info_1)
+        ds = dsm._deployment_states[deployment_id]
+        dsm.update()
+        replicas = ds._replicas.get([ReplicaState.STARTING])
+        assert len(replicas) == 2
+        d1 = DeploymentID(name="dep1", app_name="test_app")
+        d2 = DeploymentID(name="dep2", app_name="test_app")
+        d3 = DeploymentID(name="dep3", app_name="test_app")
+        d4 = DeploymentID(name="dep4", app_name="test_app")
+        replicas[0]._actor._outbound_deployments = [d1, d2]
+        replicas[1]._actor._outbound_deployments = [d3, d4]
+        dsm.update()
+
+        outbound_deployments = ds.get_outbound_deployments()
+        assert outbound_deployments is None
+
+        # Set replicas ready
+        replicas[0]._actor.set_ready()
+        dsm.update()
+        outbound_deployments = ds.get_outbound_deployments()
+        assert outbound_deployments == [d1, d2]
+
+    def test_only_considers_replicas_matching_target_version(
+        self, mock_deployment_state_manager
+    ):
+        """Test that only replicas with target version are considered.
+
+        When a new version is deployed, old version replicas that are still
+        running should not be included in the outbound deployments result.
+        """
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+
+        # Deploy version 1
+        b_info_1, v1 = deployment_info(version="1")
+        dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+
+        # Get v1 replica to RUNNING state
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+
+        # Set outbound deployments for v1 replica
+        d1 = DeploymentID(name="dep1", app_name="test_app")
+        d2 = DeploymentID(name="dep2", app_name="test_app")
+        ds._replicas.get()[0]._actor._outbound_deployments = [d1, d2]
+
+        # Verify v1 outbound deployments are returned
+        assert ds.get_outbound_deployments() == [d1, d2]
+
+        # Deploy version 2 - this triggers rolling update
+        b_info_2, v2 = deployment_info(version="2")
+        dsm.deploy(TEST_DEPLOYMENT_ID, b_info_2)
+        dsm.update()
+
+        # Now we have v1 stopping and v2 starting
+        check_counts(
+            ds,
+            total=2,
+            by_state=[(ReplicaState.STOPPING, 1, v1), (ReplicaState.STARTING, 1, v2)],
+        )
+
+        # Key test: Even though v1 replica exists (stopping), it should not be
+        # included because target version is v2. Since v2 is not RUNNING yet,
+        # should return None.
+        assert ds.get_outbound_deployments() is None
+
+        # Set outbound deployments for v2 replica and mark it ready
+        d3 = DeploymentID(name="dep3", app_name="test_app")
+        ds._replicas.get(states=[ReplicaState.STARTING])[
+            0
+        ]._actor._outbound_deployments = [d3]
+        ds._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        dsm.update()
+
+        # Now v2 is running. Should only return v2's outbound deployments (d3),
+        # not v1's outbound deployments (d1, d2).
+        assert ds.get_outbound_deployments() == [d3]
 
 
 if __name__ == "__main__":

@@ -1,23 +1,21 @@
 import logging
-import psutil
 from typing import Any, Dict, Optional
 
 import numpy as np
 
-from ray._common.deprecation import deprecation_warning
+from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch, concat_samples
 from ray.rllib.utils.annotations import OldAPIStack
-from ray._common.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import ALL_MODULES, TD_ERROR_KEY
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.replay_buffers import (
     EpisodeReplayBuffer,
     MultiAgentPrioritizedReplayBuffer,
+    MultiAgentReplayBuffer,
     PrioritizedEpisodeReplayBuffer,
     ReplayBuffer,
-    MultiAgentReplayBuffer,
 )
-from ray.rllib.policy.sample_batch import concat_samples, MultiAgentBatch, SampleBatch
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     ModuleID,
@@ -27,6 +25,8 @@ from ray.rllib.utils.typing import (
 )
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
+
+import psutil
 
 logger = logging.getLogger(__name__)
 

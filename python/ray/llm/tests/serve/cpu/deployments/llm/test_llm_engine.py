@@ -83,6 +83,48 @@ class TestMockLLMEngine:
         async for response in engine.embeddings(request):
             LLMResponseValidator.validate_embedding_response(response, dimensions)
 
+    @pytest.mark.parametrize("stream", [False, True])
+    @pytest.mark.parametrize("temperature", [0.0])
+    @pytest.mark.parametrize("language", ["en", "hi"])
+    @pytest.mark.asyncio
+    async def test_transcription_mock_engine(
+        self,
+        mock_llm_config,
+        mock_transcription_request,
+        stream: bool,
+        temperature: float,
+        language: Optional[str],
+    ):
+        """Test transcription API with different language and temperature, streaming and non-streaming."""
+
+        engine = MockVLLMEngine(mock_llm_config)
+        await engine.start()
+
+        request = mock_transcription_request
+        response_generator = engine.transcriptions(request)
+
+        print(
+            f"\n\n_____ TRANSCRIPTION ({'STREAMING' if stream else 'NON-STREAMING'}) language={language} temperature={temperature} _____\n\n"
+        )
+
+        if stream:
+            # Collect streaming chunks
+            chunks = []
+            async for chunk in response_generator:
+                assert isinstance(chunk, str)
+                chunks.append(chunk)
+
+            # Validate streaming response
+            LLMResponseValidator.validate_transcription_response(
+                chunks, temperature, language
+            )
+        else:
+            # Validate non-streaming response
+            async for response in response_generator:
+                LLMResponseValidator.validate_transcription_response(
+                    response, temperature, language
+                )
+
     @pytest.mark.asyncio
     async def test_score_mock_engine(self, mock_llm_config, mock_score_request):
         """Test score API for text similarity."""

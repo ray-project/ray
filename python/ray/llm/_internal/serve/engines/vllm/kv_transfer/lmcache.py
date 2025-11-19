@@ -23,10 +23,10 @@ class LMCacheConnectorV1Backend(BaseConnectorBackend):
 
     def setup(self) -> None:
         """Initialize the LMCache connector backend.
-        This method sets up the LMCache connector by:
-        1. Checking if LMCache is installed.
-        2. Configuring the LMCache RPC port if not already set.
-        3. Creating a unique LMCache RPC port across replicas.
+
+        Creates a unique LMCache RPC port name across replicas by appending
+        a random suffix to the base port name.
+
         Raises:
             ImportError: If LMCache is not installed.
         """
@@ -41,21 +41,21 @@ class LMCacheConnectorV1Backend(BaseConnectorBackend):
         kv_connector_extra_config = self.kv_transfer_config[
             LMCacheConnectorV1Backend.KV_CONNECTOR_EXTRA_CONFIG_FIELD_NAME
         ]
-        lmcache_rpc_port = (
-            kv_connector_extra_config.get(
-                LMCacheConnectorV1Backend.LMCACHE_RPC_PORT_FIELD_NAME,
-                LMCacheConnectorV1Backend.DEFAULT_LMCACHE_RPC_PORT_NAME,
-            )
-            + self._get_unique_suffix()
+        base_value = kv_connector_extra_config.get(
+            LMCacheConnectorV1Backend.LMCACHE_RPC_PORT_FIELD_NAME,
+            LMCacheConnectorV1Backend.DEFAULT_LMCACHE_RPC_PORT_NAME,
         )
+
+        # Append random suffix for uniqueness
+        lmcache_rpc_port_value = str(base_value) + self._get_unique_suffix()
         if (
             LMCacheConnectorV1Backend.LMCACHE_RPC_PORT_FIELD_NAME
             in kv_connector_extra_config
         ):
             logger.info(
-                f"Setting unique {lmcache_rpc_port=} for current replica LMCacheConnectorV1."
+                f"Setting unique lmcache_rpc_port={lmcache_rpc_port_value} for current replica."
             )
 
         kv_connector_extra_config[
             LMCacheConnectorV1Backend.LMCACHE_RPC_PORT_FIELD_NAME
-        ] = lmcache_rpc_port
+        ] = lmcache_rpc_port_value

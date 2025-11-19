@@ -18,7 +18,8 @@ from aiohttp.web import Request, Response
 import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._private.ray_constants import RAY_INTERNAL_DASHBOARD_NAMESPACE, env_bool
+from ray._private.ray_constants import env_bool
+from ray._raylet import RAY_INTERNAL_DASHBOARD_NAMESPACE
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
@@ -127,18 +128,29 @@ def aiohttp_cache(
 
 
 def is_browser_request(req: Request) -> bool:
-    """Checks if a request is made by a browser like user agent.
+    """Best-effort detection if the request was made by a browser.
 
-    This heuristic is very weak, but hard for a browser to bypass- eg,
-    fetch/xhr and friends cannot alter the user-agent, but requests made with
-    an http library can stumble into this if they choose to user a browser like
-    user agent.
+    Uses two heuristics:
+        1) If the `User-Agent` header starts with 'Mozilla'. This heuristic is weak,
+        but hard for a browser to bypass e.g., fetch/xhr and friends cannot alter the
+        user agent, but requests made with an HTTP library can stumble into this if
+        they choose to user a browser-like user agent. At the time of writing, all
+        common browsers' user agents start with 'Mozilla'.
+        2) If any of the `Sec-Fetch-*` headers are present.
     """
-    return req.headers["User-Agent"].startswith("Mozilla")
+    return req.headers.get("User-Agent", "").startswith("Mozilla") or any(
+        h in req.headers
+        for h in (
+            "Sec-Fetch-Mode",
+            "Sec-Fetch-Dest",
+            "Sec-Fetch-Site",
+            "Sec-Fetch-User",
+        )
+    )
 
 
 def deny_browser_requests() -> Callable:
-    """Reject any requests that appear to be made by a browser"""
+    """Reject any requests that appear to be made by a browser."""
 
     def decorator_factory(f: Callable) -> Callable:
         @functools.wraps(f)
@@ -148,6 +160,7 @@ def deny_browser_requests() -> Callable:
                     text="Browser requests not allowed",
                     status=aiohttp.web.HTTPMethodNotAllowed.status_code,
                 )
+
             return await f(self, req)
 
         return decorator
