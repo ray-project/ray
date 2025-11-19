@@ -30,7 +30,7 @@ Ray checks for tokens in the following order, highest priority first:
 2. `RAY_AUTH_TOKEN_PATH` environment variable, which provides a path to a token file.
 3. The default location, `~/.ray/auth_token`.
 
-When managing multiple tokens, we recommend storing them in local files and using the `RAY_AUTH_TOKEN_PATH` environment variable rather than setting the `RAY_AUTH_TOKEN` value directly to avoid accidentally leaking the token.
+When managing multiple tokens, we recommend storing them in local files and using the `RAY_AUTH_TOKEN_PATH` environment variable rather than setting the `RAY_AUTH_TOKEN` value directly to avoid exposing the token to other code that reads environment variables.
 
 ## Security considerations
 
@@ -259,7 +259,7 @@ If running a remote cluster, make sure you've followed instructions to copy your
 
 Any client that tries to interact with a Ray cluster must have the same token as the Ray cluster.
 
-If the token on your local machine doesn't match the token in a Ray cluster, you can use the `RAY_AUTH_TOKEN` environment variable to configure a token for interacting with that cluster. You must work with the creator of the cluster to get the token.
+If the token on your local machine doesn't match the token in a Ray cluster, you can use the `RAY_AUTH_TOKEN_PATH` or `RAY_AUTH_TOKEN` environment variable to configure a token for interacting with that cluster. You must work with the creator of the cluster to get the token.
 
 :::{note}
 It's possible to stop and then restart a cluster using a different token. All clients connecting to the cluster must have the updated token to connect successfully.
