@@ -8,11 +8,15 @@ from ray.actor import ActorHandle
 from ray.data import DataIterator
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data.context import DataContext
+from ray.exceptions import GetTimeoutError
 from ray.train.v2._internal.data_integration.interfaces import (
     DatasetShardMetadata,
     DatasetShardProvider,
 )
-from ray.train.v2._internal.execution.callback import WorkerGroupCallback
+from ray.train.v2._internal.execution.callback import (
+    ControllerCallback,
+    WorkerGroupCallback,
+)
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     Worker,
@@ -41,7 +45,7 @@ class RayDatasetShardProvider:
         return self._dataset_iterators[dataset_info.dataset_name]
 
 
-class DatasetsCallback(WorkerGroupCallback):
+class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
     """A callback for managing Ray Datasets for the worker group."""
 
     def __init__(self, train_run_context: TrainRunContext):
@@ -74,27 +78,23 @@ class DatasetsCallback(WorkerGroupCallback):
         Returns a list of each unique SplitCoordinator actor handle given the iterators per rank.
         These handles will later be used to call shutdown on the actors.
         """
-        coordinator_actors = []
-        for rank_iterators in ds_iterators_per_rank:
-            for iterator in rank_iterators.values():
-                if isinstance(iterator, StreamSplitDataIterator):
-                    coord = iterator._coord_actor
-                    if coord is not None and coord not in coordinator_actors:
-                        coordinator_actors.append(coord)
-        return coordinator_actors
+
+        # Note: Currently, we only need to check rank 0 for split iterators.
+        # In the future, if datasets can be split across only a subset of ranks,
+        # we may need to process all ranks.
+        rank_0_iterators = ds_iterators_per_rank[0]
+        coord_actors = [
+            iterator._coord_actor
+            for iterator in rank_0_iterators.values()
+            if isinstance(iterator, StreamSplitDataIterator)
+        ]
+        return coord_actors
 
     def _shutdown_data_executors(self):
         """Eagerly shutdown the data executors of the split coordinator actors."""
-        for coord in self._coordinator_actors:
-            try:
-                ref = coord.shutdown_executor.remote()
-                ray.get(ref, timeout=5)
-            except ray.exceptions.GetTimeoutError:
-                logger.debug("Failed to shutdown data executor within 5 seconds.")
-            except Exception:
-                logger.debug(
-                    "Failed to invoke remote shutdown of the Ray Data executor."
-                )
+        self._shutdown_refs = [
+            coord.shutdown_executor.remote() for coord in self._coordinator_actors
+        ]
 
     # --------------------------
     # WorkerGroupCallback
@@ -148,3 +148,13 @@ class DatasetsCallback(WorkerGroupCallback):
         self, worker_group_context: WorkerGroupContext
     ) -> None:
         self._shutdown_data_executors()
+
+    # --------------------------
+    # ControllerCallback
+    # --------------------------
+
+    def before_controller_shutdown(self):
+        try:
+            ray.get(self._shutdown_refs, timeout=5)
+        except GetTimeoutError:
+            logger.error("Ray Data executor shutdown task timed out after 5 seconds.")
