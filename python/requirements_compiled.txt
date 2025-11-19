@@ -1031,7 +1031,7 @@ locket==1.0.0
     #   partd
 log-symbols==0.0.14
     # via halo
-lxml==4.9.4
+lxml==6.0.2
     # via
     #   -r python/requirements/test-requirements.txt
     #   dm-control
