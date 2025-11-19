@@ -38,6 +38,7 @@ from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_PER_REPLICA_RETRY_COUNT,
     RAY_SERVE_ENABLE_TASK_EVENTS,
+    RAY_SERVE_FAIL_ON_RANK_ERROR,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -280,6 +281,9 @@ class ActorReplicaWrapper:
         self._record_routing_stats_ref: Optional[ObjectRef] = None
         self._last_record_routing_stats_time: float = 0.0
         self._ingress: bool = False
+
+        # Outbound deployments polling state
+        self._outbound_deployments: Optional[List[DeploymentID]] = None
 
     @property
     def replica_id(self) -> str:
@@ -575,49 +579,11 @@ class ActorReplicaWrapper:
         self._actor_handle = actor_handle
         self._placement_group = placement_group
 
-        # Perform auto method name translation for java handles.
-        # See https://github.com/ray-project/ray/issues/21474
-        deployment_config = copy(self._version.deployment_config)
-        deployment_config.user_config = self._format_user_config(
-            deployment_config.user_config
-        )
         if self._is_cross_language:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-
-            def on_completed(result: Any):
-                if isinstance(result, Exception):
-                    return
-                # TODO: passing node_id=-1 is a temporary solution, replica ranks and anyway not reliable for Java yet.
-                # In order to pass correct node_id, Java actor should return node_id from is_allocated().
-                self._rank = self._assign_rank_callback(
-                    self._replica_id.unique_id, node_id=-1
-                )
-                self._ready_obj_ref = self._actor_handle.is_initialized.remote(
-                    deployment_config.to_proto_bytes()
-                )
-
-            self._allocated_obj_ref._on_completed(on_completed)
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-
-            def on_completed(result: Any):
-                if isinstance(result, Exception):
-                    return
-                _, _, _, node_id, _, _, _ = result
-                self._rank = self._assign_rank_callback(
-                    self._replica_id.unique_id, node_id
-                )
-
-                replica_ready_check_func = (
-                    self._actor_handle.initialize_and_get_metadata
-                )
-                self._ready_obj_ref = replica_ready_check_func.remote(
-                    deployment_config,
-                    self._rank,
-                )
-
-            self._allocated_obj_ref._on_completed(on_completed)
 
     def _format_user_config(self, user_config: Any):
         temp = copy(user_config)
@@ -763,6 +729,25 @@ class ActorReplicaWrapper:
                 return ReplicaStartupStatus.FAILED, msg
 
         if self._ready_obj_ref is None:
+            # Perform auto method name translation for java handles.
+            # See https://github.com/ray-project/ray/issues/21474
+            deployment_config = copy(self._version.deployment_config)
+            deployment_config.user_config = self._format_user_config(
+                deployment_config.user_config
+            )
+            if self._is_cross_language:
+                self._ready_obj_ref = self._actor_handle.is_initialized.remote(
+                    deployment_config.to_proto_bytes()
+                )
+            else:
+                replica_ready_check_func = (
+                    self._actor_handle.initialize_and_get_metadata
+                )
+                self._rank = self._assign_rank_callback(self._replica_id.unique_id)
+                self._ready_obj_ref = replica_ready_check_func.remote(
+                    deployment_config, self._rank
+                )
+
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
 
         # Check whether replica initialization has completed.
@@ -793,6 +778,7 @@ class ActorReplicaWrapper:
                         self._grpc_port,
                         self._rank,
                         self._route_patterns,
+                        self._outbound_deployments,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -1064,6 +1050,9 @@ class ActorReplicaWrapper:
             ray.kill(ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE))
         except ValueError:
             pass
+
+    def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        return self._outbound_deployments
 
 
 class DeploymentReplica:
@@ -1349,6 +1338,9 @@ class DeploymentReplica:
         # https://github.com/ray-project/ray/issues/26210 for the issue.
         return json.dumps(required), json.dumps(available)
 
+    def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        return self._actor.get_outbound_deployments()
+
 
 class ReplicaStateContainer:
     """Container for mapping ReplicaStates to lists of DeploymentReplicas."""
@@ -1494,9 +1486,12 @@ class RankManager:
             raise RuntimeError(f"Rank for {key} already assigned: {self._ranks[key]}")
 
         if self._released_ranks:
+            # Reuse the smallest released rank
             rank = min(self._released_ranks)
             self._released_ranks.remove(rank)
         else:
+            # Assign the next available rank
+            # This is the first time we're assigning a rank to this replica
             rank = self._next_rank
             self._next_rank += 1
 
@@ -1507,6 +1502,8 @@ class RankManager:
         if key not in self._ranks:
             raise RuntimeError(f"Rank for {key} not assigned")
         rank = self._ranks.pop(key)
+        # Add the released rank to the set of released ranks
+        # This rank can be reused for a new replica
         self._released_ranks.add(rank)
 
     def recover_rank(self, key: str, rank: int) -> None:
@@ -1557,7 +1554,6 @@ class RankManager:
             return []
 
         active_keys_set = set(active_keys)
-        keys_needs_reconfiguration = set()
 
         # Check for stale ranks - this should never happen
         stale_keys = set(self._ranks.keys()) - active_keys_set
@@ -1606,13 +1602,7 @@ class RankManager:
                 self._perform_minimal_rank_reassignment(active_keys)
             )
 
-        # Combine all keys that need reconfiguration
-        all_keys_needing_reconfiguration = list(keys_needs_reconfiguration)
-        all_keys_needing_reconfiguration.extend(
-            keys_needing_reconfiguration_from_reassignment
-        )
-
-        return all_keys_needing_reconfiguration
+        return keys_needing_reconfiguration_from_reassignment
 
     def _perform_minimal_rank_reassignment(self, active_keys: List[str]) -> List[str]:
         """Perform minimal rank reassignment to achieve contiguity.
@@ -1682,9 +1672,10 @@ class DeploymentRankManager:
     - Node rank ID: Index assigned to each node (0, 1, 2, ...)
     """
 
-    def __init__(self):
+    def __init__(self, fail_on_rank_error: bool = True):
         # Global rank manager (existing replica-level rank)
         self._replica_rank_manager = RankManager()
+        self._fail_on_rank_error = fail_on_rank_error
 
         # Node rank manager (assigns rank IDs to nodes)
         self._node_rank_manager = RankManager()
@@ -1695,67 +1686,91 @@ class DeploymentRankManager:
         # Track which node each replica is on
         self._replica_to_node: Dict[str, str] = {}
 
+    def _execute_with_error_handling(self, func, safe_default, *args, **kwargs):
+        if self._fail_on_rank_error:
+            # Let exceptions propagate
+            return func(*args, **kwargs)
+        else:
+            # Catch exceptions and return safe default
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"Error executing function {func.__name__}: {e}")
+                return safe_default
+
     def assign_rank(self, replica_id: str, node_id: str) -> ReplicaRank:
-        """Assign ranks to a replica on a specific node.
+        """Assign a rank to a new replica.
 
         Args:
-            replica_id: ID of the replica
-            node_id: ID of the node where replica is placed
+            replica_id: The unique ID of the replica
+            node_id: The unique ID of the node
 
         Returns:
-            ReplicaRank object
+            ReplicaRank object with the assigned rank
 
         Raises:
-            RuntimeError: If replica already has ranks assigned
+            RuntimeError: If the replica already has a rank assigned
         """
-        if self.has_replica_rank(replica_id):
-            raise RuntimeError(
-                f"Rank for {replica_id} already assigned: {self._replica_rank_manager.get_rank(replica_id)}"
-            )
 
-        # Assign global rank
-        rank = self._replica_rank_manager.assign_rank(replica_id)
+        def _assign_rank_impl():
+            if self.has_replica_rank(replica_id):
+                raise RuntimeError(
+                    f"Rank for {replica_id} already assigned: {self._replica_rank_manager.get_rank(replica_id)}"
+                )
 
-        # Assign node rank if this node doesn't have one yet
-        if node_id not in self._local_rank_managers:
-            self._node_rank_manager.assign_rank(node_id)
-            self._local_rank_managers[node_id] = RankManager()
+            # Assign global rank
+            rank = self._replica_rank_manager.assign_rank(replica_id)
 
-        node_rank = self._node_rank_manager.get_rank(node_id)
-        # Assign local rank within the node
-        local_rank = self._local_rank_managers[node_id].assign_rank(replica_id)
+            # Assign node rank if this node doesn't have one yet
+            if node_id not in self._local_rank_managers:
+                self._node_rank_manager.assign_rank(node_id)
+                self._local_rank_managers[node_id] = RankManager()
 
-        # Track the replica-to-node mapping
-        self._replica_to_node[replica_id] = node_id
+            node_rank = self._node_rank_manager.get_rank(node_id)
+            # Assign local rank within the node
+            local_rank = self._local_rank_managers[node_id].assign_rank(replica_id)
 
-        return ReplicaRank(rank=rank, node_rank=node_rank, local_rank=local_rank)
+            # Track the replica-to-node mapping
+            self._replica_to_node[replica_id] = node_id
+
+            return ReplicaRank(rank=rank, node_rank=node_rank, local_rank=local_rank)
+
+        return self._execute_with_error_handling(
+            _assign_rank_impl, ReplicaRank(rank=0, node_rank=0, local_rank=0)
+        )
 
     def release_rank(self, replica_id: str) -> None:
-        """Release ranks for a replica.
+        """Release rank for a replica.
+
         Args:
             replica_id: ID of the replica
+
         Raises:
             RuntimeError: If replica doesn't have ranks
         """
-        if not self.has_replica_rank(replica_id):
-            raise RuntimeError(f"Rank for {replica_id} not assigned")
 
-        # Get the node_id from the replica mapping
-        node_id = self._replica_to_node[replica_id]
+        def _release_rank_impl():
+            if not self.has_replica_rank(replica_id):
+                raise RuntimeError(f"Rank for {replica_id} not assigned")
 
-        # Release global rank
-        self._replica_rank_manager.release_rank(replica_id)
+            # Get the node_id from the replica mapping
+            node_id = self._replica_to_node[replica_id]
 
-        # Release local rank
-        self._local_rank_managers[node_id].release_rank(replica_id)
+            # Release global rank
+            self._replica_rank_manager.release_rank(replica_id)
 
-        # Release node rank if this was the last replica on the node
-        if len(self._local_rank_managers[node_id].get_ranks_mapping()) == 0:
-            self._node_rank_manager.release_rank(node_id)
-            del self._local_rank_managers[node_id]
+            # Release local rank
+            self._local_rank_managers[node_id].release_rank(replica_id)
 
-        # Remove replica from node mapping
-        del self._replica_to_node[replica_id]
+            # Release node rank if this was the last replica on the node
+            if len(self._local_rank_managers[node_id].get_ranks_mapping()) == 0:
+                self._node_rank_manager.release_rank(node_id)
+                del self._local_rank_managers[node_id]
+
+            # Remove replica from node mapping
+            del self._replica_to_node[replica_id]
+
+        return self._execute_with_error_handling(_release_rank_impl, None)
 
     def recover_rank(
         self,
@@ -1767,34 +1782,48 @@ class DeploymentRankManager:
 
         Args:
             replica_id: ID of the replica
-            node_id: ID of the node where replica is placed
+            node_id: ID of the node
             rank: The rank to recover
 
         Raises:
             RuntimeError: If replica already has ranks assigned
         """
-        if self.has_replica_rank(replica_id):
-            raise RuntimeError(
-                f"Rank for {replica_id} already assigned: {self._replica_rank_manager.get_rank(replica_id)}"
-            )
 
-        # Recover global rank
-        self._replica_rank_manager.recover_rank(replica_id, rank.rank)
+        def _recover_rank_impl():
+            if self.has_replica_rank(replica_id):
+                raise RuntimeError(
+                    f"Rank for {replica_id} already assigned: {self._replica_rank_manager.get_rank(replica_id)}"
+                )
 
-        # Recover node rank only if this node doesn't already have one
-        if not self._node_rank_manager.has_rank(node_id):
-            self._node_rank_manager.recover_rank(node_id, rank.node_rank)
+            # Recover global rank
+            self._replica_rank_manager.recover_rank(replica_id, rank.rank)
 
-        # Recover local rank
-        if node_id not in self._local_rank_managers:
-            self._local_rank_managers[node_id] = RankManager()
-        self._local_rank_managers[node_id].recover_rank(replica_id, rank.local_rank)
+            # Recover node rank only if this node doesn't already have one
+            if not self._node_rank_manager.has_rank(node_id):
+                self._node_rank_manager.recover_rank(node_id, rank.node_rank)
 
-        # Track the replica-to-node mapping
-        self._replica_to_node[replica_id] = node_id
+            # Recover local rank
+            if node_id not in self._local_rank_managers:
+                self._local_rank_managers[node_id] = RankManager()
+            self._local_rank_managers[node_id].recover_rank(replica_id, rank.local_rank)
+
+            # Track the replica-to-node mapping
+            self._replica_to_node[replica_id] = node_id
+
+        return self._execute_with_error_handling(_recover_rank_impl, None)
 
     def has_replica_rank(self, replica_id: str) -> bool:
-        """Check if replica has a rank assigned."""
+        """Check if replica has a rank assigned.
+
+        Args:
+            replica_id: The unique ID of the replica
+
+        Returns:
+            True if the replica has a rank assigned, False otherwise
+
+        Raises:
+            RuntimeError: If the replica doesn't have ranks assigned
+        """
         if replica_id not in self._replica_to_node:
             return False
 
@@ -1818,14 +1847,22 @@ class DeploymentRankManager:
         Raises:
             RuntimeError: If replica doesn't have ranks assigned
         """
-        if not self.has_replica_rank(replica_id):
-            raise RuntimeError(f"Rank for {replica_id} not assigned")
 
-        global_rank = self._replica_rank_manager.get_rank(replica_id)
-        node_id = self._replica_to_node[replica_id]
-        node_rank = self._node_rank_manager.get_rank(node_id)
-        local_rank = self._local_rank_managers[node_id].get_rank(replica_id)
-        return ReplicaRank(rank=global_rank, node_rank=node_rank, local_rank=local_rank)
+        def _get_replica_rank_impl():
+            if not self.has_replica_rank(replica_id):
+                raise RuntimeError(f"Rank for {replica_id} not assigned")
+
+            global_rank = self._replica_rank_manager.get_rank(replica_id)
+            node_id = self._replica_to_node[replica_id]
+            node_rank = self._node_rank_manager.get_rank(node_id)
+            local_rank = self._local_rank_managers[node_id].get_rank(replica_id)
+            return ReplicaRank(
+                rank=global_rank, node_rank=node_rank, local_rank=local_rank
+            )
+
+        return self._execute_with_error_handling(
+            _get_replica_rank_impl, ReplicaRank(rank=0, node_rank=0, local_rank=0)
+        )
 
     def check_rank_consistency_and_reassign_minimally(
         self,
@@ -1835,6 +1872,8 @@ class DeploymentRankManager:
 
         This method ensures:
         1. Global ranks are contiguous [0, N-1] for N replicas
+        2. Node ranks are contiguous [0, M-1] for M nodes
+        3. Local ranks are contiguous [0, K-1] for K replicas on each node
 
         Args:
             active_replicas: List of currently active replicas
@@ -1842,68 +1881,70 @@ class DeploymentRankManager:
         Returns:
             List of replicas that need to be reconfigured with new ranks
         """
-        if not active_replicas:
-            return []
 
-        # Extract replica IDs from replicas
-        active_replica_ids = [
-            replica.replica_id.unique_id for replica in active_replicas
-        ]
+        def _check_rank_consistency_impl():
+            if not active_replicas:
+                return []
 
-        # Create a mapping from replica ID to replica object for quick lookup
-        replica_id_to_replica = {
-            replica.replica_id.unique_id: replica for replica in active_replicas
-        }
+            # Extract replica IDs from replicas
+            active_replica_ids = [
+                replica.replica_id.unique_id for replica in active_replicas
+            ]
 
-        # Track all replicas needing reconfiguration from any rank system
-        all_replica_ids_needing_reconfiguration = set()
+            # Create a mapping from replica ID to replica object for quick lookup
+            replica_id_to_replica = {
+                replica.replica_id.unique_id: replica for replica in active_replicas
+            }
 
-        # STEP 1: Check global rank consistency
-        replica_ids_from_global = (
-            self._replica_rank_manager.check_rank_consistency_and_reassign_minimally(
+            # Track all replicas needing reconfiguration from any rank system
+            all_replica_ids_needing_reconfiguration = set()
+
+            # STEP 1: Check global rank consistency
+            replica_ids_from_global = self._replica_rank_manager.check_rank_consistency_and_reassign_minimally(
                 active_replica_ids
             )
-        )
-        all_replica_ids_needing_reconfiguration.update(replica_ids_from_global)
+            all_replica_ids_needing_reconfiguration.update(replica_ids_from_global)
 
-        # STEP 2: Group replicas by node and check local rank consistency per node
-        replicas_by_node: Dict[str, List[str]] = {}
-        for replica_id in active_replica_ids:
-            node_id = self._replica_to_node.get(replica_id)
-            assert node_id is not None, f"Replica {replica_id} not assigned to any node"
-            if node_id not in replicas_by_node:
-                replicas_by_node[node_id] = []
-            replicas_by_node[node_id].append(replica_id)
+            # STEP 2: Group replicas by node and check local rank consistency per node
+            replicas_by_node: Dict[str, List[str]] = {}
+            for replica_id in active_replica_ids:
+                node_id = self._replica_to_node.get(replica_id)
+                assert (
+                    node_id is not None
+                ), f"Replica {replica_id} not assigned to any node"
+                if node_id not in replicas_by_node:
+                    replicas_by_node[node_id] = []
+                replicas_by_node[node_id].append(replica_id)
 
-        for node_id, replica_ids_on_node in replicas_by_node.items():
-            replica_ids_from_local = self._local_rank_managers[
-                node_id
-            ].check_rank_consistency_and_reassign_minimally(replica_ids_on_node)
-            all_replica_ids_needing_reconfiguration.update(replica_ids_from_local)
+            for node_id, replica_ids_on_node in replicas_by_node.items():
+                replica_ids_from_local = self._local_rank_managers[
+                    node_id
+                ].check_rank_consistency_and_reassign_minimally(replica_ids_on_node)
+                all_replica_ids_needing_reconfiguration.update(replica_ids_from_local)
 
-        # STEP 3: Check node rank consistency
-        active_node_ids = list(replicas_by_node.keys())
-        if active_node_ids:
-            node_ids_needing_reassignment = (
-                self._node_rank_manager.check_rank_consistency_and_reassign_minimally(
+            # STEP 3: Check node rank consistency
+            active_node_ids = list(replicas_by_node.keys())
+            if active_node_ids:
+                node_ids_needing_reassignment = self._node_rank_manager.check_rank_consistency_and_reassign_minimally(
                     active_node_ids,
                 )
-            )
-            # If any nodes were reassigned, all replicas on those nodes need reconfiguration
-            for node_id in node_ids_needing_reassignment:
-                all_replica_ids_needing_reconfiguration.update(
-                    replicas_by_node[node_id]
-                )
+                # If any nodes were reassigned, all replicas on those nodes need reconfiguration
+                for node_id in node_ids_needing_reassignment:
+                    all_replica_ids_needing_reconfiguration.update(
+                        replicas_by_node[node_id]
+                    )
 
-        # Convert replica IDs back to replica objects
-        # Filter out stale replicas that are not in the active set
-        replicas_needing_reconfiguration = [
-            replica_id_to_replica[replica_id]
-            for replica_id in all_replica_ids_needing_reconfiguration
-            if replica_id in replica_id_to_replica
-        ]
+            # Convert replica IDs back to replica objects
+            # Filter out stale replicas that are not in the active set
+            replicas_needing_reconfiguration = [
+                replica_id_to_replica[replica_id]
+                for replica_id in all_replica_ids_needing_reconfiguration
+                if replica_id in replica_id_to_replica
+            ]
 
-        return replicas_needing_reconfiguration
+            return replicas_needing_reconfiguration
+
+        return self._execute_with_error_handling(_check_rank_consistency_impl, [])
 
     def clear(self) -> None:
         self._replica_rank_manager.clear()
@@ -1964,7 +2005,9 @@ class DeploymentState:
             DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
         )
 
-        self._rank_manager = DeploymentRankManager()
+        self._rank_manager = DeploymentRankManager(
+            fail_on_rank_error=RAY_SERVE_FAIL_ON_RANK_ERROR
+        )
 
         self.replica_average_ongoing_requests: Dict[str, float] = {}
 
@@ -2500,7 +2543,7 @@ class DeploymentState:
                     replica.replica_id.unique_id
                 )
                 actor_updating = replica.reconfigure(
-                    self._target_state.version, rank=current_rank
+                    self._target_state.version, rank=current_rank.rank
                 )
                 if actor_updating:
                     self._replicas.add(ReplicaState.UPDATING, replica)
@@ -3172,6 +3215,27 @@ class DeploymentState:
     def is_ingress(self) -> bool:
         return self._target_state.info.ingress
 
+    def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        """Get the outbound deployments.
+
+        Returns:
+            Sorted list of deployment IDs that this deployment calls. None if
+            outbound deployments are not yet polled.
+        """
+        result: Set[DeploymentID] = set()
+        has_outbound_deployments = False
+        for replica in self._replicas.get([ReplicaState.RUNNING]):
+            if replica.version != self._target_state.version:
+                # Only consider replicas of the target version
+                continue
+            outbound_deployments = replica.get_outbound_deployments()
+            if outbound_deployments is not None:
+                result.update(outbound_deployments)
+                has_outbound_deployments = True
+        if not has_outbound_deployments:
+            return None
+        return sorted(result, key=lambda d: (d.name))
+
 
 class DeploymentStateManager:
     """Manages all state for deployments in the system.
@@ -3782,3 +3846,21 @@ class DeploymentStateManager:
             return {}
 
         return deployment_state._get_replica_ranks_mapping()
+
+    def get_deployment_outbound_deployments(
+        self, deployment_id: DeploymentID
+    ) -> Optional[List[DeploymentID]]:
+        """Get the cached outbound deployments for a specific deployment.
+
+        Args:
+            deployment_id: The deployment ID to get outbound deployments for.
+
+        Returns:
+            List of deployment IDs that this deployment calls, or None if
+            the deployment doesn't exist or hasn't been polled yet.
+        """
+        deployment_state = self._deployment_states.get(deployment_id)
+        if deployment_state is None:
+            return None
+
+        return deployment_state.get_outbound_deployments()

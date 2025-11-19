@@ -2,7 +2,6 @@ import logging
 import math
 import time
 from collections import defaultdict
-from functools import partial
 from typing import Collection, DefaultDict, List, Optional, Union
 
 import gymnasium as gym
@@ -22,14 +21,14 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
-from ray.rllib.env import INPUT_ENV_SPACES, INPUT_ENV_SINGLE_SPACES
+from ray.rllib.env import INPUT_ENV_SINGLE_SPACES, INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
+from ray.rllib.env.env_runner import ENV_STEP_FAILURE, EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
+from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import get_device
 from ray.rllib.utils.metrics import (
     ENV_TO_MODULE_CONNECTOR,
@@ -93,7 +92,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         )
 
         # Create the vectorized gymnasium env.
-        self.env: Optional[gym.vector.VectorEnvWrapper] = None
+        self.env: Optional[gym.vector.VectorEnv] = None
         self.num_envs: int = 0
         if (
             self.worker_index is None
@@ -143,6 +142,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # and receiving the next `sample()` request from the user.
         self._time_after_sampling = None
 
+        # Save whether to convert episodes to numpy during sample
+        #   In `OfflineSingleAgentEnvRunner`, this result is set to False
+        #   during initialisation
+        self.episodes_to_numpy = self.config.episodes_to_numpy
+
     @override(EnvRunner)
     def sample(
         self,
@@ -155,8 +159,15 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
     ) -> List[SingleAgentEpisode]:
         """Runs and returns a sample (n timesteps or m episodes) on the env(s).
 
+        If neither `num_timesteps` nor `num_episodes` are provided and the config
+        `batch_mode` is "truncate_episodes" then
+        `config.get_rollout_fragment_length(self.worker_index) * self.num_envs`
+        timesteps will be sampled.
+
         Args:
             num_timesteps: The number of timesteps to sample during this call.
+                The episodes returned will contain the total timesteps greater than or
+                equal to num_timesteps and less than num_timesteps + num_envs_per_env_runner.
                 Note that only one of `num_timesteps` or `num_episodes` may be provided.
             num_episodes: The number of episodes to sample during this call.
                 Note that only one of `num_timesteps` or `num_episodes` may be provided.
@@ -169,7 +180,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             random_actions: If True, actions will be sampled randomly (from the action
                 space of the environment). If False (default), actions or action
                 distribution parameters are computed by the RLModule.
-            force_reset: Whether to force-reset all (vector) environments before
+            force_reset: Whether to force-reset all vectorized environments before
                 sampling. Useful if you would like to collect a clean slate of new
                 episodes via this call. Note that when sampling n episodes
                 (`num_episodes != None`), this is fixed to True.
@@ -203,6 +214,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # desired timesteps/episodes to sample and exploration behavior.
             if explore is None:
                 explore = self.config.explore
+
             if (
                 num_timesteps is None
                 and num_episodes is None
@@ -215,6 +227,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
             # Sample n timesteps.
             if num_timesteps is not None:
+                assert num_timesteps >= 0
                 samples = self._sample(
                     num_timesteps=num_timesteps,
                     explore=explore,
@@ -223,6 +236,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 )
             # Sample m episodes.
             elif num_episodes is not None:
+                assert num_episodes >= 0
                 samples = self._sample(
                     num_episodes=num_episodes,
                     explore=explore,
@@ -379,6 +393,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # forward pass only in the next `while`-iteration.
             if self.module is not None:
                 self._cached_to_module = self._env_to_module(
+                    batch={},
                     episodes=episodes,
                     explore=explore,
                     rl_module=self.module,
@@ -410,7 +425,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     )
 
                     # Numpy'ize the episode.
-                    if self.config.episodes_to_numpy:
+                    if self.episodes_to_numpy:
                         # Any possibly compress observations.
                         done_episodes_to_return.append(episodes[env_index].to_numpy())
                     # Leave episode as lists of individual (obs, action, etc..) items.
@@ -450,7 +465,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 self._ongoing_episodes_for_metrics[eps.id_].append(eps)
 
                 # Numpy'ize the episode.
-                if self.config.episodes_to_numpy:
+                if self.episodes_to_numpy:
                     # Any possibly compress observations.
                     ongoing_episodes_to_return.append(eps.to_numpy())
                 # Leave episode as lists of individual (obs, action, etc..) items.
@@ -640,51 +655,66 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     f"{e.args[0]}"
                 )
 
-        env_ctx = self.config.env_config
-        if not isinstance(env_ctx, EnvContext):
+        env_config = self.config.env_config
+        if not isinstance(env_config, EnvContext):
             env_ctx = EnvContext(
-                env_ctx,
+                env_config,
                 worker_index=self.worker_index,
                 num_workers=self.num_workers,
                 remote=self.config.remote_worker_envs,
             )
+        else:
+            env_ctx = env_config
 
         # No env provided -> Error.
         if not self.config.env:
             raise ValueError(
-                "`config.env` is not provided! You should provide a valid environment "
-                "to your config through `config.environment([env descriptor e.g. "
-                "'CartPole-v1'])`."
+                "`config.env` is not provided! "
+                "You should provide a valid environment to your config through "
+                "`config.environment([env descriptor e.g. 'CartPole-v1'])`."
             )
         # Register env for the local context.
         # Note, `gym.register` has to be called on each worker.
         elif isinstance(self.config.env, str) and _global_registry.contains(
             ENV_CREATOR, self.config.env
         ):
-            entry_point = partial(
-                _global_registry.get(ENV_CREATOR, self.config.env),
-                env_ctx,
-            )
-        else:
-            entry_point = partial(
-                _gym_env_creator,
-                env_descriptor=self.config.env,
-                env_context=env_ctx,
-            )
-        gym.register("rllib-single-agent-env-v0", entry_point=entry_point)
-        vectorize_mode = self.config.gym_env_vectorize_mode
-
-        self.env = DictInfoToList(
-            gym.make_vec(
-                "rllib-single-agent-env-v0",
-                num_envs=self.config.num_envs_per_env_runner,
-                vectorization_mode=(
-                    vectorize_mode
-                    if isinstance(vectorize_mode, gym.envs.registration.VectorizeMode)
-                    else gym.envs.registration.VectorizeMode(vectorize_mode.lower())
+            env_name = "rllib-single-agent-env-v0"
+            entry_point = _global_registry.get(ENV_CREATOR, self.config.env)
+            gym.register(
+                env_name,
+                entry_point=lambda: entry_point(env_ctx),
+                vector_entry_point=lambda num_envs: entry_point(
+                    env_ctx | {"num_envs": num_envs}
                 ),
             )
-        )
+            env_config = {}
+        elif callable(self.config.env):
+            env_name = "rllib-single-agent-env-v0"
+            gym.register(
+                env_name,
+                entry_point=lambda: self.config.env(env_ctx),
+                vector_entry_point=lambda num_envs: self.config.env(
+                    env_ctx | {"num_envs": num_envs}
+                ),
+            )
+            env_config = {}
+        else:
+            env_name = self.config.env
+
+        vectorize_mode = gym.VectorizeMode(self.config.gym_env_vectorize_mode)
+        try:
+            self.env = DictInfoToList(
+                gym.make_vec(
+                    env_name,
+                    num_envs=self.config.num_envs_per_env_runner,
+                    vectorization_mode=vectorize_mode,
+                    **env_config,
+                )
+            )
+        except gym.error.Error as e:
+            raise EnvError(
+                ERR_MSG_INVALID_ENV_DESCRIPTOR.format(self.config.env)
+            ) from e
 
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_env_runner
