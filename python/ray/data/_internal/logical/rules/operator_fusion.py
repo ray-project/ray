@@ -349,6 +349,11 @@ class FuseOperators(Rule):
         ):
             op.add_map_task_kwargs_fn(map_task_kwargs_fn)
 
+        min_rows_per_bundled_input = (
+            ref_bundler.min_rows_per_bundle
+            if isinstance(ref_bundler, BlockRefBundler)
+            else ref_bundler.target_num_rows_per_block
+        )
         # Build a map logical operator to be used as a reference for further fusion.
         # TODO(Scott): This is hacky, remove this once we push fusion to be purely based
         # on a lower-level operator spec.
@@ -523,16 +528,6 @@ class FuseOperators(Rule):
         return True
 
     @classmethod
-    def _get_ref_bundler_num_rows(cls, ref_bundler: BaseRefBundler) -> Optional[int]:
-        if isinstance(ref_bundler, BlockRefBundler):
-            return ref_bundler.min_rows_per_bundle
-        elif isinstance(ref_bundler, StreamingRepartitionRefBundler):
-            return ref_bundler.target_num_rows_per_block
-        else:
-            logger.warning(f"Unsupported ref bundler type: {type(ref_bundler)}")
-            return None
-
-    @classmethod
     def _get_compatible_ref_bundler(
         cls, up_ref_bundler: BaseRefBundler, down_ref_bundler: BaseRefBundler
     ) -> BaseRefBundler:
@@ -545,18 +540,41 @@ class FuseOperators(Rule):
                     down_ref_bundler.min_rows_per_bundle,
                 )
             )
-        up_num_rows = cls._get_ref_bundler_num_rows(up_ref_bundler)
-        down_num_rows = cls._get_ref_bundler_num_rows(down_ref_bundler)
-        if (
-            up_num_rows is not None
-            and down_num_rows is not None
-            and up_num_rows == down_num_rows
+        elif isinstance(up_ref_bundler, StreamingRepartitionRefBundler) and isinstance(
+            down_ref_bundler, StreamingRepartitionRefBundler
         ):
-            assert isinstance(
-                up_ref_bundler, StreamingRepartitionRefBundler
-            ) or isinstance(down_ref_bundler, StreamingRepartitionRefBundler)
-            return StreamingRepartitionRefBundler(target_num_rows_per_block=up_num_rows)
+            if (
+                up_ref_bundler.target_num_rows_per_block
+                == down_ref_bundler.target_num_rows_per_block
+            ):
+                return StreamingRepartitionRefBundler(
+                    target_num_rows_per_block=up_ref_bundler.target_num_rows_per_block
+                )
+            else:
+                # TODO(xgui): Explore if we can use least common multiple of the two target_num_rows_per_block
+                return None
         else:
+            supported_types = [BlockRefBundler, StreamingRepartitionRefBundler]
+            assert isinstance(up_ref_bundler, supported_types) and isinstance(
+                down_ref_bundler, supported_types
+            )
+            target_num_rows = (
+                up_ref_bundler.target_num_rows_per_block
+                if isinstance(up_ref_bundler, StreamingRepartitionRefBundler)
+                else down_ref_bundler.target_num_rows_per_block
+            )
+            min_rows_per_bundle = (
+                up_ref_bundler.min_rows_per_bundle
+                if isinstance(up_ref_bundler, BlockRefBundler)
+                else down_ref_bundler.min_rows_per_bundle
+            )
+            if target_num_rows >= min_rows_per_bundle:
+                return StreamingRepartitionRefBundler(
+                    target_num_rows_per_block=target_num_rows
+                )
+            else:
+                # TODO(xgui): Explore if we can use least multiple of target_num_rows_per_block that is greater than min_rows_per_bundle
+                return None
             return None
 
 
