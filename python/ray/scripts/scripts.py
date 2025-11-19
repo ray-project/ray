@@ -1,4 +1,3 @@
-import copy
 import json
 import logging
 import os
@@ -2768,28 +2767,16 @@ def get_auth_token(generate):
     click.echo("", err=True)
 
 
-def add_command_alias(command, name, hidden):
-    new_command = copy.deepcopy(command)
-    new_command.hidden = hidden
-    cli.add_command(new_command, name=name)
-
-
 cli.add_command(dashboard)
 cli.add_command(debug)
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(up)
-add_command_alias(up, name="create_or_update", hidden=True)
 cli.add_command(attach)
 cli.add_command(exec)
-add_command_alias(exec, name="exec_cmd", hidden=True)
-add_command_alias(rsync_down, name="rsync_down", hidden=True)
-add_command_alias(rsync_up, name="rsync_up", hidden=True)
 cli.add_command(submit)
 cli.add_command(down)
-add_command_alias(down, name="teardown", hidden=True)
 cli.add_command(kill_random_node)
-add_command_alias(get_head_ip, name="get_head_ip", hidden=True)
 cli.add_command(get_worker_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
@@ -2820,8 +2807,8 @@ try:
 
     cli.add_command(ray_list, name="list")
     cli.add_command(ray_get, name="get")
-    add_command_alias(summary_state_cli_group, name="summary", hidden=False)
-    add_command_alias(logs_state_cli_group, name="logs", hidden=False)
+    cli.add_command(summary_state_cli_group, name="summary")
+    cli.add_command(logs_state_cli_group, name="logs")
 except ImportError as e:
     logger.debug(f"Integrating ray state command line tool failed: {e}")
 
@@ -2829,7 +2816,7 @@ except ImportError as e:
 try:
     from ray.dashboard.modules.job.cli import job_cli_group
 
-    add_command_alias(job_cli_group, name="job", hidden=False)
+    cli.add_command(job_cli_group, name="job")
 except Exception as e:
     logger.debug(f"Integrating ray jobs command line tool failed with {e}")
 

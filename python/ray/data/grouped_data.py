@@ -14,7 +14,8 @@ from ray.data.block import (
     UserDefinedFunction,
 )
 from ray.data.context import ShuffleStrategy
-from ray.data.dataset import Dataset
+from ray.data.dataset import EXPRESSION_API_GROUP, Dataset
+from ray.data.expressions import DownloadExpr, Expr, StarExpr
 from ray.util.annotations import PublicAPI
 
 CDS_API_GROUP = "Computations or Descriptive Stats"
@@ -304,6 +305,71 @@ class GroupedData:
             concurrency=concurrency,
             udf_modifying_row_count=False,
             ray_remote_args_fn=ray_remote_args_fn,
+            **ray_remote_args,
+        )
+
+    @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
+    def with_column(
+        self,
+        column_name: str,
+        expr: Expr,
+        **ray_remote_args,
+    ) -> Dataset:
+        """Add a new column to each group using an expression.
+
+        The supplied expression is evaluated against every row in each group, and
+        the resulting column is appended to the group's records. The output dataset
+        preserves the original rows and columns.
+
+        Examples:
+            >>> import ray
+            >>> from ray.data.expressions import col
+            >>> ds = (
+            ...     ray.data.from_items([{"group": 1, "value": 1}, {"group": 1, "value": 2}])
+            ...     .groupby("group")
+            ...     .with_column("value_twice", col("value") * 2)
+            ...     .sort(["group", "value"])
+            ... )
+            >>> ds.take_all()
+            [{'group': 1, 'value': 1, 'value_twice': 2}, {'group': 1, 'value': 2, 'value_twice': 4}]
+
+        Args:
+            column_name: Name of the column to add.
+            expr: Expression that yields the values for the new column.
+            **ray_remote_args: Additional resource requirements to request from Ray
+                for the underlying map tasks (for example, ``num_gpus=1``).
+
+        Returns:
+            A new :class:`~ray.data.Dataset` containing all existing columns plus
+            the newly computed column.
+        """
+        if not isinstance(column_name, str) or not column_name:
+            raise ValueError(
+                f"column_name must be a non-empty string, got: {column_name!r}"
+            )
+        if not isinstance(expr, Expr):
+            raise TypeError(
+                "expr must be a Ray Data expression created via the expression API."
+            )
+        if isinstance(expr, DownloadExpr):
+            raise TypeError(
+                "GroupedData.with_column does not yet support download expressions."
+            )
+
+        aliased_expr = expr.alias(column_name)
+        projection_exprs = [StarExpr(), aliased_expr]
+
+        def _project_group(block: Block) -> Block:
+            from ray.data._internal.planner.plan_expression.expression_evaluator import (
+                eval_projection,
+            )
+
+            return eval_projection(projection_exprs, block)
+
+        return self.map_groups(
+            _project_group,
+            batch_format=None,
+            zero_copy_batch=True,
             **ray_remote_args,
         )
 
