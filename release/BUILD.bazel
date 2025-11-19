@@ -13,17 +13,6 @@ compile_pip_requirements(
     visibility = ["//visibility:private"],
 )
 
-compile_pip_requirements(
-    name = "requirements_py310",
-    data = [":requirements-doc.txt"],
-    requirements_in = "requirements_py310.in",
-    requirements_txt = "requirements_py310.txt",
-    tags = [
-        "team:ci",
-    ],
-    visibility = ["//visibility:private"],
-)
-
 test_srcs = glob(["**/*.py"])
 
 ####

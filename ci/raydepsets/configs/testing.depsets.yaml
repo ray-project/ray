@@ -1,0 +1,20 @@
+build_arg_sets:
+  py310:
+    PYTHON_VERSION: "3.10"
+    PYTHON_SHORT: "310"
+
+depsets:
+  - name: release_requirements_buildkite_py${PYTHON_VERSION}
+    operation: compile
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    requirements:
+      - release/requirements_py${PYTHON_SHORT}.in
+    constraints:
+      - release/requirements_py${PYTHON_SHORT}.txt
+    output: release/requirements_buildkite_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py310

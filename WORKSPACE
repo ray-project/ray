@@ -83,7 +83,7 @@ pip_parse(
 pip_parse(
     name = "py_deps_py310",
     python_interpreter_target = python310,
-    requirements_lock = "//release:requirements_py310.txt",
+    requirements_lock = "//release/requirements_buildkite_py3.10.lock",
 )
 
 load("@py_deps_buildkite//:requirements.bzl", install_py_deps_buildkite = "install_deps")
