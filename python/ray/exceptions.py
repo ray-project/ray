@@ -495,9 +495,10 @@ class AuthenticationError(RayError):
         super().__init__(message)
 
     def __str__(self) -> str:
-        error_msg = f"{self.message}\n\n"
-        error_msg += "For more information, see: https://docs.ray.io/en/latest/ray-security/auth.html"
-        return error_msg
+        return self.message + (
+            ". Ensure that you have `RAY_AUTH_MODE=token` set and the token for the cluster is available as the `RAY_AUTH_TOKEN` environment variable or a local file. "
+            "For more information, see: https://docs.ray.io/en/latest/ray-security/auth.html"
+        )
 
 
 @DeveloperAPI

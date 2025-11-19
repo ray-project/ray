@@ -942,7 +942,12 @@ def start(
                 )
 
         # Ensure auth token is available if authentication mode is token
-        ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
+        try:
+            ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
+        except ray.exceptions.AuthenticationError as e:
+            raise RuntimeError(
+                "Failed to load authentication token. To generate a token for local development, use `ray get-auth-token --generate`. For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled."
+            )
 
         node = ray._private.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
@@ -2632,8 +2637,8 @@ def install_nightly(verbose, dryrun):
 def cpp(show_library_path, generate_bazel_project_template_to):
     """Show the cpp library path and generate the bazel project template."""
     if sys.platform == "win32":
-        cli_logger.error("Ray C++ API is not supported on Windows currently.")
-        sys.exit(1)
+        raise click.ClickException("Ray C++ API is not supported on Windows currently.")
+
     if not show_library_path and not generate_bazel_project_template_to:
         raise ValueError(
             "Please input at least one option of '--show-library-path'"
@@ -2733,11 +2738,9 @@ def get_auth_token(generate):
 
     # Check if token auth mode is enabled and provide guidance if not
     if get_authentication_mode() != AuthenticationMode.TOKEN:
-        click.echo(
+        raise click.ClickException(
             "Token authentication is not currently enabled. To enable token authentication, set: export RAY_AUTH_MODE=token\n For more instructions, see: https://docs.ray.io/en/latest/ray-security/auth.html",
-            err=True,
         )
-        sys.exit(1)
 
     # Try to load existing token
     loader = AuthenticationTokenLoader.instance()
@@ -2748,18 +2751,14 @@ def get_auth_token(generate):
             generate_and_save_token()
             loader.reset_cache()
         else:
-            click.echo(
-                "Error: No authentication token found. Use --generate to create one.",
-                err=True,
+            raise click.ClickException(
+                "No authentication token found. Use ray `get-auth-token --generate` to create one.",
             )
-            sys.exit(1)
 
     # Get raw token value
     token = loader.get_raw_token()
-
     if not token:
-        click.echo("Error: Failed to load authentication token.", err=True)
-        sys.exit(1)
+        raise click.ClickException("Failed to load authentication token.")
 
     # Print token to stdout (for piping) without newline
     click.echo(token, nl=False)
