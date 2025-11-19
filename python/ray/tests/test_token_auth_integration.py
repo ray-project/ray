@@ -146,7 +146,7 @@ def test_local_cluster_generates_token():
             f"Files in {default_token_path.parent}: {list(default_token_path.parent.iterdir()) if default_token_path.parent.exists() else 'directory does not exist'}"
         )
         token = default_token_path.read_text().strip()
-        assert len(token) == 32
+        assert len(token) == 64
         assert all(c in "0123456789abcdef" for c in token)
 
         # Verify cluster is working
