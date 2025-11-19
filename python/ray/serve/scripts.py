@@ -714,17 +714,12 @@ def status(address: str, name: Optional[str]):
     status = asdict(serve_details._get_status())
 
     # Ensure multi-line strings in app_status is dumped/printed correctly
-    class StatusDumper(ServeDeploySchemaDumper):
-        """Custom dumper for status command to handle multi-line strings."""
-
-    StatusDumper.add_representer(str, str_presenter)
-
     if name is None:
         print(
             yaml.dump(
                 # Ensure exception traceback in app_status are printed correctly
                 process_dict_for_yaml_dump(status),
-                Dumper=StatusDumper,
+                Dumper=ServeDeploySchemaDumper,
                 default_flow_style=False,
                 sort_keys=False,
             ),
@@ -738,7 +733,7 @@ def status(address: str, name: Optional[str]):
                 yaml.dump(
                     # Ensure exception tracebacks in app_status are printed correctly
                     process_dict_for_yaml_dump(status["applications"][name]),
-                    Dumper=StatusDumper,
+                    Dumper=ServeDeploySchemaDumper,
                     default_flow_style=False,
                     sort_keys=False,
                 ),
@@ -944,3 +939,4 @@ def enum_representer(dumper: yaml.Dumper, data: Enum):
 # in all YAML dumps (config, status, build commands).
 # Since ServeDeploySchemaDumper extends SafeDumper, this also covers build command.
 ServeDeploySchemaDumper.add_multi_representer(Enum, enum_representer)
+ServeDeploySchemaDumper.add_representer(str, str_presenter)
