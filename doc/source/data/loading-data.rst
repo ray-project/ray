@@ -652,6 +652,17 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
             {'col1': 1, 'col2': '1'}
             {'col1': 2, 'col2': '2'}
 
+.. _loading_huggingface_datasets:
+
+Loading Hugging Face datasets
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To read datasets from the Hugging Face Hub, use :func:`~ray.data.read_parquet` (or other
+read functions) with the ``HfFileSystem`` filesystem. This approach provides better
+performance and scalability than loading datasets into memory first.
+
+First, install the required dependencies
+
 .. _loading_datasets_from_ml_libraries:
 
 Loading data from ML libraries
