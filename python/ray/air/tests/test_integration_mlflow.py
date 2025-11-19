@@ -59,7 +59,7 @@ def test_setup_mlflow_in_train_worker(ray_start_4_cpus):
     trainer.fit()
 
 
-def test_setup_mlflow_in_tune_trial():
+def test_setup_mlflow_in_tune_trial(ray_start_4_cpus):
     """Test that setup_mlflow works in a Tune trial."""
 
     def train_func(config):
