@@ -1,10 +1,12 @@
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from collections import namedtuple
 from unittest.mock import MagicMock, patch
 
+import pytest
 from mlflow.tracking import MlflowClient
 
 import ray
@@ -36,39 +38,40 @@ def clear_env_vars():
     os.environ.pop("MLFLOW_EXPERIMENT_ID", None)
 
 
-class SetupMLflowTrainTuneTest(unittest.TestCase):
-    def setUp(self):
-        ray.init(num_cpus=4)
+@pytest.fixture
+def ray_start_4_cpus():
+    """Automatically start and stop Ray for each test."""
+    ray.init(num_cpus=4)
+    yield
+    ray.shutdown()
 
-    def tearDown(self) -> None:
-        ray.shutdown()
 
-    def test_setup_mlflow_in_train_worker(self):
-        """Test that setup_mlflow works in a Train worker"""
+def test_setup_mlflow_in_train_worker(ray_start_4_cpus):
+    """Test that setup_mlflow works in a Train worker."""
 
-        def train_func(config):
-            setup_mlflow(
-                experiment_name="test_exp", create_experiment_if_not_exists=True
-            )
-
-        trainer = TorchTrainer(
-            train_func,
+    def train_func(config):
+        setup_mlflow(
+            experiment_name="test_exp",
+            create_experiment_if_not_exists=True,
         )
-        trainer.fit()
 
-    def test_setup_mlflow_in_tune_trial(self):
-        """Test that setup_mlflow works in a Tune trial"""
+    trainer = TorchTrainer(train_func)
+    trainer.fit()
 
-        def train_func(config):
-            setup_mlflow(
-                experiment_name="test_exp", create_experiment_if_not_exists=True
-            )
 
-        tuner = Tuner(
-            train_func,
+def test_setup_mlflow_in_tune_trial():
+    """Test that setup_mlflow works in a Tune trial."""
+
+    def train_func(config):
+        setup_mlflow(
+            experiment_name="test_exp",
+            create_experiment_if_not_exists=True,
         )
-        result_grid = tuner.fit()
-        assert all(res.error is None for res in result_grid)
+
+    tuner = Tuner(train_func)
+    result_grid = tuner.fit()
+
+    assert all(res.error is None for res in result_grid)
 
 
 class MLflowTest(unittest.TestCase):
@@ -436,8 +439,4 @@ class MLflowUtilTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__]))

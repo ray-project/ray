@@ -147,6 +147,9 @@ def setup_mlflow(
             "mlflow was not found - please install with `pip install mlflow`"
         )
 
+    default_trial_id = None
+    default_trial_name = None
+
     try:
         if _in_tune_session():
             context: ray.tune.TuneContext = ray.tune.get_context()
