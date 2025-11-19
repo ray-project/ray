@@ -127,7 +127,9 @@ class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
 
 class MockGcsClient : public gcs::GcsClient {
  public:
-  explicit MockGcsClient(bool is_subscribed_to_node_change) {
+  explicit MockGcsClient(bool is_subscribed_to_node_change,
+                         gcs::GcsClientOptions &options)
+      : GcsClient(options) {
     this->node_accessor_ =
         std::make_unique<MockGcsClientNodeAccessor>(is_subscribed_to_node_change);
   }
@@ -141,7 +143,12 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
  public:
   DefaultUnavailableTimeoutCallbackTest()
       : is_subscribed_to_node_change_(GetParam()),
-        gcs_client_(is_subscribed_to_node_change_),
+        options("127.0.0.1",
+                6379,
+                ClusterID::Nil(),
+                /*allow_cluster_id_nil=*/true,
+                /*fetch_cluster_id_if_nil=*/false),
+        gcs_client_(is_subscribed_to_node_change_, options),
         raylet_client_pool_(std::make_unique<RayletClientPool>([](const rpc::Address &) {
           return std::make_shared<MockRayletClientInterface>();
         })),
@@ -156,6 +163,7 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
             })) {}
 
   bool is_subscribed_to_node_change_;
+  gcs::GcsClientOptions options;
   MockGcsClient gcs_client_;
   std::unique_ptr<RayletClientPool> raylet_client_pool_;
   std::unique_ptr<CoreWorkerClientPool> client_pool_;

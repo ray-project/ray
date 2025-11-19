@@ -30,6 +30,8 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/plasma/client.h"
+#include "ray/pubsub/publisher.h"
+#include "ray/pubsub/subscriber.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
@@ -327,8 +329,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       [this](const NodeID &node_id) {
         return GetCoreWorker()->gcs_client_->Nodes().IsNodeDead(node_id);
       },
+      *owned_objects_counter_,
+      *owned_objects_size_counter_,
       RayConfig::instance().lineage_pinning_enabled());
-
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter;
   if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
     lease_request_rate_limiter = std::make_shared<StaticLeaseRequestRateLimiter>(
@@ -352,7 +355,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options.store_socket,
       raylet_ipc_client,
-      *reference_counter,
       options.check_signals,
       /*warmup=*/
       (options.worker_type != WorkerType::SPILL_WORKER &&
@@ -365,7 +367,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       });
   auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
-      reference_counter.get(),
+      /*reference_counting_enabled=*/reference_counter != nullptr,
       raylet_ipc_client,
       options.check_signals,
       [this](const RayObject &obj) {
@@ -797,6 +799,10 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       new ray::stats::Gauge(GetActorByStateGaugeMetric()));
   total_lineage_bytes_gauge_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetTotalLineageBytesGaugeMetric()));
+  owned_objects_counter_ = std::unique_ptr<ray::stats::Gauge>(
+      new ray::stats::Gauge(GetOwnedObjectsByStateGaugeMetric()));
+  owned_objects_size_counter_ = std::unique_ptr<ray::stats::Gauge>(
+      new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
   scheduler_placement_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
       new ray::stats::Histogram(GetSchedulerPlacementTimeMsHistogramMetric()));
 

@@ -6,11 +6,15 @@ import sys
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import (
+    RPC_FAILURE_MAP,
+    RPC_FAILURE_TYPES,
+    wait_for_condition,
+)
 from ray.core.generated import common_pb2, gcs_pb2
 
 
-@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
+@pytest.mark.parametrize("deterministic_failure", RPC_FAILURE_TYPES)
 def test_actor_reconstruction_triggered_by_lineage_reconstruction(
     monkeypatch, ray_start_cluster, deterministic_failure
 ):
@@ -21,11 +25,11 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
     # -> actor goes out of scope again after lineage reconstruction is done
     # -> actor is permanently dead when there is no reference.
     # This test also injects network failure to make sure relevant rpcs are retried.
-    chaos_failure = "100:0" if deterministic_failure == "request" else "0:100"
+    failure = RPC_FAILURE_MAP[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        f"ray::rpc::ActorInfoGcsService.grpc_client.RestartActorForLineageReconstruction=1:{chaos_failure},"
-        f"ray::rpc::ActorInfoGcsService.grpc_client.ReportActorOutOfScope=1:{chaos_failure}",
+        f"ray::rpc::ActorInfoGcsService.grpc_client.RestartActorForLineageReconstruction=1:{failure},"
+        f"ray::rpc::ActorInfoGcsService.grpc_client.ReportActorOutOfScope=1:{failure}",
     )
     cluster = ray_start_cluster
     cluster.add_node(resources={"head": 1})
@@ -56,9 +60,7 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
 
     def verify1():
         gc.collect()
-        actor_info = ray._private.state.state.global_state_accessor.get_actor_info(
-            actor_id
-        )
+        actor_info = ray._private.state.state.get_actor_info(actor_id)
         assert actor_info is not None
         actor_info = gcs_pb2.ActorTableData.FromString(actor_info)
         assert actor_info.state == gcs_pb2.ActorTableData.ActorState.DEAD
@@ -81,9 +83,7 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
     assert ray.get(obj2) == [1] * 1024 * 1024
 
     def verify2():
-        actor_info = ray._private.state.state.global_state_accessor.get_actor_info(
-            actor_id
-        )
+        actor_info = ray._private.state.state.get_actor_info(actor_id)
         assert actor_info is not None
         actor_info = gcs_pb2.ActorTableData.FromString(actor_info)
         assert actor_info.state == gcs_pb2.ActorTableData.ActorState.DEAD
@@ -102,9 +102,7 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
     del obj2
 
     def verify3():
-        actor_info = ray._private.state.state.global_state_accessor.get_actor_info(
-            actor_id
-        )
+        actor_info = ray._private.state.state.get_actor_info(actor_id)
         assert actor_info is not None
         actor_info = gcs_pb2.ActorTableData.FromString(actor_info)
         assert actor_info.state == gcs_pb2.ActorTableData.ActorState.DEAD
