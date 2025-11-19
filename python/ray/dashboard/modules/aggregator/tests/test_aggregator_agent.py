@@ -13,7 +13,6 @@ from ray._common.network_utils import find_free_port
 from ray._private import ray_constants
 from ray._private.grpc_utils import init_grpc_channel
 from ray._private.test_utils import wait_for_condition
-from ray._private.grpc_utils import init_grpc_channel
 from ray._raylet import GcsClient, JobID, TaskID
 from ray.core.generated.common_pb2 import (
     ErrorType,
