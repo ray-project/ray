@@ -26,7 +26,7 @@ cc_binary(
     copts = COPTS,
     deps = [
         ":helloworld_cc_lib",
-        "//src/ray/common:asio",
+        "//src/ray/common/asio:instrumented_io_context",
         "//src/ray/rpc:grpc_server",
         "//src/ray/rpc/authentication:authentication_token",
     ],

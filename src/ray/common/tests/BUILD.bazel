@@ -1,17 +1,6 @@
 load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
 
 ray_cc_test(
-    name = "asio_defer_test",
-    size = "small",
-    srcs = ["asio_defer_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        "//src/ray/common:asio",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
     name = "event_stats_test",
     size = "small",
     srcs = ["event_stats_test.cc"],
@@ -30,17 +19,6 @@ ray_cc_test(
     deps = [
         "//src/ray/common:grpc_util",
         "//src/ray/common:ray_config",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "postable_test",
-    size = "small",
-    srcs = ["postable_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        "//src/ray/common:asio",
         "@com_google_googletest//:gtest_main",
     ],
 )

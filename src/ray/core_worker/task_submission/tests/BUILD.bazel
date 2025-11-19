@@ -21,7 +21,7 @@ ray_cc_test(
     srcs = ["out_of_order_actor_submit_queue_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/common/asio:instrumented_io_context",
         "//src/ray/core_worker/task_submission:out_of_order_actor_submit_queue",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
@@ -49,9 +49,9 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:asio",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
+        "//src/ray/common/asio:instrumented_io_context",
         "//src/ray/core_worker:actor_creator",
         "//src/ray/core_worker:fake_actor_creator",
         "//src/ray/core_worker:reference_counter",

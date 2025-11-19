@@ -50,8 +50,8 @@ ray_cc_test(
     deps = [
         ":util",
         "//:ray_mock",
-        "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/common/asio:instrumented_io_context",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/gcs_rpc_client:gcs_client",
@@ -87,8 +87,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/common/asio:instrumented_io_context",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/raylet:runtime_env_agent_client",
         "//src/ray/util:env",

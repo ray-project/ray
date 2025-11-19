@@ -48,10 +48,13 @@ ray_cc_library(
     deps = [
         ":stats_metric",
         ":tag_defs",
+        "//src/ray/common/asio:instrumented_io_context",
+        "//src/ray/common/asio:io_service_pool",
         "//src/ray/observability:metric_interface",
         "//src/ray/rpc:metrics_agent_client",
         "//src/ray/util:network_util",
         "//src/ray/util:size_literals",
+        "@boost//:asio",
         "@com_github_grpc_grpc//:grpc_opencensus_plugin",
     ],
 )

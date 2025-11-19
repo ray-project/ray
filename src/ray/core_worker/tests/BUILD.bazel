@@ -48,8 +48,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/common:asio",
         "//src/ray/common:ray_object",
+        "//src/ray/common/asio:instrumented_io_context",
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:reference_counter",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",

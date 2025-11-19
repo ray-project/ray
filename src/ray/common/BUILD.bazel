@@ -15,7 +15,6 @@ ray_cc_library(
     srcs = ["test_utils.cc"],
     hdrs = ["test_utils.h"],
     deps = [
-        ":asio",
         ":id",
         ":placement_group",
         ":ray_object",
@@ -83,8 +82,9 @@ ray_cc_library(
         "memory_monitor.h",
     ],
     deps = [
-        ":asio",
         ":ray_config",
+        "//src/ray/common/asio:instrumented_io_context",
+        "//src/ray/common/asio:periodical_runner",
         "//src/ray/util:process",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -98,7 +98,8 @@ ray_cc_library(
     srcs = ["file_system_monitor.cc"],
     hdrs = ["file_system_monitor.h"],
     deps = [
-        ":asio",
+        "//src/ray/common/asio:instrumented_io_context",
+        "//src/ray/common/asio:periodical_runner",
         "//src/ray/util:event",
         "@com_google_googletest//:gtest_prod",
     ],
@@ -261,43 +262,6 @@ ray_cc_library(
         "//src/ray/common/scheduling:resource_set",
         "//src/ray/common/scheduling:scheduling_class_util",
         "//src/ray/protobuf:common_cc_proto",
-    ],
-)
-
-ray_cc_library(
-    name = "asio",
-    srcs = [
-        "asio/asio_chaos.cc",
-        "asio/instrumented_io_context.cc",
-        "asio/io_service_pool.cc",
-        "asio/periodical_runner.cc",
-    ],
-    hdrs = [
-        "asio/asio_chaos.h",
-        "asio/asio_util.h",
-        "asio/instrumented_io_context.h",
-        "asio/io_service_pool.h",
-        "asio/periodical_runner.h",
-    ],
-    deps = [
-        ":event_stats",
-        ":ray_config",
-        "//src/ray/util:array",
-        "@boost//:asio",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-ray_cc_library(
-    name = "fake_periodical_runner",
-    hdrs = [
-        "asio/fake_periodical_runner.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":asio",
-        "@boost//:asio",
     ],
 )
 

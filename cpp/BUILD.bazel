@@ -60,6 +60,8 @@ cc_library(
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],
     deps = [
+        # TODO(irabbani): This just needs to be io context
+        # with the thread.
         "//src/ray/common:asio",
         "//src/ray/common:constants",
         "//src/ray/common:id",

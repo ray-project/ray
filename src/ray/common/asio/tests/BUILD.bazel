@@ -1,0 +1,12 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "asio_defer_test",
+    size = "small",
+    srcs = ["asio_defer_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common/asio:asio_chaos",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
