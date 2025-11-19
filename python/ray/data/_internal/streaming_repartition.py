@@ -13,7 +13,7 @@ from ray.data._internal.execution.operators.map_operator import BaseRefBundler
 
     Detailed Implementation:
     1. When a new bundle arrives, buffer it in the pending list.
-    2. Whenever the pending total reaches the target row count, try to build a ready bundle.
+    2. Whenever the pending bundles reaches the target row count, try to build a ready bundle.
     3. Determine the slice needed from the final bundle so the ready bundle holds an exact multiple of the target rows.
     4. Submit that ready bundle to a remote map task; the task slices each block according to the slice metadata stored in the RefBundle (the bundle now contains n × target rows for n ≥ 1).
     5. We configured the `OutputBlockSizeOption.target_num_rows_per_block` to the target number of rows per block in plan_streaming_repartition_op so the output buffer further splits the n × target rows into n blocks of exactly the target size.
