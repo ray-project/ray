@@ -1,5 +1,5 @@
 import warnings
-from typing import TYPE_CHECKING, Any, Tuple, Union
+from typing import TYPE_CHECKING, Any, Tuple
 
 import numpy as np
 
@@ -15,12 +15,20 @@ class ZeroCopyTensorsWarning(UserWarning):
     pass
 
 
+class ZeroCopyTensorsDeserializationError(Exception):
+    """
+    Raised when zero-copy tensor deserialization fails.
+    """
+
+    pass
+
+
 warnings.filterwarnings("once", category=ZeroCopyTensorsWarning)
 
 
 def _zero_copy_tensors_deserializer(
     np_array: np.ndarray, dtype_str: str, shape: Tuple[int, ...], device_str: str
-) -> Union["torch.Tensor", np.ndarray]:
+) -> "torch.Tensor":
     """
     Reconstructs a torch.Tensor from a zero-copy NumPy byte array.
 
@@ -33,15 +41,26 @@ def _zero_copy_tensors_deserializer(
     Returns:
         Reconstructed torch.Tensor on the specified device if successful;
         otherwise, returns the input np_array unchanged and issues a warning.
+
+    Raises:
+        ZeroCopyTensorDeserializationError: If deserialization fails for any reason (e.g., missing PyTorch
+                                        dtype mismatch, shape inconsistency, device error, etc.).
     """
     try:
         import torch
+    except ImportError as e:
+        raise ZeroCopyTensorsDeserializationError(
+            "Zero-copy tensor deserialization failed: PyTorch is not installed."
+        ) from e
 
+    try:
         # Step 1: Convert uint8 numpy array back to torch tensor
         uint8_tensor = torch.from_numpy(np_array)
 
         # Step 2: Restore original dtype
         dtype_name = dtype_str.split(".")[-1]
+        if not hasattr(torch, dtype_name):
+            raise ValueError(f"Invalid or unsupported dtype string: {dtype_str}")
         original_dtype = getattr(torch, dtype_name)
 
         # Compute number of bytes per element
@@ -52,7 +71,7 @@ def _zero_copy_tensors_deserializer(
                 f"dtype size ({dtype_size}) for dtype {dtype_str}"
             )
 
-        # Reshape uint8 tensor to (-1, dtype_size), then view as target dtype
+        # Reshape and reinterpret bytes as target dtype
         num_elements = np_array.size // dtype_size
         restored_tensor = uint8_tensor[: num_elements * dtype_size].view(
             dtype=original_dtype
@@ -63,7 +82,11 @@ def _zero_copy_tensors_deserializer(
 
         # Step 4: Move to target device
         dev = torch.device(device_str)
-        if dev.type == "cuda" and torch.cuda.is_available():
+        if dev.type == "cuda":
+            if not torch.cuda.is_available():
+                raise RuntimeError(
+                    "Deserialization target device is CUDA, but CUDA is not available."
+                )
             target_device = torch.device("cuda")
         else:
             target_device = torch.device("cpu")
@@ -71,33 +94,37 @@ def _zero_copy_tensors_deserializer(
         return restored_tensor.to(device=target_device)
 
     except Exception as e:
-        if isinstance(e, ImportError):
-            msg = "Zero-copy tensor deserialization failed because PyTorch is not installed. "
-        elif isinstance(e, (RuntimeError, TypeError, ValueError, AttributeError)):
-            msg = (
-                "Zero-copy tensor deserialization failed due to data or runtime issue. "
-            )
-        else:
-            msg = "Unexpected error during zero-copy tensor deserialization. "
-
-        warnings.warn(
-            f"{msg}Returning raw NumPy array instead of torch.Tensor. "
-            f"This may indicate missing dependencies, corrupted/misaligned data, "
-            f"non-contiguous arrays, or incompatible serialization format. Error: {e}",
-            ZeroCopyTensorsWarning,
-            stacklevel=3,
-        )
-        return np_array
+        raise ZeroCopyTensorsDeserializationError(
+            f"Failed to deserialize zero-copy tensor from byte array. "
+            f"Input dtype={dtype_str}, shape={shape}, device={device_str}. "
+            f"Underlying error: {type(e).__name__}: {e}"
+        ) from e
 
 
 def zero_copy_tensors_reducer(tensor: "torch.Tensor") -> Tuple[Any, Tuple[Any, ...]]:
-    """
-    Reducer for zero-copy serialization of read-only torch.Tensor.
-    Only supports detached, contiguous, CPU tensors. Uses uint8 NumPy view
-    to enable pickle5 out-of-band buffer transmission.
+    """Pickle serializer for zero-copy serialization of read-only torch.Tensor.
+
+    This serializer aims to avoid copying tensor data by using a NumPy uint8 view,
+    which enables pickle5's out-of-band buffer transmission. However, true zero-copy
+    is only possible when the input tensor is already:
+
+    - On CPU,
+    - Detached from the computation graph (no gradients),
+    - Contiguous in memory.
+
+    If the input tensor does **not** meet these conditions, this function will:
+
+    - Call `.detach()` to remove gradient information,
+    - Move the tensor to CPU (copying data if it's on GPU or another device),
+    - Make the tensor contiguous (copying data if it's non-contiguous).
+
+    These operations may incur one or two full copies of the tensor data,
+    negating zero-copy benefits. A warning is issued in such cases.
 
     Args:
-        tensor: Contiguous, detached tensor to serialize.
+        tensor: The input torch.Tensor to serialize. Can be on any device,
+                with or without gradients, contiguous or not — but zero-copy
+                is only achieved if it is already CPU, detached, and contiguous.
 
     Returns:
         A tuple (deserializer_callable, args_tuple) suitable for pickle.
@@ -111,8 +138,22 @@ def zero_copy_tensors_reducer(tensor: "torch.Tensor") -> Tuple[Any, Tuple[Any, .
 
     import torch
 
-    # Move to CPU and ensure contiguous
-    cpu_tensor = tensor.detach().cpu().contiguous()
+    # Detach the tensor from gradients and computation graph.
+    # Move it to cpu (this is a noop if the tensor is already in main memory, but will create a copy if the
+    # the tensor is on an accelerator).
+    # Ensure that the tensor is contiguous. If the tensor is not contiguous, this will create a contiguous
+    # copy.
+    cpu_tensor = tensor.detach().cpu()
+    if not cpu_tensor.is_contiguous():
+        warnings.warn(
+            "The input tensor is non-contiguous. A copy will be made to ensure contiguity. "
+            "For zero-copy serialization, please ensure the tensor is contiguous before passing it "
+            "(e.g., by calling `.contiguous()`).",
+            ZeroCopyTensorsWarning,
+            stacklevel=3,
+        )
+        cpu_tensor = cpu_tensor.contiguous()
+
     # Flatten to 1D for safe uint8 view (handles scalars)
     flat_tensor = cpu_tensor.reshape(-1)
     # View as uint8 bytes

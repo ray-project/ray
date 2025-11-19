@@ -169,7 +169,13 @@ class SerializationContext:
         )
 
         if self._enable_zero_copy_tensors:
-            import torch
+            try:
+                import torch
+            except ImportError as e:
+                raise ImportError(
+                    "Zero-copy tensor serialization requires PyTorch to be installed. "
+                    "Please install PyTorch (e.g., `pip install torch`) and try again."
+                ) from e
 
             self._torch_custom_serializer_registered = True
             self._register_cloudpickle_reducer(
