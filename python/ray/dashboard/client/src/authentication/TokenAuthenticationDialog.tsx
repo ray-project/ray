@@ -118,7 +118,19 @@ export const TokenAuthenticationDialog: React.FC<TokenAuthenticationDialogProps>
                     edge="end"
                     disabled={isSubmitting}
                   >
-                    {showToken ? <VisibilityOff sx={(theme) => ({ color: theme.palette.text.secondary })} /> : <Visibility sx={(theme) => ({ color: theme.palette.text.secondary })} />}
+                    {showToken ? (
+                      <VisibilityOff
+                        sx={(theme) => ({
+                          color: theme.palette.text.secondary,
+                        })}
+                      />
+                    ) : (
+                      <Visibility
+                        sx={(theme) => ({
+                          color: theme.palette.text.secondary,
+                        })}
+                      />
+                    )}
                   </IconButton>
                 </InputAdornment>
               ),

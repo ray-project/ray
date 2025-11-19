@@ -72,7 +72,7 @@ const CMDResult = () => {
                 <Select
                   value={option}
                   onChange={(e) => setOption(e.target.value as string)}
-                  sx={{ '& .MuiSvgIcon-root': { color: 'text.secondary' } }}
+                  sx={{ "& .MuiSvgIcon-root": { color: "text.secondary" } }}
                 >
                   {[
                     "class",

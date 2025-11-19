@@ -71,7 +71,11 @@ export const LogViewer = memo(
                   type: "",
                   endAdornment: (
                     <InputAdornment position="end">
-                      <SearchOutlined sx={(theme) => ({ color: theme.palette.text.secondary })} />
+                      <SearchOutlined
+                        sx={(theme) => ({
+                          color: theme.palette.text.secondary,
+                        })}
+                      />
                     </InputAdornment>
                   ),
                 }}

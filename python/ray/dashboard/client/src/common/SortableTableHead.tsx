@@ -39,7 +39,11 @@ const SortableTableHead = <T,>(props: SortableTableHeadProps<T>) => {
                   active={orderBy === headerInfo.id}
                   direction={orderBy === headerInfo.id ? order : "asc"}
                   onClick={createSortHandler(headerInfo.id)}
-                  sx={(theme) => ({ '& .MuiSvgIcon-root': { color: theme.palette.text.secondary } })}
+                  sx={(theme) => ({
+                    "& .MuiSvgIcon-root": {
+                      color: theme.palette.text.secondary,
+                    },
+                  })}
                 >
                   {headerInfo.label}
                   {orderBy === headerInfo.id ? (

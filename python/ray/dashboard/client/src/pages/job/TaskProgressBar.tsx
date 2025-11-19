@@ -65,7 +65,10 @@ export const TaskProgressBar = ({
     {
       label: "Unknown",
       value: numUnknown,
-      color: theme.palette.mode === 'dark' ? theme.palette.grey[500] : theme.palette.grey[600],
+      color:
+        theme.palette.mode === "dark"
+          ? theme.palette.grey[500]
+          : theme.palette.grey[600],
     },
   ];
   return (
@@ -168,7 +171,10 @@ export const MiniTaskProgressBar = ({
       {
         label: "Unknown",
         value: numUnknown,
-        color: theme.palette.mode === 'dark' ? theme.palette.grey[500] : theme.palette.grey[600],
+        color:
+          theme.palette.mode === "dark"
+            ? theme.palette.grey[500]
+            : theme.palette.grey[600],
       },
     ];
     return (

@@ -132,7 +132,10 @@ const LogLineDetailDialog = ({
               <Box
                 sx={(theme) => ({
                   padding: 1,
-                  bgcolor: theme.palette.mode === 'dark' ? theme.palette.grey[900] : theme.palette.grey[200],
+                  bgcolor:
+                    theme.palette.mode === "dark"
+                      ? theme.palette.grey[900]
+                      : theme.palette.grey[200],
                   borderRadius: 1,
                   border: `1px solid ${theme.palette.divider}`,
                   marginBottom: 2,
@@ -164,7 +167,10 @@ const LogLineDetailDialog = ({
           <Box
             sx={(theme) => ({
               padding: 1,
-              bgcolor: theme.palette.mode === 'dark' ? theme.palette.grey[900] : theme.palette.grey[200],
+              bgcolor:
+                theme.palette.mode === "dark"
+                  ? theme.palette.grey[900]
+                  : theme.palette.grey[200],
               borderRadius: 1,
               border: `1px solid ${theme.palette.divider}`,
             })}

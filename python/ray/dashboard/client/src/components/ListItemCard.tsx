@@ -101,7 +101,10 @@ const ListItem = ({
           width: `calc(100% - calc(${theme.spacing(1)} + 20px))`,
         })}
       >
-        <Typography sx={(theme) => ({ color: theme.palette.primary.main })} variant="body2">
+        <Typography
+          sx={(theme) => ({ color: theme.palette.primary.main })}
+          variant="body2"
+        >
           {title}
         </Typography>
         <Typography

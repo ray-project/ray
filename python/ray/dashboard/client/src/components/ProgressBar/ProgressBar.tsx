@@ -94,7 +94,10 @@ export const ProgressBar = ({
             value: finalTotal - segmentTotal,
             label: unaccountedLabel ?? "Unaccounted",
             hint: "Unaccounted tasks can happen when there are too many tasks. Ray drops older tasks to conserve memory.",
-            color: theme.palette.mode === 'dark' ? theme.palette.grey[700] : theme.palette.grey[300],
+            color:
+              theme.palette.mode === "dark"
+                ? theme.palette.grey[700]
+                : theme.palette.grey[300],
           },
         ]
       : progress;
@@ -213,9 +216,12 @@ export const ProgressBar = ({
               height: 8,
               borderRadius: "6px",
               overflow: "hidden",
-              backgroundColor: segmentTotal === 0
-                ? theme.palette.grey[400]
-                : theme.palette.mode === 'dark' ? theme.palette.grey[800] : theme.palette.grey[100],
+              backgroundColor:
+                segmentTotal === 0
+                  ? theme.palette.grey[400]
+                  : theme.palette.mode === "dark"
+                  ? theme.palette.grey[800]
+                  : theme.palette.grey[100],
             }}
           >
             {filteredSegments.map(({ color, label, value }) => (

@@ -118,8 +118,8 @@ const JobList = () => {
               sx={{
                 height: 35,
                 width: 150,
-                '& .MuiSvgIcon-root': {
-                  color: 'text.secondary',
+                "& .MuiSvgIcon-root": {
+                  color: "text.secondary",
                 },
               }}
               options={["PENDING", "RUNNING", "SUCCEEDED", "STOPPED", "FAILED"]}

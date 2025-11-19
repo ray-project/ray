@@ -42,7 +42,7 @@ const TimelineDownloadButton = ({
   return (
     <Button
       sx={[
-        { '& svg': { color: 'text.secondary' } },
+        { "& svg": { color: "text.secondary" } },
         ...(Array.isArray(sx) ? sx : [sx]),
       ]}
       className={className}

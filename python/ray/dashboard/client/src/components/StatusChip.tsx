@@ -18,80 +18,81 @@ const getStatusColors = (themeMode: "light" | "dark") => ({
   grey: themeMode === "dark" ? "#8A8F94" : "#5F6469",
 });
 
-const getColorMap = (orange: string, grey: string) => ({
-  node: {
-    ALIVE: green,
-    DEAD: grey,
-  },
-  worker: {
-    ALIVE: green,
-    DEAD: grey,
-  },
-  actor: {
-    [ActorEnum.ALIVE]: green,
-    [ActorEnum.DEAD]: grey,
-    [ActorEnum.DEPENDENCIES_UNREADY]: orange,
-    [ActorEnum.PENDING_CREATION]: orange,
-    [ActorEnum.RESTARTING]: orange,
-  },
-  task: {
-    [TaskStatus.FAILED]: red,
-    [TaskStatus.FINISHED]: green,
-    [TaskStatus.RUNNING]: blue,
-    [TaskStatus.SUBMITTED_TO_WORKER]: orange,
-    [TaskStatus.PENDING_NODE_ASSIGNMENT]: orange,
-    [TaskStatus.PENDING_ARGS_AVAIL]: orange,
-    [TaskStatus.UNKNOWN]: grey,
-  },
-  job: {
-    [JobStatus.PENDING]: orange,
-    [JobStatus.RUNNING]: blue,
-    [JobStatus.STOPPED]: grey,
-    [JobStatus.SUCCEEDED]: green,
-    [JobStatus.FAILED]: red,
-  },
-  placementGroup: {
-    [PlacementGroupState.PENDING]: orange,
-    [PlacementGroupState.CREATED]: green,
-    [PlacementGroupState.REMOVED]: grey,
-    [PlacementGroupState.RESCHEDULING]: orange,
-  },
-  serveApplication: {
-    [ServeApplicationStatus.NOT_STARTED]: grey,
-    [ServeApplicationStatus.DEPLOYING]: orange,
-    [ServeApplicationStatus.RUNNING]: green,
-    [ServeApplicationStatus.DEPLOY_FAILED]: red,
-    [ServeApplicationStatus.DELETING]: orange,
-    [ServeApplicationStatus.UNHEALTHY]: red,
-  },
-  serveDeployment: {
-    [ServeDeploymentStatus.UPDATING]: orange,
-    [ServeDeploymentStatus.HEALTHY]: green,
-    [ServeDeploymentStatus.UNHEALTHY]: red,
-  },
-  serveReplica: {
-    [ServeReplicaState.STARTING]: orange,
-    [ServeReplicaState.UPDATING]: orange,
-    [ServeReplicaState.RECOVERING]: orange,
-    [ServeReplicaState.RUNNING]: green,
-    [ServeReplicaState.STOPPING]: red,
-  },
-  serveProxy: {
-    [ServeSystemActorStatus.HEALTHY]: green,
-    [ServeSystemActorStatus.UNHEALTHY]: red,
-    [ServeSystemActorStatus.STARTING]: orange,
-    [ServeSystemActorStatus.DRAINING]: blueGrey,
-  },
-  serveController: {
-    [ServeSystemActorStatus.HEALTHY]: green,
-    [ServeSystemActorStatus.UNHEALTHY]: red,
-    [ServeSystemActorStatus.STARTING]: orange,
-  },
-} as {
-  [key: string]: {
-    [key: string]: Color | string;
-  };
-});
+const getColorMap = (orange: string, grey: string) =>
+  ({
+    node: {
+      ALIVE: green,
+      DEAD: grey,
+    },
+    worker: {
+      ALIVE: green,
+      DEAD: grey,
+    },
+    actor: {
+      [ActorEnum.ALIVE]: green,
+      [ActorEnum.DEAD]: grey,
+      [ActorEnum.DEPENDENCIES_UNREADY]: orange,
+      [ActorEnum.PENDING_CREATION]: orange,
+      [ActorEnum.RESTARTING]: orange,
+    },
+    task: {
+      [TaskStatus.FAILED]: red,
+      [TaskStatus.FINISHED]: green,
+      [TaskStatus.RUNNING]: blue,
+      [TaskStatus.SUBMITTED_TO_WORKER]: orange,
+      [TaskStatus.PENDING_NODE_ASSIGNMENT]: orange,
+      [TaskStatus.PENDING_ARGS_AVAIL]: orange,
+      [TaskStatus.UNKNOWN]: grey,
+    },
+    job: {
+      [JobStatus.PENDING]: orange,
+      [JobStatus.RUNNING]: blue,
+      [JobStatus.STOPPED]: grey,
+      [JobStatus.SUCCEEDED]: green,
+      [JobStatus.FAILED]: red,
+    },
+    placementGroup: {
+      [PlacementGroupState.PENDING]: orange,
+      [PlacementGroupState.CREATED]: green,
+      [PlacementGroupState.REMOVED]: grey,
+      [PlacementGroupState.RESCHEDULING]: orange,
+    },
+    serveApplication: {
+      [ServeApplicationStatus.NOT_STARTED]: grey,
+      [ServeApplicationStatus.DEPLOYING]: orange,
+      [ServeApplicationStatus.RUNNING]: green,
+      [ServeApplicationStatus.DEPLOY_FAILED]: red,
+      [ServeApplicationStatus.DELETING]: orange,
+      [ServeApplicationStatus.UNHEALTHY]: red,
+    },
+    serveDeployment: {
+      [ServeDeploymentStatus.UPDATING]: orange,
+      [ServeDeploymentStatus.HEALTHY]: green,
+      [ServeDeploymentStatus.UNHEALTHY]: red,
+    },
+    serveReplica: {
+      [ServeReplicaState.STARTING]: orange,
+      [ServeReplicaState.UPDATING]: orange,
+      [ServeReplicaState.RECOVERING]: orange,
+      [ServeReplicaState.RUNNING]: green,
+      [ServeReplicaState.STOPPING]: red,
+    },
+    serveProxy: {
+      [ServeSystemActorStatus.HEALTHY]: green,
+      [ServeSystemActorStatus.UNHEALTHY]: red,
+      [ServeSystemActorStatus.STARTING]: orange,
+      [ServeSystemActorStatus.DRAINING]: blueGrey,
+    },
+    serveController: {
+      [ServeSystemActorStatus.HEALTHY]: green,
+      [ServeSystemActorStatus.UNHEALTHY]: red,
+      [ServeSystemActorStatus.STARTING]: orange,
+    },
+  } as {
+    [key: string]: {
+      [key: string]: Color | string;
+    };
+  });
 
 const typeMap = {
   deps: blue,
