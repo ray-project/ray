@@ -24,7 +24,7 @@ from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 DEFAULT_FORMAT_THEADPOOL_NUM_WORKERS = env_integer(
-    "RAY_DATA_DEFAULT_FORMAT_THEADPOOL_NUM_WORKERS", 4
+    "RAY_DATA_MAX_FORMAT_THEADPOOL_NUM_WORKERS", 4
 )
 
 
