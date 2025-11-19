@@ -152,14 +152,10 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         # ratio is below threshold (10%), skip dynamic output queue size backpressure.
         op_usage = self._resource_manager.get_op_usage(op)
         op_budget = self._resource_manager.get_budget(op)
-        if (
-            op_usage is not None
-            and op_budget is not None
-            and op_usage.object_store_memory > 0
-        ):
-            if (
-                op_budget.object_store_memory
-                / (op_usage.object_store_memory + op_budget.object_store_memory)
+        if op_usage is not None and op_budget is not None:
+            total_mem = op_usage.object_store_memory + op_budget.object_store_memory
+            if total_mem == 0 or (
+                op_budget.object_store_memory / total_mem
                 > self.OBJECT_STORE_BUDGET_RATIO
             ):
                 # If the objectstore budget (available) to total
