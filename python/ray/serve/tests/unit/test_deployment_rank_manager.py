@@ -1030,7 +1030,7 @@ class TestDeploymentRankManagerEdgeCases:
         assert global_ranks == list(range(total_replicas))
 
         # Verify node ranks are contiguous [0, num_nodes-1]
-        node_ranks = sorted([r.node_rank for r in mapping.values()])
+        node_ranks = sorted({r.node_rank for r in mapping.values()})
         assert node_ranks == list(range(num_nodes))
 
         # Verify local ranks per node
