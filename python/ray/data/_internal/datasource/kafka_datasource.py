@@ -440,7 +440,7 @@ class KafkaDatasource(Datasource):
                             if elapsed_time >= timeout_seconds:
                                 logger.warning(
                                     f"Kafka read task timed out after {timeout_ms}ms while reading partition {partition_id} of topic {topic_name}; "
-                                    f"end_offset {end_off} was not reached. Returning {len(records)} messages collected so far."
+                                    f"end_offset {end_off} was not reached. Returning {len(records)} messages collected in this read task so far."
                                 )
                                 break
 
