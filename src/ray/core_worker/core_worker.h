@@ -50,11 +50,8 @@
 #include "ray/core_worker/task_execution/task_receiver.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
-#include "ray/pubsub/publisher.h"
-#include "ray/pubsub/subscriber.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
-#include "ray/util/process.h"
 #include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
@@ -867,6 +864,9 @@ class CoreWorker {
       const TaskID current_task_id = TaskID::Nil());
 
   /// Create an actor.
+  ///
+  /// NOTE: RAY CHECK fails if an actor handle with the same actor id has already been
+  /// added, or if the scheduling strategy for actor creation is not set.
   ///
   /// \param[in] caller_id ID of the task submitter.
   /// \param[in] function The remote function that generates the actor object.

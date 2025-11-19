@@ -21,3 +21,9 @@ HTTP_REQUEST_INVALID_TOKEN_ERROR_MESSAGE = (
     "The authentication token you provided is invalid or incorrect.\n\n"
     + TOKEN_SETUP_INSTRUCTIONS
 )
+
+AUTHORIZATION_HEADER_NAME = "authorization"
+AUTHORIZATION_BEARER_PREFIX = "Bearer "
+
+AUTHENTICATION_TOKEN_COOKIE_NAME = "ray-authentication-token"
+AUTHENTICATION_TOKEN_COOKIE_MAX_AGE = 30 * 24 * 60 * 60  # 30 days
