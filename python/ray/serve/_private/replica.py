@@ -511,7 +511,6 @@ class ReplicaBase(ABC):
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
-        rank: ReplicaRank,
     ):
         self._version = version
         self._replica_id = replica_id
@@ -562,7 +561,7 @@ class ReplicaBase(ABC):
 
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
-        self._set_internal_replica_context(servable_object=None, rank=rank)
+        self._set_internal_replica_context(servable_object=None, rank=None)
 
         self._metrics_manager = create_replica_metrics_manager(
             replica_id=replica_id,
@@ -576,7 +575,7 @@ class ReplicaBase(ABC):
         self._http_port: Optional[int] = None
         self._grpc_port: Optional[int] = None
 
-        self._rank = rank
+        self._rank: Optional[ReplicaRank] = None
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -951,7 +950,14 @@ class ReplicaBase(ABC):
     async def _on_initialized(self):
         raise NotImplementedError
 
-    async def initialize(self, deployment_config: DeploymentConfig):
+    async def initialize(
+        self, deployment_config: Optional[DeploymentConfig], rank: Optional[ReplicaRank]
+    ):
+        if rank is not None:
+            self._rank = rank
+            self._set_internal_replica_context(
+                servable_object=self._user_callable_wrapper.user_callable, rank=rank
+            )
         try:
             # Ensure that initialization is only performed once.
             # When controller restarts, it will call this method again.
@@ -982,7 +988,7 @@ class ReplicaBase(ABC):
                             record_autoscaling_stats_fn=self._user_callable_wrapper.call_record_autoscaling_stats,
                         )
 
-                if deployment_config:
+                if deployment_config is not None:
                     await self._user_callable_wrapper.set_sync_method_threadpool_limit(
                         deployment_config.max_ongoing_requests
                     )
@@ -1227,7 +1233,6 @@ class ReplicaActor:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
-        rank: ReplicaRank,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -1244,7 +1249,6 @@ class ReplicaActor:
             version=version,
             ingress=ingress,
             route_prefix=route_prefix,
-            rank=rank,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
@@ -1287,7 +1291,7 @@ class ReplicaActor:
         return self._replica_impl.list_outbound_deployments()
 
     async def initialize_and_get_metadata(
-        self, deployment_config: DeploymentConfig = None, _after: Optional[Any] = None
+        self, deployment_config: DeploymentConfig = None, rank: ReplicaRank = None
     ) -> ReplicaMetadata:
         """Handles initializing the replica.
 
@@ -1300,7 +1304,7 @@ class ReplicaActor:
         """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
-        await self._replica_impl.initialize(deployment_config)
+        await self._replica_impl.initialize(deployment_config, rank)
         return self._replica_impl.get_metadata()
 
     async def check_health(self):
