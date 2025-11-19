@@ -90,8 +90,6 @@ steps:
     matrix:
       setup:
         python:
-          # This list should be kept in sync with the list of supported Python in
-          # release test suite. We don't have release tests for Python 3.10 yet.
           - "3.9"
           - "3.10"
           - "3.11"

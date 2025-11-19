@@ -55,6 +55,7 @@ APT_PKGS=(
     netbase
     openssh-client
     gnupg
+    gfortran
 )
 
 apt-get install -y "${APT_PKGS[@]}"
