@@ -4040,6 +4040,7 @@ class Dataset:
         overwrite_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
+        upsert_commit_memory: Optional[int] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to an Iceberg table.
 
@@ -4110,9 +4111,10 @@ class Dataset:
                 Must be a Ray Data expression from `ray.data.expressions`. Only rows matching
                 this filter are replaced. If None with OVERWRITE mode, replaces all table data.
                 Example: `col("date") >= "2024-01-01"` or `(col("region") == "US") & (col("status") == "active")`
-            upsert_kwargs: Optional arguments to pass through to PyIceberg's table.upsert() method.
-                Supported parameters: join_cols (List[str]), when_matched_update_all (bool), when_not_matched_insert_all (bool),
-                case_sensitive (bool), branch (str). See PyIceberg documentation for details.
+            upsert_kwargs: Optional arguments for upsert operations.
+                Supported parameters: join_cols (List[str]), case_sensitive (bool), branch (str).
+                Note: Ray Data uses a copy-on-write strategy that always updates all columns
+                for matched keys and inserts all new keys for optimal parallelism.
             overwrite_kwargs: Optional arguments to pass through to PyIceberg's table.overwrite() method.
                 Supported parameters: case_sensitive (bool), branch (str). See PyIceberg documentation
                 for details.
@@ -4121,6 +4123,11 @@ class Dataset:
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
+            upsert_commit_memory: [For UPSERT mode only] The heap memory in bytes
+                to reserve for the upsert commit operation. The commit operation merges
+                join keys from all workers and commits the transaction. Set this to
+                avoid OOM issues when upserting with a large number of join keys. If None,
+                uses Ray's default memory allocation. Only applicable when mode is SaveMode.UPSERT.
 
         Note:
             Schema evolution is automatically enabled. New columns in the incoming data
@@ -4138,6 +4145,7 @@ class Dataset:
             overwrite_filter=overwrite_filter,
             upsert_kwargs=upsert_kwargs,
             overwrite_kwargs=overwrite_kwargs,
+            upsert_commit_memory=upsert_commit_memory,
         )
 
         self.write_datasink(
