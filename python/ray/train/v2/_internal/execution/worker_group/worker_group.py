@@ -467,7 +467,7 @@ class WorkerGroup(BaseWorkerGroup):
             logger.debug("Worker group shutdown successful.")
 
             for callback in self._callbacks:
-                callback.after_worker_group_shutdown(self)
+                callback.after_worker_group_shutdown(self._worker_group_context)
 
     def _clear_state(self):
         self._worker_group_state = None

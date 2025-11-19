@@ -62,7 +62,7 @@ class WorkerGroupCallback(RayTrainCallback):
         should catch and handle exceptions if attempting to execute tasks."""
         pass
 
-    def after_worker_group_shutdown(self, worker_group: "WorkerGroup"):
+    def after_worker_group_shutdown(self, worker_group_context: "WorkerGroupContext"):
         """Called after the worker group is shut down."""
         pass
 

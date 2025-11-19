@@ -139,7 +139,9 @@ class DatasetsCallback(WorkerGroupCallback):
             self._data_context,
         )
 
-    def after_worker_group_shutdown(self, worker_group: WorkerGroup) -> None:
+    def after_worker_group_shutdown(
+        self, worker_group_context: WorkerGroupContext
+    ) -> None:
         self._shutdown_data_executors()
 
     def after_worker_group_abort(
