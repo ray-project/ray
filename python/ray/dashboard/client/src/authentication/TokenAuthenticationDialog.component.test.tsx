@@ -24,7 +24,7 @@ describe("TokenAuthenticationDialog", () => {
       screen.getByText("Authentication Token Required"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/token authentication is enabled/i),
+      screen.getByText(/Token authentication is enabled/),
     ).toBeInTheDocument();
   });
 
@@ -41,7 +41,7 @@ describe("TokenAuthenticationDialog", () => {
       screen.getByText("Authentication Token Required"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/the existing authentication token is invalid/i),
+      screen.getByText(/The existing authentication token is invalid/),
     ).toBeInTheDocument();
   });
 
@@ -71,7 +71,7 @@ describe("TokenAuthenticationDialog", () => {
       />,
     );
 
-    const input = screen.getByLabelText(/authentication token/i);
+    const input = screen.getByLabelText("Authentication Token");
     await user.type(input, "test-token-123");
 
     const submitButton = screen.getByRole("button", { name: /submit/i });
@@ -94,7 +94,7 @@ describe("TokenAuthenticationDialog", () => {
       />,
     );
 
-    const input = screen.getByLabelText(/authentication token/i);
+    const input = screen.getByLabelText("Authentication Token");
     await user.type(input, "test-token-123{Enter}");
 
     await waitFor(() => {
@@ -128,7 +128,7 @@ describe("TokenAuthenticationDialog", () => {
     const submitButton = screen.getByRole("button", { name: /submit/i });
     expect(submitButton).toBeDisabled();
 
-    const input = screen.getByLabelText(/authentication token/i);
+    const input = screen.getByLabelText("Authentication Token");
     await user.type(input, "test-token");
 
     expect(submitButton).not.toBeDisabled();
@@ -144,7 +144,7 @@ describe("TokenAuthenticationDialog", () => {
       />,
     );
 
-    const input = screen.getByLabelText(/authentication token/i);
+    const input = screen.getByLabelText("Authentication Token");
     await user.type(input, "secret-token");
 
     // Initially should be password type (hidden)
@@ -177,7 +177,7 @@ describe("TokenAuthenticationDialog", () => {
       />,
     );
 
-    const input = screen.getByLabelText(/authentication token/i);
+    const input = screen.getByLabelText("Authentication Token");
     await user.type(input, "test-token");
 
     const submitButton = screen.getByRole("button", { name: /submit/i });
