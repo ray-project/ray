@@ -7,10 +7,12 @@ import pandas as pd
 import pyarrow
 import pyarrow as pa
 import pytest
+from packaging.version import parse as parse_version
 from pyarrow.fs import FileType
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.block import Block
 from ray.data.dataset import Dataset
 from ray.data.datasource import FileBasedDatasource, PathPartitionParser
@@ -964,6 +966,10 @@ def test_field_types(partition_value, expected_type):
             "IS_IN with multiple values",
         ),
     ],
+)
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="Partition predicate evaluation requires pyarrow >= 14.0.0",
 )
 def test_evaluate_predicate_on_partition(path, predicate, expected_result, description):
     """Test partition predicate evaluation for automatic partition pruning."""
