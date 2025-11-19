@@ -874,6 +874,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Create an actor.
   ///
+  /// NOTE: RAY CHECK fails if an actor handle with the same actor id has already been
+  /// added, or if the scheduling strategy for actor creation is not set.
+  ///
   /// \param[in] caller_id ID of the task submitter.
   /// \param[in] function The remote function that generates the actor object.
   /// \param[in] args Arguments of this task.
