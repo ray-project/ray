@@ -94,8 +94,8 @@ class Concatenator(Preprocessor):
         raise_if_missing: bool = False,
         flatten: bool = False,
     ):
+        super().__init__()
         self.columns = columns
-
         self.output_column_name = output_column_name
         self.dtype = dtype
         self.raise_if_missing = raise_if_missing
@@ -136,6 +136,12 @@ class Concatenator(Preprocessor):
         # behavior across Pandas versions.
         df.loc[:, self.output_column_name] = pd.Series(list(concatenated))
         return df
+
+    def get_input_columns(self) -> List[str]:
+        return self.columns
+
+    def get_output_columns(self) -> List[str]:
+        return [self.output_column_name]
 
     def __repr__(self):
         default_values = {
