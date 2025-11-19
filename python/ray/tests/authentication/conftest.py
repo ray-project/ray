@@ -110,7 +110,7 @@ def create_async_test_server():
 
 
 @pytest.fixture
-def setup_auth_environment(test_token):
+def setup_auth_environment():
     """Set up authentication environment with test token."""
     test_token = generate_new_authentication_token()
     with authentication_env_guard():
