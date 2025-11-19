@@ -474,8 +474,8 @@ def arrow_batch_to_tensors(
                 base_iterator=iter(array_items),
                 fn=process_arrays,
                 preserve_ordering=False,
-                num_workers=max(num_workers, 1),
-                buffer_size=max(num_workers, 1),
+                num_workers=num_workers,
+                buffer_size=num_workers,
             )
 
             # Reconstruct the dictionary structure
