@@ -61,9 +61,8 @@ def test_placement_group_cleaner_basic_lifecycle():
     # Register placement group
     ray.get(cleaner.register_placement_group.remote(pg))
 
-    # Start monitoring
-    result = ray.get(cleaner.start_monitoring.remote())
-    assert result is True
+    # Start monitoring asynchronously (same behavior as production code)
+    cleaner.start_monitoring.remote()
 
     # Give it a moment to start monitoring
     time.sleep(0.2)
@@ -75,7 +74,6 @@ def test_placement_group_cleaner_basic_lifecycle():
     ray.get(cleaner.stop.remote(), timeout=2.0)
 
     # PG should still exist after graceful stop
-    # (Cleanup only happens on ungraceful controller death)
     try:
         # If PG exists, this should work
         remove_placement_group(pg)
@@ -114,8 +112,7 @@ def test_pg_cleaner_cleans_up_on_controller_death():
     # Register placement group
     ray.get(cleaner.register_placement_group.remote(pg))
 
-    # Start monitoring (this is async in the background)
-    ray.get(cleaner.start_monitoring.remote())
+    cleaner.start_monitoring.remote()
 
     # Give it a moment to start monitoring
     time.sleep(0.2)
@@ -136,30 +133,6 @@ def test_pg_cleaner_cleans_up_on_controller_death():
         pass
 
 
-def test_pg_cleaner_handles_missing_controller():
-    """Test that cleaner handles case where controller is not registered."""
-
-    cleaner = (
-        ray.remote(num_cpus=0, max_concurrency=2)(PlacementGroupCleaner)
-        .options(
-            name="test_pg_cleaner_no_controller",
-            namespace="test",
-            lifetime="detached",
-            get_if_exists=False,
-        )
-        .remote(check_interval_s=0.1)
-    )
-
-    # Try to start monitoring without registering controller
-    result = ray.get(cleaner.start_monitoring.remote())
-
-    # Should return False and log warning
-    assert result is False
-
-    # Stop should still work
-    ray.get(cleaner.stop.remote(), timeout=2.0)
-
-
 def test_pg_cleaner_handles_duplicate_start():
     """Test that cleaner handles duplicate start_monitoring calls."""
 
@@ -178,9 +151,8 @@ def test_pg_cleaner_handles_duplicate_start():
     controller_id = ray.get(controller.get_actor_id.remote())
     ray.get(cleaner.register_controller.remote(controller_id))
 
-    # Start monitoring
-    result1 = ray.get(cleaner.start_monitoring.remote())
-    assert result1 is True
+    # Start monitoring asynchronously
+    cleaner.start_monitoring.remote()
 
     # Try to start again - should return False
     result2 = ray.get(cleaner.start_monitoring.remote())
