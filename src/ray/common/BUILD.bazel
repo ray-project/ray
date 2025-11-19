@@ -278,13 +278,11 @@ ray_cc_library(
         "asio/instrumented_io_context.h",
         "asio/io_service_pool.h",
         "asio/periodical_runner.h",
-        "asio/postable.h",
     ],
     deps = [
         ":event_stats",
         ":ray_config",
         "//src/ray/util:array",
-        "//src/ray/util:function_traits",
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
