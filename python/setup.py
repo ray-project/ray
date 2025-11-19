@@ -233,8 +233,7 @@ if setup_spec.type == SetupType.RAY:
     pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3"
     setup_spec.extras = {
         "cgraph": [
-            "cupy-cuda12x; sys_platform != 'darwin' and python_version <= '3.12'",
-            "cupy-cuda12x>=13.4.0; sys_platform != 'darwin' and python_version >'3.12'",
+            "cupy-cuda12x>=13.4.0; sys_platform != 'darwin'",
         ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:
@@ -798,8 +797,9 @@ if __name__ == "__main__":
         ],
         packages=setup_spec.get_packages(),
         cmdclass={"build_ext": build_ext},
-        # The BinaryDistribution argument triggers build_ext.
-        distclass=BinaryDistribution,
+        distclass=(  # Avoid building extensions for deps-only builds.
+            BinaryDistribution if setup_spec.build_type != BuildType.DEPS_ONLY else None
+        ),
         install_requires=setup_spec.install_requires,
         setup_requires=["cython >= 3.0.12", "pip", "wheel"],
         extras_require=setup_spec.extras,
