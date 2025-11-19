@@ -735,10 +735,9 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         for (
             pending_launching_recovering_replica
         ) in pending_launching_recovering_replicas:
+            replicas_to_stop.add(pending_launching_recovering_replica)
             if len(replicas_to_stop) == max_num_to_stop:
                 return replicas_to_stop
-            else:
-                replicas_to_stop.add(pending_launching_recovering_replica)
 
         node_to_running_replicas_of_all_deployments = (
             self._get_node_to_running_replicas()
