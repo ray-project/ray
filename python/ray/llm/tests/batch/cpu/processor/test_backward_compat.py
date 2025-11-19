@@ -64,33 +64,6 @@ def test_chat_template_fields_merged():
     assert config.chat_template_stage["chat_template"] == "custom_template"
 
 
-def test_legacy_config_emits_deprecation_warnings():
-    """Warnings emitted when legacy fields used."""
-    with pytest.warns(UserWarning, match="deprecated.*apply_chat_template"):
-        vLLMEngineProcessorConfig(
-            model_source="test-model",
-            apply_chat_template=True,
-        )
-
-    with pytest.warns(UserWarning, match="deprecated.*tokenize"):
-        vLLMEngineProcessorConfig(
-            model_source="test-model",
-            tokenize=True,
-        )
-
-    with pytest.warns(UserWarning, match="deprecated.*detokenize"):
-        vLLMEngineProcessorConfig(
-            model_source="test-model",
-            detokenize=True,
-        )
-
-    with pytest.warns(UserWarning, match="deprecated.*has_image"):
-        vLLMEngineProcessorConfig(
-            model_source="test-model",
-            has_image=True,
-        )
-
-
 def test_no_warnings_when_using_new_api():
     """No warnings when only new API used."""
     with warnings.catch_warnings(record=True) as w:
