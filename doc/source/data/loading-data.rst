@@ -663,6 +663,19 @@ performance and scalability than loading datasets into memory first.
 
 First, install the required dependencies
 
+.. code-block:: console
+
+    pip install huggingface_hub
+
+Set your Hugging Face token to authenticate. While public datasets can be read without
+a token, Hugging Face rate limits are more aggressive without a token. To read Hugging
+Face datasets without a token, simply set the filesystem argument to ``HfFileSystem()``.
+
+.. code-block:: console
+
+    export HF_TOKEN=<YOUR HUGGING FACE TOKEN>
+
+
 .. _loading_datasets_from_ml_libraries:
 
 Loading data from ML libraries
