@@ -635,6 +635,11 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             const StatusPyCallback &callback,
             int64_t timeout_ms)
 
+        void AsyncAddEvents(
+            const c_string &serialized_request,
+            const StatusPyCallback &callback,
+            int64_t timeout_ms)
+
 
 cdef extern from "ray/gcs_rpc_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":

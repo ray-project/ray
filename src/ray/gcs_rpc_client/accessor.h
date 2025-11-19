@@ -592,6 +592,10 @@ class TaskInfoAccessor {
                               const StatusCallback &callback,
                               int64_t timeout_ms = -1);
 
+  virtual void AsyncAddEvents(const std::string &serialized_request,
+                              const StatusCallback &callback,
+                              int64_t timeout_ms = -1);
+
   /// Get all info/events of all tasks stored in GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.

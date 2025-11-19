@@ -691,33 +691,17 @@ cdef class InnerGcsClient:
     #############################################################
     # TaskInfo methods
     #############################################################
-    async def async_add_events(self, serialized_request: bytes, timeout_s=None, executor=None):
+    async def async_add_events(self, serialized_request: bytes, timeout_s=None):
         """Send async AddEvents request to GCS."""
         cdef:
-            CAddEventsRequest c_req
+            c_string c_req = serialized_request
             int64_t timeout_ms
             fut = incremented_fut()
         timeout_ms = round(1000 * timeout_s) if timeout_s else -1
 
-        # Parse the protobuf payload
-        cdef c_string payload = serialized_request
-        cdef bint parsed = False
-        if executor is not None:
-            parsed = await get_or_create_event_loop().run_in_executor(
-                executor,
-                lambda: c_req.ParseFromString(payload),
-            )
-        else:
-            parsed = c_req.ParseFromString(payload)
-
-        if not parsed:
-            # Fail fast on parse error
-            assign_and_decrement_fut((None, ValueError("Invalid AddEventsRequest payload")), fut)
-            return await asyncio.wrap_future(fut)
-
         with nogil:
             self.inner.get().Tasks().AsyncAddEvents(
-                move(c_req),
+                c_req,
                 StatusPyCallback(convert_status, assign_and_decrement_fut, fut),
                 timeout_ms)
         return await asyncio.wrap_future(fut)

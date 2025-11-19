@@ -992,6 +992,19 @@ void TaskInfoAccessor::AsyncAddEvents(rpc::events::AddEventsRequest &&request,
       timeout_ms);
 }
 
+void TaskInfoAccessor::AsyncAddEvents(const std::string &serialized_request,
+                                      const StatusCallback &callback,
+                                      int64_t timeout_ms) {
+  rpc::events::AddEventsRequest request;
+  if (!request.ParseFromString(serialized_request)) {
+    if (callback) {
+      callback(Status::IOError("Failed to parse AddEventsRequest"));
+    }
+    return;
+  }
+  AsyncAddEvents(std::move(request), callback, timeout_ms);
+}
+
 void TaskInfoAccessor::AsyncGetTaskEvents(
     const MultiItemCallback<rpc::TaskEvents> &callback) {
   RAY_LOG(DEBUG) << "Getting all task events info.";
