@@ -817,8 +817,13 @@ def _get_cluster_lifecycle_metadata(
     else:
         # Existing cluster
         if is_restart:
-            # Increment restart count with retry logic to handle race conditions
-            # Use read-modify-write with retries to handle concurrent updates
+            # Increment restart count with retry logic to handle transient failures.
+            # Note: This does not fully prevent race conditions - if two processes
+            # concurrently read the same value, increment it, and write it back,
+            # both writes will succeed (overwrite=True) and one increment will be lost.
+            # A true compare-and-swap (CAS) operation would be needed to fully prevent
+            # this, but the GCS KV store does not support CAS. For telemetry purposes,
+            # occasional undercounting is acceptable as this is best-effort data.
             max_retries = 5
             restart_count = None
             for attempt in range(max_retries):
@@ -836,8 +841,8 @@ def _get_cluster_lifecycle_metadata(
                         )
                         restart_count = 0
 
-                    # Write back - if another process updated it between read and write,
-                    # we'll retry on the next iteration
+                    # Write back - retries help with transient failures but don't
+                    # prevent concurrent write races (see note above)
                     gcs_client.internal_kv_put(
                         usage_constant.CLUSTER_RESTART_COUNT_KEY,
                         str(restart_count).encode(),

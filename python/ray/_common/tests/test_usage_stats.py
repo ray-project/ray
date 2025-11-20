@@ -1695,11 +1695,11 @@ def test_cluster_lifecycle_tracking(monkeypatch, ray_start_cluster, reset_usage_
         # Verify subsequent calls with ray_init_cluster=True increment the restart count
         ray_usage_lib.put_cluster_metadata(gcs_client, ray_init_cluster=True)
         (
-            first_seen_idempotent,
-            restart_count_idempotent,
+            first_seen_second,
+            restart_count_second,
         ) = ray_usage_lib._get_cluster_lifecycle_metadata_to_report(gcs_client)
-        assert first_seen_idempotent == first_seen
-        assert restart_count_idempotent == 2  # Incremented again
+        assert first_seen_second == first_seen
+        assert restart_count_second == 2  # Incremented again
 
 
 def test_cluster_lifecycle_tracking_in_report(
