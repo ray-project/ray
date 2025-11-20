@@ -1402,7 +1402,7 @@ orjson==3.9.15
     #   tensordict
 ormsgpack==1.7.0
     # via -r python/requirements/ml/rllib-requirements.txt
-packaging==23.0
+packaging==24.2
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -1654,7 +1654,7 @@ pycparser==2.21
     # via cffi
 pycurl==7.45.3
     # via -r python/requirements/cloud-requirements.txt
-pydantic==2.11.7
+pydantic==2.12.4
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1664,7 +1664,7 @@ pydantic==2.11.7
     #   gradio
     #   mlflow-skinny
     #   pyiceberg
-pydantic-core==2.33.2
+pydantic-core==2.41.5
     # via pydantic
 pydot==1.4.2
     # via -r python/requirements/test-requirements.txt
@@ -2422,7 +2422,7 @@ types-requests==2.31.0.6
     # via -r python/requirements/lint-requirements.txt
 types-urllib3==1.26.25.14
     # via types-requests
-typing-extensions==4.12.2
+typing-extensions==4.15.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   alembic
@@ -2459,7 +2459,7 @@ typing-extensions==4.12.2
     #   torch
     #   typer
     #   typing-inspection
-typing-inspection==0.4.1
+typing-inspection==0.4.2
     # via pydantic
 tzdata==2025.2
     # via kombu
