@@ -389,9 +389,9 @@ class MockRayletClient : public rpc::FakeRayletClient {
     cancel_local_task_callbacks.push_back(callback);
   }
 
-  void ReplyCancelLocalTask(Status status = Status::OK(),
-                            bool attempt_succeeded = true,
-                            bool requested_task_running = false) {
+  void ReplyCancelLocalTask(Status status,
+                            bool attempt_succeeded,
+                            bool requested_task_running) {
     auto &callback = cancel_local_task_callbacks.front();
     rpc::CancelLocalTaskReply reply;
     reply.set_attempt_succeeded(attempt_succeeded);
@@ -1909,7 +1909,9 @@ TEST_F(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) 
   submitter.CancelTask(task, /*force_kill=*/false, /*recursive=*/true);
   ASSERT_TRUE(io_context.poll_one());
   ASSERT_FALSE(submitter.QueueGeneratorForResubmit(task));
-  raylet_client->ReplyCancelLocalTask();
+  raylet_client->ReplyCancelLocalTask(Status::OK(),
+                                      /*attempt_succeeded=*/true,
+                                      /*requested_task_running=*/false);
   ASSERT_TRUE(submitter.QueueGeneratorForResubmit(task));
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(),
                                            /*exit=*/false,

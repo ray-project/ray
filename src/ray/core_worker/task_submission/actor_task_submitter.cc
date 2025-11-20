@@ -1015,12 +1015,7 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
 
   auto do_cancel_local_task =
       [this, task_spec = std::move(task_spec), force_kill, recursive, executor_worker_id](
-          const rpc::GcsNodeAddressAndLiveness &node_info) mutable {
-        rpc::Address raylet_address;
-        raylet_address.set_node_id(node_info.node_id());
-        raylet_address.set_ip_address(node_info.node_manager_address());
-        raylet_address.set_port(node_info.node_manager_port());
-
+          const rpc::Address &raylet_address) mutable {
         rpc::CancelLocalTaskRequest request;
         request.set_intended_task_id(task_spec.TaskIdBinary());
         request.set_force_kill(force_kill);
@@ -1052,11 +1047,14 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
             });
       };
 
-  PostCancelLocalTask(gcs_client_,
-                      io_service_,
-                      node_id,
-                      std::move(do_cancel_local_task),
-                      "ActorTaskSubmitter.CancelTask");
+  // Cancel can execute on the user's python thread, but the GCS node cache is updated on
+  // the io service thread and is not thread-safe. Hence we need to post the entire
+  // cache access to the io service thread.
+  io_service_.post(
+      [this, node_id, do_cancel_local_task = std::move(do_cancel_local_task)]() mutable {
+        SendCancelLocalTask(gcs_client_, node_id, std::move(do_cancel_local_task));
+      },
+      "ActorTaskSubmitter.CancelTask");
 }
 
 bool ActorTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {
