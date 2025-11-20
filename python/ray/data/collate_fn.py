@@ -263,7 +263,7 @@ class DefaultCollateFn(ArrowBatchCollateFn):
 
     def __del__(self):
         """Clean up threadpool on destruction."""
-        if self._threadpool is not None:
+        if getattr(self, "_threadpool", None):
             self._threadpool.shutdown(wait=False)
 
     def __call__(self, batch: "pyarrow.Table") -> "CollatedData":

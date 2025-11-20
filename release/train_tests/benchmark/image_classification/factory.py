@@ -10,7 +10,7 @@ import pyarrow
 import ray
 import ray.train
 from ray.data.collate_fn import ArrowBatchCollateFn, CollateFn
-from concurrent.threadpool import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from ray.data.dataset import TorchDeviceType
 
 # Local imports
@@ -208,7 +208,7 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
 
     def __del__(self):
         """Clean up threadpool on destruction."""
-        if self._threadpool is not None:
+        if getattr(self, "_threadpool", None):
             self._threadpool.shutdown(wait=False)
 
     def __call__(self, batch: "pyarrow.Table") -> Tuple[torch.Tensor, torch.Tensor]:
