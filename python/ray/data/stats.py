@@ -139,11 +139,23 @@ class DatasetSummary:
         if not dfs:
             raise ValueError(f"Column '{column}' not found in summary tables")
 
-        return (
-            pd.concat(dfs, ignore_index=True)
+        # Concatenate and merge duplicate statistics (prefer non-null values)
+        combined = pd.concat(dfs, ignore_index=True)
+
+        # Group by statistic and take first non-null value for each group
+        def first_non_null(series):
+            non_null = series.dropna()
+            return non_null.iloc[0] if len(non_null) > 0 else None
+
+        result = (
+            combined.groupby(self.STATISTIC_COLUMN, sort=False)["value"]
+            .apply(first_non_null)
+            .reset_index()
             .sort_values(self.STATISTIC_COLUMN)
             .reset_index(drop=True)
         )
+
+        return result
 
 
 @dataclass

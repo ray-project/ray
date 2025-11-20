@@ -3294,19 +3294,31 @@ class Dataset:
             >>> summary = ds.summary()
             >>> # Get combined pandas DataFrame with all statistics
             >>> summary.to_pandas()  # doctest: +SKIP
-            statistic  age  salary  name  city
-            0     count    3    3.0   3.0   3.0
-            1      mean   18.3  55000.0  NaN   NaN
-            2       min    0   50000  NaN   NaN
-            3       max   30   60000  NaN   NaN
+                        statistic        age                         city                           name        salary
+            0  approx_quantile[0.5]  25.000000                         None                           None  60000.000000
+            1        approx_topk[0]        NaN   {'city': 'LA', 'count': 1}    {'count': 1, 'name': 'Bob'}           NaN
+            2        approx_topk[1]        NaN  {'city': 'NYC', 'count': 1}  {'count': 1, 'name': 'Alice'}           NaN
+            3                 count   3.000000                            3                              3      3.000000
+            4                   max  30.000000                          NaN                            NaN  60000.000000
+            5                  mean  18.333333                         None                           None  55000.000000
+            6                   min   0.000000                          NaN                            NaN  50000.000000
+            7           missing_pct   0.000000                    33.333333                      33.333333     33.333333
+            8                   std  13.123346                         None                           None   5000.000000
+            9              zero_pct  33.333333                         None                           None      0.000000
 
             >>> # Access individual column statistics
             >>> summary.get_column_stats("age")  # doctest: +SKIP
-            statistic  age
-            0     count    3
-            1      mean   18.3
-            2       min    0
-            3       max   30
+            statistic               value
+        0   approx_quantile[0.5]  25.000000
+        1         approx_topk[0]        NaN
+        2         approx_topk[1]        NaN
+        3                  count   3.000000
+        4                    max  30.000000
+        5                   mean  18.333333
+        6                    min   0.000000
+        7            missing_pct   0.000000
+        8                    std  13.123346
+        9              zero_pct  33.333333
 
             Custom aggregations for specific types:
 
