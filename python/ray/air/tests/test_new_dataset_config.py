@@ -184,9 +184,9 @@ def test_per_dataset_execution_options_single(ray_start_4_cpus):
     data_config = DataConfig(execution_options=execution_options)
 
     # Verify that all datasets get the same execution options
-    train_options = data_config._clone_and_get_execution_options("train")
-    test_options = data_config._clone_and_get_execution_options("test")
-    val_options = data_config._clone_and_get_execution_options("val")
+    train_options = data_config._get_execution_options("train")
+    test_options = data_config._get_execution_options("test")
+    val_options = data_config._get_execution_options("val")
 
     assert train_options.preserve_order is True
     assert train_options.verbose_progress is True
@@ -230,8 +230,8 @@ def test_per_dataset_execution_options_dict(ray_start_4_cpus):
     data_config = DataConfig(execution_options=execution_options_dict)
 
     # Verify that each dataset in the dict gets its specific options
-    retrieved_train_options = data_config._clone_and_get_execution_options("train")
-    retrieved_test_options = data_config._clone_and_get_execution_options("test")
+    retrieved_train_options = data_config._get_execution_options("train")
+    retrieved_test_options = data_config._get_execution_options("test")
 
     assert retrieved_train_options.preserve_order is True
     assert retrieved_train_options.verbose_progress is True
@@ -246,7 +246,7 @@ def test_per_dataset_execution_options_dict(ray_start_4_cpus):
 
     # Verify that a dataset not in the dict gets default options
     default_options = DataConfig.default_ingest_options()
-    retrieved_val_options = data_config._clone_and_get_execution_options("val")
+    retrieved_val_options = data_config._get_execution_options("val")
     assert retrieved_val_options.preserve_order == default_options.preserve_order
     assert retrieved_val_options.verbose_progress == default_options.verbose_progress
     assert (
@@ -275,18 +275,16 @@ def test_per_dataset_execution_options_default(ray_start_4_cpus):
     # Test with None
     data_config_none = DataConfig(execution_options=None)
     default_options = DataConfig.default_ingest_options()
-    retrieved_train_options = data_config_none._clone_and_get_execution_options("train")
-    retrieved_test_options = data_config_none._clone_and_get_execution_options("test")
+    retrieved_train_options = data_config_none._get_execution_options("train")
+    retrieved_test_options = data_config_none._get_execution_options("test")
 
     assert retrieved_train_options.preserve_order == default_options.preserve_order
     assert retrieved_test_options.preserve_order == default_options.preserve_order
 
     # Test with empty dict
     data_config_empty = DataConfig(execution_options={})
-    retrieved_train_options = data_config_empty._clone_and_get_execution_options(
-        "train"
-    )
-    retrieved_test_options = data_config_empty._clone_and_get_execution_options("test")
+    retrieved_train_options = data_config_empty._get_execution_options("train")
+    retrieved_test_options = data_config_empty._get_execution_options("test")
 
     assert retrieved_train_options.preserve_order == default_options.preserve_order
     assert retrieved_test_options.preserve_order == default_options.preserve_order
