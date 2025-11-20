@@ -204,29 +204,37 @@ def _split_predicate_by_columns(
         >>> from ray.data.expressions import col
         >>> # Pure data predicate:
         >>> result = _split_predicate_by_columns(col("data1") > 5, {"partition_col"})
-        >>> result.data_predicate  # col("data1") > 5
-        >>> result.partition_predicate  # None
+        >>> result.data_predicate is not None  # Should have data predicate
+        True
+        >>> result.partition_predicate is None  # Should not have partition predicate
+        True
 
         >>> # Pure partition predicate:
         >>> result = _split_predicate_by_columns(col("partition_col") == "US", {"partition_col"})
-        >>> result.data_predicate  # None
-        >>> result.partition_predicate  # col("partition_col") == "US"
+        >>> result.data_predicate is None  # Should not have data predicate
+        True
+        >>> result.partition_predicate is not None  # Should have partition predicate
+        True
 
         >>> # Mixed AND - can split both parts:
         >>> result = _split_predicate_by_columns(
         ...     (col("data1") > 5) & (col("partition_col") == "US"),
         ...     {"partition_col"}
         ... )
-        >>> result.data_predicate  # col("data1") > 5
-        >>> result.partition_predicate  # col("partition_col") == "US"
+        >>> result.data_predicate is not None  # Should have data predicate
+        True
+        >>> result.partition_predicate is not None  # Should have partition predicate
+        True
 
         >>> # Mixed OR - can't split safely:
         >>> result = _split_predicate_by_columns(
         ...     (col("data1") > 5) | (col("partition_col") == "US"),
         ...     {"partition_col"}
         ... )
-        >>> result.data_predicate  # None
-        >>> result.partition_predicate  # None
+        >>> result.data_predicate is None  # Should not have data predicate
+        True
+        >>> result.partition_predicate is None  # Should not have partition predicate
+        True
     """
     referenced_cols = set(get_column_references(predicate))
     data_cols = referenced_cols - partition_columns

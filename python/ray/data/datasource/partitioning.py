@@ -286,7 +286,7 @@ class PathPartitionParser:
         Examples:
             >>> from ray.data.expressions import col
             >>> parser = PathPartitionParser(Partitioning("hive"))
-            >>> path = "data/country=US/year=2020/file.parquet"
+            >>> path = "country=US/year=2020/file.parquet"
             >>> predicate = col("country") == "US"
             >>> parser.evaluate_predicate_on_partition(path, predicate)
             True
