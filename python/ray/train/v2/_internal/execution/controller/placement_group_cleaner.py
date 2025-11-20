@@ -76,11 +76,17 @@ class PlacementGroupCleaner:
                     actor_id=self._controller_actor_id,
                     timeout=self._get_actor_timeout_s,
                 )
-                if not alive and not self._is_placement_group_removed():
-                    logger.warning(
-                        f"Detected that the Ray Train controller actor ({self._controller_actor_id}) is dead. "
-                        "Cleaning up placement group created by this run."
-                    )
+                if not alive:
+                    if not self._is_placement_group_removed():
+                        logger.warning(
+                            f"Detected that the Ray Train controller actor ({self._controller_actor_id}) is dead. "
+                            "Cleaning up placement group created by this run."
+                        )
+                    else:
+                        logger.info(
+                            "Controller actor died but placement group already removed; "
+                            "skipping cleanup."
+                        )
                     break
                 time.sleep(self._check_interval_s)
             except Exception:
