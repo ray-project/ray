@@ -16,6 +16,7 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import run_string_as_driver
+from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
 )
@@ -23,19 +24,17 @@ from ray.data._internal.execution.backpressure_policy.backpressure_policy import
     BackpressurePolicy,
 )
 from ray.data._internal.execution.dataset_state import DatasetState
+from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     TaskDurationStats,
-    histogram_bucket_rows,
-    histogram_buckets_bytes,
-    histogram_buckets_s,
 )
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import (
     DatasetStats,
     NodeMetrics,
-    StatsManager,
-    _get_or_create_stats_actor,
     _StatsActor,
+    get_or_create_stats_actor,
 )
 from ray.data._internal.util import MemoryProfiler
 from ray.data.context import DataContext
@@ -70,36 +69,13 @@ def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared
         assert profiler.estimate_max_uss() > array_nbytes
 
 
-def gen_histogram_metrics_value_str(histogram_buckets: List[float], *vals):
-    """
-    For a histogram with 5 buckets, generate a string like:
-    [Z, Z, Z, Z, Z, Z]
-    (The extra element is for the +Inf bucket)
-
-    *vals can be used to prefill the elements in the list starting from the first element.
-    For example, if *vals is [N, N, N, N, N], the string will be:
-    [N, N, N, N, N, Z]
-
-    """
-    return f"[{', '.join([*vals, *['Z' for _ in range(len(histogram_buckets) + 1 - len(vals))]])}]"
-
-
 def gen_expected_metrics(
     is_map: bool,
     spilled: bool = False,
     task_backpressure: bool = False,
     task_output_backpressure: bool = False,
     extra_metrics: Optional[List[str]] = None,
-    canonicalize_histogram_values: bool = False,
 ):
-    # If canonicalize_histogram_values is True, we replace the histogram entire histogram bucket values list with HV.
-    # Otherwise, we generate a list of values that we expect to see in the metrics.
-    gen_histogram_values = (
-        gen_histogram_metrics_value_str
-        if not canonicalize_histogram_values
-        else lambda *args: "HB"
-    )
-
     if is_map:
         metrics = [
             "'average_num_outputs_per_task': N",
@@ -151,24 +127,12 @@ def gen_expected_metrics(
                 "'task_output_backpressure_time': "
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
-            (
-                "'task_completion_time': "
-                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
-            ),
-            (
-                "'block_completion_time': "
-                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
-            ),
-            "'task_completion_time_s': N",
+            "'task_completion_time_total_s': N",
+            "'task_completion_time': (samples: N, avg: N)",
+            "'block_completion_time': (samples: N, avg: N)",
             "'task_completion_time_excl_backpressure_s': N",
-            (
-                "'block_size_bytes': "
-                f"{gen_histogram_values(histogram_buckets_bytes, 'N')}"
-            ),
-            (
-                "'block_size_rows': "
-                f"{gen_histogram_values(histogram_bucket_rows, 'N')}"
-            ),
+            "'block_size_bytes': (samples: N, avg: N)",
+            "'block_size_rows': (samples: N, avg: N)",
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
             "'num_pending_actors': Z",
@@ -231,27 +195,15 @@ def gen_expected_metrics(
                 "'task_output_backpressure_time': "
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
-            (
-                "'task_completion_time': "
-                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
-            ),
-            (
-                "'block_completion_time': "
-                f"{gen_histogram_values(histogram_buckets_s, 'N')}"
-            ),
-            ("'task_completion_time_s': " f"{'N' if task_backpressure else 'Z'}"),
+            "'task_completion_time_total_s': Z",
+            "'task_completion_time': (samples: Z, avg: Z)",
+            "'block_completion_time': (samples: Z, avg: Z)",
             (
                 "'task_completion_time_excl_backpressure_s': "
                 f"{'N' if task_backpressure else 'Z'}"
             ),
-            (
-                "'block_size_bytes': "
-                f"{gen_histogram_values(histogram_buckets_bytes, 'N')}"
-            ),
-            (
-                "'block_size_rows': "
-                f"{gen_histogram_values(histogram_bucket_rows, 'N')}"
-            ),
+            "'block_size_bytes': (samples: Z, avg: Z)",
+            "'block_size_rows': (samples: Z, avg: Z)",
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
             "'num_pending_actors': Z",
@@ -296,18 +248,6 @@ STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
     extra_metrics=[
         "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
     ],
-)
-
-STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_CANONICALIZE_HISTOGRAM_VALUES = (
-    gen_expected_metrics(
-        is_map=True,
-        spilled=False,
-        task_backpressure=True,
-        canonicalize_histogram_values=True,
-        extra_metrics=[
-            "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
-        ],
-    )
 )
 
 LARGE_ARGS_EXTRA_METRICS = gen_expected_metrics(
@@ -363,20 +303,20 @@ EXECUTION_STRING = "N tasks executed, N blocks produced in T"
 def canonicalize(
     stats: str,
     filter_global_stats: bool = True,
-    canonicalize_histogram_values: bool = False,
 ) -> str:
     # Dataset UUID expression.
     canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", stats)
-
-    if canonicalize_histogram_values:
-        # Replace the histogram entire histogram bucket values list with HB since it's
-        # hard to predict which buckets will have values vs which will have zeroes.
-        canonicalized_stats = re.sub(r": \[.*?\]", ": HB", canonicalized_stats)
-
     # Time expressions.
     canonicalized_stats = re.sub(r"[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
     # Memory expressions.
     canonicalized_stats = re.sub(r"[0-9\.]+(B|MB|GB)", "M", canonicalized_stats)
+    # Histogram expressions.
+    canonicalized_stats = re.sub(
+        r"\(samples: 0, avg: 0.00\)", "(samples: Z, avg: Z)", canonicalized_stats
+    )
+    canonicalized_stats = re.sub(
+        r"\(samples: \d+, avg: \d+\.\d+\)", "(samples: N, avg: N)", canonicalized_stats
+    )
     # For obj_store_mem_used, the value can be zero or positive, depending on the run.
     # Replace with A to avoid test flakiness.
     canonicalized_stats = re.sub(
@@ -442,7 +382,7 @@ def dummy_map_batches_sleep(n):
 @contextmanager
 def patch_update_stats_actor():
     with patch(
-        "ray.data._internal.stats.StatsManager.update_execution_metrics"
+        "ray.data._internal.stats._StatsManager.update_execution_metrics"
     ) as update_fn:
         yield update_fn
 
@@ -450,10 +390,8 @@ def patch_update_stats_actor():
 @contextmanager
 def patch_update_stats_actor_iter():
     with patch(
-        "ray.data._internal.stats.StatsManager.update_iteration_metrics"
-    ) as update_fn, patch(
-        "ray.data._internal.stats.StatsManager.clear_iteration_metrics"
-    ):
+        "ray.data._internal.stats._StatsManager.update_iteration_metrics"
+    ) as update_fn:
         yield update_fn
 
 
@@ -501,6 +439,7 @@ Dataset iterator time breakdown:
     * Total time spent waiting for the first batch after starting iteration: T
     * Total execution time for user thread: T
 * Batch iteration time breakdown (summed across prefetch threads):
+    * In get RefBundles: T min, T max, T avg, T total
     * In ray.get(): T min, T max, T avg, T total
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
@@ -696,6 +635,7 @@ def test_dataset_stats_basic(
         f"    * Total time spent waiting for the first batch after starting iteration: T\n"
         f"    * Total execution time for user thread: T\n"
         f"* Batch iteration time breakdown (summed across prefetch threads):\n"
+        f"    * In get RefBundles: T min, T max, T avg, T total\n"
         f"    * In ray.get(): T min, T max, T avg, T total\n"
         f"    * In batch creation: T min, T max, T avg, T total\n"
         f"    * In batch formatting: T min, T max, T avg, T total\n"
@@ -740,6 +680,7 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
         f"    * Total time spent waiting for the first batch after starting iteration: T\n"
         f"    * Total execution time for user thread: T\n"
         f"* Batch iteration time breakdown (summed across prefetch threads):\n"
+        f"    * In get RefBundles: T min, T max, T avg, T total\n"
         f"    * In ray.get(): T min, T max, T avg, T total\n"
         f"    * In batch creation: T min, T max, T avg, T total\n"
         f"    * In batch formatting: T min, T max, T avg, T total\n"
@@ -811,12 +752,12 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
-        f"      task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
-        f"      block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
-        "      task_completion_time_s: N,\n"
+        "      task_completion_time_total_s: N,\n"
+        "      task_completion_time: (samples: N, avg: N),\n"
+        "      block_completion_time: (samples: N, avg: N),\n"
         "      task_completion_time_excl_backpressure_s: N,\n"
-        f"      block_size_bytes: {gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')},\n"
-        f"      block_size_rows: {gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')},\n"
+        "      block_size_bytes: (samples: N, avg: N),\n"
+        "      block_size_rows: (samples: N, avg: N),\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
@@ -845,6 +786,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   ],\n"
         "   iter_stats=IterStatsSummary(\n"
         "      wait_time=T,\n"
+        "      get_ref_bundles_time=T,\n"
         "      get_time=T,\n"
         "      iter_blocks_local=None,\n"
         "      iter_blocks_remote=None,\n"
@@ -866,6 +808,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "         operators_stats=[],\n"
         "         iter_stats=IterStatsSummary(\n"
         "            wait_time=T,\n"
+        "            get_ref_bundles_time=T,\n"
         "            get_time=T,\n"
         "            iter_blocks_local=None,\n"
         "            iter_blocks_remote=None,\n"
@@ -951,12 +894,12 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
-        f"      task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
-        f"      block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
-        "      task_completion_time_s: N,\n"
+        "      task_completion_time_total_s: N,\n"
+        "      task_completion_time: (samples: N, avg: N),\n"
+        "      block_completion_time: (samples: N, avg: N),\n"
         "      task_completion_time_excl_backpressure_s: N,\n"
-        f"      block_size_bytes: {gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')},\n"
-        f"      block_size_rows: {gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')},\n"
+        "      block_size_bytes: (samples: N, avg: N),\n"
+        "      block_size_rows: (samples: N, avg: N),\n"
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
@@ -985,6 +928,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   ],\n"
         "   iter_stats=IterStatsSummary(\n"
         "      wait_time=T,\n"
+        "      get_ref_bundles_time=T,\n"
         "      get_time=T,\n"
         "      iter_blocks_local=None,\n"
         "      iter_blocks_remote=None,\n"
@@ -1046,12 +990,12 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            block_generation_time: N,\n"
         "            task_submission_backpressure_time: N,\n"
         "            task_output_backpressure_time: Z,\n"
-        f"            task_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
-        f"            block_completion_time: {gen_histogram_metrics_value_str(histogram_buckets_s, 'N')},\n"
-        "            task_completion_time_s: N,\n"
+        "            task_completion_time_total_s: N,\n"
+        "            task_completion_time: (samples: N, avg: N),\n"
+        "            block_completion_time: (samples: N, avg: N),\n"
         "            task_completion_time_excl_backpressure_s: N,\n"
-        f"            block_size_bytes: {gen_histogram_metrics_value_str(histogram_buckets_bytes, 'N')},\n"
-        f"            block_size_rows: {gen_histogram_metrics_value_str(histogram_bucket_rows, 'N')},\n"
+        "            block_size_bytes: (samples: N, avg: N),\n"
+        "            block_size_rows: (samples: N, avg: N),\n"
         "            num_alive_actors: Z,\n"
         "            num_restarting_actors: Z,\n"
         "            num_pending_actors: Z,\n"
@@ -1080,6 +1024,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "         ],\n"
         "         iter_stats=IterStatsSummary(\n"
         "            wait_time=T,\n"
+        "            get_ref_bundles_time=T,\n"
         "            get_time=T,\n"
         "            iter_blocks_local=None,\n"
         "            iter_blocks_remote=None,\n"
@@ -1101,6 +1046,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "               operators_stats=[],\n"
         "               iter_stats=IterStatsSummary(\n"
         "                  wait_time=T,\n"
+        "                  get_ref_bundles_time=T,\n"
         "                  get_time=T,\n"
         "                  iter_blocks_local=None,\n"
         "                  iter_blocks_remote=None,\n"
@@ -1537,6 +1483,7 @@ Dataset iterator time breakdown:
     * Total time spent waiting for the first batch after starting iteration: T
     * Total execution time for user thread: T
 * Batch iteration time breakdown (summed across prefetch threads):
+    * In get RefBundles: T min, T max, T avg, T total
     * In ray.get(): T min, T max, T avg, T total
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
@@ -1711,9 +1658,7 @@ def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
                 sum_metrics[metric] += value
         return sum_metrics
 
-    with patch(
-        "ray.data._internal.stats.StatsManager._get_or_create_stats_actor"
-    ) as mock_get_actor:
+    with patch("ray.data._internal.stats.get_or_create_stats_actor") as mock_get_actor:
         mock_actor_handle = MagicMock()
         mock_get_actor.return_value = mock_actor_handle
 
@@ -1759,9 +1704,7 @@ def test_per_node_metrics_toggle(
     ctx = DataContext.get_current()
     ctx.enable_per_node_metrics = enable_metrics
 
-    with patch(
-        "ray.data._internal.stats.StatsManager._get_or_create_stats_actor"
-    ) as mock_get_actor:
+    with patch("ray.data._internal.stats.get_or_create_stats_actor") as mock_get_actor:
         mock_actor_handle = MagicMock()
         mock_get_actor.return_value = mock_actor_handle
 
@@ -2110,7 +2053,7 @@ def test_stats_actor_datasets(ray_start_cluster):
     ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
     ds.set_name("test_stats_actor_datasets")
     ds.materialize()
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
 
     datasets = ray.get(stats_actor.get_datasets.remote())
     dataset_name = list(filter(lambda x: x.startswith(ds.name), datasets))
@@ -2147,7 +2090,7 @@ def test_stats_actor_datasets_eviction(ray_start_cluster):
     # Patch the function that retrieves the stats actor to return our
     # test-specific actor instance.
     with patch(
-        "ray.data._internal.stats._get_or_create_stats_actor",
+        "ray.data._internal.stats.get_or_create_stats_actor",
         return_value=stats_actor,
     ):
 
@@ -2206,53 +2149,51 @@ def test_stats_actor_datasets_eviction(ray_start_cluster):
         wait_for_condition(check_eviction)
 
 
-@patch.object(StatsManager, "STATS_ACTOR_UPDATE_INTERVAL_SECONDS", new=0.5)
-@patch.object(StatsManager, "_stats_actor_handle")
-@patch.object(StatsManager, "UPDATE_THREAD_INACTIVITY_LIMIT", new=1)
-def test_stats_manager(shutdown_only):
+# Setting internal=10000 (super high number) value so they are only called
+# once (on cold start), and on shutdown.
+@patch.object(StreamingExecutor, "UPDATE_METRICS_INTERVAL_S", new=10000)
+@patch.object(BatchIterator, "UPDATE_METRICS_INTERVAL_S", new=10000)
+@patch("ray.data._internal.stats.get_or_create_stats_actor")
+def test_stats_manager(mock_get_or_create, shutdown_only):
+
+    # Configure what get_or_create_stats_actor() returns
+    mock_actor = MagicMock()
+    mock_get_or_create.return_value = mock_actor
+
     ray.init()
     num_threads = 10
 
     datasets = [None] * num_threads
-    # Mock clear methods so that _last_execution_stats and _last_iteration_stats
-    # are not cleared. We will assert on them afterwards.
-    with (
-        patch.object(StatsManager, "clear_last_execution_stats"),
-        patch.object(StatsManager, "clear_iteration_metrics"),
-    ):
 
-        def update_stats_manager(i):
-            datasets[i] = ray.data.range(10).map_batches(lambda x: x)
-            for _ in datasets[i].iter_batches(batch_size=1):
-                pass
+    def update_stats_manager(i):
+        datasets[i] = ray.data.range(10).map_batches(lambda x: x)
+        for _ in datasets[i].iter_batches(batch_size=1):
+            pass
 
-        threads = [
-            threading.Thread(target=update_stats_manager, args=(i,), daemon=True)
-            for i in range(num_threads)
-        ]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
+    threads = [
+        threading.Thread(target=update_stats_manager, args=(i,), daemon=True)
+        for i in range(num_threads)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
 
-    assert len(StatsManager._last_execution_stats) == num_threads
-    assert len(StatsManager._last_iteration_stats) == num_threads
+    # Count calls to register_dataset.remote()
+    register_dataset_calls = mock_actor.register_dataset.remote.call_count
+    # Count calls to update_iteration_metrics.remote()
+    iteration_calls = mock_actor.update_iteration_metrics.remote.call_count
+    # Count calls to update_execution_metrics.remote()
+    execution_calls = mock_actor.update_execution_metrics.remote.call_count
 
-    # Clear dataset tags manually.
-    for dataset in datasets:
-        dataset_tag = dataset.get_dataset_id()
-        assert dataset_tag in StatsManager._last_execution_stats
-        assert dataset_tag in StatsManager._last_iteration_stats
-        StatsManager.clear_last_execution_stats(dataset_tag)
-        StatsManager.clear_iteration_metrics(dataset_tag)
+    # Each thread handles 1 dataset.
+    assert register_dataset_calls == num_threads
 
-    wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
-    prev_thread = StatsManager._update_thread
-
-    ray.data.range(100).map_batches(lambda x: x).materialize()
-    # Check that a new different thread is spawned.
-    assert StatsManager._update_thread != prev_thread
-    wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
+    # Since interval is set to high value, the number of execution
+    # calls will update on the first update (cold start), and on shutdown,
+    # which is 2 for each thread.
+    assert execution_calls == 2 * num_threads
+    assert iteration_calls == 2 * num_threads
 
 
 def test_stats_manager_stale_actor_handle(ray_start_cluster):
@@ -2289,6 +2230,93 @@ def test_stats_manager_stale_actor_handle(ray_start_cluster):
     ).take_all()
 
     ray.shutdown()
+
+
+def test_runtime_metrics_histogram_observe():
+    """Test that RuntimeMetricsHistogram correctly places values in buckets."""
+    # Create a simple histogram with 3 boundaries: [1.0, 5.0, 10.0]
+    boundaries = [1.0, 5.0, 10.0]
+    histogram = RuntimeMetricsHistogram(boundaries)
+
+    # Test values in different buckets
+    histogram.observe(0.5)  # Should go to bucket 0 (< 1.0)
+    histogram.observe(3.0)  # Should go to bucket 1 (1.0 <= x < 5.0)
+    histogram.observe(7.0)  # Should go to bucket 2 (5.0 <= x < 10.0)
+    histogram.observe(15.0)  # Should go to bucket 3 (>= 10.0)
+
+    # Test multiple observations
+    histogram.observe(2.0, num_observations=3)  # Should add 3 to bucket 1
+
+    # Verify bucket counts
+    expected_counts = [1, 4, 1, 1]  # [bucket0, bucket1, bucket2, bucket3]
+    assert histogram._bucket_counts == expected_counts
+
+    # Verify the average value
+    assert f"{histogram}" == "(samples: 7, avg: 5.00)"
+
+
+def test_runtime_metrics_histogram_export_to():
+    """Test that export_to correctly applies observations to Ray Histogram."""
+    from ray.util.metrics import Histogram
+
+    # Create a simple histogram with 2 boundaries
+    boundaries = [1.0, 3.0]
+    histogram = RuntimeMetricsHistogram(boundaries)
+
+    # Add some observations
+    histogram.observe(0.5)  # bucket 0
+    histogram.observe(2.0)  # bucket 1
+    histogram.observe(5.0)  # bucket 2
+
+    # Create a mock Ray Histogram
+    mock_metric = MagicMock(spec=Histogram)
+    mock_metric.last_applied_bucket_counts_for_tags = {}
+
+    # Apply to metric
+    tags = {"node_id": "test_node"}
+    histogram.export_to(mock_metric, tags)
+
+    # Verify that observe was called 3 times (once for each observation)
+    assert mock_metric.observe.call_count == 3
+
+    # Verify the bucket values used for observations are reasonable
+    # (should be midpoints of the bucket ranges)
+    calls = mock_metric.observe.call_args_list
+    observed_values = [call[0][0] for call in calls]  # First argument of each call
+
+    # Check that we have values in the expected ranges
+    # Bucket 0: 0 to 1.0, midpoint should be around 0.5
+    # Bucket 1: 1.0 to 3.0, midpoint should be around 2.0
+    # Bucket 2: 3.0 to 13.0 (3.0 + 10), midpoint should be around 8.0
+    assert any(0 <= val <= 1.0 for val in observed_values)
+    assert any(1.0 <= val <= 3.0 for val in observed_values)
+    assert any(3.0 <= val for val in observed_values)
+
+    # Verify that the last_applied_bucket_counts_for_tags was updated
+    tags_key = '{"node_id": "test_node"}'
+    assert tags_key in mock_metric.last_applied_bucket_counts_for_tags
+    assert mock_metric.last_applied_bucket_counts_for_tags[tags_key] == [1, 1, 1]
+
+    # Add some more observations
+    histogram.observe(0.8)  # bucket 0
+    histogram.observe(1.2)  # bucket 1
+    histogram.export_to(mock_metric, tags)
+
+    # Verify that observe was called 2 more times (once for each observation)
+    assert mock_metric.observe.call_count == 5
+
+    # Verify the bucket values used for observations are reasonable
+    # (should be midpoints of the bucket ranges)
+    calls = mock_metric.observe.call_args_list
+    observed_values = [call[0][0] for call in calls[2:]]  # First argument of each call
+
+    # Check that we have values in the expected ranges
+    # Bucket 0: 0 to 1.0, midpoint should be around 0.5
+    # Bucket 1: 1.0 to 3.0, midpoint should be around 2.0
+    assert any(0 <= val <= 1.0 for val in observed_values)
+    assert any(1.0 <= val <= 3.0 for val in observed_values)
+
+    assert mock_metric.last_applied_bucket_counts_for_tags[tags_key] == [2, 2, 1]
 
 
 if __name__ == "__main__":

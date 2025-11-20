@@ -1,7 +1,8 @@
-import gymnasium as gym
-import numpy as np
 import tempfile
 import unittest
+
+import gymnasium as gym
+import numpy as np
 
 import ray
 from ray.rllib.core import DEFAULT_MODULE_ID
@@ -9,10 +10,10 @@ from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.metrics import ALL_MODULES
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 
 from ray.rllib.utils.metrics import (
     NUM_MODULE_STEPS_TRAINED,
@@ -319,7 +320,8 @@ class TestLearner(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

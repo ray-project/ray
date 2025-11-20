@@ -1,9 +1,11 @@
 import os
+import pathlib
 import shutil
 import time
 from dataclasses import dataclass
 from typing import Optional
 
+import fsspec
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -11,6 +13,7 @@ import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
+from pyarrow.fs import FSSpecHandler, PyFileSystem
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
@@ -617,9 +620,14 @@ def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir)
 
     assert ds._plan.explain().strip() == (
         "-------- Logical Plan --------\n"
-        "Project\n"
-        "+- ReadParquet\n"
-        "-------- Physical Plan --------\n"
+        "Project[Project]\n"
+        "+- Read[ReadParquet]\n"
+        "\n-------- Logical Plan (Optimized) --------\n"
+        "Read[ReadParquet]\n"
+        "\n-------- Physical Plan --------\n"
+        "TaskPoolMapOperator[ReadParquet]\n"
+        "+- InputDataBuffer[Input]\n"
+        "\n-------- Physical Plan (Optimized) --------\n"
         "TaskPoolMapOperator[ReadParquet]\n"
         "+- InputDataBuffer[Input]"
     )
@@ -2163,6 +2171,59 @@ def test_read_parquet_with_columns_selectivity(
         f"Column selection {columns} with batch_size={batch_size} "
         f"returned columns {ds.schema().names}"
     )
+
+
+def test_get_parquet_dataset_fs_serialization_fallback(
+    ray_start_regular_shared, tmp_path: pathlib.Path
+):
+    """Test that the fallback mechanism for serializing the filesystem works."""
+    # 1) Local parquet file
+    local_file = tmp_path / "test.parquet"
+    pq.write_table(
+        pa.Table.from_pandas(pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})), local_file
+    )
+
+    # 2) Problematic fsspec FS wrapped as a *PyArrow* FS so ParquetDataset accepts it
+    class BadFSSpec(fsspec.AbstractFileSystem):
+        protocol = "file"
+
+        def info(self, path, **kwargs):
+            # Wrong shape → fsspec/pyarrow will later blow up with TypeError
+            return ["not", "a", "dict"]
+
+        def ls(self, path, **kwargs):
+            return [{"name": str(path), "type": "file", "size": os.path.getsize(path)}]
+
+        def open(self, path, mode="rb", **kwargs):
+            return open(path, mode)
+
+    problematic_fs = PyFileSystem(FSSpecHandler(BadFSSpec()))
+
+    # 3) Direct ParquetDataset in worker → should raise (TypeError/ArrowException)
+    @ray.remote
+    def direct_parquet_usage(paths, fs, kwargs):
+        import pyarrow.parquet as pq
+
+        return pq.ParquetDataset(paths, filesystem=fs, **(kwargs or {}))
+
+    with pytest.raises(Exception) as exc_info:
+        ray.get(direct_parquet_usage.remote([str(local_file)], problematic_fs, {}))
+
+    msg = str(exc_info.value).lower()
+    assert any(
+        k in msg
+        for k in ["typeerror", "filesystem", "cannot wrap", "pickle", "serialize"]
+    )
+
+    # 4) Helper should succeed (fallback re-resolves to LocalFileSystem inside worker)
+    @ray.remote
+    def call_helper(paths, fs, kwargs):
+        from ray.data._internal.datasource.parquet_datasource import get_parquet_dataset
+
+        return get_parquet_dataset(paths, fs, kwargs)
+
+    ds = ray.get(call_helper.remote([str(local_file)], problematic_fs, {}))
+    assert ds is not None
 
 
 if __name__ == "__main__":

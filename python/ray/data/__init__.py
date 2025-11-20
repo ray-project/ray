@@ -22,10 +22,12 @@ from ray.data.datasource import (
     FileShuffleConfig,
     ReadTask,
     RowBasedFileDatasink,
+    SaveMode,
 )
 from ray.data.iterator import DataIterator, DatasetIterator
 from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401
+    KafkaAuthConfig,
     from_arrow,
     from_arrow_refs,
     from_blocks,
@@ -54,6 +56,7 @@ from ray.data.read_api import (  # noqa: F401
     read_datasource,
     read_delta,
     read_delta_sharing_tables,
+    read_kafka,
     read_hudi,
     read_iceberg,
     read_images,
@@ -131,6 +134,7 @@ __all__ = [
     "NodeIdStr",
     "ReadTask",
     "RowBasedFileDatasink",
+    "SaveMode",
     "Schema",
     "SinkMode",
     "TaskPoolStrategy",
@@ -160,6 +164,8 @@ __all__ = [
     "read_datasource",
     "read_delta",
     "read_delta_sharing_tables",
+    "read_kafka",
+    "KafkaAuthConfig",
     "read_hudi",
     "read_iceberg",
     "read_images",

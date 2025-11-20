@@ -14,7 +14,7 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # We need to best-effort import everything we need.
 #
-# For how async API are implemented, see src/ray/gcs_rpc_client/python_callbacks.h
+# For how async API are implemented, see src/ray/common/python_callbacks.h
 from asyncio import Future
 from typing import List, Sequence
 from libcpp.utility cimport move
@@ -684,34 +684,6 @@ cdef class InnerGcsClient:
                 )
             )
 
-
-# Util functions for async handling
-
-cdef incremented_fut():
-    fut = concurrent.futures.Future()
-    cpython.Py_INCREF(fut)
-    return fut
-
-cdef void assign_and_decrement_fut(result, fut) noexcept with gil:
-    assert isinstance(fut, concurrent.futures.Future)
-
-    assert not fut.done()
-    try:
-        ret, exc = result
-        if exc:
-            fut.set_exception(exc)
-        else:
-            fut.set_result(ret)
-    finally:
-        # We INCREFed it in `incremented_fut` to keep it alive during the async wait,
-        # and we DECREF it here to balance it.
-        cpython.Py_DECREF(fut)
-
-cdef raise_or_return(tup):
-    ret, exc = tup
-    if exc:
-        raise exc
-    return ret
 
 #############################################################
 # Converter functions: C++ types -> Python types, use by both Sync and Async APIs.

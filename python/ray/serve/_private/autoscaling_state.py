@@ -23,6 +23,7 @@ from ray.serve._private.metrics_utils import (
     aggregate_timeseries,
     merge_instantaneous_total,
 )
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 from ray.serve.config import AutoscalingContext, AutoscalingPolicy
 
@@ -87,6 +88,8 @@ class DeploymentAutoscalingState:
                 f"Using custom autoscaling policy '{self._config.policy.policy_function}' "
                 f"for deployment '{self._deployment_id}'."
             )
+            # Record telemetry for custom autoscaling policy usage
+            ServeUsageTag.CUSTOM_AUTOSCALING_POLICY_USED.record("1")
 
         return self.apply_bounds(target_num_replicas)
 
@@ -685,6 +688,8 @@ class ApplicationAutoscalingState:
                 f"Using custom autoscaling policy '{autoscaling_policy.policy_function}' "
                 f"for application '{self._app_name}'."
             )
+            # Record telemetry for custom autoscaling policy usage
+            ServeUsageTag.CUSTOM_AUTOSCALING_POLICY_USED.record("1")
 
     def has_policy(self) -> bool:
         return self._policy is not None

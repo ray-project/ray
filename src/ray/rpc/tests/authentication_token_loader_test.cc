@@ -19,6 +19,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
+#include "ray/util/env.h"
 
 #if defined(__APPLE__) || defined(__linux__)
 #include <sys/stat.h>
@@ -45,7 +46,7 @@ class AuthenticationTokenLoaderTest : public ::testing::Test {
  protected:
   void SetUp() override {
     // Enable token authentication for tests
-    RayConfig::instance().initialize(R"({"auth_mode": "token"})");
+    RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
 
     // If HOME is not set (e.g., in Bazel sandbox), set it to a test directory
     // This ensures tests work in environments where HOME isn't provided
@@ -90,7 +91,7 @@ class AuthenticationTokenLoaderTest : public ::testing::Test {
     // Reset the singleton's cached state for test isolation
     AuthenticationTokenLoader::instance().ResetCache();
     // Disable token auth after tests
-    RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+    RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
   }
 
   void cleanup_env() {
@@ -107,21 +108,9 @@ class AuthenticationTokenLoaderTest : public ::testing::Test {
 #endif
   }
 
-  void set_env_var(const char *name, const char *value) {
-#ifdef _WIN32
-    _putenv_s(name, value);
-#else
-    setenv(name, value, 1);
-#endif
-  }
+  void set_env_var(const char *name, const char *value) { ray::SetEnv(name, value); }
 
-  void unset_env_var(const char *name) {
-#ifdef _WIN32
-    _putenv_s(name, "")
-#else
-    unsetenv(name);
-#endif
-  }
+  void unset_env_var(const char *name) { ray::UnsetEnv(name); }
 
   void ensure_ray_dir_exists() {
 #ifdef _WIN32
@@ -277,7 +266,7 @@ TEST_P(AuthenticationTokenLoaderPrecedenceTest, Precedence) {
 
 TEST_F(AuthenticationTokenLoaderTest, TestNoTokenFoundWhenAuthDisabled) {
   // Disable auth for this specific test
-  RayConfig::instance().initialize(R"({"auth_mode": "disabled"})");
+  RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
   AuthenticationTokenLoader::instance().ResetCache();
 
   // No token set anywhere, but auth is disabled
@@ -288,7 +277,7 @@ TEST_F(AuthenticationTokenLoaderTest, TestNoTokenFoundWhenAuthDisabled) {
   EXPECT_FALSE(loader.GetToken().has_value());
 
   // Re-enable for other tests
-  RayConfig::instance().initialize(R"({"auth_mode": "token"})");
+  RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
 }
 
 TEST_F(AuthenticationTokenLoaderTest, TestErrorWhenAuthEnabledButNoToken) {
@@ -299,7 +288,8 @@ TEST_F(AuthenticationTokenLoaderTest, TestErrorWhenAuthEnabledButNoToken) {
         auto &loader = AuthenticationTokenLoader::instance();
         loader.GetToken();
       },
-      "Token authentication is enabled but Ray couldn't find an authentication token.");
+      "Token authentication is enabled but Ray couldn't find an "
+      "authentication token.");
 }
 
 TEST_F(AuthenticationTokenLoaderTest, TestCaching) {

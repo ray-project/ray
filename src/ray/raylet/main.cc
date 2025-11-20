@@ -269,6 +269,7 @@ int main(int argc, char *argv[]) {
   RAY_CHECK_NE(FLAGS_cluster_id, "") << "Expected cluster ID.";
   ray::ClusterID cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
+
   gflags::ShutDownCommandLineFlags();
 
   // Setting up resource isolation with cgroups.
@@ -701,8 +702,8 @@ int main(int argc, char *argv[]) {
           // Post on the node manager's event loop since this
           // callback is called from the plasma store thread.
           // This will help keep node manager lock-less.
-          main_service.post([&]() { node_manager->TriggerGlobalGC(); },
-                            "NodeManager.GlobalGC");
+          main_service.post([&]() { node_manager->SetShouldGlobalGC(); },
+                            "NodeManager.SetShouldGlobalGC");
         },
         /*add_object_callback=*/
         [&](const ray::ObjectInfo &object_info) {
