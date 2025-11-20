@@ -202,20 +202,17 @@ def _split_predicate_by_columns(
 
     Examples:
         >>> from ray.data.expressions import col
-        Pure data predicate:
-
+        >>> # Pure data predicate:
         >>> result = _split_predicate_by_columns(col("data1") > 5, {"partition_col"})
         >>> result.data_predicate  # col("data1") > 5
         >>> result.partition_predicate  # None
 
-        Pure partition predicate:
-
+        >>> # Pure partition predicate:
         >>> result = _split_predicate_by_columns(col("partition_col") == "US", {"partition_col"})
         >>> result.data_predicate  # None
         >>> result.partition_predicate  # col("partition_col") == "US"
 
-        Mixed AND - can split both parts:
-
+        >>> # Mixed AND - can split both parts:
         >>> result = _split_predicate_by_columns(
         ...     (col("data1") > 5) & (col("partition_col") == "US"),
         ...     {"partition_col"}
@@ -223,8 +220,7 @@ def _split_predicate_by_columns(
         >>> result.data_predicate  # col("data1") > 5
         >>> result.partition_predicate  # col("partition_col") == "US"
 
-        Mixed OR - can't split safely:
-
+        >>> # Mixed OR - can't split safely:
         >>> result = _split_predicate_by_columns(
         ...     (col("data1") > 5) | (col("partition_col") == "US"),
         ...     {"partition_col"}

@@ -284,6 +284,7 @@ class PathPartitionParser:
             False if it doesn't (can skip the file for partition pruning).
 
         Examples:
+            >>> from ray.data.expressions import col
             >>> parser = PathPartitionParser(Partitioning("hive"))
             >>> path = "data/country=US/year=2020/file.parquet"
             >>> predicate = col("country") == "US"
