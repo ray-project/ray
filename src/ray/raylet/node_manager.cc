@@ -3459,6 +3459,11 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
         cancel_task_request,
         [reply, send_reply_callback](const Status &status,
                                      const rpc::CancelTaskReply &cancel_task_reply) {
+          if (!status.ok()) {
+            RAY_LOG(INFO) << "CancelTask RPC failed for task "
+                          << TaskID::FromBinary(request.intended_task_id()) << ": "
+                          << status.ToString();
+          }
           reply->set_attempt_succeeded(cancel_task_reply.attempt_succeeded());
           reply->set_requested_task_running(cancel_task_reply.requested_task_running());
           send_reply_callback(Status::OK(), nullptr, nullptr);
