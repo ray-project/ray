@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from .backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
@@ -49,6 +49,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         self._backpressure_max_queued_blocks = (
             self._data_context.downstream_capacity_backpressure_max_queued_bundles
         )
+        self._downstream_capacity_ratio = 10.0
         self._backpressure_disabled = (
             self._backpressure_concurrency_ratio is None
             or self._backpressure_max_queued_blocks is None
@@ -63,6 +64,43 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
                 ]
             )
         return op.num_active_tasks()
+
+    def _estimate_max_downstream_capacity(
+        self, downstream_op: "PhysicalOperator"
+    ) -> Optional[int]:
+        """Estimate maximum number of blocks downstream operator can consume.
+
+        Formula:
+            max_capacity = (global_limits / per_task_resources)
+                         * tasks_per_actor
+                         * blocks_per_task
+                         * capacity_multiplier
+
+        Args:
+            downstream_op: The downstream operator to estimate capacity for.
+
+        Returns:
+            Estimated maximum number of blocks that can be queued, or None if
+            estimation is not possible (e.g., no metrics yet).
+        """
+        avg_num_inputs_per_task = downstream_op.metrics.aveerage_num_inputs_per_task
+        if avg_num_inputs_per_task is None or avg_num_inputs_per_task == 0:
+            return None
+
+        max_concurrent_tasks = self._max_concurrent_tasks(downstream_op)
+
+        # For ActorPoolMapOperator, multiply by max_concurrency per actor
+        # For TaskPoolMapOperator, max_concurrency is already in the task count
+        tasks_per_worker = 1
+        if isinstance(downstream_op, ActorPoolMapOperator):
+            tasks_per_worker = downstream_op._ray_remote_args.get("max_concurrency", 1)
+
+        return int(
+            max_concurrent_tasks
+            * tasks_per_worker
+            * avg_num_inputs_per_task
+            * self._downstream_capacity_ratio
+        )
 
     def can_add_input(self, op: "PhysicalOperator") -> bool:
         """Determine if we can add input to the operator based on downstream capacity."""
@@ -90,3 +128,42 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
                 return False
 
         return True
+
+    def max_task_output_bytes_to_read(self, op: "PhysicalOperator") -> Optional[int]:
+        if self._backpressure_disabled:
+            return None
+
+        min_capacity_bytes = None
+
+        for downstream_op in op.output_dependencies:
+            # Get current queued blocks for this downstream op
+            current_queued_blocks = self._topology[
+                downstream_op
+            ].total_enqueued_input_blocks()
+            max_capacity_blocks = self._estimate_max_downstream_capacity(downstream_op)
+
+            if max_capacity_blocks is None:
+                # Can't estimate, don't limit
+                continue
+
+            remaining_capacity_blocks = max_capacity_blocks - current_queued_blocks
+
+            if remaining_capacity_blocks <= 0:
+                # At or over capacity, stop reading immediately
+                return 0
+
+            # Convert blocks to approximate bytes using metrics if available
+            avg_block_size = downstream_op.metrics.average_bytes_per_output
+
+            if avg_block_size is None or avg_block_size == 0:
+                # No block size info, skip byte-limiting
+                continue
+
+            remaining_capacity_bytes = remaining_capacity_blocks * avg_block_size
+
+            if min_capacity_bytes is None:
+                min_capacity_bytes = remaining_capacity_bytes
+            else:
+                min_capacity_bytes = min(min_capacity_bytes, remaining_capacity_bytes)
+
+        return min_capacity_bytes
