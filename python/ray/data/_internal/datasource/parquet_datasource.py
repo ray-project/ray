@@ -805,9 +805,25 @@ def get_parquet_dataset(paths, filesystem, dataset_kwargs):
             **dataset_kwargs,
             filesystem=filesystem,
         )
+    except TypeError:
+        # Fallback: resolve filesystem locally in the worker
+        try:
+            resolved_paths, resolved_filesystem = _resolve_paths_and_filesystem(
+                paths, filesystem=None
+            )
+            resolved_filesystem = RetryingPyFileSystem.wrap(
+                resolved_filesystem,
+                retryable_errors=DataContext.get_current().retried_io_errors,
+            )
+            dataset = pq.ParquetDataset(
+                resolved_paths,
+                **dataset_kwargs,
+                filesystem=resolved_filesystem,
+            )
+        except OSError as os_e:
+            _handle_read_os_error(os_e, paths)
     except OSError as e:
         _handle_read_os_error(e, paths)
-
     return dataset
 
 
