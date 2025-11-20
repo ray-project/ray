@@ -1,0 +1,2 @@
+datasets==4.4.1
+pyarrow==21.0.0
