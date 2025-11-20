@@ -285,13 +285,16 @@ class WorkerGroup(BaseWorkerGroup):
             for callback in self._callbacks:
                 callback.before_worker_group_start(worker_group_context)
 
-            
-            pg = placement_group(
-                bundles=[worker_group_context.resources_per_worker]
-                * worker_group_context.num_workers,
-                strategy=worker_group_context.placement_strategy,
-                bundle_label_selector=worker_group_context.bundle_label_selector,
-            ) if pg is None else pg
+            pg = (
+                placement_group(
+                    bundles=[worker_group_context.resources_per_worker]
+                    * worker_group_context.num_workers,
+                    strategy=worker_group_context.placement_strategy,
+                    bundle_label_selector=worker_group_context.bundle_label_selector,
+                )
+                if pg is None
+                else pg
+            )
             logger.info(
                 f"Attempting to start training worker group of size {worker_group_context.num_workers} with "
                 f"the following resources: [{worker_group_context.resources_per_worker}] * {worker_group_context.num_workers}"
