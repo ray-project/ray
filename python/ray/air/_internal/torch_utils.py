@@ -1,6 +1,6 @@
 import warnings
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -398,15 +398,14 @@ def arrow_batch_to_tensors(
 
         if num_columns > 1 and threadpool is not None:
             # Process columns in parallel using provided threadpool
-            def process_column(col_name_col_array):
+            def process_column(
+                col_name_col_array: Tuple[str, np.ndarray]
+            ) -> Tuple[str, torch.Tensor]:
                 col_name, col_array = col_name_col_array
-                return (
-                    col_name,
-                    convert_ndarray_batch_to_torch_tensor_batch(
-                        col_array,
-                        dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
-                        pin_memory=pin_memory,
-                    ),
+                return col_name, convert_ndarray_batch_to_torch_tensor_batch(
+                    col_array,
+                    dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                    pin_memory=pin_memory,
                 )
 
             # Submit all columns to threadpool and collect results
@@ -435,7 +434,9 @@ def arrow_batch_to_tensors(
 
         if total_arrays > 1 and threadpool is not None:
             # Process arrays in parallel using provided threadpool
-            def process_array(array_item):
+            def process_array(
+                array_item: Tuple[str, int, np.ndarray]
+            ) -> Tuple[str, int, torch.Tensor]:
                 col_name, array_index, array = array_item
                 return (
                     col_name,
@@ -458,11 +459,15 @@ def arrow_batch_to_tensors(
             futures = [threadpool.submit(process_array, item) for item in array_items]
             processed_arrays = [future.result() for future in futures]
 
-            # Reconstruct the dictionary structure
-            result: Dict[str, List[torch.Tensor]] = {}
+            # Initialize result with all columns from numpy_list, including empty ones
+            # Pre-allocate lists of the correct size for each column
+            result: Dict[str, List[torch.Tensor]] = {
+                col_name: [None] * len(arrays)
+                for col_name, arrays in numpy_list.items()
+            }
+
+            # Populate result with processed tensors
             for col_name, array_index, tensor in processed_arrays:
-                if col_name not in result:
-                    result[col_name] = [None] * len(numpy_list[col_name])
                 result[col_name][array_index] = tensor
 
             return result
