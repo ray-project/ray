@@ -43,6 +43,7 @@ from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
+from ray.data._internal.datasource.kafka_datasink import KafkaDatasink
 from ray.data._internal.datasource.lance_datasink import LanceDatasink
 from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
@@ -4867,6 +4868,87 @@ class Dataset:
             uri=uri,
             database=database,
             collection=collection,
+        )
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @ConsumptionAPI
+    @PublicAPI(api_group=IOC_API_GROUP)
+    def write_kafka(
+        self,
+        kafka_config: dict,
+        topic: str,
+        *,
+        key_for_row: Optional[Callable[[dict], Optional[str]]] = None,
+        flush_timeout_seconds: float = 30.0,
+        ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """Writes the :class:`~ray.data.Dataset` to an Apache Kafka topic.
+
+        This method writes each row as a JSON message to the specified Kafka topic.
+        The number of parallel writes is determined by the number of blocks in the
+        dataset. To control the number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
+
+        For confluent-kafka configuration options, see:
+        https://github.com/confluentinc/librdkafka/blob/master/CONFIGURATION.md
+
+        Examples:
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.from_items([
+                    {"id": 1, "name": "Alice", "age": 30},
+                    {"id": 2, "name": "Bob", "age": 25},
+                ])
+
+                kafka_config = {
+                    "bootstrap.servers": "localhost:9092",
+                    "security.protocol": "PLAINTEXT",
+                    "message.max.bytes": 1000000,
+                }
+
+                ds.write_kafka(
+                    kafka_config=kafka_config,
+                    topic="my-topic",
+                    key_for_row=lambda row: str(row.get("id")),
+                )
+
+        Args:
+            kafka_config: Dictionary of configuration options for the Kafka producer.
+                These are passed directly to confluent_kafka.Producer. Common options
+                include 'bootstrap.servers', 'security.protocol', 'sasl.mechanisms',
+                'sasl.username', 'sasl.password', etc. Recommended: set 'message.max.bytes'
+                to match your Kafka broker's max.message.bytes setting.
+            topic: The Kafka topic to write messages to.
+            key_for_row: Optional callable that takes a row dictionary and returns
+                a string key for the Kafka message. If None, messages are sent without
+                keys and will be distributed across partitions using Kafka's default
+                partitioner (round-robin). Defaults to None.
+            flush_timeout_seconds: Maximum time to wait for flush() to complete.
+                Defaults to 30 seconds.
+            ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
+
+        Raises:
+            ValueError: If topic is empty or kafka_config is not a dictionary.
+            RuntimeError: If messages fail to be delivered to Kafka.
+        """
+        datasink = KafkaDatasink(
+            kafka_config=kafka_config,
+            topic=topic,
+            key_for_row=key_for_row,
+            flush_timeout_seconds=flush_timeout_seconds,
         )
         self.write_datasink(
             datasink,
