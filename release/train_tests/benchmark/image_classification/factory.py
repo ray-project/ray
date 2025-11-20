@@ -10,7 +10,7 @@ import pyarrow
 import ray
 import ray.train
 from ray.data.collate_fn import ArrowBatchCollateFn, CollateFn
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.threadpool import ThreadPoolExecutor
 from ray.data.dataset import TorchDeviceType
 
 # Local imports
@@ -203,9 +203,8 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
         else:
             self.device = device
         self.pin_memory = pin_memory
-        self._threadpool = (
-            ThreadPoolExecutor(max_workers=num_workers) if num_workers > 0 else None
-        )
+        self.num_workers = num_workers
+        self._threadpool: Optional[ThreadPoolExecutor] = None
 
     def __del__(self):
         """Clean up threadpool on destruction."""
@@ -224,6 +223,9 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
         from ray.air._internal.torch_utils import (
             arrow_batch_to_tensors,
         )
+
+        if self.num_workers > 0 and self._threadpool is None:
+            self._threadpool = ThreadPoolExecutor(max_workers=self.num_workers)
 
         # For GPU transfer, we can skip the combining chunked arrays. This is because
         # we can convert the chunked arrays to corresponding numpy format and then to

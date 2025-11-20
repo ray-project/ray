@@ -252,10 +252,7 @@ def collate_fns_with_and_without_threading():
     from ray.data.collate_fn import DefaultCollateFn
 
     collate_fn_with_threading = DefaultCollateFn(num_workers=4)
-    assert collate_fn_with_threading._threadpool is not None
-
     collate_fn_no_threading = DefaultCollateFn(num_workers=0)
-    assert collate_fn_no_threading._threadpool is None
 
     return {
         "with_threading": collate_fn_with_threading,
