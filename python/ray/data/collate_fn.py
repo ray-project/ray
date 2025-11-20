@@ -1,4 +1,5 @@
 import abc
+from concurrent.futures import ThreadPoolExecutor
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -14,6 +15,7 @@ from typing import (
 
 import numpy as np
 
+from ray._private.ray_constants import env_integer
 from ray.data.block import DataBatch
 from ray.util.annotations import DeveloperAPI
 
@@ -223,11 +225,17 @@ class PandasBatchCollateFn(CollateFn["pandas.DataFrame"]):
 class DefaultCollateFn(ArrowBatchCollateFn):
     """Default collate function for converting Arrow batches to PyTorch tensors."""
 
+    _DEFAULT_NUM_WORKERS = env_integer(
+        "RAY_DATA_DEFAULT_COLLATE_FN_THREADPOOL_MAX_WORKERS",
+        4,
+    )
+
     def __init__(
         self,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[Union[str, "torch.device"]] = None,
         pin_memory: bool = False,
+        num_workers: int = _DEFAULT_NUM_WORKERS,
     ):
         """Initialize the collate function.
 
@@ -237,6 +245,8 @@ class DefaultCollateFn(ArrowBatchCollateFn):
             device: The device on which the tensor should be placed. Can be a string
                 (e.g. "cpu", "cuda:0") or a torch.device object.
             pin_memory: Whether to pin the memory of the created tensors.
+            num_workers: Number of worker threads for parallel tensor conversion.
+                Defaults to `RAY_DATA_DEFAULT_COLLATE_FN_THREADPOOL_MAX_WORKERS`.
         """
         import torch
 
@@ -247,6 +257,9 @@ class DefaultCollateFn(ArrowBatchCollateFn):
         else:
             self.device = device
         self.pin_memory = pin_memory
+        self._threadpool = (
+            ThreadPoolExecutor(max_workers=num_workers) if num_workers > 0 else None
+        )
 
     def __call__(self, batch: "pyarrow.Table") -> Dict[str, List["torch.Tensor"]]:
         """Convert an Arrow batch to PyTorch tensors.
@@ -266,10 +279,11 @@ class DefaultCollateFn(ArrowBatchCollateFn):
         # Tensors and transfer the corresponding list of Tensors to GPU directly.
         # However, for CPU transfer, we need to combine the chunked arrays first
         # before converting to numpy format and then to Tensors.
-        combine_chunks = self.device.type == "cpu"
+        combine_chunks = self.device is not None and self.device.type == "cpu"
         return arrow_batch_to_tensors(
             batch,
             dtypes=self.dtypes,
             combine_chunks=combine_chunks,
             pin_memory=self.pin_memory,
+            threadpool=self._threadpool,
         )

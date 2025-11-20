@@ -11,6 +11,7 @@ import ray
 import ray.data
 import ray.train
 from ray.data.collate_fn import ArrowBatchCollateFn, CollateFn
+from concurrent.futures import ThreadPoolExecutor
 
 # Local imports
 from benchmark_factory import BenchmarkFactory
@@ -176,21 +177,30 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
 class CustomArrowCollateFn(ArrowBatchCollateFn):
     """Custom collate function for converting Arrow batches to PyTorch tensors."""
 
+    _DEFAULT_NUM_WORKERS = 4
+
     def __init__(
         self,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
         pin_memory: bool = False,
+        num_workers: int = _DEFAULT_NUM_WORKERS,
     ):
         """Initialize the collate function.
 
         Args:
             dtypes: Optional torch dtype(s) for the tensors
             device: Optional device to place tensors on
+            pin_memory: Whether to pin the memory of the created tensors
+            num_workers: Number of worker threads for parallel tensor conversion
+                Defaults to `_DEFAULT_NUM_WORKERS`.
         """
         self.dtypes = dtypes
         self.device = device
         self.pin_memory = pin_memory
+        self._threadpool = (
+            ThreadPoolExecutor(max_workers=num_workers) if num_workers > 0 else None
+        )
 
     def __call__(self, batch: "pyarrow.Table") -> Tuple[torch.Tensor, torch.Tensor]:
         """Convert an Arrow batch to PyTorch tensors.
@@ -210,6 +220,7 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
             dtypes=self.dtypes,
             combine_chunks=self.device.type == "cpu",
             pin_memory=self.pin_memory,
+            threadpool=self._threadpool,
         )
         return tensors["image"], tensors["label"]
 

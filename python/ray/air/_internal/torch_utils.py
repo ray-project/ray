@@ -1,4 +1,5 @@
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 import numpy as np
@@ -6,10 +7,9 @@ import pandas as pd
 import pyarrow
 import torch
 
-from ray._private.ray_constants import env_bool, env_integer
+from ray._private.ray_constants import env_bool
 from ray.air._internal.device_manager import get_torch_device_manager_by_context
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
-from ray.data._internal.util import make_async_gen
 from ray.data.collate_fn import (
     TensorBatchReturnType,
     TensorBatchType,
@@ -24,12 +24,6 @@ from ray.data.collate_fn import (
 DEFAULT_TENSOR_NON_BLOCKING_TRANSFER = env_bool(
     "RAY_AIR_DEFAULT_TENSOR_NON_BLOCKING_TRANSFER",
     True,
-)
-
-# Default number of workers for parallel tensor conversion.
-DEFAULT_TENSOR_CONVERSION_NUM_WORKERS = env_integer(
-    "RAY_AIR_DEFAULT_TENSOR_CONVERSION_NUM_WORKERS",
-    4,
 )
 
 
@@ -376,6 +370,7 @@ def arrow_batch_to_tensors(
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     combine_chunks: bool = False,
     pin_memory: bool = False,
+    threadpool: Optional[ThreadPoolExecutor] = None,
 ) -> Dict[str, List[torch.Tensor]]:
     """Convert PyArrow batch to PyTorch tensors.
 
@@ -386,6 +381,9 @@ def arrow_batch_to_tensors(
         combine_chunks: If True, combine chunks in Arrow batch before converting to
             tensors.
         pin_memory: Whether to pin the memory of the created tensors.
+        threadpool: Optional ThreadPoolExecutor for parallel processing. If provided,
+            columns/arrays will be processed in parallel. If None, processing is
+            sequential.
 
     Returns:
         A dictionary of column name to list of tensors. For non-chunked columns,
@@ -397,32 +395,25 @@ def arrow_batch_to_tensors(
     if combine_chunks:
         numpy_batch = ArrowBlockAccessor(batch).to_batch_format("numpy")
         num_columns = len(numpy_batch)
-        num_workers = min(num_columns, DEFAULT_TENSOR_CONVERSION_NUM_WORKERS)
 
-        if num_workers > 1 and num_columns > 1:
-            # Process columns in parallel
-            def process_columns(col_items_iter):
-                """Process column items (col_name, col_array) from iterator."""
-                for col_name, col_array in col_items_iter:
-                    yield (
-                        col_name,
-                        convert_ndarray_batch_to_torch_tensor_batch(
-                            col_array,
-                            dtypes=dtypes[col_name]
-                            if isinstance(dtypes, dict)
-                            else dtypes,
-                            pin_memory=pin_memory,
-                        ),
-                    )
+        if num_columns > 1 and threadpool is not None:
+            # Process columns in parallel using provided threadpool
+            def process_column(col_name_col_array):
+                col_name, col_array = col_name_col_array
+                return (
+                    col_name,
+                    convert_ndarray_batch_to_torch_tensor_batch(
+                        col_array,
+                        dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                        pin_memory=pin_memory,
+                    ),
+                )
 
-            # Use make_async_gen to parallelize column processing
-            processed_cols = make_async_gen(
-                base_iterator=iter(numpy_batch.items()),
-                fn=process_columns,
-                preserve_ordering=False,
-                num_workers=num_workers,
-                buffer_size=num_workers,
-            )
+            # Submit all columns to threadpool and collect results
+            futures = [
+                threadpool.submit(process_column, item) for item in numpy_batch.items()
+            ]
+            processed_cols = [future.result() for future in futures]
             return dict(processed_cols)
         else:
             # Sequential processing for single column or single worker
@@ -441,26 +432,20 @@ def arrow_batch_to_tensors(
         # Count total number of arrays across all columns
         total_arrays = sum(len(arrays) for arrays in numpy_list.values())
         num_columns = len(numpy_list)
-        num_workers = min(
-            max(total_arrays, num_columns), DEFAULT_TENSOR_CONVERSION_NUM_WORKERS
-        )
 
-        if num_workers > 1 and total_arrays > 1:
-            # Process arrays in parallel
-            def process_arrays(array_items_iter):
-                """Process array items (col_name, array_index, array) from iterator."""
-                for col_name, array_index, array in array_items_iter:
-                    yield (
-                        col_name,
-                        array_index,
-                        convert_ndarray_batch_to_torch_tensor_batch(
-                            array,
-                            dtypes=dtypes[col_name]
-                            if isinstance(dtypes, dict)
-                            else dtypes,
-                            pin_memory=pin_memory,
-                        ),
-                    )
+        if total_arrays > 1 and threadpool is not None:
+            # Process arrays in parallel using provided threadpool
+            def process_array(array_item):
+                col_name, array_index, array = array_item
+                return (
+                    col_name,
+                    array_index,
+                    convert_ndarray_batch_to_torch_tensor_batch(
+                        array,
+                        dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                        pin_memory=pin_memory,
+                    ),
+                )
 
             # Flatten arrays with column name and index for parallel processing
             array_items = [
@@ -469,14 +454,9 @@ def arrow_batch_to_tensors(
                 for idx, array in enumerate(arrays)
             ]
 
-            # Use make_async_gen to parallelize array processing
-            processed_arrays = make_async_gen(
-                base_iterator=iter(array_items),
-                fn=process_arrays,
-                preserve_ordering=False,
-                num_workers=num_workers,
-                buffer_size=num_workers,
-            )
+            # Submit all arrays to threadpool and collect results
+            futures = [threadpool.submit(process_array, item) for item in array_items]
+            processed_arrays = [future.result() for future in futures]
 
             # Reconstruct the dictionary structure
             result: Dict[str, List[torch.Tensor]] = {}
