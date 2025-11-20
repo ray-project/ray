@@ -694,6 +694,16 @@ read from the dataset path:
     print(f"Dataset count: {ds.count()}")
     print(ds.schema())
 
+.. testoutput::
+
+    Dataset count: 61614907
+    Column  Type
+    ------  ----
+    id      string
+    url     string
+    title   string
+    text    string
+
 
 .. _loading_datasets_from_ml_libraries:
 
