@@ -39,7 +39,7 @@ class RaySyncerBidiReactorBase
     : public RaySyncerBidiReactor,
       public T,
       public std::enable_shared_from_this<RaySyncerBidiReactor> {
- protected:
+ public:
   /// Constructor of RaySyncerBidiReactor.
   ///
   /// \param io_context The io context for the callback.
@@ -63,7 +63,6 @@ class RaySyncerBidiReactorBase
         batch_timer_(io_context),
         batch_timer_active_(false) {}
 
- public:
   bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message) override {
     if (*IsDisconnected()) {
       return false;

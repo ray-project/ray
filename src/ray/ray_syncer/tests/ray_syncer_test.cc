@@ -180,14 +180,14 @@ struct MockReactor {
 TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   auto node_id = NodeID::FromRandom();
 
-  // XXX!
-  MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
-      /* io_context */ io_context_,
-      /* remote_node_id */ node_id.Binary(),
-      /* message_processor */
-      [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
-      /* max_batch_size */ 1,
-      /* max_batch_delay_ms */ 0);
+  std::shared_ptr<MockRaySyncerBidiReactorBase<MockReactor>> sync_reactor =
+      std::make_shared<MockRaySyncerBidiReactorBase<MockReactor>>(
+          /* io_context */ io_context_,
+          /* remote_node_id */ node_id.Binary(),
+          /* message_processor */
+          [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
+          /* max_batch_size */ 1,
+          /* max_batch_delay_ms */ 0);
   auto from_node_id = NodeID::FromRandom();
   auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
   auto msg_ptr1 = std::make_shared<RaySyncMessage>(msg);
@@ -197,36 +197,37 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   auto msg_ptr3 = std::make_shared<RaySyncMessage>(msg);
 
   // First push will succeed and the second one will be deduplicated.
-  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr1));
-  ASSERT_FALSE(sync_reactor.PushToSendingQueue(msg_ptr1));
+  ASSERT_TRUE(sync_reactor->PushToSendingQueue(msg_ptr1));
+  ASSERT_FALSE(sync_reactor->PushToSendingQueue(msg_ptr1));
   EXPECT_TRUE(WaitForCondition(
-      [&sync_reactor]() { return sync_reactor.sending_buffer_.size() == 0; }, 1000));
+      [&sync_reactor]() { return sync_reactor->sending_buffer_.size() == 0; }, 1000));
 
-  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr2));
-  ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
-  ASSERT_EQ(1, sync_reactor.node_versions_.size());
-  ASSERT_EQ(2, sync_reactor.sending_buffer_.begin()->second->version());
+  ASSERT_TRUE(sync_reactor->PushToSendingQueue(msg_ptr2));
+  ASSERT_EQ(1, sync_reactor->sending_buffer_.size());
+  ASSERT_EQ(1, sync_reactor->node_versions_.size());
+  ASSERT_EQ(2, sync_reactor->sending_buffer_.begin()->second->version());
   ASSERT_EQ(
-      2, sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
+      2, sync_reactor->node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
 
-  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr3));
-  ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
-  ASSERT_EQ(1, sync_reactor.node_versions_.size());
-  ASSERT_EQ(3, sync_reactor.sending_buffer_.begin()->second->version());
+  ASSERT_TRUE(sync_reactor->PushToSendingQueue(msg_ptr3));
+  ASSERT_EQ(1, sync_reactor->sending_buffer_.size());
+  ASSERT_EQ(1, sync_reactor->node_versions_.size());
+  ASSERT_EQ(3, sync_reactor->sending_buffer_.begin()->second->version());
   ASSERT_EQ(
-      3, sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
+      3, sync_reactor->node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
 }
 
 TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend) {
   auto node_id = NodeID::FromRandom();
 
-  MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
-      /* io_context */ io_context_,
-      /* remote_node_id */ node_id.Binary(),
-      /* message_processor */
-      [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
-      /* max_batch_size */ 3,
-      /* max_batch_delay_ms */ 100);
+  std::shared_ptr<MockRaySyncerBidiReactorBase<MockReactor>> sync_reactor =
+      std::make_shared<MockRaySyncerBidiReactorBase<MockReactor>>(
+          /* io_context */ io_context_,
+          /* remote_node_id */ node_id.Binary(),
+          /* message_processor */
+          [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
+          /* max_batch_size */ 3,
+          /* max_batch_delay_ms */ 100);
 
   auto from_node_id1 = NodeID::FromRandom();
   auto from_node_id2 = NodeID::FromRandom();
@@ -238,48 +239,49 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend) {
   auto msg_ptr3 = std::make_shared<RaySyncMessage>(msg3);
 
   // First message will be batched
-  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr1));
-  ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
+  ASSERT_TRUE(sync_reactor->PushToSendingQueue(msg_ptr1));
+  ASSERT_EQ(1, sync_reactor->sending_buffer_.size());
 
   // Second message will be batched
-  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr2));
-  ASSERT_EQ(2, sync_reactor.sending_buffer_.size());
+  ASSERT_TRUE(sync_reactor->PushToSendingQueue(msg_ptr2));
+  ASSERT_EQ(2, sync_reactor->sending_buffer_.size());
 
   // Third message will trigger sending
-  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr3));
-  ASSERT_EQ(0, sync_reactor.sending_buffer_.size());
+  ASSERT_TRUE(sync_reactor->PushToSendingQueue(msg_ptr3));
+  ASSERT_EQ(0, sync_reactor->sending_buffer_.size());
 
   // Wait for sending to complete
   EXPECT_TRUE(WaitForCondition(
-      [&sync_reactor]() { return sync_reactor.sending_buffer_.size() == 0; }, 1000));
+      [&sync_reactor]() { return sync_reactor->sending_buffer_.size() == 0; }, 1000));
 
-  ASSERT_EQ(2, sync_reactor.node_versions_.size());
+  ASSERT_EQ(2, sync_reactor->node_versions_.size());
 }
 
 TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeoutTriggerSend) {
   auto node_id = NodeID::FromRandom();
 
-  MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
-      /* io_context */ io_context_,
-      /* remote_node_id */ node_id.Binary(),
-      /* message_processor */
-      [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
-      /* max_batch_size */ 3,
-      /* max_batch_delay_ms */ 100);
+  std::shared_ptr<MockRaySyncerBidiReactorBase<MockReactor>> sync_reactor =
+      std::make_shared<MockRaySyncerBidiReactorBase<MockReactor>>(
+          /* io_context */ io_context_,
+          /* remote_node_id */ node_id.Binary(),
+          /* message_processor */
+          [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
+          /* max_batch_size */ 3,
+          /* max_batch_delay_ms */ 100);
 
   auto from_node_id = NodeID::FromRandom();
   auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
   auto msg_ptr = std::make_shared<RaySyncMessage>(msg);
 
   // First message will be batched
-  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr));
-  ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
+  ASSERT_TRUE(sync_reactor->PushToSendingQueue(msg_ptr));
+  ASSERT_EQ(1, sync_reactor->sending_buffer_.size());
 
   // Wait for batch delay to trigger sending
   EXPECT_TRUE(WaitForCondition(
-      [&sync_reactor]() { return sync_reactor.sending_buffer_.size() == 0; }, 1000));
+      [&sync_reactor]() { return sync_reactor->sending_buffer_.size() == 0; }, 1000));
 
-  ASSERT_EQ(1, sync_reactor.node_versions_.size());
+  ASSERT_EQ(1, sync_reactor->node_versions_.size());
 }
 
 struct SyncerServerTest {
@@ -947,8 +949,8 @@ class SyncerReactorTest : public ::testing::Test {
     server = builder.BuildAndStart();
 
     client_node_id = NodeID::FromRandom();
-    cli_channel = MakeChannel("18990");
-    auto cli_stub = ray::rpc::syncer::RaySyncer::NewStub(cli_channel);
+    client_channel = MakeChannel("18990");
+    auto client_stub = ray::rpc::syncer::RaySyncer::NewStub(client_channel);
 
     client_reactor = RayClientBidiReactor::Create(
         rpc_service_->node_id.Binary(),
@@ -958,7 +960,7 @@ class SyncerReactorTest : public ::testing::Test {
         [this](RaySyncerBidiReactor *reactor, bool r) {
           client_cleanup.set_value(std::make_pair(reactor->GetRemoteNodeID(), r));
         },
-        std::move(cli_stub),
+        std::move(client_stub),
         /* max_batch_size */ 1,
         /* max_batch_delay_ms */ 0);
     client_reactor->StartCall();
@@ -1014,7 +1016,7 @@ class SyncerReactorTest : public ::testing::Test {
 
   grpc::ClientContext cli_context;
   std::shared_ptr<RayClientBidiReactor> client_reactor;
-  std::shared_ptr<grpc::Channel> cli_channel;
+  std::shared_ptr<grpc::Channel> client_channel;
   NodeID client_node_id;
 };
 
