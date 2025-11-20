@@ -266,7 +266,9 @@ class DefaultCollateFn(ArrowBatchCollateFn):
         if getattr(self, "_threadpool", None):
             self._threadpool.shutdown(wait=False)
 
-    def __call__(self, batch: "pyarrow.Table") -> "CollatedData":
+    def __call__(
+        self, batch: "pyarrow.Table"
+    ) -> Union[Dict[str, "torch.Tensor"], Dict[str, List["torch.Tensor"]]]:
         """Convert an Arrow batch to PyTorch tensors.
 
         Args:
