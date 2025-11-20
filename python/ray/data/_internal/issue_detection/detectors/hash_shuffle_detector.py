@@ -22,8 +22,21 @@ class HashShuffleAggregatorIssueDetector(IssueDetector):
     """Detector for hash shuffle aggregator health issues."""
 
     def __init__(self, executor: "StreamingExecutor", ctx: "DataContext"):
-        super().__init__(executor, ctx)
+        self._executor = executor
+        self._ctx = ctx
         self._last_warning_times = {}  # Track per-operator warning times
+
+    @classmethod
+    def from_executor(cls, executor: "StreamingExecutor") -> "HashShuffleAggregatorIssueDetector":
+        """Factory method to create a HashShuffleAggregatorIssueDetector from a StreamingExecutor.
+
+        Args:
+            executor: The StreamingExecutor instance to extract dependencies from.
+
+        Returns:
+            An instance of HashShuffleAggregatorIssueDetector.
+        """
+        return cls(executor, executor._data_context)
 
     def detect(self) -> List[Issue]:
         issues = []

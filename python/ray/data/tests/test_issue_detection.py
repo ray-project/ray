@@ -48,7 +48,7 @@ class TestHangingExecutionIssueDetector:
         ctx.issue_detectors_config.hanging_detector_config = custom_config
 
         executor = StreamingExecutor(ctx)
-        detector = HangingExecutionIssueDetector(executor, ctx)
+        detector = HangingExecutionIssueDetector.from_executor(executor)
         assert detector._op_task_stats_min_count == min_count
         assert detector._op_task_stats_std_factor_threshold == std_factor
 
