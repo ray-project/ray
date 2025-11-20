@@ -23,8 +23,8 @@ from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
-DEFAULT_FORMAT_THEADPOOL_NUM_WORKERS = env_integer(
-    "RAY_DATA_MAX_FORMAT_THEADPOOL_NUM_WORKERS", 4
+DEFAULT_FORMAT_THREADPOOL_NUM_WORKERS = env_integer(
+    "RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS", 4
 )
 
 
@@ -180,7 +180,7 @@ class BatchIterator:
 
     def _format_batches(self, batches: Iterator[Batch]) -> Iterator[Batch]:
         num_threadpool_workers = min(
-            DEFAULT_FORMAT_THEADPOOL_NUM_WORKERS, self._prefetch_batches
+            DEFAULT_FORMAT_THREADPOOL_NUM_WORKERS, self._prefetch_batches
         )
         per_thread_buffer_size = (
             (
