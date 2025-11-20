@@ -2274,7 +2274,7 @@ cdef c_bool mark_task_canceled(const CTaskID &task_id) nogil:
         if ctx is not None:
             if TaskID(ctx.c_task_id.Binary()) == task_id_to_cancel:
                 ctx.cancel()
-                RAY_LOG(DEBUG) << "Marked sync actor task as canceled: " << task_id_to_cancel
+                logger.debug(f"Marked sync actor task as canceled: {task_id_to_cancel}")
                 return True
 
         return False
