@@ -689,14 +689,21 @@ class ParquetDatasource(Datasource):
             self._pq_fragments = pruned_fragments
             self._pq_paths = pruned_paths
 
-        # Mixed predicate: partition pruning applied + data predicate pushdown
+        # Push down data predicate to PyArrow if present
         # Create a copy and push down the data predicate to PyArrow
         import copy
 
         datasource = copy.copy(self)
-        return super(ParquetDatasource, datasource).apply_predicate(
-            split_result.data_predicate
-        )
+
+        # Only call apply_predicate if there's a data predicate to push down
+        # If data_predicate is None (pure partition predicate), skip it to avoid
+        # creating invalid expressions like existing_expr & None
+        if split_result.data_predicate is not None:
+            return super(ParquetDatasource, datasource).apply_predicate(
+                split_result.data_predicate
+            )
+
+        return datasource
 
     def _estimate_in_mem_size(self, fragments: List[_ParquetFragment]) -> int:
         in_mem_size = sum([f.file_size for f in fragments]) * self._encoding_ratio
