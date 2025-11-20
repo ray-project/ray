@@ -17,7 +17,9 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <queue>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -31,12 +33,16 @@
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/buffer.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_subscriber.h"
+#include "ray/raylet/fake_worker.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/tests/util.h"
@@ -48,6 +54,8 @@ using ::testing::_;
 using ::testing::Return;
 
 namespace {
+
+constexpr double kTestTotalCpuResource = 10.0;
 
 class FakeLocalObjectManager : public LocalObjectManagerInterface {
  public:
@@ -308,6 +316,8 @@ class NodeManagerTest : public ::testing::Test {
     NodeManagerConfig node_manager_config{};
     node_manager_config.maximum_startup_concurrency = 1;
     node_manager_config.store_socket_name = "test_store_socket";
+    node_manager_config.resource_config = ResourceSet(
+        absl::flat_hash_map<std::string, double>{{"CPU", kTestTotalCpuResource}});
 
     core_worker_subscriber_ = std::make_unique<pubsub::FakeSubscriber>();
     mock_object_directory_ = std::make_unique<MockObjectDirectory>();
@@ -397,6 +407,9 @@ class NodeManagerTest : public ::testing::Test {
         [](const ray::RayLease &lease) {},
         *local_lease_manager_);
 
+    placement_group_resource_manager_ =
+        std::make_unique<NewPlacementGroupResourceManager>(*cluster_resource_scheduler_);
+
     node_manager_ = std::make_unique<NodeManager>(
         io_service_,
         raylet_node_id_,
@@ -422,7 +435,10 @@ class NodeManagerTest : public ::testing::Test {
         [](const auto &) {},
         [](const std::string &) {},
         nullptr,
-        shutting_down_);
+        shutting_down_,
+        *placement_group_resource_manager_,
+        boost::asio::basic_socket_acceptor<local_stream_protocol>(io_service_),
+        boost::asio::basic_stream_socket<local_stream_protocol>(io_service_));
   }
 
   instrumented_io_context io_service_;
@@ -435,6 +451,7 @@ class NodeManagerTest : public ::testing::Test {
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
   std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
+  std::unique_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
   std::shared_ptr<LocalObjectManagerInterface> local_object_manager_;
   std::unique_ptr<LeaseDependencyManager> lease_dependency_manager_;
   std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_ =
@@ -459,13 +476,11 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
               AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
       .Times(1);
   EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
-              AsyncSubscribeToWorkerFailures(_, _))
-      .WillOnce(Return(Status::OK()));
-  EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _))
-      .WillOnce(Return(Status::OK()));
+              AsyncSubscribeToWorkerFailures(_, _));
+  EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
-  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_))
+  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
       .WillRepeatedly(Return(false));
@@ -489,11 +504,10 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
               AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
       .Times(1);
-  EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _))
-      .WillOnce(Return(Status::OK()));
+  EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
-  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_))
+  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
       .WillRepeatedly(Return(false));
@@ -565,13 +579,11 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   EXPECT_CALL(*mock_object_directory_, HandleNodeRemoved(_)).Times(1);
   EXPECT_CALL(*mock_object_manager_, HandleNodeRemoved(_)).Times(1);
   EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
-              AsyncSubscribeToWorkerFailures(_, _))
-      .WillOnce(Return(Status::OK()));
-  EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _))
-      .WillOnce(Return(Status::OK()));
+              AsyncSubscribeToWorkerFailures(_, _));
+  EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
-  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_))
+  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
       .WillRepeatedly(Return(false));
@@ -674,8 +686,8 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
 TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
   // Create and wrap a mock resource view sync message.
   syncer::ResourceViewSyncMessage payload;
-  payload.mutable_resources_total()->insert({"CPU", 10.0});
-  payload.mutable_resources_available()->insert({"CPU", 10.0});
+  payload.mutable_resources_total()->insert({"CPU", kTestTotalCpuResource});
+  payload.mutable_resources_available()->insert({"CPU", kTestTotalCpuResource});
   payload.mutable_labels()->insert({"label1", "value1"});
 
   std::string serialized;
@@ -694,8 +706,10 @@ TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
       cluster_resource_scheduler_->GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID(node_id.Binary()));
   EXPECT_EQ(node_resources.labels.at("label1"), "value1");
-  EXPECT_EQ(node_resources.total.Get(scheduling::ResourceID("CPU")).Double(), 10.0);
-  EXPECT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU")).Double(), 10.0);
+  EXPECT_EQ(node_resources.total.Get(scheduling::ResourceID("CPU")).Double(),
+            kTestTotalCpuResource);
+  EXPECT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU")).Double(),
+            kTestTotalCpuResource);
 }
 
 TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
@@ -873,101 +887,6 @@ TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesClamps) {
   EXPECT_EQ(reply.total_resources().at("CPU"), 6.0);
 }
 
-TEST_F(NodeManagerTest, AsyncGetOrWaitSkipsGetForWorkerWithoutLease) {
-  // Verifies AsyncGetOrWait drops stale GETs for workers whose lease was cleared,
-  // while leaving driver GETs unaffected.
-
-  // Prepare a mock worker returned by GetRegisteredWorker(client).
-  auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
-  EXPECT_TRUE(worker->GetGrantedLeaseId().IsNil());
-
-  EXPECT_CALL(
-      mock_worker_pool_,
-      GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
-      .Times(2)  // one in ProcessClientMessage + one in AsyncGetOrWait
-      .WillRepeatedly(Return(worker));
-  EXPECT_CALL(
-      mock_worker_pool_,
-      GetRegisteredDriver(testing::A<const std::shared_ptr<ClientConnection> &>()))
-      .Times(0);
-
-  // Expect no pull to be registered on the ObjectManager for this GET.
-  EXPECT_CALL(*mock_object_manager_, Pull(_, _, _)).Times(0);
-
-  // Build AsyncGetObjectsRequest flatbuffer and invoke the handler.
-  std::vector<ObjectID> object_ids;
-  flatbuffers::FlatBufferBuilder fbb;
-  std::vector<flatbuffers::Offset<protocol::Address>> address_vec;
-  // Add one object and a corresponding (empty) owner address.
-  object_ids.push_back(ObjectID::FromRandom());
-  address_vec.push_back(protocol::CreateAddress(
-      fbb, fbb.CreateString(""), fbb.CreateString(""), 0, fbb.CreateString("")));
-  auto object_ids_message = flatbuf::to_flatbuf(fbb, object_ids);
-  auto message = protocol::CreateAsyncGetObjectsRequest(
-      fbb, object_ids_message, fbb.CreateVector(address_vec));
-  fbb.Finish(message);
-
-  // Create a minimal client connection for ProcessClientMessage.
-  local_stream_socket fake_socket(io_service_);
-  auto client = ClientConnection::Create(
-      [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
-      [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
-      std::move(fake_socket),
-      "test-client",
-      std::vector<std::string>{});
-  node_manager_->ProcessClientMessage(
-      client,
-      static_cast<int64_t>(protocol::MessageType::AsyncGetObjectsRequest),
-      fbb.GetBufferPointer());
-}
-
-TEST_F(NodeManagerTest, AsyncGetOrWaitRegistersGetForDriver) {
-  // A driver has no lease id; GET should still be registered.
-
-  // GetRegisteredWorker returns nullptr, driver is returned instead.
-  EXPECT_CALL(
-      mock_worker_pool_,
-      GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
-      .Times(2)  // one in ProcessClientMessage + one in AsyncGetOrWait
-      .WillRepeatedly(Return(nullptr));
-  auto driver = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
-  EXPECT_CALL(
-      mock_worker_pool_,
-      GetRegisteredDriver(testing::A<const std::shared_ptr<ClientConnection> &>()))
-      .Times(1)
-      .WillOnce(Return(driver));
-
-  // Expect a pull to be registered on the ObjectManager for this GET.
-  EXPECT_CALL(*mock_object_manager_, Pull(_, _, _)).Times(1);
-
-  // Build AsyncGetObjectsRequest flatbuffer and invoke the handler.
-  std::vector<ObjectID> object_ids;
-  flatbuffers::FlatBufferBuilder fbb;
-  std::vector<flatbuffers::Offset<protocol::Address>> address_vec;
-  // Add one object and a corresponding (empty) owner address.
-  object_ids.push_back(ObjectID::FromRandom());
-  address_vec.push_back(protocol::CreateAddress(
-      fbb, fbb.CreateString(""), fbb.CreateString(""), 0, fbb.CreateString("")));
-
-  auto object_ids_message = flatbuf::to_flatbuf(fbb, object_ids);
-  auto message = protocol::CreateAsyncGetObjectsRequest(
-      fbb, object_ids_message, fbb.CreateVector(address_vec));
-  fbb.Finish(message);
-
-  // Create a minimal client connection for ProcessClientMessage.
-  local_stream_socket fake_socket(io_service_);
-  auto client = ClientConnection::Create(
-      [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
-      [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
-      std::move(fake_socket),
-      "test-client",
-      std::vector<std::string>{});
-  node_manager_->ProcessClientMessage(
-      client,
-      static_cast<int64_t>(protocol::MessageType::AsyncGetObjectsRequest),
-      fbb.GetBufferPointer());
-}
-
 class NodeManagerReturnWorkerLeaseIdempotentTest
     : public NodeManagerTest,
       public testing::WithParamInterface<std::tuple<bool, bool>> {};
@@ -1019,7 +938,7 @@ INSTANTIATE_TEST_SUITE_P(NodeManagerReturnWorkerLeaseIdempotentVariations,
                          NodeManagerReturnWorkerLeaseIdempotentTest,
                          testing::Combine(testing::Bool(), testing::Bool()));
 
-TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseIdempotent) {
+TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseGrantedLeaseIdempotent) {
   auto lease_spec = BuildLeaseSpec({});
   rpc::RequestWorkerLeaseRequest request;
   rpc::RequestWorkerLeaseReply reply1;
@@ -1060,8 +979,84 @@ TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseIdempotent) {
   ASSERT_EQ(reply1.worker_address(), reply2.worker_address());
 }
 
+TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseScheduledLeaseIdempotent) {
+  auto lease_spec = BuildLeaseSpec({});
+
+  // Create a task dependency to test that lease dependencies are requested/pulled only
+  // once for a lease even if HandleRequestWorkerLease is called multiple times.
+  ObjectID object_dep = ObjectID::FromRandom();
+  auto *object_ref_dep = lease_spec.GetMutableMessage().add_dependencies();
+  object_ref_dep->set_object_id(object_dep.Binary());
+
+  rpc::Address owner_addr;
+  plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+  RAY_UNUSED(mock_store_client_->TryCreateImmediately(
+      object_dep, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
+
+  rpc::RequestWorkerLeaseRequest request;
+  rpc::RequestWorkerLeaseReply reply1;
+  rpc::RequestWorkerLeaseReply reply2;
+  LeaseID lease_id = LeaseID::FromRandom();
+  lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  request.set_backlog_size(1);
+  request.set_grant_or_reject(true);
+  request.set_is_selected_based_on_locality(true);
+
+  EXPECT_CALL(*mock_object_manager_, Pull(_, _, _)).Times(1).WillOnce(Return(1));
+
+  auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  PopWorkerCallback pop_worker_callback;
+  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
+      .Times(1)
+      .WillOnce([&](const LeaseSpecification &ls, const PopWorkerCallback &callback) {
+        pop_worker_callback = callback;
+      });
+  uint32_t callback_count = 0;
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply1,
+      [&callback_count](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_count++;
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+  auto scheduling_class = lease_spec.GetSchedulingClass();
+  ASSERT_TRUE(local_lease_manager_->IsLeaseQueued(scheduling_class, lease_id));
+
+  // Test HandleRequestWorkerLease idempotency for leases that aren't yet granted
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply2,
+      [&callback_count](
+          Status s, std::function<void()> success, std::function<void()> failure) {
+        callback_count++;
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_TRUE(local_lease_manager_->IsLeaseQueued(scheduling_class, lease_id));
+
+  // Make the dependency available and notify the local lease manager that leases are
+  // unblocked so the lease can be granted
+  auto ready_lease_ids = lease_dependency_manager_->HandleObjectLocal(object_dep);
+  ASSERT_EQ(ready_lease_ids.size(), 1);
+  ASSERT_EQ(ready_lease_ids[0], lease_id);
+  local_lease_manager_->LeasesUnblocked(ready_lease_ids);
+
+  // Grant the lease, both callbacks should be triggered
+  ASSERT_TRUE(pop_worker_callback);
+  pop_worker_callback(worker, PopWorkerStatus::OK, "");
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(leased_workers_[lease_id]->GetGrantedLeaseId(), lease_id);
+  ASSERT_EQ(leased_workers_[lease_id]->WorkerId(),
+            WorkerID::FromBinary(reply1.worker_address().worker_id()));
+  ASSERT_EQ(reply1.worker_address(), reply2.worker_address());
+  ASSERT_EQ(callback_count, 2);
+}
+
 TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseInfeasibleIdempotent) {
-  auto lease_spec = BuildLeaseSpec({{"CPU", 1}});
+  auto lease_spec = BuildLeaseSpec({{"CPU", kTestTotalCpuResource + 1}});
   lease_spec.GetMutableMessage()
       .mutable_scheduling_strategy()
       ->mutable_node_affinity_scheduling_strategy()
@@ -1259,6 +1254,68 @@ INSTANTIATE_TEST_SUITE_P(PinObjectIDsIdempotencyVariations,
                          PinObjectIDsIdempotencyTest,
                          testing::Bool());
 
+class NodeManagerKillActorTest : public NodeManagerTest,
+                                 public ::testing::WithParamInterface<bool> {};
+
+TEST_P(NodeManagerKillActorTest, TestHandleKillLocalActorIdempotency) {
+  // worker_is_alive: determines whether the worker is alive and whether KillActor RPC
+  // should be sent. worker_is_alive == true: Worker is alive and KillActor RPC should be
+  // sent twice. worker_is_alive == false: Worker is dead and KillActor RPC should not be
+  // sent.
+
+  bool worker_is_alive = GetParam();
+
+  WorkerID worker_id = WorkerID::FromRandom();
+  JobID job_id = JobID::FromInt(1);
+  ActorID actor_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
+
+  auto fake_rpc_client = std::make_shared<rpc::FakeCoreWorkerClient>();
+  std::shared_ptr<raylet::MockWorker> worker;
+
+  if (worker_is_alive) {
+    worker = std::make_shared<raylet::MockWorker>(worker_id, 10);
+    worker->Connect(fake_rpc_client);
+    EXPECT_CALL(mock_worker_pool_, GetRegisteredWorker(worker_id))
+        .Times(2)
+        .WillRepeatedly(Return(worker));
+  } else {
+    EXPECT_CALL(mock_worker_pool_, GetRegisteredWorker(worker_id))
+        .Times(2)
+        .WillRepeatedly(Return(nullptr));
+  }
+
+  rpc::KillLocalActorRequest request;
+  request.set_worker_id(worker_id.Binary());
+  request.set_intended_actor_id(actor_id.Binary());
+  request.set_force_kill(false);
+  auto actor_died_ctx = request.mutable_death_cause()->mutable_actor_died_error_context();
+  actor_died_ctx->set_reason(rpc::ActorDiedErrorContext::RAY_KILL);
+  actor_died_ctx->set_error_message("Test kill");
+
+  rpc::KillLocalActorReply reply1;
+  node_manager_->HandleKillLocalActor(
+      request,
+      &reply1,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  rpc::KillLocalActorReply reply2;
+  node_manager_->HandleKillLocalActor(
+      request,
+      &reply2,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  size_t expected_rpc_calls = worker_is_alive ? 2 : 0;
+  ASSERT_EQ(fake_rpc_client->num_kill_actor_requests, expected_rpc_calls)
+      << "Expected " << expected_rpc_calls
+      << " KillActor RPC calls for worker_is_alive==" << worker_is_alive;
+}
+
+INSTANTIATE_TEST_SUITE_P(WorkerState, NodeManagerKillActorTest, ::testing::Bool());
+
 class NodeManagerDeathTest : public NodeManagerTest,
                              public ::testing::WithParamInterface<bool> {};
 
@@ -1297,6 +1354,164 @@ TEST_P(NodeManagerDeathTest, TestGcsPublishesSelfDead) {
 INSTANTIATE_TEST_SUITE_P(NodeManagerDeathVariations,
                          NodeManagerDeathTest,
                          testing::Bool());
+
+class DrainRayletIdempotencyTest
+    : public NodeManagerTest,
+      public ::testing::WithParamInterface<
+          std::tuple<rpc::autoscaler::DrainNodeReason, bool>> {};
+
+TEST_P(DrainRayletIdempotencyTest, TestHandleDrainRayletIdempotency) {
+  // drain_reason: the reason for the drain request (PREEMPTION or IDLE_TERMINATION).
+  // is_node_idle: determines whether the node is idle.
+  // is_node_idle == true: the node is idle.
+  //    - drain_reason == PREEMPTION: DrainRaylet is expected to accept the request.
+  //    - drain_reason == IDLE_TERMINATION: DrainRaylet is expected to accept the request.
+  // is_node_idle == false: the node is not idle.
+  //    - drain_reason == PREEMPTION: DrainRaylet is expected to accept the request.
+  //    - drain_reason == IDLE_TERMINATION: DrainRaylet is expected to reject the request.
+
+  auto [drain_reason, is_node_idle] = GetParam();
+  if (!is_node_idle) {
+    cluster_resource_scheduler_->GetLocalResourceManager().MarkFootprintAsBusy(
+        WorkFootprint::NODE_WORKERS);
+  }
+
+  // Whether the drain request is expected to be accepted. Note that for preemption we
+  // must always accept the request regardless of the node's idle state.
+  bool drain_request_accepted = false;
+  if (drain_reason == rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION) {
+    drain_request_accepted = true;
+  } else {
+    drain_request_accepted = is_node_idle;
+  }
+
+  rpc::DrainRayletRequest request;
+  request.set_reason(drain_reason);
+  request.set_reason_message("Test drain");
+  request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+
+  rpc::DrainRayletReply reply1;
+  node_manager_->HandleDrainRaylet(
+      request, &reply1, [](Status s, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  ASSERT_EQ(reply1.is_accepted(), drain_request_accepted);
+  ASSERT_EQ(cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining(),
+            drain_request_accepted);
+
+  rpc::DrainRayletReply reply2;
+  node_manager_->HandleDrainRaylet(
+      request, &reply2, [&](Status s, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  ASSERT_EQ(reply2.is_accepted(), drain_request_accepted);
+  ASSERT_EQ(cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining(),
+            drain_request_accepted);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DrainRayletIdempotencyVariations,
+    DrainRayletIdempotencyTest,
+    ::testing::Combine(
+        ::testing::Values(
+            rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION,
+            rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION),
+        ::testing::Bool()));
+
+bool IsBundleRegistered(const PlacementGroupResourceManager &manager,
+                        const BundleID &bundle_id) {
+  return manager.bundle_spec_map_.contains(bundle_id);
+}
+
+class ReleaseUnusedBundlesRetriesTest : public NodeManagerTest,
+                                        public ::testing::WithParamInterface<bool> {};
+
+TEST_P(ReleaseUnusedBundlesRetriesTest, TestHandleReleaseUnusedBundlesRetries) {
+  // bundle_in_use: determines whether we mark a bundle as in use and it is released by
+  // the placement group resource manager.
+  // bundle_in_use == true: a bundle is marked as in use in the placement group resource
+  // manager. ReleaseUnusedBundles is expected to not release the bundle.
+  // bundle_in_use == false: a bundle is not marked as in use in the placement group
+  // resource manager. ReleaseUnusedBundles is expected to release the bundle.
+  bool bundle_in_use = GetParam();
+
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
+  absl::flat_hash_map<std::string, double> unit_resource = {{"CPU", 1.0}};
+
+  auto bundle_id = BundleID(group_id, 1);
+  rpc::Bundle bundle;
+  auto *bundle_id_msg = bundle.mutable_bundle_id();
+  bundle_id_msg->set_placement_group_id(group_id.Binary());
+  bundle_id_msg->set_bundle_index(1);
+  auto unit_resources = bundle.mutable_unit_resources();
+  for (const auto &[key, value] : unit_resource) {
+    unit_resources->insert({key, value});
+  }
+  auto bundle_spec = std::make_shared<BundleSpecification>(bundle);
+  ASSERT_TRUE(placement_group_resource_manager_->PrepareBundles({bundle_spec}));
+  placement_group_resource_manager_->CommitBundles({bundle_spec});
+
+  EXPECT_TRUE(IsBundleRegistered(*placement_group_resource_manager_, bundle_id));
+
+  WorkerID worker_id = WorkerID::FromRandom();
+  LeaseID lease_id = LeaseID::FromRandom();
+  auto worker = std::make_shared<raylet::FakeWorker>(worker_id, 0, io_service_);
+  worker->SetBundleId(bundle_id);
+  worker->GrantLeaseId(lease_id);
+  leased_workers_.emplace(lease_id, worker);
+
+  rpc::ReleaseUnusedBundlesRequest request;
+  if (bundle_in_use) {
+    auto *bundle_entry = request.add_bundles_in_use();
+    bundle_entry->mutable_bundle_id()->set_placement_group_id(group_id.Binary());
+    bundle_entry->mutable_bundle_id()->set_bundle_index(1);
+  } else {
+    // When the bundle is not in use, the worker associated with that bundle is destroyed
+    // hence need to mock the GetRegisteredWorker call to return the worker.
+    EXPECT_CALL(
+        mock_worker_pool_,
+        GetRegisteredWorker(testing::An<const std::shared_ptr<ClientConnection> &>()))
+        .WillOnce(Return(worker));
+  }
+
+  rpc::ReleaseUnusedBundlesReply reply1;
+  node_manager_->HandleReleaseUnusedBundles(
+      request, &reply1, [](Status s, std::function<void()>, std::function<void()>) {
+        EXPECT_TRUE(s.ok());
+      });
+
+  if (bundle_in_use) {
+    EXPECT_TRUE(leased_workers_.contains(lease_id));
+    EXPECT_EQ(leased_workers_.size(), 1);
+    EXPECT_TRUE(IsBundleRegistered(*placement_group_resource_manager_, bundle_id));
+  } else {
+    EXPECT_FALSE(leased_workers_.contains(lease_id));
+    EXPECT_EQ(leased_workers_.size(), 0);
+    EXPECT_FALSE(IsBundleRegistered(*placement_group_resource_manager_, bundle_id));
+  }
+
+  rpc::ReleaseUnusedBundlesReply reply2;
+  node_manager_->HandleReleaseUnusedBundles(
+      request, &reply2, [](Status s, std::function<void()>, std::function<void()>) {
+        EXPECT_TRUE(s.ok());
+      });
+
+  if (bundle_in_use) {
+    EXPECT_TRUE(leased_workers_.contains(lease_id));
+    EXPECT_EQ(leased_workers_.size(), 1);
+    EXPECT_TRUE(IsBundleRegistered(*placement_group_resource_manager_, bundle_id));
+  } else {
+    EXPECT_FALSE(leased_workers_.contains(lease_id));
+    EXPECT_EQ(leased_workers_.size(), 0);
+    EXPECT_FALSE(IsBundleRegistered(*placement_group_resource_manager_, bundle_id));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(ReleaseUnusedBundlesRetriesVariations,
+                         ReleaseUnusedBundlesRetriesTest,
+                         ::testing::Bool());
 
 }  // namespace ray::raylet
 

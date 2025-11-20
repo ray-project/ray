@@ -476,6 +476,7 @@ docker==7.1.0
     #   mlflow
     #   moto
     #   pytest-docker-tools
+    #   testcontainers
 docker-pycreds==0.4.0
     # via wandb
 docstring-parser==0.15
@@ -992,6 +993,8 @@ jupyterlab-widgets==3.0.11
     # via ipywidgets
 jupytext==1.16.3
     # via -r python/requirements/test-requirements.txt
+kafka-python==2.2.15
+    # via -r python/requirements/ml/data-test-requirements.txt
 keras==2.15.0
     # via tensorflow
 kiwisolver==1.4.5
@@ -1028,7 +1031,7 @@ locket==1.0.0
     #   partd
 log-symbols==0.0.14
     # via halo
-lxml==4.9.4
+lxml==6.0.2
     # via
     #   -r python/requirements/test-requirements.txt
     #   dm-control
@@ -1684,7 +1687,7 @@ pygments==2.18.0
     #   nbconvert
     #   rich
     #   sphinx
-pyiceberg==0.9.0
+pyiceberg==0.10.0
     # via -r python/requirements/ml/data-test-requirements.txt
 pyjwt==2.8.0
     # via
@@ -1734,6 +1737,8 @@ pyro-ppl==1.9.1
     # via botorch
 pyro4==4.82
     # via hpbandster
+pyroaring==1.0.3
+    # via pyiceberg
 pysocks==1.7.1
     # via requests
 pyspark==3.4.1
@@ -1815,6 +1820,8 @@ python-dateutil==2.8.2
     #   pandas
     #   segment-analytics-python
     #   strictyaml
+python-dotenv==1.2.1
+    # via testcontainers
 python-jose==3.3.0
     # via moto
 python-json-logger==2.0.7
@@ -2268,6 +2275,8 @@ terminado==0.18.1
     #   jupyter-server
     #   nbclassic
     #   notebook
+testcontainers==4.13.3
+    # via -r python/requirements/ml/data-test-requirements.txt
 testfixtures==7.0.0
     # via -r python/requirements/test-requirements.txt
 threadpoolctl==3.1.0
@@ -2456,6 +2465,7 @@ typing-extensions==4.15.0
     #   snowflake-connector-python
     #   sqlalchemy
     #   tensorflow
+    #   testcontainers
     #   torch
     #   typer
     #   typing-inspection
@@ -2485,6 +2495,7 @@ urllib3==1.26.19
     #   responses
     #   semgrep
     #   sentry-sdk
+    #   testcontainers
 utilsforecast==0.2.0
     # via statsforecast
 uv==0.8.9
@@ -2582,6 +2593,7 @@ wrapt==1.14.1
     #   opentelemetry-instrumentation
     #   tensorflow
     #   tensorflow-datasets
+    #   testcontainers
 wurlitzer==3.1.1
     # via comet-ml
 xgboost==2.1.0

@@ -158,6 +158,9 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
                 if hasattr(target_cls, "__del__"):
                     target_cls.__del__(self)
 
+        # Preserve the original class name
+        _TaskConsumerWrapper.__name__ = target_cls.__name__
+
         return _TaskConsumerWrapper
 
     return decorator
