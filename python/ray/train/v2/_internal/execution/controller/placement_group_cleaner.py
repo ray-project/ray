@@ -76,20 +76,20 @@ class PlacementGroupCleaner:
                     actor_id=self._controller_actor_id,
                     timeout=self._get_actor_timeout_s,
                 )
-                if not alive:
+                if not alive and not self._is_placement_group_removed():
                     logger.warning(
-                        "Controller actor reported dead via control plane. "
-                        "Attempting cleanup."
+                        f"Detected that the Ray Train controller actor ({self._controller_actor_id}) is dead. "
+                        "Cleaning up placement group created by this run."
                     )
                     break
                 time.sleep(self._check_interval_s)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to query controller state: {e}. Attempting cleanup."
+            except Exception:
+                logger.exception(
+                    "Failed to query controller state. Attempting cleanup."
                 )
                 break
 
-        if not self._stopped and self._placement_group:
+        if not self._stopped and not self._is_placement_group_removed():
             logger.info(f"Cleaning up placement group: {self._placement_group.id}")
             try:
                 remove_placement_group(self._placement_group)
@@ -118,6 +118,15 @@ class PlacementGroupCleaner:
         self._monitoring = False
         self._monitor_thread = None
         self._exit()
+
+    def _is_placement_group_removed(self) -> bool:
+        """Check if a placement group has been removed."""
+        if not self._placement_group:
+            return True
+        table = ray.util.placement_group_table(self._placement_group)
+        if "state" not in table:
+            return True
+        return table["state"] == "REMOVED"
 
     def _exit(self):
         """Exit the actor."""
