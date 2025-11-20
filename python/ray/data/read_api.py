@@ -1361,6 +1361,10 @@ def read_html(
     Raises:
         ValueError: if ``text_mode`` is not one of "clean", "raw", or "markdown".
         ValueError: if HTML files cannot be decoded with the specified encoding.
+        ValueError: if ``selector`` is provided but is empty or whitespace-only.
+        ValueError: if ``encoding`` is provided but is empty or whitespace-only.
+        TypeError: if ``selector`` or ``encoding`` are provided but are not strings.
+        OSError: if HTML files cannot be read.
 
     .. seealso::
 
