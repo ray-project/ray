@@ -225,6 +225,36 @@ async def test_worker_group_start_failure(error_type):
 
 
 @pytest.mark.asyncio
+async def test_double_define_bundle_label_selector():
+    class BundleLabelSelectorCallback(ControllerCallback):
+        def on_controller_start_worker_group(self, *, scaling_config, num_workers):
+            return {"subcluster": "my_subcluster"}
+
+    scaling_config = ScalingConfig(
+        bundle_label_selector={"subcluster": "my_subcluster"},
+    )
+    scaling_policy = MockScalingPolicy(scaling_config=scaling_config)
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=2, resources_per_worker={})
+    )
+    failure_policy = MockFailurePolicy(failure_config=None)
+    failure_policy.queue_decision(FailureDecision.RAISE)
+    train_run_context = create_dummy_run_context(scaling_config=scaling_config)
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+        callbacks=[BundleLabelSelectorCallback()],
+    )
+    assert isinstance(controller.get_state(), InitializingState)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), SchedulingState)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), ShuttingDownState)
+
+
+@pytest.mark.asyncio
 async def test_poll_frequency(monkeypatch):
     monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "1")
 
