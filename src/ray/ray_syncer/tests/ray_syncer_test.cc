@@ -912,16 +912,16 @@ struct MockRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackServic
         cleanup_cb(_cleanup_cb),
         node_id(NodeID::FromRandom()),
         io_context(_io_context) {}
-  grpc::ServerBidiReactor<RaySyncMessageBatch, RaySyncMessageBatch>* StartSync(
+  grpc::ServerBidiReactor<RaySyncMessageBatch, RaySyncMessageBatch> *StartSync(
       grpc::CallbackServerContext *context) override {
     reactor = RayServerBidiReactor::Create(context,
-                                       io_context,
-                                       node_id.Binary(),
-                                       message_processor,
-                                       cleanup_cb,
-                                       std::nullopt,
-                                       /*max_batch_size=*/1,
-                                       /*max_batch_delay_ms=*/0);
+                                           io_context,
+                                           node_id.Binary(),
+                                           message_processor,
+                                           cleanup_cb,
+                                           std::nullopt,
+                                           /*max_batch_size=*/1,
+                                           /*max_batch_delay_ms=*/0);
     return reactor.get();
   }
 
@@ -951,16 +951,16 @@ class SyncerReactorTest : public ::testing::Test {
     auto cli_stub = ray::rpc::syncer::RaySyncer::NewStub(cli_channel);
 
     client_reactor = RayClientBidiReactor::Create(
-            rpc_service_->node_id.Binary(),
-            client_node_id.Binary(),
-            io_context_,
-            [this](auto msg) { client_received_message.set_value(msg); },
-            [this](RaySyncerBidiReactor *reactor, bool r) {
-              client_cleanup.set_value(std::make_pair(reactor->GetRemoteNodeID(), r));
-            },
-            std::move(cli_stub),
-            /* max_batch_size */ 1,
-            /* max_batch_delay_ms */ 0);
+        rpc_service_->node_id.Binary(),
+        client_node_id.Binary(),
+        io_context_,
+        [this](auto msg) { client_received_message.set_value(msg); },
+        [this](RaySyncerBidiReactor *reactor, bool r) {
+          client_cleanup.set_value(std::make_pair(reactor->GetRemoteNodeID(), r));
+        },
+        std::move(cli_stub),
+        /* max_batch_size */ 1,
+        /* max_batch_delay_ms */ 0);
     client_reactor->StartCall();
 
     work_guard_ = std::make_unique<work_guard_type>(io_context_.get_executor());
@@ -986,7 +986,8 @@ class SyncerReactorTest : public ::testing::Test {
     thread_->join();
   }
 
-  std::pair<std::shared_ptr<RayServerBidiReactor>, std::shared_ptr<RayClientBidiReactor>> GetReactors() {
+  std::pair<std::shared_ptr<RayServerBidiReactor>, std::shared_ptr<RayClientBidiReactor>>
+  GetReactors() {
     return std::make_pair(rpc_service_->reactor, client_reactor);
   }
 

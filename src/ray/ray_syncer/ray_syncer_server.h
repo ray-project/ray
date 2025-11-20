@@ -34,8 +34,8 @@ using ServerBidiReactor =
 /// streaming call.
 class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> {
  private:
-   // Enables `make_shared` inside of the class without exposing a public constructor.
-   struct PrivateTag {};
+  // Enables `make_shared` inside of the class without exposing a public constructor.
+  struct PrivateTag {};
 
  public:
   // Static factory method to create `RayServerBidiReactor` instances.

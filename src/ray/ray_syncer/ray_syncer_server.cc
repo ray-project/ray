@@ -41,7 +41,15 @@ std::shared_ptr<RayServerBidiReactor> RayServerBidiReactor::Create(
     const std::optional<ray::rpc::AuthenticationToken> &auth_token,
     size_t max_batch_size,
     uint64_t max_batch_delay_ms) {
-  return std::make_shared<RayServerBidiReactor>(PrivateTag{}, server_context, io_context, local_node_id, message_processor, cleanup_cb, auth_token, max_batch_size, max_batch_delay_ms);
+  return std::make_shared<RayServerBidiReactor>(PrivateTag{},
+                                                server_context,
+                                                io_context,
+                                                local_node_id,
+                                                message_processor,
+                                                cleanup_cb,
+                                                auth_token,
+                                                max_batch_size,
+                                                max_batch_delay_ms);
 }
 
 RayServerBidiReactor::RayServerBidiReactor(

@@ -32,10 +32,13 @@ namespace ray::syncer {
 /// It keeps track of the message received and sent between two nodes and uses that to
 /// deduplicate the messages. It also supports the batching for performance purposes.
 ///
-/// NOTE: RaySyncerBidiReactorBase depends on `shared_from_this`, so all subclass instances
-/// must be heap-allocated shared pointers.
+/// NOTE: RaySyncerBidiReactorBase depends on `shared_from_this`, so all subclass
+/// instances must be heap-allocated shared pointers.
 template <typename T>
-class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T, public std::enable_shared_from_this<RaySyncerBidiReactor> {
+class RaySyncerBidiReactorBase
+    : public RaySyncerBidiReactor,
+      public T,
+      public std::enable_shared_from_this<RaySyncerBidiReactor> {
  protected:
   /// Constructor of RaySyncerBidiReactor.
   ///
@@ -61,7 +64,6 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T, public s
         batch_timer_active_(false) {}
 
  public:
-
   bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message) override {
     if (*IsDisconnected()) {
       return false;
