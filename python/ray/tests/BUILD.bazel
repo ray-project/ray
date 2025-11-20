@@ -527,6 +527,7 @@ py_test_module_list(
         "test_distributed_sort.py",
         "test_environ.py",
         "test_error_ray_not_initialized.py",
+        "test_exceptions.py",
         "test_gcs_pubsub.py",
         "test_get_or_create_actor.py",
         "test_grpc_client_credentials.py",
