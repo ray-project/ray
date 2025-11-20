@@ -275,6 +275,12 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
             labels = self.get_result_labels()
             if not labels:
                 labels = [str(idx) for idx in range(len(value))]
+            elif len(labels) != len(value):
+                raise ValueError(
+                    f"Aggregator {self.__class__.__name__} returned {len(value)} values "
+                    f"but get_result_labels() returned {len(labels)} labels. "
+                    f"These must match to properly format statistics."
+                )
 
             return {
                 f"{stat_name}[{label}]": (list_val, scalar_type)
