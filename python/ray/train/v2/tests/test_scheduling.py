@@ -133,3 +133,9 @@ def test_bundle_label_selector(
     trainer = DataParallelTrainer(train_fn, scaling_config=scaling_config)
     trainer.fit()
     assert ray.get(counter.get.remote()) == expected_subcluster_counts
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
