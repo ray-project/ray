@@ -530,7 +530,38 @@ class FuseOperators(Rule):
     @classmethod
     def _get_compatible_ref_bundler(
         cls, up_ref_bundler: BaseRefBundler, down_ref_bundler: BaseRefBundler
-    ) -> BaseRefBundler:
+    ) -> Optional[BaseRefBundler]:
+        """Determine if two ref bundlers are compatible for operator fusion.
+
+        This method checks whether upstream and downstream operators with different
+        ref bundler configurations can be fused together, and returns the merged
+        bundler if fusion is possible.
+
+        Args:
+            up_ref_bundler: The ref bundler from the upstream operator.
+            down_ref_bundler: The ref bundler from the downstream operator.
+
+        Returns:
+            A compatible merged BaseRefBundler if the bundlers can be fused together,
+            None if they are incompatible and fusion should not occur.
+
+        Fusion rules:
+            - BlockRefBundler + BlockRefBundler: Always compatible. Returns a
+              BlockRefBundler with min_rows_per_bundle set to the maximum of the two.
+            - StreamingRepartitionRefBundler + StreamingRepartitionRefBundler: Only
+              compatible if both have the same target_num_rows_per_block.
+            - BlockRefBundler + StreamingRepartitionRefBundler (mixed): Compatible
+              if target_num_rows >= min_rows_per_bundle (or min_rows_per_bundle is None).
+              Returns a StreamingRepartitionRefBundler.
+
+        Note:
+            This is a naive implementation that should be revisited once
+            StreamingRepartitionRefBundler is more widely used. There are potential
+            optimizations such as using the least common multiple for
+            StreamingRepartitionRefBundlers with different target row counts, or
+            finding a least multiple that satisfies both min_rows_per_bundle and
+            target_num_rows_per_block constraints in mixed cases.
+        """
         if isinstance(up_ref_bundler, BlockRefBundler) and isinstance(
             down_ref_bundler, BlockRefBundler
         ):
@@ -543,10 +574,7 @@ class FuseOperators(Rule):
         elif isinstance(up_ref_bundler, StreamingRepartitionRefBundler) and isinstance(
             down_ref_bundler, StreamingRepartitionRefBundler
         ):
-            if (
-                up_ref_bundler._target_num_rows
-                == down_ref_bundler._target_num_rows
-            ):
+            if up_ref_bundler._target_num_rows == down_ref_bundler._target_num_rows:
                 return StreamingRepartitionRefBundler(
                     target_num_rows_per_block=up_ref_bundler._target_num_rows
                 )

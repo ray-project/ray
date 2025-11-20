@@ -21,6 +21,7 @@ from ray.data._internal.logical.operators.map_operator import (
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
+from ray.data._internal.logical.rules.operator_fusion import FuseOperators
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
@@ -740,6 +741,222 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
             BatchMapTransformFn,
         ],
     )
+
+
+@pytest.mark.parametrize(
+    "up_rows,down_rows,should_fuse,expected_result,description",
+    [
+        # BlockRefBundler + BlockRefBundler cases
+        # Format: ("block", value) for BlockRefBundler with min_rows_per_bundle
+        #         ("streaming", value) for StreamingRepartitionRefBundler with target_num_rows_per_block
+        (
+            ("block", None),
+            ("block", None),
+            True,
+            ("block", None),
+            "Both BlockRefBundler with None min_rows - should fuse with None",
+        ),
+        (
+            ("block", 10),
+            ("block", 10),
+            True,
+            ("block", 10),
+            "Both BlockRefBundler with same min_rows (10) - should fuse with 10",
+        ),
+        (
+            ("block", 10),
+            ("block", 20),
+            True,
+            ("block", 20),
+            "Both BlockRefBundler with different min_rows (10 vs 20) - should fuse with max (20)",
+        ),
+        (
+            ("block", None),
+            ("block", 10),
+            True,
+            ("block", 10),
+            "BlockRefBundler with None and 10 - should fuse with 10",
+        ),
+        (
+            ("block", 10),
+            ("block", None),
+            True,
+            ("block", 10),
+            "BlockRefBundler with 10 and None - should fuse with 10",
+        ),
+        (
+            ("block", 5),
+            ("block", 15),
+            True,
+            ("block", 15),
+            "BlockRefBundler with 5 and 15 - should fuse with max (15)",
+        ),
+        # StreamingRepartitionRefBundler + StreamingRepartitionRefBundler cases
+        (
+            ("streaming", 20),
+            ("streaming", 20),
+            True,
+            ("streaming", 20),
+            "Both StreamingRepartition with same target_num_rows (20) - should fuse",
+        ),
+        (
+            ("streaming", 20),
+            ("streaming", 30),
+            False,
+            None,
+            "Both StreamingRepartition with different target_num_rows (20 vs 30) - should NOT fuse",
+        ),
+        (
+            ("streaming", 50),
+            ("streaming", 50),
+            True,
+            ("streaming", 50),
+            "Both StreamingRepartition with same target_num_rows (50) - should fuse",
+        ),
+        # Mixed cases: BlockRefBundler + StreamingRepartitionRefBundler
+        (
+            ("block", None),
+            ("streaming", 20),
+            True,
+            ("streaming", 20),
+            "BlockRefBundler(None) + StreamingRepartition(20) - should fuse with target=20",
+        ),
+        (
+            ("block", 10),
+            ("streaming", 20),
+            True,
+            ("streaming", 20),
+            "BlockRefBundler(10) + StreamingRepartition(20) - should fuse (target >= min)",
+        ),
+        (
+            ("block", 30),
+            ("streaming", 20),
+            False,
+            None,
+            "BlockRefBundler(30) + StreamingRepartition(20) - should NOT fuse (target < min)",
+        ),
+        (
+            ("block", 20),
+            ("streaming", 20),
+            True,
+            ("streaming", 20),
+            "BlockRefBundler(20) + StreamingRepartition(20) - should fuse (target == min)",
+        ),
+        (
+            ("block", 15),
+            ("streaming", 25),
+            True,
+            ("streaming", 25),
+            "BlockRefBundler(15) + StreamingRepartition(25) - should fuse (target > min)",
+        ),
+        # Mixed cases: StreamingRepartitionRefBundler + BlockRefBundler
+        (
+            ("streaming", 20),
+            ("block", None),
+            True,
+            ("streaming", 20),
+            "StreamingRepartition(20) + BlockRefBundler(None) - should fuse with target=20",
+        ),
+        (
+            ("streaming", 20),
+            ("block", 10),
+            True,
+            ("streaming", 20),
+            "StreamingRepartition(20) + BlockRefBundler(10) - should fuse (target >= min)",
+        ),
+        (
+            ("streaming", 20),
+            ("block", 30),
+            False,
+            None,
+            "StreamingRepartition(20) + BlockRefBundler(30) - should NOT fuse (target < min)",
+        ),
+        (
+            ("streaming", 20),
+            ("block", 20),
+            True,
+            ("streaming", 20),
+            "StreamingRepartition(20) + BlockRefBundler(20) - should fuse (target == min)",
+        ),
+        (
+            ("streaming", 25),
+            ("block", 15),
+            True,
+            ("streaming", 25),
+            "StreamingRepartition(25) + BlockRefBundler(15) - should fuse (target > min)",
+        ),
+    ],
+)
+def test_get_compatible_ref_bundler(
+    up_rows,
+    down_rows,
+    should_fuse,
+    expected_result,
+    description,
+):
+    """Test the _get_compatible_ref_bundler method with various combinations of bundlers.
+
+    This is a unit test that directly tests the FuseOperators._get_compatible_ref_bundler
+    classmethod to ensure proper fusion logic for different bundler types.
+
+    Args:
+        up_rows: Tuple of ("block", value) or ("streaming", value) for upstream bundler
+        down_rows: Tuple of ("block", value) or ("streaming", value) for downstream bundler
+        should_fuse: Whether fusion should succeed
+        expected_result: Expected result tuple ("block", value) or ("streaming", value), or None
+        description: Test case description
+    """
+    from ray.data._internal.execution.operators.map_operator import (
+        BlockRefBundler,
+    )
+    from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
+
+    # Create bundlers based on type and value
+    up_type, up_value = up_rows
+    if up_type == "streaming":
+        up_bundler = StreamingRepartitionRefBundler(target_num_rows_per_block=up_value)
+    else:  # "block"
+        up_bundler = BlockRefBundler(min_rows_per_bundle=up_value)
+
+    down_type, down_value = down_rows
+    if down_type == "streaming":
+        down_bundler = StreamingRepartitionRefBundler(
+            target_num_rows_per_block=down_value
+        )
+    else:  # "block"
+        down_bundler = BlockRefBundler(min_rows_per_bundle=down_value)
+
+    # Test the fusion logic
+    result = FuseOperators._get_compatible_ref_bundler(up_bundler, down_bundler)
+
+    if should_fuse:
+        assert (
+            result is not None
+        ), f"{description}: Expected successful fusion but got None"
+
+        expected_type, expected_value = expected_result
+
+        # Verify the result bundler type and value
+        if expected_type == "block":
+            assert isinstance(
+                result, BlockRefBundler
+            ), f"{description}: Expected BlockRefBundler but got {type(result).__name__}"
+            assert result._min_rows_per_bundle == expected_value, (
+                f"{description}: Expected min_rows_per_bundle={expected_value} "
+                f"but got {result._min_rows_per_bundle}"
+            )
+        else:  # "streaming"
+            assert isinstance(
+                result, StreamingRepartitionRefBundler
+            ), f"{description}: Expected StreamingRepartitionRefBundler but got {type(result).__name__}"
+            assert result._target_num_rows == expected_value, (
+                f"{description}: Expected target_num_rows={expected_value} "
+                f"but got {result._target_num_rows}"
+            )
+    else:
+        assert (
+            result is None
+        ), f"{description}: Expected fusion to fail (None) but got {result}"
 
 
 if __name__ == "__main__":
