@@ -363,7 +363,7 @@ TEST_F(AuthenticationTokenLoaderTest, TestIgnoreAuthModeHasToken) {
   auto &loader = AuthenticationTokenLoader::instance();
 
   // Without ignore_auth_mode, should return false (auth is disabled)
-  EXPECT_FALSE(loader.HasToken(false));
+  EXPECT_FALSE(loader.HasToken());
 
   // Reset cache to test ignore_auth_mode
   loader.ResetCache();
