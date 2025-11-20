@@ -305,7 +305,7 @@ class TrainController:
         # Check for `bundle_label_selector` to influence WorkerGroup scheduling.
         bundle_label_selector = None
         if isinstance(scaling_config.bundle_label_selector, list):
-            bundle_label_selector = scaling_config.bundle_label_selector
+            bundle_label_selector = scaling_config.bundle_label_selector[:num_workers]
         elif isinstance(scaling_config.bundle_label_selector, dict):
             bundle_label_selector = [
                 scaling_config.bundle_label_selector.copy() for _ in range(num_workers)
