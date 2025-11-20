@@ -15,7 +15,7 @@ from ray._private import logging_utils
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 from ray._private.ray_logging import setup_component_logger
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient, NodeID
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,10 @@ class DashboardAgent:
             address=self.gcs_address,
             cluster_id=self.cluster_id_hex,
         )
+
+        # Fetch node info and save is_head.
+        node_info = self.gcs_client.get_all_node_info().get(NodeID.from_hex(self.node_id))
+        self.is_head = node_info is not None and node_info.is_head_node
 
         if not self.minimal:
             self._init_non_minimal()
@@ -174,10 +178,6 @@ class DashboardAgent:
 
     def get_node_id(self) -> str:
         return self.node_id
-
-    @property
-    def is_head(self) -> bool:
-        return self.ip == parse_address(self.gcs_address)[0]
 
     async def run(self):
         # Start a grpc asyncio server.
