@@ -282,6 +282,9 @@ async_task_id = contextvars.ContextVar('async_task_id', default=None)
 async_task_name = contextvars.ContextVar('async_task_name', default=None)
 async_task_function_name = contextvars.ContextVar('async_task_function_name',                                                  default=None)
 
+task_cancellation_context = contextvars.ContextVar('task_cancellation_context', default=None)
+
+
 
 # Update the type names of the extension type so they are
 # ray.{ObjectRef, ObjectRefGenerator} instead of ray._raylet.*
@@ -2013,6 +2016,11 @@ cdef execute_task_with_cancellation_handler(
     try:
         task_id = (ray._private.worker.
                    global_worker.core_worker.get_current_task_id())
+
+        # Create cancellation context for this task and store in ContextVar
+        cancel_ctx = TaskCancellationContext(task_id)
+        token = task_cancellation_context.set(cancel_ctx)
+
         # Set the current task ID, which is checked by a separate thread during
         # task cancellation. We must do this inside the try block so that, if
         # the task is interrupted because of cancellation, we will catch the
@@ -2072,6 +2080,8 @@ cdef execute_task_with_cancellation_handler(
     finally:
         with current_task_id_lock:
             current_task_id = None
+
+        task_cancellation_context.reset(token)
 
         if (<int>task_type == <int>TASK_TYPE_NORMAL_TASK):
             if original_visible_accelerator_env_vars:
@@ -2244,6 +2254,26 @@ cdef c_bool kill_main_task(const CTaskID &task_id) nogil:
                 return False
             _thread.interrupt_main()
             return True
+
+cdef c_bool mark_task_canceled(const CTaskID &task_id) nogil:
+    """Mark a task as canceled without interrupting it.
+
+    This is used for sync actor tasks where we want to set the cancellation
+    flag so is_canceled() returns True.
+    """
+    with gil:
+        task_id_to_cancel = TaskID(task_id.Binary())
+
+        # Set the cancellation flag in the context
+        ctx = task_cancellation_context.get()
+        if ctx is not None:
+            if TaskID(ctx.c_task_id.Binary()) == task_id_to_cancel:
+                ctx.cancel()
+                RAY_LOG(DEBUG) << "Marked sync actor task as canceled: " << task_id_to_cancel
+                return True
+
+        return False
+
 
 
 cdef CRayStatus check_signals() nogil:
@@ -2631,6 +2661,24 @@ cdef class GcsClient:
                 ray._private.utils._CALLED_FREQ[name] += 1
         return getattr(self.inner, name)
 
+
+cdef class TaskCancellationContext:
+      cdef:
+          CTaskID c_task_id
+          public bint _is_canceled
+
+      def __init__(self, TaskID task_id):
+          self.c_task_id = task_id.native()
+          self._is_canceled = False
+
+      @property
+      def is_canceled(self):
+          return self._is_canceled
+
+      def cancel(self):
+          self._is_canceled = True
+
+
 cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,
@@ -2683,6 +2731,7 @@ cdef class CoreWorker:
         options.get_lang_stack = get_py_stack
         options.is_local_mode = local_mode
         options.kill_main = kill_main_task
+        options.mark_task_canceled = mark_task_canceled
         options.actor_shutdown_callback = call_actor_shutdown
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port

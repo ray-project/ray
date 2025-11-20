@@ -4026,10 +4026,14 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
         is_running = running_tasks_.find(task_id) != running_tasks_.end();
       }
 
-      // Attempt to cancel the task if it's running.
-      // We can't currently interrupt running tasks for non-async actors.
-      if (is_running && is_async_actor) {
-        success = options_.cancel_async_actor_task(task_id);
+      if (is_running) {
+        if (is_async_actor) {
+          // Attempt to cancel the task if it's running for async actor.
+          success = options_.cancel_async_actor_task(task_id);
+        } else {
+          // Mark canceled in the context for sync actor (no interruption)
+          success = options_.mark_task_canceled(task_id);
+        }
       } else {
         // If the task wasn't running, it was successfully cancelled by
         // CancelQueuedActorTask. Else if this isn't an asyncio actor, return success so

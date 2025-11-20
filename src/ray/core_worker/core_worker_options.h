@@ -89,6 +89,7 @@ struct CoreWorkerOptions {
         unhandled_exception_handler(nullptr),
         get_lang_stack(nullptr),
         kill_main(nullptr),
+        mark_task_canceled(nullptr),
         cancel_async_actor_task(nullptr),
         actor_shutdown_callback(nullptr),
         is_local_mode(false),
@@ -159,6 +160,8 @@ struct CoreWorkerOptions {
   // Function that tries to interrupt the currently running Python thread if its
   // task ID matches the one given.
   std::function<bool(const TaskID &task_id)> kill_main;
+  /// Function that set the is_canceled in context to True.
+  std::function<bool(const TaskID &task_id)> mark_task_canceled;
   // Function to cancel a running asyncio actor task.
   // Should return a boolean indicating if the task was successfully cancelled or not.
   // If not, the client will retry.
