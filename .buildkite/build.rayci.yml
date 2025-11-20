@@ -64,18 +64,6 @@ steps:
     depends_on: manylinux
     job_env: manylinux
 
-  - label: ":tapioca: build: doc"
-    key: doc_build
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci/doc:cmd_build
-    depends_on: docbuild
-    job_env: docbuild-py3.12
-    tags:
-      - oss
-      - doc
-      - skip-on-premerge
-
   - label: ":tapioca: build: ray py{{matrix}} docker (x86_64)"
     key: ray_images
     tags:
@@ -97,7 +85,6 @@ steps:
       - raycudabase
       - raycpubase
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -123,7 +110,6 @@ steps:
       - raycpubaseextra
       - raycudabaseextra
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"

@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -28,6 +29,7 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/ray_syncer/common.h"
+#include "ray/rpc/authentication/authentication_token.h"
 #include "src/ray/protobuf/ray_syncer.grpc.pb.h"
 
 namespace ray::syncer {
@@ -197,7 +199,10 @@ class RaySyncer {
 /// like tree-based one.
 class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
  public:
-  explicit RaySyncerService(RaySyncer &syncer) : syncer_(syncer) {}
+  explicit RaySyncerService(
+      RaySyncer &syncer,
+      std::optional<ray::rpc::AuthenticationToken> auth_token = std::nullopt)
+      : syncer_(syncer), auth_token_(std::move(auth_token)) {}
 
   grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage> *StartSync(
       grpc::CallbackServerContext *context) override;
@@ -205,6 +210,9 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
  private:
   // The ray syncer this RPC wrappers of.
   RaySyncer &syncer_;
+  // Authentication token for validation, will be empty if token authentication is
+  // disabled
+  std::optional<ray::rpc::AuthenticationToken> auth_token_;
 };
 
 }  // namespace ray::syncer

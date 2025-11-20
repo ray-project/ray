@@ -1,4 +1,4 @@
-load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_test")
 load("//bazel:python.bzl", "doctest", "doctest_each", "py_test_run_all_notebooks", "py_test_run_all_subdirectory")
 
@@ -299,6 +299,7 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/stable_diffusion.py",
         "source/serve/doc_code/object_detection.py",
         "source/serve/doc_code/vllm_example.py",
+        "source/serve/doc_code/cross_node_parallelism_example.py",
         "source/serve/doc_code/llm/llm_yaml_config_example.py",
         "source/serve/doc_code/llm/qwen_example.py",
     ],
@@ -342,16 +343,30 @@ filegroup(
     visibility = ["//doc:__subpackages__"],
 )
 
-# GPU Tests
+# GPU Tests (standard GPU tests)
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/llm/doc_code/serve/**/*.py"],
-    exclude = [],
+    exclude = ["source/llm/doc_code/serve/multi_gpu/**/*.py"],
     extra_srcs = [],
     data = ["source/llm/doc_code/serve/qwen/llm_config_example.yaml"],
     tags = [
         "exclusive",
         "gpu",
+        "team:llm",
+    ],
+)
+
+# Multi-GPU Tests (4+ GPUs)
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/llm/doc_code/serve/multi_gpu/**/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = [
+        "exclusive",
+        "gpu",
+        "multi_gpu_4",
         "team:llm",
     ],
 )
@@ -505,7 +520,7 @@ py_test(
         ["external/*.py"],
         exclude = ["external/test_hashes.py"],
     ),
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py310"],
     main = "external/test_hashes.py",
     tags = ["team:ml"],
     deps = [

@@ -68,30 +68,9 @@ py_test_module_list(
         "test_reference_counting_2.py",
         "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
+        "test_runtime_env_agent_auth.py",
         "test_util_helpers.py",
     ],
-    tags = [
-        "exclusive",
-        "medium_size_python_tests_a_to_j",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test_module_list(
-    size = "medium",
-    env = {
-        "RAY_enable_open_telemetry": "1",
-    },
-    files = [
-        "test_metric_cardinality.py",
-        "test_metrics_agent.py",
-        "test_task_metrics.py",
-    ],
-    name_suffix = "_otel",
     tags = [
         "exclusive",
         "medium_size_python_tests_a_to_j",
@@ -225,6 +204,7 @@ py_test_module_list(
         "test_placement_group_5.py",
         "test_scheduling.py",
         "test_scheduling_2.py",
+        "test_token_auth_integration.py",
         "test_wait.py",
     ],
     name_suffix = "_client_mode",
@@ -547,6 +527,7 @@ py_test_module_list(
         "test_distributed_sort.py",
         "test_environ.py",
         "test_error_ray_not_initialized.py",
+        "test_exceptions.py",
         "test_gcs_pubsub.py",
         "test_get_or_create_actor.py",
         "test_grpc_client_credentials.py",
