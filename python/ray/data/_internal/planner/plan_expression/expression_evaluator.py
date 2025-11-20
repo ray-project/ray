@@ -623,15 +623,28 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
     def visit_udf(self, expr: UDFExpr) -> Union[BlockColumn, ScalarType]:
         """Visit a UDF expression and return the result of the function call.
 
+        For callable class UDFs running in an actor context, this will use the
+        instance from the actor context instead of the wrapped function.
+
         Args:
             expr: The UDF expression.
 
         Returns:
             The result of the UDF call as a BlockColumn.
         """
+        from ray.data._internal.planner.plan_udf_map_op import (
+            call_udf_from_actor_context,
+        )
+
         args = [self.visit(arg) for arg in expr.args]
         kwargs = {k: self.visit(v) for k, v in expr.kwargs.items()}
-        result = expr.fn(*args, **kwargs)
+
+        # Try to call from actor context (handles both sync and async UDFs)
+        result = call_udf_from_actor_context(expr.fn_constructor_class, args, kwargs)
+
+        if result is None:
+            # Not in actor context - use regular function call
+            result = expr.fn(*args, **kwargs)
 
         if not isinstance(result, (pd.Series, np.ndarray, pa.Array, pa.ChunkedArray)):
             function_name = expr.fn.__name__
