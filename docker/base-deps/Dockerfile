@@ -56,6 +56,10 @@ APT_PKGS=(
     openssh-client
     gnupg
     gfortran
+    libopenblas-dev
+    liblapack-dev
+    pkg-config
+    build-essential
 )
 
 apt-get install -y "${APT_PKGS[@]}"
