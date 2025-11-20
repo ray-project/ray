@@ -201,6 +201,7 @@ def _split_predicate_by_columns(
           or None if no partition predicates can be extracted.
 
     Examples:
+        >>> from ray.data.expressions import col
         Pure data predicate:
 
         >>> result = _split_predicate_by_columns(col("data1") > 5, {"partition_col"})
