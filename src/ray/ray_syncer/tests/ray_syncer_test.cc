@@ -185,8 +185,10 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
       /* remote_node_id */ node_id.Binary(),
       /* message_processor */
       [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
-      /* batch_size */ 1,
-      /* batch_delay_ms */ 0);
+      /* max_batch_size */ 1,
+      /* max_batch_delay_ms */ 0);
+  sync_reactor.SetSelfRef(std::shared_ptr<MockRaySyncerBidiReactorBase<MockReactor>>(
+      &sync_reactor, [](auto *) {}));
   auto from_node_id = NodeID::FromRandom();
   auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
   auto msg_ptr1 = std::make_shared<RaySyncMessage>(msg);
@@ -226,6 +228,8 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend) {
       [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
       /* max_batch_size */ 3,
       /* max_batch_delay_ms */ 100);
+  sync_reactor.SetSelfRef(std::shared_ptr<MockRaySyncerBidiReactorBase<MockReactor>>(
+      &sync_reactor, [](auto *) {}));
 
   auto from_node_id1 = NodeID::FromRandom();
   auto from_node_id2 = NodeID::FromRandom();
@@ -265,6 +269,8 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeoutTriggerSend) {
       [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
       /* max_batch_size */ 3,
       /* max_batch_delay_ms */ 100);
+  sync_reactor.SetSelfRef(std::shared_ptr<MockRaySyncerBidiReactorBase<MockReactor>>(
+      &sync_reactor, [](auto *) {}));
 
   auto from_node_id = NodeID::FromRandom();
   auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
@@ -360,11 +366,11 @@ struct SyncerServerTest {
       io_context.post(
           [&p, this]() mutable {
             for (const auto &[node_id, conn] : syncer->sync_reactors_) {
-              auto ptr = dynamic_cast<RayServerBidiReactor *>(conn);
+              auto ptr = dynamic_cast<RayServerBidiReactor *>(conn.get());
               size_t remainings = 0;
               if (ptr == nullptr) {
-                remainings =
-                    dynamic_cast<RayClientBidiReactor *>(conn)->sending_buffer_.size();
+                remainings = dynamic_cast<RayClientBidiReactor *>(conn.get())
+                                 ->sending_buffer_.size();
               } else {
                 remainings = ptr->sending_buffer_.size();
               }

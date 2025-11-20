@@ -83,7 +83,7 @@ void RaySyncer::Connect(const std::string &node_id,
   boost::asio::dispatch(
       io_context_.get_executor(), std::packaged_task<void()>([=]() {
         auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
-        auto *reactor = new RayClientBidiReactor(
+        auto reactor = std::make_shared<RayClientBidiReactor>(
             /* remote_node_id */ node_id,
             /* local_node_id */ GetLocalNodeID(),
             /* io_context */ io_context_,
@@ -94,7 +94,7 @@ void RaySyncer::Connect(const std::string &node_id,
               const std::string &remote_node_id = bidi_reactor->GetRemoteNodeID();
               auto iter = sync_reactors_.find(remote_node_id);
               if (iter != sync_reactors_.end()) {
-                if (iter->second != bidi_reactor) {
+                if (iter->second.get() != bidi_reactor) {
                   // The client is already reconnected.
                   return;
                 }
@@ -116,13 +116,14 @@ void RaySyncer::Connect(const std::string &node_id,
             /* stub */ std::move(stub),
             /* max_batch_size */ max_batch_size_,
             /* max_batch_delay_ms */ max_batch_delay_ms_);
+        reactor->SetSelfRef(reactor);
         Connect(reactor);
         reactor->StartCall();
       }))
       .get();
 }
 
-void RaySyncer::Connect(RaySyncerBidiReactor *reactor) {
+void RaySyncer::Connect(std::shared_ptr<RaySyncerBidiReactor> reactor) {
   // Bind rpc completion callback.
   if (on_rpc_completion_) {
     reactor->SetRpcCompletionCallbackForOnce(on_rpc_completion_);
@@ -223,7 +224,7 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) 
 }
 
 ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *context) {
-  auto reactor = new RayServerBidiReactor(
+  auto reactor = std::make_shared<RayServerBidiReactor>(
       context,
       syncer_.GetIOContext(),
       syncer_.GetLocalNodeID(),
@@ -236,7 +237,7 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
         const auto &node_id = bidi_reactor->GetRemoteNodeID();
         auto iter = syncer_.sync_reactors_.find(node_id);
         if (iter != syncer_.sync_reactors_.end()) {
-          if (iter->second != bidi_reactor) {
+          if (iter->second.get() != bidi_reactor) {
             // There is a new connection to the node, no need to clean up.
             // This can happen when there is transient network error and the client
             // reconnects. The sequence of events are:
@@ -258,10 +259,12 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
   RAY_LOG(DEBUG).WithField(NodeID::FromBinary(reactor->GetRemoteNodeID()))
       << "Get connection";
 
+  reactor->SetSelfRef(reactor);
+
   // If the reactor has already called Finish() (e.g., due to authentication failure),
   // skip registration. The reactor will clean itself up via OnDone().
   if (reactor->IsFinished()) {
-    return reactor;
+    return reactor.get();
   }
 
   // Disconnect exiting connection if there is any.
@@ -269,7 +272,7 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
   // and the client reconnects.
   syncer_.Disconnect(reactor->GetRemoteNodeID());
   syncer_.Connect(reactor);
-  return reactor;
+  return reactor.get();
 }
 
 }  // namespace ray::syncer

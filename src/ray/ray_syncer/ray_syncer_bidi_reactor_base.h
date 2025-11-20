@@ -82,8 +82,9 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     node_versions[message->message_type()] = message->version();
     sending_buffer_[std::make_pair(message->node_id(), message->message_type())] =
         std::move(message);
-    // In single-threaded io_context, buffer size can only reach max_batch_size_ exactly.
-    if (sending_buffer_.size() == max_batch_size_ || max_batch_delay_ms_.count() == 0) {
+    // sending_buffer_ size can be greater than max_batch_size_ as previous message batch
+    // might be sending in progress, i.e., making sending_ = true.
+    if (sending_buffer_.size() >= max_batch_size_ || max_batch_delay_ms_.count() == 0) {
       // Send immediately if batch size limit is reached or delay is 0
       if (batch_timer_active_) {
         batch_timer_.cancel();
@@ -97,7 +98,13 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
                        << " ms";
         batch_timer_active_ = true;
         batch_timer_.expires_after(max_batch_delay_ms_);
-        batch_timer_.async_wait([this](const boost::system::error_code &ec) {
+        // Use weak_ptr to avoid use-after-free when the reactor is destroyed.
+        auto weak_self = std::weak_ptr<RaySyncerBidiReactor>(self_ref_);
+        batch_timer_.async_wait([weak_self, this](const boost::system::error_code &ec) {
+          auto self = weak_self.lock();
+          if (!self) {
+            return;
+          }
           batch_timer_active_ = false;
           if (!ec && !*IsDisconnected()) {
             StartSend();
@@ -136,7 +143,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     RAY_LOG(DEBUG) << "Receive message batch with messages_size="
                    << message_batch->messages_size();
 
-    for (const auto &[key, message] : message_batch->messages()) {
+    for (const auto &message : message_batch->messages()) {
       auto &node_versions = GetNodeComponentVersions(message.node_id());
       RAY_LOG(DEBUG) << "Receive update: "
                      << " message_type=" << message.message_type()
@@ -178,8 +185,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       RAY_LOG(DEBUG) << "Adding message version: " << message->version()
                      << " from node: " << NodeID::FromBinary(message->node_id())
                      << " to message batch";
-      (*message_batch->mutable_messages())[NodeID::FromBinary(message->node_id()).Hex()] =
-          *message;
+      *message_batch->add_messages() = *message;
     }
 
     RAY_LOG(DEBUG) << "Created message batch containing "

@@ -161,7 +161,7 @@ class RaySyncer {
   std::vector<std::string> GetAllConnectedNodeIDs() const;
 
  private:
-  void Connect(RaySyncerBidiReactor *connection);
+  void Connect(std::shared_ptr<RaySyncerBidiReactor> connection);
 
   std::shared_ptr<bool> stopped_;
 
@@ -175,7 +175,7 @@ class RaySyncer {
   const std::string local_node_id_;
 
   /// Manage connections. Here the key is the NodeID in binary form.
-  absl::flat_hash_map<std::string, RaySyncerBidiReactor *> sync_reactors_;
+  absl::flat_hash_map<std::string, std::shared_ptr<RaySyncerBidiReactor>> sync_reactors_;
 
   /// The local node state
   std::unique_ptr<NodeState> node_state_;

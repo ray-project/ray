@@ -607,6 +607,17 @@ GcsServer::StorageType GcsServer::GetStorageType() const {
 }
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
+  if (RayConfig::instance().gcs_resource_broadcast_max_batch_delay_ms() > 0 &&
+      RayConfig::instance().gcs_resource_broadcast_max_batch_size() == 1) {
+    RAY_LOG(WARNING) << "Configuration inconsistency detected: "
+                        "gcs_resource_broadcast_max_batch_delay_ms > 0 "
+                     << "but gcs_resource_broadcast_max_batch_size = 1. The delay "
+                        "setting will have no effect "
+                     << "since only one message can be batched at a time. Consider "
+                        "increasing batch_size or "
+                     << "setting delay_ms to 0.";
+  }
+
   ray_syncer_ = std::make_unique<syncer::RaySyncer>(
       io_context_provider_.GetIOContext<syncer::RaySyncer>(),
       kGCSNodeID.Binary(),

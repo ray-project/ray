@@ -94,7 +94,7 @@ void RayServerBidiReactor::OnDone() {
   io_context_.dispatch(
       [this, cleanup_cb = cleanup_cb_, remote_node_id = GetRemoteNodeID()]() {
         cleanup_cb(this, false);
-        delete this;
+        self_ref_.reset();
       },
       "");
 }

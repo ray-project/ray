@@ -57,7 +57,7 @@ void RayClientBidiReactor::OnDone(const grpc::Status &status) {
   io_context_.dispatch(
       [this, status]() {
         cleanup_cb_(this, !status.ok());
-        delete this;
+        self_ref_.reset();
       },
       "");
 }

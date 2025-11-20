@@ -107,12 +107,22 @@ class RaySyncerBidiReactor {
   /// Return true if it's disconnected.
   std::shared_ptr<bool> IsDisconnected() const { return disconnected_; }
 
+  // Set self-owned shared_ptr used to guard lifetime for async callbacks via weak_ptr
+  // lock.
+  void SetSelfRef(std::shared_ptr<RaySyncerBidiReactor> self) {
+    self_ref_ = std::move(self);
+  }
+
   // Node id which is communicating with the current reactor.
   std::string remote_node_id_;
 
  protected:
   /// Sync message observer, which is a callback on received message response.
   RpcCompletionCallback on_rpc_completion_;
+
+  /// Self-owned shared_ptr for lifetime guarding in async callbacks (timer/dispatch). Set
+  /// by caller/factory, released in OnDone.
+  std::shared_ptr<RaySyncerBidiReactor> self_ref_;
 
  private:
   virtual void DoDisconnect() = 0;

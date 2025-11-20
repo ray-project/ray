@@ -62,7 +62,7 @@ message RaySyncMessage {
 
 message RaySyncMessageBatch {
   // Batch of RaySyncMessages.
-  map<string, RaySyncMessage> messages = 1;
+  repeated RaySyncMessage messages = 1;
 }
 
 service RaySyncer {
