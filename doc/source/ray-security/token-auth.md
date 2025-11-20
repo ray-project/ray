@@ -12,9 +12,9 @@ Token authentication is available in Ray 2.52.0 or later.
 
 To enable token authentication, set the environment variable `RAY_AUTH_MODE=token` before starting your Ray cluster. When you start a Ray cluster with authentication enabled, all external Ray APIs and internal communications are authenticated using the token as a shared secret.
 
-The process for generating and configuring authentication tokens differs depending on how you launch your Ray cluster. When you start a local instance of Ray using `ray.init()` with token authentication enabled, a token will automatically be generated and used.
+The process for generating and configuring authentication tokens differs depending on how you launch your Ray cluster. When you start a local instance of Ray using `ray.init()` with token authentication enabled, Ray automatically generates and uses a token.
 
-To manually generate and retrieve a local token, for example if using `ray start --head` instead of `ray.init()` you can use `ray get-auth-token [--generate]` to retrieve and/or generate a token.
+Other cluster launching methods require that you generate a token before starting the cluster. You can `ray get-auth-token [--generate]` to retrieve your existing token or generate a new one.
 
 :::{note}
 Authentication is disabled by default in Ray 2.52.0. Ray plans to enable token authentication by default in a future release. We recommend enabling token authentication to protect your cluster from unauthorized access.
@@ -58,7 +58,7 @@ To enable authentication on your local machine for development, set the `RAY_AUT
 
 ### Local development with ray.init()
 
-When you run a script containing `ray.init()` after setting `RAY_AUTH_MODE=token` as an environment variable, Ray handles authentication automatically:
+When you run a script that starts a local Ray instance with `ray.init()` after setting `RAY_AUTH_MODE=token` as an environment variable, Ray handles authentication automatically:
 
 - If a token doesn't already exist at `~/.ray/auth_token`, Ray generates a token and saves it to the file. A log message displays to confirm token creation.
 - If a token already exists at `~/.ray/auth_token`, Ray reuses the existing token automatically.
@@ -70,7 +70,7 @@ $ export RAY_AUTH_MODE=token
 $ python -c "import ray;ray.init()"
 ```
 
-On the first run, this command (or any other script that initializes Ray) will log a line similar to the following:
+On the first run, this command (or any other script that initializes Ray) logs a line similar to the following:
 
 ```bash
 Generated new authentication token and saved to /Users/<username>/.ray/auth_token
@@ -197,11 +197,11 @@ export RAY_AUTH_MODE=token
 ray get-auth-token
 ```
 
-Paste the token in the prompt and click **Submit**. The token gets stored as a cookie for a maximum of 30 days. When you open the dashboard for a new cluster that uses a different token, you will be prompted to re-enter the token.
+Paste the token in the prompt and click **Submit**. The token gets stored as a cookie for a maximum of 30 days. When you open the dashboard for a cluster that uses a different token, a prompt appears to enter the token for that cluster.
 
 #### Step 5: Submit a Ray job
 
-You can submit a Ray job using token authentication via the secure SSH port forwarding:
+You can submit a Ray job with token authentication using secure SSH port forwarding:
 
 ```bash
 export RAY_AUTH_MODE=token
