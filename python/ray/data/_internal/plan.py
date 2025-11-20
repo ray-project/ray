@@ -80,7 +80,7 @@ class ExecutionPlan:
         # Set when a Dataset is constructed with this plan
         self._dataset_uuid = None
         # Index of the current execution.
-        self._run_index = 0
+        self._run_index = -1
 
         self._dataset_name = None
 
@@ -100,12 +100,9 @@ class ExecutionPlan:
         """Create an executor for this plan."""
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
+        self._run_index += 1
         executor = StreamingExecutor(self._context, self.get_dataset_id())
         return executor
-
-    def increment_run_index(self):
-        """Increment the suffix qualifier of a dataset during epoch training."""
-        self._run_index += 1
 
     def __repr__(self) -> str:
         return (
