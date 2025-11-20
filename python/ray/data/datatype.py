@@ -965,3 +965,51 @@ class DataType:
                 datetime.timedelta,
             )
         return False
+
+
+def _matches_dtype(column_dtype: "DataType", mapping_key: "DataType") -> bool:
+    """Check if a column dtype matches a mapping key.
+
+    Supports both exact matching and pattern matching using DataType pattern types.
+
+    Args:
+        column_dtype: The dtype of the column
+        mapping_key: The dtype key from the mapping (may be a pattern)
+
+    Returns:
+        True if they match according to the matching rules
+
+    Examples:
+        >>> dt1 = DataType.int64()
+        >>> dt2 = DataType.int64()
+        >>> _matches_dtype(dt1, dt2)
+        True
+        >>> dt_pattern = DataType.temporal()  # Pattern-matching type
+        >>> dt_timestamp = DataType.from_arrow(pa.timestamp('us'))
+        >>> _matches_dtype(dt_timestamp, dt_pattern)
+        True
+    """
+    # Exact match always works
+    if column_dtype == mapping_key:
+        return True
+
+    # Check if mapping_key is a pattern (pattern-matching types have _physical_dtype=None)
+    if not mapping_key.is_pattern_matching():
+        return False
+
+    # Pattern matching based on logical type using enum constants
+    logical_dtype = mapping_key._logical_dtype
+
+    if logical_dtype == _LogicalDataType.TEMPORAL:
+        return column_dtype.is_temporal_type()
+    elif logical_dtype in (_LogicalDataType.LIST, _LogicalDataType.LARGE_LIST):
+        return column_dtype.is_list_type()
+    elif logical_dtype == _LogicalDataType.STRUCT:
+        return column_dtype.is_struct_type()
+    elif logical_dtype == _LogicalDataType.MAP:
+        return column_dtype.is_map_type()
+    elif logical_dtype == _LogicalDataType.ANY:
+        # Generic ANY pattern - matches everything
+        return True
+
+    return False
