@@ -19,10 +19,10 @@
 #include <vector>
 
 #include "ray/common/asio/io_service_pool.h"
-#include "ray/common/asio/postable.h"
 #include "ray/common/gcs_callback_types.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/gcs/postable/postable.h"
 
 namespace ray {
 
