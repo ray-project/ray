@@ -14,6 +14,8 @@ export FOSSA_API_KEY
 
 mkdir -p "$OUTPUT_FOLDER"
 
+bazelisk build //:gen_ray_pkg
+
 source "$HOME/venv/bin/activate"
 python ci/fossa/ray_oss_analysis.py -cmd bazelisk -p //:gen_ray_pkg -o "$OUTPUT_FOLDER" --log-file "$OUTPUT_FOLDER/package_license_analysis.log"
 cd "$OUTPUT_FOLDER"; "$FOSSA_BIN" analyze -p ray --fossa-deps-file fossa_deps.yaml
