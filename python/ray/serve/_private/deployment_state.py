@@ -1721,6 +1721,9 @@ class DeploymentRankManager:
                     f"Rank for {replica_id} already assigned: {self._replica_rank_manager.get_rank(replica_id)}"
                 )
 
+            # Track the replica-to-node mapping
+            self._replica_to_node[replica_id] = node_id
+
             # Assign global rank
             rank = self._replica_rank_manager.assign_rank(replica_id)
 
@@ -1732,9 +1735,6 @@ class DeploymentRankManager:
             node_rank = self._node_rank_manager.get_rank(node_id)
             # Assign local rank within the node
             local_rank = self._local_rank_managers[node_id].assign_rank(replica_id)
-
-            # Track the replica-to-node mapping
-            self._replica_to_node[replica_id] = node_id
 
             return ReplicaRank(rank=rank, node_rank=node_rank, local_rank=local_rank)
 
