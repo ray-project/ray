@@ -1201,18 +1201,12 @@ class DatasetStatsSummary:
             output_num_rows = self.operators_stats[-1].output_num_rows
             total_num_out_rows = output_num_rows["sum"] if output_num_rows else 0
             wall_time = self.get_total_wall_time()
-            total_time_all_blocks = self.get_total_time_all_blocks()
-            if total_num_out_rows and wall_time and total_time_all_blocks:
+            if total_num_out_rows and wall_time:
                 out += "\n"
                 out += "Dataset throughput:\n"
                 out += (
                     "\t* Ray Data throughput:"
                     f" {total_num_out_rows / wall_time} "
-                    "rows/s\n"
-                )
-                out += (
-                    "\t* Estimated single node throughput:"
-                    f" {total_num_out_rows / total_time_all_blocks} "
                     "rows/s\n"
                 )
         if verbose_stats_logs and add_global_stats:
@@ -1666,7 +1660,7 @@ class OperatorStatsSummary:
                 "rows/s\n"
             )
             out += (
-                indent + "\t* Estimated single node throughput:"
+                indent + "\t* Estimated single task throughput:"
                 f" {total_num_out_rows / wall_time_stats['sum']} "
                 "rows/s\n"
             )
