@@ -587,5 +587,6 @@ __all__ = [
     "vLLMEngineProcessorConfig",
     "SGLangEngineProcessorConfig",
     "ServeDeploymentProcessorConfig",
+    "build_llm_processor",
     "build_processor",
 ]
