@@ -308,8 +308,8 @@ class TrainController:
             bundle_label_selector = scaling_config.bundle_label_selector
         elif isinstance(scaling_config.bundle_label_selector, dict):
             bundle_label_selector = [
-                scaling_config.bundle_label_selector.copy()
-            ] * num_workers
+                scaling_config.bundle_label_selector.copy() for _ in range(num_workers)
+            ]
         elif scaling_config.bundle_label_selector is not None:
             raise ValueError(
                 "`bundle_label_selector` must be a list of dictionaries or a single dictionary."
@@ -325,7 +325,9 @@ class TrainController:
                             "Cannot set `ScalingConfig.bundle_label_selector` and "
                             "add a callback that returns a bundle_label_selector."
                         )
-                    bundle_label_selector = [selector.copy()] * num_workers
+                    bundle_label_selector = [
+                        selector.copy() for _ in range(num_workers)
+                    ]
                     break
         except Exception as e:
             return ControllerError(e)
