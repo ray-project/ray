@@ -178,7 +178,7 @@ class Concat(StatefulShuffleAggregation):
     def finalize(self, partition_id: int) -> Block:
         block = self._partition_block_builders[partition_id].build()
 
-        if self._should_sort:
+        if self._should_sort and len(block) > 0:
             block = block.sort_by([(k, "ascending") for k in self._key_columns])
 
         return block
