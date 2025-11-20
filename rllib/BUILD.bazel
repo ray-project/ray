@@ -840,26 +840,27 @@ py_test(
 
 # DreamerV3
 # takes too long (up to 20-30min to learn -200 on 1 GPU)
-# # Pendulum
+# Pendulum
 # py_test(
-#    name = "learning_tests_pendulum_dreamerv3_gpu",
-#    size = "large",
-#    srcs = ["tuned_examples/dreamerv3/pendulum_dreamerv3.py"],
-#    args = [
-#        "--as-test",
-#        "--num-gpus-per-learner=1",
-#        "--num-learners=1",
-#    ],
-#    main = "tuned_examples/marwil/cartpole_marwil.py",
-#    tags = [
-#        "exclusive",
-#        "gpu",
-#        "learning_tests",
-#        "learning_tests_continuous",
-#        "learning_tests_pytorch_use_all_core",
-#        "team:rllib",
-#        "torch_only",
-#    ],
+#     name = "learning_tests_pendulum_dreamerv3_gpu",
+#     size = "large",
+#     srcs = ["tuned_examples/dreamerv3/pendulum_dreamerv3.py"],
+#     args = [
+#         "--as-test",
+#         "--num-gpus-per-learner=1",
+#         "--num-learners=1",
+#         "--num-env-runners=4",
+#     ],
+#     main = "tuned_examples/dreamerv3/pendulum_dreamerv3.py",
+#     tags = [
+#         "exclusive",
+#         "gpu",
+#         "learning_tests",
+#         "learning_tests_continuous",
+#         "learning_tests_pytorch_use_all_core",
+#         "team:rllib",
+#         "torch_only",
+#     ],
 # )
 
 # IMPALA
@@ -2894,18 +2895,21 @@ py_test(
 )
 
 # TODO (sven, simon): This runs fine locally, but fails in the CI
-# py_test(
-#    # TODO(#50340): test is flaky.
-#    name = "test_offline_prelearner",
-#    tags = ["team:rllib", "offline"],
-#    size = "medium",
-#    srcs = ["offline/tests/test_offline_prelearner.py"],
-#    # Include the offline data files.
-#    data = [
-#        "tests/data/cartpole/cartpole-v1_large",
-#        "tests/data/cartpole/large.json",
-#    ]
-# )
+py_test(
+    # TODO(#50340): test is flaky.
+    name = "test_offline_prelearner",
+    size = "medium",
+    srcs = ["offline/tests/test_offline_prelearner.py"],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+        "tests/data/cartpole/large.json",
+    ],
+    tags = [
+        "offline",
+        "team:rllib",
+    ],
+)
 
 # --------------------------------------------------------------------
 # Policies
@@ -4201,7 +4205,7 @@ py_test(
     srcs = ["examples/envs/async_gym_env_vectorization.py"],
     args = [
         "--as-test",
-        "--vectorize-mode=BOTH",
+        "--vectorize-mode=both",
     ],
     main = "examples/envs/async_gym_env_vectorization.py",
     tags = [

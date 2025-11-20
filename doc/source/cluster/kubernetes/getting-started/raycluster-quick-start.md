@@ -28,7 +28,7 @@ Once the KubeRay operator is running, you're ready to deploy a RayCluster. Creat
 
 ```sh
 # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-helm install raycluster kuberay/ray-cluster --version 1.4.2
+helm install raycluster kuberay/ray-cluster --version 1.5.0
 ```
 
 
