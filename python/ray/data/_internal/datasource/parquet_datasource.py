@@ -345,7 +345,7 @@ class ParquetDatasource(Datasource):
             )
 
         # Derive expected target schema of the blocks being read
-        target_schema = _derive_schema(
+        target_schema = self._derive_schema(
             self._read_schema,
             file_schema=self._file_schema,
             partition_schema=self._partition_schema,
@@ -450,6 +450,68 @@ class ParquetDatasource(Datasource):
         in_mem_size = sum([f.file_size for f in fragments]) * self._encoding_ratio
 
         return round(in_mem_size)
+
+    @staticmethod
+    def _derive_schema(
+        read_schema: Optional["pyarrow.Schema"],
+        *,
+        file_schema: "pyarrow.Schema",
+        partition_schema: Optional["pyarrow.Schema"],
+        projected_columns: Optional[List[str]],
+        _block_udf,
+    ) -> "pyarrow.Schema":
+        """Derives target schema for read operation"""
+
+        import pyarrow as pa
+
+        # Use target read schema if provided
+        if read_schema is not None:
+            target_schema = read_schema
+        else:
+            file_schema_fields = list(file_schema)
+            partition_schema_fields = (
+                list(partition_schema) if partition_schema is not None else []
+            )
+
+            # Otherwise, fallback to file + partitioning schema by default
+            target_schema = pa.schema(
+                fields=(
+                    file_schema_fields
+                    + [
+                        f
+                        for f in partition_schema_fields
+                        # Ignore fields from partition schema overlapping with
+                        # file's schema
+                        if file_schema.get_field_index(f.name) == -1
+                    ]
+                ),
+                metadata=file_schema.metadata,
+            )
+
+        # Project schema if necessary
+        if projected_columns is not None:
+            target_schema = pa.schema(
+                [target_schema.field(column) for column in projected_columns],
+                target_schema.metadata,
+            )
+
+        if _block_udf is not None:
+            # Try to infer dataset schema by passing dummy table through UDF.
+            dummy_table = target_schema.empty_table()
+            try:
+                target_schema = _block_udf(dummy_table).schema.with_metadata(
+                    target_schema.metadata
+                )
+            except Exception:
+                logger.debug(
+                    "Failed to infer schema of dataset by passing dummy table "
+                    "through UDF due to the following exception:",
+                    exc_info=True,
+                )
+
+        check_for_legacy_tensor_type(target_schema)
+
+        return target_schema
 
 
 def read_fragments(
@@ -903,68 +965,6 @@ def _get_partition_columns_schema(
         fields.append(pa.field(field_name, field_type))
 
     return pa.schema(fields)
-
-
-def _derive_schema(
-    read_schema: Optional["pyarrow.Schema"],
-    *,
-    file_schema: "pyarrow.Schema",
-    partition_schema: Optional["pyarrow.Schema"],
-    projected_columns: Optional[List[str]],
-    _block_udf,
-) -> "pyarrow.Schema":
-    """Derives target schema for read operation"""
-
-    import pyarrow as pa
-
-    # Use target read schema if provided
-    if read_schema is not None:
-        target_schema = read_schema
-    else:
-        file_schema_fields = list(file_schema)
-        partition_schema_fields = (
-            list(partition_schema) if partition_schema is not None else []
-        )
-
-        # Otherwise, fallback to file + partitioning schema by default
-        target_schema = pa.schema(
-            fields=(
-                file_schema_fields
-                + [
-                    f
-                    for f in partition_schema_fields
-                    # Ignore fields from partition schema overlapping with
-                    # file's schema
-                    if file_schema.get_field_index(f.name) == -1
-                ]
-            ),
-            metadata=file_schema.metadata,
-        )
-
-    # Project schema if necessary
-    if projected_columns is not None:
-        target_schema = pa.schema(
-            [target_schema.field(column) for column in projected_columns],
-            target_schema.metadata,
-        )
-
-    if _block_udf is not None:
-        # Try to infer dataset schema by passing dummy table through UDF.
-        dummy_table = target_schema.empty_table()
-        try:
-            target_schema = _block_udf(dummy_table).schema.with_metadata(
-                target_schema.metadata
-            )
-        except Exception:
-            logger.debug(
-                "Failed to infer schema of dataset by passing dummy table "
-                "through UDF due to the following exception:",
-                exc_info=True,
-            )
-
-    check_for_legacy_tensor_type(target_schema)
-
-    return target_schema
 
 
 def _infer_data_and_partition_columns(
