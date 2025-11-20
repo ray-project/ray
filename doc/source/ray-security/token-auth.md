@@ -267,6 +267,5 @@ It's possible to stop and then restart a cluster using a different token. All cl
 
 ## Next steps
 
-- Learn about {ref}`runtime environment authentication <runtime-env-auth>` for securing remote dependencies
-- Read about {ref}`KubeRay authentication <kuberay-auth>` for Kubernetes-specific configuration
-- See {ref}`cluster security <cluster-security>` for comprehensive security guidelines
+- See {ref}`overall security guidelines <security>`.
+- Read about {ref}`KubeRay authentication <kuberay-auth>` for Kubernetes-specific configuration.
