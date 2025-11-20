@@ -18,68 +18,6 @@
 namespace ray {
 namespace gcs {
 
-class MockActorInfoAccessor : public ActorInfoAccessor {
- public:
-  MOCK_METHOD(void,
-              AsyncGet,
-              (const ActorID &actor_id,
-               const OptionalItemCallback<rpc::ActorTableData> &callback),
-              (override));
-  MOCK_METHOD(void,
-              AsyncGetAllByFilter,
-              (const std::optional<ActorID> &actor_id,
-               const std::optional<JobID> &job_id,
-               const std::optional<std::string> &actor_state_name,
-               const MultiItemCallback<rpc::ActorTableData> &callback,
-               int64_t timeout_ms),
-              (override));
-  MOCK_METHOD(void,
-              AsyncGetByName,
-              (const std::string &name,
-               const std::string &ray_namespace,
-               const OptionalItemCallback<rpc::ActorTableData> &callback,
-               int64_t timeout_ms),
-              (override));
-  MOCK_METHOD(void,
-              AsyncRegisterActor,
-              (const TaskSpecification &task_spec,
-               const StatusCallback &callback,
-               int64_t timeout_ms),
-              (override));
-  MOCK_METHOD(Status,
-              SyncRegisterActor,
-              (const TaskSpecification &task_spec),
-              (override));
-  MOCK_METHOD(void,
-              AsyncKillActor,
-              (const ActorID &actor_id,
-               bool force_kill,
-               bool no_restart,
-               const StatusCallback &callback,
-               int64_t timeout_ms),
-              (override));
-  MOCK_METHOD(void,
-              AsyncCreateActor,
-              (const TaskSpecification &task_spec,
-               const rpc::ClientCallback<rpc::CreateActorReply> &callback),
-              (override));
-  MOCK_METHOD(Status,
-              AsyncSubscribe,
-              (const ActorID &actor_id,
-               (const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe),
-               const StatusCallback &done),
-              (override));
-  MOCK_METHOD(Status, AsyncUnsubscribe, (const ActorID &actor_id), (override));
-  MOCK_METHOD(void, AsyncResubscribe, (), (override));
-  MOCK_METHOD(bool, IsActorUnsubscribed, (const ActorID &actor_id), (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
 class MockJobInfoAccessor : public JobInfoAccessor {
  public:
   MOCK_METHOD(void,
@@ -91,7 +29,7 @@ class MockJobInfoAccessor : public JobInfoAccessor {
               AsyncMarkFinished,
               (const JobID &job_id, const StatusCallback &callback),
               (override));
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               AsyncSubscribeAll,
               ((const SubscribeCallback<JobID, rpc::JobTableData> &subscribe),
                const StatusCallback &done),
@@ -191,7 +129,6 @@ class MockNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
               AsyncGetAllAvailableResources,
               (const MultiItemCallback<rpc::AvailableResources> &callback),
               (override));
-  MOCK_METHOD(void, AsyncResubscribe, (), (override));
   MOCK_METHOD(void,
               AsyncGetAllResourceUsage,
               (const ItemCallback<rpc::ResourceUsageBatchData> &callback),
@@ -231,7 +168,7 @@ namespace gcs {
 
 class MockWorkerInfoAccessor : public WorkerInfoAccessor {
  public:
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               AsyncSubscribeToWorkerFailures,
               (const ItemCallback<rpc::WorkerDeltaData> &subscribe,
                const StatusCallback &done),

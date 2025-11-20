@@ -1,14 +1,15 @@
-from collections import defaultdict
-import gymnasium as gym
-import numpy as np
 import time
 import unittest
+from collections import defaultdict
+
+import gymnasium as gym
+import numpy as np
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.impala import IMPALAConfig
-from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObservations
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.multi_agent_env import make_multi_agent

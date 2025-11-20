@@ -7,7 +7,6 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import asyncio
-from functools import wraps
 import gc
 import inspect
 import logging
@@ -16,13 +15,11 @@ import io
 import os
 import pickle
 import random
-import signal
 import sys
 import threading
 import time
 import traceback
 import _thread
-import typing
 from typing import (
     Any,
     AsyncGenerator,
@@ -43,7 +40,6 @@ import collections
 from libc.stdint cimport (
     int32_t,
     int64_t,
-    INT64_MAX,
     uint64_t,
     uint8_t,
 )
@@ -87,16 +83,17 @@ from ray.includes.common cimport (
     CRayStatus,
     CActorTableData,
     CErrorTableData,
+    CFallbackOption,
     CGcsClientOptions,
     CGcsNodeInfo,
     CJobTableData,
+    CLabelSelector,
     CLogBatch,
     CTaskArg,
     CTaskArgByReference,
     CTaskArgByValue,
     CTaskType,
     CPlacementStrategy,
-    CPythonFunction,
     CSchedulingStrategy,
     CPlacementGroupSchedulingStrategy,
     CNodeAffinitySchedulingStrategy,
@@ -105,9 +102,6 @@ from ray.includes.common cimport (
     CLabelMatchExpression,
     CLabelIn,
     CLabelNotIn,
-    CLabelExists,
-    CLabelDoesNotExist,
-    CLabelOperator,
     CRayFunction,
     CWorkerType,
     CJobConfig,
@@ -130,10 +124,8 @@ from ray.includes.common cimport (
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
     PLACEMENT_STRATEGY_STRICT_SPREAD,
-    CChannelType,
     RAY_ERROR_INFO_CHANNEL,
     RAY_LOG_CHANNEL,
-    GCS_ACTOR_CHANNEL,
     PythonGetLogBatchLines,
     WORKER_EXIT_TYPE_USER_ERROR,
     WORKER_EXIT_TYPE_SYSTEM_ERROR,
@@ -164,7 +156,6 @@ from ray.includes.libcoreworker cimport (
     CTaskOptions,
     ResourceMappingType,
     CFiberEvent,
-    CActorHandle,
     CGeneratorBackpressureWaiter,
     CReaderRefInfo,
 )
@@ -201,6 +192,7 @@ include "includes/metric.pxi"
 include "includes/setproctitle.pxi"
 include "includes/raylet_client.pxi"
 include "includes/gcs_subscriber.pxi"
+include "includes/rpc_token_authentication.pxi"
 
 import ray
 from ray.exceptions import (
@@ -233,7 +225,6 @@ from ray.util.scheduling_strategies import (
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
-from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo, ActorTableData
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
     sync_to_async,
@@ -243,12 +234,9 @@ from ray._private.async_compat import (
 )
 from ray._private.client_mode_hook import disable_client_hook
 import ray.core.generated.common_pb2 as common_pb2
-import ray._private.memory_monitor as memory_monitor
-import ray._private.profiling as profiling
 from ray._common.utils import decode
 from ray._private.utils import DeferSigint
-from ray._private.object_ref_generator import DynamicObjectRefGenerator
-from ray.util.annotations import PublicAPI
+from ray._private.object_ref_generator import ObjectRefGenerator, DynamicObjectRefGenerator
 from ray._private.custom_types import TensorTransportEnum
 from ray._private.gc_collect_manager import PythonGCThread
 
@@ -292,289 +280,7 @@ cdef optional[ObjectIDIndexType] NULL_PUT_INDEX = nullopt
 # It is thread-safe.
 async_task_id = contextvars.ContextVar('async_task_id', default=None)
 async_task_name = contextvars.ContextVar('async_task_name', default=None)
-async_task_function_name = contextvars.ContextVar('async_task_function_name',
-                                                  default=None)
-
-@PublicAPI
-class ObjectRefGenerator:
-    """A generator to obtain object references
-    from a task in a streaming manner.
-
-    The class is compatible with generator and
-    async generator interface.
-
-    The class is not thread-safe.
-
-    Do not initialize the class and create an instance directly.
-    The instance should be created by `.remote`.
-
-    >>> gen = generator_task.remote()
-    >>> next(gen)
-    >>> await gen.__anext__()
-    """
-    def __init__(self, generator_ref: ObjectRef, worker: "Worker"):
-        # The reference to a generator task.
-        self._generator_ref = generator_ref
-        # The exception raised from a generator task.
-        self._generator_task_exception = None
-        # Ray's worker class. ray._private.worker.global_worker
-        self.worker = worker
-        self.worker.check_connected()
-        assert hasattr(worker, "core_worker")
-
-    """
-    Public APIs
-    """
-
-    def __iter__(self) -> "ObjectRefGenerator":
-        return self
-
-    def __next__(self) -> ObjectRef:
-        """Waits until a next ref is available and returns the object ref.
-
-        Raises StopIteration if there's no more objects
-        to generate.
-
-        The object ref will contain an exception if the task fails.
-        When the generator task returns N objects, it can return
-        up to N + 1 objects (if there's a system failure, the
-        last object will contain a system level exception).
-        """
-        return self._next_sync()
-
-    def send(self, value):
-        raise NotImplementedError("`gen.send` is not supported.")
-
-    def throw(self, value):
-        raise NotImplementedError("`gen.throw` is not supported.")
-
-    def close(self):
-        raise NotImplementedError("`gen.close` is not supported.")
-
-    def __aiter__(self) -> "ObjectRefGenerator":
-        return self
-
-    async def __anext__(self):
-        return await self._next_async()
-
-    async def asend(self, value):
-        raise NotImplementedError("`gen.asend` is not supported.")
-
-    async def athrow(self, value):
-        raise NotImplementedError("`gen.athrow` is not supported.")
-
-    async def aclose(self):
-        raise NotImplementedError("`gen.aclose` is not supported.")
-
-    def completed(self) -> ObjectRef:
-        """Returns an object ref that is ready when
-        a generator task completes.
-
-        If the task is failed unexpectedly (e.g., worker failure),
-        the `ray.get(gen.completed())` raises an exception.
-
-        The function returns immediately.
-
-        >>> ray.get(gen.completed())
-        """
-        return self._generator_ref
-
-    def next_ready(self) -> bool:
-        """If True, it means the output of next(gen) is ready and
-        ray.get(next(gen)) returns immediately. False otherwise.
-
-        It returns False when next(gen) raises a StopIteration
-        (this condition should be checked using is_finished).
-
-        The function returns immediately.
-        """
-        self.worker.check_connected()
-        core_worker = self.worker.core_worker
-
-        if self.is_finished():
-            return False
-
-        expected_ref, is_ready = core_worker.peek_object_ref_stream(
-            self._generator_ref)
-
-        if is_ready:
-            return True
-
-        ready, _ = ray.wait(
-            [expected_ref], timeout=0, fetch_local=False)
-        return len(ready) > 0
-
-    def is_finished(self) -> bool:
-        """If True, it means the generator is finished
-        and all output is taken. False otherwise.
-
-        When True, if next(gen) is called, it will raise StopIteration
-        or StopAsyncIteration
-
-        The function returns immediately.
-        """
-        self.worker.check_connected()
-        core_worker = self.worker.core_worker
-
-        finished = core_worker.is_object_ref_stream_finished(
-            self._generator_ref)
-
-        if finished:
-            if self._generator_task_exception:
-                return True
-            else:
-                # We should try ray.get on a generator ref.
-                # If it raises an exception and
-                # _generator_task_exception is not set,
-                # this means the last ref is not taken yet.
-                try:
-                    ray.get(self._generator_ref)
-                except Exception:
-                    # The exception from _generator_ref
-                    # hasn't been taken yet.
-                    return False
-                else:
-                    return True
-        else:
-            return False
-
-    """
-    Private APIs
-    """
-
-    def _get_next_ref(self) -> ObjectRef:
-        """Return the next reference from a generator.
-
-        Note that the ObjectID generated from a generator
-        is always deterministic.
-        """
-        self.worker.check_connected()
-        core_worker = self.worker.core_worker
-        return core_worker.peek_object_ref_stream(
-            self._generator_ref)[0]
-
-    def _next_sync(
-        self,
-        timeout_s: Optional[int | float] = None
-    ) -> ObjectRef:
-        """Waits for timeout_s and returns the object ref if available.
-
-        If an object is not available within the given timeout, it
-        returns a nil object reference.
-
-        If -1 timeout is provided, it means it waits infinitely.
-
-        Waiting is implemented as busy waiting.
-
-        Raises StopIteration if there's no more objects
-        to generate.
-
-        The object ref will contain an exception if the task fails.
-        When the generator task returns N objects, it can return
-        up to N + 1 objects (if there's a system failure, the
-        last object will contain a system level exception).
-
-        Args:
-            timeout_s: If the next object is not ready within
-                this timeout, it returns the nil object ref.
-        """
-        core_worker = self.worker.core_worker
-
-        # Wait for the next ObjectRef to become ready.
-        expected_ref, is_ready = core_worker.peek_object_ref_stream(
-            self._generator_ref)
-
-        if not is_ready:
-            _, unready = ray.wait(
-                [expected_ref], timeout=timeout_s, fetch_local=False)
-            if len(unready) > 0:
-                return ObjectRef.nil()
-
-        try:
-            ref = core_worker.try_read_next_object_ref_stream(
-                self._generator_ref)
-            assert not ref.is_nil()
-        except ObjectRefStreamEndOfStreamError:
-            if self._generator_task_exception:
-                # Exception has been returned.
-                raise StopIteration
-
-            try:
-                # The generator ref contains an exception
-                # if there's any failure. It contains nothing otherwise.
-                # In that case, it should raise StopIteration.
-                ray.get(self._generator_ref)
-            except Exception as e:
-                self._generator_task_exception = e
-                return self._generator_ref
-            else:
-                # The task finished without an exception.
-                raise StopIteration
-        return ref
-
-    async def _suppress_exceptions(self, ref: ObjectRef) -> None:
-        # Wrap a streamed ref to avoid asyncio warnings about not retrieving
-        # the exception when we are just waiting for the ref to become ready.
-        # The exception will get returned (or warned) to the user once they
-        # actually await the ref.
-        try:
-            await ref
-        except Exception:
-            pass
-
-    async def _next_async(
-            self,
-            timeout_s: Optional[int | float] = None
-    ):
-        """Same API as _next_sync, but it is for async context."""
-        core_worker = self.worker.core_worker
-        ref, is_ready = core_worker.peek_object_ref_stream(
-            self._generator_ref)
-
-        if not is_ready:
-            # TODO(swang): Avoid fetching the value.
-            ready, unready = await asyncio.wait(
-                [asyncio.create_task(self._suppress_exceptions(ref))],
-                timeout=timeout_s
-            )
-            if len(unready) > 0:
-                return ObjectRef.nil()
-
-        try:
-            ref = core_worker.try_read_next_object_ref_stream(
-                self._generator_ref)
-            assert not ref.is_nil()
-        except ObjectRefStreamEndOfStreamError:
-            if self._generator_task_exception:
-                # Exception has been returned. raise StopIteration.
-                raise StopAsyncIteration
-
-            try:
-                # The generator ref contains an exception
-                # if there's any failure. It contains nothing otherwise.
-                # In that case, it should raise StopIteration.
-                await self._generator_ref
-            except Exception as e:
-                self._generator_task_exception = e
-                return self._generator_ref
-            else:
-                # meaning the task succeed without failure raise StopIteration.
-                raise StopAsyncIteration
-
-        return ref
-
-    def __del__(self):
-        if hasattr(self.worker, "core_worker"):
-            # The stream is created when a task is first submitted.
-            # NOTE: This can be called multiple times
-            # because python doesn't guarantee __del__ is called
-            # only once.
-            self.worker.core_worker.async_delete_object_ref_stream(self._generator_ref)
-
-    def __getstate__(self):
-        raise TypeError(
-            "You cannot return or pass a generator to other task. "
-            "Serializing a ObjectRefGenerator is not allowed.")
+async_task_function_name = contextvars.ContextVar('async_task_function_name',                                                  default=None)
 
 
 # Update the type names of the extension type so they are
@@ -834,12 +540,13 @@ cdef int prepare_labels(
 
 cdef int prepare_label_selector(
         dict label_selector_dict,
-        unordered_map[c_string, c_string] *label_selector) except -1:
+        CLabelSelector *c_label_selector) except -1:
+
+    c_label_selector[0] = CLabelSelector()
 
     if label_selector_dict is None:
         return 0
 
-    label_selector[0].reserve(len(label_selector_dict))
     for key, value in label_selector_dict.items():
         if not isinstance(key, str):
             raise ValueError(f"Label selector key type must be string, but got {type(key)}")
@@ -852,16 +559,44 @@ cdef int prepare_label_selector(
             inner = value[value.index("(")+1:-1].strip()
             if not inner:
                 raise ValueError(f"No values provided for Label Selector '{value[:value.index('(')]}' operator on key '{key}'.")
-        label_selector[0][key.encode("utf-8")] = value.encode("utf-8")
+        # Add key-value constraint to the LabelSelector object.
+        c_label_selector[0].AddConstraint(key.encode("utf-8"), value.encode("utf-8"))
 
     return 0
 
+cdef int prepare_fallback_strategy(
+        list fallback_strategy,
+        c_vector[CFallbackOption] *fallback_strategy_vector) except -1:
+
+    cdef dict label_selector_dict
+    cdef CLabelSelector c_label_selector
+
+    if fallback_strategy is None:
+        return 0
+
+    for strategy_dict in fallback_strategy:
+        if not isinstance(strategy_dict, dict):
+            raise ValueError(
+                "Fallback strategy must be a list of dicts, "
+                f"but got list containing {type(strategy_dict)}")
+
+        label_selector_dict = strategy_dict.get("label_selector")
+
+        if label_selector_dict is not None and not isinstance(label_selector_dict, dict):
+            raise ValueError("Invalid fallback strategy element: invalid 'label_selector'.")
+
+        prepare_label_selector(label_selector_dict, &c_label_selector)
+
+        fallback_strategy_vector.push_back(
+             CFallbackOption(c_label_selector)
+        )
+
+    return 0
 
 cdef int prepare_resources(
         dict resource_dict,
         unordered_map[c_string, double] *resource_map) except -1:
     cdef:
-        c_string resource_name
         list unit_resources
 
     if resource_dict is None:
@@ -892,7 +627,6 @@ cdef int prepare_resources(
 cdef c_vector[CFunctionDescriptor] prepare_function_descriptors(pyfd_list):
     cdef:
         c_vector[CFunctionDescriptor] fd_list
-        CRayFunction ray_function
 
     fd_list.reserve(len(pyfd_list))
     for pyfd in pyfd_list:
@@ -1856,7 +1590,6 @@ cdef void execute_task(
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
         uint64_t attempt_number = core_worker.get_current_task_attempt_number()
-        c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
     # Helper method used to exit current asyncio actor.
     # This is called when a KeyboardInterrupt is received by the main thread.
@@ -1894,7 +1627,7 @@ cdef void execute_task(
         next_title = f"ray::{class_name}"
 
         def function_executor(*arguments, **kwarguments):
-            function = execution_info.function
+            func = execution_info.function
 
             if core_worker.current_actor_is_asyncio():
                 if not has_async_methods(actor.__class__):
@@ -1910,15 +1643,15 @@ cdef void execute_task(
                             )
                         )
 
-                if is_async_func(function.method):
-                    async_function = function
+                if is_async_func(func.method):
+                    async_function = func
                 else:
                     # Just execute the method if it's ray internal method.
-                    if function.name.startswith("__ray"):
-                        return function(actor, *arguments, **kwarguments)
-                    async_function = sync_to_async(function)
+                    if func.name.startswith("__ray"):
+                        return func(actor, *arguments, **kwarguments)
+                    async_function = sync_to_async(func)
 
-                if inspect.isasyncgenfunction(function.method):
+                if inspect.isasyncgenfunction(func.method):
                     # The coroutine will be handled separately by
                     # execute_dynamic_generator_and_store_task_outputs
                     return async_function(actor, *arguments, **kwarguments)
@@ -1929,7 +1662,7 @@ cdef void execute_task(
                         task_name=task_name, func_args=(actor, *arguments),
                         func_kwargs=kwarguments)
 
-            return function(actor, *arguments, **kwarguments)
+            return func(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data), \
          ray._private.worker._changeproctitle(title, next_title):
@@ -2226,7 +1959,6 @@ cdef execute_task_with_cancellation_handler(
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
-        c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
     task_name = name.decode("utf-8")
     title = f"ray::{task_name}"
@@ -2547,7 +2279,7 @@ cdef CRayStatus check_signals() nogil:
     return CRayStatus.OK()
 
 
-cdef void gc_collect(c_bool triggered_by_global_gc) nogil:
+cdef void gc_collect() nogil:
      with gil:
         if RayConfig.instance().start_python_gc_manager_thread():
             start = time.perf_counter()
@@ -2974,7 +2706,7 @@ cdef class CoreWorker:
 
         self._gc_thread = None
         if RayConfig.instance().start_python_gc_manager_thread():
-            self._gc_thread = PythonGCThread(min_interval_s=ray_constants.RAY_GC_MIN_COLLECT_INTERVAL)
+            self._gc_thread = PythonGCThread()
             self._gc_thread.start()
 
     def shutdown_driver(self):
@@ -3239,7 +2971,6 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data
-            unique_ptr[CAddress] null_owner_address
             uint64_t data_size = serialized_object.total_bytes
             int64_t c_num_readers = num_readers
             int64_t c_timeout_ms = timeout_ms
@@ -3643,11 +3374,13 @@ cdef class CoreWorker:
                     int64_t generator_backpressure_num_objects,
                     c_bool enable_task_events,
                     labels,
-                    label_selector):
+                    label_selector,
+                    fallback_strategy):
         cdef:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, c_string] c_labels
-            unordered_map[c_string, c_string] c_label_selector
+            CLabelSelector c_label_selector
+            c_vector[CFallbackOption] c_fallback_strategy
             CRayFunction ray_function
             CTaskOptions task_options
             c_vector[unique_ptr[CTaskArg]] args_vector
@@ -3674,6 +3407,7 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             prepare_labels(labels, &c_labels)
             prepare_label_selector(label_selector, &c_label_selector)
+            prepare_fallback_strategy(fallback_strategy, &c_fallback_strategy)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -3690,7 +3424,8 @@ cdef class CoreWorker:
                 c_label_selector,
                 # `tensor_transport` is currently only supported in Ray Actor tasks.
                 # For Ray tasks, we always use `OBJECT_STORE`.
-                TENSOR_TRANSPORT_OBJECT_STORE)
+                TENSOR_TRANSPORT_OBJECT_STORE,
+                c_fallback_strategy)
 
             current_c_task_id = current_task.native()
 
@@ -3741,6 +3476,7 @@ cdef class CoreWorker:
                      label_selector,
                      c_bool allow_out_of_order_execution,
                      c_bool enable_tensor_transport,
+                     fallback_strategy,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3754,7 +3490,8 @@ cdef class CoreWorker:
             c_vector[CObjectID] incremented_put_arg_ids
             optional[c_bool] is_detached_optional = nullopt
             unordered_map[c_string, c_string] c_labels
-            unordered_map[c_string, c_string] c_label_selector
+            CLabelSelector c_label_selector
+            c_vector[CFallbackOption] c_fallback_strategy
             c_string call_site
 
         self.python_scheduling_strategy_to_c(
@@ -3769,6 +3506,7 @@ cdef class CoreWorker:
             prepare_resources(placement_resources, &c_placement_resources)
             prepare_labels(labels, &c_labels)
             prepare_label_selector(label_selector, &c_label_selector)
+            prepare_fallback_strategy(fallback_strategy, &c_fallback_strategy)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -3798,7 +3536,8 @@ cdef class CoreWorker:
                         enable_tensor_transport,
                         enable_task_events,
                         c_labels,
-                        c_label_selector),
+                        c_label_selector,
+                        c_fallback_strategy),
                     extension_data,
                     call_site,
                     &c_actor_id,
@@ -3913,9 +3652,10 @@ cdef class CoreWorker:
             c_string serialized_retry_exception_allowlist
             c_string serialized_runtime_env = b"{}"
             unordered_map[c_string, c_string] c_labels
-            unordered_map[c_string, c_string] c_label_selector
+            CLabelSelector c_label_selector
             c_string call_site
             CTensorTransport c_tensor_transport_val
+            c_vector[CFallbackOption] c_fallback_strategy
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
@@ -3952,7 +3692,8 @@ cdef class CoreWorker:
                         enable_task_events,
                         c_labels,
                         c_label_selector,
-                        c_tensor_transport_val),
+                        c_tensor_transport_val,
+                        c_fallback_strategy),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,
@@ -4453,7 +4194,6 @@ cdef class CoreWorker:
 
         cdef:
             CConcurrencyGroup c_concurrency_group
-            c_vector[CFunctionDescriptor] c_function_descriptors
 
         self.cgname_to_eventloop_dict = {}
         self.fd_to_cgname_dict = {}
@@ -4568,7 +4308,7 @@ cdef class CoreWorker:
         # transport with max_concurrency flag.
         increase_recursion_limit()
 
-        eventloop, async_thread = self.get_event_loop(
+        eventloop, _ = self.get_event_loop(
             function_descriptor, specified_cgname)
 
         async def async_func():
@@ -4911,7 +4651,7 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     except Exception:
         # Only log the error here because this callback is called from Cpp
         # and Cython will ignore the exception anyway
-        logger.exception(f"failed to run async callback (user func)")
+        logger.exception("failed to run async callback (user func)")
     finally:
         # NOTE: we manually increment the Python reference count of the callback when
         # registering it in the core worker, so we must decrement here to avoid a leak.

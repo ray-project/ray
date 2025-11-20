@@ -4,7 +4,6 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 
 import ray
-import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
 from ray._private.telemetry.open_telemetry_metric_recorder import (
@@ -103,7 +102,9 @@ class AggregatorAgent(
         )
 
         # Task metadata buffer accumulates dropped task attempts for GCS publishing
-        self._task_metadata_buffer = TaskEventsMetadataBuffer()
+        self._task_metadata_buffer = TaskEventsMetadataBuffer(
+            common_metric_tags=self._common_tags
+        )
 
         self._events_export_addr = (
             dashboard_agent.events_export_addr or EVENTS_EXPORT_ADDR
@@ -204,16 +205,6 @@ class AggregatorAgent(
             events_event_aggregator_service_pb2_grpc.add_EventAggregatorServiceServicer_to_server(
                 self, server
             )
-            # Signal readiness once the gRPC servicer is registered on the agent server.
-            try:
-                await self._dashboard_agent.gcs_client.async_internal_kv_put(
-                    f"{dashboard_consts.DASHBOARD_AGGREGATOR_AGENT_READY_NODE_ID_PREFIX}{self._dashboard_agent.node_id}".encode(),
-                    b"1",
-                    True,
-                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                )
-            except Exception:
-                logger.exception("Failed to set aggregator agent readiness key.")
         try:
             await asyncio.gather(
                 self._http_endpoint_publisher.run_forever(),
