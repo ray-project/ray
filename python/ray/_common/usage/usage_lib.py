@@ -803,16 +803,14 @@ def _get_cluster_lifecycle_metadata(
                 )
         except Exception as e:
             # Key might already exist (race condition) or GCS error
-            logger.warning(f"Failed to initialize first_seen_timestamp: {e}")
             # Try to read it again - another process may have set it
             first_seen_timestamp_ms = _get_cluster_lifecycle_kv_value(
                 gcs_client, usage_constant.CLUSTER_FIRST_SEEN_TIMESTAMP_KEY
             )
             if first_seen_timestamp_ms is None:
-                logger.warning(
-                    "Failed to initialize or read first_seen_timestamp, using current timestamp"
-                )
-                first_seen_timestamp_ms = current_timestamp_ms
+                raise RuntimeError(
+                    f"Failed to initialize or read first_seen_timestamp: {e}"
+                ) from e
             restart_count = 0
     else:
         # Existing cluster
@@ -836,10 +834,9 @@ def _get_cluster_lifecycle_metadata(
 
                     # Validate restart count before storing
                     if restart_count < 0:
-                        logger.warning(
-                            f"Invalid restart_count calculated: {restart_count}, using 0"
+                        raise RuntimeError(
+                            f"Invalid restart_count calculated: {restart_count}"
                         )
-                        restart_count = 0
 
                     # Write back - retries help with transient failures but don't
                     # prevent concurrent write races (see note above)
@@ -859,25 +856,18 @@ def _get_cluster_lifecycle_metadata(
                             f"Retrying restart count update (attempt {attempt + 1}/{max_retries}): {e}"
                         )
                     else:
-                        logger.warning(
+                        raise RuntimeError(
                             f"Failed to update restart count after {max_retries} attempts: {e}"
-                        )
-                        # Use current value if available, otherwise raise
-                        if current_restart_count is not None:
-                            restart_count = current_restart_count
-                        else:
-                            raise RuntimeError(
-                                "Failed to update restart count and no existing value found"
-                            ) from e
+                        ) from e
         else:
             # Not a restart, just reading existing values
             restart_count = _get_cluster_lifecycle_kv_value(
                 gcs_client, usage_constant.CLUSTER_RESTART_COUNT_KEY
             )
             if restart_count is None:
-                # Should not happen for existing cluster, but use 0 if it does
-                logger.warning("Existing cluster has no restart_count, defaulting to 0")
-                restart_count = 0
+                raise RuntimeError(
+                    "Existing cluster has no restart_count - data corruption or initialization failure"
+                )
 
     return first_seen_timestamp_ms, restart_count
 
