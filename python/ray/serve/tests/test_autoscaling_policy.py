@@ -1880,18 +1880,6 @@ def test_e2e_custom_policy_with_downscaling_factor(
     wait_for_condition(check_num_replicas_eq, name="A", target=1, timeout=10)
 
 
-@pytest.mark.parametrize(
-    "policy",
-    [
-        {
-            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy_allow_zero"
-        },
-        AutoscalingPolicy(
-            policy_function="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy_allow_zero"
-        ),
-        AutoscalingPolicy(policy_function=custom_autoscaling_policy_allow_zero),
-    ],
-)
 def app_level_custom_autoscaling_policy(ctxs: Dict[DeploymentID, AutoscalingContext]):
     decisions: Dict[DeploymentID, int] = {}
     for deployment_id, ctx in ctxs.items():
