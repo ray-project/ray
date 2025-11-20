@@ -95,11 +95,14 @@ class PlacementGroupCleaner:
                 )
                 break
 
-        if not self._stopped and not self._is_placement_group_removed():
-            logger.info(f"Cleaning up placement group: {self._placement_group.id}")
+        if not self._stopped:
             try:
-                remove_placement_group(self._placement_group)
-                logger.info("Placement group cleanup successful")
+                if not self._is_placement_group_removed():
+                    logger.info(
+                        f"Cleaning up placement group: {self._placement_group.id}"
+                    )
+                    remove_placement_group(self._placement_group)
+                    logger.info("Placement group cleanup successful")
             except Exception as e:
                 logger.warning(f"Failed to clean up placement group: {e}")
 
