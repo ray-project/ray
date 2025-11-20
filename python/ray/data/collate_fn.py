@@ -262,6 +262,11 @@ class DefaultCollateFn(ArrowBatchCollateFn):
             ThreadPoolExecutor(max_workers=num_workers) if num_workers > 0 else None
         )
 
+    def __del__(self):
+        """Clean up threadpool on destruction."""
+        if self._threadpool is not None:
+            self._threadpool.shutdown(wait=False)
+
     def __call__(self, batch: "pyarrow.Table") -> Dict[str, List["torch.Tensor"]]:
         """Convert an Arrow batch to PyTorch tensors.
 
