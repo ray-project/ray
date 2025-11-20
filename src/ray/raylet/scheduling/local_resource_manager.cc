@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/placement_group_util.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/stats/metric_defs.h"
@@ -92,6 +93,9 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
       local_resources_.available.TryAllocate(resource_request.GetResourceSet());
   if (allocation) {
     *task_allocation = TaskResourceInstances(*allocation);
+    for (const auto &constraint : resource_request.GetLabelSelector().GetConstraints()) {
+      local_resources_.label_constraint_usage_counts[constraint]++;
+    }
     for (const auto &resource_id : resource_request.ResourceIds()) {
       SetResourceNonIdle(resource_id);
     }
@@ -102,7 +106,9 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
 }
 
 void LocalResourceManager::FreeTaskResourceInstances(
-    std::shared_ptr<TaskResourceInstances> task_allocation, bool record_idle_resource) {
+    std::shared_ptr<TaskResourceInstances> task_allocation,
+    const LabelSelector &label_selector,
+    bool record_idle_resource) {
   RAY_CHECK(task_allocation != nullptr);
   for (auto &resource_id : task_allocation->ResourceIds()) {
     if (!local_resources_.total.Has(resource_id)) {
@@ -119,6 +125,12 @@ void LocalResourceManager::FreeTaskResourceInstances(
 
     if (record_idle_resource && is_idle) {
       SetResourceIdle(resource_id);
+    }
+  }
+  for (const auto &constraint : label_selector.GetConstraints()) {
+    if (local_resources_.label_constraint_usage_counts.contains(constraint)) {
+      local_resources_.label_constraint_usage_counts[constraint]--;
+      RAY_CHECK_GE(local_resources_.label_constraint_usage_counts[constraint], 0);
     }
   }
 }
@@ -239,20 +251,24 @@ bool LocalResourceManager::AllocateLocalTaskResources(
 
 bool LocalResourceManager::AllocateLocalTaskResources(
     const absl::flat_hash_map<std::string, double> &task_resources,
+    const LabelSelector &label_selector,
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
   // We don't track object store memory demands so no need to allocate them.
   ResourceRequest resource_request = ResourceMapToResourceRequest(
       task_resources, /*requires_object_store_memory=*/false);
+  resource_request.SetLabelSelector(label_selector);
   return AllocateLocalTaskResources(resource_request, task_allocation);
 }
 
 void LocalResourceManager::ReleaseWorkerResources(
-    std::shared_ptr<TaskResourceInstances> task_allocation) {
-  if (task_allocation == nullptr || task_allocation->IsEmpty()) {
+    std::shared_ptr<TaskResourceInstances> task_allocation,
+    const LabelSelector &label_selector) {
+  if ((task_allocation == nullptr || task_allocation->IsEmpty()) &&
+      label_selector.GetConstraints().empty()) {
     return;
   }
-  FreeTaskResourceInstances(task_allocation);
+  FreeTaskResourceInstances(task_allocation, label_selector);
   OnResourceOrStateChanged();
 }
 
@@ -261,6 +277,8 @@ NodeResources LocalResourceManager::ToNodeResources() const {
   node_resources.available = local_resources_.available.ToNodeResourceSet();
   node_resources.total = local_resources_.total.ToNodeResourceSet();
   node_resources.labels = local_resources_.labels;
+  node_resources.label_constraint_usage_counts =
+      local_resources_.label_constraint_usage_counts;
   node_resources.is_draining = IsLocalNodeDraining();
   node_resources.draining_deadline_timestamp_ms = GetDrainingDeadline();
   return node_resources;
@@ -310,7 +328,10 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   // Populate node labels.
   resource_view_sync_message.mutable_labels()->insert(resources.labels.begin(),
                                                       resources.labels.end());
-
+  for (const auto &[constraint, count] : resources.label_constraint_usage_counts) {
+    resource_view_sync_message.mutable_label_constraint_usage_counts()->insert(
+        {constraint.ToString(), count});
+  }
   auto total = resources.total.GetResourceMap();
   resource_view_sync_message.mutable_resources_total()->insert(total.begin(),
                                                                total.end());
