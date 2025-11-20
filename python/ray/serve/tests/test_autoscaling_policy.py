@@ -1817,6 +1817,12 @@ def test_e2e_custom_policy_with_upscaling_factor(
 @pytest.mark.parametrize(
     "policy",
     [
+        {
+            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy_allow_zero"
+        },
+        AutoscalingPolicy(
+            policy_function="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy_allow_zero"
+        ),
         AutoscalingPolicy(policy_function=custom_autoscaling_policy_allow_zero),
     ],
 )

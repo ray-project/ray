@@ -646,6 +646,9 @@ Keep policy functions **fast and lightweight**. Slow logic can block the Serve c
 By default, custom autoscaling policies don't automatically benefit from Ray Serve's standard autoscaling parameters like `upscale_delay_s`, `downscale_delay_s`, `upscaling_factor`, and `downscaling_factor`. These parameters are only enforced by the default autoscaling policy.  
 
 To apply these parameters to your custom policy, use the `@apply_autoscaling_config` decorator. This ensures consistent behavior and reduces boilerplate code by automatically handling the following [`AutoscalingConfig`](../api/doc/ray.serve.config.AutoscalingConfig.rst) parameters:
+- `upscale_delay_s`, `downscale_delay_s`, `downscale_to_zero_delay_s`
+- `upscaling_factor`, `downscaling_factor`
+- `min_replicas`, `max_replicas`
 
 The following example shows how to use the decorator:
 

@@ -714,7 +714,7 @@ class TestApplyAutoscalingConfig:
         result = _apply_scaling_factors(
             desired_num_replicas, current_num_replicas, config
         )
-        # Expected: 10 - 0.5 * (10 - 9) = 9.5 = ceil(9.5) = 10
+        # Expected: 10 - 0.5 * (10 - 9) = 9.5 = ceil(9.5) = 10. The 'stuck' logic then adjusts it to 9.
         assert result == 9
 
     def test_apply_bounds(self):
@@ -824,7 +824,7 @@ class TestApplyAutoscalingConfig:
         config = AutoscalingConfig(
             min_replicas=0,
             max_replicas=10,
-            downscale_to_zero_delay_s=0.4,  # 3 periods at 0.1s interval
+            downscale_to_zero_delay_s=0.4,
             downscale_delay_s=0.3,
         )
         ctx = AutoscalingContext(

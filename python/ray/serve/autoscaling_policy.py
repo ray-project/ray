@@ -234,6 +234,9 @@ def apply_autoscaling_config(
         desired_num_replicas, updated_custom_policy_state = policy_func(ctx)
         if updated_custom_policy_state:
             if "decision_counter" in updated_custom_policy_state:
+                logger.warning(
+                    "The 'decision_counter' key is reserved for internal use and will be ignored."
+                )
                 updated_custom_policy_state.pop("decision_counter")
             policy_state.update(updated_custom_policy_state)
         # Apply scaling factors (if configured)
