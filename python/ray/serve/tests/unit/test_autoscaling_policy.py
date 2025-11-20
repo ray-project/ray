@@ -4,6 +4,9 @@ import pytest
 
 from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
 from ray.serve.autoscaling_policy import (
+    _apply_bounds,
+    _apply_delay_logic,
+    _apply_scaling_factors,
     _calculate_desired_num_replicas,
     replica_queue_length_autoscaling_policy,
 )
@@ -675,6 +678,219 @@ class TestReplicaQueueLengthPolicy:
 
         new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == ongoing_requests / target_requests
+
+
+class TestApplyAutoscalingConfig:
+    def test_apply_scaling_factors_upscale(self):
+        config = AutoscalingConfig(
+            min_replicas=1, max_replicas=30, upscaling_factor=0.5
+        )
+        desired_num_replicas = 20
+        current_num_replicas = 10
+        result = _apply_scaling_factors(
+            desired_num_replicas, current_num_replicas, config
+        )
+        # Expected: 10 + 0.5 * (20 - 10) = 15
+        assert result == 15
+
+    def test_apply_scaling_factors_downscale(self):
+        config = AutoscalingConfig(
+            min_replicas=1, max_replicas=30, downscaling_factor=0.5
+        )
+        desired_num_replicas = 5
+        current_num_replicas = 20
+        result = _apply_scaling_factors(
+            desired_num_replicas, current_num_replicas, config
+        )
+        # Expected: 20 - 0.5 * (20 - 5) = ceil(12.5) = 13
+        assert result == 13
+
+    def test_apply_scaling_factors_stuck_downscale(self):
+        config = AutoscalingConfig(
+            min_replicas=1, max_replicas=30, downscaling_factor=0.5
+        )
+        desired_num_replicas = 9
+        current_num_replicas = 10
+        result = _apply_scaling_factors(
+            desired_num_replicas, current_num_replicas, config
+        )
+        # Expected: 10 - 0.5 * (10 - 9) = 9.5 = ceil(9.5) = 10
+        assert result == 9
+
+    def test_apply_bounds(self):
+        num_replicas = 5
+        capacity_adjusted_min_replicas = 1
+        capacity_adjusted_max_replicas = 10
+        result = _apply_bounds(
+            num_replicas, capacity_adjusted_min_replicas, capacity_adjusted_max_replicas
+        )
+        # Expected: max(1, min(10, 5)) = 5
+        assert result == 5
+
+    def test_apply_delay_logic_upscale(self):
+        """Test upscale delay requires consecutive periods."""
+        config = AutoscalingConfig(
+            min_replicas=1,
+            max_replicas=10,
+            upscale_delay_s=0.3,
+        )
+
+        ctx = AutoscalingContext(
+            target_num_replicas=1,
+            current_num_replicas=1,
+            config=config,
+            capacity_adjusted_min_replicas=1,
+            capacity_adjusted_max_replicas=10,
+            policy_state={},
+            deployment_id=None,
+            deployment_name=None,
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            total_num_requests=None,
+            total_queued_requests=None,
+            total_running_requests=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
+        )
+        upscale_wait_period = int(ctx.config.upscale_delay_s / CONTROL_LOOP_INTERVAL_S)
+        for i in range(upscale_wait_period):
+            decision, ctx.policy_state = _apply_delay_logic(
+                desired_num_replicas=5,
+                curr_target_num_replicas=ctx.target_num_replicas,
+                config=ctx.config,
+                policy_state=ctx.policy_state,
+            )
+            assert decision == 1, f"Should not scale up on iteration {i}"
+
+        decision, _ = _apply_delay_logic(
+            desired_num_replicas=5,
+            curr_target_num_replicas=ctx.target_num_replicas,
+            config=ctx.config,
+            policy_state=ctx.policy_state,
+        )
+        assert decision == 5
+
+    def test_apply_delay_logic_downscale(self):
+        """Test downscale delay requires consecutive periods."""
+        config = AutoscalingConfig(
+            min_replicas=1,
+            max_replicas=10,
+            downscale_delay_s=0.3,
+        )
+        ctx = AutoscalingContext(
+            target_num_replicas=10,
+            current_num_replicas=10,
+            config=config,
+            capacity_adjusted_min_replicas=1,
+            capacity_adjusted_max_replicas=10,
+            policy_state={},
+            deployment_id=None,
+            deployment_name=None,
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            total_num_requests=None,
+            total_queued_requests=None,
+            total_running_requests=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
+        )
+        downscale_wait_period = int(
+            ctx.config.downscale_delay_s / CONTROL_LOOP_INTERVAL_S
+        )
+        for i in range(downscale_wait_period):
+            decision, ctx.policy_state = _apply_delay_logic(
+                desired_num_replicas=5,
+                curr_target_num_replicas=ctx.target_num_replicas,
+                config=ctx.config,
+                policy_state=ctx.policy_state,
+            )
+            assert decision == 10, f"Should not scale down on iteration {i}"
+
+        decision, _ = _apply_delay_logic(
+            desired_num_replicas=5,
+            curr_target_num_replicas=ctx.target_num_replicas,
+            config=ctx.config,
+            policy_state=ctx.policy_state,
+        )
+        assert decision == 5
+
+    def test_apply_delay_logic_downscale_to_zero(self):
+        config = AutoscalingConfig(
+            min_replicas=0,
+            max_replicas=10,
+            downscale_to_zero_delay_s=0.4,  # 3 periods at 0.1s interval
+            downscale_delay_s=0.3,
+        )
+        ctx = AutoscalingContext(
+            target_num_replicas=4,
+            current_num_replicas=4,
+            config=config,
+            capacity_adjusted_min_replicas=0,
+            capacity_adjusted_max_replicas=10,
+            policy_state={},
+            deployment_id=None,
+            deployment_name=None,
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            total_num_requests=None,
+            total_queued_requests=None,
+            total_running_requests=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
+        )
+        downscale_to_zero_wait_period = int(
+            ctx.config.downscale_to_zero_delay_s / CONTROL_LOOP_INTERVAL_S
+        )
+        downscale_wait_period = int(
+            ctx.config.downscale_delay_s / CONTROL_LOOP_INTERVAL_S
+        )
+        # Downscale form 4->1
+        for i in range(downscale_wait_period):
+            decision_num_replicas, ctx.policy_state = _apply_delay_logic(
+                desired_num_replicas=0,
+                curr_target_num_replicas=ctx.target_num_replicas,
+                config=ctx.config,
+                policy_state=ctx.policy_state,
+            )
+            assert (
+                decision_num_replicas == 4
+            ), f"Should not scale down to 0 on iteration {i}"
+
+        decision_num_replicas, _ = _apply_delay_logic(
+            desired_num_replicas=0,
+            curr_target_num_replicas=ctx.target_num_replicas,
+            config=ctx.config,
+            policy_state=ctx.policy_state,
+        )
+        assert decision_num_replicas == 1
+        ctx.target_num_replicas = decision_num_replicas
+        # Downscale from 1->0
+        for i in range(downscale_to_zero_wait_period):
+            decision_num_replicas, ctx.policy_state = _apply_delay_logic(
+                desired_num_replicas=0,
+                curr_target_num_replicas=ctx.target_num_replicas,
+                config=ctx.config,
+                policy_state=ctx.policy_state,
+            )
+            assert (
+                decision_num_replicas == 1
+            ), f"Should not scale down from 1 to 0 on tick {i}"
+        decision_num_replicas, _ = _apply_delay_logic(
+            desired_num_replicas=0,
+            curr_target_num_replicas=ctx.target_num_replicas,
+            config=ctx.config,
+            policy_state=ctx.policy_state,
+        )
+        assert decision_num_replicas == 0
 
 
 if __name__ == "__main__":

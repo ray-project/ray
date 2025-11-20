@@ -36,6 +36,7 @@ from ray.serve._private.test_utils import (
     get_num_alive_replicas,
     tlog,
 )
+from ray.serve.autoscaling_policy import apply_autoscaling_config
 from ray.serve.config import AutoscalingConfig, AutoscalingContext, AutoscalingPolicy
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ApplicationStatus, ServeDeploySchema
@@ -1537,6 +1538,16 @@ def custom_autoscaling_policy(ctx: AutoscalingContext):
         return 2, {}
 
 
+@apply_autoscaling_config
+def custom_autoscaling_policy_allow_zero(ctx: AutoscalingContext):
+    if ctx.total_num_requests > 50:
+        return 4, {}
+    elif ctx.total_num_requests > 0:
+        return 2, {}
+    else:
+        return 0, {}
+
+
 @pytest.mark.parametrize(
     "policy",
     [
@@ -1593,6 +1604,288 @@ def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, 
     wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
 
 
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {
+            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy_allow_zero"
+        },
+        AutoscalingPolicy(
+            policy_function="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy_allow_zero"
+        ),
+        AutoscalingPolicy(policy_function=custom_autoscaling_policy_allow_zero),
+    ],
+)
+def test_e2e_scale_up_down_basic_custom_policy_with_default_autoscaling(
+    serve_instance_with_signal, policy
+):
+
+    _, signal = serve_instance_with_signal
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": 0,
+            "max_replicas": 4,
+            "upscale_delay_s": 3.0,
+            "downscale_delay_s": 2.0,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.2,
+            "policy": policy,
+        },
+        graceful_shutdown_timeout_s=0.5,
+        max_ongoing_requests=1000,
+    )
+    class A:
+        async def __call__(self):
+            await signal.wait.remote()
+
+    handle = serve.run(A.bind())
+    wait_for_condition(
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
+    )
+
+    [handle.remote() for _ in range(70)]
+
+    # Verify upscale delay (should not scale up immediately)
+    with pytest.raises(RuntimeError, match="timeout"):
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="A",
+            target=4,
+            timeout=1.0,
+            retry_interval_ms=100,
+        )
+
+    # Eventually reaches 4
+    wait_for_condition(check_num_replicas_eq, name="A", target=4, timeout=10)
+
+    signal.send.remote()
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
+    # Verify downscale delay (should not scale down immediately)
+    with pytest.raises(RuntimeError, match="timeout"):
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="A",
+            target=0,
+            timeout=2.0,
+            retry_interval_ms=100,
+        )
+    wait_for_condition(check_num_replicas_eq, name="A", target=0, timeout=10)
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {
+            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy_allow_zero"
+        },
+        AutoscalingPolicy(
+            policy_function="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy_allow_zero"
+        ),
+        AutoscalingPolicy(policy_function=custom_autoscaling_policy_allow_zero),
+    ],
+)
+def test_e2e_downscale_to_zero_custom_policy_with_default_autoscaling(
+    serve_instance_with_signal, policy
+):
+    # Verify downscale_to_zero logic
+
+    _, signal = serve_instance_with_signal
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": 0,
+            "max_replicas": 4,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 2.0,
+            "downscale_to_zero_delay_s": 3.0,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.2,
+            "policy": policy,
+        },
+        graceful_shutdown_timeout_s=0.5,
+        max_ongoing_requests=1000,
+    )
+    class A:
+        async def __call__(self):
+            await signal.wait.remote()
+
+    handle = serve.run(A.bind())
+    wait_for_condition(
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
+    )
+
+    # Scale to 4 first
+    [handle.remote() for _ in range(70)]
+    wait_for_condition(check_num_replicas_eq, name="A", target=4, timeout=10)
+
+    # Trigger Downscale: Release all requests
+    ray.get(signal.send.remote())
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
+
+    # 4 -> 1 (downscale_delay_s=2.0)
+    # Shouldn't downscale to 1 immediately
+    with pytest.raises(RuntimeError, match="timeout"):
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="A",
+            target=1,
+            timeout=1.0,
+            retry_interval_ms=100,
+        )
+
+    wait_for_condition(check_num_replicas_eq, name="A", target=1, timeout=10)
+
+    # 1 -> 0 (downscale_to_zero_delay_s=3.0)
+    # Shouldn't downscale to zero immediately
+    with pytest.raises(RuntimeError, match="timeout"):
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="A",
+            target=0,
+            timeout=1.5,
+            retry_interval_ms=100,
+        )
+
+    # Eventually reaches 0
+    wait_for_condition(check_num_replicas_eq, name="A", target=0, timeout=10)
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {
+            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy_allow_zero"
+        },
+        AutoscalingPolicy(
+            policy_function="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy_allow_zero"
+        ),
+        AutoscalingPolicy(policy_function=custom_autoscaling_policy_allow_zero),
+    ],
+)
+@pytest.mark.parametrize(
+    "upscaling_factor, expected_intermediate_steps",
+    [
+        # Target 4. Current 1. Delta 3.
+        # Factor 0.5: ceil(1 + 0.5*3) = 3. Path: 1 -> 3 -> 4
+        (0.5, [3]),
+        # Factor 0.2: ceil(1 + 0.2*3) = 2. Path: 1 -> 2 -> 3 -> 4
+        (0.2, [2, 3]),
+    ],
+)
+def test_e2e_custom_policy_with_upscaling_factor(
+    serve_instance_with_signal, policy, upscaling_factor, expected_intermediate_steps
+):
+    _, signal = serve_instance_with_signal
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 4,
+            "upscale_delay_s": 0.0,
+            "downscale_delay_s": 0.0,
+            "upscaling_factor": upscaling_factor,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.2,
+            "policy": policy,
+        },
+        max_ongoing_requests=1000,
+        graceful_shutdown_timeout_s=0.5,
+    )
+    class A:
+        async def __call__(self):
+            await signal.wait.remote()
+
+    handle = serve.run(A.bind())
+    wait_for_condition(
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
+    )
+
+    # Start from 1 replica
+    wait_for_condition(check_num_replicas_eq, name="A", target=1)
+
+    [handle.remote() for _ in range(100)]
+
+    # Check intermediate steps
+    for step in expected_intermediate_steps:
+        wait_for_condition(check_num_replicas_eq, name="A", target=step, timeout=10)
+
+    # Eventually it should reach 4
+    wait_for_condition(check_num_replicas_eq, name="A", target=4, timeout=10)
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        AutoscalingPolicy(policy_function=custom_autoscaling_policy_allow_zero),
+    ],
+)
+@pytest.mark.parametrize(
+    "downscaling_factor,expected_intermediate_steps",
+    [
+        # Target 0. Current 4. Delta -4.
+        # Factor 0.5: ceil(4 - 2) = 2. Path: 4 -> 2 -> 1
+        (0.5, [2]),
+        # Factor 0.2: ceil(4 - 0.8) = 4 (stuck -> 3). Path: 4 -> 3 -> 2 -> 1
+        (0.2, [3, 2]),
+    ],
+)
+def test_e2e_custom_policy_with_downscaling_factor(
+    serve_instance_with_signal, policy, downscaling_factor, expected_intermediate_steps
+):
+    _, signal = serve_instance_with_signal
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 4,
+            "upscale_delay_s": 0.0,
+            "downscale_delay_s": 5.0,
+            "downscaling_factor": downscaling_factor,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.2,
+            "policy": policy,
+        },
+        max_ongoing_requests=1000,
+        graceful_shutdown_timeout_s=0.5,
+    )
+    class A:
+        async def __call__(self):
+            await signal.wait.remote()
+
+    handle = serve.run(A.bind())
+    wait_for_condition(
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
+    )
+
+    # Setup: Scale to 4 first
+    [handle.remote() for _ in range(70)]
+    wait_for_condition(check_num_replicas_eq, name="A", target=4, timeout=10)
+
+    # Trigger Downscale: Release all requests
+    ray.get(signal.send.remote())
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
+
+    # Check intermediate steps
+    for step in expected_intermediate_steps:
+        wait_for_condition(check_num_replicas_eq, name="A", target=step, timeout=10)
+
+    # Eventually it should reach 1
+    wait_for_condition(check_num_replicas_eq, name="A", target=1, timeout=10)
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {
+            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy_allow_zero"
+        },
+        AutoscalingPolicy(
+            policy_function="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy_allow_zero"
+        ),
+        AutoscalingPolicy(policy_function=custom_autoscaling_policy_allow_zero),
+    ],
+)
 def app_level_custom_autoscaling_policy(ctxs: Dict[DeploymentID, AutoscalingContext]):
     decisions: Dict[DeploymentID, int] = {}
     for deployment_id, ctx in ctxs.items():

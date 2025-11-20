@@ -1,6 +1,7 @@
+import functools
 import logging
 import math
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S, SERVE_LOGGER_NAME
 from ray.serve.config import AutoscalingConfig, AutoscalingContext
@@ -81,49 +82,46 @@ def _calculate_desired_num_replicas(
     return desired_num_replicas
 
 
-@PublicAPI(stability="alpha")
-def replica_queue_length_autoscaling_policy(
-    ctx: AutoscalingContext,
-) -> Tuple[int, Dict[str, Any]]:
-    """The default autoscaling policy based on basic thresholds for scaling.
-    There is a minimum threshold for the average queue length in the cluster
-    to scale up and a maximum threshold to scale down. Each period, a 'scale
-    up' or 'scale down' decision is made. This decision must be made for a
-    specified number of periods in a row before the number of replicas is
-    actually scaled. See config options for more details.  Assumes
-    `get_decision_num_replicas` is called once every CONTROL_LOOP_PERIOD_S
-    seconds.
+def _apply_scaling_factors(
+    desired_num_replicas: int,
+    current_num_replicas: int,
+    autoscaling_config: AutoscalingConfig,
+) -> int:
+    """Apply scaling factors to the desired number of replicas.
+    Returns the scaled number of replicas depending on the scaling factor.
+    The computation uses the difference between desired and current to scale.
+
     """
-
-    curr_target_num_replicas: int = ctx.target_num_replicas
-    total_num_requests: int = ctx.total_num_requests
-    num_running_replicas: int = ctx.current_num_replicas
-    config: Optional[AutoscalingConfig] = ctx.config
-    capacity_adjusted_min_replicas: int = ctx.capacity_adjusted_min_replicas
-    capacity_adjusted_max_replicas: int = ctx.capacity_adjusted_max_replicas
-    policy_state: Dict[str, Any] = ctx.policy_state
-    decision_counter = policy_state.get("decision_counter", 0)
-    if num_running_replicas == 0:
-        # When 0 replicas and queries are queued, scale up the replicas
-        if total_num_requests > 0:
-            return (
-                max(
-                    math.ceil(1 * config.get_upscaling_factor()),
-                    curr_target_num_replicas,
-                ),
-                policy_state,
-            )
-        return curr_target_num_replicas, policy_state
-
-    decision_num_replicas = curr_target_num_replicas
-
-    desired_num_replicas = _calculate_desired_num_replicas(
-        config,
-        total_num_requests,
-        num_running_replicas=num_running_replicas,
-        override_min_replicas=capacity_adjusted_min_replicas,
-        override_max_replicas=capacity_adjusted_max_replicas,
+    if current_num_replicas == desired_num_replicas:
+        return desired_num_replicas
+    replicas_delta = desired_num_replicas - current_num_replicas
+    scaling_factor = (
+        autoscaling_config.get_upscaling_factor()
+        if replicas_delta > 0
+        else autoscaling_config.get_downscaling_factor()
     )
+    scaled_num_replicas = math.ceil(
+        current_num_replicas + scaling_factor * replicas_delta
+    )
+    # If the scaled_replicas are stuck during downscaling because of scaling factor, decrement by 1.
+    if (
+        desired_num_replicas < current_num_replicas
+        and scaled_num_replicas == current_num_replicas
+    ):
+        scaled_num_replicas -= 1
+    return scaled_num_replicas
+
+
+def _apply_delay_logic(
+    desired_num_replicas: int,
+    curr_target_num_replicas: int,
+    config: AutoscalingConfig,
+    policy_state: Dict[str, Any],
+) -> Tuple[int, Dict[str, Any]]:
+
+    """Apply delay logic to the desired number of replicas."""
+    decision_num_replicas = curr_target_num_replicas
+    decision_counter = policy_state.get("decision_counter", 0)
     # Scale up.
     if desired_num_replicas > curr_target_num_replicas:
         # If the previous decision was to scale down (the counter was
@@ -170,6 +168,143 @@ def replica_queue_length_autoscaling_policy(
         decision_counter = 0
 
     policy_state["decision_counter"] = decision_counter
+    return decision_num_replicas, policy_state
+
+
+def _apply_bounds(
+    num_replicas: int,
+    capacity_adjusted_min_replicas: int,
+    capacity_adjusted_max_replicas: int,
+) -> int:
+    """Clip replica count to be within capacity-adjusted min/max bounds."""
+    return max(
+        capacity_adjusted_min_replicas,
+        min(capacity_adjusted_max_replicas, num_replicas),
+    )
+
+
+@PublicAPI(stability="alpha")
+def apply_autoscaling_config(
+    policy_func: Callable[[AutoscalingContext], Tuple[int, Dict[str, Any]]]
+) -> Callable[[AutoscalingContext], Tuple[int, Dict[str, Any]]]:
+    """
+    Wraps a custom policy function to automatically apply:
+    - upscaling_factor / downscaling_factor
+    - min_replicas / max_replicas bounds
+    - upscale_delay_s / downscale_delay_s / downscale_to_zero_delay_s
+    """
+
+    @functools.wraps(policy_func)
+    def wrapped_policy(ctx: AutoscalingContext) -> Tuple[int, Dict[str, Any]]:
+
+        policy_state = ctx.policy_state
+        # Get raw desired replicas from custom policy.
+        # NOTE: Currently custom policies do not get the default policy's 0 replica cold start fast path.
+        # upscale_delay_s applies even at 0 replicas.
+        """
+        Currently the custom policy can return a dictionary with a decision_counter key.
+        and can overwrite the decision_counter key in the policy_state dictionary currenty I am just ignoring that field.
+        There are a few ways to handle this:
+        1. One method is to create a custom_policy_state inside the policy_state dictionary to avoid overwriting decision_counter key if the custom policy also returns
+         a dictionary with decision_counter key.
+         ```
+            if "custom_policy_state" not in policy_state:
+                policy_state["custom_policy_state"] = {}
+            user_ctx = dataclasses.replace(ctx, policy_state=policy_state["custom_policy_state"])
+            desired_num_replicas, updated_custom_policy_state = policy_func(user_ctx)
+            # Update custom policy state with the updated state returned by the custom policy
+            if updated_custom_policy_state:
+                policy_state["custom_policy_state"].update(updated_custom_policy_state)
+        Pros: This can be used for future internal states and can separate the custom and internal states for policies that need to use both.
+        ```
+        2. We can ignore the decision_counter key from the custom policy and warn the user that the decision_counter key is a protected key and cannot be overwritten.
+        so we have created a new key called custom_decision_counter inside the policy_state dictionary to store the decision_counter key from the custom policy.
+        ```
+
+        desired_num_replicas, updated_custom_policy_state = policy_func(ctx)
+        # Update custom policy state with the updated state returned by the custom policy
+        if updated_custom_policy_state:
+            if "decision_counter" in updated_custom_policy_state:
+                logger.warning("The decision_counter key is a protected key and cannot be overwritten. The decision_counter key will be stored under the `custom_decision_counter` key.")
+                policy_state["custom_decision_counter"] = updated_custom_policy_state.pop("decision_counter")
+            policy_state.update(updated_custom_policy_state)
+        Pros: This is a simple solution and can fit into the existing implementation.
+        Cons: This can become an issue if the custom policy and internal policy states have a lot of overlaps in the future.
+       """
+        desired_num_replicas, updated_custom_policy_state = policy_func(ctx)
+        if updated_custom_policy_state:
+            if "decision_counter" in updated_custom_policy_state:
+                updated_custom_policy_state.pop("decision_counter")
+            policy_state.update(updated_custom_policy_state)
+        # Apply scaling factors (if configured)
+        if (
+            ctx.config.upscaling_factor is not None
+            or ctx.config.downscaling_factor is not None
+        ):
+            desired_num_replicas = _apply_scaling_factors(
+                desired_num_replicas, ctx.current_num_replicas, ctx.config
+            )
+
+        # Apply delay logic
+        decision_num_replicas, updated_state = _apply_delay_logic(
+            desired_num_replicas, ctx.target_num_replicas, ctx.config, policy_state
+        )
+
+        # Apply bounds
+        final_num_replicas = _apply_bounds(
+            decision_num_replicas,
+            ctx.capacity_adjusted_min_replicas,
+            ctx.capacity_adjusted_max_replicas,
+        )
+
+        return final_num_replicas, updated_state
+
+    return wrapped_policy
+
+
+@PublicAPI(stability="alpha")
+def replica_queue_length_autoscaling_policy(
+    ctx: AutoscalingContext,
+) -> Tuple[int, Dict[str, Any]]:
+    """The default autoscaling policy based on basic thresholds for scaling.
+    There is a minimum threshold for the average queue length in the cluster
+    to scale up and a maximum threshold to scale down. Each period, a 'scale
+    up' or 'scale down' decision is made. This decision must be made for a
+    specified number of periods in a row before the number of replicas is
+    actually scaled. See config options for more details.  Assumes
+    `get_decision_num_replicas` is called once every CONTROL_LOOP_PERIOD_S
+    seconds.
+    """
+
+    curr_target_num_replicas: int = ctx.target_num_replicas
+    total_num_requests: int = ctx.total_num_requests
+    num_running_replicas: int = ctx.current_num_replicas
+    config: Optional[AutoscalingConfig] = ctx.config
+    capacity_adjusted_min_replicas: int = ctx.capacity_adjusted_min_replicas
+    capacity_adjusted_max_replicas: int = ctx.capacity_adjusted_max_replicas
+    policy_state: Dict[str, Any] = ctx.policy_state
+    if num_running_replicas == 0:
+        # When 0 replicas and queries are queued, scale up the replicas
+        if total_num_requests > 0:
+            return (
+                max(
+                    math.ceil(1 * config.get_upscaling_factor()),
+                    curr_target_num_replicas,
+                ),
+                policy_state,
+            )
+        return curr_target_num_replicas, policy_state
+
+    desired_num_replicas = _calculate_desired_num_replicas(
+        config,
+        total_num_requests,
+        num_running_replicas=num_running_replicas,
+        override_min_replicas=capacity_adjusted_min_replicas,
+        override_max_replicas=capacity_adjusted_max_replicas,
+    )
+    decision_num_replicas, policy_state = _apply_delay_logic(
+        desired_num_replicas, curr_target_num_replicas, config, policy_state
+    )
     return decision_num_replicas, policy_state
 
 

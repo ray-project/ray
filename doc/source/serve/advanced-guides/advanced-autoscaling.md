@@ -641,6 +641,31 @@ Keep policy functions **fast and lightweight**. Slow logic can block the Serve c
 :::
 
 
+### Applying standard autoscaling parameters to custom policies  
+  
+By default, custom autoscaling policies don't automatically benefit from Ray Serve's standard autoscaling parameters like `upscale_delay_s`, `downscale_delay_s`, `upscaling_factor`, and `downscaling_factor`. These parameters are only enforced by the default autoscaling policy.  
+
+To apply these parameters to your custom policy, use the `@apply_autoscaling_config` decorator. This ensures consistent behavior and reduces boilerplate code by automatically handling the following [`AutoscalingConfig`](../api/doc/ray.serve.config.AutoscalingConfig.rst) parameters:
+
+The following example shows how to use the decorator:
+
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin_apply_autoscaling_config_example__
+:end-before: __end_apply_autoscaling_config_example__
+```
+
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin_apply_autoscaling_config_usage__
+:end-before: __end_apply_autoscaling_config_usage__
+```
+
+:::{note}
+The decorator applies the configuration logic **after** the custom policy function returns. Your policy function should return the "raw" desired number of replicas. The decorator then modifies this value based on the `autoscaling_config` settings.
+:::
+
+
 ### Custom metrics
 
 You can make richer decisions by emitting your own metrics from the deployment. Implement `record_autoscaling_stats()` to return a `dict[str, float]`. Ray Serve will surface these values in the [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst).
