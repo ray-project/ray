@@ -33,7 +33,6 @@ from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
-from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
     ImageFileMetadataProvider,
@@ -3988,19 +3987,23 @@ def read_iceberg(
 
     Examples:
         >>> import ray
-        >>> from pyiceberg.expressions import EqualTo  #doctest: +SKIP
+        >>> from ray.data.expressions import col  #doctest: +SKIP
+        >>> # Read the table and apply filters using Ray Data expressions
         >>> ds = ray.data.read_iceberg( #doctest: +SKIP
         ...     table_identifier="db_name.table_name",
-        ...     row_filter=EqualTo("column_name", "literal_value"),
         ...     catalog_kwargs={"name": "default", "type": "glue"}
-        ... )
+        ... ).filter(col("column_name") == "literal_value")
+        >>> # Select specific columns
+        >>> ds = ds.select_columns(["col1", "col2"])  #doctest: +SKIP
 
     Args:
         table_identifier: Fully qualified table identifier (``db_name.table_name``)
-        row_filter: A PyIceberg :class:`~pyiceberg.expressions.BooleanExpression`
-            to use to filter the data *prior* to reading
+        row_filter: **Deprecated**. Use ``.filter()`` method on the dataset instead.
+            A PyIceberg :class:`~pyiceberg.expressions.BooleanExpression`
+            to use to filter the data *prior* to reading.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        selected_fields: Which columns from the data to read, passed directly to
+        selected_fields: **Deprecated**. Use ``.select_columns()`` method on the dataset instead.
+            Which columns from the data to read, passed directly to
             PyIceberg's load functions. Should be an tuple of string column names.
         snapshot_id: Optional snapshot ID for the Iceberg table, by default the latest
             snapshot is used
@@ -4027,6 +4030,27 @@ def read_iceberg(
     Returns:
         :class:`~ray.data.Dataset` with rows from the Iceberg table.
     """
+    from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
+
+    # Deprecation warning for row_filter parameter
+    if row_filter is not None:
+        warnings.warn(
+            "The 'row_filter' parameter is deprecated and will be removed in a "
+            "future release. Use the .filter() method on the dataset instead. "
+            "For example: ds = ray.data.read_iceberg(...).filter(col('column') > 5)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+    # Deprecation warning for selected_fields parameter
+    if selected_fields != ("*",):
+        warnings.warn(
+            "The 'selected_fields' parameter is deprecated and will be removed in a "
+            "future release. Use the .select_columns() method on the dataset instead. "
+            "For example: ds = ray.data.read_iceberg(...).select_columns(['col1', 'col2'])",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     # Setup the Datasource
     datasource = IcebergDatasource(
@@ -4282,6 +4306,7 @@ def read_unity_catalog(
 @PublicAPI(stability="alpha")
 def read_delta(
     path: Union[str, List[str]],
+    version: Optional[int] = None,
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
@@ -4309,6 +4334,7 @@ def read_delta(
     Args:
         path: A single file path for a Delta Lake table. Multiple tables are not yet
             supported.
+        version: The version of the Delta Lake table to read. If not specified, the latest version is read.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -4378,7 +4404,7 @@ def read_delta(
         raise ValueError("Only a single Delta Lake table path is supported.")
 
     # Get the parquet file paths from the DeltaTable
-    paths = DeltaTable(path).file_uris()
+    paths = DeltaTable(path, version=version).file_uris()
 
     return read_parquet(
         paths,

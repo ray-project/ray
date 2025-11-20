@@ -215,17 +215,16 @@ NodeManager::NodeManager(
                            config.node_manager_address == "127.0.0.1"),
       local_object_manager_(local_object_manager),
       leased_workers_(leased_workers),
-      high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
-      local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
+      local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
+      plasma_store_usage_trigger_gc_threshold_(
+          RayConfig::instance().plasma_store_usage_trigger_gc_threshold()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
-      local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       local_lease_manager_(local_lease_manager),
       cluster_lease_manager_(cluster_lease_manager),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       placement_group_resource_manager_(placement_group_resource_manager),
-      next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
       worker_killing_policy_(std::make_shared<GroupByOwnerIdWorkerKillingPolicy>()),
       memory_monitor_(std::make_unique<MemoryMonitor>(
@@ -324,7 +323,14 @@ void NodeManager::RegisterGcs() {
   auto on_node_change_subscribe_done = [this](Status status) {
     RAY_CHECK_OK(status);
 
-    // Register resource manager and scheduler
+    // RESOURCE_VIEW is used to synchronize available resources across Raylets.
+    //
+    // LocalResourceManager::CreateSyncMessage will be called periodically to collect
+    // the local Raylet's usage to broadcast to others (via the GCS). The updates are
+    // versioned inside of `LocalResourceManager` to avoid unnecessary broadcasts.
+    //
+    // NodeManager::ConsumeSyncMessage will be called when a sync message containing
+    // other Raylets' resource usage is received.
     ray_syncer_.Register(
         /* message_type */ syncer::MessageType::RESOURCE_VIEW,
         /* reporter */ &cluster_resource_scheduler_.GetLocalResourceManager(),
@@ -332,8 +338,14 @@ void NodeManager::RegisterGcs() {
         /* pull_from_reporter_interval_ms */
         report_resources_period_ms_);
 
-    // Register a commands channel.
-    // It's only used for GC right now.
+    // COMMANDS is used only to broadcast a global request to call the Python garbage
+    // collector on all Raylets when the cluster is under memory pressure.
+    //
+    // Periodic collection is disabled, so this command is only broadcasted via
+    // `OnDemandBroadcasting` (which will call NodeManager::CreateSyncMessage).
+    //
+    // NodeManager::ConsumeSyncMessage is called to execute the GC command from other
+    // Raylets.
     ray_syncer_.Register(
         /* message_type */ syncer::MessageType::COMMANDS,
         /* reporter */ this,
@@ -343,14 +355,7 @@ void NodeManager::RegisterGcs() {
     auto gcs_channel = gcs_client_.GetGcsRpcClient().GetChannel();
     ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
     periodical_runner_->RunFnPeriodically(
-        [this] {
-          auto triggered_by_global_gc = TryLocalGC();
-          // If plasma store is under high pressure, we should try to schedule a global
-          // gc.
-          if (triggered_by_global_gc) {
-            ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
-          }
-        },
+        [this] { TriggerLocalOrGlobalGCIfNeeded(); },
         RayConfig::instance().raylet_check_gc_period_milliseconds(),
         "NodeManager.CheckGC");
   };
@@ -368,8 +373,7 @@ void NodeManager::RegisterGcs() {
         HandleUnexpectedWorkerFailure(
             WorkerID::FromBinary(worker_failure_data.worker_id()));
       };
-  RAY_CHECK_OK(gcs_client_.Workers().AsyncSubscribeToWorkerFailures(
-      worker_failure_handler, nullptr));
+  gcs_client_.Workers().AsyncSubscribeToWorkerFailures(worker_failure_handler, nullptr);
 
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
@@ -386,7 +390,7 @@ void NodeManager::RegisterGcs() {
       HandleJobFinished(job_id, job_data);
     }
   };
-  RAY_CHECK_OK(gcs_client_.Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
+  gcs_client_.Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr);
 
   periodical_runner_->RunFnPeriodically(
       [this] {
@@ -594,26 +598,6 @@ void NodeManager::CheckForUnexpectedWorkerDisconnects() {
       DestroyWorker(all_workers[i], rpc::WorkerExitType::SYSTEM_ERROR, msg);
     }
   }
-}
-
-void NodeManager::DoLocalGC(bool triggered_by_global_gc) {
-  auto all_workers = worker_pool_.GetAllRegisteredWorkers();
-  for (const auto &driver : worker_pool_.GetAllRegisteredDrivers()) {
-    all_workers.push_back(driver);
-  }
-  RAY_LOG(INFO) << "Sending Python GC request to " << all_workers.size()
-                << " local workers to clean up Python cyclic references.";
-  for (const auto &worker : all_workers) {
-    rpc::LocalGCRequest request;
-    request.set_triggered_by_global_gc(triggered_by_global_gc);
-    worker->rpc_client()->LocalGC(
-        request, [](const ray::Status &status, const rpc::LocalGCReply &r) {
-          if (!status.ok()) {
-            RAY_LOG(DEBUG) << "Failed to send local GC request: " << status.ToString();
-          }
-        });
-  }
-  local_gc_run_time_ns_ = absl::GetCurrentTimeNanos();
 }
 
 void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest request,
@@ -857,8 +841,8 @@ void NodeManager::WarnResourceDeadlock() {
   // case resource_deadlock_warned_: >1 => global gc but don't print any warnings
   if (resource_deadlock_warned_++ > 0) {
     // Actor references may be caught in cycles, preventing them from being deleted.
-    // Trigger global GC to hopefully free up resource slots.
-    TriggerGlobalGC();
+    // Set should global gc to hopefully free up resource slots.
+    SetShouldGlobalGC();
 
     // Suppress duplicates warning messages.
     if (resource_deadlock_warned_ > 2) {
@@ -1610,21 +1594,7 @@ void NodeManager::HandleAsyncGetObjectsRequest(
   auto request = flatbuffers::GetRoot<protocol::AsyncGetObjectsRequest>(message_data);
   std::vector<rpc::ObjectReference> refs =
       FlatbufferToObjectReferences(*request->object_ids(), *request->owner_addresses());
-  int64_t request_id = AsyncGet(client, refs);
-  flatbuffers::FlatBufferBuilder fbb;
-  auto get_reply = protocol::CreateAsyncGetObjectsReply(fbb, request_id);
-  fbb.Finish(get_reply);
-  Status status = client->WriteMessage(
-      static_cast<int64_t>(protocol::MessageType::AsyncGetObjectsReply),
-      fbb.GetSize(),
-      fbb.GetBufferPointer());
-  if (!status.ok()) {
-    DisconnectClient(client,
-                     /*graceful=*/false,
-                     rpc::WorkerExitType::SYSTEM_ERROR,
-                     absl::StrFormat("Could not send AsyncGetObjectsReply because of %s",
-                                     status.ToString()));
-  }
+  AsyncGet(client, refs, request->get_request_id());
 }
 
 void NodeManager::ProcessWaitRequestMessage(
@@ -2359,15 +2329,16 @@ void NodeManager::HandleNotifyWorkerUnblocked(
   }
 }
 
-int64_t NodeManager::AsyncGet(const std::shared_ptr<ClientConnection> &client,
-                              std::vector<rpc::ObjectReference> &object_refs) {
+void NodeManager::AsyncGet(const std::shared_ptr<ClientConnection> &client,
+                           std::vector<rpc::ObjectReference> &object_refs,
+                           int64_t get_request_id) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     worker = worker_pool_.GetRegisteredDriver(client);
   }
   RAY_CHECK(worker);
-  return lease_dependency_manager_.StartGetRequest(worker->WorkerId(),
-                                                   std::move(object_refs));
+  lease_dependency_manager_.StartGetRequest(
+      worker->WorkerId(), std::move(object_refs), get_request_id);
 }
 
 void NodeManager::AsyncWait(const std::shared_ptr<ClientConnection> &client,
@@ -2907,40 +2878,49 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 void NodeManager::HandleGlobalGC(rpc::GlobalGCRequest request,
                                  rpc::GlobalGCReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
-  TriggerGlobalGC();
+  SetShouldGlobalGC();
 }
 
-bool NodeManager::TryLocalGC() {
+void NodeManager::TriggerLocalOrGlobalGCIfNeeded() {
   // If plasma store is under high pressure, we should try to schedule a global gc.
-  bool plasma_high_pressure =
-      object_manager_.GetUsedMemoryPercentage() > high_plasma_storage_usage_;
-  if (plasma_high_pressure && global_gc_throttler_.AbleToRun()) {
-    TriggerGlobalGC();
+  const bool plasma_high_pressure = object_manager_.GetUsedMemoryPercentage() >
+                                    plasma_store_usage_trigger_gc_threshold_;
+  if (plasma_high_pressure && global_gc_throttler_.CheckAndUpdateIfPossible()) {
+    SetShouldGlobalGC();
   }
 
-  // Set the global gc bit on the outgoing heartbeat message.
-  bool triggered_by_global_gc = false;
   if (should_global_gc_) {
-    triggered_by_global_gc = true;
+    // Always increment the sync message version number so it's always triggered once per
+    // call.
+    gc_command_sync_version_++;
+    ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
     should_global_gc_ = false;
-    global_gc_throttler_.RunNow();
   }
 
-  // Trigger local GC if needed. This throttles the frequency of local GC calls
-  // to at most once per heartbeat interval.
-  if ((should_local_gc_ ||
-       (absl::GetCurrentTimeNanos() - local_gc_run_time_ns_ > local_gc_interval_ns_)) &&
-      local_gc_throttler_.AbleToRun()) {
-    DoLocalGC(triggered_by_global_gc);
-    should_local_gc_ = false;
+  // Trigger local GC if needed.
+  const bool local_gc_trigger =
+      absl::GetCurrentTimeNanos() - local_gc_throttler_.LastRunTime() >
+      local_gc_interval_ns_;
+  if ((local_gc_triggered_by_global_gc_ || local_gc_trigger) &&
+      local_gc_throttler_.CheckAndUpdateIfPossible()) {
+    auto all_workers = worker_pool_.GetAllRegisteredWorkers();
+    for (auto &driver : worker_pool_.GetAllRegisteredDrivers()) {
+      all_workers.push_back(std::move(driver));
+    }
+    RAY_LOG(INFO) << "Sending Python GC request to " << all_workers.size()
+                  << " local workers to clean up Python cyclic references.";
+    for (const auto &worker : all_workers) {
+      worker->rpc_client()->LocalGC(
+          rpc::LocalGCRequest{}, [](const ray::Status &, const rpc::LocalGCReply &) {});
+    }
+    local_gc_triggered_by_global_gc_ = false;
   }
-  return triggered_by_global_gc;
 }
 
-void NodeManager::TriggerGlobalGC() {
+void NodeManager::SetShouldGlobalGC() {
   should_global_gc_ = true;
   // We won't see our own request, so trigger local GC in the next heartbeat.
-  should_local_gc_ = true;
+  local_gc_triggered_by_global_gc_ = true;
 }
 
 void NodeManager::HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
@@ -3027,26 +3007,32 @@ void NodeManager::ConsumeSyncMessage(
     syncer::CommandsSyncMessage commands_sync_message;
     commands_sync_message.ParseFromString(message->sync_message());
     if (commands_sync_message.should_global_gc()) {
-      should_local_gc_ = true;
+      local_gc_triggered_by_global_gc_ = true;
     }
   }
 }
 
 std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
     int64_t after_version, syncer::MessageType message_type) const {
+  // This method is only called for the COMMANDS channel, as the RESOURCE_VIEW
+  // channel goes through the LocalResourceManager.
   RAY_CHECK_EQ(message_type, syncer::MessageType::COMMANDS);
 
+  // Serialize the COMMANDS message to a byte string to be nested inside the sync message.
+  std::string serialized_commands_sync_msg;
   syncer::CommandsSyncMessage commands_sync_message;
   commands_sync_message.set_should_global_gc(true);
   commands_sync_message.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >=
                                                             1);
+  RAY_CHECK(commands_sync_message.SerializeToString(&serialized_commands_sync_msg));
+
+  // Populate the sync message.
   syncer::RaySyncMessage msg;
-  msg.set_version(absl::GetCurrentTimeNanos());
+  msg.set_version(gc_command_sync_version_);
   msg.set_node_id(self_node_id_.Binary());
   msg.set_message_type(syncer::MessageType::COMMANDS);
-  std::string serialized_msg;
-  RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
-  msg.set_sync_message(std::move(serialized_msg));
+  msg.set_sync_message(std::move(serialized_commands_sync_msg));
+
   return std::make_optional(std::move(msg));
 }
 

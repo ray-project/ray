@@ -102,7 +102,9 @@ class AggregatorAgent(
         )
 
         # Task metadata buffer accumulates dropped task attempts for GCS publishing
-        self._task_metadata_buffer = TaskEventsMetadataBuffer()
+        self._task_metadata_buffer = TaskEventsMetadataBuffer(
+            common_metric_tags=self._common_tags
+        )
 
         self._events_export_addr = (
             dashboard_agent.events_export_addr or EVENTS_EXPORT_ADDR

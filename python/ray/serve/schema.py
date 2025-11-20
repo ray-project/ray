@@ -1591,3 +1591,18 @@ class ScaleDeploymentRequest(BaseModel):
     target_num_replicas: NonNegativeInt = Field(
         description="The target number of replicas for the deployment."
     )
+
+
+@PublicAPI(stability="alpha")
+class ReplicaRank(BaseModel):
+    """Replica rank model."""
+
+    rank: int = Field(
+        description="Global rank of the replica across all nodes scoped to the deployment."
+    )
+
+    node_rank: int = Field(description="Rank of the node in the deployment.")
+
+    local_rank: int = Field(
+        description="Rank of the replica on the node scoped to the deployment."
+    )

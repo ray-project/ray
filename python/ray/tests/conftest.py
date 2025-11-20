@@ -24,6 +24,13 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.network_utils import build_address, find_free_port
 from ray._common.test_utils import wait_for_condition
+from ray._private.authentication_test_utils import (
+    authentication_env_guard,
+    clear_auth_token_sources,
+    reset_auth_token_state,
+    set_auth_mode,
+    set_env_auth_token,
+)
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env import virtualenv_utils
 from ray._private.test_utils import (
@@ -42,13 +49,6 @@ from ray._private.test_utils import (
     teardown_tls,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
-from ray.tests.authentication_test_utils import (
-    authentication_env_guard,
-    clear_auth_token_sources,
-    reset_auth_token_state,
-    set_auth_mode,
-    set_env_auth_token,
-)
 
 import psutil
 

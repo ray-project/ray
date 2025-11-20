@@ -524,12 +524,12 @@ void GcsServer::InitGcsActorManager(
       schedule_success_handler,
       raylet_client_pool_,
       worker_client_pool_,
-      metrics_.scheduler_placement_time_s_histogram,
+      metrics_.scheduler_placement_time_ms_histogram,
       /*normal_task_resources_changed_callback=*/
       [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
         gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
       });
-  gcs_actor_manager_ = std::make_unique<GcsActorManager>(
+  gcs_actor_manager_ = std::make_shared<GcsActorManager>(
       std::move(scheduler),
       gcs_table_storage_.get(),
       io_context_provider_.GetDefaultIOContext(),
@@ -964,7 +964,8 @@ void GcsServer::TryGlobalGC() {
   // To avoid spurious triggers, only those after two consecutive
   // detections and under throttling are sent out (similar to
   // `NodeManager::WarnResourceDeadlock()`).
-  if (task_pending_schedule_detected_++ > 0 && global_gc_throttler_->AbleToRun()) {
+  if (task_pending_schedule_detected_++ > 0 &&
+      global_gc_throttler_->CheckAndUpdateIfPossible()) {
     syncer::CommandsSyncMessage commands_sync_message;
     commands_sync_message.set_should_global_gc(true);
 
@@ -976,7 +977,6 @@ void GcsServer::TryGlobalGC() {
     RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
     msg->set_sync_message(std::move(serialized_msg));
     ray_syncer_->BroadcastMessage(std::move(msg));
-    global_gc_throttler_->RunNow();
   }
 }
 
