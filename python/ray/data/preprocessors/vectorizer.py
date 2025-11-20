@@ -130,6 +130,7 @@ class HashingVectorizer(Preprocessor):
         *,
         output_columns: Optional[List[str]] = None,
     ):
+        super().__init__()
         self.columns = columns
         self.num_features = num_features
         self.tokenization_fn = tokenization_fn or simple_split_tokenizer

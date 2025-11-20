@@ -6,6 +6,12 @@ import pytest
 import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
 from ray.llm._internal.batch.processor import ProcessorBuilder
+from ray.llm._internal.batch.stages.configs import (
+    ChatTemplateStageConfig,
+    DetokenizeStageConfig,
+    PrepareImageStageConfig,
+    TokenizerStageConfig,
+)
 
 
 def test_vllm_engine_processor(gpu_type, model_opt_125m):
@@ -23,10 +29,10 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         concurrency=4,
         batch_size=64,
         max_pending_requests=111,
-        apply_chat_template=True,
-        tokenize=True,
-        detokenize=True,
-        has_image=True,
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        detokenize_stage=DetokenizeStageConfig(enabled=True),
+        prepare_image_stage=PrepareImageStageConfig(enabled=True),
     )
     processor = ProcessorBuilder.build(config)
     assert processor.list_stage_names() == [
@@ -73,8 +79,8 @@ def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
         accelerator_type=gpu_type,
         concurrency=4,
         batch_size=64,
-        apply_chat_template=True,
-        tokenize=True,
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
         placement_group_config=dict(bundles=[{"CPU": 1, "GPU": 1}]),
     )
     processor = ProcessorBuilder.build(config)

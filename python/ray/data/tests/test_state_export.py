@@ -14,7 +14,7 @@ from ray.data._internal.metadata_exporter import (
     Topology,
     sanitize_for_struct,
 )
-from ray.data._internal.stats import _get_or_create_stats_actor
+from ray.data._internal.stats import get_or_create_stats_actor
 from ray.data.context import DataContext
 from ray.tests.conftest import _ray_start
 
@@ -343,7 +343,7 @@ def dummy_dataset_topology_expected_output():
 
 def test_export_disabled(ray_start_regular, dummy_dataset_topology):
     """Test that no export files are created when export API is disabled."""
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
 
     # Create or update train run
     ray.get(
@@ -362,7 +362,7 @@ def test_export_disabled(ray_start_regular, dummy_dataset_topology):
 
 def _test_dataset_metadata_export(topology, dummy_dataset_topology_expected_output):
     """Test that dataset metadata export events are written when export API is enabled."""
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
 
     # Simulate a dataset registration
     ray.get(
@@ -449,7 +449,7 @@ def test_export_multiple_datasets(
     dummy_dataset_topology_expected_output,
 ):
     """Test that multiple datasets can be exported when export API is enabled."""
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
 
     # Create a second dataset structure that's different from the dummy one
     second_topology = Topology(
@@ -642,7 +642,7 @@ def test_update_dataset_metadata_state(
     ray_start_cluster_with_export_api_write, dummy_dataset_topology
 ):
     """Test dataset state update at the export API"""
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
     # Register dataset
     ray.get(
         stats_actor.register_dataset.remote(
@@ -689,7 +689,7 @@ def test_update_dataset_metadata_state(
 def test_update_dataset_metadata_operator_states(
     ray_start_cluster_with_export_api_write, dummy_dataset_topology
 ):
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
     # Register dataset
     ray.get(
         stats_actor.register_dataset.remote(

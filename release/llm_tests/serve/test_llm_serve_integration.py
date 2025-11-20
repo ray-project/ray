@@ -186,7 +186,6 @@ def test_transcription_model(model_name):
     time.sleep(1)
 
 
-@pytest.mark.asyncio(scope="function")
 @pytest.fixture
 def remote_model_app(request):
     """

@@ -4142,6 +4142,7 @@
       pytest -sv test_batch_multi_node_vllm.py
 
 - name: llm_batch_single_node_baseline_benchmark
+  python: "3.11"
   group: llm-batch
   working_dir: llm_tests/batch
   frequency: weekly
@@ -4151,7 +4152,8 @@
     byod:
       runtime_env:
         - VLLM_DISABLE_COMPILE_CACHE=1
-      type: gpu
+      type: llm-cu128
+      post_build_script: byod_llm_single_node_baseline_benchmark.sh
     cluster_compute: llm_single_node_benchmark_l4.yaml
 
   run:
