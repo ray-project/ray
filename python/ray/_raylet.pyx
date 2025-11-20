@@ -4679,6 +4679,11 @@ cdef class CoreWorker:
                     c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), # noqa
                 c_object_ref_and_is_ready_pair.second)
 
+    def is_canceled(self) -> bool:
+        ctx = task_cancellation_context.get()
+        return ctx is not None and ctx.is_canceled
+
+
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,
                          void *user_callback_ptr) with gil:
