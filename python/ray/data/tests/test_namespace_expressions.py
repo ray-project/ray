@@ -9,14 +9,16 @@ from typing import Any
 import pandas as pd
 import pyarrow as pa
 import pytest
+from packaging import version
 
 import ray
+from ray.data._internal.util import rows_same
 from ray.data.expressions import col
 
-
-def assert_df_equal(result: pd.DataFrame, expected: pd.DataFrame):
-    """Assert dataframes are equal, ignoring dtype differences."""
-    pd.testing.assert_frame_equal(result, expected, check_dtype=False)
+pytestmark = pytest.mark.skipif(
+    version.parse(pa.__version__) < version.parse("19.0.0"),
+    reason="Namespace expressions tests require PyArrow >= 19.0",
+)
 
 
 def _create_dataset(
@@ -70,7 +72,7 @@ class TestListNamespace:
                 "len": [3, 2, 0],
             }
         )
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
     def test_list_get(self, dataset_format):
         """Test list.get() extracts element at index."""
@@ -87,7 +89,7 @@ class TestListNamespace:
                 "first": [10, 40],
             }
         )
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
     def test_list_bracket_index(self, dataset_format):
         """Test list[i] bracket notation for element access."""
@@ -101,7 +103,7 @@ class TestListNamespace:
                 "elem": [20],
             }
         )
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
 
 # ──────────────────────────────────────
@@ -132,7 +134,7 @@ class TestStringLength:
         result = ds.with_column("result", method()).to_pandas()
 
         expected = pd.DataFrame({"name": input_values, "result": expected_results})
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
 
 @pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
@@ -161,7 +163,7 @@ class TestStringCase:
         result = ds.with_column("result", method()).to_pandas()
 
         expected = pd.DataFrame({"name": input_values, "result": expected_values})
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
 
 @pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
@@ -193,7 +195,7 @@ class TestStringPredicates:
         result = ds.with_column("result", method()).to_pandas()
 
         expected = pd.DataFrame({"val": input_values, "result": expected_results})
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
 
 @pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
@@ -221,7 +223,7 @@ class TestStringTrimming:
         result = ds.with_column("result", method(*method_args)).to_pandas()
 
         expected = pd.DataFrame({"val": input_values, "result": expected_values})
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
 
 @pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
@@ -249,7 +251,7 @@ class TestStringPadding:
         result = ds.with_column("result", method(**method_kwargs)).to_pandas()
 
         expected = pd.DataFrame({"val": ["hi"], "result": [expected_value]})
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
 
 @pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
@@ -288,7 +290,7 @@ class TestStringSearch:
         ).to_pandas()
 
         expected = pd.DataFrame({"val": input_values, "result": expected_results})
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
 
 @pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
@@ -302,7 +304,7 @@ class TestStringTransform:
         ds = _create_dataset(data, dataset_format)
         result = ds.with_column("rev", col("val").str.reverse()).to_pandas()
         expected = pd.DataFrame({"val": ["hello", "world"], "rev": ["olleh", "dlrow"]})
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
     def test_slice(self, dataset_format):
         """Test str.slice() extracts substring."""
@@ -311,7 +313,7 @@ class TestStringTransform:
         ds = _create_dataset(data, dataset_format)
         result = ds.with_column("sliced", col("val").str.slice(1, 4)).to_pandas()
         expected = pd.DataFrame({"val": ["hello"], "sliced": ["ell"]})
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
     def test_replace(self, dataset_format):
         """Test str.replace() replaces substring."""
@@ -324,7 +326,7 @@ class TestStringTransform:
         expected = pd.DataFrame(
             {"val": ["hello world"], "replaced": ["hello universe"]}
         )
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
     def test_replace_with_max(self, dataset_format):
         """Test str.replace() with max_replacements."""
@@ -335,7 +337,7 @@ class TestStringTransform:
             "replaced", col("val").str.replace("a", "X", max_replacements=2)
         ).to_pandas()
         expected = pd.DataFrame({"val": ["aaa"], "replaced": ["XXa"]})
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
     def test_repeat(self, dataset_format):
         """Test str.repeat() repeats strings."""
@@ -344,7 +346,7 @@ class TestStringTransform:
         ds = _create_dataset(data, dataset_format)
         result = ds.with_column("repeated", col("val").str.repeat(3)).to_pandas()
         expected = pd.DataFrame({"val": ["A"], "repeated": ["AAA"]})
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
 
 # ──────────────────────────────────────
@@ -390,7 +392,7 @@ class TestStructNamespace:
                 "age": [30, 25],
             }
         )
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
     def test_struct_bracket(self, dataset_format):
         """Test struct['field'] bracket notation."""
@@ -424,7 +426,7 @@ class TestStructNamespace:
                 "name": ["Alice", "Bob"],
             }
         )
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
     def test_struct_nested_field(self, dataset_format):
         """Test nested struct field access with .field()."""
@@ -471,7 +473,7 @@ class TestStructNamespace:
                 "city": ["NYC", "LA"],
             }
         )
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
     def test_struct_nested_bracket(self, dataset_format):
         """Test nested struct field access with brackets."""
@@ -518,7 +520,7 @@ class TestStructNamespace:
                 "zip": ["10001", "90001"],
             }
         )
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
 
 # ──────────────────────────────────────
@@ -537,7 +539,7 @@ class TestNamespaceIntegration:
         ds = _create_dataset(data, dataset_format)
         result = ds.with_column("len_plus_one", col("items").list.len() + 1).to_pandas()
         expected = pd.DataFrame({"items": [[1, 2, 3]], "len_plus_one": [4]})
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
     def test_string_with_comparison(self, dataset_format):
         """Test string operations combined with comparison."""
@@ -546,7 +548,7 @@ class TestNamespaceIntegration:
         ds = _create_dataset(data, dataset_format)
         result = ds.with_column("long_name", col("name").str.len() > 3).to_pandas()
         expected = pd.DataFrame({"name": ["Alice", "Bo"], "long_name": [True, False]})
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
     def test_multiple_operations(self, dataset_format):
         """Test multiple namespace operations in single pipeline."""
@@ -567,7 +569,7 @@ class TestNamespaceIntegration:
                 "starts_a": [True],
             }
         )
-        assert_df_equal(result, expected)
+        assert rows_same(result, expected)
 
 
 # ──────────────────────────────────────
