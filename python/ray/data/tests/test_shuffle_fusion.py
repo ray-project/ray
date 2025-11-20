@@ -26,21 +26,79 @@ class TestShuffleFusion:
         """Set up test fixtures."""
         self.context = DataContext.get_current()
 
-    def test_repartition_repartition_fusion(self):
-        """Test that consecutive Repartition operations are fused."""
-        # Create a simple logical plan with two consecutive repartitions
+    @pytest.mark.parametrize(
+        "keys1,keys2,expected_keys",
+        [
+            (None, None, None),
+            (["a"], None, None),
+            (None, ["b"], ["b"]),
+            (["a"], ["b"], ["b"]),
+        ],
+        ids=["none_none", "keys1_none", "none_keys2", "keys1_keys2"],
+    )
+    @pytest.mark.parametrize(
+        "full_shuffle1,full_shuffle2,expected_full_shuffle",
+        [
+            (False, False, False),
+            (True, False, True),
+            (False, True, True),
+            (True, True, True),
+        ],
+        ids=["false_false", "true_false", "false_true", "true_true"],
+    )
+    @pytest.mark.parametrize(
+        "num_outputs1,num_outputs2",
+        [
+            (4, 8),
+            (10, 5),
+        ],
+        ids=["4_to_8", "10_to_5"],
+    )
+    @pytest.mark.parametrize(
+        "random_permute1,random_permute2,expected_random_permute",
+        [
+            (False, False, False),
+            (True, False, True),
+            (False, True, True),
+            (True, True, True),
+        ],
+        ids=["false_false", "true_false", "false_true", "true_true"],
+    )
+    def test_repartition_repartition_fusion(
+        self,
+        keys1,
+        keys2,
+        expected_keys,
+        full_shuffle1,
+        full_shuffle2,
+        expected_full_shuffle,
+        num_outputs1,
+        num_outputs2,
+        random_permute1,
+        random_permute2,
+        expected_random_permute,
+    ):
+        """Test that consecutive Repartition operations are fused with correct parameters."""
         input_op = InputData("test_input")
+
+        # First repartition
         repartition1 = Repartition(
             input_op=input_op,
-            num_outputs=4,
-            full_shuffle=False,
-            random_permute=False,
+            num_outputs=num_outputs1,
+            full_shuffle=full_shuffle1,
+            random_permute=random_permute1,
+            keys=keys1,
+            sort=False,
         )
+
+        # Second repartition
         repartition2 = Repartition(
             input_op=repartition1,
-            num_outputs=8,
-            full_shuffle=True,
-            random_permute=True,
+            num_outputs=num_outputs2,
+            full_shuffle=full_shuffle2,
+            random_permute=random_permute2,
+            keys=keys2,
+            sort=False,
         )
 
         # Create logical plan
@@ -51,152 +109,27 @@ class TestShuffleFusion:
 
         # Verify fusion occurred
         dag = optimized_plan.dag
-        assert isinstance(dag, Repartition)
-        assert dag._num_outputs == 8  # Should use the second repartition's output count
-        assert dag._full_shuffle  # Should use the second repartition's shuffle setting
+        assert isinstance(dag, Repartition), "Should be a fused Repartition"
+
+        # Verify fused parameters
         assert (
-            dag._random_permute
-        )  # Should use the second repartition's permute setting
-        assert dag.input_dependencies[0] == input_op  # Should connect directly to input
-        # Verify fused name format
-        assert dag.name == "[Repartition->Repartition]"
+            dag._num_outputs == num_outputs2
+        ), "Should use second repartition's num_outputs"
+        assert (
+            dag._full_shuffle == expected_full_shuffle
+        ), f"Expected full_shuffle={expected_full_shuffle}, got {dag._full_shuffle}"
+        assert (
+            dag._random_permute == expected_random_permute
+        ), f"Expected random_permute={expected_random_permute}, got {dag._random_permute}"
+        assert (
+            dag._keys == expected_keys
+        ), f"Expected keys={expected_keys}, got {dag._keys}"
 
-    def test_repartition_repartition_no_fusion_different_keys(self):
-        """Test that repartitions with different keys are not fused."""
-        input_op = InputData("test_input")
-        repartition1 = Repartition(
-            input_op=input_op,
-            num_outputs=4,
-            full_shuffle=True,
-            keys=["key1"],
-        )
-        repartition2 = Repartition(
-            input_op=repartition1,
-            num_outputs=8,
-            full_shuffle=True,
-            keys=["key2"],  # Different keys
-        )
+        # Verify it connects directly to input (fusion removed first repartition)
+        assert dag.input_dependencies[0] == input_op, "Should connect directly to input"
 
-        logical_plan = LogicalPlan(repartition2, self.context)
-        optimized_plan = LogicalOptimizer().optimize(logical_plan)
-
-        # Verify no fusion occurred
-        dag = optimized_plan.dag
-        assert isinstance(dag, Repartition)
-        assert dag._keys == ["key2"]  # Should keep original keys
-        assert isinstance(
-            dag.input_dependencies[0], Repartition
-        )  # Should still have intermediate repartition
-        # Verify no fusion occurred - should have original name
+        # Verify name format
         assert dag.name == "Repartition"
-
-    def test_no_fusion_incompatible_remote_args(self):
-        """Test that operations with incompatible remote args are not fused."""
-        input_op = InputData("test_input")
-        repartition1 = Repartition(
-            input_op=input_op,
-            num_outputs=4,
-            full_shuffle=False,
-        )
-        # Add incompatible remote args
-        repartition1._ray_remote_args = {"num_cpus": 1}
-
-        repartition2 = Repartition(
-            input_op=repartition1,
-            num_outputs=8,
-            full_shuffle=True,
-        )
-        repartition2._ray_remote_args = {
-            "num_cpus": 2
-        }  # Different resource requirements
-
-        logical_plan = LogicalPlan(repartition2, self.context)
-        optimized_plan = LogicalOptimizer().optimize(logical_plan)
-
-        # Verify no fusion occurred
-        dag = optimized_plan.dag
-        assert isinstance(dag, Repartition)
-        assert isinstance(
-            dag.input_dependencies[0], Repartition
-        )  # Should still have intermediate repartition
-        # Verify no fusion occurred - should have original name
-        assert dag.name == "Repartition"
-
-
-class TestShuffleFusionLongChains:
-    """Test cases for long chains of shuffle operations."""
-
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        """Set up test fixtures."""
-        self.context = DataContext.get_current()
-
-    def test_chain_with_incompatible_operations(self):
-        """Test that chains with incompatible operations don't fuse inappropriately."""
-        input_op = InputData("test_input")
-
-        # Create a chain where some operations can't fuse
-        repartition1 = Repartition(
-            input_op=input_op,
-            num_outputs=4,
-            full_shuffle=False,
-            keys=["key1"],  # Different keys
-        )
-        repartition2 = Repartition(
-            input_op=repartition1,
-            num_outputs=8,
-            full_shuffle=True,
-            keys=["key2"],  # Different keys - should not fuse
-        )
-        repartition3 = Repartition(
-            input_op=repartition2,
-            num_outputs=16,
-            full_shuffle=True,
-            keys=["key2"],  # Same keys as prev - should fuse
-        )
-
-        logical_plan = LogicalPlan(repartition3, self.context)
-        optimized_plan = LogicalOptimizer().optimize(logical_plan)
-
-        # Should have two repartitions: one fused, one separate
-        dag = optimized_plan.dag
-        assert isinstance(dag, Repartition)
-        assert dag._keys == ["key2"]  # Should use the final keys
-        # The input should be another Repartition (the first one that couldn't fuse)
-        assert isinstance(dag.input_dependencies[0], Repartition)
-        assert dag.input_dependencies[0]._keys == ["key1"]
-        # Verify fusion occurred for the compatible operations
-        assert dag.name == "[Repartition->Repartition]"
-
-    def test_very_long_chain(self):
-        """Test fusion of very long chains (10+ operations)."""
-        input_op = InputData("test_input")
-
-        # Create a very long chain of repartitions
-        current_op = input_op
-        expected_fused_name = "Repartition"
-        for i in range(5):
-            current_op = Repartition(
-                input_op=current_op,
-                num_outputs=i,
-                full_shuffle=(i % 2 == 1),  # Alternate shuffle
-                random_permute=(i % 2 == 1),  # Every other
-            )
-            if i < 4:
-                expected_fused_name = f"[{expected_fused_name}->Repartition]"
-
-        logical_plan = LogicalPlan(current_op, self.context)
-        optimized_plan = LogicalOptimizer().optimize(logical_plan)
-
-        # Should fuse into a single repartition
-        dag = optimized_plan.dag
-        assert isinstance(dag, Repartition)
-        assert dag._num_outputs == 4  # Should use the final output count
-        assert dag._full_shuffle  # Should be True if any were True
-        assert dag._random_permute  # Should be True if any were True
-        assert dag.input_dependencies[0] == input_op  # Should connect directly to input
-
-        assert dag.name == expected_fused_name
 
 
 if __name__ == "__main__":

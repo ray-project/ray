@@ -10,7 +10,6 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
 )
 from ray.data._internal.logical.rules.operator_fusion import are_remote_args_compatible
-from ray.data._internal.progress_bar import truncate_operator_name
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +33,6 @@ class ShuffleFusion(Rule):
 
             prev_op = prev_ops[0]
 
-            # NOTE: This str contains outer brackets to show
-            # that it's logical fusion. TODO(justin): Please confirm
-            # with team if ok.
-            fused_name = truncate_operator_name(f"[{prev_op.name}->{op.name}]", 100)
-
             # Only fuse if the ops' remote arguments are compatible.
             if not are_remote_args_compatible(
                 getattr(prev_op, "_ray_remote_args", {}),
@@ -52,7 +46,7 @@ class ShuffleFusion(Rule):
                 return op
 
             if isinstance(prev_op, Repartition) and isinstance(op, Repartition):
-                return _try_repartition_repartition_fusion(prev_op, op, fused_name)
+                return _try_repartition_repartition_fusion(prev_op, op)
 
         return op
 
@@ -84,7 +78,7 @@ def _disconnect_op_from_dag(curr_op: Operator):
 
 # Helper functions for each fusion pattern
 def _try_repartition_repartition_fusion(
-    prev_op: Repartition, op: Repartition, fused_name: str
+    prev_op: Repartition, op: Repartition
 ) -> LogicalOperator:
     """Fuse Repartition -> Repartition operations."""
 
@@ -97,7 +91,7 @@ def _try_repartition_repartition_fusion(
     random_permute = op._random_permute or prev_op._random_permute
 
     new_op = Repartition(
-        name=fused_name,
+        name=op.name,
         input_op=prev_op.input_dependencies[0],
         num_outputs=op._num_outputs,
         full_shuffle=full_shuffle,
