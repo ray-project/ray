@@ -80,10 +80,10 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
   if (status.ok()) {
     auto actor_handle = std::make_unique<ActorHandle>(actor_table_data, task_spec);
     actor_id = actor_handle->GetActorID();
-    AddNewActorHandle(std::move(actor_handle),
-                      call_site,
-                      caller_address,
-                      /*owned*/ false);
+    EmplaceNewActorHandle(std::move(actor_handle),
+                          call_site,
+                          caller_address,
+                          /*owned*/ false);
   } else {
     // Use a NIL actor ID to signal that the actor wasn't found.
     RAY_LOG(DEBUG) << "Failed to look up actor with name: " << name;
@@ -129,16 +129,24 @@ std::shared_ptr<ActorHandle> ActorManager::GetActorHandleIfExists(
   return nullptr;
 }
 
-bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                     const std::string &call_site,
-                                     const rpc::Address &caller_address,
-                                     bool owned) {
+bool ActorManager::EmplaceNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                                         const std::string &call_site,
+                                         const rpc::Address &caller_address,
+                                         bool owned) {
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+
+  {
+    absl::MutexLock lock(&mutex_);
+    if (actor_handles_.contains(actor_id)) {
+      return false;
+    }
+  }
+
   // Detached actor doesn't need ref counting.
   if (owned) {
     reference_counter_.AddOwnedObject(actor_creation_return_id,
-                                      /*inner_ids=*/{},
+                                      /*contained_ids=*/{},
                                       caller_address,
                                       call_site,
                                       /*object_size*/ -1,
@@ -308,7 +316,7 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
                 this,
                 std::placeholders::_1,
                 std::placeholders::_2);
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+  gcs_client_->Actors().AsyncSubscribe(
       actor_id,
       actor_notification_callback,
       [this, actor_id, cached_actor_name](Status status) {
@@ -323,7 +331,7 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
             cached_actor_name_to_ids_.emplace(cached_actor_name, actor_id);
           }
         }
-      }));
+      });
 }
 
 void ActorManager::MarkActorKilledOrOutOfScope(

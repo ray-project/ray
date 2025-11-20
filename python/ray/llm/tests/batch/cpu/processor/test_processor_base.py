@@ -473,6 +473,8 @@ class TestMapKwargs:
 
         ds = ray.data.range(5)
         result = processor(ds).take_all()
+        # Sort results by result value since order is not guaranteed
+        result = sorted(result, key=lambda x: x["result"])
 
         for i, row in enumerate(result):
             assert row["result"] == i

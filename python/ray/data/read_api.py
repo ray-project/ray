@@ -33,7 +33,6 @@ from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
-from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
     ImageFileMetadataProvider,
@@ -42,6 +41,10 @@ from ray.data._internal.datasource.json_datasource import (
     JSON_FILE_EXTENSIONS,
     ArrowJSONDatasource,
     PandasJSONDatasource,
+)
+from ray.data._internal.datasource.kafka_datasource import (
+    KafkaAuthConfig,
+    KafkaDatasource,
 )
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
@@ -3988,19 +3991,23 @@ def read_iceberg(
 
     Examples:
         >>> import ray
-        >>> from pyiceberg.expressions import EqualTo  #doctest: +SKIP
+        >>> from ray.data.expressions import col  #doctest: +SKIP
+        >>> # Read the table and apply filters using Ray Data expressions
         >>> ds = ray.data.read_iceberg( #doctest: +SKIP
         ...     table_identifier="db_name.table_name",
-        ...     row_filter=EqualTo("column_name", "literal_value"),
         ...     catalog_kwargs={"name": "default", "type": "glue"}
-        ... )
+        ... ).filter(col("column_name") == "literal_value")
+        >>> # Select specific columns
+        >>> ds = ds.select_columns(["col1", "col2"])  #doctest: +SKIP
 
     Args:
         table_identifier: Fully qualified table identifier (``db_name.table_name``)
-        row_filter: A PyIceberg :class:`~pyiceberg.expressions.BooleanExpression`
-            to use to filter the data *prior* to reading
+        row_filter: **Deprecated**. Use ``.filter()`` method on the dataset instead.
+            A PyIceberg :class:`~pyiceberg.expressions.BooleanExpression`
+            to use to filter the data *prior* to reading.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        selected_fields: Which columns from the data to read, passed directly to
+        selected_fields: **Deprecated**. Use ``.select_columns()`` method on the dataset instead.
+            Which columns from the data to read, passed directly to
             PyIceberg's load functions. Should be an tuple of string column names.
         snapshot_id: Optional snapshot ID for the Iceberg table, by default the latest
             snapshot is used
@@ -4027,6 +4034,27 @@ def read_iceberg(
     Returns:
         :class:`~ray.data.Dataset` with rows from the Iceberg table.
     """
+    from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
+
+    # Deprecation warning for row_filter parameter
+    if row_filter is not None:
+        warnings.warn(
+            "The 'row_filter' parameter is deprecated and will be removed in a "
+            "future release. Use the .filter() method on the dataset instead. "
+            "For example: ds = ray.data.read_iceberg(...).filter(col('column') > 5)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+    # Deprecation warning for selected_fields parameter
+    if selected_fields != ("*",):
+        warnings.warn(
+            "The 'selected_fields' parameter is deprecated and will be removed in a "
+            "future release. Use the .select_columns() method on the dataset instead. "
+            "For example: ds = ray.data.read_iceberg(...).select_columns(['col1', 'col2'])",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     # Setup the Datasource
     datasource = IcebergDatasource(
@@ -4282,6 +4310,7 @@ def read_unity_catalog(
 @PublicAPI(stability="alpha")
 def read_delta(
     path: Union[str, List[str]],
+    version: Optional[int] = None,
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
@@ -4309,6 +4338,7 @@ def read_delta(
     Args:
         path: A single file path for a Delta Lake table. Multiple tables are not yet
             supported.
+        version: The version of the Delta Lake table to read. If not specified, the latest version is read.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -4378,7 +4408,7 @@ def read_delta(
         raise ValueError("Only a single Delta Lake table path is supported.")
 
     # Get the parquet file paths from the DeltaTable
-    paths = DeltaTable(path).file_uris()
+    paths = DeltaTable(path, version=version).file_uris()
 
     return read_parquet(
         paths,
@@ -4394,6 +4424,107 @@ def read_delta(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
         **arrow_parquet_args,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_kafka(
+    topics: Union[str, List[str]],
+    *,
+    bootstrap_servers: Union[str, List[str]],
+    trigger: Literal["once"] = "once",
+    start_offset: Union[int, Literal["earliest"]] = "earliest",
+    end_offset: Union[int, Literal["latest"]] = "latest",
+    kafka_auth_config: Optional[KafkaAuthConfig] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    override_num_blocks: Optional[int] = None,
+    timeout_ms: int = 10000,
+) -> Dataset:
+    """Read data from Kafka topics.
+
+    This function supports bounded reads from Kafka topics, reading messages
+    between a start and end offset. Only the "once" trigger is
+    supported for now, which performs a single bounded read. Currently we only
+    have one read task for each partition.
+
+    Examples:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            # Read from a single topic with offset range
+            ds = ray.data.read_kafka(
+                topics="my-topic",
+                bootstrap_servers="localhost:9092",
+                start_offset=0,
+                end_offset=1000,
+            )
+
+
+    Args:
+        topics: Kafka topic name(s) to read from. Can be a single topic name
+            or a list of topic names.
+        bootstrap_servers: Kafka broker addresses. Can be a single string or
+            a list of strings.
+        trigger: Trigger mode for reading. Only "once" is supported, which
+            performs a single bounded read.
+        start_offset: Starting position for reading. Can be:
+            - int: Offset number
+            - str: "earliest"
+        end_offset: Ending position for reading (exclusive). Can be:
+            - int: Offset number
+            - str: "latest"
+        kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+        timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).
+            If the read task does not reach end_offset within the timeout, it will stop polling and return the messages
+            it has read so far.
+
+    Returns:
+        A :class:`~ray.data.Dataset` containing Kafka messages with the following schema:
+        - offset: int64 - Message offset within partition
+        - key: binary - Message key as raw bytes
+        - value: binary - Message value as raw bytes
+        - topic: string - Topic name
+        - partition: int32 - Partition ID
+        - timestamp: int64 - Message timestamp in milliseconds
+        - timestamp_type: int32 - 0=CreateTime, 1=LogAppendTime
+        - headers: map<string, binary> - Message headers (keys as strings, values as bytes)
+
+    Raises:
+        ValueError: If invalid parameters are provided.
+        ImportError: If kafka-python is not installed.
+    """  # noqa: E501
+    if trigger != "once":
+        raise ValueError(f"Only trigger='once' is supported. Got trigger={trigger!r}")
+
+    return ray.data.read_datasource(
+        KafkaDatasource(
+            topics=topics,
+            bootstrap_servers=bootstrap_servers,
+            start_offset=start_offset,
+            end_offset=end_offset,
+            kafka_auth_config=kafka_auth_config,
+            timeout_ms=timeout_ms,
+        ),
+        parallelism=-1,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
+        override_num_blocks=override_num_blocks,
     )
 
 
