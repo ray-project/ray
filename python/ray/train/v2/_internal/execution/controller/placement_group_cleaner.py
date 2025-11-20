@@ -51,6 +51,10 @@ class PlacementGroupCleaner:
             logger.warning("Already monitoring")
             return False
 
+        if self._stopped:
+            logger.warning("Cannot start monitoring: stop already requested")
+            return False
+
         self._monitoring = True
         self._monitor_thread = threading.Thread(
             target=self._monitor_loop,
