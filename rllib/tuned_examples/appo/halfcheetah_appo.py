@@ -3,7 +3,7 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
     default_reward=9000.0,
-    default_timesteps=100000000,
+    default_timesteps=100_000_000,
 )
 parser.set_defaults(
     env="HalfCheetah-v4",
@@ -12,7 +12,8 @@ args = parser.parse_args()
 
 
 config = (
-    APPOConfig().env_runners(
+    APPOConfig()
+    .env_runners(
         num_envs_per_env_runner=32,  # Note: Old stack yaml uses 16.
         rollout_fragment_length=512,  # Note: [1] uses 1024.
     )

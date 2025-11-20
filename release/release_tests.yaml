@@ -2030,11 +2030,11 @@
   team: rllib
 
   cluster:
-    cluster_compute: 1gpus_32cpus.yaml
+    cluster_compute: 1gpus_16cpus.yaml
 
   run:
-    timeout: 1800
-    script: python tuned_examples/appo/pong_appo.py --num-learners=1 --num-env-runners=24 --stop-reward=18 --as-release-test
+    timeout: 1500  # expected 1000 seconds
+    script: python tuned_examples/appo/pong_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
 
 - name: rllib_learning_tests_halfcheetah_appo_torch
   python: "3.12"
@@ -2045,11 +2045,11 @@
   team: rllib
 
   cluster:
-    cluster_compute: 1gpu_32cpus.yaml
+    cluster_compute: 1gpu_16cpus.yaml
 
   run:
-    timeout: 5400
-    script: python tuned_examples/appo/halfcheetah_appo.py --num-learners=1 --num-env-runners=24 --stop-reward=1000.0 --as-release-test
+    timeout: 3000  # expected 2000 seconds
+    script: python tuned_examples/appo/halfcheetah_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
 
 ########################
 # Core Nightly Tests
