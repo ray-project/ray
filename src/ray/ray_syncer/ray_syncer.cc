@@ -83,7 +83,7 @@ void RaySyncer::Connect(const std::string &node_id,
   boost::asio::dispatch(
       io_context_.get_executor(), std::packaged_task<void()>([=]() {
         auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
-        auto reactor = std::make_shared<RayClientBidiReactor>(
+        auto reactor = RayClientBidiReactor::Create(
             /* remote_node_id */ node_id,
             /* local_node_id */ GetLocalNodeID(),
             /* io_context */ io_context_,
@@ -116,7 +116,6 @@ void RaySyncer::Connect(const std::string &node_id,
             /* stub */ std::move(stub),
             /* max_batch_size */ max_batch_size_,
             /* max_batch_delay_ms */ max_batch_delay_ms_);
-        reactor->SetSelfRef(reactor);
         Connect(reactor);
         reactor->StartCall();
       }))
@@ -224,7 +223,7 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) 
 }
 
 ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *context) {
-  auto reactor = std::make_shared<RayServerBidiReactor>(
+  auto reactor = RayServerBidiReactor::Create(
       context,
       syncer_.GetIOContext(),
       syncer_.GetLocalNodeID(),
@@ -258,8 +257,6 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
       /*max_batch_delay_ms=*/syncer_.max_batch_delay_ms_);
   RAY_LOG(DEBUG).WithField(NodeID::FromBinary(reactor->GetRemoteNodeID()))
       << "Get connection";
-
-  reactor->SetSelfRef(reactor);
 
   // If the reactor has already called Finish() (e.g., due to authentication failure),
   // skip registration. The reactor will clean itself up via OnDone().

@@ -32,7 +32,20 @@ std::string GetNodeIDFromServerContext(grpc::CallbackServerContext *server_conte
 
 }  // namespace
 
+std::shared_ptr<RayServerBidiReactor> RayServerBidiReactor::Create(
+    grpc::CallbackServerContext *server_context,
+    instrumented_io_context &io_context,
+    const std::string &local_node_id,
+    std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
+    std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
+    const std::optional<ray::rpc::AuthenticationToken> &auth_token,
+    size_t max_batch_size,
+    uint64_t max_batch_delay_ms) {
+  return std::make_shared<RayServerBidiReactor>(PrivateTag{}, server_context, io_context, local_node_id, message_processor, cleanup_cb, auth_token, max_batch_size, max_batch_delay_ms);
+}
+
 RayServerBidiReactor::RayServerBidiReactor(
+    PrivateTag,
     grpc::CallbackServerContext *server_context,
     instrumented_io_context &io_context,
     const std::string &local_node_id,
@@ -44,10 +57,10 @@ RayServerBidiReactor::RayServerBidiReactor(
     : RaySyncerBidiReactorBase<ServerBidiReactor>(
           io_context,
           GetNodeIDFromServerContext(server_context),
-          std::move(message_processor),
+          message_processor,
           max_batch_size,
           max_batch_delay_ms),
-      cleanup_cb_(std::move(cleanup_cb)),
+      cleanup_cb_(cleanup_cb),
       server_context_(server_context),
       auth_token_(auth_token) {
   if (auth_token_.has_value() && !auth_token_->empty()) {
@@ -94,7 +107,6 @@ void RayServerBidiReactor::OnDone() {
   io_context_.dispatch(
       [this, cleanup_cb = cleanup_cb_, remote_node_id = GetRemoteNodeID()]() {
         cleanup_cb(this, false);
-        self_ref_.reset();
       },
       "");
 }

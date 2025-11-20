@@ -31,9 +31,12 @@ namespace ray::syncer {
 /// and cleanup.
 /// It keeps track of the message received and sent between two nodes and uses that to
 /// deduplicate the messages. It also supports the batching for performance purposes.
+///
+/// NOTE: RaySyncerBidiReactorBase depends on `shared_from_this`, so all subclass instances
+/// must be heap-allocated shared pointers.
 template <typename T>
-class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
- public:
+class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T, public std::enable_shared_from_this<RaySyncerBidiReactor> {
+ protected:
   /// Constructor of RaySyncerBidiReactor.
   ///
   /// \param io_context The io context for the callback.
@@ -56,6 +59,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
         max_batch_delay_ms_(std::chrono::milliseconds(max_batch_delay_ms)),
         batch_timer_(io_context),
         batch_timer_active_(false) {}
+
+ public:
 
   bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message) override {
     if (*IsDisconnected()) {
@@ -99,7 +104,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
         batch_timer_active_ = true;
         batch_timer_.expires_after(max_batch_delay_ms_);
         // Use weak_ptr to avoid use-after-free when the reactor is destroyed.
-        auto weak_self = std::weak_ptr<RaySyncerBidiReactor>(self_ref_);
+        std::weak_ptr<RaySyncerBidiReactor> weak_self = shared_from_this();
         batch_timer_.async_wait([weak_self, this](const boost::system::error_code &ec) {
           auto self = weak_self.lock();
           if (!self) {
@@ -129,7 +134,6 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     StartRead(receiving_message_batch_.get());
   }
 
- protected:
   /// The io context
   instrumented_io_context &io_context_;
 

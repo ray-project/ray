@@ -33,8 +33,28 @@ using ServerBidiReactor =
 /// Reactor for gRPC server side. It defines the server's specific behavior for a
 /// streaming call.
 class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> {
+ private:
+   // Enables `make_shared` inside of the class without exposing a public constructor.
+   struct PrivateTag {};
+
  public:
+  // Static factory method to create `RayServerBidiReactor` instances.
+  //
+  // All instances of `RaySyncerBidiReactorBase` must be heap-allocated shared_ptrs, so
+  // this is the only publicly-exposed method of construction.
+  static std::shared_ptr<RayServerBidiReactor> Create(
+      grpc::CallbackServerContext *server_context,
+      instrumented_io_context &io_context,
+      const std::string &local_node_id,
+      std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
+      std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
+      const std::optional<ray::rpc::AuthenticationToken> &auth_token,
+      size_t max_batch_size,
+      uint64_t max_batch_delay_ms);
+
+  // Constructor, which is enforced to be private via `PrivateTag`.
   RayServerBidiReactor(
+      PrivateTag,
       grpc::CallbackServerContext *server_context,
       instrumented_io_context &io_context,
       const std::string &local_node_id,
