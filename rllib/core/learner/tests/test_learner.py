@@ -8,19 +8,17 @@ import ray
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
-
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.metrics import ALL_MODULES
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
-
 from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED_LIFETIME,
-    NUM_ENV_STEPS_TRAINED_LIFETIME,
-    NUM_ENV_STEPS_TRAINED,
 )
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 
 torch, _ = try_import_torch()
 
