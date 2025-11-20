@@ -117,6 +117,11 @@ DEFINE_stats(scheduler_failed_worker_startup_total,
              ("Reason"),
              (),
              ray::stats::GAUGE);
+DEFINE_stats(local_resource_view_node_count,
+             "Number of nodes tracked locally by the reporting raylet.",
+             (),
+             (),
+             ray::stats::GAUGE);
 
 /// Local Object Manager
 DEFINE_stats(

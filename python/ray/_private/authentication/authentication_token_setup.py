@@ -20,6 +20,7 @@ from ray._raylet import (
     AuthenticationTokenLoader,
     get_authentication_mode,
 )
+from ray.exceptions import AuthenticationError
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ def ensure_token_if_auth_enabled(
     3. Generate and save a default token for new local clusters if one doesn't already exist.
 
     Args:
-        system_config: Ray raises an error if you set auth_mode in system_config instead of the environment.
+        system_config: Ray raises an error if you set AUTH_MODE in system_config instead of the environment.
         create_token_if_missing: Generate a new token if one doesn't already exist.
 
     Raises:
@@ -79,11 +80,11 @@ def ensure_token_if_auth_enabled(
     if get_authentication_mode() != AuthenticationMode.TOKEN:
         if (
             system_config
-            and "auth_mode" in system_config
-            and system_config["auth_mode"] != "disabled"
+            and "AUTH_MODE" in system_config
+            and system_config["AUTH_MODE"] != "disabled"
         ):
             raise RuntimeError(
-                "Set authentication mode can only be set with the `RAY_auth_mode` environment variable, not using the system_config."
+                "Set authentication mode can only be set with the `RAY_AUTH_MODE` environment variable, not using the system_config."
             )
         return
 
@@ -97,4 +98,6 @@ def ensure_token_if_auth_enabled(
             # Reload the cache so subsequent calls to token_loader read the new token.
             token_loader.reset_cache()
         else:
-            raise RuntimeError(TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE)
+            raise AuthenticationError(
+                TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE
+            )
