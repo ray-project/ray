@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict, Optional
 
+from ray._common.deprecation import deprecation_warning
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.processor import (
     HttpRequestProcessorConfig as _HttpRequestProcessorConfig,
@@ -395,7 +396,11 @@ def build_llm_processor(
     """
     [DEPRECATED] Prefer build_processor. Build a LLM processor using the given config.
     """
-    logger.warning("build_llm_processor is deprecated. Prefer build_processor instead.")
+    deprecation_warning(
+        old="build_llm_processor",
+        new="build_processor",
+        error=False,
+    )
     return build_processor(
         config,
         preprocess,
