@@ -8,10 +8,10 @@ import torch
 import torchvision
 import pyarrow
 import ray
-import ray.data
 import ray.train
 from ray.data.collate_fn import ArrowBatchCollateFn, CollateFn
 from concurrent.futures import ThreadPoolExecutor
+from ray.data.dataset import TorchDeviceType
 
 # Local imports
 from benchmark_factory import BenchmarkFactory
@@ -182,7 +182,7 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
     def __init__(
         self,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[str] = None,
+        device: Optional["TorchDeviceType"] = None,
         pin_memory: bool = False,
         num_workers: int = _DEFAULT_NUM_WORKERS,
     ):
@@ -195,8 +195,13 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
             num_workers: Number of worker threads for parallel tensor conversion
                 Defaults to `_DEFAULT_NUM_WORKERS`.
         """
+        import torch
+
         self.dtypes = dtypes
-        self.device = device
+        if isinstance(device, (str, int)):
+            self.device = torch.device(device)
+        else:
+            self.device = device
         self.pin_memory = pin_memory
         self._threadpool = (
             ThreadPoolExecutor(max_workers=num_workers) if num_workers > 0 else None
@@ -215,10 +220,16 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
             arrow_batch_to_tensors,
         )
 
+        # For GPU transfer, we can skip the combining chunked arrays. This is because
+        # we can convert the chunked arrays to corresponding numpy format and then to
+        # Tensors and transfer the corresponding list of Tensors to GPU directly.
+        # However, for CPU transfer, we need to combine the chunked arrays first
+        # before converting to numpy format and then to Tensors.
+        combine_chunks = self.device is not None and self.device.type == "cpu"
         tensors = arrow_batch_to_tensors(
             batch,
             dtypes=self.dtypes,
-            combine_chunks=self.device.type == "cpu",
+            combine_chunks=combine_chunks,
             pin_memory=self.pin_memory,
             threadpool=self._threadpool,
         )
