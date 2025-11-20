@@ -1,8 +1,8 @@
 (token-auth)=
 
-# Token authentication in Ray
+# Ray token authentication
 
-Enable token-based authentication in Ray to secure cluster access and prevent unauthorized use. This guide explains how authentication works and how to set it up for different deployment scenarios.
+Enable token authentication in Ray to secure cluster access and prevent unauthorized use. This guide explains how authentication works and how to set it up for different deployment scenarios.
 
 :::{note}
 Token authentication is available in Ray 2.52.0 or later.
