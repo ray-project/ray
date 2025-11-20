@@ -17,7 +17,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 if TYPE_CHECKING:
     import pyarrow
 
-    from ray.data.dataset import Dataset
+    from ray.data.dataset import Dataset, IteratorCallback
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,7 @@ class StreamSplitDataIterator(DataIterator):
         base_dataset: "Dataset",
         n: int,
         locality_hints: Optional[List[NodeIdStr]],
+        iterator_callbacks: Optional[List["IteratorCallback"]] = None,
     ) -> List["StreamSplitDataIterator"]:
         """Create a split iterator from the given base Dataset and options.
 
@@ -51,7 +52,7 @@ class StreamSplitDataIterator(DataIterator):
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
-        ).remote(_DatasetWrapper(base_dataset), n, locality_hints)
+        ).remote(_DatasetWrapper(base_dataset), n, locality_hints, iterator_callbacks)
 
         return [
             StreamSplitDataIterator(base_dataset, coord_actor, i, n) for i in range(n)
@@ -136,6 +137,7 @@ class SplitCoordinator:
         dataset_wrapper: _DatasetWrapper,
         n: int,
         locality_hints: Optional[List[NodeIdStr]],
+        iterator_callbacks: Optional[List["IteratorCallback"]] = None,
     ):
         dataset = dataset_wrapper._dataset
 
@@ -151,6 +153,7 @@ class SplitCoordinator:
         self._base_dataset = dataset
         self._n = n
         self._locality_hints = locality_hints
+        self._iterator_callbacks = iterator_callbacks or []
         self._lock = threading.RLock()
         self._executor = None
 
@@ -163,12 +166,38 @@ class SplitCoordinator:
         self._coordinator_overhead_s = 0.0
 
         def gen_epochs():
+            epoch_num = 0
+            current_dataset = dataset
             while True:
-                self._executor = self._base_dataset._plan.create_executor()
+                # Call before_epoch_start callbacks in order
+                for callback in self._iterator_callbacks:
+                    try:
+                        current_dataset = callback.before_epoch_start(
+                            epoch_num, current_dataset
+                        )
+                    except Exception as e:
+                        logger.exception(
+                            f"Error in before_epoch_start callback {callback.__class__.__name__}: {e}"
+                        )
+
+                self._executor = current_dataset._plan.create_executor()
                 output_iterator = execute_to_legacy_bundle_iterator(
-                    self._executor, dataset._plan
+                    self._executor, current_dataset._plan
                 )
                 yield output_iterator
+
+                # Call after_epoch_ends callbacks in order
+                for callback in self._iterator_callbacks:
+                    try:
+                        current_dataset = callback.after_epoch_ends(
+                            epoch_num, current_dataset
+                        )
+                    except Exception as e:
+                        logger.exception(
+                            f"Error in after_epoch_ends callback {callback.__class__.__name__}: {e}"
+                        )
+
+                epoch_num += 1
 
         self._next_epoch = gen_epochs()
         self._output_iterator = None

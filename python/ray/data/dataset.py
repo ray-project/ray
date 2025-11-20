@@ -140,6 +140,42 @@ from ray.data.expressions import Expr, StarExpr, col
 
 logger = logging.getLogger(__name__)
 
+
+class IteratorCallback:
+    """Callback interface for iterator lifecycle events.
+
+    This callback can be used to hook into epoch start and end events
+    when using streaming split iterators. Both callbacks receive the dataset
+    and can optionally transform it by returning a modified dataset.
+    """
+
+    def before_epoch_start(self, epoch: int, dataset: "Dataset") -> "Dataset":
+        """Called before an epoch starts.
+
+        Args:
+            epoch: The epoch number that is about to start (0-indexed).
+            dataset: The dataset that will be used for this epoch.
+
+        Returns:
+            The dataset to use for this epoch. Can return the same dataset
+            or a transformed version.
+        """
+        return dataset
+
+    def after_epoch_ends(self, epoch: int, dataset: "Dataset") -> "Dataset":
+        """Called after an epoch ends.
+
+        Args:
+            epoch: The epoch number that just ended (0-indexed).
+            dataset: The dataset that was used for this epoch.
+
+        Returns:
+            The dataset to use for the next epoch. Can return the same dataset
+            or a transformed version.
+        """
+        return dataset
+
+
 # Special column name for train/test split to avoid collision with user columns
 _TRAIN_TEST_SPLIT_COLUMN = "__ray_train_test_split_is_train__"
 
@@ -1872,6 +1908,7 @@ class Dataset:
         *,
         equal: bool = False,
         locality_hints: Optional[List["NodeIdStr"]] = None,
+        iterator_callbacks: Optional[List[IteratorCallback]] = None,
     ) -> List[DataIterator]:
         """Returns ``n`` :class:`DataIterators <ray.data.DataIterator>` that can
         be used to read disjoint subsets of the dataset in parallel.
@@ -1945,6 +1982,10 @@ class Dataset:
                 iterator output locations. This list must have length ``n``. You can
                 get the current node id of a task or actor by calling
                 ``ray.get_runtime_context().get_node_id()``.
+            iterator_callbacks: Optional list of callbacks to receive notifications about
+                epoch start and end events. Each callback must be an instance of
+                :class:`~ray.data.IteratorCallback`. The callbacks are called in order,
+                and each callback can transform the dataset before passing it to the next.
 
         Returns:
             The output iterator splits. These iterators are Ray-serializable and can
@@ -1967,7 +2008,9 @@ class Dataset:
         split_dataset = Dataset(plan, logical_plan)
         split_dataset._set_uuid(self._uuid)
 
-        return StreamSplitDataIterator.create(split_dataset, n, locality_hints)
+        return StreamSplitDataIterator.create(
+            split_dataset, n, locality_hints, iterator_callbacks
+        )
 
     @ConsumptionAPI
     @PublicAPI(api_group=SMJ_API_GROUP)
