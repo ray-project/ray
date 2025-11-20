@@ -182,21 +182,12 @@ class BatchIterator:
         num_threadpool_workers = min(
             DEFAULT_FORMAT_THREADPOOL_NUM_WORKERS, self._prefetch_batches
         )
-        per_thread_buffer_size = (
-            (
-                (self._prefetch_batches + num_threadpool_workers - 1)
-                // num_threadpool_workers
-            )
-            if num_threadpool_workers > 0
-            else 0
-        )
         return _format_in_threadpool(
             batch_iter=batches,
             stats=self._stats,
             batch_format=self._batch_format,
             collate_fn=self._collate_fn,
             num_threadpool_workers=num_threadpool_workers,
-            per_thread_buffer_size=per_thread_buffer_size,
         )
 
     def _finalize_batches(
@@ -309,7 +300,6 @@ def _format_in_threadpool(
     batch_format: Optional[str],
     collate_fn: Optional[Callable[[DataBatch], Any]],
     num_threadpool_workers: int,
-    per_thread_buffer_size: int,
 ) -> Iterator[Batch]:
     """Executes the batching, formatting, and collation logic in a threadpool.
 
@@ -324,7 +314,6 @@ def _format_in_threadpool(
             as batches.
         collate_fn: A function to apply to each data batch before returning it.
         num_threadpool_workers: The number of threads to use in the threadpool.
-        per_thread_buffer_size: The number of batches to buffer per thread.
     """
 
     def threadpool_computations_format_collate(
@@ -348,7 +337,6 @@ def _format_in_threadpool(
             fn=threadpool_computations_format_collate,
             preserve_ordering=False,
             num_workers=num_threadpool_workers,
-            buffer_size=per_thread_buffer_size,
         )
     else:
         collated_iter = threadpool_computations_format_collate(batch_iter)
