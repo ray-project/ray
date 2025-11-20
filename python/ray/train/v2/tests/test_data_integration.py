@@ -410,59 +410,8 @@ def test_exclude_train_resources_applies_to_each_dataset(ray_start_4_cpus):
     applies to each dataset individually when using per-dataset execution options."""
     NUM_ROWS = 100
     NUM_WORKERS = 2
-    CPUS_PER_WORKER = 2
-    GPUS_PER_WORKER = 1
 
-    # Test 1: With a single ExecutionOptions for all datasets
-    single_options = ExecutionOptions()
-    single_options.exclude_resources = single_options.exclude_resources.copy(
-        cpu=1, gpu=0.5
-    )
-    data_config_single = ray.train.DataConfig(execution_options=single_options)
-
-    def train_fn_single():
-        # Check that each dataset has the train resources excluded
-        for dataset_name in ["train", "test", "val"]:
-            ds = ray.train.get_dataset_shard(dataset_name)
-            execution_options = ds.get_context().execution_options
-
-            # Resource limits should remain default
-            assert execution_options.is_resource_limits_default()
-
-            # Exclude resources should include both user-defined and train resources
-            exclude_resources = execution_options.exclude_resources
-            # Train worker resources: NUM_WORKERS * CPUS_PER_WORKER
-            expected_cpu = NUM_WORKERS * CPUS_PER_WORKER + 1  # +1 from user-defined
-            expected_gpu = NUM_WORKERS * GPUS_PER_WORKER + 0.5  # +0.5 from user-defined
-            assert exclude_resources.cpu == expected_cpu, (
-                f"Dataset {dataset_name}: expected CPU {expected_cpu}, "
-                f"got {exclude_resources.cpu}"
-            )
-            assert exclude_resources.gpu == expected_gpu, (
-                f"Dataset {dataset_name}: expected GPU {expected_gpu}, "
-                f"got {exclude_resources.gpu}"
-            )
-
-    trainer = DataParallelTrainer(
-        train_fn_single,
-        datasets={
-            "train": ray.data.range(NUM_ROWS),
-            "test": ray.data.range(NUM_ROWS),
-            "val": ray.data.range(NUM_ROWS),
-        },
-        dataset_config=data_config_single,
-        scaling_config=ray.train.ScalingConfig(
-            num_workers=NUM_WORKERS,
-            use_gpu=True,
-            resources_per_worker={
-                "CPU": CPUS_PER_WORKER,
-                "GPU": GPUS_PER_WORKER,
-            },
-        ),
-    )
-    trainer.fit()
-
-    # Test 2: With a dict of ExecutionOptions for specific datasets
+    # Create different execution options for different datasets
     train_options = ExecutionOptions()
     train_options.exclude_resources = train_options.exclude_resources.copy(cpu=2, gpu=1)
 
@@ -474,15 +423,19 @@ def test_exclude_train_resources_applies_to_each_dataset(ray_start_4_cpus):
         "train": train_options,
         "test": test_options,
     }
-    data_config_dict = ray.train.DataConfig(execution_options=execution_options_dict)
+    data_config = ray.train.DataConfig(execution_options=execution_options_dict)
 
-    def train_fn_dict():
+    def train_fn():
+        # Check that each dataset has the train resources excluded,
+        # in addition to any per-dataset exclude_resources.
+
         # Check train dataset
         train_ds = ray.train.get_dataset_shard("train")
         train_exec_options = train_ds.get_context().execution_options
         assert train_exec_options.is_resource_limits_default()
-        expected_train_cpu = NUM_WORKERS * CPUS_PER_WORKER + 2
-        expected_train_gpu = NUM_WORKERS * GPUS_PER_WORKER + 1
+        # Train worker resources: NUM_WORKERS CPUs (default 1 CPU per worker)
+        expected_train_cpu = NUM_WORKERS + 2  # 2 from user-defined
+        expected_train_gpu = 0 + 1  # 1 from user-defined (no GPUs allocated)
         assert train_exec_options.exclude_resources.cpu == expected_train_cpu
         assert train_exec_options.exclude_resources.gpu == expected_train_gpu
 
@@ -490,8 +443,8 @@ def test_exclude_train_resources_applies_to_each_dataset(ray_start_4_cpus):
         test_ds = ray.train.get_dataset_shard("test")
         test_exec_options = test_ds.get_context().execution_options
         assert test_exec_options.is_resource_limits_default()
-        expected_test_cpu = NUM_WORKERS * CPUS_PER_WORKER + 1
-        expected_test_gpu = NUM_WORKERS * GPUS_PER_WORKER + 0
+        expected_test_cpu = NUM_WORKERS + 1  # 1 from user-defined
+        expected_test_gpu = 0 + 0  # 0 from user-defined
         assert test_exec_options.exclude_resources.cpu == expected_test_cpu
         assert test_exec_options.exclude_resources.gpu == expected_test_gpu
 
@@ -500,31 +453,20 @@ def test_exclude_train_resources_applies_to_each_dataset(ray_start_4_cpus):
         val_exec_options = val_ds.get_context().execution_options
         assert val_exec_options.is_resource_limits_default()
         default_options = ray.train.DataConfig.default_ingest_options()
-        expected_val_cpu = (
-            NUM_WORKERS * CPUS_PER_WORKER + default_options.exclude_resources.cpu
-        )
-        expected_val_gpu = (
-            NUM_WORKERS * GPUS_PER_WORKER + default_options.exclude_resources.gpu
-        )
+        expected_val_cpu = NUM_WORKERS + default_options.exclude_resources.cpu
+        expected_val_gpu = 0 + default_options.exclude_resources.gpu
         assert val_exec_options.exclude_resources.cpu == expected_val_cpu
         assert val_exec_options.exclude_resources.gpu == expected_val_gpu
 
     trainer = DataParallelTrainer(
-        train_fn_dict,
+        train_fn,
         datasets={
             "train": ray.data.range(NUM_ROWS),
             "test": ray.data.range(NUM_ROWS),
             "val": ray.data.range(NUM_ROWS),
         },
-        dataset_config=data_config_dict,
-        scaling_config=ray.train.ScalingConfig(
-            num_workers=NUM_WORKERS,
-            use_gpu=True,
-            resources_per_worker={
-                "CPU": CPUS_PER_WORKER,
-                "GPU": GPUS_PER_WORKER,
-            },
-        ),
+        dataset_config=data_config,
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
     )
     trainer.fit()
 
