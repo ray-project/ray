@@ -24,10 +24,11 @@ if TYPE_CHECKING:
     import pyarrow
     import torch
 
-    from ray.data.dataset import CollatedData
+    from ray.data.block import DataBatch
+    from ray.data.dataset import CollatedData, TorchDeviceType
 
 
-DataBatchType = TypeVar("DataBatchType", bound=DataBatch)
+DataBatchType = TypeVar("DataBatchType", bound="DataBatch")
 
 TensorSequenceType = Union[
     List["torch.Tensor"],
@@ -233,7 +234,7 @@ class DefaultCollateFn(ArrowBatchCollateFn):
     def __init__(
         self,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[Union[str, "torch.device"]] = None,
+        device: Optional["TorchDeviceType"] = None,
         pin_memory: bool = False,
         num_workers: int = _DEFAULT_NUM_WORKERS,
     ):
@@ -252,7 +253,7 @@ class DefaultCollateFn(ArrowBatchCollateFn):
 
         super().__init__()
         self.dtypes = dtypes
-        if isinstance(device, str):
+        if isinstance(device, (str, int)):
             self.device = torch.device(device)
         else:
             self.device = device
