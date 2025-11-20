@@ -282,18 +282,6 @@ class PathPartitionParser:
         Returns:
             True if the partition satisfies the predicate (should read the file),
             False if it doesn't (can skip the file for partition pruning).
-
-        Examples:
-            >>> from ray.data.expressions import col
-            >>> parser = PathPartitionParser(Partitioning("hive"))
-            >>> path = "country=US/year=2020/file.parquet"
-            >>> predicate = col("country") == "US"
-            >>> parser.evaluate_predicate_on_partition(path, predicate)
-            True
-
-            >>> predicate = col("country") == "UK"
-            >>> parser.evaluate_predicate_on_partition(path, predicate)
-            False
         """
         import pyarrow as pa
 
