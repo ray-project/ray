@@ -291,9 +291,8 @@ def test_torch_conversion_default_collate_fn_threading(
         assert set(b1.keys()) == set(b2.keys())
         for col in b1.keys():
             assert len(b1[col]) == len(b2[col])
-            # Compare first tensor in each batch
-            assert b1[col][0].shape == b2[col][0].shape
-            assert b1[col][0].dtype == b2[col][0].dtype
+            for t1, t2 in zip(b1[col], b2[col]):
+                assert torch.equal(t1, t2)
 
 
 @pytest.mark.parametrize("should_equalize", [True, False])

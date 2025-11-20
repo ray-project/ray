@@ -413,15 +413,17 @@ def arrow_batch_to_tensors(
                 threadpool.submit(process_column, item) for item in numpy_batch.items()
             ]
             processed_cols = [future.result() for future in futures]
-            return dict(processed_cols)
+            return {k: [v] for k, v in processed_cols}
         else:
             # Sequential processing for single column or single worker
             return {
-                col_name: convert_ndarray_batch_to_torch_tensor_batch(
-                    col_array,
-                    dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
-                    pin_memory=pin_memory,
-                )
+                col_name: [
+                    convert_ndarray_batch_to_torch_tensor_batch(
+                        col_array,
+                        dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                        pin_memory=pin_memory,
+                    )
+                ]
                 for col_name, col_array in numpy_batch.items()
             }
     else:
