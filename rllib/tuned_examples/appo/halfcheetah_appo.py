@@ -12,8 +12,7 @@ args = parser.parse_args()
 
 
 config = (
-    APPOConfig()
-    .env_runners(
+    APPOConfig().env_runners(
         num_envs_per_env_runner=32,  # Note: Old stack yaml uses 16.
         rollout_fragment_length=512,  # Note: [1] uses 1024.
     )
