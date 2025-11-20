@@ -31,7 +31,7 @@ def test_colocated_actors(ray_start_regular):
     gpu_ref = src_actor.echo.remote(tensor)
 
     # Trigger tensor transfer from src to dst actor
-    ray.get(dst_actor.double.remote(gpu_ref), _tensor_transport="object_store")
+    ray.get(dst_actor.double.remote(gpu_ref))
     # Check that the tensor is modified in place, and is reflected on the source actor
     assert torch.equal(
         ray.get(gpu_ref, _tensor_transport="object_store"),
@@ -52,9 +52,10 @@ def test_ipc_fail(ray_start_regular):
     tensor = torch.tensor([1, 2, 3])
     gpu_ref = src_actor.echo.remote(tensor)
 
-    # Trigger tensor transfer from src to dst actor
+    # Trigger tensor transfer from src to dst actor. Since CUDA IPC transport does not
+    # support cross-device tensor transfers, this should raise a ValueError.
     with pytest.raises(ValueError):
-        ray.get(dst_actor.double.remote(gpu_ref), _tensor_transport="object_store")
+        ray.get(dst_actor.double.remote(gpu_ref))
 
 
 if __name__ == "__main__":

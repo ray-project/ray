@@ -44,6 +44,7 @@ class CudaIpcTransport(TensorTransportManager):
         cuda_ipc_handles = []
         device = None
         uuid = None
+        event_ipc_handle = None
         if gpu_object:
             import torch
             from torch.multiprocessing.reductions import reduce_tensor
