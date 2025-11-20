@@ -64,6 +64,16 @@ class TestShuffleFusion:
         ],
         ids=["false_false", "true_false", "false_true", "true_true"],
     )
+    @pytest.mark.parametrize(
+        "sort1,sort2,expected_sort",
+        [
+            (False, False, False),
+            (True, False, False),
+            (False, True, True),
+            (True, True, True),
+        ],
+        ids=["false_false", "true_false", "false_true", "true_true"],
+    )
     def test_repartition_repartition_fusion(
         self,
         keys1,
@@ -77,6 +87,9 @@ class TestShuffleFusion:
         random_permute1,
         random_permute2,
         expected_random_permute,
+        sort1,
+        sort2,
+        expected_sort,
     ):
         """Test that consecutive Repartition operations are fused with correct parameters."""
         input_op = InputData("test_input")
@@ -88,7 +101,7 @@ class TestShuffleFusion:
             full_shuffle=full_shuffle1,
             random_permute=random_permute1,
             keys=keys1,
-            sort=False,
+            sort=sort1,
         )
 
         # Second repartition
@@ -98,7 +111,7 @@ class TestShuffleFusion:
             full_shuffle=full_shuffle2,
             random_permute=random_permute2,
             keys=keys2,
-            sort=False,
+            sort=sort2,
         )
 
         # Create logical plan
@@ -124,6 +137,9 @@ class TestShuffleFusion:
         assert (
             dag._keys == expected_keys
         ), f"Expected keys={expected_keys}, got {dag._keys}"
+        assert (
+            dag._sort == expected_sort
+        ), f"Expected sort={expected_sort}, got {dag._sort}"
 
         # Verify it connects directly to input (fusion removed first repartition)
         assert dag.input_dependencies[0] == input_op, "Should connect directly to input"
