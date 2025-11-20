@@ -603,9 +603,9 @@ class ParquetDatasource(Datasource):
 
         Returns:
             List of partition column names in the projection, None if there's
-            no projection or user didn't request specific partition columns
-            (meaning include all partition columns), or [] if projection pushdown
-            excluded partition columns (meaning include no partition columns).
+            no projection (meaning include all partition columns), or [] if
+            partition columns aren't in the projection map (meaning include
+            no partition columns).
         """
         if self._projection_map is None:
             return None
@@ -622,10 +622,10 @@ class ParquetDatasource(Datasource):
         if partition_cols:
             return partition_cols
 
-        # No partition columns in projection map. If user originally selected
-        # partition columns, they were excluded by projection pushdown (return []).
-        # Otherwise, include all partition columns (return None).
-        return [] if self._partition_columns_selected else None
+        # No partition columns in projection map.
+        # Since the projection map exists and is the source of truth after
+        # projection pushdown, return [] (no partition columns to include).
+        return []
 
     def _get_data_columns(self) -> Optional[List[str]]:
         """Extract data columns from projection map, excluding partition columns.
