@@ -43,9 +43,7 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
         """
         try:
             # Launch the cleaner as a detached actor so it survives controller death
-            cleaner_actor_cls = ray.remote(num_cpus=0, max_concurrency=2)(
-                PlacementGroupCleaner
-            )
+            cleaner_actor_cls = ray.remote(num_cpus=0)(PlacementGroupCleaner)
             self._cleaner = cleaner_actor_cls.options(
                 lifetime="detached",
                 get_if_exists=False,
@@ -59,6 +57,7 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
                     f"Failed to get controller actor id: {e}. "
                     "PlacementGroupCleaner will not be able to monitor controller liveness."
                 )
+                self._stop_cleaner()
                 return
 
             if not self._controller_actor_id:
@@ -66,9 +65,8 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
                     "Controller actor id is unavailable. "
                     "PG cleaner will not monitor controller liveness."
                 )
+                self._stop_cleaner()
                 return
-
-            ray.get(self._cleaner.register_controller.remote(self._controller_actor_id))
 
             logger.info(
                 f"PlacementGroupCleaner launched for run_id={train_run_context.run_id}"
@@ -95,7 +93,17 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
 
             # Placement group for worker group is created after worker group start.
             # Only one placement group for worker group exists at a time.
-            ray.get(self._cleaner.register_placement_group.remote(placement_group))
+            if not self._controller_actor_id:
+                logger.warning(
+                    "Controller actor id unavailable; cannot register placement group."
+                )
+                return
+
+            ray.get(
+                self._cleaner.register_controller_and_placement_group.remote(
+                    self._controller_actor_id, placement_group
+                )
+            )
 
             self._cleaner.start_monitoring.remote()
 
@@ -109,6 +117,9 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
             )
 
     def before_controller_shutdown(self):
+        self._stop_cleaner()
+
+    def _stop_cleaner(self):
         if not self._cleaner:
             return
 
@@ -120,7 +131,7 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
             logger.debug(
                 "PlacementGroupCleaner exited before stop completed; ignoring."
             )
-        except Exception as e:
-            logger.warning(f"Failed to stop PlacementGroupCleaner gracefully: {e}")
+        except Exception:
+            logger.exception("Failed to stop PlacementGroupCleaner gracefully.")
         finally:
             self._cleaner = None

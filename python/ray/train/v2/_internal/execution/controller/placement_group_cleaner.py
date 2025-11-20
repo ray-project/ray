@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 from typing import Optional
 
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class PlacementGroupCleaner:
-    """Detached helper that ensures PG cleanup if Ray Traincontroller dies ungracefully.
+    """Detached helper that ensures PG cleanup if Ray Train Controller exits ungracefully.
 
     This actor should be created with lifetime='detached' to avoid being
     fate-shared with the Train controller.
@@ -23,28 +24,27 @@ class PlacementGroupCleaner:
         self._controller_actor_id: Optional[str] = None
         self._placement_group: Optional[PlacementGroup] = None
         self._monitoring: bool = False
+        self._monitor_thread: Optional[threading.Thread] = None
         self._get_actor_timeout_s = GET_ACTOR_TIMEOUT_S
+        self._exiting: bool = False
 
-    def register_controller(self, controller_actor_id: str):
-        """Register the controller actor id to monitor via the control plane."""
+    def register_controller_and_placement_group(
+        self, controller_actor_id: str, placement_group: PlacementGroup
+    ):
         self._controller_actor_id = controller_actor_id
-        logger.info("PlacementGroupCleaner registered controller actor id")
-
-    def register_placement_group(self, placement_group: PlacementGroup):
-        """Register a placement group to clean up if controller dies.
-
-        Args:
-            placement_group: The placement group to monitor and clean up.
-        """
         self._placement_group = placement_group
         logger.info(
-            f"PlacementGroupCleaner registered placement group: {placement_group.id}"
+            "PlacementGroupCleaner registered controller %s with placement group %s",
+            controller_actor_id,
+            placement_group.id,
         )
 
     def start_monitoring(self):
         """Start monitoring the controller and placement group."""
-        if not self._controller_actor_id:
-            logger.warning("Cannot start monitoring: controller not registered")
+        if not self._controller_actor_id or not self._placement_group:
+            logger.warning(
+                "Cannot start monitoring: controller or placement group missing"
+            )
             return False
 
         if self._monitoring:
@@ -52,9 +52,13 @@ class PlacementGroupCleaner:
             return False
 
         self._monitoring = True
-        logger.info("PlacementGroupCleaner started monitoring")
-
-        self._monitor_loop()
+        self._monitor_thread = threading.Thread(
+            target=self._monitor_loop,
+            name="PlacementGroupCleanerMonitor",
+            daemon=True,
+        )
+        self._monitor_thread.start()
+        logger.info("PlacementGroupCleaner started monitoring in background thread")
         return True
 
     def _monitor_loop(self):
@@ -89,16 +93,33 @@ class PlacementGroupCleaner:
             except Exception as e:
                 logger.warning(f"Failed to clean up placement group: {e}")
 
-        self._exit()
+        self._monitoring = False
+        self._monitor_thread = None
+
+        if not self._stopped:
+            self._exit()
 
     def stop(self):
         """Request the cleaner to stop monitoring and exit."""
         self._stopped = True
         logger.info("PlacementGroupCleaner stop requested")
+        monitor_thread = self._monitor_thread
+        if monitor_thread and monitor_thread.is_alive():
+            join_timeout = max(2.0, self._check_interval_s * 2)
+            monitor_thread.join(timeout=join_timeout)
+            if monitor_thread.is_alive():
+                logger.warning(
+                    "Monitor thread did not exit within %.2f seconds", join_timeout
+                )
+        self._monitoring = False
+        self._monitor_thread = None
         self._exit()
 
     def _exit(self):
         """Exit the actor."""
+        if self._exiting:
+            return
+        self._exiting = True
         try:
             ray.actor.exit_actor()
         except Exception as e:
