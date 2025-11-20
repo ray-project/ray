@@ -675,6 +675,25 @@ Face datasets without a token, simply set the filesystem argument to ``HfFileSys
 
     export HF_TOKEN=<YOUR HUGGING FACE TOKEN>
 
+For most Hugging Face datasets, the data is stored in Parquet files. You can directly
+read from the dataset path:
+
+.. testcode::
+    :skipif: True
+
+    import os
+    import ray
+    from huggingface_hub import HfFileSystem
+
+    ds = ray.data.read_parquet(
+        "hf://datasets/wikimedia/wikipedia",
+        file_extensions=["parquet"],
+        filesystem=HfFileSystem(token=os.environ["HF_TOKEN"]),
+    )
+
+    print(f"Dataset count: {ds.count()}")
+    print(ds.schema())
+
 
 .. _loading_datasets_from_ml_libraries:
 
