@@ -371,7 +371,7 @@ def arrow_batch_to_tensors(
     combine_chunks: bool = False,
     pin_memory: bool = False,
     threadpool: Optional[ThreadPoolExecutor] = None,
-) -> Dict[str, List[torch.Tensor]]:
+) -> Union[Dict[str, torch.Tensor], Dict[str, List[torch.Tensor]]]:
     """Convert PyArrow batch to PyTorch tensors.
 
     Args:
@@ -386,8 +386,8 @@ def arrow_batch_to_tensors(
             sequential.
 
     Returns:
-        A dictionary of column name to list of tensors. For non-chunked columns,
-        the list will contain a single tensor.
+        When combine_chunks=True: A dictionary of column name to single tensor.
+        When combine_chunks=False: A dictionary of column name to list of tensors.
     """
     from ray.data._internal.arrow_block import ArrowBlockAccessor
     from ray.data._internal.arrow_ops import transform_pyarrow
@@ -409,21 +409,16 @@ def arrow_batch_to_tensors(
                 )
 
             # Submit all columns to threadpool and collect results
-            futures = [
-                threadpool.submit(process_column, item) for item in numpy_batch.items()
-            ]
-            processed_cols = [future.result() for future in futures]
-            return {k: [v] for k, v in processed_cols}
+            processed_cols = threadpool.map(process_column, numpy_batch.items())
+            return dict(processed_cols)
         else:
             # Sequential processing for single column or single worker
             return {
-                col_name: [
-                    convert_ndarray_batch_to_torch_tensor_batch(
-                        col_array,
-                        dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
-                        pin_memory=pin_memory,
-                    )
-                ]
+                col_name: convert_ndarray_batch_to_torch_tensor_batch(
+                    col_array,
+                    dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                    pin_memory=pin_memory,
+                )
                 for col_name, col_array in numpy_batch.items()
             }
     else:
@@ -458,8 +453,7 @@ def arrow_batch_to_tensors(
             ]
 
             # Submit all arrays to threadpool and collect results
-            futures = [threadpool.submit(process_array, item) for item in array_items]
-            processed_arrays = [future.result() for future in futures]
+            processed_arrays = list(threadpool.map(process_array, array_items))
 
             # Initialize result with all columns from numpy_list, including empty ones
             # Pre-allocate lists of the correct size for each column
