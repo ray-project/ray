@@ -1,5 +1,4 @@
 import logging
-import os
 import threading
 import traceback
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
@@ -164,11 +163,7 @@ class SerializationContext:
         self._torch_custom_serializer_registered = False
 
         # Enable zero-copy serialization of tensors if the environment variable is set.
-        self._enable_zero_copy_tensors = (
-            os.environ.get("RAY_ENABLE_ZERO_COPY_TORCH_TENSORS") == "1"
-        )
-
-        if self._enable_zero_copy_tensors:
+        if ray_constants.RAY_ENABLE_ZERO_COPY_TORCH_TENSORS:
             try:
                 import torch
             except ImportError as e:
@@ -176,11 +171,11 @@ class SerializationContext:
                     "Zero-copy tensor serialization requires PyTorch to be installed. "
                     "Please install PyTorch (e.g., `pip install torch`) and try again."
                 ) from e
-
-            self._torch_custom_serializer_registered = True
-            self._register_cloudpickle_reducer(
-                torch.Tensor, tensor_serialization_utils.zero_copy_tensors_reducer
-            )
+            else:
+                self._torch_custom_serializer_registered = True
+                self._register_cloudpickle_reducer(
+                    torch.Tensor, tensor_serialization_utils.zero_copy_tensors_reducer
+                )
 
         def actor_handle_reducer(obj):
             ray._private.worker.global_worker.check_connected()

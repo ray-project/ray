@@ -15,14 +15,6 @@ class ZeroCopyTensorsWarning(UserWarning):
     pass
 
 
-class ZeroCopyTensorsDeserializationError(Exception):
-    """
-    Raised when zero-copy tensor deserialization fails.
-    """
-
-    pass
-
-
 warnings.filterwarnings("once", category=ZeroCopyTensorsWarning)
 
 
@@ -43,13 +35,13 @@ def _zero_copy_tensors_deserializer(
         otherwise, returns the input np_array unchanged and issues a warning.
 
     Raises:
-        ZeroCopyTensorDeserializationError: If deserialization fails for any reason (e.g., missing PyTorch
-                                        dtype mismatch, shape inconsistency, device error, etc.).
+        ImportError/DeserializationError: If deserialization fails for any reason (e.g., missing PyTorch
+                            dtype mismatch, shape inconsistency, device error, etc.).
     """
     try:
         import torch
     except ImportError as e:
-        raise ZeroCopyTensorsDeserializationError(
+        raise ImportError(
             "Zero-copy tensor deserialization failed: PyTorch is not installed."
         ) from e
 
@@ -94,7 +86,9 @@ def _zero_copy_tensors_deserializer(
         return restored_tensor.to(device=target_device)
 
     except Exception as e:
-        raise ZeroCopyTensorsDeserializationError(
+        from ray._private.serialization import DeserializationError
+
+        raise DeserializationError(
             f"Failed to deserialize zero-copy tensor from byte array. "
             f"Input dtype={dtype_str}, shape={shape}, device={device_str}. "
             f"Underlying error: {type(e).__name__}: {e}"
@@ -159,6 +153,11 @@ def zero_copy_tensors_reducer(tensor: "torch.Tensor") -> Tuple[Any, Tuple[Any, .
     # View as uint8 bytes
     uint8_view = flat_tensor.view(torch.uint8)
     np_array = uint8_view.numpy()
+
+    # Make the array read-only to enable true zero-copy in pickle5
+    if np_array.flags.writeable:
+        np_array.flags.writeable = False
+
     return _zero_copy_tensors_deserializer, (
         np_array,
         str(tensor.dtype),

@@ -583,3 +583,23 @@ RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", True)
 RDT_FETCH_FAIL_TIMEOUT_SECONDS = (
     env_integer("RAY_rdt_fetch_fail_timeout_milliseconds", 60000) / 1000
 )
+
+# Whether to enable zero-copy serialization for PyTorch tensors.
+# When enabled, Ray serializes PyTorch tensors by converting them to NumPy arrays
+# and leveraging pickle5's zero-copy buffer sharing. This avoids copying the
+# underlying tensor data, which can improve performance when passing large tensors
+# across tasks or actors.
+#
+# This feature is experimental and has strict requirements:
+# - The tensor must have `requires_grad=False` (i.e., be detached from the autograd graph).
+# - The tensor must be contiguous in memory and reside on the CPU.
+#
+# If these conditions are not met, zero-copy serialization is disabled.
+# Ray may then perform 1–2 internal copies (e.g., to move the tensors to CPU or
+# ensure contiguity), and writing to the tensors will result in undefined behavior.
+#
+# Use with caution and ensure tensors meet the above criteria before enabling.
+# Default: False.
+RAY_ENABLE_ZERO_COPY_TORCH_TENSORS = env_bool(
+    "RAY_ENABLE_ZERO_COPY_TORCH_TENSORS", False
+)
