@@ -49,21 +49,27 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         self._backpressure_max_queued_blocks = (
             self._data_context.downstream_capacity_backpressure_max_queued_bundles
         )
-        self._downstream_capacity_ratio = 10.0
+        self._downstream_capacity_outputs_ratio = (
+            self._data_context.downstream_capacity_outputs_ratio
+        )
         self._backpressure_disabled = (
             self._backpressure_concurrency_ratio is None
             or self._backpressure_max_queued_blocks is None
         )
 
     def _max_concurrent_tasks(self, op: "PhysicalOperator") -> int:
+        # This should return values >= 1 to ensure we do not deadlock.
         if isinstance(op, ActorPoolMapOperator):
-            return sum(
-                [
-                    actor_pool.max_concurrent_tasks()
-                    for actor_pool in op.get_autoscaling_actor_pools()
-                ]
+            return max(
+                sum(
+                    [
+                        actor_pool.max_concurrent_tasks()
+                        for actor_pool in op.get_autoscaling_actor_pools()
+                    ]
+                ),
+                1,
             )
-        return op.num_active_tasks()
+        return max(op.num_active_tasks(), 1)
 
     def _estimate_max_downstream_capacity(
         self, downstream_op: "PhysicalOperator"
@@ -83,7 +89,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             Estimated maximum number of blocks that can be queued, or None if
             estimation is not possible (e.g., no metrics yet).
         """
-        avg_num_inputs_per_task = downstream_op.metrics.aveerage_num_inputs_per_task
+        avg_num_inputs_per_task = downstream_op.metrics.average_num_inputs_per_task
         if avg_num_inputs_per_task is None or avg_num_inputs_per_task == 0:
             return None
 
@@ -99,7 +105,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             max_concurrent_tasks
             * tasks_per_worker
             * avg_num_inputs_per_task
-            * self._downstream_capacity_ratio
+            * self._downstream_capacity_outputs_ratio
         )
 
     def can_add_input(self, op: "PhysicalOperator") -> bool:
@@ -130,7 +136,10 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         return True
 
     def max_task_output_bytes_to_read(self, op: "PhysicalOperator") -> Optional[int]:
-        if self._backpressure_disabled:
+        if (
+            self._downstream_capacity_outputs_ratio is None
+            or self._downstream_capacity_outputs_ratio <= 0
+        ):
             return None
 
         min_capacity_bytes = None
