@@ -2249,6 +2249,11 @@ cdef CRayStatus task_execution_handler(
 cdef c_bool kill_main_task(const CTaskID &task_id) nogil:
     with gil:
         task_id_to_kill = TaskID(task_id.Binary())
+
+        ctx = task_cancellation_context.get()
+        if ctx is not None and TaskID(ctx.c_task_id.Binary()) == task_id_to_kill:
+            ctx.cancel()
+
         with current_task_id_lock:
             if current_task_id != task_id_to_kill:
                 return False
