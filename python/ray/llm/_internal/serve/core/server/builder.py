@@ -100,7 +100,7 @@ def build_sglang_deployment(
     Returns:
         The Ray Serve Application for the LLMServer deployment.
     """
-    deployment_cls = SGLangServer #deployment_cls or LLMServer
+    deployment_cls = SGLangServer
     name_prefix = name_prefix or f"{deployment_cls.__name__}:"
     bind_kwargs = bind_kwargs or {}
 
