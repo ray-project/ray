@@ -91,7 +91,7 @@ To follow the examples in this tutorial, mount the directory containing the exam
 ```bash
 pip install ray[tune,serve]
 pip install git+https://github.com/huggingface/optimum-habana.git
-# Replace 1.22.0 with the driver version of the container.
+# The DeepSpeed tag should correspond to the Gaudi driver's major.minor version.
 pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.22.0
 # Only needed by the DeepSpeed example.
 export RAY_EXPERIMENTAL_NOSET_HABANA_VISIBLE_MODULES=1
