@@ -10,7 +10,7 @@
 # Click 8.3.0 does not work with copy.deepcopy on Python 3.10
 # TODO(aslonnie): https://github.com/ray-project/ray/issues/56747
 click>=7.0
-cupy-cuda12x>=13.4.0; sys_platform != 'darwin'
+cupy-cuda12x; sys_platform != 'darwin'
 filelock
 jsonschema
 msgpack<2.0.0,>=1.0.0
@@ -35,7 +35,7 @@ smart_open
 lz4
 numpy>=1.20
 aiorwlock
-scipy>=1.14.1
+scipy
 colorful
 rich
 opentelemetry-sdk>=1.30.0
