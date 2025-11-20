@@ -104,7 +104,3 @@ curl http://127.0.0.1:8000/v1/completions \
 
 - [SGLang supported models](https://docs.sglang.ai/supported_models/classify_models.html#supported-models) - Complete list of supported models and features
 - [SGLang OpenAI compatibility](https://docs.sglang.ai/basic_usage/openai_api.html) - SGLang's OpenAI-compatible server documentation
-
-- [vLLM supported models](https://docs.vllm.ai/en/stable/models/supported_models.html) - Complete list of supported models and features
-- [vLLM OpenAI compatibility](https://docs.vllm.ai/en/stable/serving/openai_compatible_server.html) - vLLM's OpenAI-compatible server documentation
-- {doc}`Quickstart <../quick-start>` - Basic LLM deployment examples
