@@ -12,20 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#include "ray/gcs_rpc_client/default_accessor_factory.h"
 
-#include <functional>
+#include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
 
 namespace ray {
+namespace gcs {
 
-// This util function implements such feature:
-// To perform certain cleanup work after main process dies (i.e. cleanup cgroup for main
-// process), it spawns a subprocess which keeps listens to pipe; child process keeps
-// listening to pipe and gets awaken when parent process exits.
-//
-// Notice it only works for unix platform, and it should be called AT MOST ONCE.
-// If there're multiple cleanup functions to register, callers should wrap them all into
-// one callback.
-void SpawnSubprocessAndCleanup(std::function<void()> cleanup);
+std::unique_ptr<ActorInfoAccessorInterface>
+DefaultAccessorFactory::CreateActorInfoAccessor(GcsClientContext *context) {
+  return std::make_unique<ActorInfoAccessor>(context);
+}
 
+}  // namespace gcs
 }  // namespace ray

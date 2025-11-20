@@ -14,33 +14,25 @@
 
 #pragma once
 
-#include <atomic>
-
-#include "ray/util/logging.h"
+#include "ray/gcs_rpc_client/accessor_factory_interface.h"
 
 namespace ray {
+namespace gcs {
 
-// A util class (a token) which guards again multiple invocations.
-// It's thread-safe.
-//
-// Example usage:
-// void SomeFunc() {
-//   static InvokeOnceToken token;
-//   token.CheckInvokeOnce();
-// }
-class InvokeOnceToken {
+/**
+@interface DefaultAccessorFactory
+
+Default implementation of the AccessorFactoryInterface. Creates the standard
+implementation of each accessor.
+*/
+class DefaultAccessorFactory : public AccessorFactoryInterface {
  public:
-  void CheckInvokeOnce() {
-    bool expected = false;
-    RAY_CHECK(invoked_.compare_exchange_strong(expected, /*desired=*/true))
-        << "Invoke once token has been visited before.";
-  }
+  DefaultAccessorFactory() = default;
+  ~DefaultAccessorFactory() override = default;
 
- private:
-  std::atomic<bool> invoked_{false};
+  std::unique_ptr<ActorInfoAccessorInterface> CreateActorInfoAccessor(
+      GcsClientContext *context) override;
 };
 
-static_assert(std::is_trivially_destructible<InvokeOnceToken>::value,
-              "InvokeOnceToken must be trivially destructible");
-
+}  // namespace gcs
 }  // namespace ray

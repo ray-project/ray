@@ -254,7 +254,8 @@ class ActorReplicaWrapper:
         self._docs_path: Optional[str] = None
         self._route_patterns: Optional[List[str]] = None
         # Rank assigned to the replica.
-        self._rank: Optional[int] = None
+        self._assign_rank_callback: Optional[Callable[[ReplicaID], ReplicaRank]] = None
+        self._rank: Optional[ReplicaRank] = None
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
         self._placement_group: PlacementGroup = None
@@ -281,6 +282,9 @@ class ActorReplicaWrapper:
         self._last_record_routing_stats_time: float = 0.0
         self._ingress: bool = False
 
+        # Outbound deployments polling state
+        self._outbound_deployments: Optional[List[DeploymentID]] = None
+
     @property
     def replica_id(self) -> str:
         return self._replica_id
@@ -290,7 +294,7 @@ class ActorReplicaWrapper:
         return self._deployment_id.name
 
     @property
-    def rank(self) -> Optional[int]:
+    def rank(self) -> Optional[ReplicaRank]:
         return self._rank
 
     @property
@@ -442,14 +446,16 @@ class ActorReplicaWrapper:
         return self._initialization_latency_s
 
     def start(
-        self, deployment_info: DeploymentInfo, rank: int
+        self,
+        deployment_info: DeploymentInfo,
+        assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
     ) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
 
         The replica will be in the STARTING and PENDING_ALLOCATION states
         until the deployment scheduler schedules the underlying actor.
         """
-        self._rank = rank  # Store the rank assigned to this replica
+        self._assign_rank_callback = assign_rank_callback
         self._actor_resources = deployment_info.replica_config.resource_dict
         self._ingress = deployment_info.ingress
         # it is currently not possible to create a placement group
@@ -493,7 +499,6 @@ class ActorReplicaWrapper:
                 self._version,
                 deployment_info.ingress,
                 deployment_info.route_prefix,
-                rank,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -574,31 +579,11 @@ class ActorReplicaWrapper:
         self._actor_handle = actor_handle
         self._placement_group = placement_group
 
-        # Perform auto method name translation for java handles.
-        # See https://github.com/ray-project/ray/issues/21474
-        deployment_config = copy(self._version.deployment_config)
-        deployment_config.user_config = self._format_user_config(
-            deployment_config.user_config
-        )
         if self._is_cross_language:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = self._actor_handle.is_initialized.remote(
-                deployment_config.to_proto_bytes()
-            )
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            replica_ready_check_func = self._actor_handle.initialize_and_get_metadata
-            self._ready_obj_ref = replica_ready_check_func.remote(
-                deployment_config,
-                # Ensure that `is_allocated` will execute
-                # before `initialize_and_get_metadata`,
-                # because `initialize_and_get_metadata` runs
-                # user code that could block the replica
-                # asyncio loop. If that happens before `is_allocated` is executed,
-                # the `is_allocated` call won't be able to run.
-                self._allocated_obj_ref,
-            )
 
     def _format_user_config(self, user_config: Any):
         temp = copy(user_config)
@@ -609,11 +594,7 @@ class ActorReplicaWrapper:
                 temp = msgpack_deserialize(temp)
         return temp
 
-    def reconfigure(
-        self,
-        version: DeploymentVersion,
-        rank: int,
-    ) -> bool:
+    def reconfigure(self, version: DeploymentVersion, rank: ReplicaRank) -> bool:
         """
         Update replica version. Also, updates the deployment config on the actor
         behind this DeploymentReplica instance if necessary.
@@ -747,6 +728,28 @@ class ActorReplicaWrapper:
                 logger.exception(msg)
                 return ReplicaStartupStatus.FAILED, msg
 
+        if self._ready_obj_ref is None:
+            # Perform auto method name translation for java handles.
+            # See https://github.com/ray-project/ray/issues/21474
+            deployment_config = copy(self._version.deployment_config)
+            deployment_config.user_config = self._format_user_config(
+                deployment_config.user_config
+            )
+            if self._is_cross_language:
+                self._ready_obj_ref = self._actor_handle.is_initialized.remote(
+                    deployment_config.to_proto_bytes()
+                )
+            else:
+                replica_ready_check_func = (
+                    self._actor_handle.initialize_and_get_metadata
+                )
+                self._rank = self._assign_rank_callback(self._replica_id.unique_id)
+                self._ready_obj_ref = replica_ready_check_func.remote(
+                    deployment_config, self._rank
+                )
+
+            return ReplicaStartupStatus.PENDING_INITIALIZATION, None
+
         # Check whether replica initialization has completed.
         replica_ready = check_obj_ref_ready_nowait(self._ready_obj_ref)
         # In case of deployment constructor failure, ray.get will help to
@@ -775,6 +778,7 @@ class ActorReplicaWrapper:
                         self._grpc_port,
                         self._rank,
                         self._route_patterns,
+                        self._outbound_deployments,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -1047,6 +1051,9 @@ class ActorReplicaWrapper:
         except ValueError:
             pass
 
+    def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        return self._outbound_deployments
+
 
 class DeploymentReplica:
     """Manages state transitions for deployment replicas.
@@ -1170,12 +1177,16 @@ class DeploymentReplica:
         return self._actor.initialization_latency_s
 
     def start(
-        self, deployment_info: DeploymentInfo, rank: int
+        self,
+        deployment_info: DeploymentInfo,
+        assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
     ) -> ReplicaSchedulingRequest:
         """
         Start a new actor for current DeploymentReplica instance.
         """
-        replica_scheduling_request = self._actor.start(deployment_info, rank=rank)
+        replica_scheduling_request = self._actor.start(
+            deployment_info, assign_rank_callback=assign_rank_callback
+        )
         self._start_time = time.time()
         self._logged_shutdown_message = False
         self.update_actor_details(start_time_s=self._start_time)
@@ -1184,7 +1195,7 @@ class DeploymentReplica:
     def reconfigure(
         self,
         version: DeploymentVersion,
-        rank: int,
+        rank: ReplicaRank,
     ) -> bool:
         """
         Update replica version. Also, updates the deployment config on the actor
@@ -1211,7 +1222,7 @@ class DeploymentReplica:
         return True
 
     @property
-    def rank(self) -> Optional[int]:
+    def rank(self) -> Optional[ReplicaRank]:
         """Get the rank assigned to the replica."""
         return self._actor.rank
 
@@ -1326,6 +1337,9 @@ class DeploymentReplica:
         # when dumping these objects. See
         # https://github.com/ray-project/ray/issues/26210 for the issue.
         return json.dumps(required), json.dumps(available)
+
+    def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        return self._actor.get_outbound_deployments()
 
 
 class ReplicaStateContainer:
@@ -1695,9 +1709,11 @@ class DeploymentRankManager:
             # Assign global rank
             rank = self._replica_rank_manager.assign_rank(replica_id)
 
-            return ReplicaRank(rank=rank)
+            return ReplicaRank(rank=rank, node_rank=-1, local_rank=-1)
 
-        return self._execute_with_error_handling(_assign_rank_impl, ReplicaRank(rank=0))
+        return self._execute_with_error_handling(
+            _assign_rank_impl, ReplicaRank(rank=0, node_rank=-1, local_rank=-1)
+        )
 
     def release_rank(self, replica_id: str) -> None:
         """Release rank for a replica.
@@ -1776,10 +1792,10 @@ class DeploymentRankManager:
                 raise RuntimeError(f"Rank for {replica_id} not assigned")
 
             global_rank = self._replica_rank_manager.get_rank(replica_id)
-            return ReplicaRank(rank=global_rank)
+            return ReplicaRank(rank=global_rank, node_rank=-1, local_rank=-1)
 
         return self._execute_with_error_handling(
-            _get_replica_rank_impl, ReplicaRank(rank=0)
+            _get_replica_rank_impl, ReplicaRank(rank=0, node_rank=-1, local_rank=-1)
         )
 
     def check_rank_consistency_and_reassign_minimally(
@@ -2536,18 +2552,13 @@ class DeploymentState:
                 for _ in range(to_add):
                     replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
 
-                    # Assign rank during replica creation (startup process)
-                    assigned_rank = self._rank_manager.assign_rank(replica_id.unique_id)
-
-                    logger.debug(
-                        f"Assigned rank {assigned_rank.rank} to new replica {replica_id.unique_id} during startup"
-                    )
                     new_deployment_replica = DeploymentReplica(
                         replica_id,
                         self._target_state.version,
                     )
                     scheduling_request = new_deployment_replica.start(
-                        self._target_state.info, rank=assigned_rank.rank
+                        self._target_state.info,
+                        assign_rank_callback=self._rank_manager.assign_rank,
                     )
 
                     upscale.append(scheduling_request)
@@ -2665,10 +2676,7 @@ class DeploymentState:
                     # data structure with RUNNING state.
                     # Recover rank from the replica actor during controller restart
                     replica_id = replica.replica_id.unique_id
-                    recovered_rank = replica.rank
-                    self._rank_manager.recover_rank(
-                        replica_id, ReplicaRank(rank=recovered_rank)
-                    )
+                    self._rank_manager.recover_rank(replica_id, replica.rank)
                 # This replica should be now be added to handle's replica
                 # set.
                 self._replicas.add(ReplicaState.RUNNING, replica)
@@ -2951,7 +2959,7 @@ class DeploymentState:
             # World size is calculated automatically from deployment config
             _ = replica.reconfigure(
                 self._target_state.version,
-                rank=new_rank.rank,
+                rank=new_rank,
             )
             updated_count += 1
 
@@ -3092,6 +3100,27 @@ class DeploymentState:
 
     def is_ingress(self) -> bool:
         return self._target_state.info.ingress
+
+    def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        """Get the outbound deployments.
+
+        Returns:
+            Sorted list of deployment IDs that this deployment calls. None if
+            outbound deployments are not yet polled.
+        """
+        result: Set[DeploymentID] = set()
+        has_outbound_deployments = False
+        for replica in self._replicas.get([ReplicaState.RUNNING]):
+            if replica.version != self._target_state.version:
+                # Only consider replicas of the target version
+                continue
+            outbound_deployments = replica.get_outbound_deployments()
+            if outbound_deployments is not None:
+                result.update(outbound_deployments)
+                has_outbound_deployments = True
+        if not has_outbound_deployments:
+            return None
+        return sorted(result, key=lambda d: (d.name))
 
 
 class DeploymentStateManager:
@@ -3701,3 +3730,21 @@ class DeploymentStateManager:
             return {}
 
         return deployment_state._get_replica_ranks_mapping()
+
+    def get_deployment_outbound_deployments(
+        self, deployment_id: DeploymentID
+    ) -> Optional[List[DeploymentID]]:
+        """Get the cached outbound deployments for a specific deployment.
+
+        Args:
+            deployment_id: The deployment ID to get outbound deployments for.
+
+        Returns:
+            List of deployment IDs that this deployment calls, or None if
+            the deployment doesn't exist or hasn't been polled yet.
+        """
+        deployment_state = self._deployment_states.get(deployment_id)
+        if deployment_state is None:
+            return None
+
+        return deployment_state.get_outbound_deployments()
