@@ -27,7 +27,9 @@ class HashShuffleAggregatorIssueDetector(IssueDetector):
         self._last_warning_times = {}  # Track per-operator warning times
 
     @classmethod
-    def from_executor(cls, executor: "StreamingExecutor") -> "HashShuffleAggregatorIssueDetector":
+    def from_executor(
+        cls, executor: "StreamingExecutor"
+    ) -> "HashShuffleAggregatorIssueDetector":
         """Factory method to create a HashShuffleAggregatorIssueDetector from a StreamingExecutor.
 
         Args:
