@@ -407,9 +407,7 @@ cupy-cuda12x==13.4.0 ; sys_platform != "darwin"
 cycler==0.12.1
     # via matplotlib
 cython==0.29.37
-    # via
-    #   -r python/requirements/test-requirements.txt
-    #   gpy
+    # via -r python/requirements/test-requirements.txt
 dask==2023.6.1 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-requirements.txt
@@ -429,7 +427,6 @@ decorator==5.1.1
     # via
     #   ipython
     #   moviepy
-    #   paramz
     #   tensorflow-probability
 decord==0.6.0
     # via -r python/requirements/ml/data-test-requirements.txt
@@ -687,8 +684,6 @@ googleapis-common-protos==1.61.0
     #   google-api-core
     #   grpcio-status
     #   tensorflow-metadata
-gpy==1.13.1
-    # via -r python/requirements/ml/tune-test-requirements.txt
 gpytorch==1.10
     # via botorch
 gradio==3.50.2 ; platform_system != "Windows"
@@ -1259,7 +1254,6 @@ numpy==1.26.4
     #   dm-env
     #   etils
     #   evaluate
-    #   gpy
     #   gradio
     #   gymnasium
     #   h5py
@@ -1289,7 +1283,6 @@ numpy==1.26.4
     #   opt-einsum
     #   optuna
     #   pandas
-    #   paramz
     #   patsy
     #   pettingzoo
     #   prophet
@@ -1483,8 +1476,6 @@ pandocfilters==1.5.0
     # via nbconvert
 paramiko==2.12.0
     # via azure-cli-core
-paramz==0.9.6
-    # via gpy
 parso==0.8.3
     # via jedi
 partd==1.4.1
@@ -2033,7 +2024,7 @@ scikit-learn==1.3.2
     #   mlflow
     #   pymars
     #   torch-geometric
-scipy==1.11.4
+scipy==1.16.3
     # via
     #   -r python/requirements.txt
     #   ax-platform
@@ -2041,7 +2032,6 @@ scipy==1.11.4
     #   botorch
     #   configspace
     #   dm-control
-    #   gpy
     #   hpbandster
     #   hyperopt
     #   jax
@@ -2050,7 +2040,6 @@ scipy==1.11.4
     #   linear-operator
     #   mlflow
     #   open-spiel
-    #   paramz
     #   pymars
     #   scikit-image
     #   scikit-learn
@@ -2109,7 +2098,6 @@ six==1.16.0
     #   gcs-oauth2-boto-plugin
     #   google-apitools
     #   google-pasta
-    #   gpy
     #   gsutil
     #   halo
     #   isodate
@@ -2120,7 +2108,6 @@ six==1.16.0
     #   oauth2client
     #   opencensus
     #   paramiko
-    #   paramz
     #   patsy
     #   promise
     #   pytest-remotedata

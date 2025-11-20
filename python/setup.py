@@ -329,7 +329,7 @@ if setup_spec.type == SetupType.RAY:
         "lz4",
         "ormsgpack==1.7.0",
         "pyyaml",
-        "scipy",
+        "scipy>=1.14.1",
     ]
 
     setup_spec.extras["train"] = setup_spec.extras["tune"] + [pydantic_dep]

@@ -35,7 +35,7 @@ smart_open
 lz4
 numpy>=1.20
 aiorwlock
-scipy
+scipy>=1.14.1
 colorful
 rich
 opentelemetry-sdk>=1.30.0
