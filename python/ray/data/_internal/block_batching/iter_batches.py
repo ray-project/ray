@@ -183,8 +183,13 @@ class BatchIterator:
             DEFAULT_FORMAT_THEADPOOL_NUM_WORKERS, self._prefetch_batches
         )
         per_thread_buffer_size = (
-            self._prefetch_batches + num_threadpool_workers - 1
-        ) // num_threadpool_workers
+            (
+                (self._prefetch_batches + num_threadpool_workers - 1)
+                // num_threadpool_workers
+            )
+            if num_threadpool_workers > 0
+            else 0
+        )
         return _format_in_threadpool(
             batch_iter=batches,
             stats=self._stats,
