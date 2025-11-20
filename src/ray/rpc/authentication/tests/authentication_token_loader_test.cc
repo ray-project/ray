@@ -325,6 +325,62 @@ TEST_F(AuthenticationTokenLoaderTest, TestWhitespaceHandling) {
   EXPECT_TRUE(token_opt->Equals(expected));
 }
 
+TEST_F(AuthenticationTokenLoaderTest, TestIgnoreAuthModeGetToken) {
+  // Disable auth mode
+  RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
+  AuthenticationTokenLoader::instance().ResetCache();
+
+  // Set token in environment
+  set_env_var("RAY_AUTH_TOKEN", "test-token-ignore-auth");
+
+  auto &loader = AuthenticationTokenLoader::instance();
+
+  // Without ignore_auth_mode, should return nullopt (auth is disabled)
+  auto token_opt_no_ignore = loader.GetToken();
+  EXPECT_FALSE(token_opt_no_ignore.has_value());
+
+  // Reset cache to test ignore_auth_mode
+  loader.ResetCache();
+
+  // With ignore_auth_mode=true, should load token despite auth being disabled
+  auto token_opt_ignore = loader.GetToken(true);
+  ASSERT_TRUE(token_opt_ignore.has_value());
+  AuthenticationToken expected("test-token-ignore-auth");
+  EXPECT_TRUE(token_opt_ignore->Equals(expected));
+
+  // Re-enable auth for other tests
+  RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestIgnoreAuthModeHasToken) {
+  // Disable auth mode
+  RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
+  AuthenticationTokenLoader::instance().ResetCache();
+
+  // Set token in environment
+  set_env_var("RAY_AUTH_TOKEN", "test-token-has-ignore");
+
+  auto &loader = AuthenticationTokenLoader::instance();
+
+  // Without ignore_auth_mode, should return false (auth is disabled)
+  EXPECT_FALSE(loader.HasToken(false));
+
+  // Reset cache to test ignore_auth_mode
+  loader.ResetCache();
+
+  // With ignore_auth_mode=true, should return true despite auth being disabled
+  EXPECT_TRUE(loader.HasToken(true));
+
+  // Also verify we can get the actual token value
+  auto token_opt = loader.GetToken(true);
+  ASSERT_TRUE(token_opt.has_value());
+  AuthenticationToken expected("test-token-has-ignore");
+  EXPECT_TRUE(token_opt->Equals(expected));
+
+  // Re-enable auth for other tests
+  RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
+}
+
 }  // namespace rpc
 }  // namespace ray
 
