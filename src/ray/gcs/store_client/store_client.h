@@ -20,9 +20,9 @@
 
 #include "ray/common/asio/io_service_pool.h"
 #include "ray/common/asio/postable.h"
-#include "ray/common/gcs_callback_types.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/rpc/rpc_callback_types.h"
 
 namespace ray {
 
@@ -56,7 +56,7 @@ class StoreClient {
   /// \param callback returns the value or null.
   virtual void AsyncGet(const std::string &table_name,
                         const std::string &key,
-                        ToPostable<OptionalItemCallback<std::string>> callback) = 0;
+                        ToPostable<rpc::OptionalItemCallback<std::string>> callback) = 0;
 
   /// Get all data from the given table asynchronously.
   ///

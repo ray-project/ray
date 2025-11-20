@@ -390,14 +390,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "gcs_callback_types",
-    hdrs = ["gcs_callback_types.h"],
-    deps = [
-        "//src/ray/common:status",
-    ],
-)
-
-ray_cc_library(
     name = "metrics",
     hdrs = ["metrics.h"],
     deps = [

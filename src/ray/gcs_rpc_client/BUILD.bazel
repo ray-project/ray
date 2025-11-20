@@ -56,12 +56,12 @@ ray_cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//src/ray/common:gcs_callback_types",
         "//src/ray/common:id",
         "//src/ray/common:placement_group",
         "//src/ray/common:task_common",
         "//src/ray/protobuf:autoscaler_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/rpc:rpc_callback_types",
     ],
 )
 

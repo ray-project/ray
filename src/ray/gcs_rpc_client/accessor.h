@@ -18,7 +18,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "ray/common/gcs_callback_types.h"
+#include "absl/types/optional.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
 #include "ray/common/status_or.h"
@@ -32,8 +32,12 @@
 namespace ray {
 namespace gcs {
 
-using SubscribeOperation = std::function<void(const StatusCallback &done)>;
-using FetchDataOperation = std::function<void(const StatusCallback &done)>;
+// Default GCS Client timeout in milliseconds, as defined in
+// RAY_gcs_server_request_timeout_seconds
+int64_t GetGcsTimeoutMs();
+
+using SubscribeOperation = std::function<void(const rpc::StatusCallback &done)>;
+using FetchDataOperation = std::function<void(const rpc::StatusCallback &done)>;
 
 class GcsClient;
 /// \class JobInfoAccessor
@@ -51,21 +55,22 @@ class JobInfoAccessor {
   /// \param callback Callback that will be called after job has been added
   /// to GCS.
   virtual void AsyncAdd(const std::shared_ptr<rpc::JobTableData> &data_ptr,
-                        const StatusCallback &callback);
+                        const rpc::StatusCallback &callback);
 
   /// Mark job as finished in GCS asynchronously.
   ///
   /// \param job_id ID of the job that will be make finished to GCS.
   /// \param callback Callback that will be called after update finished.
-  virtual void AsyncMarkFinished(const JobID &job_id, const StatusCallback &callback);
+  virtual void AsyncMarkFinished(const JobID &job_id,
+                                 const rpc::StatusCallback &callback);
 
   /// Subscribe to job updates.
   ///
   /// \param subscribe Callback that will be called each time when a job updates.
   /// \param done Callback that will be called when subscription is complete.
   virtual void AsyncSubscribeAll(
-      const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
-      const StatusCallback &done);
+      const rpc::SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
+      const rpc::StatusCallback &done);
 
   /// Get all job info from GCS asynchronously.
   ///
@@ -74,7 +79,7 @@ class JobInfoAccessor {
   virtual void AsyncGetAll(const std::optional<std::string> &job_or_submission_id,
                            bool skip_submission_job_info_field,
                            bool skip_is_running_tasks_field,
-                           const MultiItemCallback<rpc::JobTableData> &callback,
+                           const rpc::MultiItemCallback<rpc::JobTableData> &callback,
                            int64_t timeout_ms);
 
   /// Get all job info from GCS synchronously.
@@ -99,7 +104,7 @@ class JobInfoAccessor {
   /// Increment and get next job id. This is not idempotent.
   ///
   /// \param done Callback that will be called when request successfully.
-  virtual void AsyncGetNextJobID(const ItemCallback<JobID> &callback);
+  virtual void AsyncGetNextJobID(const rpc::ItemCallback<JobID> &callback);
 
  private:
   /// Save the fetch data operation in this function, so we can call it again when GCS
@@ -128,7 +133,7 @@ class NodeInfoAccessor {
   /// \param node_info The information of node to register to GCS.
   /// \param callback Callback that will be called when registration is complete.
   virtual void RegisterSelf(rpc::GcsNodeInfo &&local_node_info,
-                            const StatusCallback &callback);
+                            const rpc::StatusCallback &callback);
 
   /// Unregister local node to GCS asynchronously.
   ///
@@ -145,7 +150,7 @@ class NodeInfoAccessor {
   /// \param node_info The information of node to register to GCS.
   /// \param callback Callback that will be called when registration is complete.
   virtual void AsyncRegister(const rpc::GcsNodeInfo &node_info,
-                             const StatusCallback &callback);
+                             const rpc::StatusCallback &callback);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
@@ -153,7 +158,7 @@ class NodeInfoAccessor {
   /// \param timeout_ms The timeout for this request.
   virtual void AsyncCheckAlive(const std::vector<NodeID> &node_ids,
                                int64_t timeout_ms,
-                               const MultiItemCallback<bool> &callback);
+                               const rpc::MultiItemCallback<bool> &callback);
 
   /// Get information of all nodes from GCS asynchronously.
   ///
@@ -161,12 +166,12 @@ class NodeInfoAccessor {
   /// \param timeout_ms The timeout for this request.
   /// \param node_ids If this is not empty, only return the node info of the specified
   /// nodes.
-  virtual void AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
+  virtual void AsyncGetAll(const rpc::MultiItemCallback<rpc::GcsNodeInfo> &callback,
                            int64_t timeout_ms,
                            const std::vector<NodeID> &node_ids = {});
 
   virtual void AsyncGetAllNodeAddressAndLiveness(
-      const MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+      const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
       int64_t timeout_ms,
       const std::vector<NodeID> &node_ids = {});
 
@@ -178,7 +183,7 @@ class NodeInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   virtual void AsyncSubscribeToNodeChange(
       std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
-      StatusCallback done);
+      rpc::StatusCallback done);
 
   /// Get node information from local cache.
   /// Non-thread safe.
@@ -189,13 +194,12 @@ class NodeInfoAccessor {
   /// \param filter_dead_nodes Whether or not if this method will filter dead nodes.
   /// \return The item returned by GCS. If the item to read doesn't exist or the node is
   virtual  /// dead, this optional object is empty.
-      const rpc::GcsNodeInfo *
-      Get(const NodeID &node_id, bool filter_dead_nodes = true) const;
+      const rpc::GcsNodeInfo *Get(const NodeID &node_id,
+                                  bool filter_dead_nodes = true) const;
 
   virtual  /// dead, this optional object is empty.
-      const rpc::GcsNodeAddressAndLiveness *
-      GetNodeAddressAndLiveness(const NodeID &node_id,
-                                bool filter_dead_nodes = true) const;
+      const rpc::GcsNodeAddressAndLiveness *GetNodeAddressAndLiveness(
+          const NodeID &node_id, bool filter_dead_nodes = true) const;
 
   /// Get information of all nodes from local cache.
   /// Non-thread safe.
@@ -204,8 +208,8 @@ class NodeInfoAccessor {
   ///
   /// \return All nodes in cache.
   virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
-  virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>
-      &GetAllNodeAddressAndLiveness() const;
+  virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> &
+  GetAllNodeAddressAndLiveness() const;
 
   /// Get information of all nodes from an RPC to GCS synchronously with optional filters.
   ///
@@ -226,7 +230,7 @@ class NodeInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   virtual void AsyncSubscribeToNodeAddressAndLivenessChange(
       std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
-      StatusCallback done);
+      rpc::StatusCallback done);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
@@ -322,25 +326,25 @@ class NodeResourceInfoAccessor {
   ///
   /// \param callback Callback that will be called after lookup finishes.
   virtual void AsyncGetAllAvailableResources(
-      const MultiItemCallback<rpc::AvailableResources> &callback);
+      const rpc::MultiItemCallback<rpc::AvailableResources> &callback);
 
   /// Get total resources of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
   virtual void AsyncGetAllTotalResources(
-      const MultiItemCallback<rpc::TotalResources> &callback);
+      const rpc::MultiItemCallback<rpc::TotalResources> &callback);
 
   /// Get draining nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
   virtual void AsyncGetDrainingNodes(
-      const ItemCallback<std::unordered_map<NodeID, int64_t>> &callback);
+      const rpc::ItemCallback<std::unordered_map<NodeID, int64_t>> &callback);
 
   /// Get newest resource usage of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
   virtual void AsyncGetAllResourceUsage(
-      const ItemCallback<rpc::ResourceUsageBatchData> &callback);
+      const rpc::ItemCallback<rpc::ResourceUsageBatchData> &callback);
 
   /// Get newest resource usage of all nodes from GCS synchronously.
   ///
@@ -394,12 +398,13 @@ class TaskInfoAccessor {
   /// \param data_ptr The task states event data that will be added to GCS.
   /// \param callback Callback that will be called when add is complete.
   virtual void AsyncAddTaskEventData(std::unique_ptr<rpc::TaskEventData> data_ptr,
-                                     StatusCallback callback);
+                                     rpc::StatusCallback callback);
 
   /// Get all info/events of all tasks stored in GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
-  virtual void AsyncGetTaskEvents(const MultiItemCallback<rpc::TaskEvents> &callback);
+  virtual void AsyncGetTaskEvents(
+      const rpc::MultiItemCallback<rpc::TaskEvents> &callback);
 
  private:
   GcsClient *client_impl_;
@@ -421,7 +426,8 @@ class WorkerInfoAccessor {
   /// \param subscribe Callback that will be called each time when a worker failed.
   /// \param done Callback that will be called when subscription is complete.
   virtual void AsyncSubscribeToWorkerFailures(
-      const ItemCallback<rpc::WorkerDeltaData> &subscribe, const StatusCallback &done);
+      const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,
+      const rpc::StatusCallback &done);
 
   /// Report a worker failure to GCS asynchronously.
   ///
@@ -429,19 +435,19 @@ class WorkerInfoAccessor {
   /// \param callback Callback that will be called when report is complate.
   virtual void AsyncReportWorkerFailure(
       const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
-      const StatusCallback &callback);
+      const rpc::StatusCallback &callback);
 
   /// Get worker specification from GCS asynchronously.
   ///
   /// \param worker_id The ID of worker to look up in the GCS.
   /// \param callback Callback that will be called after lookup finishes.
   virtual void AsyncGet(const WorkerID &worker_id,
-                        const OptionalItemCallback<rpc::WorkerTableData> &callback);
+                        const rpc::OptionalItemCallback<rpc::WorkerTableData> &callback);
 
   /// Get all worker info from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finished.
-  virtual void AsyncGetAll(const MultiItemCallback<rpc::WorkerTableData> &callback);
+  virtual void AsyncGetAll(const rpc::MultiItemCallback<rpc::WorkerTableData> &callback);
 
   /// Add worker information to GCS asynchronously.
   ///
@@ -449,7 +455,7 @@ class WorkerInfoAccessor {
   /// \param callback Callback that will be called after worker information has been added
   /// to GCS.
   virtual void AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
-                        const StatusCallback &callback);
+                        const rpc::StatusCallback &callback);
 
   /// Update the worker debugger port in GCS asynchronously.
   ///
@@ -458,7 +464,7 @@ class WorkerInfoAccessor {
   /// \param callback Callback that will be called after update finishes.
   virtual void AsyncUpdateDebuggerPort(const WorkerID &worker_id,
                                        uint32_t debugger_port,
-                                       const StatusCallback &callback);
+                                       const rpc::StatusCallback &callback);
 
   /// Update the number of worker's paused threads in GCS asynchronously.
   ///
@@ -467,7 +473,7 @@ class WorkerInfoAccessor {
   /// \param callback Callback that will be called after update finishes.
   virtual void AsyncUpdateWorkerNumPausedThreads(const WorkerID &worker_id,
                                                  int num_paused_threads_delta,
-                                                 const StatusCallback &callback);
+                                                 const rpc::StatusCallback &callback);
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   /// PubSub server restart will cause GCS server restart. In this case, we need to
@@ -504,7 +510,7 @@ class PlacementGroupInfoAccessor {
   /// \param placement_group_id The id of a placement group to obtain from GCS.
   virtual void AsyncGet(
       const PlacementGroupID &placement_group_id,
-      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback);
+      const rpc::OptionalItemCallback<rpc::PlacementGroupTableData> &callback);
 
   /// Get a placement group data from GCS asynchronously by name.
   ///
@@ -515,14 +521,14 @@ class PlacementGroupInfoAccessor {
   virtual void AsyncGetByName(
       const std::string &placement_group_name,
       const std::string &ray_namespace,
-      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
+      const rpc::OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
       int64_t timeout_ms = -1);
 
   /// Get all placement group info from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finished.
   virtual void AsyncGetAll(
-      const MultiItemCallback<rpc::PlacementGroupTableData> &callback);
+      const rpc::MultiItemCallback<rpc::PlacementGroupTableData> &callback);
 
   /// Remove a placement group to GCS synchronously.
   ///
@@ -562,7 +568,7 @@ class InternalKVAccessor {
       const std::string &ns,
       const std::string &prefix,
       const int64_t timeout_ms,
-      const OptionalItemCallback<std::vector<std::string>> &callback);
+      const rpc::OptionalItemCallback<std::vector<std::string>> &callback);
 
   /// Asynchronously get the value for a given key.
   ///
@@ -573,7 +579,7 @@ class InternalKVAccessor {
   virtual void AsyncInternalKVGet(const std::string &ns,
                                   const std::string &key,
                                   const int64_t timeout_ms,
-                                  const OptionalItemCallback<std::string> &callback);
+                                  const rpc::OptionalItemCallback<std::string> &callback);
 
   /// Asynchronously get the value for multiple keys.
   ///
@@ -585,7 +591,8 @@ class InternalKVAccessor {
       const std::string &ns,
       const std::vector<std::string> &keys,
       const int64_t timeout_ms,
-      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback);
+      const rpc::OptionalItemCallback<std::unordered_map<std::string, std::string>>
+          &callback);
 
   /// Asynchronously set the value for a given key.
   ///
@@ -599,7 +606,7 @@ class InternalKVAccessor {
                                   const std::string &value,
                                   bool overwrite,
                                   const int64_t timeout_ms,
-                                  const OptionalItemCallback<bool> &callback);
+                                  const rpc::OptionalItemCallback<bool> &callback);
 
   /// Asynchronously check the existence of a given key
   ///
@@ -611,7 +618,7 @@ class InternalKVAccessor {
   virtual void AsyncInternalKVExists(const std::string &ns,
                                      const std::string &key,
                                      const int64_t timeout_ms,
-                                     const OptionalItemCallback<bool> &callback);
+                                     const rpc::OptionalItemCallback<bool> &callback);
 
   /// Asynchronously delete a key
   ///
@@ -625,7 +632,7 @@ class InternalKVAccessor {
                                   const std::string &key,
                                   bool del_by_prefix,
                                   const int64_t timeout_ms,
-                                  const OptionalItemCallback<int> &callback);
+                                  const rpc::OptionalItemCallback<int> &callback);
 
   // These are sync functions of the async above
 
@@ -723,7 +730,8 @@ class InternalKVAccessor {
   /// Get the internal config string from GCS.
   ///
   /// \param callback Processes a map of config options
-  virtual void AsyncGetInternalConfig(const OptionalItemCallback<std::string> &callback);
+  virtual void AsyncGetInternalConfig(
+      const rpc::OptionalItemCallback<std::string> &callback);
 
  private:
   GcsClient *client_impl_;
@@ -770,7 +778,7 @@ class AutoscalerStateAccessor {
 
   virtual void AsyncGetClusterStatus(
       int64_t timeout_ms,
-      const OptionalItemCallback<rpc::autoscaler::GetClusterStatusReply> &callback);
+      const rpc::OptionalItemCallback<rpc::autoscaler::GetClusterStatusReply> &callback);
 
   virtual Status ReportAutoscalingState(int64_t timeout_ms,
                                         const std::string &serialized_state);
@@ -808,7 +816,7 @@ class PublisherAccessor {
 
   virtual void AsyncPublishNodeResourceUsage(std::string key_id,
                                              std::string node_resource_usage_json,
-                                             const StatusCallback &done);
+                                             const rpc::StatusCallback &done);
 
  private:
   GcsClient *client_impl_;
