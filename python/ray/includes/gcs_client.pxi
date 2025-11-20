@@ -336,6 +336,7 @@ cdef class InnerGcsClient:
                 - "node_id": Filter by node ID (hex string)
                 - "state": Filter by node state (string, e.g., "ALIVE")
                 - "node_name": Filter by node name
+                - "node_ip_address": Filter by node ip address
                 - "is_head_node": Filter by head node status (bool)
 
         Returns:
@@ -377,6 +378,10 @@ cdef class InnerGcsClient:
                 elif key == "node_name":
                     node_selector = CNodeSelector()
                     node_selector.set_node_name(value.encode('utf-8'))
+                    c_node_selectors.push_back(node_selector)
+                elif key == "node_ip_address":
+                    node_selector = CNodeSelector()
+                    node_selector.set_node_ip_address(value.encode('utf-8'))
                     c_node_selectors.push_back(node_selector)
                 elif key == "is_head_node":
                     # Convert string value to boolean

@@ -1170,16 +1170,14 @@ def get_all_node_info_with_retry(
                 logger.exception("Get all node info failed")
             result = None
 
-        if result is not None and result:
-            # Successfully retrieved node info and it's not empty
+        if result is not None:
+            # Successfully retrieved node info (even if empty)
             break
         else:
-            logger.debug(
-                f"Fetched node info with filters {filters} returned empty. Retrying."
-            )
+            logger.debug(f"Failed to fetch node info with filters {filters}. Retrying.")
             time.sleep(2)
 
-    if not result:
+    if result is None:
         raise ConnectionError(
             f"Could not read node info with filters {filters} from GCS. "
             "Did GCS start successfully?"
