@@ -5,7 +5,11 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
-from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
+from ray.data._internal.execution.interfaces import (
+    ExecutionResources,
+    NodeIdStr,
+    RefBundle,
+)
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block
@@ -291,3 +295,12 @@ class SplitCoordinator:
 
         assert self._output_iterator is not None
         return starting_epoch + 1
+
+    def _get_total_resources_for_testing(self) -> ExecutionResources:
+        """Returns the total resources for the executor for testing"""
+        if self._executor and self._executor._cluster_autoscaler:
+            try:
+                print(f"Cluster autoscaler: {self._executor._cluster_autoscaler}")
+                return self._executor._cluster_autoscaler.get_total_resources()
+            except Exception:
+                return None

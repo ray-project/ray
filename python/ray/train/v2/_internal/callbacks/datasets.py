@@ -23,6 +23,7 @@ from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroup,
     WorkerGroupContext,
 )
+from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
         self._data_config = copy.deepcopy(train_run_context.dataset_config)
         self._scaling_config = train_run_context.scaling_config
         self._coordinator_actors: List[ActorHandle] = []
+        self._shutdown_refs: List[ObjectRef] = []
 
         # Capture the current DataContext to propagate it to
         # the Train workers later.
