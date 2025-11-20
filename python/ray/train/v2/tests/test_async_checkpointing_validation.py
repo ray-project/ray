@@ -369,6 +369,28 @@ def test_report_checkpoint_upload_fn(tmp_path):
     }
 
 
+def test_checkpoint_upload_fn_returns_checkpoint():
+    def train_fn():
+        if ray.train.get_context().get_world_rank() == 0:
+            with create_dict_checkpoint({}) as checkpoint:
+                ray.train.report(
+                    metrics={},
+                    checkpoint=checkpoint,
+                    checkpoint_upload_fn=lambda x, y: None,
+                )
+        else:
+            ray.train.report(metrics={}, checkpoint=None)
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    with pytest.raises(
+        WorkerGroupError, match="checkpoint_upload_fn must return a checkpoint"
+    ):
+        trainer.fit()
+
+
 def test_get_all_reported_checkpoints_all_consistency_modes():
     signal_actor = create_remote_signal_actor(ray).remote()
 
