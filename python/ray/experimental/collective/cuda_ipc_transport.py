@@ -165,6 +165,9 @@ class CudaIpcTransport(TensorTransportManager):
                 list_args = list(args)
                 # Fields specified in https://github.com/pytorch/pytorch/blob/1495b35d29512f303ab37780760c5e692158514b/torch/multiprocessing/reductions.py#L155
                 # Update device ID to match current process's device mapping
+                assert isinstance(
+                    list_args[6], int
+                ), f"CUDA IPC Transport metadata mismatch: list_args[6] is not a device ID, but got {list_args[6]}"
                 list_args[6] = device
                 tensor = func(*list_args)
                 tensors[i] = tensor

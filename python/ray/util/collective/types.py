@@ -98,8 +98,11 @@ class CollectiveTransportMetadata(TensorTransportMetadata):
 class CudaIpcTransportMetadata(TensorTransportMetadata):
     """Metadata for tensors stored in the GPU object store for CUDA IPC transport."""
 
+    # List of tuples, each containing the function and metadata to reconstruct the tensor.
     cuda_ipc_handles: Optional[List[Any]] = None
+    # The UUID of the device that the tensors are on.
     cuda_ipc_device_uuid: Optional[str] = None
+    # The IPC handle of the event that is used to synchronize the sender and receiver.
     cuda_ipc_event_ipc_handle: Optional[bytes] = None
 
 
