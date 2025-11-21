@@ -24,6 +24,7 @@ from typing import (
 import pyarrow.fs as pafs
 
 from ray.data import Dataset
+from ray.data._internal.format_detection import LakehouseFormat
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FileShuffleConfig,
@@ -35,9 +36,6 @@ if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
-
-# Import LakehouseFormat from format_detection to avoid duplication
-from ray.data._internal.format_detection import LakehouseFormat
 
 
 @dataclass
@@ -78,17 +76,17 @@ def _detect_lakehouse_tables(
 ) -> List[LakehouseTable]:
     """Detect lakehouse tables in paths (only checks directories).
 
-    Args:
+        Args:
     paths: List of paths to check for lakehouse table markers.
     filesystem: PyArrow filesystem to use for inspection.
 
-    Returns:
+        Returns:
     List of detected lakehouse tables.
     """
     from ray.data._internal.format_detection import _detect_lakehouse_format
 
     tables = []
-    for path in paths:
+        for path in paths:
         file_info = filesystem.get_file_info(path)
         if file_info.type == pafs.FileType.Directory:
             fmt = _detect_lakehouse_format(path, filesystem)
@@ -102,11 +100,11 @@ def _group_files_by_format(
 ) -> Dict[str, List[str]]:
     """Group file paths by detected format using extension detection.
 
-    Args:
+        Args:
     paths: List of file paths to group.
     warn_on_binary: Whether to warn when files fall back to binary format.
 
-    Returns:
+        Returns:
     Dictionary mapping format names to lists of file paths.
     """
     from pathlib import Path
@@ -117,7 +115,7 @@ def _group_files_by_format(
     )
 
     files_by_format: Dict[str, List[str]] = {}
-    unknown_files = []
+        unknown_files = []
     unknown_extensions = set()
 
     for path in paths:
@@ -126,7 +124,7 @@ def _group_files_by_format(
             if format_name not in files_by_format:
                 files_by_format[format_name] = []
             files_by_format[format_name].append(path)
-        else:
+                else:
             unknown_files.append(path)
             # Extract extension for warning
             path_obj = Path(path)
@@ -134,8 +132,8 @@ def _group_files_by_format(
             if ext:
                 unknown_extensions.add(ext)
 
-    if unknown_files:
-        if warn_on_binary:
+        if unknown_files:
+            if warn_on_binary:
             ext_list = (
                 ", ".join(sorted(unknown_extensions))
                 if unknown_extensions
@@ -402,7 +400,7 @@ class DatasetReader:
                 kwargs[key] = value
 
         kwargs.update(self.config.reader_args)
-        return reader_func(**kwargs)
+            return reader_func(**kwargs)
 
     def _combine_datasets(self, datasets: List[Dataset]) -> Dataset:
         """Combine multiple datasets using union.
@@ -416,10 +414,10 @@ class DatasetReader:
         if len(datasets) == 1:
             return datasets[0]
 
-        result = datasets[0]
-        for ds in datasets[1:]:
-            result = result.union(ds)
-        return result
+            result = datasets[0]
+            for ds in datasets[1:]:
+                result = result.union(ds)
+            return result
 
 
 def _validate_read_parameters(
