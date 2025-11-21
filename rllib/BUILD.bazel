@@ -3095,9 +3095,6 @@ py_test(
     name = "policy/tests/test_policy_checkpoint_restore",
     size = "large",
     srcs = ["policy/tests/test_policy_checkpoint_restore.py"],
-    data = glob([
-        "offline/tests/data/checkpoints/APPO_CartPole-v1-connector-enabled/**",
-    ]),
     main = "policy/tests/test_policy_checkpoint_restore.py",
     tags = [
         "policy",
