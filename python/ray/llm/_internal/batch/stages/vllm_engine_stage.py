@@ -87,6 +87,14 @@ class vLLMOutputData(BaseModel):
     # Metrics fields.
     metrics: Optional[Dict[str, Any]] = None
 
+    # Logprobs fields.
+    # logprobs: List[Dict[int, Dict[str, Any]]] where each dict maps token_id to
+    # logprob info (logprob, rank, decoded_token) for each generated token.
+    logprobs: Optional[List[Dict[int, Dict[str, Any]]]] = None
+    # prompt_logprobs: List[Optional[Dict[int, Dict[str, Any]]]] where each dict
+    # (or None) maps token_id to logprob info for each prompt token.
+    prompt_logprobs: Optional[List[Optional[Dict[int, Dict[str, Any]]]]] = None
+
     @classmethod
     def from_vllm_engine_output(cls, output: Any) -> "vLLMOutputData":
         """Create a vLLMOutputData from a vLLM engine output."""
@@ -111,6 +119,28 @@ class vLLMOutputData(BaseModel):
             data.generated_tokens = output.outputs[0].token_ids
             data.generated_text = output.outputs[0].text
             data.num_generated_tokens = len(output.outputs[0].token_ids)
+
+            # Extract logprobs if available.
+            if output.outputs[0].logprobs is not None:
+                data.logprobs = [
+                    {
+                        token_id: dataclasses.asdict(logprob)
+                        for token_id, logprob in logprob_dict.items()
+                    }
+                    for logprob_dict in output.outputs[0].logprobs
+                ]
+
+            # Extract prompt_logprobs if available.
+            if output.prompt_logprobs is not None:
+                data.prompt_logprobs = [
+                    {
+                        token_id: dataclasses.asdict(logprob)
+                        for token_id, logprob in logprob_dict.items()
+                    }
+                    if logprob_dict is not None
+                    else None
+                    for logprob_dict in output.prompt_logprobs
+                ]
         elif isinstance(output, vllm.outputs.PoolingRequestOutput):
             data.embeddings = output.outputs.data.cpu()
             if (
