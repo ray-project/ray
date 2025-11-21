@@ -268,7 +268,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         stat_name = self.get_stat_name()
 
         # Handle list results: expand into separate indexed stats
-        if isinstance(value, list) and len(value) > 0:
+        if isinstance(value, list):
             scalar_type = (
                 agg_type.value_type if pa.types.is_list(agg_type) else pa.float64()
             )

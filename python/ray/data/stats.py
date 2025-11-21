@@ -455,10 +455,11 @@ def _parse_summary_stats(
         original_type = original_schema.field(col_name).type
         formatted_stats = agg.format_stats(value, agg_type, original_type)
 
-        # Add formatted stats to appropriate dict based on schema matching
-        stats_dict = schema_matching if agg_type == original_type else schema_changing
-
         for stat_name, (stat_value, stat_type) in formatted_stats.items():
+            # Add formatted stats to appropriate dict based on schema matching
+            stats_dict = (
+                schema_matching if stat_type == original_type else schema_changing
+            )
             stats_dict.setdefault(stat_name, {})[col_name] = (stat_value, stat_type)
 
         columns.add(col_name)
