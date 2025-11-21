@@ -812,6 +812,7 @@ size_t ClusterSizeBasedLeaseRequestRateLimiter::
 void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
     const rpc::GcsNodeAddressAndLiveness &data) {
   if (data.state() == rpc::GcsNodeInfo::DEAD) {
+    RAY_LOG(INFO) << "BRO: " << data.node_id() << " IS DEAD!!!";
     if (num_alive_nodes_ != 0) {
       num_alive_nodes_--;
     } else {
@@ -819,9 +820,10 @@ void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
                        << " change state to DEAD but num_alive_node is 0.";
     }
   } else {
+    RAY_LOG(INFO) << "BRO: " << data.node_id() << " IS ALIVE!!!";
     num_alive_nodes_++;
   }
-  RAY_LOG_EVERY_MS(INFO, 60000) << "Number of alive nodes:" << num_alive_nodes_.load();
+  RAY_LOG(INFO) << "Number of alive nodes: " << num_alive_nodes_.load();
 }
 
 }  // namespace core

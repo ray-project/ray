@@ -264,6 +264,7 @@ class Subscriber : public SubscriberInterface {
   ///
 
   FRIEND_TEST(IntegrationTest, SubscribersToOneIDAndAllIDs);
+  FRIEND_TEST(IntegrationTest, NodeAddressAndLivenessHighChurn);
   FRIEND_TEST(SubscriberTest, TestBasicSubscription);
   FRIEND_TEST(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions);
   FRIEND_TEST(SubscriberTest, TestMultiLongPollingWithTheSameSubscription);

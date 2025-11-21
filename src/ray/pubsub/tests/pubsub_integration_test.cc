@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -160,16 +161,14 @@ class IntegrationTest : public ::testing::Test {
     server_->Shutdown();
   }
 
-  void SetupServer() {
+  void SetupServer(const std::vector<rpc::ChannelType> &channels = {
+                       rpc::ChannelType::GCS_ACTOR_CHANNEL}) {
     if (server_ != nullptr) {
       server_->Shutdown();
     }
 
     auto publisher = std::make_unique<Publisher>(
-        /*channels=*/
-        std::vector<rpc::ChannelType>{
-            rpc::ChannelType::GCS_ACTOR_CHANNEL,
-        },
+        /*channels=*/channels,
         /*periodical_runner=*/*periodical_runner_,
         /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
         /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
@@ -185,13 +184,12 @@ class IntegrationTest : public ::testing::Test {
 
   void RestartServer() { SetupServer(); }
 
-  std::unique_ptr<Subscriber> CreateSubscriber() {
+  std::unique_ptr<Subscriber> CreateSubscriber(
+      const std::vector<rpc::ChannelType> &channels = {
+          rpc::ChannelType::GCS_ACTOR_CHANNEL}) {
     return std::make_unique<Subscriber>(
         UniqueID::FromRandom(),
-        /*channels=*/
-        std::vector<rpc::ChannelType>{
-            rpc::ChannelType::GCS_ACTOR_CHANNEL,
-        },
+        /*channels=*/channels,
         /*max_command_batch_size=*/3,
         /*get_client=*/
         [](const rpc::Address &address) {
@@ -307,6 +305,157 @@ TEST_F(IntegrationTest, SubscribersToOneIDAndAllIDs) {
     subscriber_service_->GetPublisher().UnregisterSubscriber(
         subscriber_2->subscriber_id_);
     ASSERT_LT(wait_count, 60) << "Subscribers still have inflight operations after 60s";
+    ++wait_count;
+    absl::SleepFor(absl::Seconds(1));
+  }
+}
+
+// Test for NodeAddressAndLiveness channel with high node churn.
+// This simulates the production scenario where nodes are added, removed, and re-added.
+TEST_F(IntegrationTest, NodeAddressAndLivenessHighChurn) {
+  // Set up server with the NODE_ADDRESS_AND_LIVENESS channel
+  SetupServer({rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL});
+
+  absl::Mutex mu;
+  std::vector<rpc::GcsNodeAddressAndLiveness> received_messages;
+  absl::BlockingCounter subscribe_counter(1);
+
+  // Create subscriber for the channel
+  auto subscriber =
+      CreateSubscriber({rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL});
+  subscriber->Subscribe(
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL,
+      address_proto_,
+      /*key_id=*/std::nullopt,
+      /*subscribe_done_callback=*/
+      [&subscribe_counter](Status status) {
+        RAY_CHECK_OK(status);
+        subscribe_counter.DecrementCount();
+      },
+      /*subscribe_item_callback=*/
+      [&mu, &received_messages](const rpc::PubMessage &msg) {
+        absl::MutexLock lock(&mu);
+        received_messages.push_back(msg.node_address_and_liveness_message());
+      },
+      /*subscription_failure_callback=*/
+      [](const std::string &, const Status &status) { RAY_CHECK_OK(status); });
+
+  // Wait for subscription to complete
+  subscribe_counter.Wait();
+
+  // Simulate high node churn: 1000 nodes being added, removed, and re-added
+  const int num_nodes = 1000;
+  std::vector<NodeID> node_ids;
+  for (int i = 0; i < num_nodes; i++) {
+    node_ids.push_back(NodeID::FromRandom());
+  }
+
+  // Phase 1: Add all nodes (ALIVE state)
+  RAY_LOG(INFO) << "Publishing " << num_nodes << " ALIVE node messages...";
+  for (int i = 0; i < num_nodes; i++) {
+    rpc::GcsNodeAddressAndLiveness node_data;
+    node_data.set_node_id(node_ids[i].Binary());
+    node_data.set_node_manager_address("127.0.0.1");
+    node_data.set_node_manager_port(6379 + i);
+    node_data.set_object_manager_port(8076 + i);
+    node_data.set_state(rpc::GcsNodeInfo::ALIVE);
+
+    rpc::PubMessage msg;
+    msg.set_channel_type(rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL);
+    msg.set_key_id(node_ids[i].Binary());
+    *msg.mutable_node_address_and_liveness_message() = node_data;
+
+    subscriber_service_->GetPublisher().Publish(msg);
+  }
+
+  // Phase 2: Mark all nodes as DEAD
+  RAY_LOG(INFO) << "Publishing " << num_nodes << " DEAD node messages...";
+  for (int i = 0; i < num_nodes; i++) {
+    rpc::GcsNodeAddressAndLiveness node_data;
+    node_data.set_node_id(node_ids[i].Binary());
+    node_data.set_node_manager_address("127.0.0.1");
+    node_data.set_node_manager_port(6379 + i);
+    node_data.set_object_manager_port(8076 + i);
+    node_data.set_state(rpc::GcsNodeInfo::DEAD);
+
+    rpc::PubMessage msg;
+    msg.set_channel_type(rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL);
+    msg.set_key_id(node_ids[i].Binary());
+    *msg.mutable_node_address_and_liveness_message() = node_data;
+
+    subscriber_service_->GetPublisher().Publish(msg);
+  }
+
+  // Phase 3: Re-add all nodes as ALIVE
+  RAY_LOG(INFO) << "Publishing " << num_nodes << " re-added ALIVE node messages...";
+  for (int i = 0; i < num_nodes; i++) {
+    rpc::GcsNodeAddressAndLiveness node_data;
+    node_data.set_node_id(node_ids[i].Binary());
+    node_data.set_node_manager_address("127.0.0.1");
+    node_data.set_node_manager_port(6379 + i);
+    node_data.set_object_manager_port(8076 + i);
+    node_data.set_state(rpc::GcsNodeInfo::ALIVE);
+
+    rpc::PubMessage msg;
+    msg.set_channel_type(rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL);
+    msg.set_key_id(node_ids[i].Binary());
+    *msg.mutable_node_address_and_liveness_message() = node_data;
+
+    subscriber_service_->GetPublisher().Publish(msg);
+  }
+
+  // Wait for all messages to be received
+  const size_t expected_messages = num_nodes * 3;  // ALIVE + DEAD + ALIVE
+  RAY_LOG(INFO) << "Waiting for " << expected_messages << " messages...";
+
+  absl::MutexLock lock(&mu);
+  auto all_received = [&mu, &received_messages]() {
+    mu.AssertReaderHeld();
+    return received_messages.size() >= static_cast<size_t>(num_nodes * 3);
+  };
+  if (!mu.AwaitWithTimeout(absl::Condition(&all_received), absl::Seconds(60))) {
+    FAIL() << "Expected " << expected_messages << " messages, but received only "
+           << received_messages.size();
+  }
+
+  RAY_LOG(INFO) << "Received all " << received_messages.size() << " messages.";
+
+  // Verify that we received all expected messages
+  EXPECT_EQ(received_messages.size(), static_cast<size_t>(expected_messages));
+
+  // Verify the sequence: for each node, we should see ALIVE -> DEAD -> ALIVE
+  std::map<std::string, std::vector<rpc::GcsNodeInfo::GcsNodeState>> node_states;
+  for (const auto &msg : received_messages) {
+    node_states[msg.node_id()].push_back(msg.state());
+  }
+
+  EXPECT_EQ(node_states.size(), static_cast<size_t>(num_nodes));
+  for (const auto &[node_id, states] : node_states) {
+    EXPECT_EQ(states.size(), 3u) << "Node " << NodeID::FromBinary(node_id).Hex()
+                                 << " should have 3 state transitions";
+    if (states.size() == 3) {
+      EXPECT_EQ(states[0], rpc::GcsNodeInfo::ALIVE)
+          << "Node " << NodeID::FromBinary(node_id).Hex()
+          << " first state should be ALIVE";
+      EXPECT_EQ(states[1], rpc::GcsNodeInfo::DEAD)
+          << "Node " << NodeID::FromBinary(node_id).Hex()
+          << " second state should be DEAD";
+      EXPECT_EQ(states[2], rpc::GcsNodeInfo::ALIVE)
+          << "Node " << NodeID::FromBinary(node_id).Hex()
+          << " third state should be ALIVE";
+    }
+  }
+
+  // Clean up
+  subscriber->Unsubscribe(rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL,
+                          address_proto_,
+                          /*key_id=*/std::nullopt);
+
+  int wait_count = 0;
+  while (!subscriber->CheckNoLeaks()) {
+    subscriber_service_->GetPublisher().UnregisterSubscriber(subscriber->subscriber_id_);
+    ASSERT_LT(wait_count, 60) << "Subscriber still has inflight operations after 60s";
     ++wait_count;
     absl::SleepFor(absl::Seconds(1));
   }
