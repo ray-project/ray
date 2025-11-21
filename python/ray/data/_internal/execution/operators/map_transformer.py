@@ -357,9 +357,10 @@ class BatchMapTransformFn(MapTransformFn):
 
     def _post_process(self, results: Iterable[DataBatch]) -> Iterable[Block]:
         if self._disable_block_shaping:
-            return BlockAccessor.batch_to_block(results)
+            for batch in results:
+                yield BlockAccessor.batch_to_block(batch)
         else:
-            return self._shape_blocks(results)
+            yield from self._shape_blocks(results)
 
     def __repr__(self) -> str:
         return f"BatchMapTransformFn({self._batch_fn=}, {self._batch_format=}, {self._batch_size=}, {self._zero_copy_batch=})"
