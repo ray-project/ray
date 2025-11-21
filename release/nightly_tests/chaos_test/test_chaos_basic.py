@@ -132,6 +132,162 @@ def run_actor_workload(total_num_cpus, smoke):
         assert str(i) in letter_set, i
 
 
+def run_streaming_generator_workload(total_num_cpus, smoke):
+    """Run streaming generator workload.
+
+    The test runs 10 concurrent long-running streaming generators pinned to
+    different nodes.
+    This tests that streaming generators work correctly with retries when
+    there are node failures or transient network failures.
+    """
+
+    @ray.remote(num_cpus=1, max_retries=-1)
+    def streaming_generator(num_items, item_size_mb):
+        """Generator that yields large plasma objects."""
+        for i in range(num_items):
+            data = np.zeros(item_size_mb * 1024 * 1024, dtype=np.uint8)
+            yield (i, data)
+
+    @ray.remote(num_cpus=1, max_retries=-1)
+    def consume_streaming_generator(num_items, item_size_mb, node_name):
+        """Task that spawns and consumes a streaming generator."""
+        print(
+            f"Starting streaming generator on {node_name}: "
+            f"{num_items} items of {item_size_mb}MB each"
+        )
+
+        gen = streaming_generator.remote(num_items, item_size_mb)
+
+        count = 0
+        total_bytes = 0
+        for idx, data in gen:
+            count += 1
+            total_bytes += data.nbytes
+
+        print(
+            f"Completed streaming generator on {node_name}: "
+            f"{count} items, {total_bytes / (1024**3):.2f} GB"
+        )
+        return (count, total_bytes)
+
+    alive_nodes = [n for n in ray.nodes() if n.get("Alive", False)]
+
+    NUM_GENERATORS = len(alive_nodes)
+    # For smoke mode, run fewer items
+    if smoke:
+        ITEMS_PER_GENERATOR = 10
+    else:
+        ITEMS_PER_GENERATOR = 300
+    ITEM_SIZE_MB = 10
+
+    print(
+        f"Starting {NUM_GENERATORS} concurrent streaming generators "
+        f"({ITEMS_PER_GENERATOR} items of {ITEM_SIZE_MB}MB each)"
+    )
+    print(
+        f"Expected total data: "
+        f"{NUM_GENERATORS * ITEMS_PER_GENERATOR * ITEM_SIZE_MB / 1024:.2f} GB"
+    )
+
+    # Launch generators on different nodes in parallel
+    tasks = []
+    for i in range(NUM_GENERATORS):
+        node = alive_nodes[i % len(alive_nodes)]
+        node_id = node["NodeID"]
+        node_name = node.get("NodeName", node_id[:8])
+
+        task = consume_streaming_generator.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node_id=node_id, soft=False
+            )
+        ).remote(ITEMS_PER_GENERATOR, ITEM_SIZE_MB, node_name)
+        tasks.append(task)
+
+    results = ray.get(tasks)
+
+    total_items = sum(count for count, _ in results)
+    total_bytes = sum(bytes_val for _, bytes_val in results)
+
+    print("All generators completed:")
+    print(
+        f"  Total items: {total_items} (expected {NUM_GENERATORS * ITEMS_PER_GENERATOR})"
+    )
+    print(f"  Total data: {total_bytes / (1024**3):.2f} GB")
+
+    # Verify all items were received
+    assert (
+        total_items == NUM_GENERATORS * ITEMS_PER_GENERATOR
+    ), f"Expected {NUM_GENERATORS * ITEMS_PER_GENERATOR} items, got {total_items}"
+
+    # Consistency check
+    wait_for_condition(
+        lambda: (
+            ray.cluster_resources().get("CPU", 0)
+            == ray.available_resources().get("CPU", 0)
+        ),
+        timeout=60,
+    )
+
+
+def run_object_ref_borrowing_workload(total_num_cpus, smoke):
+    """Run object ref borrowing workload.
+
+    This test checks that borrowed refs
+    remain valid even with node failures or transient network failures.
+    """
+
+    @ray.remote(num_cpus=1, max_retries=-1)
+    def create_object(size_mb):
+        data = np.zeros(size_mb * 1024 * 1024, dtype=np.uint8)
+        return data
+
+    @ray.remote(num_cpus=1, max_retries=-1)
+    def borrow_object(borrowed_ref):
+        data = ray.get(borrowed_ref)
+        return len(data)
+
+    # For smoke mode, run fewer iterations
+    if smoke:
+        NUM_ITERATIONS = 10
+    else:
+        NUM_ITERATIONS = 1000
+    OBJECT_SIZE_MB = 10
+
+    print(f"Starting {NUM_ITERATIONS} task pairs (A creates, B borrows)")
+    print(f"Object size: {OBJECT_SIZE_MB}MB per object")
+    print(f"Expected total data: {NUM_ITERATIONS * OBJECT_SIZE_MB / 1024:.2f} GB")
+
+    refs = []
+    for i in range(NUM_ITERATIONS):
+        ref = create_object.remote(OBJECT_SIZE_MB)
+        refs.append(borrow_object.remote(ref))
+    sizes = ray.get(refs)
+    num_completed = len(sizes)
+    total_bytes = sum(sizes)
+
+    print("All tasks completed:")
+    print(f"  Tasks completed: {num_completed} (expected {NUM_ITERATIONS})")
+    print(f"  Total data processed: {total_bytes / (1024**3):.2f} GB")
+
+    # Assertions
+    assert (
+        num_completed == NUM_ITERATIONS
+    ), f"Expected {NUM_ITERATIONS} completions, got {num_completed}"
+    expected_bytes = NUM_ITERATIONS * OBJECT_SIZE_MB * 1024 * 1024
+    assert (
+        total_bytes == expected_bytes
+    ), f"Expected {expected_bytes} bytes, got {total_bytes}"
+
+    # Consistency check
+    wait_for_condition(
+        lambda: (
+            ray.cluster_resources().get("CPU", 0)
+            == ray.available_resources().get("CPU", 0)
+        ),
+        timeout=60,
+    )
+
+
 def run_placement_group_workload(total_num_cpus, smoke):
     raise NotImplementedError
 
@@ -180,6 +336,10 @@ def main():
         workload = run_actor_workload
     elif args.workload == "pg":
         workload = run_placement_group_workload
+    elif args.workload == "streaming":
+        workload = run_streaming_generator_workload
+    elif args.workload == "borrowing":
+        workload = run_object_ref_borrowing_workload
     else:
         assert False
 
@@ -202,12 +362,26 @@ def main():
     # Step 3
     print("Running with failures")
     start = time.time()
-    node_killer = ray.get_actor("ResourceKiller", namespace="release_test_namespace")
-    node_killer.run.remote()
+    node_killer = None
+    try:
+        node_killer = ray.get_actor(
+            "ResourceKiller", namespace="release_test_namespace"
+        )
+        node_killer.run.remote()
+        print("ResourceKiller found and started")
+    except ValueError:
+        print(
+            "ResourceKiller not found - assuming external chaos injection "
+            "(e.g., iptables, network failures)"
+        )
+
     workload(total_num_cpus, args.smoke)
     print(f"Runtime when there are many failures: {time.time() - start}")
-    print(f"Total node failures: {ray.get(node_killer.get_total_killed.remote())}")
-    node_killer.stop_run.remote()
+
+    if node_killer is not None:
+        print(f"Total node failures: {ray.get(node_killer.get_total_killed.remote())}")
+        node_killer.stop_run.remote()
+
     used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
     print("Memory usage with failures.")
     print(f"Peak memory usage: {round(used_gb, 2)}GB")
@@ -215,10 +389,11 @@ def main():
 
     # Report the result.
     ray.get(monitor_actor.stop_run.remote())
-    print(
-        "Total number of killed nodes: "
-        f"{ray.get(node_killer.get_total_killed.remote())}"
-    )
+    if node_killer is not None:
+        print(
+            "Total number of killed nodes: "
+            f"{ray.get(node_killer.get_total_killed.remote())}"
+        )
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(
             json.dumps(
