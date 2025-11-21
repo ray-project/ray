@@ -3,8 +3,13 @@ import pytest
 import ray
 from ray.tests.conftest import _ray_start_cluster
 from ray.train import RunConfig, ScalingConfig
-from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
+from ray.train.v2._internal.constants import (
+    HEALTH_CHECK_INTERVAL_S_ENV_VAR,
+    is_v2_enabled,
+)
 from ray.train.v2.jax import JaxTrainer
+
+assert is_v2_enabled()
 
 
 @pytest.fixture
@@ -79,7 +84,6 @@ def test_minimal_singlehost(ray_tpu_single_host, tmp_path):
         run_config=RunConfig(
             storage_path=str(tmp_path),
             worker_runtime_env={
-                "pip": ["jax"],
                 "env_vars": {
                     "JAX_PLATFORMS": "cpu",
                 },
@@ -110,7 +114,6 @@ def test_minimal_multihost(ray_tpu_multi_host, tmp_path):
         run_config=RunConfig(
             storage_path=str(tmp_path),
             worker_runtime_env={
-                "pip": ["jax"],
                 "env_vars": {
                     "JAX_PLATFORMS": "cpu",
                 },

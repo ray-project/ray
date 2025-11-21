@@ -29,7 +29,7 @@
 #include "ray/common/id.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
@@ -42,16 +42,19 @@ namespace core {
 namespace worker {
 
 using TaskAttempt = std::pair<TaskID, int32_t>;
-/// A tuple of rpc::events::RayEvent.
-/// When converting the TaskStatusEvent, the first 2 elements of the tuple will be
-/// populated with rpc::events::TaskDefinitionEvent and rpc::events::TaskExecutionEvent
-/// respectively. When converting the TaskProfileEvent, the last element of the tuple will
-/// be populated with rpc::events::TaskProfileEvent. A tuple is needed because the
-/// TaskProfileEvent, TaskDefinitionEvent and TaskExecutionEvent all can share the same
-/// task_id and attempt_number.
-using RayEventsTuple = std::tuple<std::optional<rpc::events::RayEvent>,
-                                  std::optional<rpc::events::RayEvent>,
-                                  std::optional<rpc::events::RayEvent>>;
+
+/// A struct containing a tuple of rpc::events::RayEvent.
+/// When converting the TaskStatusEvent, task_definition_event and task_lifecycle_event
+/// will be populated with rpc::events::TaskDefinitionEvent and
+/// rpc::events::TaskLifecycleEvent respectively. When converting the TaskProfileEvent,
+/// task_profile_event will be populated with rpc::events::TaskProfileEvent. A struct is
+/// needed because the TaskProfileEvent, TaskDefinitionEvent and TaskLifecycleEvent all
+/// can share the same task_id and attempt_number.
+struct RayEventsTuple {
+  std::optional<rpc::events::RayEvent> task_definition_event;
+  std::optional<rpc::events::RayEvent> task_lifecycle_event;
+  std::optional<rpc::events::RayEvent> task_profile_event;
+};
 
 /// A wrapper class that will be converted to protobuf task events representation.
 ///
@@ -87,7 +90,8 @@ class TaskEvent {
 
   /// Convert itself to a pair of RayEvent.
   ///
-  /// \param[out] ray_events The pair of rpc::events::RayEvent
+  /// \param[out] ray_events_tuple The struct containing a tuple of rpc::events::RayEvent
+  /// to be filled.
   virtual void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) = 0;
 
   /// If it is a profile event.
@@ -167,14 +171,14 @@ class TaskStatusEvent : public TaskEvent {
 
   /// The function to convert the TaskStatusEvent class to a pair of
   /// rpc::events::RayEvent with rpc::events::TaskDefinitionEvent and
-  /// rpc::events::TaskExecutionEvent respectively. The TaskExecutionEvent will always
+  /// rpc::events::TaskLifecycleEvent respectively. The TaskLifecycleEvent will always
   /// be populated. The TaskDefinitionEvent will be populated only when the task_spec_
   /// is not null.
   /// NOTE: this method will modify internal states by moving fields of task_spec_ to
   /// the rpc::events::RayEvent.
   ///
-  /// \param[out] ray_events The tuple of rpc::events::RayEvent protobuf messages to be
-  /// filled.
+  /// \param[out] ray_events_tuple The struct containing a tuple of rpc::events::RayEvent
+  /// to be filled.
   void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) override;
 
   bool IsProfileEvent() const override { return false; }
@@ -185,9 +189,9 @@ class TaskStatusEvent : public TaskEvent {
   template <typename T>
   void PopulateRpcRayTaskDefinitionEvent(T &definition_event_data);
 
-  // Helper functions to populate the task execution event of rpc::events::RayEvent
-  void PopulateRpcRayTaskExecutionEvent(
-      rpc::events::TaskExecutionEvent &execution_event_data,
+  // Helper functions to populate the task lifecycle event of rpc::events::RayEvent
+  void PopulateRpcRayTaskLifecycleEvent(
+      rpc::events::TaskLifecycleEvent &lifecycle_event_data,
       google::protobuf::Timestamp timestamp);
 
   // Helper functions to populate the base fields of rpc::events::RayEvent
@@ -228,7 +232,6 @@ class TaskProfileEvent : public TaskEvent {
       std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
   /// Note: The extra data will be moved when this is called and will no longer be usable.
-  /// Second element of the RayEventsTuple will always be empty for TaskProfileEvent.
   void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) override;
 
   bool IsProfileEvent() const override { return true; }

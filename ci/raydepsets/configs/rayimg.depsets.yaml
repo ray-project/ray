@@ -1,0 +1,174 @@
+build_arg_sets:
+  py39:
+    PYTHON_VERSION: "3.9"
+    PYTHON_SHORT: "39"
+  py310:
+    PYTHON_VERSION: "3.10"
+    PYTHON_SHORT: "310"
+  py311:
+    PYTHON_VERSION: "3.11"
+    PYTHON_SHORT: "311"
+  py312:
+    PYTHON_VERSION: "3.12"
+    PYTHON_SHORT: "312"
+
+depsets:
+  - name: ray_img_depset_${PYTHON_SHORT}
+    requirements:
+      - release/ray_release/byod/ray_dev.in
+    constraints:
+      - /tmp/ray-deps/requirements_compiled.txt
+    output: python/deplocks/ray_img/ray_img_py${PYTHON_SHORT}.lock
+    operation: compile
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --unsafe-package ray
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+      - py311
+      - py312
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
+
+  - name: ray_base_extra_testdeps_${PYTHON_SHORT}
+    operation: expand
+    requirements:
+      - release/ray_release/byod/requirements_byod_${PYTHON_VERSION}.in
+      - docker/base-deps/requirements.in
+      - docker/base-extra/requirements.in
+    constraints:
+      - /tmp/ray-deps/requirements_compiled.txt
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    output: release/ray_release/byod/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+      - py311
+      - py312
+
+  - name: ray_base_extra_testdeps_cuda_${PYTHON_SHORT}
+    operation: expand
+    requirements:
+      - release/ray_release/byod/requirements_byod_${PYTHON_VERSION}.in
+      - docker/base-deps/requirements.in
+      - docker/base-extra/requirements.in
+    constraints:
+      - /tmp/ray-deps/requirements_compiled.txt
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    output: release/ray_release/byod/ray_base_extra_testdeps_cuda_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+      - py311
+      - py312
+
+  - name: ray_base_extra_testdeps_gpu_${PYTHON_SHORT}
+    operation: expand
+    requirements:
+      - release/ray_release/byod/requirements_byod_gpu_${PYTHON_VERSION}.in
+      - docker/base-deps/requirements.in
+      - docker/base-extra/requirements.in
+    constraints:
+      - /tmp/ray-deps/requirements_compiled.txt
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    output: release/ray_release/byod/ray_base_extra_testdeps_gpu_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+
+  - name: ray_ml_base_extra_testdeps_${PYTHON_SHORT}
+    operation: expand
+    requirements:
+      - release/ray_release/byod/requirements_ml_byod_${PYTHON_VERSION}.in
+      - docker/base-deps/requirements.in
+      - docker/base-extra/requirements.in
+    constraints:
+      - /tmp/ray-deps/requirements_compiled.txt
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    output: release/ray_release/byod/ray_ml_base_extra_testdeps_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+
+  - name: ray_ml_base_extra_testdeps_cuda_${PYTHON_SHORT}
+    operation: expand
+    requirements:
+      - release/ray_release/byod/requirements_ml_byod_${PYTHON_VERSION}.in
+      - docker/base-deps/requirements.in
+      - docker/base-extra/requirements.in
+    constraints:
+      - /tmp/ray-deps/requirements_compiled.txt
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    output: release/ray_release/byod/ray_ml_base_extra_testdeps_cuda_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+
+  # First layer of the ray release images. Contains all base layer python dependencies
+  # and is a subset of the base extra test deps defined above (release image depset)
+  - name: ray_base_deps_${PYTHON_SHORT}
+    operation: subset
+    source_depset: ray_base_extra_testdeps_${PYTHON_SHORT}
+    requirements:
+      - docker/base-deps/requirements.in
+    output: python/deplocks/base_deps/ray_base_deps_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+      - py311
+      - py312
+    include_setuptools: true
+
+    # Second layer of the ray release images. Contains anyscale cli deps (and others)
+    # and is a subset of the base extra test deps defined above (release image depset)
+  - name: ray_base_extra_${PYTHON_SHORT}
+    operation: subset
+    source_depset: ray_base_extra_testdeps_${PYTHON_SHORT}
+    requirements:
+      - docker/base-deps/requirements.in
+      - docker/base-extra/requirements.in
+    output: python/deplocks/base_extra/ray_base_extra_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py39
+      - py310
+      - py311
+      - py312

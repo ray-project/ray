@@ -35,6 +35,7 @@ class RangeDatasource(Datasource):
     def get_read_tasks(
         self,
         parallelism: int,
+        per_task_row_limit: Optional[int] = None,
     ) -> List[ReadTask]:
         if self._n == 0:
             return []
@@ -110,6 +111,7 @@ class RangeDatasource(Datasource):
                     ),
                     meta,
                     schema=self._schema,
+                    per_task_row_limit=per_task_row_limit,
                 )
             )
             i += block_size

@@ -1,15 +1,15 @@
 import warnings
 from typing import Dict, List, Optional, Union
 
-from ray._common.utils import hex_to_binary, PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
 import ray
+from ray._common.utils import PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME, hex_to_binary
 from ray._private.auto_init_hook import auto_init_ray
 from ray._private.client_mode_hook import client_mode_should_convert, client_mode_wrap
+from ray._private.label_utils import validate_label_selector
 from ray._private.utils import get_ray_doc_version
 from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from ray._private.label_utils import validate_label_selector
 
 bundle_reservation_check = None
 

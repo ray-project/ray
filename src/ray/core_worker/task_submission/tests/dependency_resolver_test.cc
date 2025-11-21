@@ -27,6 +27,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker/fake_actor_creator.h"
 
 namespace ray {
 namespace core {
@@ -134,49 +135,10 @@ class MockTaskManager : public MockTaskManagerInterface {
   int num_fail_pending_task_calls = 0;
 };
 
-class MockActorCreator : public ActorCreatorInterface {
- public:
-  MockActorCreator() = default;
-
-  Status RegisterActor(const TaskSpecification &task_spec) const override {
-    return Status::OK();
-  };
-
-  void AsyncRegisterActor(const TaskSpecification &task_spec,
-                          gcs::StatusCallback callback) override {}
-
-  void AsyncCreateActor(
-      const TaskSpecification &task_spec,
-      const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {}
-
-  void AsyncRestartActorForLineageReconstruction(
-      const ActorID &actor_id,
-      uint64_t num_restarts_due_to_lineage_reconstructions,
-      gcs::StatusCallback callback) override {}
-
-  void AsyncReportActorOutOfScope(const ActorID &actor_id,
-                                  uint64_t num_restarts_due_to_lineage_reconstruction,
-                                  gcs::StatusCallback callback) override {}
-
-  void AsyncWaitForActorRegisterFinish(const ActorID &,
-                                       gcs::StatusCallback callback) override {
-    callbacks.push_back(callback);
-  }
-
-  [[nodiscard]] bool IsActorInRegistering(const ActorID &actor_id) const override {
-    return actor_pending;
-  }
-
-  ~MockActorCreator() {}
-
-  std::list<gcs::StatusCallback> callbacks;
-  bool actor_pending = false;
-};
-
 TEST(LocalDependencyResolverTest, TestNoDependencies) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -192,7 +154,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
   // Actor dependency resolved first.
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -225,7 +187,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-  store->Put(data, obj);
+  store->Put(data, obj, /*has_reference=*/true);
   // Wait for the async callback to call
   ASSERT_TRUE(dependencies_resolved.get_future().get());
   ASSERT_EQ(num_resolved, 1);
@@ -237,7 +199,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
   // Object dependency resolved first.
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -266,7 +228,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
   ASSERT_EQ(num_resolved, 0);
-  store->Put(data, obj);
+  store->Put(data, obj, /*has_reference=*/true);
 
   for (const auto &cb : actor_creator.callbacks) {
     cb(Status());
@@ -281,7 +243,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -291,7 +253,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
-  store->Put(data, obj1);
+  store->Put(data, obj1, /*has_reference=*/true);
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   bool ok = false;
@@ -311,7 +273,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
 TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -320,8 +282,8 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
   // Ensure the data is already present in the local store.
-  store->Put(*data, obj1);
-  store->Put(*data, obj2);
+  store->Put(*data, obj1, /*has_reference=*/true);
+  store->Put(*data, obj2, /*has_reference=*/true);
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
@@ -345,7 +307,7 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
 TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -364,8 +326,8 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
-  store->Put(*data, obj1);
-  store->Put(*data, obj2);
+  store->Put(*data, obj1, /*has_reference=*/true);
+  store->Put(*data, obj2, /*has_reference=*/true);
 
   ASSERT_TRUE(dependencies_resolved.get_future().get());
   // Tests that the task proto was rewritten to have inline argument values after
@@ -383,7 +345,7 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
 TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -403,8 +365,8 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
-  store->Put(*data, obj1);
-  store->Put(*data, obj2);
+  store->Put(*data, obj1, /*has_reference=*/true);
+  store->Put(*data, obj2, /*has_reference=*/true);
 
   ASSERT_TRUE(dependencies_resolved.get_future().get());
   // Tests that the task proto was rewritten to have inline argument values after
@@ -423,7 +385,7 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   InstrumentedIOContextWithThread io_context("TestCancelDependencyResolution");
   auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -438,7 +400,7 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
-  store->Put(*data, obj1);
+  store->Put(*data, obj1, /*has_reference=*/true);
 
   ASSERT_TRUE(resolver.CancelDependencyResolution(task.TaskId()));
   // Callback is not called.
@@ -458,7 +420,7 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
 TEST(LocalDependencyResolverTest, TestDependenciesAlreadyLocal) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
         return rpc::TensorTransport::OBJECT_STORE;
@@ -466,7 +428,7 @@ TEST(LocalDependencyResolverTest, TestDependenciesAlreadyLocal) {
 
   ObjectID obj = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
-  store->Put(*data, obj);
+  store->Put(*data, obj, /*has_reference=*/true);
 
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
@@ -494,7 +456,7 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
   // there will be performance regression in some edge cases.
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
-  MockActorCreator actor_creator;
+  FakeActorCreator actor_creator;
 
   // `obj1` is a GPU object, and `obj2` is a normal object.
   ObjectID obj1 = ObjectID::FromRandom();
@@ -509,8 +471,8 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
       });
 
   auto data = GenerateRandomObject();
-  store->Put(*data, obj1);
-  store->Put(*data, obj2);
+  store->Put(*data, obj1, /*has_reference=*/true);
+  store->Put(*data, obj2, /*has_reference=*/true);
 
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());

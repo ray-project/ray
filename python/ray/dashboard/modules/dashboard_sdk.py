@@ -12,6 +12,10 @@ import packaging.version
 import yaml
 
 import ray
+from ray._private.authentication.http_token_authentication import (
+    format_authentication_http_error,
+    get_auth_headers_if_auth_enabled,
+)
 from ray._private.runtime_env.packaging import (
     create_package,
     get_uri_for_directory,
@@ -22,6 +26,7 @@ from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.utils import split_address
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.job.common import uri_to_http_components
+from ray.exceptions import AuthenticationError
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 try:
@@ -222,7 +227,9 @@ class SubmissionClient:
         self._default_metadata = cluster_info.metadata or {}
         # Headers used for all requests sent to job server, optional and only
         # needed for cases like authentication to remote cluster.
-        self._headers = cluster_info.headers
+        self._headers = cluster_info.headers or {}
+        self._headers.update(**get_auth_headers_if_auth_enabled(self._headers))
+
         # Set SSL verify parameter for the requests library and create an ssl_context
         # object when needed for the aiohttp library.
         self._verify = verify
@@ -293,14 +300,15 @@ class SubmissionClient:
         json_data: Optional[dict] = None,
         **kwargs,
     ) -> "requests.Response":
-        """Perform the actual HTTP request
+        """Perform the actual HTTP request with authentication error handling.
 
         Keyword arguments other than "cookies", "headers" are forwarded to the
         `requests.request()`.
         """
         url = self._address + endpoint
         logger.debug(f"Sending request to {url} with json data: {json_data or {}}.")
-        return requests.request(
+
+        response = requests.request(
             method,
             url,
             cookies=self._cookies,
@@ -310,6 +318,15 @@ class SubmissionClient:
             verify=self._verify,
             **kwargs,
         )
+
+        # Check for authentication errors and provide helpful messages
+        formatted_error = format_authentication_http_error(
+            response.status_code, response.text
+        )
+        if formatted_error:
+            raise AuthenticationError(formatted_error)
+
+        return response
 
     def _package_exists(
         self,

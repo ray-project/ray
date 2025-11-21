@@ -14,9 +14,6 @@
 
 #pragma once
 
-#include "absl/container/flat_hash_map.h"
-#include "ray/common/bundle_location_index.h"
-#include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
 

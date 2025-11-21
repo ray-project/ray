@@ -482,8 +482,9 @@ class JobSubmissionClient(SubmissionClient):
             The iterator.
 
         Raises:
-            RuntimeError: If the job does not exist or if the request to the
-                job server fails.
+            RuntimeError: If the job does not exist, if the request to the
+                job server fails, or if the connection closes unexpectedly
+                before the job reaches a terminal state.
         """
         async with aiohttp.ClientSession(
             cookies=self._cookies, headers=self._headers
@@ -498,6 +499,17 @@ class JobSubmissionClient(SubmissionClient):
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     yield msg.data
                 elif msg.type == aiohttp.WSMsgType.CLOSED:
+                    logger.debug(
+                        f"WebSocket closed for job {job_id} with close code {ws.close_code}"
+                    )
+                    if ws.close_code == aiohttp.WSCloseCode.ABNORMAL_CLOSURE:
+                        raise RuntimeError(
+                            f"WebSocket connection closed unexpectedly with close code {ws.close_code}"
+                        )
                     break
                 elif msg.type == aiohttp.WSMsgType.ERROR:
-                    pass
+                    # Old Ray versions may send ERROR on connection close
+                    logger.debug(
+                        f"WebSocket error for job {job_id}, treating as normal close. Err: {ws.exception()}"
+                    )
+                    break

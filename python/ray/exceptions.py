@@ -19,7 +19,6 @@ from ray.core.generated.common_pb2 import (
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -478,6 +477,30 @@ class RaySystemError(RayError):
         return error_msg
 
 
+@PublicAPI
+class AuthenticationError(RayError):
+    """Indicates that an authentication error occurred.
+
+    Most commonly, this is caused by a missing or mismatching token set on the client
+    (e.g., a Ray CLI command interacting with a remote cluster).
+
+    Only applicable when `RAY_AUTH_MODE` is not set to `disabled`.
+    """
+
+    def __init__(self, message: str):
+        self.message = message
+
+        # Always hide traceback for cleaner output
+        self.__suppress_context__ = True
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        return self.message + (
+            ". Ensure that you have `RAY_AUTH_MODE=token` set and the token for the cluster is available as the `RAY_AUTH_TOKEN` environment variable or a local file. "
+            "For more information, see: https://docs.ray.io/en/latest/ray-security/auth.html"
+        )
+
+
 @DeveloperAPI
 class UserCodeException(RayError):
     """Indicates that an exception occurred while executing user code.
@@ -916,7 +939,7 @@ class UnserializableException(RayError):
     the original exception along with its stack trace that was captured at the
     time of serialization.
 
-    reference for more details: https://docs.ray.io/en/latest/ray-core/objects/serialization.html
+    For more details and how to handle this with custom serializers, :ref:`configuring custom exeception serializers <custom-exception-serializer>`
 
     Args:
         original_stack_trace: The string representation and stack trace of the
@@ -928,7 +951,7 @@ class UnserializableException(RayError):
 
     def __str__(self):
         return (
-            "Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#troubleshooting to troubleshoot.\n"
+            "Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#custom-serializers-for-exceptions for more information.\n"
             "Original exception:\n"
             f"{self._original_stack_trace}"
         )
@@ -964,4 +987,5 @@ RAY_EXCEPTION_TYPES = [
     OufOfBandObjectRefSerializationException,
     RayCgraphCapacityExceeded,
     UnserializableException,
+    AuthenticationError,
 ]

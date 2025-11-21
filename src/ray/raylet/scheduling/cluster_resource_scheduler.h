@@ -119,8 +119,9 @@ class ClusterResourceScheduler {
   /// Check whether a task request is schedulable on a given node. A node is
   /// schedulable if it has the available resources needed to execute the task.
   ///
-  /// \param node_name Name of the node.
+  /// \param node_id Id of the node.
   /// \param label_selector: label requirements to schedule on a node.
+  /// \param requires_object_store_memory
   /// \param shape The resource demand's shape.
   bool IsSchedulableOnNode(scheduling::NodeID node_id,
                            const absl::flat_hash_map<std::string, double> &shape,
@@ -248,6 +249,9 @@ class ClusterResourceScheduler {
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, ScheduleWithFallbackStrategyTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, FallbackStrategyWithUnavailableNodesTest);
 };
 
 }  // end namespace ray

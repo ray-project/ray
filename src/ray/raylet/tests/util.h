@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/raylet/worker.h"
+#include "ray/raylet/worker_interface.h"
 
 namespace ray {
 
@@ -85,10 +85,7 @@ class MockWorker : public WorkerInterface {
   }
 
   void MarkDead() override { RAY_CHECK(false) << "Method unused"; }
-  bool IsDead() const override {
-    RAY_CHECK(false) << "Method unused";
-    return killing_.load(std::memory_order_acquire);
-  }
+  bool IsDead() const override { return killing_.load(std::memory_order_acquire); }
   void KillAsync(instrumented_io_context &io_service, bool force) override {
     bool expected = false;
     killing_.compare_exchange_strong(expected, true, std::memory_order_acq_rel);
@@ -110,7 +107,7 @@ class MockWorker : public WorkerInterface {
   void Connect(int port) override { RAY_CHECK(false) << "Method unused"; }
 
   void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) override {
-    RAY_CHECK(false) << "Method unused";
+    rpc_client_ = rpc_client;
   }
 
   int AssignedPort() const override {
@@ -139,6 +136,8 @@ class MockWorker : public WorkerInterface {
 
   const std::shared_ptr<ClientConnection> Connection() const override { return nullptr; }
   const rpc::Address &GetOwnerAddress() const override { return address_; }
+  std::optional<pid_t> GetSavedProcessGroupId() const override { return std::nullopt; }
+  void SetSavedProcessGroupId(pid_t pgid) override { (void)pgid; }
 
   void ActorCallArgWaitComplete(int64_t tag) override {
     RAY_CHECK(false) << "Method unused";
@@ -164,10 +163,7 @@ class MockWorker : public WorkerInterface {
     return false;
   }
 
-  rpc::CoreWorkerClientInterface *rpc_client() override {
-    RAY_CHECK(false) << "Method unused";
-    return nullptr;
-  }
+  rpc::CoreWorkerClientInterface *rpc_client() override { return rpc_client_.get(); }
 
   bool IsAvailableForScheduling() const override {
     RAY_CHECK(false) << "Method unused";
@@ -204,6 +200,7 @@ class MockWorker : public WorkerInterface {
   ActorID root_detached_actor_id_;
   Process proc_;
   std::atomic<bool> killing_ = false;
+  std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
 };
 
 }  // namespace raylet

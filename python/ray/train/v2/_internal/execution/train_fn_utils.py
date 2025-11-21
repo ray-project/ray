@@ -1,7 +1,7 @@
 import logging
 import threading
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from ray.data import DataIterator
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
@@ -13,6 +13,10 @@ from ray.train.v2.api.context import (
     DistributedTrainContext,
     LocalTrainContext,
     TrainContext as ExternalTrainContext,
+)
+from ray.train.v2.api.report_config import (
+    CheckpointConsistencyMode,
+    CheckpointUploadMode,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,6 +40,13 @@ class TrainFnUtils(ABC):
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
+        checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+        delete_local_checkpoint_after_upload: Optional[bool] = None,
+        checkpoint_upload_fn: Optional[
+            Callable[["Checkpoint", str], "Checkpoint"]
+        ] = None,
+        validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
+        validate_config: Optional[Dict] = None,
     ) -> None:
         """Upload checkpoint to remote storage and put a training result on the result queue.
 
@@ -46,6 +57,17 @@ class TrainFnUtils(ABC):
                 in this iteration. Note: If not set, the checkpoint will
                 be stored in the default storage path. If set, make sure
                 this value is unique for each iteration.
+            checkpoint_upload_mode: The manner in which we want to upload the checkpoint.
+                Defaults to uploading the checkpoint synchronously.
+                This works when no checkpoint is provided but is not useful in that case.
+            delete_local_checkpoint_after_upload: Whether to delete the checkpoint after it is uploaded.
+            checkpoint_upload_fn: A user defined function that will be called with the
+                checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
+                utility for copying to the destination `storage_path`.
+            validate_fn: If provided, Ray Train will validate the checkpoint using
+                this function.
+            validate_config: Configuration passed to the validate_fn. Can contain info
+                like the validation dataset.
         """
         pass
 
@@ -59,8 +81,14 @@ class TrainFnUtils(ABC):
         pass
 
     @abstractmethod
-    def get_all_reported_checkpoints(self) -> List["ReportedCheckpoint"]:
+    def get_all_reported_checkpoints(
+        self,
+        consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+    ) -> List["ReportedCheckpoint"]:
         """Get all the checkpoints reported by the workers.
+
+        Args:
+            consistency_mode: Read semantics for checkpoint retrieval. Defaults to VALIDATED.
 
         Returns:
             A list of ReportedCheckpoint objects that represent the checkpoints and
@@ -121,9 +149,23 @@ class DistributedTrainFnUtils(TrainFnUtils):
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
+        checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+        delete_local_checkpoint_after_upload: Optional[bool] = None,
+        checkpoint_upload_fn: Optional[
+            Callable[["Checkpoint", str], "Checkpoint"]
+        ] = None,
+        validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
+        validate_config: Optional[Dict] = None,
     ) -> None:
         return get_internal_train_context().report(
-            metrics, checkpoint, checkpoint_dir_name
+            metrics,
+            checkpoint,
+            checkpoint_dir_name,
+            checkpoint_upload_mode,
+            delete_local_checkpoint_after_upload,
+            checkpoint_upload_fn,
+            validate_fn,
+            validate_config,
         )
 
     def get_checkpoint(self):
@@ -144,8 +186,13 @@ class DistributedTrainFnUtils(TrainFnUtils):
     def broadcast_from_rank_zero(self, data: Any) -> Any:
         return collective_impl.broadcast_from_rank_zero(data)
 
-    def get_all_reported_checkpoints(self) -> List["ReportedCheckpoint"]:
-        return get_internal_train_context().get_all_reported_checkpoints()
+    def get_all_reported_checkpoints(
+        self,
+        consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+    ) -> List["ReportedCheckpoint"]:
+        return get_internal_train_context().get_all_reported_checkpoints(
+            consistency_mode=consistency_mode
+        )
 
 
 class LocalTrainFnUtils(TrainFnUtils):
@@ -153,9 +200,19 @@ class LocalTrainFnUtils(TrainFnUtils):
         self,
         experiment_name: str,
         dataset_shards: Optional[Dict[str, DataIterator]] = None,
+        world_size: int = 1,
+        world_rank: int = 0,
+        local_rank: int = 0,
+        local_world_size: int = 1,
+        node_rank: int = 0,
     ):
         self._context = LocalTrainContext(
             experiment_name=experiment_name,
+            world_size=world_size,
+            world_rank=world_rank,
+            local_rank=local_rank,
+            local_world_size=local_world_size,
+            node_rank=node_rank,
         )
         self._dataset_shards = dataset_shards
         self._last_metrics = None
@@ -166,6 +223,13 @@ class LocalTrainFnUtils(TrainFnUtils):
         metrics: Dict[str, Any],
         checkpoint: Optional["Checkpoint"] = None,
         checkpoint_dir_name: Optional[str] = None,
+        checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
+        delete_local_checkpoint_after_upload: Optional[bool] = None,
+        checkpoint_upload_fn: Optional[
+            Callable[["Checkpoint", str], "Checkpoint"]
+        ] = None,
+        validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
+        validate_config: Optional[Dict] = None,
     ) -> None:
         self._last_metrics = metrics
         self._last_checkpoint = checkpoint
@@ -199,7 +263,10 @@ class LocalTrainFnUtils(TrainFnUtils):
         """
         return self._last_metrics
 
-    def get_all_reported_checkpoints(self) -> List["ReportedCheckpoint"]:
+    def get_all_reported_checkpoints(
+        self,
+        consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+    ) -> List["ReportedCheckpoint"]:
         return []
 
 
@@ -208,10 +275,18 @@ _train_fn_utils_lock = threading.Lock()
 
 
 def get_train_fn_utils() -> TrainFnUtils:
+    """Return the Ray Train function utilities.
+
+    Returns:
+        The TrainFnUtils instance for the current worker.
+
+    Raises:
+        RuntimeError: If the Ray Train function utilities are not initialized.
+    """
     global _train_fn_utils
     with _train_fn_utils_lock:
         if _train_fn_utils is None:
-            raise RuntimeError("TrainFnUtils has not been initialized.")
+            raise RuntimeError("Ray Train function utilities not initialized.")
         return _train_fn_utils
 
 

@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, TYPE_CHECKING
-from ray.util.collective.types import TensorTransportMetadata, CommunicatorMetadata
-from ray.util.collective.types import Backend
-from ray._private.custom_types import TensorTransportEnum
+from typing import TYPE_CHECKING, List, Optional
 
 import ray
+from ray.util.collective.types import (
+    Backend,
+    CommunicatorMetadata,
+    TensorTransportMetadata,
+)
 
 if TYPE_CHECKING:
     import torch
@@ -29,6 +31,17 @@ class TensorTransportManager(ABC):
             bool: True if the backend is one-sided, False otherwise.
         """
 
+    @staticmethod
+    @abstractmethod
+    def can_abort_transport() -> bool:
+        """
+        Whether the backend can abort the transport.
+        If this returns False, then Ray will kill involved actors upon system errors to avoid hanging.
+
+        Returns:
+            bool: True if the backend can abort the transport.
+        """
+
     @abstractmethod
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
         """Whether the actor has the tensor transport available.
@@ -45,7 +58,6 @@ class TensorTransportManager(ABC):
     def get_tensor_transport_metadata(
         src_actor: "ray.actor.ActorHandle",
         obj_id: str,
-        tensor_transport: TensorTransportEnum,
     ) -> TensorTransportMetadata:
         """
         Get the tensor transport metadata for the GPU object.
@@ -55,10 +67,26 @@ class TensorTransportManager(ABC):
         Args:
             src_actor: The actor that runs this function.
             obj_id: The ID of the GPU object to get metadata for
-            tensor_transport: The tensor transport protocol to use for the GPU object.
 
         Returns:
             TensorTransportMetadata: A named tuple containing the tensor metadata.
+        """
+
+    @staticmethod
+    @abstractmethod
+    def extract_tensor_transport_metadata(
+        obj_id: str,
+        gpu_object: List["torch.Tensor"],
+    ) -> TensorTransportMetadata:
+        """
+        Extract the tensor transport metadata from the GPU object.
+
+        Args:
+            obj_id: The ID of the GPU object to extract the tensor transport metadata from.
+            gpu_object: The GPU object to extract the tensor transport metadata from.
+
+        Returns:
+            TensorTransportMetadata: The tensor transport metadata.
         """
 
     @staticmethod
@@ -82,73 +110,10 @@ class TensorTransportManager(ABC):
         """
 
     @staticmethod
-    def send_object(
-        src_actor: "ray.actor.ActorHandle",
-        obj_id: str,
-        tensor_transport_meta: TensorTransportMetadata,
-        communicator_metadata_ref: CommunicatorMetadata,
-    ):
-        """
-        Send the GPU object to the destination actor.
-
-        Args:
-            src_actor: The actor that runs this function.
-            obj_id: The ID of the GPU object to send.
-            tensor_transport_meta: The tensor transport metadata for the GPU object.
-            communicator_metadata_ref: The ObjectRef of communicator metadata for the send/recv operation.
-        """
-        from ray.experimental.gpu_object_manager.gpu_object_store import __ray_send__
-
-        # Send tensors stored in the `src_actor`'s GPU object store to the
-        # destination rank `dst_rank`.
-        # NOTE(swang): We put this task on the background thread to avoid tasks
-        # executing on the main thread blocking the data transfer.
-        src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-            __ray_send__,
-            obj_id,
-            tensor_transport_meta,
-            communicator_metadata_ref,
-        )
-
-    @staticmethod
-    def recv_object(
-        dst_actor: "ray.actor.ActorHandle",
-        obj_id: str,
-        tensor_transport_metadata_ref: TensorTransportMetadata,
-        communicator_metadata_ref: CommunicatorMetadata,
-    ):
-        """
-        Receive the GPU object from the source actor.
-        This function receives tensors from the source rank and stores them in the
-        `dst_actor`'s GPU object store.
-
-        Args:
-            dst_actor: The actor that runs this function.
-            obj_id: The ID of the GPU object to receive.
-            tensor_transport_metadata_ref: The ObjectRef of tensor transport metadata for the GPU object.
-            communicator_metadata_ref: The ObjectRef of communicator metadata for the send/recv operation.
-        """
-        from ray.experimental.gpu_object_manager.gpu_object_store import __ray_recv__
-
-        # Receive tensors from the source rank and store them in the
-        # `dst_actor`'s GPU object store.
-        #
-        # NOTE(swang): We put this task on the background thread to avoid tasks
-        # executing on the main thread blocking the data transfer. Technically,
-        # this is only needed for the sender task, but we put the receiver task
-        # on the same background thread to ensure that all communication
-        # operations are executed in a global order.
-        dst_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-            __ray_recv__,
-            obj_id,
-            tensor_transport_metadata_ref,
-            communicator_metadata_ref,
-        )
-
-    @staticmethod
     @abstractmethod
     def recv_multiple_tensors(
         tensors: List["torch.Tensor"],
+        obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
     ):
@@ -157,6 +122,7 @@ class TensorTransportManager(ABC):
 
         Args:
             tensors: The pre-allocated tensor space to receive the tensors.
+            obj_id: The object ID for related GPU object.
             tensor_transport_metadata: The tensor transport metadata for the GPU object.
             communicator_metadata: The communicator metadata for the send/recv operation.
 
@@ -173,5 +139,30 @@ class TensorTransportManager(ABC):
 
         Args:
             tensors: The tensors to send.
+            communicator_metadata: The communicator metadata for the send/recv operation.
+        """
+
+    @staticmethod
+    @abstractmethod
+    def garbage_collect(obj_id: str, tensor_transport_meta: TensorTransportMetadata):
+        """
+        Garbage collect for the tensor transport after the GPU object is freed.
+
+        Args:
+            obj_id: The ID of the GPU object to garbage collect.
+            tensor_transport_meta: The tensor transport metadata.
+        """
+
+    @staticmethod
+    @abstractmethod
+    def abort_transport(
+        obj_id: str,
+        communicator_metadata: CommunicatorMetadata,
+    ):
+        """
+        Abort the transport.
+
+        Args:
+            obj_id: The object ID for related GPU object.
             communicator_metadata: The communicator metadata for the send/recv operation.
         """

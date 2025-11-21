@@ -1,0 +1,64 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "raylet_ipc_client_interface",
+    hdrs = ["raylet_ipc_client_interface.h"],
+    deps = [
+        "//src/ray/common:buffer",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/flatbuffers:node_manager_generated",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util:process",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_raylet_ipc_client",
+    hdrs = ["fake_raylet_ipc_client.h"],
+    deps = [
+        "//src/ray/raylet_ipc_client:raylet_ipc_client_interface",
+    ],
+)
+
+ray_cc_library(
+    name = "raylet_ipc_client",
+    srcs = ["raylet_ipc_client.cc"],
+    hdrs = ["raylet_ipc_client.h"],
+    visibility = ["//src/ray/core_worker:__pkg__"],
+    deps = [
+        ":client_connection",
+        "//src/ray/common:asio",
+        "//src/ray/common:buffer",
+        "//src/ray/common:flatbuf_utils",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/flatbuffers:node_manager_generated",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/raylet_ipc_client:raylet_ipc_client_interface",
+        "//src/ray/util:logging",
+        "//src/ray/util:process",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "client_connection",
+    srcs = [
+        "client_connection.cc",
+    ],
+    hdrs = [
+        "client_connection.h",
+    ],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/common:event_stats",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/flatbuffers:node_manager_generated",
+        "//src/ray/util:network_util",
+        "//src/ray/util:process",
+        "//src/ray/util:time",
+    ],
+)

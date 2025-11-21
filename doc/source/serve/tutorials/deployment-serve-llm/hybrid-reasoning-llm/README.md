@@ -10,6 +10,11 @@ jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 
 # Deploy a hybrid reasoning LLM
 
+<div align="left">
+<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Fhybrid-reasoning-llm"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/hybrid-reasoning-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+</div>
+
 A hybrid reasoning model provides flexibility by allowing you to enable or disable reasoning as needed. You can use structured, step-by-step thinking for complex queries while skipping it for simpler ones, balancing accuracy with efficiency depending on the task.
 
 This tutorial deploys a hybrid reasoning LLM using Ray Serve LLM.  
@@ -27,7 +32,7 @@ This tutorial deploys a hybrid reasoning LLM using Ray Serve LLM.
 <!-- vale Google.Acronyms = YES -->
 **Note:** Reasoning often benefits from long context windows (32K up to +1M tokens), high token throughput, low-temperature decoding (greedy sampling), and strong instruction tuning or scratchpad-style reasoning.
 
-To see an example of deploying a purely reasoning model like *QwQ-32&nbsp;B*, see [Deploying a reasoning LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/reasoning-llm/README.html).
+To see an example of deploying a purely reasoning model like *QwQ-32&nbsp;B*, see [Deploy a reasoning LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/reasoning-llm/README.html).
 
 ---
 
@@ -70,7 +75,7 @@ See [Send request with thinking enabled](#send-request-with-thinking-enabled) or
 
 In thinking mode, hybrid models often separate _reasoning_ from the _final answer_ using tags like `<think>...</think>`. Without a proper parser, this reasoning may end up in the `content` field instead of the dedicated `reasoning_content` field.  
 
-To ensure that Ray Serve LLM correctly parses the reasoning output, configure a `reasoning_parser` in your Ray Serve LLM deployment. This tells vLLM how to isolate the model’s thought process from the rest of the output.
+To ensure that Ray Serve LLM correctly parses the reasoning output, configure a `reasoning_parser` in your Ray Serve LLM deployment. This tells vLLM how to isolate the model’s thought process from the rest of the output.  
 **Note:** For example, *Qwen-3* uses the `qwen3` parser. See the [vLLM docs](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#supported-models) or your model's documentation to find a supported parser, or [build your own](https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#how-to-support-a-new-reasoning-model) if needed.
 
 ```yaml
@@ -130,9 +135,10 @@ llm_config = LLMConfig(
         model_id="my-qwen-3-32b",
         model_source="Qwen/Qwen3-32B",
     ),
-    accelerator_type="A100-40G",
+    accelerator_type="L40S", # Or "A100-40G"
     deployment_config=dict(
         autoscaling_config=dict(
+            # Increase number of replicas for higher throughput/concurrency.
             min_replicas=1,
             max_replicas=2,
         )
@@ -140,14 +146,15 @@ llm_config = LLMConfig(
     ### Uncomment if your model is gated and needs your Hugging Face token to access it.
     # runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),
     engine_kwargs=dict(
-        tensor_parallel_size=8, max_model_len=32768, reasoning_parser="qwen3"
+        # 4 GPUs is enough but you can increase tensor_parallel_size to fit larger models.
+        tensor_parallel_size=4, max_model_len=32768, reasoning_parser="qwen3"
     ),
 )
 app = build_openai_app({"llm_configs": [llm_config]})
 
 ```
 
-**Note:** Before moving to a production setup, migrate your settings to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs: Production Guide](https://docs.ray.io/en/latest/serve/llm/serving-llms.html#production-deployment) for an example.
+**Note:** Before moving to a production setup, migrate your settings to a [Serve config file](https://docs.ray.io/en/latest/serve/production-guide/config.html) to make your deployment version-controlled, reproducible, and easier to maintain for CI/CD pipelines. See [Serving LLMs - Quickstart Examples: Production Guide](https://docs.ray.io/en/latest/serve/llm/quick-start.html#production-deployment) for an example.
 
 ---
 
@@ -174,8 +181,7 @@ Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) t
 In a terminal, run:  
 
 
-```bash
-%%bash
+```python
 serve run serve_qwen_3_32b:app --non-blocking
 ```
 
@@ -194,8 +200,7 @@ You can disable thinking in Qwen-3 by either adding a `/no_think` tag in the pro
 Example curl with `/no_think`:
 
 
-```bash
-%%bash
+```python
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer FAKE_KEY" \
@@ -210,10 +215,10 @@ Example Python with `enable_thinking: False`:
 from urllib.parse import urljoin
 from openai import OpenAI
 
-api_key = "FAKE_KEY"
-base_url = "http://localhost:8000"
+API_KEY = "FAKE_KEY"
+BASE_URL = "http://localhost:8000"
 
-client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
+client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
 # Example: Complex query with thinking process
 response = client.chat.completions.create(
@@ -240,8 +245,7 @@ You can enable thinking in Qwen-3 by either adding a `/think` tag in the prompt 
 Example curl with `/think`:
 
 
-```bash
-%%bash
+```python
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer FAKE_KEY" \
@@ -256,10 +260,10 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 from urllib.parse import urljoin
 from openai import OpenAI
 
-api_key = "FAKE_KEY"
-base_url = "http://localhost:8000"
+API_KEY = "FAKE_KEY"
+BASE_URL = "http://localhost:8000"
 
-client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
+client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
 # Example: Complex query with thinking process
 response = client.chat.completions.create(
@@ -283,8 +287,7 @@ If you configure a valid reasoning parser, the reasoning output should appear in
 Shutdown your LLM service:
 
 
-```bash
-%%bash
+```python
 serve shutdown -y
 ```
 
@@ -293,7 +296,7 @@ serve shutdown -y
 
 ## Deploy to production with Anyscale services
 
-For production, it's recommended to use Anyscale services to deploy your Ray Serve app on a dedicated cluster without any code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploying a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#deploy-to-production-with-anyscale-services) for an example with a medium-sized model like the *Qwen-32b* from this tutorial.
+For production, it's recommended to use Anyscale services to deploy your Ray Serve app on a dedicated cluster without any code changes. Anyscale provides scalability, fault tolerance, and load balancing, ensuring resilience against node failures, high traffic, and rolling updates. See [Deploy a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html#deploy-to-production-with-anyscale-services) for an example with a medium-sized model like the *Qwen-32b* from this tutorial.
 
 ---
 
@@ -307,29 +310,10 @@ In thinking mode, hybrid reasoning models may take longer to begin generating th
 from urllib.parse import urljoin
 from openai import OpenAI
 
-api_key = "FAKE_KEY"
-base_url = "http://localhost:8000"
+API_KEY = "FAKE_KEY"
+BASE_URL = "http://localhost:8000"
 
-client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
-
-# Example: Complex query with thinking process
-response = client.chat.completions.create(
-    model="my-qwen-3-32b",
-    messages=[
-        {"role": "user", "content": "What's the capital of France ?"}
-    ],
-    extra_body={"chat_template_kwargs": {"enable_thinking": True}}
-)
-
-print(f"Reasoning: \n{response.choices[0].message.reasoning_content}\n\n")
-print(f"Answer: \n {response.choices[0].message.content}")
-from urllib.parse import urljoin
-from openai import OpenAI
-
-api_key = "FAKE_KEY"
-base_url = "http://localhost:8000"
-
-client = OpenAI(base_url=urljoin(base_url, "v1"), api_key=api_key)
+client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
 # Example: Complex query with thinking process
 response = client.chat.completions.create(

@@ -1,14 +1,14 @@
 import copy
-import gymnasium as gym
 import logging
-from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
+from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
+import gymnasium as gym
 import numpy as np
 
+from ray._common.deprecation import Deprecated
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,
@@ -250,8 +250,7 @@ class MultiAgentEnv(gym.Env):
 
         """
 
-        from ray.rllib.env.wrappers.group_agents_wrapper import \
-            GroupAgentsWrapper
+        from ray.rllib.env.wrappers.group_agents_wrapper import GroupAgentsWrapper
         return GroupAgentsWrapper(self, groups, obs_space, act_space)
 
     # __grouping_doc_end__
@@ -444,7 +443,7 @@ def make_multi_agent(
             #  an additional episode_done bool that covers cases where all agents are
             #  either terminated or truncated, but not all are truncated and not all are
             #  terminated. We can then get rid of the aweful `__all__` special keys!
-            terminated["__all__"] = len(self.terminateds) + len(self.truncateds) == len(
+            terminated["__all__"] = len(self.terminateds | self.truncateds) == len(
                 self.envs
             )
             truncated["__all__"] = len(self.truncateds) == len(self.envs)
