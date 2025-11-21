@@ -18,6 +18,7 @@ from ray.data.aggregate import (
     Std,
     ZeroPercentage,
 )
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.dataset import Schema
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="alpha")
 @dataclass
 class DatasetSummary:
     """Wrapper for dataset summary statistics.
@@ -159,7 +161,7 @@ class DatasetSummary:
 
 
 @dataclass
-class DtypeAggregators:
+class _DtypeAggregators:
     """Container for columns and their aggregators.
 
     Attributes:
@@ -171,7 +173,7 @@ class DtypeAggregators:
     aggregators: List[AggregateFnV2]
 
 
-def numerical_aggregators(column: str) -> List[AggregateFnV2]:
+def _numerical_aggregators(column: str) -> List[AggregateFnV2]:
     """Generate default metrics for numerical columns.
 
     This function returns a list of aggregators that compute the following metrics:
@@ -202,7 +204,7 @@ def numerical_aggregators(column: str) -> List[AggregateFnV2]:
     ]
 
 
-def temporal_aggregators(column: str) -> List[AggregateFnV2]:
+def _temporal_aggregators(column: str) -> List[AggregateFnV2]:
     """Generate default metrics for temporal columns.
 
     This function returns a list of aggregators that compute the following metrics:
@@ -225,7 +227,7 @@ def temporal_aggregators(column: str) -> List[AggregateFnV2]:
     ]
 
 
-def basic_aggregators(column: str) -> List[AggregateFnV2]:
+def _basic_aggregators(column: str) -> List[AggregateFnV2]:
     """Generate default metrics for all columns.
 
     This function returns a list of aggregators that compute the following metrics:
@@ -246,7 +248,7 @@ def basic_aggregators(column: str) -> List[AggregateFnV2]:
     ]
 
 
-def default_dtype_aggregators() -> Dict[
+def _default_dtype_aggregators() -> Dict[
     "DataType", Callable[[str], List[AggregateFnV2]]
 ]:
     """Get default mapping from Ray Data DataType to aggregator factory functions.
@@ -259,8 +261,8 @@ def default_dtype_aggregators() -> Dict[
 
     Examples:
         >>> from ray.data.datatype import DataType
-        >>> from ray.data.stats import default_dtype_aggregators
-        >>> mapping = default_dtype_aggregators()
+        >>> from ray.data.stats import _default_dtype_aggregators
+        >>> mapping = _default_dtype_aggregators()
         >>> factory = mapping.get(DataType.int32())
         >>> aggs = factory("my_column")  # Creates aggregators for "my_column"
     """
@@ -269,22 +271,22 @@ def default_dtype_aggregators() -> Dict[
     # Use pattern-matching types for cleaner mapping
     return {
         # Numerical types
-        DataType.int8(): numerical_aggregators,
-        DataType.int16(): numerical_aggregators,
-        DataType.int32(): numerical_aggregators,
-        DataType.int64(): numerical_aggregators,
-        DataType.uint8(): numerical_aggregators,
-        DataType.uint16(): numerical_aggregators,
-        DataType.uint32(): numerical_aggregators,
-        DataType.uint64(): numerical_aggregators,
-        DataType.float32(): numerical_aggregators,
-        DataType.float64(): numerical_aggregators,
-        DataType.bool(): numerical_aggregators,
+        DataType.int8(): _numerical_aggregators,
+        DataType.int16(): _numerical_aggregators,
+        DataType.int32(): _numerical_aggregators,
+        DataType.int64(): _numerical_aggregators,
+        DataType.uint8(): _numerical_aggregators,
+        DataType.uint16(): _numerical_aggregators,
+        DataType.uint32(): _numerical_aggregators,
+        DataType.uint64(): _numerical_aggregators,
+        DataType.float32(): _numerical_aggregators,
+        DataType.float64(): _numerical_aggregators,
+        DataType.bool(): _numerical_aggregators,
         # String and binary types
-        DataType.string(): basic_aggregators,
-        DataType.binary(): basic_aggregators,
+        DataType.string(): _basic_aggregators,
+        DataType.binary(): _basic_aggregators,
         # Temporal types - pattern matches all temporal types (timestamp, date, time, duration)
-        DataType.temporal(): temporal_aggregators,
+        DataType.temporal(): _temporal_aggregators,
         # Note: Complex types like lists, structs, maps use fallback logic
         # in _get_aggregators_for_dtype since they can't be easily enumerated
     }
@@ -307,19 +309,19 @@ def _get_fallback_aggregators(column: str, dtype: "DataType") -> List[AggregateF
         if dtype.is_arrow_type() and pa.types.is_null(dtype._physical_dtype):
             return [Count(on=column, ignore_nulls=False)]
         elif dtype.is_numerical_type():
-            return numerical_aggregators(column)
+            return _numerical_aggregators(column)
         elif dtype.is_temporal_type():
-            return temporal_aggregators(column)
+            return _temporal_aggregators(column)
         else:
             # Default for strings, binary, lists, nested types, etc.
-            return basic_aggregators(column)
+            return _basic_aggregators(column)
 
     except Exception as e:
         logger.warning(
             f"Could not determine aggregators for column '{column}' with dtype {dtype}: {e}. "
             f"Using basic aggregators."
         )
-        return basic_aggregators(column)
+        return _basic_aggregators(column)
 
 
 def _get_aggregators_for_dtype(
@@ -357,7 +359,7 @@ def _dtype_aggregators_for_dataset(
     dtype_agg_mapping: Optional[
         Dict["DataType", Callable[[str], List[AggregateFnV2]]]
     ] = None,
-) -> DtypeAggregators:
+) -> _DtypeAggregators:
     """Generate aggregators for columns in a dataset based on their DataTypes.
 
     Args:
@@ -368,7 +370,7 @@ def _dtype_aggregators_for_dataset(
             This will be merged with the default mapping (user mapping takes precedence).
 
     Returns:
-        DtypeAggregators containing column-to-dtype mapping and aggregators
+        _DtypeAggregators containing column-to-dtype mapping and aggregators
 
     Raises:
         ValueError: If schema is None or if specified columns don't exist in schema
@@ -387,7 +389,7 @@ def _dtype_aggregators_for_dataset(
         raise ValueError(f"Columns {missing_cols} not found in dataset schema")
 
     # Build final mapping: default + user overrides
-    defaults = default_dtype_aggregators()
+    defaults = _default_dtype_aggregators()
     if dtype_agg_mapping:
         # Put user overrides first so they are checked before default patterns
         final_mapping = dtype_agg_mapping.copy()
@@ -412,7 +414,7 @@ def _dtype_aggregators_for_dataset(
         column_to_dtype[name] = str(ray_dtype)
         all_aggs.extend(_get_aggregators_for_dtype(name, ray_dtype, final_mapping))
 
-    return DtypeAggregators(
+    return _DtypeAggregators(
         column_to_dtype=column_to_dtype,
         aggregators=all_aggs,
     )

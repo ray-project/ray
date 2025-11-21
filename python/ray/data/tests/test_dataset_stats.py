@@ -1,8 +1,10 @@
 import pandas as pd
 import pyarrow as pa
 import pytest
+from packaging.version import parse as parse_version
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.util import rows_same
 from ray.data.aggregate import (
     ApproximateQuantile,
@@ -18,11 +20,11 @@ from ray.data.aggregate import (
 from ray.data.datatype import DataType
 from ray.data.stats import (
     DatasetSummary,
+    _basic_aggregators,
+    _default_dtype_aggregators,
     _dtype_aggregators_for_dataset,
-    basic_aggregators,
-    default_dtype_aggregators,
-    numerical_aggregators,
-    temporal_aggregators,
+    _numerical_aggregators,
+    _temporal_aggregators,
 )
 
 
@@ -116,6 +118,10 @@ class TestDtypeAggregatorsForDataset:
 
         assert [type(agg) for agg in result.aggregators] == [Count, Mean]
 
+    @pytest.mark.skipif(
+        get_pyarrow_version() < parse_version("14.0.0"),
+        reason="Requires pyarrow >= 14.0.0",
+    )
     def test_custom_dtype_mapping_pattern_precedence(self):
         """Test that specific custom mappings take precedence over default patterns."""
         import datetime
@@ -140,6 +146,10 @@ class TestDtypeAggregatorsForDataset:
         assert len(result.aggregators) == 1
         assert isinstance(result.aggregators[0], Count)
 
+    @pytest.mark.skipif(
+        get_pyarrow_version() < parse_version("14.0.0"),
+        reason="Requires pyarrow >= 14.0.0",
+    )
     @pytest.mark.parametrize(
         "pa_type",
         [
@@ -168,8 +178,8 @@ class TestIndividualAggregatorFunctions:
     """Test suite for individual aggregator generator functions."""
 
     def test_numerical_aggregators(self):
-        """Test numerical_aggregators function."""
-        aggs = numerical_aggregators("test_col")
+        """Test _numerical_aggregators function."""
+        aggs = _numerical_aggregators("test_col")
 
         assert len(aggs) == 8
         assert all(agg.get_target_column() == "test_col" for agg in aggs)
@@ -185,16 +195,16 @@ class TestIndividualAggregatorFunctions:
         ]
 
     def test_temporal_aggregators(self):
-        """Test temporal_aggregators function."""
-        aggs = temporal_aggregators("test_col")
+        """Test _temporal_aggregators function."""
+        aggs = _temporal_aggregators("test_col")
 
         assert len(aggs) == 4
         assert all(agg.get_target_column() == "test_col" for agg in aggs)
         assert [type(agg) for agg in aggs] == [Count, Min, Max, MissingValuePercentage]
 
     def test_basic_aggregators(self):
-        """Test basic_aggregators function."""
-        aggs = basic_aggregators("test_col")
+        """Test _basic_aggregators function."""
+        aggs = _basic_aggregators("test_col")
 
         assert len(aggs) == 3
         assert all(agg.get_target_column() == "test_col" for agg in aggs)
@@ -206,8 +216,12 @@ class TestIndividualAggregatorFunctions:
 
 
 class TestDefaultDtypeAggregators:
-    """Test suite for default_dtype_aggregators function."""
+    """Test suite for _default_dtype_aggregators function."""
 
+    @pytest.mark.skipif(
+        get_pyarrow_version() < parse_version("14.0.0"),
+        reason="Requires pyarrow >= 14.0.0",
+    )
     @pytest.mark.parametrize(
         "dtype_factory,expected_agg_types,uses_pattern_matching",
         [
@@ -286,7 +300,7 @@ class TestDefaultDtypeAggregators:
         """Test that default mappings return correct aggregators."""
         from ray.data.datatype import _matches_dtype
 
-        mapping = default_dtype_aggregators()
+        mapping = _default_dtype_aggregators()
         dtype = dtype_factory()
 
         if uses_pattern_matching:
