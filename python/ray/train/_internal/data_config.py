@@ -1,4 +1,5 @@
 import copy
+from collections import defaultdict
 from typing import Dict, List, Literal, Optional, Union
 
 import ray
@@ -48,8 +49,16 @@ class DataConfig:
                 f"{type(datasets_to_split).__name__} with value {datasets_to_split}."
             )
 
+        default_execution_options = DataConfig.default_ingest_options()
+        if isinstance(execution_options, ExecutionOptions):
+            default_execution_options = execution_options
         # If None, all datasets will use the default ingest options.
-        self._execution_options = execution_options or {}
+        self._execution_options: Dict[str, ExecutionOptions] = defaultdict(
+            lambda: default_execution_options
+        )
+        if isinstance(execution_options, dict):
+            self._execution_options.update(execution_options)
+
         self._enable_shard_locality = enable_shard_locality
 
         self._num_train_cpus = 0.0
@@ -67,16 +76,7 @@ class DataConfig:
 
     def _get_execution_options(self, dataset_name: str) -> ExecutionOptions:
         """Return a copy of the configured execution options for a given dataset name."""
-        if isinstance(self._execution_options, dict):
-            res = self._execution_options.get(
-                dataset_name, DataConfig.default_ingest_options()
-            )
-        else:
-            assert isinstance(
-                self._execution_options, ExecutionOptions
-            ), "execution_options must be a dictionary of ExecutionOptions objects by dataset name or a single ExecutionOptions object."
-            res = self._execution_options
-        return copy.deepcopy(res)
+        return copy.deepcopy(self._execution_options[dataset_name])
 
     @DeveloperAPI
     def configure(
