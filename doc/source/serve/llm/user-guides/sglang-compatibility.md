@@ -44,7 +44,7 @@ llm_config = LLMConfig(
     accelerator_type="H100",
     # You can customize the engine arguments (e.g. SGLang engine kwargs)
     engine_kwargs={
-        "trust_remote_code": True
+        "trust_remote_code": True,
         "model_path": "hmellor/Ilama-3.2-1B",
         "tp_size": 2,
         "mem_fraction_static": 0.8,
