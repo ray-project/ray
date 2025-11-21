@@ -164,8 +164,8 @@ void RaySyncer::Disconnect(const std::string &node_id) {
     }
 
     auto reactor = iter->second;
-    sync_reactors_.erase(iter);
     reactor->Disconnect();
+    sync_reactors_.erase(iter);
   });
   boost::asio::dispatch(io_context_.get_executor(), std::move(task)).get();
 }

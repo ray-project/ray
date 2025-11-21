@@ -78,9 +78,6 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
     ServerBidiReactor::Finish(status);
   }
 
-  /// Cleanup callback when the call ends.
-  const std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb_;
-
   /// grpc callback context
   grpc::CallbackServerContext *server_context_;
 

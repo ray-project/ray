@@ -63,11 +63,7 @@ class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> 
 
  private:
   void DoDisconnect() override;
-  /// Callback from gRPC
   void OnDone(const grpc::Status &status) override;
-
-  /// Cleanup callback when the call ends.
-  const std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb_;
 
   /// grpc callback context
   grpc::ClientContext client_context_;

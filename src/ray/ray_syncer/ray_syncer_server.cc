@@ -41,7 +41,7 @@ std::shared_ptr<RayServerBidiReactor> RayServerBidiReactor::Create(
     const std::optional<ray::rpc::AuthenticationToken> &auth_token,
     size_t max_batch_size,
     uint64_t max_batch_delay_ms) {
-  return std::make_shared<RayServerBidiReactor>(PrivateTag{},
+  auto reactor = std::make_shared<RayServerBidiReactor>(PrivateTag{},
                                                 server_context,
                                                 io_context,
                                                 local_node_id,
@@ -50,6 +50,8 @@ std::shared_ptr<RayServerBidiReactor> RayServerBidiReactor::Create(
                                                 auth_token,
                                                 max_batch_size,
                                                 max_batch_delay_ms);
+  reactor->SetSelfPtr(reactor);
+  return reactor;
 }
 
 RayServerBidiReactor::RayServerBidiReactor(
@@ -66,9 +68,9 @@ RayServerBidiReactor::RayServerBidiReactor(
           io_context,
           GetNodeIDFromServerContext(server_context),
           message_processor,
+          cleanup_cb,
           max_batch_size,
           max_batch_delay_ms),
-      cleanup_cb_(cleanup_cb),
       server_context_(server_context),
       auth_token_(auth_token) {
   if (auth_token_.has_value() && !auth_token_->empty()) {
@@ -112,11 +114,7 @@ void RayServerBidiReactor::OnCancel() {
 }
 
 void RayServerBidiReactor::OnDone() {
-  io_context_.dispatch(
-      [this, cleanup_cb = cleanup_cb_, remote_node_id = GetRemoteNodeID()]() {
-        cleanup_cb(this, false);
-      },
-      "");
+  RaySyncerBidiReactorBase::DoCleanup(/*restart=*/false);
 }
 
 }  // namespace ray::syncer
