@@ -132,8 +132,10 @@ class TrainingData:
                 for ref in episode_refs:
                     try:
                         episodes.extend(ray.get(ref))
-                    except ray.exceptions.OwnerDiedError:
-                        pass
+                    except ray.exceptions.OwnerDiedError as e:
+                        print(
+                            f"episode-ref {ref} died and can't be collected with error: {e}"
+                        )
             self.episodes = episodes
             self.episodes_refs = None
 
