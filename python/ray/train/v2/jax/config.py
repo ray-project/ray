@@ -57,14 +57,12 @@ def _setup_jax_distributed_environment(
         os.environ["JAX_PLATFORMS"] = "tpu"
         jax_platforms = "tpu"
 
-    if use_gpu:
-        if not os.environ.get("JAX_PLATFORMS"):
-            os.environ["JAX_PLATFORMS"] = "cuda"
+    if not jax_platforms and use_gpu:
+        os.environ["JAX_PLATFORMS"] = "cuda"
 
-            num_gpus = resources_per_worker.get("GPU", 0)
-            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
-                str(i) for i in range(num_gpus)
-            )
+        num_gpus = resources_per_worker.get("GPU", 0)
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in range(num_gpus))
+        jax_platforms = "cuda"
 
     import jax
 
