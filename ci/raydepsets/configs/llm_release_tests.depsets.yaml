@@ -24,5 +24,3 @@ depsets:
     constraints:
       - python/deplocks/llm/rayllm_${PYTHON_VERSION}_${CUDA_CODE}.lock
     output: release/ray_release/byod/llm_serve/llm_serve_llama_3dot1_8B_quantized_${PYTHON_VERSION}_${CUDA_CODE}.lock
-    pre_hooks:
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh

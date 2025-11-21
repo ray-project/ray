@@ -2106,9 +2106,9 @@ httptools==0.7.1 \
     --hash=sha256:f65744d7a8bdb4bda5e1fa23e4ba16832860606fcc09d674d56e425e991539ec \
     --hash=sha256:f72fdbae2dbc6e68b8239defb48e6a5937b12218e6ffc2c7846cc37befa84362
     # via uvicorn
-httpx==0.27.2 \
-    --hash=sha256:7bb2708e112d8fdd7829cd4243970f0c223274051cb35ee80c03301ee29a3df0 \
-    --hash=sha256:f7c2be1d2f3c3c3160d441802406b206c2b76f5947b11115e6df10c6c65e66c2
+httpx==0.28.1 \
+    --hash=sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc \
+    --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
@@ -4355,7 +4355,6 @@ sniffio==1.3.1 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   anyio
-    #   httpx
 soupsieve==2.5 \
     --hash=sha256:5663d5a7b3bfaeee0bc4372e7fc48f9cff4940b3eec54a6451cc5299f1097690 \
     --hash=sha256:eaa337ff55a1579b6549dc679565eac1e3d000563bcb1c8ab0d0fefbc0c2cdc7
