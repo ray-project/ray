@@ -136,19 +136,65 @@ void MutableObjectProvider::HandlePushMutableObject(
   uint64_t offset = request.offset();
   uint64_t chunk_size = request.chunk_size();
 
+  // Validate request bounds to prevent buffer overflows.
+  RAY_CHECK_LE(offset + chunk_size, total_data_size)
+      << "Chunk extends beyond total data size. offset=" << offset
+      << ", chunk_size=" << chunk_size << ", total_data_size=" << total_data_size;
+  RAY_CHECK_EQ(request.data().size(), chunk_size)
+      << "Data size mismatch. Expected " << chunk_size << " bytes, got "
+      << request.data().size() << " bytes";
+  RAY_CHECK_EQ(request.metadata().size(), total_metadata_size)
+      << "Metadata size mismatch. Expected " << total_metadata_size << " bytes, got "
+      << request.metadata().size() << " bytes";
+
+  // Check if this chunk has already been received (idempotent retry handling).
+  bool is_new_chunk = false;
   uint64_t tmp_written_so_far = 0;
+  bool object_complete = false;
+  bool needs_write_acquire = false;
   {
     absl::MutexLock guard(&written_so_far_lock_);
 
-    tmp_written_so_far = written_so_far_[writer_object_id];
-    written_so_far_[writer_object_id] += chunk_size;
-    if (written_so_far_[writer_object_id] == total_data_size) {
-      written_so_far_.erase(written_so_far_.find(writer_object_id));
+    // Initialize tracking for this object if needed.
+    auto &received_chunks = received_chunks_[writer_object_id];
+
+    // Check if we've already received this specific chunk by offset.
+    if (received_chunks.find(offset) != received_chunks.end()) {
+      // This chunk was already received (retry) - skip processing but return status.
+      auto written_it = written_so_far_.find(writer_object_id);
+      if (written_it != written_so_far_.end()) {
+        tmp_written_so_far = written_it->second;
+        object_complete = (tmp_written_so_far == total_data_size);
+      } else {
+        // Tracking was cleaned up, meaning object is complete.
+        object_complete = true;
+      }
+    } else {
+      // This is a new chunk - check tracking but don't mark as received yet.
+      // We'll mark it as received only after successfully writing it.
+      is_new_chunk = true;
+      tmp_written_so_far = written_so_far_[writer_object_id];
+
+      // Check if WriteAcquire needs to be called. This handles out-of-order chunks:
+      // only the first chunk (or first chunk to arrive) will call WriteAcquire.
+      if (!write_acquired_[writer_object_id]) {
+        needs_write_acquire = true;
+        write_acquired_[writer_object_id] = true;
+      }
     }
   }
 
+  // If this is a retry of an already-received chunk, return current status without
+  // re-processing the data (idempotent operation).
+  if (!is_new_chunk) {
+    reply->set_done(object_complete);
+    return;
+  }
+
   std::shared_ptr<Buffer> object_backing_store;
-  if (tmp_written_so_far == 0u) {
+  if (needs_write_acquire) {
+    // First chunk to arrive (may not be offset 0 due to out-of-order delivery) -
+    // acquire write lock and allocate backing store.
     // We set `metadata` to nullptr since the metadata is at the end of the object, which
     // we will not have until the last chunk is received.
     RAY_CHECK_OK(object_manager_->WriteAcquire(info.local_object_id,
@@ -158,6 +204,8 @@ void MutableObjectProvider::HandlePushMutableObject(
                                                info.num_readers,
                                                object_backing_store));
   } else {
+    // Subsequent chunk (or chunk arriving after WriteAcquire was called by another chunk)
+    // - get existing backing store.
     RAY_CHECK_OK(object_manager_->GetObjectBackingStore(info.local_object_id,
                                                         total_data_size,
                                                         total_metadata_size,
@@ -165,11 +213,29 @@ void MutableObjectProvider::HandlePushMutableObject(
   }
   RAY_CHECK(object_backing_store);
 
+  // Copy chunk data to backing store.
   memcpy(object_backing_store->Data() + offset, request.data().data(), chunk_size);
   size_t total_written = tmp_written_so_far + chunk_size;
   RAY_CHECK_LE(total_written, total_data_size);
+
+  // Mark this chunk as received only after successfully writing it.
+  // This ensures retries are handled correctly even if WriteAcquire fails.
+  {
+    absl::MutexLock guard(&written_so_far_lock_);
+    received_chunks_[writer_object_id].insert(offset);
+    // Update written_so_far_ by adding this chunk's size.
+    // Note: We increment rather than set to handle potential out-of-order chunks.
+    written_so_far_[writer_object_id] += chunk_size;
+    if (written_so_far_[writer_object_id] == total_data_size) {
+      object_complete = true;
+      // Note: We keep received_chunks_ and written_so_far_ entries to handle
+      // retries. They will be cleaned up when the object is overwritten (next
+      // WriteAcquire will reset state) or when the object is unregistered.
+    }
+  }
+
   if (total_written == total_data_size) {
-    // Copy the metadata to the end of the object.
+    // All data chunks received - copy metadata and release write lock.
     memcpy(object_backing_store->Data() + total_data_size,
            request.metadata().data(),
            total_metadata_size);
