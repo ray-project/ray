@@ -147,11 +147,14 @@ class SGLangServer:
         prompt_string = format_messages_to_prompt(request.messages)
 
         temp = request.temperature
-        if temp is None: temp = 0.7
+        if temp is None:
+            temp = 0.7
         top_p = request.top_p
-        if top_p is None: top_p = 1.0 
+        if top_p is None:
+            top_p = 1.0 
         max_tokens = request.max_tokens
-        if max_tokens is None: max_tokens = 128
+        if max_tokens is None:
+            max_tokens = 128
         
         sampling_params = {
             "temperature": temp,
@@ -219,13 +222,16 @@ class SGLangServer:
             prompt_string = prompt_input 
         
         temp = getattr(request, "temperature", None)
-        if temp is None: temp = 0.7
+        if temp is None:
+            temp = 0.7
 
         top_p = getattr(request, "top_p", None)
-        if top_p is None: top_p = 1.0
+        if top_p is None:
+            top_p = 1.0
 
         max_tokens = getattr(request, "max_tokens", None)
-        if max_tokens is None: max_tokens = 128
+        if max_tokens is None:
+            max_tokens = 128
 
         stop_sequences = getattr(request, "stop", None)
 
@@ -310,14 +316,18 @@ class SGLangServer:
 
         ray_actor_options = deployment_options.get("ray_actor_options", {})
         
-        ray_actor_options.setdefault(
-            "runtime_env", 
-            {"worker_process_setup_hook": "ray.llm._internal.serve._worker_process_setup_hook"}
+        existing_runtime_env = ray_actor_options.get("runtime_env")
+        if existing_runtime_env is None:
+            existing_runtime_env = {}
+            
+        existing_runtime_env.setdefault(
+             "worker_process_setup_hook", "ray.llm._internal.serve._worker_process_setup_hook"
         )
-        
-        existing_runtime_env = ray_actor_options["runtime_env"]
+
+        ray_actor_options["runtime_env"] = existing_runtime_env
+
         if llm_config.runtime_env:
-            existing_runtime_env.update(llm_config.runtime_env)
+            ray_actor_options["runtime_env"].update(llm_config.runtime_env)
 
         deployment_options["ray_actor_options"] = ray_actor_options
 
