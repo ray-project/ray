@@ -30,8 +30,8 @@ from ray.llm._internal.serve.core.ingress.builder import build_sglang_openai_app
 
 llm_config = LLMConfig(
     model_loading_config={
-        "model_id": "Llama-3.1-8B-Instruct",
-        "model_source": "unsloth/Llama-3.1-8B-Instruct",
+        "model_id": "Ilama-3.2-1B",
+        "model_source": ""hmellor/Ilama-3.2-1B",
     },
     deployment_config={
         "autoscaling_config": {
@@ -66,7 +66,7 @@ import openai
 client = openai.Client(base_url=f"http://127.0.0.1:8000/v1", api_key="None")
 
 response = client.chat.completions.create(
-    model="Llama-3.1-8B-Instruct",
+    model="Ilama-3.2-1B",
     messages=[
         {"role": "user", "content": "List 3 countries and their capitals."},
     ],
@@ -84,7 +84,7 @@ cURL
 curl http://127.0.0.1:8000/v1/completions \
     -H "Content-Type: application/json" \
     -d '{
-        "model": "Llama-3.1-8B-Instruct",
+        "model": "Ilama-3.2-1B",
         "prompt": "San Francisco is a",
         "max_tokens": 30,
         "temperature": 0            
