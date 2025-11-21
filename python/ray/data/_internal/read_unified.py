@@ -77,11 +77,11 @@ def _detect_lakehouse_tables(
     """Detect lakehouse tables in paths (only checks directories).
 
         Args:
-    paths: List of paths to check for lakehouse table markers.
-    filesystem: PyArrow filesystem to use for inspection.
+        paths: List of paths to check for lakehouse table markers.
+        filesystem: PyArrow filesystem to use for inspection.
 
         Returns:
-    List of detected lakehouse tables.
+        List of detected lakehouse tables.
     """
     from ray.data._internal.format_detection import _detect_lakehouse_format
 
@@ -101,11 +101,11 @@ def _group_files_by_format(
     """Group file paths by detected format using extension detection.
 
         Args:
-    paths: List of file paths to group.
-    warn_on_binary: Whether to warn when files fall back to binary format.
+        paths: List of file paths to group.
+        warn_on_binary: Whether to warn when files fall back to binary format.
 
         Returns:
-    Dictionary mapping format names to lists of file paths.
+        Dictionary mapping format names to lists of file paths.
     """
     from pathlib import Path
 
