@@ -49,6 +49,7 @@ except ImportError:
 
 if TYPE_CHECKING:
     import pandas
+    import polars
 
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
@@ -304,6 +305,39 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def to_arrow(self) -> "pyarrow.Table":
         return self._table
+
+    def to_polars(self) -> "polars.DataFrame":
+        """Convert this Arrow block into a Polars DataFrame.
+
+        Converts a PyArrow Table to a Polars DataFrame. See
+        https://docs.pola.rs/ for Polars documentation.
+
+        Note: This conversion creates a copy of the data. Zero-copy conversion
+        from Arrow to Polars is not possible.
+
+        Returns:
+            A Polars DataFrame containing the data.
+
+        Raises:
+            ImportError: If Polars is not installed.
+        """
+        try:
+            import polars as pl
+        except ImportError:
+            raise ImportError(
+                "Polars is not installed. Install with `pip install polars`. "
+                "See https://docs.pola.rs/ for more information."
+            )
+
+        # Combine chunks for better performance and compatibility
+        # Polars works better with contiguous arrays
+        from ray.data._internal.arrow_ops import transform_pyarrow
+
+        combined_table = transform_pyarrow.combine_chunks(self._table, copy=False)
+
+        # Convert to Polars DataFrame using from_arrow()
+        # See https://docs.pola.rs/api/dataframe/#polars.DataFrame.from_arrow
+        return pl.from_arrow(combined_table)
 
     def num_rows(self) -> int:
         # Arrow may represent an empty table via an N > 0 row, 0-column table, e.g. when

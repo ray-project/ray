@@ -69,7 +69,7 @@ def test_blocks_to_batches(block_size, drop_last):
     )
 
 
-@pytest.mark.parametrize("batch_format", ["pandas", "numpy", "pyarrow"])
+@pytest.mark.parametrize("batch_format", ["pandas", "numpy", "pyarrow", "polars"])
 def test_format_batches(batch_format):
     block_iter = block_generator(num_rows=2, num_blocks=2)
     batch_iter = (
@@ -80,11 +80,18 @@ def test_format_batches(batch_format):
     for batch in batch_iter:
         if batch_format == "pandas":
             assert isinstance(batch.data, pd.DataFrame)
-        elif batch_format == "arrow":
+        elif batch_format == "arrow" or batch_format == "pyarrow":
             assert isinstance(batch.data, pa.Table)
         elif batch_format == "numpy":
             assert isinstance(batch.data, dict)
             assert isinstance(batch.data["foo"], np.ndarray)
+        elif batch_format == "polars":
+            try:
+                import polars as pl
+
+                assert isinstance(batch.data, pl.DataFrame)
+            except ImportError:
+                pytest.skip("Polars not installed")
 
     assert [batch.metadata.batch_idx for batch in batch_iter] == list(
         range(len(batch_iter))

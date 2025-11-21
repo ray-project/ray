@@ -500,6 +500,12 @@ class Dataset:
             *whole* batch for you, providing ``fn`` with a copy rather than
             a zero-copy view.
 
+            .. note::
+                When using ``batch_format="polars"``, data is always copied during
+                conversion, so modifying the input Polars DataFrame is safe. However,
+                be aware that Polars DataFrames returned from ``fn`` will also be
+                copied when converting back to blocks, which may increase memory usage.
+
         .. warning::
             Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
             and may result in scheduling or stability issues. Please
@@ -616,8 +622,16 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``batch_format`` is set to ``None`` input
+                ``pyarrow.Table``. If ``"polars"``, batches are
+                ``polars.DataFrame``. If ``batch_format`` is set to ``None`` input
                 block format will be used.
+
+                .. note::
+                    When using ``batch_format="polars"``, the conversion always
+                    creates a copy of the data. The ``zero_copy_batch`` parameter
+                    has no effect for Polars format, as zero-copy conversion is
+                    not possible. This may result in higher memory usage compared
+                    to Arrow or Pandas formats.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
@@ -627,6 +641,10 @@ class Dataset:
                 modify underlying data buffers (like tensors, binary arrays, etc)
                 in place. It's recommended to copy only the data you need to
                 modify instead of resorting to copying the whole batch.
+
+                .. note::
+                    This parameter has no effect when ``batch_format="polars"``,
+                    as Polars DataFrames always require data copying during conversion.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -922,7 +940,7 @@ class Dataset:
                 :func:`ray.remote` for details.
         """
         # Check that batch_format
-        accepted_batch_formats = ["pandas", "pyarrow", "numpy"]
+        accepted_batch_formats = ["pandas", "pyarrow", "numpy", "polars"]
         if batch_format not in accepted_batch_formats:
             raise ValueError(
                 f"batch_format argument must be on of {accepted_batch_formats}, "
@@ -3403,8 +3421,12 @@ class Dataset:
     ) -> DataBatch:
         """Return up to ``batch_size`` rows from the :class:`Dataset` in a batch.
 
-        Ray Data represents batches as NumPy arrays or pandas DataFrames. You can
+        Ray Data represents batches as NumPy arrays, pandas DataFrames, or Polars DataFrames. You can
         configure the batch type by specifying ``batch_format``.
+
+        .. note::
+            When using ``batch_format="polars"``, the conversion always creates
+            a copy of the data, which may increase memory usage compared to other formats.
 
         This method is useful for inspecting inputs to :meth:`~Dataset.map_batches`.
 
@@ -3427,7 +3449,9 @@ class Dataset:
             batch_size: The maximum number of rows to return.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+                ``pandas.DataFrame``. If ``"polars"``, batches are
+                ``polars.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``.
 
         Returns:
             A batch of up to ``batch_size`` rows from the dataset.
@@ -5295,7 +5319,16 @@ class Dataset:
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+                ``pandas.DataFrame``. If ``"polars"``, batches are
+                ``polars.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``.
+
+                .. note::
+                    When using ``batch_format="polars"``, each batch conversion
+                    creates a copy of the data. This may result in 2-3x memory usage
+                    compared to Arrow format (input conversion + output conversion).
+                    For large datasets, consider using ``batch_format="pyarrow"`` for
+                    better memory efficiency.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the

@@ -129,6 +129,31 @@ of the returned batch, set ``batch_format``.
             0                5.1               3.5  ...               0.2       0
             1                4.9               3.0  ...               0.2       0
 
+    .. tab-item:: Polars
+
+        .. testcode::
+
+            import ray
+            import polars as pl
+
+            ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+
+            batch = ds.take_batch(batch_size=2, batch_format="polars")
+            print(batch)
+
+        .. testoutput::
+            :options: +MOCK
+
+            shape: (2, 5)
+            ┌─────────────────┬────────────────┬─────────────────┬────────────────┬────────┐
+            │ sepal length... │ sepal width... │ petal length... │ petal width... │ target │
+            │ ---             │ ---            │ ---             │ ---            │ ---    │
+            │ f64             │ f64            │ f64             │ f64            │ i64    │
+            ╞═════════════════╪════════════════╪═════════════════╪════════════════╪════════╡
+            │ 5.1             │ 3.5            │ 1.4             │ 0.2            │ 0      │
+            │ 4.9             │ 3.0            │ 1.4             │ 0.2            │ 0      │
+            └─────────────────┴────────────────┴─────────────────┴────────────────┴────────┘
+
 For more information on working with batches, see
 :ref:`Transforming batches <transforming_batches>` and
 :ref:`Iterating over batches <iterating-over-batches>`.
