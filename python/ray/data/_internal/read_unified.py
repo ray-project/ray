@@ -89,7 +89,7 @@ def _detect_lakehouse_tables(
     from ray.data._internal.format_detection import _detect_lakehouse_format
 
     tables = []
-    forpath in paths:
+    for path in paths:
         file_info = filesystem.get_file_info(path)
         if file_info.type == pafs.FileType.Directory:
             fmt = _detect_lakehouse_format(path, filesystem)
@@ -135,8 +135,8 @@ def _group_files_by_format(
             if ext:
                 unknown_extensions.add(ext)
 
-        if unknown_files:
-            if warn_on_binary:
+    if unknown_files:
+        if warn_on_binary:
             ext_list = (
                 ", ".join(sorted(unknown_extensions))
                 if unknown_extensions
