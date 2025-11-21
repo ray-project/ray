@@ -276,7 +276,7 @@ def test_streaming_repartition_write_no_operator_fusion(
 
     # Verify that StreamingRepartition physical operator has supports_fusion=False
     up_physical_op = physical_op.input_dependencies[0]
-    assert up_physical_op.name == "StreamingRepartition"
+    assert up_physical_op.name == "StreamingRepartition[num_rows_per_block=20]"
     assert not getattr(
         up_physical_op, "_supports_fusion", True
     ), "StreamingRepartition should have supports_fusion=False"
