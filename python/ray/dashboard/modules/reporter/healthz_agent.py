@@ -33,9 +33,20 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
     @routes.get("/api/local_raylet_healthz")
     async def health_check(self, req: Request) -> Response:
         try:
+            self.raylet_health()
+        except Exception as e:
+            return Response(status=503, text=str(e), content_type="application/text")
+
+        return Response(
+            text="success",
+            content_type="application/text",
+        )
+
+    async def raylet_health(self) -> str:
+        try:
             alive = await self._health_checker.check_local_raylet_liveness()
             if alive is False:
-                return Response(status=503, text="Local Raylet failed")
+                raise Exception("Local Raylet failed")
         except ray.exceptions.RpcError as e:
             # We only consider the error other than GCS unreachable as raylet failure
             # to avoid false positive.
@@ -47,37 +58,31 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
                 ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
                 ray._raylet.GRPC_STATUS_CODE_DEADLINE_EXCEEDED,
             ):
-                return Response(status=503, text=f"Health check failed due to: {e}")
+                raise Exception(f"Health check failed due to: {e}")
+        return "success"
 
-        return Response(
-            text="success",
-            content_type="application/text",
-        )
-
-    async def local_gcs_health(self) -> Response:
-        # Check GCS health, unless there is no local GCS.
+    async def local_gcs_health(self) -> str:
+        # If GCS is not local, don't check its health.
         if not self._dashboard_agent.is_head:
-            return Response(status=200, text="success (no local gcs)")
-        try:
-            gcs_alive = await self._health_checker.check_gcs_liveness()
-            if not gcs_alive:
-                return Response(status=503, text="GCS health check failed.")
-        except Exception as e:
-            return Response(status=503, text=f"GCS health check failed: {e}")
-        return Response(status=200, text="success")
+            return "success (no local gcs)"
+        gcs_alive = await self._health_checker.check_gcs_liveness()
+        if not gcs_alive:
+            raise Exception("GCS health check failed.")
+        return "success"
 
     @routes.get("/api/healthz")
     async def unified_health(self, req: Request) -> Response:
         [raylet_check, gcs_check] = await asyncio.gather(
-            self.health_check(req),
+            self.raylet_health(),
             self.local_gcs_health(),
+            return_exceptions=True,
         )
         checks = {"raylet": raylet_check, "gcs": gcs_check}
 
-        # Collect overall health check status and log any failures.
+        # Log failures.
         status = 200
         for name, result in checks.items():
-            if result.status != 200:
+            if isinstance(result, Exception):
                 status = 503
                 logger.warning(
                     f"health check {name} failed: {result.status} {result.text}"
@@ -85,7 +90,7 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
 
         return Response(
             status=status,
-            text="\n".join([f"{name}: {resp.text}" for name, resp in checks.items()]),
+            text="\n".join([f"{name}: {result}" for name, result in checks.items()]),
             content_type="application/text",
         )
 
