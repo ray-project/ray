@@ -143,29 +143,24 @@ def run_streaming_generator_workload(total_num_cpus, smoke):
 
     @ray.remote(num_cpus=1, max_retries=-1)
     def streaming_generator(num_items, item_size_mb):
-        """Generator that yields large plasma objects."""
         for i in range(num_items):
             data = np.zeros(item_size_mb * 1024 * 1024, dtype=np.uint8)
             yield data
 
     @ray.remote(num_cpus=1, max_retries=-1)
     def consume_streaming_generator(num_items, item_size_mb):
-        """Task that spawns and consumes a streaming generator."""
         gen = streaming_generator.remote(num_items, item_size_mb)
 
         count = 0
         total_bytes = 0
         for item_ref in gen:
-            # Each yielded item is an ObjectRef, need to get it
             data = ray.get(item_ref)
             count += 1
             total_bytes += data.nbytes
 
         return (count, total_bytes)
 
-    alive_nodes = [n for n in ray.nodes() if n.get("Alive", False)]
-
-    NUM_GENERATORS = len(alive_nodes)
+    NUM_GENERATORS = 10
     # For smoke mode, run fewer items
     if smoke:
         ITEMS_PER_GENERATOR = 10
@@ -182,17 +177,10 @@ def run_streaming_generator_workload(total_num_cpus, smoke):
         f"{NUM_GENERATORS * ITEMS_PER_GENERATOR * ITEM_SIZE_MB / 1024:.2f} GB"
     )
 
-    # Launch generators on different nodes in parallel
+    # Launch generators in parallel
     tasks = []
     for i in range(NUM_GENERATORS):
-        node = alive_nodes[i % len(alive_nodes)]
-        node_id = node["NodeID"]
-
-        task = consume_streaming_generator.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=node_id, soft=True
-            )
-        ).remote(ITEMS_PER_GENERATOR, ITEM_SIZE_MB)
+        task = consume_streaming_generator.remote(ITEMS_PER_GENERATOR, ITEM_SIZE_MB)
         tasks.append(task)
 
     results = ray.get(tasks)
@@ -235,7 +223,6 @@ def run_object_ref_borrowing_workload(total_num_cpus, smoke):
 
     @ray.remote(num_cpus=1, max_retries=-1)
     def borrow_object(borrowed_refs):
-        """Receives a list of borrowed refs, gets the first one, returns size."""
         data = ray.get(borrowed_refs[0])
         return len(data)
 
