@@ -7,7 +7,6 @@ FROM "$BASE_IMAGE"
 ARG PIP_REQUIREMENTS
 
 COPY "$PIP_REQUIREMENTS" extra-test-requirements.txt
-COPY "$RAY_IMG_CONSTRAINTS" ray_img_constraints.lock
 
 RUN <<EOF
 #!/bin/bash
