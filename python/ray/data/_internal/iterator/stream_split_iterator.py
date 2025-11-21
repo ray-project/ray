@@ -297,7 +297,7 @@ class SplitCoordinator:
         return starting_epoch + 1
 
     def _get_total_resources_for_testing(self) -> Optional[ExecutionResources]:
-        """Returns the total resources for testing purposes.
+        """Returns the total resources of the cluster autoscaler for testing purposes.
 
         Returns None if the executor or cluster autoscaler is not available.
         """
