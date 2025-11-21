@@ -1,6 +1,7 @@
 import logging
 import threading
 import traceback
+import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
@@ -166,13 +167,17 @@ class SerializationContext:
         if ray_constants.RAY_ENABLE_ZERO_COPY_TORCH_TENSORS:
             try:
                 import torch
-            except ImportError as e:
-                raise ImportError(
-                    "Zero-copy tensor serialization requires PyTorch to be installed. "
-                    "Please install PyTorch (e.g., `pip install torch`) and try again."
-                ) from e
+            except ImportError:
+                # Warn and disable zero-copy tensor serialization when PyTorch is missing,
+                # even if RAY_ENABLE_ZERO_COPY_TORCH_TENSORS is set.
+                warnings.warn(
+                    "PyTorch is not installed. Disabling zero-copy tensor serialization "
+                    "even though RAY_ENABLE_ZERO_COPY_TORCH_TENSORS is set.",
+                    tensor_serialization_utils.ZeroCopyTensorsWarning,
+                    stacklevel=3,
+                )
+                ray_constants.RAY_ENABLE_ZERO_COPY_TORCH_TENSORS = False
             else:
-                self._torch_custom_serializer_registered = True
                 self._register_cloudpickle_reducer(
                     torch.Tensor, tensor_serialization_utils.zero_copy_tensors_reducer
                 )

@@ -63,27 +63,11 @@ def _zero_copy_tensors_deserializer(
                 f"dtype size ({dtype_size}) for dtype {dtype_str}"
             )
 
-        # Reshape and reinterpret bytes as target dtype
-        num_elements = np_array.size // dtype_size
-        restored_tensor = uint8_tensor[: num_elements * dtype_size].view(
-            dtype=original_dtype
-        )
-
-        # Step 3: Reshape to original shape
-        restored_tensor = restored_tensor.reshape(shape)
+        # Step 3: Reshape and reinterpret bytes as target dtype
+        restored_tensor = uint8_tensor.view(original_dtype).reshape(shape)
 
         # Step 4: Move to target device
-        dev = torch.device(device_str)
-        if dev.type == "cuda":
-            if not torch.cuda.is_available():
-                raise RuntimeError(
-                    "Deserialization target device is CUDA, but CUDA is not available."
-                )
-            target_device = torch.device("cuda")
-        else:
-            target_device = torch.device("cpu")
-
-        return restored_tensor.to(device=target_device)
+        return restored_tensor.to(device=device_str)
 
     except Exception as e:
         from ray._private.serialization import DeserializationError
@@ -153,10 +137,6 @@ def zero_copy_tensors_reducer(tensor: "torch.Tensor") -> Tuple[Any, Tuple[Any, .
     # View as uint8 bytes
     uint8_view = flat_tensor.view(torch.uint8)
     np_array = uint8_view.numpy()
-
-    # Make the array read-only to enable true zero-copy in pickle5
-    if np_array.flags.writeable:
-        np_array.flags.writeable = False
 
     return _zero_copy_tensors_deserializer, (
         np_array,

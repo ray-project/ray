@@ -590,13 +590,14 @@ RDT_FETCH_FAIL_TIMEOUT_SECONDS = (
 # underlying tensor data, which can improve performance when passing large tensors
 # across tasks or actors.
 #
-# This feature is experimental and has strict requirements:
-# - The tensor must have `requires_grad=False` (i.e., be detached from the autograd graph).
-# - The tensor must be contiguous in memory and reside on the CPU.
+# This feature is experimental and works best under the following conditions:
+# - The tensor has `requires_grad=False` (i.e., is detached from the autograd graph).
+# - The tensor is contiguous in memory and resides on the CPU.
 #
-# If these conditions are not met, zero-copy serialization is disabled.
-# Ray may then perform 1–2 internal copies (e.g., to move the tensors to CPU or
-# ensure contiguity), and writing to the tensors will result in undefined behavior.
+# Tensors on GPU or non-contiguous tensors are still supported: Ray will
+# automatically move them to CPU and/or make them contiguous as needed.
+# While this incurs an initial copy, subsequent serialization may still benefit
+# from reduced overhead compared to the default path.
 #
 # Use with caution and ensure tensors meet the above criteria before enabling.
 # Default: False.
