@@ -146,28 +146,21 @@ def run_streaming_generator_workload(total_num_cpus, smoke):
         """Generator that yields large plasma objects."""
         for i in range(num_items):
             data = np.zeros(item_size_mb * 1024 * 1024, dtype=np.uint8)
-            yield (i, data)
+            yield data
 
     @ray.remote(num_cpus=1, max_retries=-1)
-    def consume_streaming_generator(num_items, item_size_mb, node_name):
+    def consume_streaming_generator(num_items, item_size_mb):
         """Task that spawns and consumes a streaming generator."""
-        print(
-            f"Starting streaming generator on {node_name}: "
-            f"{num_items} items of {item_size_mb}MB each"
-        )
-
         gen = streaming_generator.remote(num_items, item_size_mb)
 
         count = 0
         total_bytes = 0
-        for idx, data in gen:
+        for item_ref in gen:
+            # Each yielded item is an ObjectRef, need to get it
+            data = ray.get(item_ref)
             count += 1
             total_bytes += data.nbytes
 
-        print(
-            f"Completed streaming generator on {node_name}: "
-            f"{count} items, {total_bytes / (1024**3):.2f} GB"
-        )
         return (count, total_bytes)
 
     alive_nodes = [n for n in ray.nodes() if n.get("Alive", False)]
@@ -194,13 +187,12 @@ def run_streaming_generator_workload(total_num_cpus, smoke):
     for i in range(NUM_GENERATORS):
         node = alive_nodes[i % len(alive_nodes)]
         node_id = node["NodeID"]
-        node_name = node.get("NodeName", node_id[:8])
 
         task = consume_streaming_generator.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 node_id=node_id, soft=True
             )
-        ).remote(ITEMS_PER_GENERATOR, ITEM_SIZE_MB, node_name)
+        ).remote(ITEMS_PER_GENERATOR, ITEM_SIZE_MB)
         tasks.append(task)
 
     results = ray.get(tasks)
@@ -251,7 +243,7 @@ def run_object_ref_borrowing_workload(total_num_cpus, smoke):
     if smoke:
         NUM_ITERATIONS = 10
     else:
-        NUM_ITERATIONS = 1000
+        NUM_ITERATIONS = 1500
     OBJECT_SIZE_MB = 10
 
     print(f"Starting {NUM_ITERATIONS} task pairs (A creates, B borrows)")
