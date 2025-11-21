@@ -5,6 +5,7 @@ convenient access to PyArrow compute functions through the expression API.
 """
 
 from typing import Any
+import datetime
 
 import pandas as pd
 import pyarrow as pa
@@ -519,6 +520,77 @@ class TestStructNamespace:
             }
         )
         assert_df_equal(result, expected)
+
+
+# ──────────────────────────────────────
+# Struct Namespace Tests
+# ──────────────────────────────────────
+
+
+def test_dt_namespace_extractors(ray_start_regular):
+    ds = ray.data.from_items(
+        [
+            {
+                "ts": datetime.datetime(2024, 1, 2, 3, 4, 5),
+            }
+        ]
+    )
+
+    result_ds = ds.select(
+        [
+            col("ts").dt.year().alias("year"),
+            col("ts").dt.month().alias("month"),
+            col("ts").dt.day().alias("day"),
+            col("ts").dt.hour().alias("hour"),
+            col("ts").dt.minute().alias("minute"),
+            col("ts").dt.second().alias("second"),
+        ]
+    )
+
+    row = result_ds.take(1)[0]
+    assert row["year"] == 2024
+    assert row["month"] == 1
+    assert row["day"] == 2
+    assert row["hour"] == 3
+    assert row["minute"] == 4
+    assert row["second"] == 5
+
+
+def test_dt_namespace_strftime(ray_start_regular):
+    ds = ray.data.from_items(
+        [
+            {
+                "ts": datetime.datetime(2024, 1, 2, 3, 4, 5),
+            }
+        ]
+    )
+
+    result_ds = ds.select(
+        [col("ts").dt.strftime("%Y-%m-%d").alias("date_str")]
+    )
+
+    row = result_ds.take(1)[0]
+    assert row["date_str"] == "2024-01-02"
+
+
+def test_dt_namespace_rounding(ray_start_regular):
+    ts = datetime.datetime(2024, 1, 2, 10, 30, 0)
+
+    ds = ray.data.from_items([{"ts": ts}])
+
+    floored = ds.select(
+        [col("ts").dt.floor("day").alias("ts_floor")]
+    ).take(1)[0]["ts_floor"]
+    ceiled = ds.select(
+        [col("ts").dt.ceil("day").alias("ts_ceil")]
+    ).take(1)[0]["ts_ceil"]
+    rounded = ds.select(
+        [col("ts").dt.round("day").alias("ts_round")]
+    ).take(1)[0]["ts_round"]
+
+    assert floored == datetime.datetime(2024, 1, 2, 0, 0, 0)
+    assert ceiled == datetime.datetime(2024, 1, 3, 0, 0, 0)
+    assert rounded == datetime.datetime(2024, 1, 3, 0, 0, 0)
 
 
 # ──────────────────────────────────────
