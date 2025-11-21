@@ -1595,6 +1595,7 @@ class Dataset:
         shuffle: bool = False,
         keys: Optional[List[str]] = None,
         sort: bool = False,
+        supports_fusion: bool = True,
     ) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of
         :ref:`blocks <dataset_concept>`.
@@ -1699,6 +1700,7 @@ class Dataset:
             op = StreamingRepartition(
                 self._logical_plan.dag,
                 target_num_rows_per_block=target_num_rows_per_block,
+                supports_fusion=supports_fusion,
             )
         else:
             op = Repartition(
