@@ -60,6 +60,11 @@ message RaySyncMessage {
   bytes node_id = 4;
 }
 
+message RaySyncMessageBatch {
+  // Batch of RaySyncMessages.
+  repeated RaySyncMessage messages = 1;
+}
+
 service RaySyncer {
-  rpc StartSync(stream RaySyncMessage) returns (stream RaySyncMessage);
+  rpc StartSync(stream RaySyncMessageBatch) returns (stream RaySyncMessageBatch);
 }

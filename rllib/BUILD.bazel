@@ -838,7 +838,7 @@ py_test(
 
 # DreamerV3
 # takes too long (up to 20-30min to learn -200 on 1 GPU)
-# # Pendulum
+# Pendulum
 # py_test(
 #    name = "learning_tests_pendulum_dreamerv3_gpu",
 #    size = "large",
@@ -847,6 +847,7 @@ py_test(
 #        "--as-test",
 #        "--num-gpus-per-learner=1",
 #        "--num-learners=1",
+#        "--num-env-runners=4",
 #    ],
 #    main = "examples/algorithms/dreamerv3/pendulum_dreamerv3.py",
 #    tags = [
