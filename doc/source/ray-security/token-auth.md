@@ -26,9 +26,9 @@ You can configure authentication tokens using environment variables or the defau
 
 Ray checks for tokens in the following order, highest priority first:
 
-  1. Set the RAY_AUTH_TOKEN environment variable
-  2. Set the RAY_AUTH_TOKEN_PATH environment variable (pointing to a token file)
-  3. Create a token file at the default location: ~/.ray/auth_token
+1. `RAY_AUTH_TOKEN` environment variable.
+2. `RAY_AUTH_TOKEN_PATH` environment variable, which provides a path to a token file.
+3. The default location, `~/.ray/auth_token`.
 
 When managing multiple tokens, we recommend storing them in local files and using the `RAY_AUTH_TOKEN_PATH` environment variable rather than setting the `RAY_AUTH_TOKEN` value directly to avoid exposing the token to other code that reads environment variables.
 
@@ -94,9 +94,9 @@ $ export RAY_AUTH_MODE=token
 $ ray start --head
 ...
 RuntimeError: Token authentication is enabled but no authentication token was found. Please provide an authentication token using one of these methods:
-1. Set the RAY_AUTH_TOKEN environment variable
-2. Set the RAY_AUTH_TOKEN_PATH environment variable (pointing to a token file)
-3. Create a token file at the default location: ~/.ray/auth_token
+  1. Set the RAY_AUTH_TOKEN environment variable
+  2. Set the RAY_AUTH_TOKEN_PATH environment variable (pointing to a token file)
+  3. Create a token file at the default location: ~/.ray/auth_token
 
 # Generate a token.
 $ ray get-auth-token --generate
