@@ -115,7 +115,7 @@ def _group_files_by_format(
     )
 
     files_by_format: Dict[str, List[str]] = {}
-        unknown_files = []
+    unknown_files = []
     unknown_extensions = set()
 
     for path in paths:
@@ -124,7 +124,7 @@ def _group_files_by_format(
             if format_name not in files_by_format:
                 files_by_format[format_name] = []
             files_by_format[format_name].append(path)
-                else:
+        else:
             unknown_files.append(path)
             # Extract extension for warning
             path_obj = Path(path)
@@ -132,7 +132,7 @@ def _group_files_by_format(
             if ext:
                 unknown_extensions.add(ext)
 
-        if unknown_files:
+    if unknown_files:
             if warn_on_binary:
             ext_list = (
                 ", ".join(sorted(unknown_extensions))
