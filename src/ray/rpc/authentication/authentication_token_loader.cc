@@ -58,12 +58,14 @@ std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken() {
   AuthenticationToken token = LoadTokenFromSources();
 
   // If no token found and auth is enabled, fail with RAY_CHECK
-  RAY_CHECK(!token.empty())
-      << "Ray Setup Error: Token authentication is enabled but Ray couldn't find an "
-         "authentication token. "
-      << "Set the RAY_AUTH_TOKEN environment variable, or set RAY_AUTH_TOKEN_PATH to "
-         "point to a file with the token, "
-      << "or create a token file at ~/.ray/auth_token.";
+  if (token.empty()) {
+    RAY_LOG(FATAL)
+        << "Token authentication is enabled but Ray couldn't find an "
+           "authentication token. "
+        << "Set the RAY_AUTH_TOKEN environment variable, or set RAY_AUTH_TOKEN_PATH to "
+           "point to a file with the token, "
+           "or create a token file at ~/.ray/auth_token.";
+  }
 
   // Cache and return the loaded token
   cached_token_ = std::move(token);
@@ -128,10 +130,12 @@ AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
     std::string path_str(env_token_path);
     if (!path_str.empty()) {
       std::string token_str = TrimWhitespace(ReadTokenFromFile(path_str));
-      RAY_CHECK(!token_str.empty()) << "Ray Setup Error: RAY_AUTH_TOKEN_PATH is set "
-                                       "but file cannot be opened or is empty: "
-                                    << path_str;
-      RAY_LOG(DEBUG) << "Loaded authentication token from file: " << path_str;
+      if (token_str.empty()) {
+        RAY_LOG(FATAL) << "RAY_AUTH_TOKEN_PATH is set "
+                          "but file cannot be opened or is empty: "
+                       << path_str;
+      }
+      RAY_LOG(INFO) << "Loaded authentication token from file: " << path_str;
       return AuthenticationToken(token_str);
     }
   }
