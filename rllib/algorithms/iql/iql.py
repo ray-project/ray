@@ -45,7 +45,7 @@ class IQLConfig(MARWILConfig):
         # Set the config object's data path.
         # Run this from the ray directory root.
         config.offline_data(
-            input_="./rllib/offline/tests/data/pendulum-v1_enormous"
+            input_="./rllib/offline/tests/data/pendulum/pendulum-v1_enormous"
         )
         # Set the config object's env, used for evaluation.
         config.environment(env="Pendulum-v1")

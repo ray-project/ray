@@ -162,9 +162,7 @@ class TestUnzipIfNeeded(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.s3_path = "s3://air-example-data/rllib/pendulum"
         cls.relative_path = "offline/tests/data/pendulum"
-        cls.absolute_path = str(
-            Path(__file__).parent.parent.parent / "tests" / "data" / "pendulum"
-        )
+        cls.absolute_path = str(Path(__file__).parent / "data" / "pendulum")
 
     # @TODO: unskip when this is fixed
     @pytest.mark.skip(reason="Shouldn't hit S3 in CI")
