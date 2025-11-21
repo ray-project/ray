@@ -288,7 +288,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
             if value is None:
                 # If we have explicit labels, expand to Nones for each label.
                 # Otherwise, return as is (unexpanded) since we can't determine expansion size.
-                if labels:
+                if labels is not None:
                     return {
                         f"{stat_name}[{label}]": (None, scalar_type) for label in labels
                     }
