@@ -86,7 +86,7 @@ def _detect_lakehouse_tables(
     from ray.data._internal.format_detection import _detect_lakehouse_format
 
     tables = []
-        for path in paths:
+    for path in paths:
         file_info = filesystem.get_file_info(path)
         if file_info.type == pafs.FileType.Directory:
             fmt = _detect_lakehouse_format(path, filesystem)
