@@ -160,3 +160,5 @@ class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
             ray.get(self._shutdown_refs, timeout=5)
         except GetTimeoutError:
             logger.error("Ray Data executor shutdown task timed out after 5 seconds.")
+        except Exception:
+            logger.exception("Failed to gracefully terminate Ray Data executors.")
