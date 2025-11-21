@@ -522,6 +522,50 @@ class TestStructNamespace:
 
 
 # ──────────────────────────────────────
+# Array Namespace Tests
+# ──────────────────────────────────────
+
+
+def _make_fixed_size_list_table() -> pa.Table:
+    # Build a FixedSizeListArray with 3 rows, each of length 2:
+    # [[1, 2], [3, 4], [5, 6]]
+    values = pa.array([1, 2, 3, 4, 5, 6], type=pa.int64())
+    fixed = pa.FixedSizeListArray.from_arrays(values, list_size=2)
+    return pa.Table.from_arrays([fixed], names=["features"])
+
+
+def test_arr_to_list(ray_start_regular):
+    table = _make_fixed_size_list_table()
+    ds = ray.data.from_arrow(table)
+
+    result = ds.select(
+        col("features").arr.to_list().alias("features")
+    ).take(3)
+
+    assert result == [
+        {"features": [1, 2]},
+        {"features": [3, 4]},
+        {"features": [5, 6]},
+    ]
+
+
+def test_arr_flatten(ray_start_regular):
+    table = _make_fixed_size_list_table()
+    ds = ray.data.from_arrow(table)
+
+    result = ds.select(
+        col("features").arr.flatten().alias("features")
+    ).take(3)
+
+    # For a simple FixedSizeListArray, flatten should behave like to_list
+    assert result == [
+        {"features": [1, 2]},
+        {"features": [3, 4]},
+        {"features": [5, 6]},
+    ]
+
+
+# ──────────────────────────────────────
 # Integration Tests
 # ──────────────────────────────────────
 
