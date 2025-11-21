@@ -637,11 +637,6 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
   }
 }
 
-bool ReferenceCounter::HasOwner(const ObjectID &object_id) const {
-  absl::MutexLock lock(&mutex_);
-  return object_id_refs_.find(object_id) != object_id_refs_.end();
-}
-
 StatusSet<StatusT::NotFound> ReferenceCounter::HasOwner(
     const std::vector<ObjectID> &object_ids) const {
   absl::MutexLock lock(&mutex_);
