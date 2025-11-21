@@ -29,7 +29,7 @@ cdef struct HeapNode:
     int series_idx  # Current position in the series
 
 
-cdef void heap_sift_down(HeapNode* heap, int size, int pos) nogil:
+cdef inline void heap_sift_down(HeapNode* heap, int size, int pos) nogil:
     """Sift down operation for min-heap (inline for performance)."""
     cdef int smallest = pos
     cdef int left = 2 * pos + 1
@@ -57,7 +57,7 @@ cdef void heap_sift_down(HeapNode* heap, int size, int pos) nogil:
         pos = smallest
 
 
-cdef void heap_sift_up(HeapNode* heap, int pos) nogil:
+cdef inline void heap_sift_up(HeapNode* heap, int pos) nogil:
     """Sift up operation for min-heap (inline for performance)."""
     cdef int parent
     cdef HeapNode temp
@@ -74,7 +74,7 @@ cdef void heap_sift_up(HeapNode* heap, int pos) nogil:
         pos = parent
 
 
-cdef void heap_pop(HeapNode* heap, int* size) nogil:
+cdef inline void heap_pop(HeapNode* heap, int* size) nogil:
     """Remove minimum element from heap."""
     if size[0] <= 0:
         return
@@ -85,11 +85,128 @@ cdef void heap_pop(HeapNode* heap, int* size) nogil:
         heap_sift_down(heap, size[0], 0)
 
 
-cdef void heap_push(HeapNode* heap, int* size, HeapNode node) nogil:
+cdef inline void heap_push(HeapNode* heap, int* size, HeapNode node) nogil:
     """Add element to heap."""
     heap[size[0]] = node
     heap_sift_up(heap, size[0])
     size[0] += 1
+
+
+cdef int merge_series_nogil(double** timestamps_arrays, double** values_arrays,
+                              int* series_lengths, int num_series,
+                              int result_capacity,
+                              double** out_timestamps, double** out_values) nogil:
+    """
+    Fully nogil k-way merge operating on C arrays.
+
+    Args:
+        timestamps_arrays: Array of pointers to timestamp arrays for each series
+        values_arrays: Array of pointers to value arrays for each series
+        series_lengths: Array of lengths for each series
+        num_series: Number of series to merge
+        result_capacity: Pre-allocated capacity (should be >= sum of all series lengths)
+        out_timestamps: Output pointer for result timestamps
+        out_values: Output pointer for result values
+
+    Returns: Number of points in merged result, or -1 on error
+    """
+    cdef:
+        int i, series_idx, replica_idx
+        int heap_size = 0
+        double timestamp, value, old_value
+        double running_total = 0.0
+        double rounded_timestamp, last_rounded_timestamp = -1.0
+        HeapNode new_node
+        int result_count = 0
+        # C arrays for performance
+        double* current_values = <double*>malloc(num_series * sizeof(double))
+        int* series_positions = <int*>malloc(num_series * sizeof(int))
+        HeapNode* merge_heap = <HeapNode*>malloc(num_series * sizeof(HeapNode))
+        double* result_timestamps = <double*>malloc(result_capacity * sizeof(double))
+        double* result_values = <double*>malloc(result_capacity * sizeof(double))
+
+    if not current_values or not series_positions or not merge_heap or not result_timestamps or not result_values:
+        # Memory allocation failed
+        if current_values:
+            free(current_values)
+        if series_positions:
+            free(series_positions)
+        if merge_heap:
+            free(merge_heap)
+        if result_timestamps:
+            free(result_timestamps)
+        if result_values:
+            free(result_values)
+        return -1
+
+    # Initialize arrays
+    for i in range(num_series):
+        current_values[i] = 0.0
+        series_positions[i] = 0
+
+        # Push first element from each series to heap
+        if series_lengths[i] > 0:
+            merge_heap[heap_size].timestamp = timestamps_arrays[i][0]
+            merge_heap[heap_size].replica_idx = i
+            merge_heap[heap_size].value = values_arrays[i][0]
+            merge_heap[heap_size].series_idx = 0
+            heap_size += 1
+
+    # Build initial heap
+    for i in range(heap_size // 2 - 1, -1, -1):
+        heap_sift_down(merge_heap, heap_size, i)
+
+    # K-way merge
+    while heap_size > 0:
+        # Get minimum element
+        timestamp = merge_heap[0].timestamp
+        replica_idx = merge_heap[0].replica_idx
+        value = merge_heap[0].value
+        series_idx = merge_heap[0].series_idx
+
+        # Update running total
+        old_value = current_values[replica_idx]
+        current_values[replica_idx] = value
+        running_total += value - old_value
+
+        # Remove from heap
+        heap_pop(merge_heap, &heap_size)
+
+        # Push next element from same series if available
+        series_positions[replica_idx] = series_idx + 1
+        if series_positions[replica_idx] < series_lengths[replica_idx]:
+            new_node.timestamp = timestamps_arrays[replica_idx][series_positions[replica_idx]]
+            new_node.replica_idx = replica_idx
+            new_node.value = values_arrays[replica_idx][series_positions[replica_idx]]
+            new_node.series_idx = series_positions[replica_idx]
+
+            heap_push(merge_heap, &heap_size, new_node)
+
+        # Only add point if value changed
+        if value != old_value:
+            # Round to 10ms precision
+            rounded_timestamp = c_round(timestamp * 100.0) / 100.0
+
+            # Check if we can merge with last point
+            if result_count > 0 and last_rounded_timestamp == rounded_timestamp:
+                # Update last point's value
+                result_values[result_count - 1] = running_total
+            else:
+                # Add new point (capacity is pre-allocated to be large enough)
+                result_timestamps[result_count] = rounded_timestamp
+                result_values[result_count] = running_total
+                result_count += 1
+                last_rounded_timestamp = rounded_timestamp
+
+    # Clean up
+    free(current_values)
+    free(series_positions)
+    free(merge_heap)
+
+    # Return results
+    out_timestamps[0] = result_timestamps
+    out_values[0] = result_values
+    return result_count
 
 
 def merge_instantaneous_total_cython(list replicas_timeseries):
@@ -116,164 +233,127 @@ def merge_instantaneous_total_cython(list replicas_timeseries):
 
     cdef:
         int num_series = len(active_series)
-        int i, series_idx, replica_idx
-        int heap_size = 0
-        double timestamp, value, old_value
-        double running_total = 0.0
-        double rounded_timestamp, last_rounded_timestamp = -1.0
+        int i, j
+        int total_points = 0
         object point, series
-        HeapNode new_node
-        # C arrays for performance
-        double* current_values = <double*>malloc(num_series * sizeof(double))
-        int* series_positions = <int*>malloc(num_series * sizeof(int))
+        bint alloc_failed = False
+        # C arrays for all timestamps and values
+        double** timestamps_arrays = <double**>malloc(num_series * sizeof(double*))
+        double** values_arrays = <double**>malloc(num_series * sizeof(double*))
         int* series_lengths = <int*>malloc(num_series * sizeof(int))
-        HeapNode* merge_heap = <HeapNode*>malloc(num_series * sizeof(HeapNode))
+        double* result_timestamps = NULL
+        double* result_values = NULL
+        int result_count
 
-    if not current_values or not series_positions or not series_lengths or not merge_heap:
+    if not timestamps_arrays or not values_arrays or not series_lengths:
         # Memory allocation failed
-        if current_values:
-            free(current_values)
-        if series_positions:
-            free(series_positions)
+        if timestamps_arrays:
+            free(timestamps_arrays)
+        if values_arrays:
+            free(values_arrays)
         if series_lengths:
             free(series_lengths)
-        if merge_heap:
-            free(merge_heap)
         raise MemoryError("Failed to allocate memory for merge operation")
 
+    # Initialize pointers to NULL for safe cleanup
+    for i in range(num_series):
+        timestamps_arrays[i] = NULL
+        values_arrays[i] = NULL
+
     try:
-        # Initialize arrays
+        # Extract all data from Python objects into C arrays
         for i in range(num_series):
-            current_values[i] = 0.0
-            series_positions[i] = 0
             series = active_series[i]
             series_lengths[i] = len(series)
+            total_points += series_lengths[i]
 
-            # Push first element from each series to heap
-            if series_lengths[i] > 0:
-                point = series[0]
-                merge_heap[heap_size].timestamp = point.timestamp
-                merge_heap[heap_size].replica_idx = i
-                merge_heap[heap_size].value = point.value
-                merge_heap[heap_size].series_idx = 0
-                heap_size += 1
+            timestamps_arrays[i] = <double*>malloc(series_lengths[i] * sizeof(double))
+            values_arrays[i] = <double*>malloc(series_lengths[i] * sizeof(double))
 
-        # Build initial heap
-        for i in range(heap_size // 2 - 1, -1, -1):
-            heap_sift_down(merge_heap, heap_size, i)
+            if not timestamps_arrays[i] or not values_arrays[i]:
+                alloc_failed = True
+                break
 
-        # Result list
-        merged = []
+            # Copy data from Python objects to C arrays
+            for j in range(series_lengths[i]):
+                point = series[j]
+                timestamps_arrays[i][j] = point.timestamp
+                values_arrays[i][j] = point.value
 
-        # K-way merge
-        while heap_size > 0:
-            # Get minimum element
-            timestamp = merge_heap[0].timestamp
-            replica_idx = merge_heap[0].replica_idx
-            value = merge_heap[0].value
-            series_idx = merge_heap[0].series_idx
+        if alloc_failed:
+            raise MemoryError("Failed to allocate memory for series data")
 
-            # Update running total
-            old_value = current_values[replica_idx]
-            current_values[replica_idx] = value
-            running_total += value - old_value
+        # Perform merge with full nogil
+        # Pass total_points as capacity (worst case: all points output)
+        with nogil:
+            result_count = merge_series_nogil(timestamps_arrays, values_arrays,
+                                               series_lengths, num_series,
+                                               total_points,
+                                               &result_timestamps, &result_values)
 
-            # Remove from heap
-            heap_pop(merge_heap, &heap_size)
+        if result_count < 0:
+            raise MemoryError("Failed during merge operation")
 
-            # Push next element from same series if available
-            series_positions[replica_idx] = series_idx + 1
-            if series_positions[replica_idx] < series_lengths[replica_idx]:
-                series = active_series[replica_idx]
-                point = series[series_positions[replica_idx]]
+        # Convert C arrays back to Python objects
+        merged = [None] * result_count
+        for i in range(result_count):
+            merged[i] = TimeStampedValue(result_timestamps[i], result_values[i])
 
-                new_node.timestamp = point.timestamp
-                new_node.replica_idx = replica_idx
-                new_node.value = point.value
-                new_node.series_idx = series_positions[replica_idx]
-
-                heap_push(merge_heap, &heap_size, new_node)
-
-            # Only add point if value changed
-            if value != old_value:
-                # Round to 10ms precision
-                rounded_timestamp = c_round(timestamp * 100.0) / 100.0
-
-                # Check if we can merge with last point
-                if len(merged) > 0 and last_rounded_timestamp == rounded_timestamp:
-                    # Update last point's value (use explicit index instead of -1)
-                    merged[len(merged) - 1] = TimeStampedValue(rounded_timestamp, running_total)
-                else:
-                    # Add new point
-                    merged.append(TimeStampedValue(rounded_timestamp, running_total))
-                    last_rounded_timestamp = rounded_timestamp
+        # Free result arrays
+        free(result_timestamps)
+        free(result_values)
 
         return merged
 
     finally:
-        # Clean up
-        free(current_values)
-        free(series_positions)
-        free(series_lengths)
-        free(merge_heap)
+        # Centralized cleanup: safe even if some allocations failed
+        if timestamps_arrays:
+            for i in range(num_series):
+                if timestamps_arrays[i]:
+                    free(timestamps_arrays[i])
+            free(timestamps_arrays)
+        if values_arrays:
+            for i in range(num_series):
+                if values_arrays[i]:
+                    free(values_arrays[i])
+            free(values_arrays)
+        if series_lengths:
+            free(series_lengths)
 
 
-def time_weighted_average_cython(list timeseries, double window_start=-1.0,
-                                  double window_end=-1.0, double last_window_s=1.0):
+cdef double compute_time_weighted_average_nogil(double* timestamps, double* values, int n,
+                                                 double window_start, double window_end) nogil:
     """
-    Cython-optimized time-weighted average calculation.
+    Fully nogil time-weighted average computation on C arrays.
 
-    Args:
-        timeseries: List of TimeStampedValue objects
-        window_start: Start of window (-1.0 means use first timestamp)
-        window_end: End of window (-1.0 means use last timestamp + last_window_s)
-        last_window_s: Window size for last segment
-
-    Returns:
-        Time-weighted average or None
+    Returns: Time-weighted average or -1.0 to indicate None
     """
-    if not timeseries:
-        return None
-
     cdef:
-        int n = len(timeseries)
         int i
         double total_weighted_value = 0.0
         double total_duration = 0.0
         double current_value = 0.0
         double current_time
         double timestamp, value, segment_end, duration
-        object point
-
-    # Handle window boundaries
-    if window_start < 0:
-        point = timeseries[0]
-        window_start = point.timestamp
-
-    if window_end < 0:
-        point = timeseries[n - 1]  # Use explicit index instead of -1
-        window_end = point.timestamp + last_window_s
 
     if window_end <= window_start:
-        return None
+        return -1.0
 
     current_time = window_start
 
     # Find value at window_start (LOCF)
     for i in range(n):
-        point = timeseries[i]
-        timestamp = point.timestamp
+        timestamp = timestamps[i]
 
         if timestamp <= window_start:
-            current_value = point.value
+            current_value = values[i]
         else:
             break
 
     # Process segments
     for i in range(n):
-        point = timeseries[i]
-        timestamp = point.timestamp
-        value = point.value
+        timestamp = timestamps[i]
+        value = values[i]
 
         if timestamp <= window_start:
             continue
@@ -301,4 +381,62 @@ def time_weighted_average_cython(list timeseries, double window_start=-1.0,
     if total_duration > 0:
         return total_weighted_value / total_duration
 
-    return None
+    return -1.0
+
+
+def time_weighted_average_cython(list timeseries, double window_start=-1.0,
+                                  double window_end=-1.0, double last_window_s=1.0):
+    """
+    Cython-optimized time-weighted average calculation.
+
+    Args:
+        timeseries: List of TimeStampedValue objects
+        window_start: Start of window (-1.0 means use first timestamp)
+        window_end: End of window (-1.0 means use last timestamp + last_window_s)
+        last_window_s: Window size for last segment
+
+    Returns:
+        Time-weighted average or None
+    """
+    if not timeseries:
+        return None
+
+    cdef:
+        int n = len(timeseries)
+        int i
+        double result
+        object point
+        double* timestamps = <double*>malloc(n * sizeof(double))
+        double* values = <double*>malloc(n * sizeof(double))
+
+    if not timestamps or not values:
+        if timestamps:
+            free(timestamps)
+        if values:
+            free(values)
+        raise MemoryError("Failed to allocate memory for time weighted average")
+
+    try:
+        # Extract data from Python objects into C arrays
+        for i in range(n):
+            point = timeseries[i]
+            timestamps[i] = point.timestamp
+            values[i] = point.value
+
+        # Handle window boundaries
+        if window_start < 0:
+            window_start = timestamps[0]
+
+        if window_end < 0:
+            window_end = timestamps[n - 1] + last_window_s
+
+        # Compute with full nogil
+        with nogil:
+            result = compute_time_weighted_average_nogil(timestamps, values, n,
+                                                          window_start, window_end)
+
+        return None if result < 0 else result
+
+    finally:
+        free(timestamps)
+        free(values)
