@@ -219,6 +219,17 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             bundle = self._output_queue.get_next()
             self._metrics.on_output_dequeued(bundle)
 
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
+        assert input_index == 0, input_index
+        self._block_ref_bundler.add_bundle(refs)
+        self._metrics.on_input_queued(refs)
+
+        while self._block_ref_bundler.has_bundle():
+            input_refs, bundled_input = self._block_ref_bundler.get_next_bundle()
+            for bundle in input_refs:
+                self._metrics.on_input_dequeued(bundle)
+            self._add_bundled_input(bundled_input)
+
     @property
     def name(self) -> str:
         name = super().name
@@ -690,9 +701,10 @@ class BlockRefBundler(BaseRefBundler):
         self._finalized = False
 
     def num_blocks(self) -> int:
+        """Return the total number of blocks buffered inside the bundler."""
         return sum(len(b.block_refs) for b in self._bundle_buffer)
 
-    def add_bundle(self, bundle: RefBundle):
+    def add_bundle(self, bundle: RefBundle) -> None:
         """Add a new input bundle to the bundler."""
         self._bundle_buffer.append(bundle)
         self._bundle_buffer_size += self._get_bundle_size(bundle)
@@ -707,7 +719,7 @@ class BlockRefBundler(BaseRefBundler):
         return self._bundle_buffer and (
             self._min_rows_per_bundle is None
             or self._bundle_buffer_size >= self._min_rows_per_bundle
-            or (self._finalized and self._bundle_buffer_size >= 0)
+            or self._finalized
         )
 
     def size_bytes(self) -> int:
@@ -732,10 +744,9 @@ class BlockRefBundler(BaseRefBundler):
             self._bundle_buffer_size_bytes = 0
             return [bundle], bundle
 
-        remainder = []
-        output_buffer = []
+        output_buffer: List[RefBundle] = []
         output_buffer_size = 0
-
+        remainder: List[RefBundle] = []
         for idx, bundle in enumerate(self._bundle_buffer):
             bundle_size = self._get_bundle_size(bundle)
             # Allow adding to output_buffer if:
@@ -744,6 +755,7 @@ class BlockRefBundler(BaseRefBundler):
             if (
                 output_buffer_size < self._min_rows_per_bundle
                 or output_buffer_size == 0
+                or self._finalized
             ):
                 output_buffer.append(bundle)
                 output_buffer_size += bundle_size
@@ -754,15 +766,14 @@ class BlockRefBundler(BaseRefBundler):
         self._bundle_buffer = remainder
         self._bundle_buffer_size = sum(self._get_bundle_size(b) for b in remainder)
         self._bundle_buffer_size_bytes = sum(b.size_bytes() for b in remainder)
-
         return list(output_buffer), _merge_ref_bundles(*output_buffer)
 
-    def done_adding_bundles(self):
-        """Signal that no additional bundles will be added to the bundler."""
+    def done_adding_bundles(self) -> None:
+        """Signal that no additional bundles will be added; flush partial data."""
         self._finalized = True
 
     @staticmethod
-    def _get_bundle_size(bundle: RefBundle):
+    def _get_bundle_size(bundle: RefBundle) -> int:
         return bundle.num_rows() if bundle.num_rows() is not None else float("inf")
 
 
