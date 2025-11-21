@@ -284,7 +284,6 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   ASSERT_EQ(finished_actors.size(), 1);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 1);
 
-  // Trigger graceful actor destruction
   ASSERT_TRUE(worker_client_->Reply());
   // Complete graceful shutdown by confirming worker exit
   gcs_actor_manager_->OnWorkerDead(node_id, worker_id);

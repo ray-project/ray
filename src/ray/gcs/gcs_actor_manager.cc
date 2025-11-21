@@ -1118,11 +1118,15 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   }
 
   // For force kill, mark DEAD immediately. For graceful, defer until
-  // OnWorkerDead confirms.
+  // OnWorkerDead confirms. However, if we can't signal the actor,
+  // treat graceful as force to avoid indefinite waiting.
+  bool can_signal_actor = actor->LocalRayletAddress().has_value();
+  bool should_mark_dead_now = force_kill || (!can_signal_actor && !force_kill);
+
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   auto time = current_sys_time_ms();
   bool is_restartable = false;
-  if (force_kill) {
+  if (should_mark_dead_now) {
     if (actor->GetState() != rpc::ActorTableData::DEAD) {
       actor->UpdateState(rpc::ActorTableData::DEAD);
       mutable_actor_table_data->set_end_time(time);
@@ -1175,6 +1179,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         actor_id,
         actor_table_data,
         is_restartable,
+        should_mark_dead_now,
         done_callback = std::move(done_callback)](Status status) {
          if (done_callback) {
            done_callback();
@@ -1185,7 +1190,11 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
            gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
                                                            {[](auto) {}, io_context_});
          }
-         actor->WriteActorExportEvent(false);
+         // For graceful kills that can actually wait (can signal actor), defer export
+         // event to RestartActor when DEAD is finalized. Otherwise, write it now.
+         if (should_mark_dead_now) {
+           actor->WriteActorExportEvent(false);
+         }
          // Destroy placement group owned by this actor.
          destroy_owned_placement_group_if_needed_(actor_id);
        },
@@ -1310,7 +1319,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
 
   auto actor_iter = registered_actors_.find(actor_id);
   if (actor_iter != registered_actors_.end()) {
-    gcs_actor_scheduler_->OnActorDestruction(actor_iter->second);    
+    gcs_actor_scheduler_->OnActorDestruction(actor_iter->second);
     // Mark DEAD now - worker confirmed exit (deferred from graceful shutdown)
     if (actor_iter->second->GetState() != rpc::ActorTableData::DEAD) {
       auto mutable_data = actor_iter->second->GetMutableActorTableData();
@@ -1319,19 +1328,6 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
       // Don't set end_time here - let RestartActor decide based on restart policy.
       // Restartable actors should not have end_time set during restart.
       mutable_data->set_timestamp(time);
-    }
-
-    // If this worker exit corresponds to a graceful OUT_OF_SCOPE shutdown, we
-    // should not treat it as a failure and should not automatically restart the
-    // actor. In this case, DestroyActor has already recorded an OUT_OF_SCOPE
-    // death_cause, and we only need to commit the DEAD state here.
-    const auto &table_data = actor_iter->second->GetActorTableData();
-    if (table_data.has_death_cause() &&
-        table_data.death_cause().context_case() ==
-            rpc::ActorDeathCause::kActorDiedErrorContext &&
-        table_data.death_cause().actor_died_error_context().reason() ==
-            rpc::ActorDiedErrorContext::OUT_OF_SCOPE) {
-      return;
     }
   }
 
@@ -1348,12 +1344,18 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
     death_cause.mutable_creation_task_failure_context()->CopyFrom(
         *creation_task_exception);
   } else {
-    death_cause = GenWorkerDiedCause(
-        actor, worker_ip, disconnect_type, disconnect_detail);
+    death_cause =
+        GenWorkerDiedCause(actor, worker_ip, disconnect_type, disconnect_detail);
   }
+
+  // For explicit terminations (OUT_OF_SCOPE, REF_DELETED), don't reschedule even if
+  // disconnect_type suggests reconstruction. RestartActor will handle final cleanup
+  // and persistence without automatic restart.
+  bool should_reschedule = need_reconstruct && !IsExplicitTermination(death_cause);
+
   // Otherwise, try to reconstruct the actor that was already created or in the creation
   // process.
-  RestartActor(actor_id, /*need_reschedule=*/need_reconstruct, death_cause);
+  RestartActor(actor_id, /*need_reschedule=*/should_reschedule, death_cause);
 }
 
 void GcsActorManager::OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
@@ -1550,9 +1552,10 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   int64_t remaining_restarts;
   // Destroy placement group owned by this actor.
   destroy_owned_placement_group_if_needed_(actor_id);
-  if (!need_reschedule) {
-    remaining_restarts = 0;
-  } else if (max_restarts == -1) {
+  // Calculate remaining restarts based on max_restarts, not on need_reschedule.
+  // need_reschedule controls whether we automatically restart, but cleanup decision
+  // should be based on whether the actor can ever be restarted (manually or automatically).
+  if (max_restarts == -1) {
     remaining_restarts = -1;
   } else {
     // Restarts due to node preemption do not count towards max_restarts.
