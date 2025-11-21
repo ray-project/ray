@@ -3924,7 +3924,7 @@
 
 - name: llm_serve_sglang_engine
   frequency: nightly
-  python: "3.12"
+  python: "3.11"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -3932,7 +3932,7 @@
   cluster:
     byod:
       type: llm-cu128
-    cluster_compute: llm_2x_4xl4.yaml
+    cluster_compute: llm_4xl4.yaml
 
   run:
     timeout: 3600
