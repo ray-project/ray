@@ -466,6 +466,9 @@
   team: ml
 
   cluster:
+    byod:
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tune_rllib/compute_tpl_aws.yaml
 
   run:
@@ -964,6 +967,9 @@
   team: ml
 
   cluster:
+    byod:
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: many_ppo.yaml
 
   run:
@@ -2015,6 +2021,9 @@
   team: rllib
 
   cluster:
+    byod:
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2030,6 +2039,9 @@
   team: rllib
 
   cluster:
+    byod:
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
