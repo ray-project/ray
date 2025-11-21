@@ -240,6 +240,11 @@ DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
     0.5,
 )
 
+DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: int = env_integer(
+    "RAY_DATA_DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA",
+    1,
+)
+
 
 DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
     "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", False
@@ -265,6 +270,9 @@ class AutoscalingConfig:
             between autoscaling speed and resource efficiency (i.e.,
             making tasks wait instead of immediately triggering execution).
         actor_pool_util_downscaling_threshold: Actor Pool utilization threshold for downscaling.
+        actor_pool_max_upscaling_delta: Maximum number of actors to scale up in a single scaling decision.
+            This limits how many actors can be added at once to prevent resource contention
+            and scheduling pressure. Defaults to 1 for conservative scaling.
     """
 
     actor_pool_util_upscaling_threshold: float = (
@@ -275,6 +283,9 @@ class AutoscalingConfig:
     actor_pool_util_downscaling_threshold: float = (
         DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD
     )
+
+    # Maximum number of actors to scale up in a single scaling decision
+    actor_pool_max_upscaling_delta: int = DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA
 
 
 def _execution_options_factory() -> "ExecutionOptions":
