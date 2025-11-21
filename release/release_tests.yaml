@@ -3490,7 +3490,7 @@
     timeout: 3600
     wait_for_nodes:
       num_nodes: 10
-    prepare: python setup_chaos.py --no-start --max-to-kill 5
+    prepare: python setup_chaos.py --no-start --max-to-kill 10
     script: python chaos_test/test_chaos_basic.py --workload=streaming
 
   variations:
@@ -3516,7 +3516,7 @@
     timeout: 3600
     wait_for_nodes:
       num_nodes: 10
-    prepare: python setup_chaos.py --no-start --chaos TerminateEC2Instance --max-to-kill 5
+    prepare: python setup_chaos.py --no-start --chaos TerminateEC2Instance --max-to-kill 10
     script: python chaos_test/test_chaos_basic.py --workload=streaming
 
   variations:
@@ -3548,7 +3548,7 @@
     wait_for_nodes:
       num_nodes: 10
     script: >
-      python simulate_cross_az_network_failure.py --network-failure-interval 180 --network-failure-duration 5 --command python chaos_test/test_chaos_basic.py --workload=streaming
+      python simulate_cross_az_network_failure.py --network-failure-interval 120 --network-failure-duration 5 --command python chaos_test/test_chaos_basic.py --workload=streaming
 
   variations:
     - __suffix__: aws
@@ -3631,7 +3631,7 @@
     wait_for_nodes:
       num_nodes: 10
     script: >
-      python simulate_cross_az_network_failure.py --network-failure-interval 180 --network-failure-duration 5 --command python chaos_test/test_chaos_basic.py --workload=borrowing
+      python simulate_cross_az_network_failure.py --network-failure-interval 120 --network-failure-duration 5 --command python chaos_test/test_chaos_basic.py --workload=borrowing
 
   variations:
     - __suffix__: aws

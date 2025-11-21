@@ -170,7 +170,7 @@ def run_streaming_generator_workload(total_num_cpus, smoke):
     if smoke:
         ITEMS_PER_GENERATOR = 10
     else:
-        ITEMS_PER_GENERATOR = 300
+        ITEMS_PER_GENERATOR = 500
     ITEM_SIZE_MB = 10
 
     print(
@@ -243,33 +243,44 @@ def run_object_ref_borrowing_workload(total_num_cpus, smoke):
     if smoke:
         NUM_ITERATIONS = 10
     else:
-        NUM_ITERATIONS = 1500
+        NUM_ITERATIONS = 2000
     OBJECT_SIZE_MB = 10
 
-    print(f"Starting {NUM_ITERATIONS} task pairs (A creates, B borrows)")
+    print(f"Starting borrowing test with {NUM_ITERATIONS * 2} total tasks")
     print(f"Object size: {OBJECT_SIZE_MB}MB per object")
-    print(f"Expected total data: {NUM_ITERATIONS * OBJECT_SIZE_MB / 1024:.2f} GB")
+    print(f"Expected total data: {NUM_ITERATIONS * 2 * OBJECT_SIZE_MB / 1024:.2f} GB")
+
+    total_completed = 0
+    total_bytes = 0
+
+    for i in range(NUM_ITERATIONS):
+        ref = create_object.remote(OBJECT_SIZE_MB)
+        task_ref = borrow_object.remote([ref])
+        size = ray.get(task_ref)
+        total_completed += 1
+        total_bytes += size
 
     refs = []
     for i in range(NUM_ITERATIONS):
         ref = create_object.remote(OBJECT_SIZE_MB)
         refs.append(borrow_object.remote([ref]))
     sizes = ray.get(refs)
-    num_completed = len(sizes)
-    total_bytes = sum(sizes)
+    total_completed += len(sizes)
+    total_bytes += sum(sizes)
 
     print("All tasks completed:")
-    print(f"  Tasks completed: {num_completed} (expected {NUM_ITERATIONS})")
+    print(f"  Total tasks completed: {total_completed} (expected {NUM_ITERATIONS * 2})")
     print(f"  Total data processed: {total_bytes / (1024**3):.2f} GB")
 
     # Assertions
+    expected_total_tasks = NUM_ITERATIONS * 2
     assert (
-        num_completed == NUM_ITERATIONS
-    ), f"Expected {NUM_ITERATIONS} completions, got {num_completed}"
-    expected_bytes = NUM_ITERATIONS * OBJECT_SIZE_MB * 1024 * 1024
+        total_completed == expected_total_tasks
+    ), f"Expected {expected_total_tasks} completions, got {total_completed}"
+    expected_total_bytes = expected_total_tasks * OBJECT_SIZE_MB * 1024 * 1024
     assert (
-        total_bytes == expected_bytes
-    ), f"Expected {expected_bytes} bytes, got {total_bytes}"
+        total_bytes == expected_total_bytes
+    ), f"Expected {expected_total_bytes} bytes, got {total_bytes}"
 
     # Consistency check
     wait_for_condition(
