@@ -14,11 +14,11 @@ head_node_type:
 worker_node_types:
     - name: cpu-node
       instance_type: r6a.8xlarge
-      min_workers: 100
-      max_workers: 100
+      min_workers: 30
+      max_workers: 30
       use_spot: false
     - name: gpu-node
       instance_type: g5.4xlarge
-      min_workers: 40
-      max_workers: 40
+      min_workers: 12
+      max_workers: 12
       use_spot: false
