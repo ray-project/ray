@@ -1487,15 +1487,13 @@ class Node:
                         new_config["object_spilling_config"] = json.dumps(config)
                     else:
                         self._fallback_directory = config["params"]["directory_path"]
+                    try_to_create_directory(self._fallback_directory)
                 self._config = new_config
             except Exception as e:
                 raise Exception(
                     "Expected valid object_spilling_config to be received from head node"
                     + f"but got: {e}"
                 )
-
-        # try to create the object spilling directory if it doesn't exist
-        try_to_create_directory(self._fallback_directory)
 
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.
