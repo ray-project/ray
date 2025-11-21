@@ -12,4 +12,5 @@ dependencies = [
     "langgraph==1.0.3",
     "openai==2.7.2",
     "uvicorn==0.38.0",
+    "ray[serve]==2.52"
 ]
