@@ -13,7 +13,7 @@ from packaging import version
 
 import ray
 from ray.data._internal.util import rows_same
-from ray.data.expressions import col
+from ray.data.expressions import DownloadExpr, col, download
 
 pytestmark = pytest.mark.skipif(
     version.parse(pa.__version__) < version.parse("19.0.0"),
@@ -521,6 +521,52 @@ class TestStructNamespace:
             }
         )
         assert rows_same(result, expected)
+
+
+# ──────────────────────────────────────
+# URI Namespace Tests
+# ──────────────────────────────────────
+
+
+def test_uri_namespace_download_creates_downloadexpr():
+    # Basic usage: col("uri").uri.download() should produce a DownloadExpr.
+    expr = col("uri").uri.download()
+
+    assert isinstance(expr, DownloadExpr)
+    # The uri column name used by the DownloadExpr should be "uri".
+    assert getattr(expr, "uri_column_name", None) == "uri"
+
+
+def test_uri_namespace_download_matches_top_level_download():
+    # The namespace helper should behave the same as the top-level
+    # download("uri") function.
+    expr_from_namespace = col("uri").uri.download()
+    expr_from_function = download("uri")
+
+    assert isinstance(expr_from_namespace, DownloadExpr)
+    assert isinstance(expr_from_function, DownloadExpr)
+
+    # Both should point at the same URI column name.
+    assert expr_from_namespace.uri_column_name == "uri"
+    assert expr_from_function.uri_column_name == "uri"
+
+
+def test_uri_namespace_download_respects_alias():
+    # Alias expressions should also be supported, per maintainer review.
+    expr = col("uri").alias("uri_alias").uri.download()
+
+    assert isinstance(expr, DownloadExpr)
+    assert expr.uri_column_name == "uri_alias"
+
+
+def test_uri_namespace_download_invalid_expression_raises_value_error():
+    # Non-column expressions (e.g., computed expressions) should raise a
+    # clear ValueError when using uri.download().
+    # This ensures the error message path is covered.
+    expr = (col("uri") + "_suffix").uri
+
+    with pytest.raises(ValueError):
+        expr.download()
 
 
 # ──────────────────────────────────────

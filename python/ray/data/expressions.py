@@ -23,10 +23,10 @@ from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
-    from ray.data.namespace_expressions.list_namespace import _UriNamespace
     from ray.data.namespace_expressions.list_namespace import _ListNamespace
     from ray.data.namespace_expressions.string_namespace import _StringNamespace
     from ray.data.namespace_expressions.struct_namespace import _StructNamespace
+    from ray.data.namespace_expressions.uri_namespace import _UriNamespace
 
 T = TypeVar("T")
 
@@ -486,10 +486,16 @@ class Expr(ABC):
         from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 
         return _StructNamespace(self)
-    
+
     @property
     def uri(self) -> "_UriNamespace":
-        """Access URI operations for this expression."""
+        """Access URI-specific operations for this expression.
+
+        Examples
+        --------
+        >>> from ray.data.expressions import col
+        >>> expr = col("uri").uri.download()  # "uri" is a column of URIs
+        """
         from ray.data.namespace_expressions.uri_namespace import _UriNamespace
 
         return _UriNamespace(self)

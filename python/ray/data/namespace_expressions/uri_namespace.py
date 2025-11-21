@@ -1,12 +1,12 @@
-# python/ray/data/namespace_expressions/uri_namespace.py
 """
 URI namespace for expression operations on URI-typed columns.
 
-Currently provides a ``download()`` method that returns a ``DownloadExpr``
-by delegating to the existing top-level :func:`ray.data.expressions.download`
-function.
+This module defines the ``_UriNamespace`` class, which is exposed as the
+:pyattr:`ray.data.expressions.Expr.uri` attribute on expressions.
 
-An ``upload()`` method is stubbed for future support (see issue #58005).
+It currently provides a :meth:`_UriNamespace.download` method that returns a
+:class:`~ray.data.expressions.DownloadExpr` by delegating to the top-level
+:func:`ray.data.expressions.download` function.
 """
 
 from __future__ import annotations
@@ -24,16 +24,15 @@ if TYPE_CHECKING:
 class _UriNamespace:
     """Namespace for URI operations on expression columns.
 
-    This namespace is accessed via :meth:`Expr.uri`. For example:
+    This namespace is accessed via
+    :pyattr:`ray.data.expressions.Expr.uri`.
 
-    .. code-block:: python
-
-        from ray.data.expressions import col
-
-        # \"uri\" is a column containing URIs (e.g., s3://..., gs://..., etc.)
-        expr = col(\"uri\").uri.download()
-
+    Examples
+    --------
+    >>> from ray.data.expressions import col
+    >>> expr = col("uri").uri.download()  # "uri" is a column of URIs
     """
+
     _expr: "Expr"
 
     def download(self) -> "Expr":
@@ -48,25 +47,19 @@ class _UriNamespace:
         Raises
         ------
         ValueError
-            If this namespace is not attached to a simple column expression.
+            If this namespace is not attached to a named column expression,
+            for example ``col("uri")`` or ``col("uri").alias("my_uri")``.
         """
-        # We only support simple column references like col("uri").
+        # We only support simple, named column expressions like
+        # col("uri") or col("uri").alias("my_uri").  These are the
+        # expressions that expose a ``name`` attribute.
         name = getattr(self._expr, "name", None)
         if name is None:
             raise ValueError(
-                "uri.download() can only be used on simple column expressions, "
-                "for example: col('uri').uri.download()."
+                "uri.download() can only be used on named column expressions, "
+                "for example: col('uri').uri.download() or "
+                "col('uri').alias('my_uri').uri.download()."
             )
+
+        # Delegate to the existing top-level helper, which builds a DownloadExpr.
         return _download(name)
-
-    def upload(self, *args, **kwargs) -> "Expr":
-        """Placeholder for a future upload expression.
-
-        Notes
-        -----
-        The upload expression is tracked in issue #58005 and is not yet
-        implemented.
-        """
-        raise NotImplementedError(
-            "upload() is not yet implemented; see issue #58005 for details."
-        )
