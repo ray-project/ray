@@ -1,10 +1,12 @@
 import copy
+from collections import defaultdict
 from typing import Dict, List, Literal, Optional, Union
 
 import ray
 from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
+from ray.data.dataset import IteratorCallback
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
@@ -21,6 +23,7 @@ class DataConfig:
         datasets_to_split: Union[Literal["all"], List[str]] = "all",
         execution_options: Optional[ExecutionOptions] = None,
         enable_shard_locality: bool = True,
+        iterator_callbacks: Optional[Dict[str, List[IteratorCallback]]] = None,
     ):
         """Construct a DataConfig.
 
@@ -47,6 +50,9 @@ class DataConfig:
         self._execution_options: ExecutionOptions = (
             execution_options or DataConfig.default_ingest_options()
         )
+        self._iterator_callbacks: Dict[
+            str, List[IteratorCallback]
+        ] = iterator_callbacks or defaultdict(lambda: [])
         self._enable_shard_locality = enable_shard_locality
 
         self._num_train_cpus = 0.0
@@ -117,7 +123,10 @@ class DataConfig:
             if name in datasets_to_split:
                 for i, split in enumerate(
                     ds.streaming_split(
-                        world_size, equal=True, locality_hints=locality_hints
+                        world_size,
+                        equal=True,
+                        locality_hints=locality_hints,
+                        iterator_callbacks=self._iterator_callbacks[name],
                     )
                 ):
                     output[i][name] = split
