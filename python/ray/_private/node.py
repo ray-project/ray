@@ -234,7 +234,6 @@ class Node:
         # Obtain the fallback directoy from the object spilling config
         # Currently, we set the fallback directory to be the same as the object spilling
         # path when the object spills to file system
-        # TODO(Kunchd): Ask Mengjin what's the desired behavior for object spilling path. Should we take the head node's object spilling path?
         self._fallback_directory = None
         if self._object_spilling_config:
             config = json.loads(self._object_spilling_config)
@@ -468,6 +467,36 @@ class Node:
         # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
+        if not self.head and not self._default_worker:
+            # Unconditionally fetch head node info to get the session dir when creating
+            # worker nodes as we will need it to resolve whether head node received a
+            # custom object spilling directory.
+            try:
+                node_infos = get_all_node_info_with_retry(
+                    self.get_gcs_client(),
+                    filters=[
+                        ("is_head_node", "=", True),
+                    ],
+                    timeout=3.0,
+                    num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
+                )
+            except Exception as e:
+                logger.error(f"Failed to get head node info: {e}")
+                raise e
+
+            if node_infos is None or not node_infos:
+                raise Exception(
+                    "Head node not found in GCS when trying to get temp dir, did GCS start successfully?"
+                )
+            node_info = next(iter(node_infos.values()))
+            self._head_temp_dir = getattr(node_info, "temp_dir", None)
+            self._head_session_dir = getattr(node_info, "session_dir", None)
+            if self._head_session_dir is None:
+                raise Exception(
+                    "Head node session dir not found in NodeInfo, "
+                    "either GCS or head node's raylet may not have started successfully."
+                )
+
         self.temp_dir = self._ray_params.temp_dir
         if self.temp_dir is None:
             if connect_only:
@@ -497,7 +526,6 @@ class Node:
                         + f"when connecting to the current node: {e}. "
                         + "Falling back to head node's temp dir."
                     )
-                    raise e
                 if not node_infos:
                     # fallback to head node's temp dir if no node info is found for the given node ip address
                     try:
@@ -530,26 +558,7 @@ class Node:
                     self.temp_dir = ray._private.utils.get_default_ray_temp_dir()
                 else:
                     assert not self._default_worker
-                    # fetch head node info
-                    try:
-                        node_infos = get_all_node_info_with_retry(
-                            self.get_gcs_client(),
-                            filters=[
-                                ("is_head_node", "=", True),
-                            ],
-                            timeout=3.0,
-                            num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to get head node info: {e}")
-                        raise e
-
-                    if node_infos is None or not node_infos:
-                        raise Exception(
-                            "Head node not found in GCS when trying to get temp dir, did GCS start successfully?"
-                        )
-                    node_info = next(iter(node_infos.values()))
-                    self.temp_dir = getattr(node_info, "temp_dir", None)
+                    self.temp_dir = self._head_temp_dir
                     if self.temp_dir is None:
                         raise Exception(
                             "Head node temp_dir not found in NodeInfo, "
@@ -1460,16 +1469,33 @@ class Node:
                 f" Local system config: {self._config},"
                 f" GCS system config: {new_config}"
             )
-            # Take self's fallback directory in case user specified a different temp dir
-            if (
-                "object_spilling_config" in new_config
-                and new_config["object_spilling_config"]
-            ):
+
+            # Note: We decide which object spilling directory to use based on the following policy:
+            # 1. If this node specifies an object spilling directory, use it.
+            # 2. If the head node specifies an object spilling directory, and this node doesn't specify one,
+            #    use the head node's object spilling directory.
+            # 3. If the head node doesn't specify an object spilling directory, and this node doesn't specify one,
+            #    use the temp_dir as the object spilling directory.
+            try:
                 config = json.loads(new_config["object_spilling_config"])
                 if config.get("type") == "filesystem":
-                    config["params"]["directory_path"] = self._fallback_directory
-                    new_config["object_spilling_config"] = json.dumps(config)
-            self._config = new_config
+                    if (
+                        self._fallback_directory != self._session_dir
+                        or config["params"]["directory_path"] == self._head_session_dir
+                    ):
+                        config["params"]["directory_path"] = self._fallback_directory
+                        new_config["object_spilling_config"] = json.dumps(config)
+                    else:
+                        self._fallback_directory = config["params"]["directory_path"]
+                self._config = new_config
+            except Exception as e:
+                raise Exception(
+                    "Expected valid object_spilling_config to be received from head node"
+                    + f"but got: {e}"
+                )
+
+        # try to create the object spilling directory if it doesn't exist
+        try_to_create_directory(self._fallback_directory)
 
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.
