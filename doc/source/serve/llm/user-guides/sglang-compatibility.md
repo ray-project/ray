@@ -15,8 +15,7 @@ This document provides a guide for deploying and interacting with the custom **S
 Your custom deployment consists of two main components:
 1. `SGLangServer` (**Backend**): The core Ray Serve deployment that initializes the SGLang runtime and model. This deployment contains the model's business logic, including resource requirements and generation methods (`completions` and `chat_completions`).
 2. `APIIngress` (**Frontend**): A FastAPI ingress deployment that listens on HTTP user assigned port `ex: 8000` and routes standard OpenAI requests to the backend `SGLangServer`.
-3. disable SGLang root process config `path: sglang/python/sglang/srt/entrypoints/engine.py` or `YOUR /usr/local/lib/python3.XX/dist-packages/sglang/srt/entrypoints/engine.py` you need to disable `signal.signal(signal.SIGQUIT, launch_phase_sigquit_handler)`.
-4. enable ENVVAR: `RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0`
+3. enable ENVVAR: `RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0`
 ### Deploy an LLM model using SGLang Engine
 
 
