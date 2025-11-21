@@ -9,7 +9,7 @@ from fastapi.encoders import jsonable_encoder
 from starlette.responses import StreamingResponse
 from ray import serve
 
-from agent_with_mcp import build_agent  # Your factory that returns a Langchain / LangGraph agent.
+from agent_with_mcp import build_agent  
 
 # ----------------------------------------------------------------------
 # FastAPI app with an async lifespan hook.
