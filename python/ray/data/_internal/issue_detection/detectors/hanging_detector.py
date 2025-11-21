@@ -80,7 +80,9 @@ class HangingExecutionIssueDetector(IssueDetector):
         ctx = executor._data_context
         return cls(
             dataset_id=executor._dataset_id,
-            operators=lambda: list(executor._topology.keys()) if executor._topology else [],
+            operators=lambda: list(executor._topology.keys())
+            if executor._topology
+            else [],
             config=ctx.issue_detectors_config.hanging_detector_config,
         )
 
