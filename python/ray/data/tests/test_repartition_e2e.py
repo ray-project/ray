@@ -353,6 +353,97 @@ def test_repartition_guarantee_row_num_to_be_exact(
             )
 
 
+def test_streaming_repartition_with_partial_last_block(
+    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+):
+    """Test repartition with target_num_rows_per_block where last block has fewer rows.
+    This test verifies:
+    1. Most blocks have exactly target_num_rows_per_block rows
+    2. Only the last block can have fewer rows (remainder)
+    """
+    # Configure shuffle strategy
+    ctx = DataContext.get_current()
+    ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+    num_rows = 110
+
+    table = [{"id": n} for n in range(num_rows)]
+    ds = ray.data.from_items(table)
+
+    ds = ds.repartition(target_num_rows_per_block=20)
+
+    ds = ds.materialize()
+
+    block_row_counts = []
+    for ref_bundle in ds.iter_internal_ref_bundles():
+        for _, metadata in ref_bundle.blocks:
+            block_row_counts.append(metadata.num_rows)
+
+    assert sum(block_row_counts) == num_rows, f"Expected {num_rows} total rows"
+
+    # Verify that all blocks have 20 rows except one block with 10 rows
+    # The block with 10 rows should be the last one
+    assert (
+        block_row_counts[-1] == 10
+    ), f"Expected last block to have 10 rows, got {block_row_counts[-1]}"
+    assert all(
+        count == 20 for count in block_row_counts[:-1]
+    ), f"Expected all blocks except last to have 20 rows, got {block_row_counts}"
+
+
+def test_streaming_repartition_with_target_max_block_size_zero(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+    restore_data_context,
+):
+    """Test repartition with MapOperator's target_max_block_size_override set to 0.
+    This test verifies that even when the MapOperator's target_max_block_size_override
+    is directly set to 0, the repartition operation with target_num_rows_per_block
+    still produces blocks with the specified number of rows. This demonstrates that
+    operator fusion works correctly with streaming repartition.
+    """
+    num_rows = 100
+
+    table = [{"id": n} for n in range(num_rows)]
+    ds = ray.data.from_items(table)
+
+    # Repartition with target_num_rows_per_block should produce 5 blocks of 20 rows each
+    ds = ds.repartition(target_num_rows_per_block=20)
+
+    # Get the physical plan and directly override the MapOperator's target_max_block_size
+    planner = create_planner()
+    physical_plan = planner.plan(ds._logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_op = physical_plan.dag
+
+    # Directly override the MapOperator's target_max_block_size_override to 0
+    physical_op.override_target_max_block_size(0)
+
+    # Verify the override was set correctly
+    assert (
+        physical_op.target_max_block_size_override == 0
+    ), f"Expected MapOperator's target_max_block_size_override to be 0, got {physical_op.target_max_block_size_override}"
+
+    # Materialize and verify blocks
+    ds = ds.materialize()
+
+    # Collect block row counts
+    block_row_counts = []
+    for ref_bundle in ds.iter_internal_ref_bundles():
+        for _, metadata in ref_bundle.blocks:
+            block_row_counts.append(metadata.num_rows)
+
+    # Verify total rows
+    assert sum(block_row_counts) == num_rows, f"Expected {num_rows} total rows"
+
+    # Verify all blocks have exactly 20 rows despite target_max_block_size_override being 0
+    # This demonstrates that target_num_rows_per_block takes precedence
+    assert all(
+        count == 20 for count in block_row_counts
+    ), f"All blocks should have 20 rows, got {block_row_counts}"
+    assert len(block_row_counts) == 5, f"Expected 5 blocks, got {len(block_row_counts)}"
+
+
 if __name__ == "__main__":
     import sys
 
