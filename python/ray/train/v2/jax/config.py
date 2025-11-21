@@ -28,7 +28,12 @@ class JaxConfig(BackendConfig):
 
 
 def _setup_jax_distributed_environment(
-    master_addr_with_port: str, num_workers: int, index: int, use_tpu: bool, use_gpu: bool, resources_per_worker: dict
+    master_addr_with_port: str,
+    num_workers: int,
+    index: int,
+    use_tpu: bool,
+    use_gpu: bool,
+    resources_per_worker: dict,
 ):
     """Set up distributed Jax training information.
 
@@ -57,10 +62,11 @@ def _setup_jax_distributed_environment(
             os.environ["JAX_PLATFORMS"] = "cuda"
 
             num_gpus = resources_per_worker.get("GPU", 0)
-            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in range(num_gpus))
+            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
+                str(i) for i in range(num_gpus)
+            )
 
     import jax
-
 
     if "tpu" in jax_platforms.split(","):
         jax.distributed.initialize(master_addr_with_port, num_workers, index)
@@ -71,8 +77,12 @@ def _setup_jax_distributed_environment(
             local_device_ids = list(range(num_gpus_per_worker))
         else:
             local_device_ids = 0
-        jax.distributed.initialize(master_addr_with_port, num_workers, index, local_device_ids)
-        print(f">>> Initialized JAX distributed with {num_gpus_per_worker} GPUs per worker")
+        jax.distributed.initialize(
+            master_addr_with_port, num_workers, index, local_device_ids
+        )
+        print(
+            f">>> Initialized JAX distributed with {num_gpus_per_worker} GPUs per worker"
+        )
 
 
 def _shutdown_jax_distributed():
@@ -110,12 +120,13 @@ class _JaxBackend(Backend):
                     use_tpu=backend_config.use_tpu,
                     use_gpu=backend_config.use_gpu,
                     resources_per_worker=worker_group.get_resources_per_worker(),
+                )
             )
         ray.get(setup_futures)
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: JaxConfig):
         """Cleanup JAX distributed resources when shutting down worker group."""
-        if not backend_config.use_tpu:
+        if not backend_config.use_tpu or not backend_config.use_gpu:
             return
 
         # Shutdown JAX distributed on all workers
