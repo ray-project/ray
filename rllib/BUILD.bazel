@@ -2616,6 +2616,7 @@ py_test(
     srcs = ["core/models/tests/test_catalog.py"],
     tags = [
         "core",
+        "models",
         "team:rllib",
     ],
 )
@@ -2627,6 +2628,7 @@ py_test(
     srcs = ["core/models/tests/test_base_models.py"],
     tags = [
         "core",
+        "models",
         "team:rllib",
     ],
 )
