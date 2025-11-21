@@ -8,7 +8,7 @@ from packaging.version import parse as parse_version
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.logical.operators.join_operator import JoinType
-from ray.data._internal.util import MiB
+from ray.data._internal.util import MiB, rows_same
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.exceptions import RayTaskError
@@ -263,11 +263,7 @@ def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_su
 
         assert 'Field "double" exists 2 times' in str(exc_info.value.cause)
     else:
-
-        joined_pd = pd.DataFrame(joined.take_all())
-
-        # Sort resulting frame and reset index (to be able to compare with expected one)
-        joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
+        joined_pd = joined.to_pandas()
 
         # Join using Pandas (to assert against)
         expected_pd = doubles_pd.join(
@@ -278,7 +274,7 @@ def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_su
             rsuffix=right_suffix,
         ).reset_index(drop=True)
 
-        pd.testing.assert_frame_equal(expected_pd, joined_pd_sorted)
+        assert rows_same(expected_pd, joined_pd), "Expected contents to be same"
 
 
 def test_invalid_join_config(ray_start_regular_shared_2_cpus):
@@ -680,6 +676,179 @@ def test_join_with_unjoinable_non_key_columns(
         _assert_columns_match(
             result, {"id", "list_col", "tensor_col", "data", "value", "score"}
         )
+
+
+@pytest.mark.parametrize(
+    "join_type,filter_side,should_push",
+    [
+        ("inner", "left", True),
+        ("inner", "right", True),
+        ("left_outer", "left", True),
+        ("left_outer", "right", False),
+    ],
+    ids=["inner_left", "inner_right", "left_outer_left", "left_outer_right"],
+)
+def test_join_with_predicate_pushdown(
+    ray_start_regular_shared_2_cpus, join_type, filter_side, should_push
+):
+    """Test that predicate pushdown works correctly with different join types.
+
+    Filters on single-side predicates should push past the join when appropriate:
+    - Inner join: can push to either side
+    - Left outer: can push to left (preserved) side only
+    - Right outer: can push to right (preserved) side only
+    """
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+    from ray.data._internal.util import MiB
+    from ray.data.expressions import col
+
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
+    # Create datasets directly without map to allow filter pushdown through join
+    # Both have ids 0-31 with different value columns
+    left_data = [{"id": i, "left_val": i * 10} for i in range(32)]
+    right_data = [{"id": i, "right_val": i * 100} for i in range(32)]
+
+    left_ds = ray.data.from_items(left_data)
+    right_ds = ray.data.from_items(right_data)
+
+    # Join then filter
+    joined = left_ds.join(
+        right_ds,
+        join_type=join_type,
+        num_partitions=4,
+        on=("id",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+
+    # Filter on column from specified side
+    if filter_side == "left":
+        filtered_ds = joined.filter(expr=col("left_val") < 100)
+    else:
+        filtered_ds = joined.filter(expr=col("right_val") < 1000)
+
+    # Verify correctness by computing expected result with pandas
+    from ray.data._internal.util import rows_same
+
+    left_pd = left_ds.to_pandas()
+    right_pd = right_ds.to_pandas()
+
+    # Compute expected join result
+    if join_type == "inner":
+        expected_pd = left_pd.merge(right_pd, on="id", how="inner")
+    elif join_type == "left_outer":
+        expected_pd = left_pd.merge(right_pd, on="id", how="left")
+    else:
+        raise ValueError(f"Unsupported join type for this test: {join_type}")
+
+    # Apply filter (must match what we filtered in Ray Data)
+    if filter_side == "left":
+        # For left-side filter, use notna() to include NaN rows from outer joins
+        expected_pd = expected_pd[expected_pd["left_val"] < 100]
+    else:
+        # For right-side filter in outer joins, NaN values fail the comparison
+        # and are filtered out (matching Ray Data behavior)
+        expected_pd = expected_pd[expected_pd["right_val"] < 1000]
+
+    actual_df = filtered_ds.to_pandas()
+    expected_df = expected_pd.reset_index(drop=True)
+
+    assert rows_same(actual_df, expected_df), (
+        f"Results don't match for {join_type} join with {filter_side} filter:\n"
+        f"Actual:\n{actual_df}\n\nExpected:\n{expected_df}"
+    )
+
+    # Check plan to verify pushdown behavior
+    logical_plan = filtered_ds._plan._logical_plan
+    optimized_plan = LogicalOptimizer().optimize(logical_plan)
+    plan_str = optimized_plan.dag.dag_str
+
+    join_idx = plan_str.find("Join[Join]")
+    filter_idx = plan_str.find("Filter[Filter(<expression>)]")
+
+    if should_push:
+        # Filter should be pushed before join
+        assert filter_idx != -1, f"Filter should exist in plan: {plan_str}"
+        assert filter_idx < join_idx, (
+            f"Filter should be pushed before Join for {join_type} with {filter_side} "
+            f"predicate. Plan: {plan_str}"
+        )
+    else:
+        # Filter should remain after join
+        if filter_idx != -1:
+            assert filter_idx > join_idx, (
+                f"Filter should stay after Join for {join_type} with {filter_side} "
+                f"predicate. Plan: {plan_str}"
+            )
+
+
+def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_2_cpus):
+    """Test PR bug: comparing differently-named join keys from both sides.
+
+    When join keys have different names on left and right
+    sides (e.g., left.id and right.user_id), a predicate like col("id") > col("user_id")
+    references both sides but cannot be pushed to either side alone since each side
+    only has one of these columns.
+
+    Setup:
+    - Left has columns: {id, user_id, left_val} - join on "id"
+    - Right has columns: {id, user_id, right_val} - join on "user_id"
+    - Join: left.id = right.user_id
+    - Filter: col("id") > col("user_id") (with suffixes to avoid collision)
+    """
+    from ray.data._internal.logical.operators.join_operator import Join
+    from ray.data._internal.logical.operators.map_operator import Filter
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+    from ray.data._internal.util import MiB
+    from ray.data.expressions import col
+    from ray.data.tests.test_util import plan_operator_comes_before
+
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
+    # Left: has both id and user_id as columns, joins on "id"
+    left_data = [{"id": i, "user_id": i + 5, "left_val": i * 10} for i in range(10)]
+    # Right: has both id and user_id as columns, joins on "user_id"
+    right_data = [{"id": i + 20, "user_id": i, "right_val": i * 5} for i in range(10)]
+
+    left_ds = ray.data.from_items(left_data)
+    right_ds = ray.data.from_items(right_data)
+
+    # Join on left.id = right.user_id (different column names used as keys)
+    # Need suffixes to avoid column name collision
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("id",),
+        right_on=("user_id",),
+        left_suffix="_l",
+        right_suffix="_r",
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+
+    # Filter comparing non-join-key columns from both sides
+    # left_val exists only on left, right_val exists only on right
+    # Neither side can evaluate this alone
+    filtered_ds = joined.filter(expr=col("left_val") > col("right_val"))
+
+    # Verify correctness
+    result = filtered_ds.take_all()
+    # left.id = right.user_id means they match (both 0-9)
+    # left_val = id * 10, right_val = user_id * 5 = id * 5
+    # So left_val > right_val means id*10 > id*5, true for all id > 0
+    assert len(result) == 9, f"Should have 9 rows (id 1-9), got {len(result)}"
+    assert all(row["left_val"] > row["right_val"] for row in result)
+
+    # Check plan: filter should NOT be pushed down (should stay after join)
+    logical_plan = filtered_ds._plan._logical_plan
+    optimized_plan = LogicalOptimizer().optimize(logical_plan)
+
+    # Filter should come AFTER Join (not pushed down)
+    # Before join: left has left_val but not right_val, right has right_val but not left_val
+    assert not plan_operator_comes_before(optimized_plan, Filter, Join), (
+        "Filter comparing columns from both sides should NOT be pushed before Join "
+        "since neither side has both columns"
+    )
 
 
 if __name__ == "__main__":

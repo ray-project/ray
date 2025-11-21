@@ -1065,20 +1065,6 @@ def fetch_prometheus_metric_timeseries(
     return samples_by_name
 
 
-def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
-    """Return prometheus metrics from a RayContext
-
-    Args:
-        info: Ray context returned from ray.init()
-
-    Returns:
-        Dict from metric name to a list of samples for the metrics
-    """
-    metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
-    print("Fetch metrics from", metrics_page)
-    return fetch_prometheus_metrics([metrics_page])
-
-
 def raw_metric_timeseries(
     info: RayContext, result: PrometheusTimeseries
 ) -> Dict[str, List[Any]]:
@@ -2110,3 +2096,12 @@ def _execute_command_on_node(command: str, node_ip: str):
     except subprocess.CalledProcessError as e:
         print("Exit code:", e.returncode)
         print("Stderr:", e.stderr)
+
+
+RPC_FAILURE_MAP = {
+    "request": "100:0:0",
+    "response": "0:100:0",
+    "in_flight": "0:0:100",
+}
+
+RPC_FAILURE_TYPES = list(RPC_FAILURE_MAP.keys())

@@ -1,7 +1,7 @@
 import itertools
 import random
 import time
-from typing import Optional
+from typing import Iterator, Optional
 
 import numpy as np
 import pandas as pd
@@ -108,6 +108,76 @@ def test_map_groups_with_gpus(
     )
 
     assert rows == [{"id": 0}]
+
+
+def test_groupby_with_column_expression_udf(
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+):
+    import pyarrow.compute as pc
+
+    from ray.data.datatype import DataType
+    from ray.data.expressions import col, udf
+
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    @udf(return_dtype=DataType.int32())
+    def min_value(values: pa.Array) -> pa.Array:
+        scalar = pc.min(values)
+        if isinstance(scalar, pa.Scalar):
+            scalar = scalar.as_py()
+        return pa.array([scalar] * len(values))
+
+    rows = (
+        ds.groupby("group")
+        .with_column("min_value", min_value(col("value")))
+        .sort(["group", "value"])
+        .take_all()
+    )
+    assert rows == [
+        {"group": 1, "value": 1, "min_value": 1},
+        {"group": 1, "value": 2, "min_value": 1},
+        {"group": 2, "value": 3, "min_value": 3},
+        {"group": 2, "value": 4, "min_value": 3},
+    ]
+
+
+def test_groupby_with_column_expression_arithmetic(
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+):
+    from ray.data.expressions import col
+
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    rows = (
+        ds.groupby("group")
+        .with_column("value_twice", col("value") * 2)
+        .sort(["group", "value"])
+        .take_all()
+    )
+    assert rows == [
+        {"group": 1, "value": 1, "value_twice": 2},
+        {"group": 1, "value": 2, "value_twice": 4},
+        {"group": 2, "value": 3, "value_twice": 6},
+        {"group": 2, "value": 4, "value_twice": 8},
+    ]
 
 
 def test_map_groups_with_actors(
@@ -1140,6 +1210,40 @@ def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension):
         {"x_add_5": 25},
     ]
     assert "MapBatches(func)" in ds.__repr__()
+
+
+def test_map_groups_generator_udf(ray_start_regular_shared_2_cpus):
+    """
+    Tests that map_groups supports UDFs that return generators (iterators).
+    """
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "data": 10},
+            {"group": 1, "data": 20},
+            {"group": 2, "data": 30},
+        ]
+    )
+
+    def generator_udf(df: pd.DataFrame) -> Iterator[pd.DataFrame]:
+        # For each group, yield two DataFrames.
+        # 1. A DataFrame where 'data' is multiplied by 2.
+        yield df.assign(data=df["data"] * 2)
+        # 2. A DataFrame where 'data' is multiplied by 3.
+        yield df.assign(data=df["data"] * 3)
+
+    # Apply the generator UDF to the grouped data.
+    result_ds = ds.groupby("group").map_groups(generator_udf)
+
+    # The final dataset should contain all results from all yields.
+    # Group 1 -> data: [20, 40] and [30, 60]
+    # Group 2 -> data: [60] and [90]
+    expected_data = sorted([20, 40, 30, 60, 60, 90])
+
+    # Collect and sort the actual data to ensure correctness regardless of order.
+    actual_data = sorted([row["data"] for row in result_ds.take_all()])
+
+    assert actual_data == expected_data
+    assert result_ds.count() == 6
 
 
 if __name__ == "__main__":

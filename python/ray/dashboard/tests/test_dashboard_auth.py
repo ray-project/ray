@@ -50,6 +50,54 @@ def test_dashboard_request_requires_auth_invalid_token(setup_cluster_with_token_
     assert response.status_code == 403
 
 
+def test_dashboard_request_with_ray_auth_header(setup_cluster_with_token_auth):
+    """Test that requests succeed with valid token in X-Ray-Authorization header."""
+
+    cluster_info = setup_cluster_with_token_auth
+    headers = {"X-Ray-Authorization": f"Bearer {cluster_info['token']}"}
+
+    response = requests.get(
+        f"{cluster_info['dashboard_url']}/api/component_activities",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+
+
+def test_authorization_header_takes_precedence(setup_cluster_with_token_auth):
+    """Test that standard Authorization header takes precedence over X-Ray-Authorization."""
+
+    cluster_info = setup_cluster_with_token_auth
+
+    # Provide both headers: valid token in Authorization, invalid in X-Ray-Authorization
+    headers = {
+        "Authorization": f"Bearer {cluster_info['token']}",
+        "X-Ray-Authorization": "Bearer invalid_token_000000000000000000000000",
+    }
+
+    # Should succeed because Authorization header takes precedence
+    response = requests.get(
+        f"{cluster_info['dashboard_url']}/api/component_activities",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+
+    # Now test with invalid Authorization but valid X-Ray-Authorization
+    headers = {
+        "Authorization": "Bearer invalid_token_000000000000000000000000",
+        "X-Ray-Authorization": f"Bearer {cluster_info['token']}",
+    }
+
+    # Should fail because Authorization header takes precedence (even though it's invalid)
+    response = requests.get(
+        f"{cluster_info['dashboard_url']}/api/component_activities",
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+
+
 def test_dashboard_auth_disabled(setup_cluster_without_token_auth):
     """Test that auth is not enforced when AUTH_MODE is disabled."""
 

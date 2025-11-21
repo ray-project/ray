@@ -18,11 +18,21 @@ from ray.llm._internal.batch.processor.base import (
     Processor,
     ProcessorBuilder,
 )
+from ray.llm._internal.batch.processor.utils import (
+    build_cpu_stage_map_kwargs,
+    get_value_or_fallback,
+)
 from ray.llm._internal.batch.stages import (
     ChatTemplateStage,
     DetokenizeStage,
     SGLangEngineStage,
     TokenizeStage,
+)
+from ray.llm._internal.batch.stages.configs import (
+    ChatTemplateStageConfig,
+    DetokenizeStageConfig,
+    TokenizerStageConfig,
+    resolve_stage_config,
 )
 from ray.llm._internal.batch.stages.sglang_engine_stage import SGLangTaskType
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
@@ -85,35 +95,50 @@ def build_sglang_engine_processor(
 
     stages = []
 
-    if config.apply_chat_template:
+    # Prepare processor defaults for merging into stage configs
+    processor_defaults = {
+        "batch_size": config.batch_size,
+        "concurrency": config.concurrency,
+        "runtime_env": config.runtime_env,
+        "model_source": config.model_source,
+    }
+
+    # Resolve and build ChatTemplateStage if enabled
+    chat_template_stage_cfg = resolve_stage_config(
+        config.chat_template_stage,
+        ChatTemplateStageConfig,
+        processor_defaults,
+    )
+    if chat_template_stage_cfg.enabled:
         stages.append(
             ChatTemplateStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model_source,
-                    chat_template=config.chat_template,
-                    chat_template_kwargs=chat_template_kwargs,
+                    model=chat_template_stage_cfg.model_source,
+                    chat_template=get_value_or_fallback(
+                        chat_template_stage_cfg.chat_template, config.chat_template
+                    ),
+                    chat_template_kwargs=get_value_or_fallback(
+                        chat_template_stage_cfg.chat_template_kwargs,
+                        chat_template_kwargs,
+                    ),
                 ),
-                map_batches_kwargs=dict(
-                    zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
-                    batch_size=config.batch_size,
-                    runtime_env=config.runtime_env,
-                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(chat_template_stage_cfg),
             )
         )
 
-    if config.tokenize:
+    # Resolve and build TokenizeStage if enabled
+    tokenize_stage_cfg = resolve_stage_config(
+        getattr(config, "tokenize_stage", config.tokenize),
+        TokenizerStageConfig,
+        processor_defaults,
+    )
+    if tokenize_stage_cfg.enabled:
         stages.append(
             TokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model_source,
+                    model=tokenize_stage_cfg.model_source,
                 ),
-                map_batches_kwargs=dict(
-                    zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
-                    batch_size=config.batch_size,
-                    runtime_env=config.runtime_env,
-                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(tokenize_stage_cfg),
             )
         )
 
@@ -149,18 +174,19 @@ def build_sglang_engine_processor(
         )
     )
 
-    if config.detokenize:
+    # Resolve and build DetokenizeStage if enabled
+    detokenize_stage_cfg = resolve_stage_config(
+        getattr(config, "detokenize_stage", config.detokenize),
+        DetokenizeStageConfig,
+        processor_defaults,
+    )
+    if detokenize_stage_cfg.enabled:
         stages.append(
             DetokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model_source,
+                    model=detokenize_stage_cfg.model_source,
                 ),
-                map_batches_kwargs=dict(
-                    zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
-                    batch_size=config.batch_size,
-                    runtime_env=config.runtime_env,
-                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(detokenize_stage_cfg),
             )
         )
 

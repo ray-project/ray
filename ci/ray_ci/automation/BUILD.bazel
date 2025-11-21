@@ -1,4 +1,4 @@
-load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_library(
@@ -18,7 +18,7 @@ py_library(
 py_binary(
     name = "determine_microcheck_tests",
     srcs = ["determine_microcheck_tests.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [
         ci_require("click"),
         ":automation",
@@ -28,7 +28,7 @@ py_binary(
 py_binary(
     name = "determine_microcheck_step_ids",
     srcs = ["determine_microcheck_step_ids.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [
         ci_require("click"),
         "//ci/ray_ci:ray_ci_lib",
@@ -38,7 +38,7 @@ py_binary(
 py_binary(
     name = "test_db_bot",
     srcs = ["test_db_bot.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [
         ci_require("click"),
         "//ci/ray_ci:ray_ci_lib",
@@ -48,7 +48,7 @@ py_binary(
 py_binary(
     name = "weekly_green_metric",
     srcs = ["weekly_green_metric.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [
         ci_require("boto3"),
         ci_require("click"),
@@ -59,7 +59,7 @@ py_binary(
 py_binary(
     name = "filter_tests",
     srcs = ["filter_tests.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [
         ci_require("click"),
         "//ci/ray_ci:ray_ci_lib",
@@ -78,7 +78,7 @@ py_test(
     name = "test_update_version_lib",
     size = "small",
     srcs = ["test_update_version_lib.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -92,7 +92,7 @@ py_test(
 py_binary(
     name = "update_version",
     srcs = ["update_version.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [
         ci_require("click"),
         ":update_version_lib",
@@ -121,7 +121,7 @@ py_test(
     data = [
         "@registry_x86_64//:file",
     ],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -145,7 +145,7 @@ py_library(
 py_test(
     name = "test_ray_wheels_lib",
     srcs = ["test_ray_wheels_lib.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -169,7 +169,7 @@ py_library(
 py_test(
     name = "test_pypi_lib",
     srcs = ["test_pypi_lib.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -183,7 +183,7 @@ py_test(
 py_binary(
     name = "upload_wheels_pypi",
     srcs = ["upload_wheels_pypi.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [
         ":pypi_lib",
         ":ray_wheels_lib",
@@ -194,7 +194,7 @@ py_binary(
 py_binary(
     name = "list_docker_tags",
     srcs = ["list_docker_tags.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [
         ":docker_tags_lib",
         ci_require("click"),
@@ -204,7 +204,7 @@ py_binary(
 py_binary(
     name = "generate_index",
     srcs = ["generate_index.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [
         ":docker_tags_lib",
         ci_require("click"),
@@ -214,7 +214,7 @@ py_binary(
 py_binary(
     name = "check_nightly_ray_commit",
     srcs = ["check_nightly_ray_commit.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [
         ":docker_tags_lib",
         ci_require("click"),
@@ -225,7 +225,7 @@ py_binary(
 py_test(
     name = "test_determine_microcheck_tests",
     srcs = ["test_determine_microcheck_tests.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -239,7 +239,7 @@ py_test(
 py_binary(
     name = "get_contributors",
     srcs = ["get_contributors.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [
         ci_require("click"),
         ci_require("pygithub"),

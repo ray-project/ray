@@ -133,6 +133,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsUnexpectedSystemExit()
         c_bool IsChannelError()
         c_bool IsChannelTimeoutError()
+        c_bool IsUnauthenticated()
 
         c_string ToString()
         c_string CodeAsString()
@@ -423,8 +424,8 @@ cdef extern from "ray/common/python_callbacks.h" namespace "ray":
             void (object, object) nogil,
             object) nogil
 
-cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
-    cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
+cdef extern from "ray/gcs_rpc_client/accessors/actor_info_accessor_interface.h" nogil:
+    cdef cppclass CActorInfoAccessorInterface "ray::gcs::ActorInfoAccessorInterface":
         void AsyncGetAllByFilter(
             const optional[CActorID] &actor_id,
             const optional[CJobID] &job_id,
@@ -438,6 +439,7 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
                                   const StatusPyCallback &callback,
                                   int64_t timeout_ms)
 
+cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
     cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
         CRayStatus GetAll(
             const optional[c_string] &job_or_submission_id,
@@ -649,7 +651,7 @@ cdef extern from "ray/gcs_rpc_client/gcs_client.h" nogil:
         c_pair[c_string, int] GetGcsServerAddress() const
         CClusterID GetClusterId() const
 
-        CActorInfoAccessor& Actors()
+        CActorInfoAccessorInterface& Actors()
         CJobInfoAccessor& Jobs()
         CInternalKVAccessor& InternalKV()
         CNodeInfoAccessor& Nodes()

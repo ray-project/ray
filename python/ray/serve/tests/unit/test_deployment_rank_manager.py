@@ -100,7 +100,9 @@ class TestDeploymentRankManager:
 
     def test_recover_rank_basic(self, rank_manager):
         """Test basic rank recovery."""
-        rank_manager.recover_rank("replica_1", ReplicaRank(rank=5))
+        rank_manager.recover_rank(
+            "replica_1", ReplicaRank(rank=5, node_rank=0, local_rank=0)
+        )
 
         assert rank_manager.has_replica_rank("replica_1")
         assert rank_manager.get_replica_rank("replica_1").rank == 5
@@ -108,7 +110,9 @@ class TestDeploymentRankManager:
     def test_recover_rank_updates_next_rank(self, rank_manager):
         """Test that recovering a high rank updates next_rank appropriately."""
         rank_manager.assign_rank("replica_1")  # Gets rank 0
-        rank_manager.recover_rank("replica_2", ReplicaRank(rank=10))
+        rank_manager.recover_rank(
+            "replica_2", ReplicaRank(rank=10, node_rank=0, local_rank=0)
+        )
 
         # New replica should get rank 11 (next available after 10)
         rank = rank_manager.assign_rank("replica_3")
@@ -124,7 +128,9 @@ class TestDeploymentRankManager:
         rank_manager.release_rank("replica_1")  # Rank 0 becomes available
 
         # Recover rank 0 for a new replica
-        rank_manager.recover_rank("replica_3", ReplicaRank(rank=0))
+        rank_manager.recover_rank(
+            "replica_3", ReplicaRank(rank=0, node_rank=0, local_rank=0)
+        )
 
         # Verify replica_3 has rank 0
         assert rank_manager.has_replica_rank("replica_3")
@@ -140,7 +146,9 @@ class TestDeploymentRankManager:
         rank_manager.assign_rank("replica_1")
 
         with pytest.raises(RuntimeError, match="already assigned"):
-            rank_manager.recover_rank("replica_1", ReplicaRank(rank=5))
+            rank_manager.recover_rank(
+                "replica_1", ReplicaRank(rank=5, node_rank=0, local_rank=0)
+            )
 
     def test_get_replica_rank_existing(self, rank_manager):
         """Test getting rank for existing replica."""
@@ -218,9 +226,15 @@ class TestDeploymentRankManager:
         replica3 = MockDeploymentReplica("replica_3")
 
         # Manually assign non-contiguous ranks using recover_rank
-        rank_manager.recover_rank("replica_1", ReplicaRank(rank=0))
-        rank_manager.recover_rank("replica_2", ReplicaRank(rank=2))  # Gap at rank 1
-        rank_manager.recover_rank("replica_3", ReplicaRank(rank=3))
+        rank_manager.recover_rank(
+            "replica_1", ReplicaRank(rank=0, node_rank=0, local_rank=0)
+        )
+        rank_manager.recover_rank(
+            "replica_2", ReplicaRank(rank=2, node_rank=0, local_rank=0)
+        )  # Gap at rank 1
+        rank_manager.recover_rank(
+            "replica_3", ReplicaRank(rank=3, node_rank=0, local_rank=0)
+        )
 
         result = rank_manager.check_rank_consistency_and_reassign_minimally(
             [replica1, replica2, replica3]
@@ -243,13 +257,17 @@ class TestDeploymentRankManager:
         replica4 = MockDeploymentReplica("replica_4")
 
         # Set up ranks: 0, 2, 5, 7 (non-contiguous) using recover_rank
-        rank_manager.recover_rank("replica_1", ReplicaRank(rank=0))  # Should keep this
-        rank_manager.recover_rank("replica_2", ReplicaRank(rank=2))  # Should keep this
         rank_manager.recover_rank(
-            "replica_3", ReplicaRank(rank=5)
+            "replica_1", ReplicaRank(rank=0, node_rank=0, local_rank=0)
+        )  # Should keep this
+        rank_manager.recover_rank(
+            "replica_2", ReplicaRank(rank=2, node_rank=0, local_rank=0)
+        )  # Should keep this
+        rank_manager.recover_rank(
+            "replica_3", ReplicaRank(rank=5, node_rank=0, local_rank=0)
         )  # Should be reassigned to 1
         rank_manager.recover_rank(
-            "replica_4", ReplicaRank(rank=7)
+            "replica_4", ReplicaRank(rank=7, node_rank=0, local_rank=0)
         )  # Should be reassigned to 3
 
         result = rank_manager.check_rank_consistency_and_reassign_minimally(
@@ -297,8 +315,12 @@ class TestDeploymentRankManager:
         replica2 = MockDeploymentReplica("replica_2")
 
         # Manually create duplicate ranks using recover_rank (this should never happen in normal operation)
-        rank_manager.recover_rank("replica_1", ReplicaRank(rank=0))
-        rank_manager.recover_rank("replica_2", ReplicaRank(rank=0))  # Duplicate!
+        rank_manager.recover_rank(
+            "replica_1", ReplicaRank(rank=0, node_rank=0, local_rank=0)
+        )
+        rank_manager.recover_rank(
+            "replica_2", ReplicaRank(rank=0, node_rank=0, local_rank=0)
+        )  # Duplicate!
 
         with pytest.raises(RuntimeError, match="Rank system is in an invalid state"):
             rank_manager.check_rank_consistency_and_reassign_minimally(
@@ -356,7 +378,9 @@ class TestDeploymentRankManagerErrorHandling:
 
         # Should raise RuntimeError for duplicate recovery
         with pytest.raises(RuntimeError, match="already assigned"):
-            rank_manager.recover_rank("replica_1", ReplicaRank(rank=5))
+            rank_manager.recover_rank(
+                "replica_1", ReplicaRank(rank=5, node_rank=-1, local_rank=-1)
+            )
 
     def test_recover_rank_error_with_fail_on_rank_error_false(self):
         """Test that recover_rank returns safe default when fail_on_rank_error=False."""
@@ -364,7 +388,9 @@ class TestDeploymentRankManagerErrorHandling:
         rank_manager.assign_rank("replica_1")
 
         # Should return None instead of raising
-        result = rank_manager.recover_rank("replica_1", ReplicaRank(rank=5))
+        result = rank_manager.recover_rank(
+            "replica_1", ReplicaRank(rank=5, node_rank=-1, local_rank=-1)
+        )
         assert result is None
 
     def test_get_replica_rank_error_with_fail_on_rank_error_true(self):
@@ -423,8 +449,12 @@ class TestDeploymentRankManagerErrorHandling:
         replica2 = MockDeploymentReplica("replica_2")
 
         # Manually create duplicate ranks
-        rank_manager.recover_rank("replica_1", ReplicaRank(rank=0))
-        rank_manager.recover_rank("replica_2", ReplicaRank(rank=0))
+        rank_manager.recover_rank(
+            "replica_1", ReplicaRank(rank=0, node_rank=-1, local_rank=-1)
+        )
+        rank_manager.recover_rank(
+            "replica_2", ReplicaRank(rank=0, node_rank=-1, local_rank=-1)
+        )
 
         # Should return empty list instead of raising
         result = rank_manager.check_rank_consistency_and_reassign_minimally(
@@ -449,7 +479,10 @@ class TestDeploymentRankManagerErrorHandling:
         assert not rank_manager.has_replica_rank("replica_1")
 
         # Test normal recover
-        rank_manager.recover_rank("replica_2", ReplicaRank(rank=5))
+        rank_manager.recover_rank(
+            "replica_2", ReplicaRank(rank=5, node_rank=-1, local_rank=-1)
+        )
+
         assert rank_manager.get_replica_rank("replica_2").rank == 5
 
         # Test normal consistency check

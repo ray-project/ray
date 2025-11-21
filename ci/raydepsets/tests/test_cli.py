@@ -155,14 +155,19 @@ class TestCli(unittest.TestCase):
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
                 append_flags=["--no-annotate", "--python-version 3.10"],
-                override_flags=["--extra-index-url https://dummyurl.com"],
+                override_flags=[
+                    "--extra-index-url https://download.pytorch.org/whl/cu124"
+                ],
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
             output_file = Path(tmpdir) / "requirements_compiled.txt"
             output_text = output_file.read_text()
             assert "--python-version 3.10" in output_text
-            assert "--extra-index-url https://dummyurl.com" in output_text
+            assert (
+                "--extra-index-url https://download.pytorch.org/whl/cu124"
+                in output_text
+            )
             assert (
                 "--extra-index-url https://download.pytorch.org/whl/cu128"
                 not in output_text
@@ -242,6 +247,40 @@ class TestCli(unittest.TestCase):
                 "Requirement requirements_compiled_test.txt is not a subset of general_depset__py311_cpu in config test.depsets.yaml"
                 in str(e.exception)
             )
+
+    def test_subset_with_expanded_depsettest_subset_with_expanded_depset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            compile_depset = Depset(
+                name="compile_depset",
+                operation="compile",
+                requirements=["requirements_test.txt"],
+                output="requirements_compiled.txt",
+                config_name="test.depsets.yaml",
+            )
+            expand_depset = Depset(
+                name="expand_depset",
+                operation="expand",
+                depsets=["compile_depset"],
+                requirements=["requirements_compiled_test_expand.txt"],
+                output="requirements_compiled_expanded.txt",
+                config_name="test.depsets.yaml",
+            )
+            nested_expand_subset = Depset(
+                name="nested_expand_subset_depset",
+                operation="subset",
+                source_depset="expand_depset",
+                requirements=["requirements_test.txt"],
+                output="requirements_compiled_subset_nested_expand.txt",
+                config_name="test.depsets.yaml",
+            )
+            write_to_config_file(
+                tmpdir,
+                [compile_depset, expand_depset, nested_expand_subset],
+                "test.depsets.yaml",
+            )
+            manager = _create_test_manager(tmpdir, build_all_configs=True)
+            manager.check_subset_exists(expand_depset, ["requirements_test.txt"])
 
     def test_check_if_subset_exists(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -457,7 +496,7 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_invalid_op.txt",
                 config_name="test.depsets.yaml",
             )
-            write_to_config_file(tmpdir, depset, "test.depsets.yaml")
+            write_to_config_file(tmpdir, [depset], "test.depsets.yaml")
             with self.assertRaises(ValueError) as e:
                 _create_test_manager(tmpdir)
             assert (
@@ -624,7 +663,7 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_test.txt",
                 config_name="test.depsets.yaml",
             )
-            write_to_config_file(tmpdir, depset, "test.depsets.yaml")
+            write_to_config_file(tmpdir, [depset], "test.depsets.yaml")
             save_file_as(
                 Path(tmpdir) / "requirements_compiled_test.txt",
                 Path(tmpdir) / "requirements_compiled.txt",
@@ -653,7 +692,7 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_test.txt",
                 config_name="test.depsets.yaml",
             )
-            write_to_config_file(tmpdir, depset, "test.depsets.yaml")
+            write_to_config_file(tmpdir, [depset], "test.depsets.yaml")
             manager = _create_test_manager(tmpdir, check=True)
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
@@ -688,7 +727,7 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_test.txt",
                 config_name="test.depsets.yaml",
             )
-            write_to_config_file(tmpdir, depset, "test.depsets.yaml")
+            write_to_config_file(tmpdir, [depset], "test.depsets.yaml")
             manager = _create_test_manager(tmpdir, check=True)
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
@@ -852,4 +891,4 @@ class TestCli(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-vv", __file__]))
+    sys.exit(pytest.main(["-vvv", __file__]))

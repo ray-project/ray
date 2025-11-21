@@ -84,6 +84,7 @@ class TorchVisionPreprocessor(Preprocessor):
         output_columns: Optional[List[str]] = None,
         batched: bool = False,
     ):
+        super().__init__()
         if not output_columns:
             output_columns = columns
         if len(columns) != len(output_columns):
@@ -144,6 +145,12 @@ class TorchVisionPreprocessor(Preprocessor):
             data_batch = transform_batch(data_batch)
 
         return data_batch
+
+    def get_input_columns(self) -> List[str]:
+        return self._columns
+
+    def get_output_columns(self) -> List[str]:
+        return self._output_columns
 
     def preferred_batch_format(cls) -> BatchFormat:
         return BatchFormat.NUMPY

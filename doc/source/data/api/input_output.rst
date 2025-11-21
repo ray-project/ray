@@ -368,6 +368,15 @@ WebDataset
 
 .. _data_source_api:
 
+Kafka
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_kafka
+
 Datasource API
 --------------
 

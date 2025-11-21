@@ -15,18 +15,23 @@
 #pragma once
 
 #include <functional>
-#include <iostream>
+#include <utility>
 
 #include "absl/time/clock.h"
+
 namespace ray {
 
 class Throttler {
  public:
   explicit Throttler(int64_t interval_ns, std::function<int64_t()> now = nullptr)
-      : last_run_ns_(0), interval_ns_(interval_ns), now_(now) {}
+      : now_(now == nullptr ? []() { return absl::GetCurrentTimeNanos(); }
+                            : std::move(now)),
+        interval_ns_(interval_ns),
+        // Subtracting interval so the first run is possible.
+        last_run_ns_(now_() - interval_ns) {}
 
-  bool AbleToRun() {
-    auto now = Now();
+  bool CheckAndUpdateIfPossible() {
+    auto now = now_();
     if (now - last_run_ns_ >= interval_ns_) {
       last_run_ns_ = now;
       return true;
@@ -34,20 +39,12 @@ class Throttler {
     return false;
   }
 
-  void RunNow() { last_run_ns_ = Now(); }
+  uint64_t LastRunTime() const { return last_run_ns_; }
 
  private:
-  int64_t Now() {
-    if (now_) {
-      return now_();
-    } else {
-      return absl::GetCurrentTimeNanos();
-    }
-  }
-
-  uint64_t last_run_ns_;
-  uint64_t interval_ns_;
   std::function<int64_t()> now_;
+  uint64_t interval_ns_;
+  uint64_t last_run_ns_;
 };
 
 }  // namespace ray
