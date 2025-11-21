@@ -94,9 +94,9 @@ $ export RAY_AUTH_MODE=token
 $ ray start --head
 ...
 RuntimeError: Token authentication is enabled but no authentication token was found. Please provide an authentication token using one of these methods:
-  1. Set the RAY_AUTH_TOKEN environment variable
-  2. Set the RAY_AUTH_TOKEN_PATH environment variable (pointing to a token file)
-  3. Create a token file at the default location: ~/.ray/auth_token
+1. Set the RAY_AUTH_TOKEN environment variable
+2. Set the RAY_AUTH_TOKEN_PATH environment variable (pointing to a token file)
+3. Create a token file at the default location: ~/.ray/auth_token
 
 # Generate a token.
 $ ray get-auth-token --generate
@@ -113,7 +113,7 @@ Ray runtime started.
 
 When working with remote clusters you must ensure that all nodes in the remote cluster have token authentication enabled and access to the same token. Any clients that interact with the remote cluster, including your local machine, must also have the token configured. The following sections provide an overview of configuring this using the Ray cluster launcher and self-managed clusters.
 
-For instructions on configuring token authentication with KubeRay, see :ref:`Token authentication with KubeRay <kuberay-auth>`.
+For instructions on configuring token authentication with KubeRay, see {ref}`Token authentication with KubeRay <kuberay-auth>`.
 
 :::{note}
 If you're using a hosted version of Ray, contact your customer support for authentication questions.
@@ -267,5 +267,5 @@ It's possible to stop and then restart a cluster using a different token. All cl
 
 ## Next steps
 
-- See :ref:`overall security guidelines <security>`.
-- Read about :ref:`KubeRay authentication <kuberay-auth>` for Kubernetes-specific configuration.
+- See {ref}`overall security guidelines <security>`.
+- Read about {ref}`KubeRay authentication <kuberay-auth>` for Kubernetes-specific configuration.

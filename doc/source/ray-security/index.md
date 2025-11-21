@@ -48,5 +48,5 @@ When considering the security responsibilities of running Ray, think about the d
 * If workloads require isolation from each other, use separate, isolated Ray clusters. Ray can schedule multiple distinct Jobs in a single Cluster, but doesn't attempt to enforce isolation between them. Similarly, Ray doesn't implement access controls for developers interacting with a given cluster.
 * Ray developers are responsible for determining which applications need to be separated and platform providers are responsible for providing this isolation.
 ### Enable token authentication
-* Starting in Ray 2.52.0, Ray supports built-in token authentication that provides an additional measure to prevent unauthorized access to the cluster (including untrusted code execution). See :ref:`Ray token authentication <token-auth>` for details.
+* Starting in Ray 2.52.0, Ray supports built-in token authentication that provides an additional measure to prevent unauthorized access to the cluster (including untrusted code execution). See {ref}`Ray token authentication <token-auth>` for details.
 * Token authentication is not an alternative to deploying Ray clusters in a controlled network environment. Rather, it is a defense-in-depth measure that adds to network-level security.
