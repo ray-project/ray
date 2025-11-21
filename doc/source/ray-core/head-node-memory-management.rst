@@ -11,31 +11,21 @@ When running Ray clusters for extended periods, the head node's memory usage can
 Why Head Node Memory Grows  
 ---------------------------  
   
-The head node runs critical ray system processes such as the autoscaler, GCS (Global Control Service), and Ray driver processes. These processes can consume significant memory over time. 
-  
-Dashboard Event Caching  
-~~~~~~~~~~~~~~~~~~~~~~~  
-  
-The Ray Dashboard caches cluster events in memory for display and debugging purposes. The cache size is controlled by the ``RAY_DASHBOARD_MAX_EVENTS_TO_CACHE`` environment variable (default: 10,000 events).  
-  
-Metrics and Reporting Overhead  
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~  
-  
-The system periodically collects and reports resource usage and metrics. The reporting interval is controlled by ``raylet_report_resources_period_milliseconds`` (default: 100ms).  
-  
-Memory Monitor Overhead  
-~~~~~~~~~~~~~~~~~~~~~~~  
-  
-The memory monitor periodically checks memory usage, controlled by ``memory_monitor_refresh_ms`` (default: 250ms). While necessary for OOM prevention, this monitoring adds overhead.  
-  
-Job and Worker Metadata  
-~~~~~~~~~~~~~~~~~~~~~~~  
-  
-The dashboard processes and stores logs and metadata from jobs and workers, which accumulates over time in long-running clusters.  
+- The Ray Dashboard provides a web interface for cluster monitoring and debugging. For more details, see :ref:`observability-getting-started`.
+- The Ray Dashboard caches cluster events in memory for display and debugging purposes. The cache size is controlled by the ``RAY_DASHBOARD_MAX_EVENTS_TO_CACHE`` environment variable. For implementation details, see the `event caching code <https://github.com/ray-project/ray/blob/814768317813afca2f0af740f58d024b059ae7d7/python/ray/dashboard/modules/event/event_head.py#L35>`_.  
+- The memory monitor periodically checks memory usage and adds overhead. This monitoring applies only if scheduling is enabled on the head node.  
+- The dashboard processes and stores logs and metadata from jobs and workers, which accumulate over time in long-running clusters.  
   
 Mitigation Strategies  
 ---------------------  
-  
+
+Avoid Scheduling on the Head Node
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Running tasks or actors on the head node is not recommended because it hosts critical system components. Preventing scheduling on the head node helps reduce contention and memory pressure.
+
+See :ref:`vms-large-cluster-configure-head-node` for head-node best practices.
+
 Disable the Dashboard  
 ~~~~~~~~~~~~~~~~~~~~~  
   
@@ -70,38 +60,6 @@ Reduce the dashboard event cache size by setting the environment variable before
   
     export RAY_DASHBOARD_MAX_EVENTS_TO_CACHE=5000  
     ray start --head  
-  
-Enable Resource Isolation  
-~~~~~~~~~~~~~~~~~~~~~~~~~~  
-  
-Resource isolation reserves memory and CPU for Ray system processes through cgroupv2, preventing user workloads from consuming all available resources.  
-  
-**CLI Options:**  
-  
-.. code-block:: bash  
-  
-    ray start --head \  
-        --enable-resource-isolation \  
-        --system-reserved-memory=1073741824 \  
-        --system-reserved-cpu=1.0  
-  
-- ``--enable-resource-isolation``: Enables cgroupv2-based resource isolation  
-- ``--system-reserved-memory``: Memory in bytes to reserve for Ray system processes (default: min 500MB, max 10GB)  
-- ``--system-reserved-cpu``: CPU cores to reserve for Ray system processes (default: min 1 core, max 3 cores)  
-  
-**Python API:**  
-  
-.. code-block:: python  
-  
-    import ray  
-    ray.init(  
-        enable_resource_isolation=True,  
-        system_reserved_memory=1024**3,  # 1GB  
-        system_reserved_cpu=1.0  
-    )  
-  
-.. note::  
-    Resource isolation requires cgroupv2 with read/write permissions for the raylet. Cgroup memory and CPU controllers must be enabled.  
   
 Configure Memory Monitor  
 ~~~~~~~~~~~~~~~~~~~~~~~~~  
@@ -158,19 +116,17 @@ Best Practices
 --------------  
   
 1. **Start with conservative settings** and adjust based on observed behavior  
-2. **Enable resource isolation** in production environments to prevent system process starvation  
-3. **Disable the dashboard** if not actively used for debugging  
-4. **Set appropriate Kubernetes resource limits** matching requests for memory and GPU  
-5. **Reserve sufficient memory** for system processes (at least 1GB for large clusters)  
+2. **Disable the dashboard** if not actively used for debugging  
+3. **Set appropriate Kubernetes resource limits** matching requests for memory and GPU  
+4. **Reserve sufficient memory** for system processes (at least 1GB for large clusters)  
   
 Troubleshooting  
 ---------------  
   
 If your head node experiences OOM issues:  
   
-1. Check current memory usage: ``ray memory``  
+1. Check current memory usage: ``ray memory``. See :ref:`debug-with-ray-memory`
 2. Verify dashboard event cache size is appropriate for your workload  
-3. Ensure resource isolation is properly configured if enabled  
-4. Consider increasing head node memory allocation  
+3. Consider increasing head node memory allocation  
 
 For more information on OOM prevention, see :ref:`ray-oom-prevention`.
