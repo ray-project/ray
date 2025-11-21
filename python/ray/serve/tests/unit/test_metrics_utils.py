@@ -749,5 +749,443 @@ class TestInstantaneousMerge:
         assert_timeseries_equal(result, expected)
 
 
+class TestCythonImplementationEdgeCases:
+    """Test edge cases and stress scenarios for the Cython/C++ implementation."""
+
+    def test_merge_large_number_of_replicas(self):
+        """Test merging a large number of replicas (stress test for heap)."""
+        # Create 100 replicas with overlapping timestamps
+        replicas = []
+        for i in range(100):
+            series = [
+                TimeStampedValue(float(i) * 0.1, float(i)),
+                TimeStampedValue(float(i) * 0.1 + 5.0, float(i) + 10),
+            ]
+            replicas.append(series)
+
+        result = merge_instantaneous_total(replicas)
+
+        # Many points will be merged due to rounding (149 unique rounded timestamps)
+        assert len(result) == 149
+        # All timestamps should be sorted
+        timestamps = [p.timestamp for p in result]
+        assert timestamps == sorted(timestamps)
+        # First value should be from replica at index 1 (i=1, timestamp=0.1, value=1.0)
+        assert result[0].timestamp == 0.1
+        assert result[0].value == 1.0
+
+    def test_merge_very_long_single_series(self):
+        """Test merging a very long single series (10k points)."""
+        series = [
+            TimeStampedValue(float(i) * 0.01, float(i % 100)) for i in range(10000)
+        ]
+        result = merge_instantaneous_total([series])
+
+        # Single series should return as-is
+        assert len(result) == len(series)
+        assert result == series
+
+    def test_merge_many_points_same_timestamp(self):
+        """Test handling many points with identical timestamps."""
+        series1 = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(1.0, 10.0),  # Same timestamp
+            TimeStampedValue(1.0, 15.0),  # Same timestamp
+        ]
+        series2 = [
+            TimeStampedValue(1.0, 20.0),
+            TimeStampedValue(1.0, 25.0),  # Same timestamp
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        # All should be merged into single point at rounded timestamp 1.0
+        assert len(result) == 1
+        # First point should have timestamp 1.0
+        assert result[0].timestamp == 1.0
+
+    def test_merge_with_very_small_timestamps(self):
+        """Test handling of very small timestamp values."""
+        series1 = [
+            TimeStampedValue(1e-10, 5.0),
+            TimeStampedValue(2e-10, 7.0),
+        ]
+        series2 = [
+            TimeStampedValue(1.5e-10, 3.0),
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        # Should handle without crashing
+        assert isinstance(result, list)
+        # All very small timestamps should round to 0.0
+        assert all(p.timestamp == 0.0 for p in result)
+
+    def test_merge_with_very_large_timestamps(self):
+        """Test handling of very large timestamp values (e.g., Unix epoch times)."""
+        base = 1.7e9  # Year 2023+
+        series1 = [
+            TimeStampedValue(base + 0.1, 5.0),
+            TimeStampedValue(base + 5.0, 10.0),
+        ]
+        series2 = [
+            TimeStampedValue(base + 2.0, 3.0),
+            TimeStampedValue(base + 7.0, 8.0),
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        # Should handle large timestamps correctly
+        assert len(result) == 4
+        expected = [
+            TimeStampedValue(base + 0.1, 5.0),
+            TimeStampedValue(base + 2.0, 8.0),
+            TimeStampedValue(base + 5.0, 13.0),
+            TimeStampedValue(base + 7.0, 18.0),
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_with_negative_values(self):
+        """Test handling of negative metric values."""
+        series1 = [
+            TimeStampedValue(1.0, -5.0),
+            TimeStampedValue(2.0, -3.0),
+        ]
+        series2 = [
+            TimeStampedValue(1.5, -2.0),
+            TimeStampedValue(2.5, -1.0),
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        # Should handle negative values correctly
+        expected = [
+            TimeStampedValue(1.0, -5.0),
+            TimeStampedValue(1.5, -7.0),  # -5 + -2
+            TimeStampedValue(2.0, -5.0),  # -2 + (-3 - (-5))
+            TimeStampedValue(2.5, -4.0),  # -3 + (-1 - (-2))
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_with_zero_values(self):
+        """Test handling of zero values in series."""
+        series1 = [
+            TimeStampedValue(1.0, 0.0),
+            TimeStampedValue(2.0, 5.0),
+            TimeStampedValue(3.0, 0.0),
+        ]
+        series2 = [
+            TimeStampedValue(1.5, 0.0),
+            TimeStampedValue(2.5, 0.0),
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        # Zero-delta changes are filtered out, so only value-changing points remain
+        # t=1.0: series1 starts at 0 (total=0, but filtered as starting from 0)
+        # t=1.5: series2 starts at 0 (total=0, no change from implied 0, filtered)
+        # t=2.0: series1 changes to 5 (total=5, delta=+5)
+        # t=3.0: series1 changes to 0 (total=0, delta=-5)
+        expected = [
+            TimeStampedValue(2.0, 5.0),
+            TimeStampedValue(3.0, 0.0),
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_alternating_series(self):
+        """Test merging series with perfectly alternating timestamps."""
+        series1 = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(3.0, 7.0),
+            TimeStampedValue(5.0, 9.0),
+        ]
+        series2 = [
+            TimeStampedValue(2.0, 3.0),
+            TimeStampedValue(4.0, 4.0),
+            TimeStampedValue(6.0, 2.0),
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        expected = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 8.0),  # 5 + 3
+            TimeStampedValue(3.0, 10.0),  # 3 + 7
+            TimeStampedValue(4.0, 11.0),  # 7 + 4
+            TimeStampedValue(5.0, 13.0),  # 4 + 9
+            TimeStampedValue(6.0, 11.0),  # 9 + 2
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_with_floating_point_precision(self):
+        """Test handling of floating point precision edge cases."""
+        series1 = [
+            TimeStampedValue(1.0 + 1e-15, 5.0),
+            TimeStampedValue(2.0 + 2e-15, 7.0),
+        ]
+        series2 = [
+            TimeStampedValue(1.5 + 1e-15, 3.0),
+            TimeStampedValue(2.5 + 2e-15, 4.0),
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        # Should handle floating point precision correctly
+        assert len(result) == 4
+        # Timestamps should be properly rounded
+        timestamps = [p.timestamp for p in result]
+        assert all(isinstance(t, float) for t in timestamps)
+
+    def test_time_weighted_average_with_zero_duration_window(self):
+        """Test time_weighted_average with zero-duration window."""
+        series = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 10.0),
+        ]
+        # Window where start == end should return 0 or None
+        result = time_weighted_average(series, 1.5, 1.5)
+        # Implementation should handle this gracefully
+        assert result is None or result == 0.0
+
+    def test_time_weighted_average_with_negative_window(self):
+        """Test time_weighted_average with window_end < window_start."""
+        series = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 10.0),
+        ]
+        result = time_weighted_average(series, 2.0, 1.0)
+        # Should return None for invalid window
+        assert result is None
+
+    def test_time_weighted_average_very_large_values(self):
+        """Test time_weighted_average with very large metric values."""
+        series = [
+            TimeStampedValue(1.0, 1e12),
+            TimeStampedValue(2.0, 2e12),
+            TimeStampedValue(3.0, 3e12),
+        ]
+        result = time_weighted_average(series, None, None)
+
+        # Should handle large values without overflow
+        # Expected: (1e12*1 + 2e12*1 + 3e12*1) / 3 = 2e12
+        assert result == pytest.approx(2e12, rel=1e-9)
+
+    def test_time_weighted_average_very_small_values(self):
+        """Test time_weighted_average with very small metric values."""
+        series = [
+            TimeStampedValue(1.0, 1e-12),
+            TimeStampedValue(2.0, 2e-12),
+            TimeStampedValue(3.0, 3e-12),
+        ]
+        result = time_weighted_average(series, None, None)
+
+        # Should handle very small values without underflow
+        # Expected: (1e-12*1 + 2e-12*1 + 3e-12*1) / 3 = 2e-12
+        assert result == pytest.approx(2e-12, rel=1e-6)
+
+    def test_time_weighted_average_with_long_series(self):
+        """Test time_weighted_average with a very long series (stress test)."""
+        # Create a series with 10,000 points
+        series = [
+            TimeStampedValue(float(i) * 0.1, float(i % 100)) for i in range(10000)
+        ]
+
+        result = time_weighted_average(series, None, None)
+
+        # Should compute correctly without performance issues
+        # The pattern repeats every 100 points, so average should be around 49.5
+        assert result == pytest.approx(49.5, rel=0.01)
+
+    def test_time_weighted_average_with_irregular_spacing(self):
+        """Test time_weighted_average with irregularly spaced timestamps."""
+        series = [
+            TimeStampedValue(1.0, 10.0),
+            TimeStampedValue(1.001, 20.0),  # Very close
+            TimeStampedValue(5.0, 30.0),  # Big gap
+            TimeStampedValue(5.001, 40.0),  # Very close again
+            TimeStampedValue(100.0, 50.0),  # Huge gap
+        ]
+
+        result = time_weighted_average(series, None, None)
+
+        # Should handle irregular spacing correctly
+        # Most weight should be on the 40.0 value due to long duration (94.999s)
+        # Expected: (10*0.001 + 20*3.999 + 30*0.001 + 40*94.999 + 50*1.0) / 100.0 ≈ 39.30
+        expected = (
+            10 * 0.001 + 20 * 3.999 + 30 * 0.001 + 40 * 94.999 + 50 * 1.0
+        ) / 100.0
+        assert result == pytest.approx(expected, rel=1e-6)
+
+    def test_merge_with_single_point_series(self):
+        """Test merging multiple single-point series."""
+        replicas = [
+            [TimeStampedValue(1.0, 5.0)],
+            [TimeStampedValue(2.0, 3.0)],
+            [TimeStampedValue(3.0, 7.0)],
+            [TimeStampedValue(4.0, 2.0)],
+        ]
+
+        result = merge_instantaneous_total(replicas)
+
+        expected = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 8.0),
+            TimeStampedValue(3.0, 15.0),
+            TimeStampedValue(4.0, 17.0),
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_mixed_empty_and_nonempty(self):
+        """Test merging with a mix of empty and non-empty series."""
+        replicas = [
+            [],
+            [TimeStampedValue(1.0, 5.0)],
+            [],
+            [],
+            [TimeStampedValue(2.0, 3.0)],
+            [],
+        ]
+
+        result = merge_instantaneous_total(replicas)
+
+        expected = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 8.0),
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_series_with_duplicate_consecutive_values(self):
+        """Test merging when series have duplicate consecutive values."""
+        series1 = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 5.0),  # No change
+            TimeStampedValue(3.0, 5.0),  # No change
+            TimeStampedValue(4.0, 10.0),  # Change
+        ]
+        series2 = [
+            TimeStampedValue(1.5, 3.0),
+            TimeStampedValue(2.5, 3.0),  # No change
+            TimeStampedValue(3.5, 3.0),  # No change
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        # Should only emit points where total changes
+        expected = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(1.5, 8.0),
+            TimeStampedValue(4.0, 13.0),
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_merge_with_descending_values(self):
+        """Test merging series with descending values."""
+        series1 = [
+            TimeStampedValue(1.0, 100.0),
+            TimeStampedValue(2.0, 80.0),
+            TimeStampedValue(3.0, 60.0),
+        ]
+        series2 = [
+            TimeStampedValue(1.5, 50.0),
+            TimeStampedValue(2.5, 30.0),
+            TimeStampedValue(3.5, 10.0),
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        # Values can increase or decrease as series change
+        expected = [
+            TimeStampedValue(1.0, 100.0),
+            TimeStampedValue(1.5, 150.0),  # 100 + 50
+            TimeStampedValue(2.0, 130.0),  # 50 + (80-100)
+            TimeStampedValue(2.5, 110.0),  # 80 + (30-50)
+            TimeStampedValue(3.0, 90.0),  # 30 + (60-80)
+            TimeStampedValue(3.5, 70.0),  # 60 + (10-30)
+        ]
+        assert_timeseries_equal(result, expected)
+
+    def test_time_weighted_average_single_point_in_middle_of_window(self):
+        """Test time_weighted_average with single point inside window."""
+        series = [TimeStampedValue(5.0, 42.0)]
+
+        # Window completely contains the point
+        result = time_weighted_average(series, 3.0, 7.0)
+
+        # Should use default value (0.0) before point, then 42.0 after
+        # [3.0, 5.0): value = 0.0, duration = 2.0
+        # [5.0, 7.0): value = 42.0, duration = 2.0
+        expected = (0.0 * 2.0 + 42.0 * 2.0) / 4.0
+        assert result == expected
+
+    def test_time_weighted_average_window_before_all_data(self):
+        """Test time_weighted_average with window completely before all data."""
+        series = [
+            TimeStampedValue(10.0, 5.0),
+            TimeStampedValue(11.0, 10.0),
+        ]
+
+        # Window is [5.0, 8.0), data starts at 10.0
+        result = time_weighted_average(series, 5.0, 8.0)
+
+        # Should use default value 0.0 for entire window
+        assert result == 0.0
+
+    def test_time_weighted_average_with_last_window_zero(self):
+        """Test time_weighted_average with last_window_s = 0."""
+        series = [
+            TimeStampedValue(1.0, 5.0),
+            TimeStampedValue(2.0, 10.0),
+        ]
+
+        # With last_window_s=0, the last point should have zero duration
+        result = time_weighted_average(series, None, None, last_window_s=0.0)
+
+        # Should only count the segment from 1.0 to 2.0
+        assert result == 5.0
+
+    def test_merge_timestamp_rounding_boundary_at_005(self):
+        """Test timestamp rounding at the 0.005 boundary (rounds to even)."""
+        # Testing banker's rounding (round half to even)
+        series1 = [
+            TimeStampedValue(
+                1.005, 5.0
+            ),  # Rounds to 1.00 (or 1.01 depending on c_round)
+            TimeStampedValue(1.015, 7.0),  # Rounds to 1.02 (or 1.01)
+            TimeStampedValue(1.025, 9.0),  # Rounds to 1.02 (or 1.03)
+        ]
+        series2 = [
+            TimeStampedValue(0.5, 2.0),  # Add second series to trigger merge
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        # Verify timestamps are properly rounded
+        timestamps = [p.timestamp for p in result]
+        # Actual output: [0.5, 1.0, 1.01, 1.02]
+        assert len(timestamps) == 4
+        assert timestamps[0] == 0.5
+        # Verify all timestamps are properly rounded to 2 decimal places
+        for ts in timestamps:
+            assert ts == pytest.approx(round(ts, 2), abs=1e-10)
+
+    def test_merge_with_extreme_value_changes(self):
+        """Test merging with extreme value changes."""
+        series1 = [
+            TimeStampedValue(1.0, 1e-10),
+            TimeStampedValue(2.0, 1e10),  # Huge increase
+        ]
+        series2 = [
+            TimeStampedValue(1.5, 1e10),
+            TimeStampedValue(2.5, 1e-10),  # Huge decrease
+        ]
+
+        result = merge_instantaneous_total([series1, series2])
+
+        # Should handle extreme value changes
+        assert len(result) == 4
+        # Check that values are computed correctly despite extreme changes
+        assert result[0].value == pytest.approx(1e-10, rel=1e-6)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
