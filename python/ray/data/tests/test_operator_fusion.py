@@ -959,6 +959,191 @@ def test_get_compatible_ref_bundler(
         ), f"{description}: Expected fusion to fail (None) but got {result}"
 
 
+@pytest.mark.parametrize(
+    "first_batch_size,target_num_rows,second_batch_size,expected_pattern,description",
+    [
+        # Case 1: No batch_size, streaming repartition, no batch_size
+        # All three can fuse: MapBatches(fn1)->StreamingRepartition->MapBatches(fn2)
+        # But Read doesn't fuse because the result has min_rows_per_bundle set
+        (
+            None,
+            20,
+            None,
+            [
+                "ReadRange",
+                "MapBatches(fn1)->StreamingRepartition[num_rows_per_block=20]->MapBatches(fn2)",
+            ],
+            "No batch_size: All Maps+StreamingRepartition fuse, but not with Read",
+        ),
+        # Case 2: batch_size < target_num_rows, streaming repartition, no batch_size
+        # Map1+StreamingRepartition can fuse, then +Map2 (since Map2 has no batch_size)
+        (
+            10,
+            20,
+            None,
+            [
+                "ReadRange",
+                "MapBatches(fn1)->StreamingRepartition[num_rows_per_block=20]->MapBatches(fn2)",
+            ],
+            "First batch_size(10) < target(20): All three fuse together",
+        ),
+        # Case 3: batch_size > target_num_rows, streaming repartition, no batch_size
+        # Map1 cannot fuse with StreamingRepartition, but StreamingRepartition+Map2 can fuse
+        (
+            30,
+            20,
+            None,
+            [
+                "ReadRange",
+                "MapBatches(fn1)",
+                "StreamingRepartition[num_rows_per_block=20]->MapBatches(fn2)",
+            ],
+            "First batch_size(30) > target(20): Map1 isolated, StreamingRepartition+Map2 fuse",
+        ),
+        # Case 4: batch_size == target_num_rows, streaming repartition, no batch_size
+        # Map1+StreamingRepartition fuse, then +Map2
+        (
+            20,
+            20,
+            None,
+            [
+                "ReadRange",
+                "MapBatches(fn1)->StreamingRepartition[num_rows_per_block=20]->MapBatches(fn2)",
+            ],
+            "First batch_size(20) == target(20): All three fuse together",
+        ),
+        # Case 5: No batch_size, streaming repartition, batch_size < target_num_rows
+        # Map1+StreamingRepartition fuse, but Map2 with batch_size cannot fuse backward
+        (
+            None,
+            20,
+            10,
+            [
+                "ReadRange",
+                "MapBatches(fn1)->StreamingRepartition[num_rows_per_block=20]->MapBatches(fn2)",
+            ],
+            "Second batch_size(10) < target(20): All three fuse together",
+        ),
+        # Case 6: No batch_size, streaming repartition, batch_size > target_num_rows
+        # Map1+StreamingRepartition fuse, but Map2 cannot fuse (batch_size > target)
+        (
+            None,
+            20,
+            30,
+            [
+                "ReadRange",
+                "MapBatches(fn1)->StreamingRepartition[num_rows_per_block=20]",
+                "MapBatches(fn2)",
+            ],
+            "Second batch_size(30) > target(20): Map2 cannot fuse with StreamingRepartition",
+        ),
+        # Case 7: First batch_size > target, second batch_size < target
+        # Map1 isolated, StreamingRepartition+Map2 fuse
+        (
+            30,
+            20,
+            10,
+            [
+                "ReadRange",
+                "MapBatches(fn1)",
+                "StreamingRepartition[num_rows_per_block=20]->MapBatches(fn2)",
+            ],
+            "First batch_size > target, second < target: StreamingRepartition+Map2 fuse",
+        ),
+        # Case 8: Both batch_sizes < target_num_rows
+        # All three should fuse together
+        (
+            10,
+            20,
+            15,
+            [
+                "ReadRange",
+                "MapBatches(fn1)->StreamingRepartition[num_rows_per_block=20]->MapBatches(fn2)",
+            ],
+            "Both batch_sizes < target: All three fuse together",
+        ),
+    ],
+)
+def test_read_map_streaming_repartition_map_fusion_combinations(
+    ray_start_regular_shared_2_cpus,
+    first_batch_size,
+    target_num_rows,
+    second_batch_size,
+    expected_pattern,
+    description,
+):
+    """Test fusion behavior for Read->MapBatches->StreamingRepartition->MapBatches pipeline.
+
+    This test demonstrates how different configurations of batch_size and streaming
+    repartition affect operator fusion based on the compatibility rules in
+    _get_compatible_ref_bundler.
+
+    Fusion rules:
+    - Read + MapBatches: Only fuses when MapBatches has no batch_size
+    - Read + (MapBatches+StreamingRepartition): Does NOT fuse (result has min_rows_per_bundle set)
+    - MapBatches + StreamingRepartition: Can fuse when:
+        * MapBatches has no batch_size (min_rows_per_bundle=None), OR
+        * target_num_rows_per_block >= batch_size (target >= min)
+    - StreamingRepartition + MapBatches: Can fuse when:
+        * MapBatches has no batch_size (min_rows_per_bundle=None), OR
+        * target_num_rows_per_block >= batch_size (target >= min)
+    - MapBatches + StreamingRepartition + MapBatches: All three can fuse if both
+      MapBatches satisfy the fusion conditions with StreamingRepartition
+
+    Args:
+        first_batch_size: batch_size for first MapBatches (None or int)
+        target_num_rows: target_num_rows_per_block for streaming repartition
+        second_batch_size: batch_size for second MapBatches (None or int)
+        expected_pattern: List of expected operator names in execution plan
+        description: Human-readable test case description
+    """
+
+    def fn1(batch):
+        return {"id": [x + 1 for x in batch["id"]]}
+
+    def fn2(batch):
+        return {"id": [x * 2 for x in batch["id"]]}
+
+    n = 100
+    ds = ray.data.range(n)
+
+    # First MapBatches
+    ds = ds.map_batches(fn1, batch_size=first_batch_size)
+
+    # Streaming Repartition
+    ds = ds.repartition(target_num_rows_per_block=target_num_rows)
+
+    # Second MapBatches
+    ds = ds.map_batches(fn2, batch_size=second_batch_size)
+
+    # Verify the data is correct
+    result = ds.take_all()
+    assert len(result) == n, f"Expected {n} rows but got {len(result)}"
+
+    # Check fusion pattern
+    stats = ds.stats()
+
+    for pattern in expected_pattern:
+        assert pattern in stats, (
+            f"{description}\n"
+            f"Expected pattern '{pattern}' not found in stats.\n"
+            f"Stats:\n{stats}"
+        )
+
+    expected_op_count = len(expected_pattern)
+    import re
+
+    operator_lines = re.findall(r"Operator \d+", stats)
+    actual_op_count = len(set(operator_lines))
+
+    assert actual_op_count == expected_op_count, (
+        f"{description}\n"
+        f"Expected {expected_op_count} operators but found {actual_op_count}.\n"
+        f"Expected patterns: {expected_pattern}\n"
+        f"Stats:\n{stats}"
+    )
+
+
 if __name__ == "__main__":
     import sys
 
