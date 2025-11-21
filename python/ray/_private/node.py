@@ -511,6 +511,7 @@ class Node:
                     node_ip_address = self._ray_params.node_ip_address
                 else:
                     node_ip_address = ray._private.services.get_node_ip_address()
+                node_infos = {}
                 try:
                     node_infos = get_all_node_info_with_retry(
                         self.get_gcs_client(),
@@ -521,13 +522,17 @@ class Node:
                         num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                     )
                 except Exception as e:
-                    logger.warning(
+                    raise Exception(
                         f"Failed to get node info from gcs with node ip address {node_ip_address} "
-                        + f"when connecting to the current node: {e}. "
-                        + "Falling back to head node's temp dir."
+                        f"when connecting to the current node: {repr(e)}. "
                     )
                 if not node_infos:
                     # fallback to head node's temp dir if no node info is found for the given node ip address
+                    logger.warning(
+                        f"Failed to resolve temp dir using node IP {node_ip_address} due "
+                        f"to no node info found, falling back to head node's temp dir."
+                        "This may cause current driver's temp dir to diverge from the node's temp dir."
+                    )
                     try:
                         node_infos = get_all_node_info_with_retry(
                             self.get_gcs_client(),
@@ -542,7 +547,7 @@ class Node:
                             f"Failed to get head node info when connecting to the current node: {e}"
                         )
                         raise e
-                    if node_infos is None or not node_infos:
+                    if not node_infos:
                         raise Exception(
                             "Head node not found in GCS when trying to get temp dir, did GCS start successfully?"
                         )
