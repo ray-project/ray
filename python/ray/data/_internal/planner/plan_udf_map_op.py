@@ -160,6 +160,7 @@ def plan_streaming_repartition_op(
         _generate_transform_fn_for_map_batches(
             lambda blocks: blocks,
         ),
+        batch_size=op.target_num_rows_per_block,
         disable_block_shaping=True,
     )
     map_transformer = MapTransformer([transform_fn])
@@ -171,9 +172,6 @@ def plan_streaming_repartition_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
-        # We don't want blocks to be cut.
-        # If this is not set, max_block_size might be overridden due to `FuseOperators` rule.
-        target_max_block_size_override=float("inf"),
         ref_bundler=StreamingRepartitionRefBundler(op.target_num_rows_per_block),
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
