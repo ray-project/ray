@@ -268,27 +268,47 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         stat_name = self.get_stat_name()
 
         # Handle list results: expand into separate indexed stats
-        if isinstance(value, list):
-            scalar_type = (
-                agg_type.value_type if pa.types.is_list(agg_type) else pa.float64()
-            )
-            labels = self.get_result_labels()
-            if not labels:
-                labels = [str(idx) for idx in range(len(value))]
-            elif len(labels) != len(value):
-                raise ValueError(
-                    f"Aggregator {self.__class__.__name__} returned {len(value)} values "
-                    f"but get_result_labels() returned {len(labels)} labels. "
-                    f"These must match to properly format statistics."
-                )
+        # If the value is None but the type is list, it means we got a null result
+        # for a list-type aggregator (e.g., ignore_nulls=True and all nulls).
+        from ray.data.datatype import DataType
 
-            return {
-                f"{stat_name}[{label}]": (list_val, scalar_type)
-                for label, list_val in zip(labels, value)
-            }
-        else:
-            # Regular scalar result
-            return {stat_name: (value, agg_type)}
+        labels = self.get_result_labels()
+        is_list_type = (
+            pa.types.is_list(agg_type)
+            or (labels is not None and len(labels) > 0)
+            or DataType.from_arrow(agg_type).is_list_type()
+        )
+
+        if isinstance(value, list) or (value is None and is_list_type):
+            scalar_type = (
+                agg_type.value_type
+                if DataType.from_arrow(agg_type).is_list_type()
+                else pa.float64()
+            )
+            if value is None:
+                # If we have explicit labels, expand to Nones for each label.
+                # Otherwise, return as is (unexpanded) since we can't determine expansion size.
+                if labels:
+                    return {
+                        f"{stat_name}[{label}]": (None, scalar_type) for label in labels
+                    }
+            else:
+                if not labels:
+                    labels = [str(idx) for idx in range(len(value))]
+                elif len(labels) != len(value):
+                    raise ValueError(
+                        f"Aggregator {self.__class__.__name__} returned {len(value)} values "
+                        f"but get_result_labels() returned {len(labels)} labels. "
+                        f"These must match to properly format statistics."
+                    )
+
+                return {
+                    f"{stat_name}[{label}]": (list_val, scalar_type)
+                    for label, list_val in zip(labels, value)
+                }
+
+        # Fallback to scalar result for non-list values or unexpandable Nones
+        return {stat_name: (value, agg_type)}
 
     @abc.abstractmethod
     def combine(
