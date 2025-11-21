@@ -116,23 +116,27 @@ void RaySyncer::Connect(const std::string &node_id,
             /* stub */ std::move(stub),
             /* max_batch_size */ max_batch_size_,
             /* max_batch_delay_ms */ max_batch_delay_ms_);
-        Connect(reactor);
+        RegisterConnection(reactor);
         reactor->StartCall();
       }))
       .get();
 }
 
-void RaySyncer::Connect(std::shared_ptr<RaySyncerBidiReactor> reactor) {
+void RaySyncer::RegisterConnection(std::shared_ptr<RaySyncerBidiReactor> reactor, bool send_initial_view) {
   // Bind rpc completion callback.
   if (on_rpc_completion_) {
     reactor->SetRpcCompletionCallbackForOnce(on_rpc_completion_);
   }
 
   boost::asio::dispatch(
-      io_context_.get_executor(), std::packaged_task<void()>([this, reactor]() {
+      io_context_.get_executor(), std::packaged_task<void()>([this, reactor, send_initial_view]() {
         auto is_new = sync_reactors_.emplace(reactor->GetRemoteNodeID(), reactor).second;
         RAY_CHECK(is_new) << NodeID::FromBinary(reactor->GetRemoteNodeID())
                           << " has already registered.";
+
+        if (!send_initial_view) {
+          return;
+        }
         // Send the view for new connections.
         for (const auto &[_, messages] : node_state_->GetClusterView()) {
           for (const auto &message : messages) {
@@ -258,17 +262,16 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
   RAY_LOG(DEBUG).WithField(NodeID::FromBinary(reactor->GetRemoteNodeID()))
       << "Get connection";
 
-  // If the reactor has already called Finish() (e.g., due to authentication failure),
-  // skip registration. The reactor will clean itself up via OnDone().
-  if (reactor->IsFinished()) {
-    return reactor.get();
-  }
-
-  // Disconnect exiting connection if there is any.
+  // Disconnect existing connection if there is any.
   // This can happen when there is transient network error
   // and the client reconnects.
   syncer_.Disconnect(reactor->GetRemoteNodeID());
-  syncer_.Connect(reactor);
+
+  // Register the connection in the syncer.
+  // If the reactor is already finished (e.g., due to authentication failure),
+  // skip sending the initial view. We need to store its pointer until gRPC calls
+  // `OnDone` to clean it up.
+  syncer_.RegisterConnection(reactor, /*send_initial_view=*/!reactor->IsFinished());
   return reactor.get();
 }
 

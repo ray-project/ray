@@ -135,6 +135,8 @@ class RaySyncerBidiReactorBase
     StartRead(receiving_message_batch_.get());
   }
 
+ protected:
+
   /// The io context
   instrumented_io_context &io_context_;
 
