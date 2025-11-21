@@ -43,7 +43,13 @@ logger = logging.getLogger(__name__)
 
 
 class LakehouseFormat(str, Enum):
-    """Supported lakehouse table formats."""
+    """Supported lakehouse table formats.
+
+    Lakehouse formats are detected by directory structure markers:
+    - Delta Lake: _delta_log directory
+    - Apache Hudi: .hoodie directory
+    - Apache Iceberg: metadata/ directory with version files
+    """
 
     DELTA = "delta"
     HUDI = "hudi"
@@ -55,77 +61,51 @@ def _detect_lakehouse_format(
 ) -> Optional[str]:
     """Detect if a path is a Delta Lake, Hudi, or Iceberg table.
 
+    Lakehouse formats are detected by directory structure markers:
+    - Delta Lake: presence of _delta_log directory
+    - Apache Hudi: presence of .hoodie directory
+    - Apache Iceberg: presence of metadata/ directory with version files
+
+    See https://delta.io/ for Delta Lake documentation.
+    See https://hudi.apache.org/ for Apache Hudi documentation.
+    See https://iceberg.apache.org/ for Apache Iceberg documentation.
+
     Args:
         path: Path to check for lakehouse format.
         filesystem: PyArrow filesystem to use for inspection.
+            See https://arrow.apache.org/docs/python/filesystems.html
 
     Returns:
         The format name ('delta', 'hudi', 'iceberg') or None if not detected.
     """
     import pyarrow.fs as pafs
 
-    try:
-        file_info = filesystem.get_file_info(path)
-        if file_info.type != pafs.FileType.Directory:
-            return None
+    file_info = filesystem.get_file_info(path)
+    if file_info.type != pafs.FileType.Directory:
+        return None
 
-        # Get directory contents
-        selector = pafs.FileSelector(path, recursive=False)
-        contents = filesystem.get_file_info(selector)
-        base_names = {Path(item.path).name for item in contents}
+    # Get directory contents
+    selector = pafs.FileSelector(path, recursive=False)
+    contents = filesystem.get_file_info(selector)
+    base_names = {Path(item.path).name for item in contents}
 
-        # Check for lakehouse markers
-        if "_delta_log" in base_names:
-            return "delta"
-        if ".hoodie" in base_names:
-            return "hudi"
-        if "metadata" in base_names:
-            # Check if it's Iceberg
-            metadata_path = f"{path}/metadata"
-            meta_selector = pafs.FileSelector(metadata_path, recursive=False)
-            meta_contents = filesystem.get_file_info(meta_selector)
-            meta_names = {Path(item.path).name for item in meta_contents}
-            if "version-hint.text" in meta_names or any(
-                f.endswith(".metadata.json") for f in meta_names
-            ):
-                return "iceberg"
-
-    except Exception as e:
-        logger.debug(f"Error detecting lakehouse format for {path}: {e}")
+    # Check for lakehouse markers
+    if "_delta_log" in base_names:
+        return "delta"
+    if ".hoodie" in base_names:
+        return "hudi"
+    if "metadata" in base_names:
+        # Check if it's Iceberg
+        metadata_path = f"{path}/metadata"
+        meta_selector = pafs.FileSelector(metadata_path, recursive=False)
+        meta_contents = filesystem.get_file_info(meta_selector)
+        meta_names = {Path(item.path).name for item in meta_contents}
+        if "version-hint.text" in meta_names or any(
+            f.endswith(".metadata.json") for f in meta_names
+        ):
+            return "iceberg"
 
     return None
-
-
-def _get_file_extension(path: str) -> Optional[str]:
-    """Get the file extension from a path, handling compound extensions.
-
-    Examples:
-        data.parquet -> parquet
-        data.csv.gz -> csv
-        data.tar.gz -> tar
-
-    Args:
-        path: File path.
-
-    Returns:
-        Extension without leading dot, or None if no extension.
-    """
-    path_obj = Path(path)
-    name = path_obj.name.lower()
-
-    # Handle compound extensions
-    if name.endswith((".csv.gz", ".csv.bz2")):
-        return "csv"
-    if name.endswith((".json.gz", ".json.bz2", ".jsonl.gz", ".jsonl.bz2")):
-        return "json"
-    if name.endswith((".parquet.gz", ".parquet.bz2", ".parquet.snappy")):
-        return "parquet"
-    if name.endswith((".avro.gz", ".avro.bz2", ".avro.snappy")):
-        return "avro"
-
-    # Standard extension
-    suffix = path_obj.suffix.lower()
-    return suffix[1:] if suffix else None
 
 
 def _build_extension_to_reader_map() -> Dict[str, str]:
@@ -195,6 +175,40 @@ def _build_extension_to_reader_map() -> Dict[str, str]:
 
 # Build extension map once at module load time
 _EXTENSION_TO_READER_MAP = _build_extension_to_reader_map()
+
+
+def _get_file_extension(path: str) -> Optional[str]:
+    """Get the file extension from a path, handling compound extensions.
+
+    This function matches against the full extension map built from datasource
+    constants, ensuring all compound extensions (e.g., csv.gz, json.br) are properly
+    detected.
+
+    Examples:
+        data.parquet -> parquet
+        data.csv.gz -> csv.gz (matched against extension map)
+        data.json.br -> json.br (matched against extension map)
+
+    Args:
+        path: File path.
+
+    Returns:
+        Extension without leading dot (e.g., "csv", "csv.gz", "json.br"), or None if no extension.
+    """
+    path_obj = Path(path)
+    name = path_obj.name.lower()
+
+    # Try to match against all extensions in the map (including compound extensions)
+    # Check longest matches first (e.g., "csv.gz" before "csv")
+    sorted_extensions = sorted(_EXTENSION_TO_READER_MAP.keys(), key=len, reverse=True)
+
+    for ext in sorted_extensions:
+        if name.endswith(f".{ext}"):
+            return ext
+
+    # Fallback: try standard single extension
+    suffix = path_obj.suffix.lower()
+    return suffix[1:] if suffix else None
 
 
 def _get_reader_for_path(path: str) -> Optional[str]:
