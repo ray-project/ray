@@ -37,6 +37,7 @@ namespace ray::syncer {
 using ray::rpc::syncer::CommandsSyncMessage;
 using ray::rpc::syncer::MessageType;
 using ray::rpc::syncer::RaySyncMessage;
+using ray::rpc::syncer::RaySyncMessageBatch;
 using ray::rpc::syncer::ResourceViewSyncMessage;
 
 /// The interface for a reporter. Reporter is defined to be a local module which would
@@ -93,8 +94,13 @@ class RaySyncer {
   /// \param io_context The io context for this component.
   /// \param node_id The id of current node.
   /// \param on_rpc_completion A callback which invokes after a sync rpc succeeds.
+  /// \param max_batch_size The max number of messages to be sent in a batch.
+  /// \param max_batch_delay_ms The max delay in milliseconds to wait before sending a
+  /// batch.
   RaySyncer(instrumented_io_context &io_context,
             const std::string &node_id,
+            size_t max_batch_size,
+            uint64_t max_batch_delay_ms,
             RpcCompletionCallback on_rpc_completion = {});
   ~RaySyncer();
 
@@ -155,7 +161,7 @@ class RaySyncer {
   std::vector<std::string> GetAllConnectedNodeIDs() const;
 
  private:
-  void Connect(RaySyncerBidiReactor *connection);
+  void Connect(std::shared_ptr<RaySyncerBidiReactor> connection);
 
   std::shared_ptr<bool> stopped_;
 
@@ -169,13 +175,19 @@ class RaySyncer {
   const std::string local_node_id_;
 
   /// Manage connections. Here the key is the NodeID in binary form.
-  absl::flat_hash_map<std::string, RaySyncerBidiReactor *> sync_reactors_;
+  absl::flat_hash_map<std::string, std::shared_ptr<RaySyncerBidiReactor>> sync_reactors_;
 
   /// The local node state
   std::unique_ptr<NodeState> node_state_;
 
   /// Timer is used to do broadcasting.
   std::shared_ptr<PeriodicalRunner> timer_;
+
+  /// The max number of messages to be sent in a batch.
+  const size_t max_batch_size_;
+
+  /// The max delay in milliseconds to wait before sending a batch.
+  const uint64_t max_batch_delay_ms_;
 
   /// Sync message observer, which is a callback on received message response for
   /// [RaySyncerBidiReactor], so should be passed to each of them.
@@ -204,7 +216,7 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
       std::optional<ray::rpc::AuthenticationToken> auth_token = std::nullopt)
       : syncer_(syncer), auth_token_(std::move(auth_token)) {}
 
-  grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage> *StartSync(
+  grpc::ServerBidiReactor<RaySyncMessageBatch, RaySyncMessageBatch> *StartSync(
       grpc::CallbackServerContext *context) override;
 
  private:

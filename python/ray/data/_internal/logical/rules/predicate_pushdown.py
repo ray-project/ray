@@ -193,8 +193,16 @@ class PredicatePushdown(Rule):
                     predicate_expr, rename_map
                 )
 
-            # Push the predicate down and return the result without the filter
-            return input_op.apply_predicate(predicate_expr)
+            # Push the predicate down
+            result_op = input_op.apply_predicate(predicate_expr)
+
+            # If the operator is unchanged (e.g., predicate references partition columns
+            # that can't be pushed down), keep the Filter operator
+            if result_op is input_op:
+                return filter_op
+
+            # Otherwise, return the result without the filter (predicate was pushed down)
+            return result_op
 
         # Case 2: Check if operator allows predicates to pass through
         if isinstance(input_op, LogicalOperatorSupportsPredicatePassThrough):
