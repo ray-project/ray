@@ -1477,22 +1477,29 @@ class Node:
             # 3. If the head node doesn't specify an object spilling directory, and this node doesn't specify one,
             #    use the temp_dir as the object spilling directory.
             try:
-                config = json.loads(new_config["object_spilling_config"])
-                if config.get("type") == "filesystem":
-                    if (
-                        self._fallback_directory != self._session_dir
-                        or config["params"]["directory_path"] == self._head_session_dir
-                    ):
-                        config["params"]["directory_path"] = self._fallback_directory
-                        new_config["object_spilling_config"] = json.dumps(config)
-                    else:
-                        self._fallback_directory = config["params"]["directory_path"]
-                    try_to_create_directory(self._fallback_directory)
+                if new_config["automatic_object_spilling_enabled"]:
+                    config = json.loads(new_config["object_spilling_config"])
+                    if config.get("type") == "filesystem":
+                        if (
+                            self._fallback_directory != self._session_dir
+                            or config["params"]["directory_path"]
+                            == self._head_session_dir
+                        ):
+                            config["params"][
+                                "directory_path"
+                            ] = self._fallback_directory
+                            new_config["object_spilling_config"] = json.dumps(config)
+                        else:
+                            self._fallback_directory = config["params"][
+                                "directory_path"
+                            ]
+
+                        try_to_create_directory(self._fallback_directory)
                 self._config = new_config
             except Exception as e:
                 raise Exception(
-                    "Expected valid object_spilling_config to be received from head node"
-                    + f"but got: {e}"
+                    "Expected valid object_spilling_config to be received from head node "
+                    f"but got: {repr(e)}"
                 )
 
         # Make sure we don't call `determine_plasma_store_config` multiple
@@ -1858,6 +1865,7 @@ class Node:
         )
         if not automatic_spilling_enabled:
             return
+        self._config["automatic_object_spilling_enabled"] = True
 
         object_spilling_config = self._object_spilling_config
         # Try setting up the storage.
