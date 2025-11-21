@@ -21,8 +21,6 @@ Your custom deployment consists of two main components:
 
 
 Server
-:sync: server
-
 ```python
 from ray import serve
 from ray.serve.llm import LLMConfig
@@ -30,8 +28,8 @@ from ray.llm._internal.serve.core.ingress.builder import build_sglang_openai_app
 
 llm_config = LLMConfig(
     model_loading_config={
-        "model_id": "Ilama-3.2-1B",
-        "model_source": "hmellor/Ilama-3.2-1B",
+        "model_id": "Llama-3.1-8B-Instruct",
+        "model_source": "unsloth/Llama-3.1-8B-Instruct",
     },
     deployment_config={
         "autoscaling_config": {
@@ -42,10 +40,11 @@ llm_config = LLMConfig(
     llm_engine = 'SGLang',
     # Pass the desired accelerator type (e.g. A10G, L4, etc.)
     accelerator_type="H100",
+    # for ROCm device ex: MI300X uses: "AMD-Instinct-MI300X-OAM",
     # You can customize the engine arguments (e.g. SGLang engine kwargs)
     engine_kwargs={
         "trust_remote_code": True,
-        "model_path": "hmellor/Ilama-3.2-1B",
+        "model_path": "unsloth/Llama-3.1-8B-Instruct",
         "tp_size": 2,
         "mem_fraction_static": 0.8,
     },
@@ -56,17 +55,16 @@ serve.start()
 serve.run(app, blocking=True)
 
 ```
-:::
 
-:::{tab-item} Python Client
-:sync: client for v1/chat/completions endpoint
+Python Client
+client for v1/chat/completions endpoint
 ```python
 import openai
 
 client = openai.Client(base_url=f"http://127.0.0.1:8000/v1", api_key="None")
 
 response = client.chat.completions.create(
-    model="Ilama-3.2-1B",
+    model="Llama-3.1-8B-Instruct",
     messages=[
         {"role": "user", "content": "List 3 countries and their capitals."},
     ],
@@ -78,25 +76,17 @@ print(f"Response: {response}")
 ```
 
 cURL
-:sync: curl
-:sync: client for v1/completions endpoint
+client for v1/completions endpoint
 ```bash
 curl http://127.0.0.1:8000/v1/completions \
     -H "Content-Type: application/json" \
     -d '{
-        "model": "Ilama-3.2-1B",
+        "model": "Llama-3.1-8B-Instruct",
         "prompt": "San Francisco is a",
         "max_tokens": 30,
         "temperature": 0            
     }'
 ```
-:::
-
-::::
-
-
-
-
 
 
 
