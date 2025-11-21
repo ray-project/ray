@@ -1,5 +1,4 @@
 import ray
-import requests
 import signal
 from ray import serve
 from pydantic import BaseModel
