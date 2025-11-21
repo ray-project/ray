@@ -8,7 +8,7 @@ exclude: |
     python/ray/_private/runtime_env/_clonevirtualenv.py|
     python/ray/data/examples/data/|
     release/release_logs/|
-    rllib/tests/data|
+    rllib/offline/tests/data|
     thirdparty/patches/|
     src/ray/thirdparty/|
     doc/external/|
