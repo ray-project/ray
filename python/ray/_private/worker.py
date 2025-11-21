@@ -2625,13 +2625,24 @@ def connect(
     # environment here. If it's ray client, the environment will be prepared
     # at the server side.
     if mode == SCRIPT_MODE and not job_config._client_job and job_config.runtime_env:
+        from ray._private.ray_constants import RAY_RUNTIME_ENV_IGNORE_GITIGNORE
+
         scratch_dir: str = worker.node.get_runtime_env_dir_path()
         runtime_env = job_config.runtime_env or {}
+        # Determine whether to respect .gitignore files based on environment variable
+        # Default is True (respect .gitignore). Set to False if env var is "1".
+        include_gitignore = os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
         runtime_env = upload_py_modules_if_needed(
-            runtime_env, scratch_dir, logger=logger
+            runtime_env,
+            include_gitignore=include_gitignore,
+            scratch_dir=scratch_dir,
+            logger=logger,
         )
         runtime_env = upload_working_dir_if_needed(
-            runtime_env, scratch_dir, logger=logger
+            runtime_env,
+            include_gitignore=include_gitignore,
+            scratch_dir=scratch_dir,
+            logger=logger,
         )
         runtime_env = upload_worker_process_setup_hook_if_needed(
             runtime_env,
