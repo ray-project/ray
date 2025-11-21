@@ -139,9 +139,9 @@ class TorchRLModule(nn.Module, RLModule):
         # that don't exist in the source, indicating an architecture mismatch.
         if self.inference_only and missing_keys:
             raise ValueError(
-                "Architecture mismatch detected when loading state into inference_only module! "
-                f"Missing parameters (not found in source state): {list(missing_keys)} "
-                "This usually indicates the learner and env-runner have different architectures."
+                f"Updating the module's state is missing keys: {list(missing_keys)} "
+                "This is most likely because the state has different layer names (or are missing layers). "
+                f"Complete list of state keys is {list(state.keys())}"
             )
 
     @OverrideToImplementCustomLogic
