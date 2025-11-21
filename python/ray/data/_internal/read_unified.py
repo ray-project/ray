@@ -400,7 +400,7 @@ class DatasetReader:
                 kwargs[key] = value
 
         kwargs.update(self.config.reader_args)
-            return reader_func(**kwargs)
+        return reader_func(**kwargs)
 
     def _combine_datasets(self, datasets: List[Dataset]) -> Dataset:
         """Combine multiple datasets using union.
