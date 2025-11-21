@@ -82,7 +82,8 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             eviction_interval_secs: Interval in seconds between eviction checks
                 when eviction is enabled.
             tree_actor: The actor to use for the prefix tree in a test environment.
-                If None, a detached actor will be created/retrieved.
+                If None, a detached actor will be created/retrieved using the
+                deployment name to ensure isolation between deployments.
         """
         # === Prefix-aware routing logic hyperparameters ===
         self._imbalanced_threshold = imbalanced_threshold
@@ -101,9 +102,19 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         self._eviction_interval_secs = eviction_interval_secs
 
         if tree_actor is None:
-            # Use a detached actor to avoid issues with actor lifetime since this is shared between routers
+            # Create deployment-specific detached actor to avoid replica ID conflicts
+            # in multi-deployment scenarios (e.g., PD disaggregation with DP)
+            # Inherit deployment name from RequestRouter
+            deployment_name = self._deployment_id.name if self._deployment_id else None
+            actor_name = "LlmPrefixTreeActor"
+            if deployment_name:
+                safe_deployment_name = deployment_name.replace(":", "_").replace(
+                    "/", "_"
+                )
+                actor_name = f"LlmPrefixTreeActor_{safe_deployment_name}"
+
             self._tree_actor = PrefixTreeActor.options(
-                name="LlmPrefixTreeActor", get_if_exists=True, lifetime="detached"
+                name=actor_name, get_if_exists=True, lifetime="detached"
             ).remote()
         else:
             self._tree_actor = tree_actor
