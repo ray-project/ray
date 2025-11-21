@@ -136,7 +136,6 @@ class RaySyncerBidiReactorBase
   }
 
  protected:
-
   /// The io context
   instrumented_io_context &io_context_;
 

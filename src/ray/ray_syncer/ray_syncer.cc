@@ -122,14 +122,16 @@ void RaySyncer::Connect(const std::string &node_id,
       .get();
 }
 
-void RaySyncer::RegisterConnection(std::shared_ptr<RaySyncerBidiReactor> reactor, bool send_initial_view) {
+void RaySyncer::RegisterConnection(std::shared_ptr<RaySyncerBidiReactor> reactor,
+                                   bool send_initial_view) {
   // Bind rpc completion callback.
   if (on_rpc_completion_) {
     reactor->SetRpcCompletionCallbackForOnce(on_rpc_completion_);
   }
 
   boost::asio::dispatch(
-      io_context_.get_executor(), std::packaged_task<void()>([this, reactor, send_initial_view]() {
+      io_context_.get_executor(),
+      std::packaged_task<void()>([this, reactor, send_initial_view]() {
         auto is_new = sync_reactors_.emplace(reactor->GetRemoteNodeID(), reactor).second;
         RAY_CHECK(is_new) << NodeID::FromBinary(reactor->GetRemoteNodeID())
                           << " has already registered.";

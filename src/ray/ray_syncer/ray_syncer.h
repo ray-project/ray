@@ -168,7 +168,8 @@ class RaySyncer {
   //
   // \param connection The connection to be registered.
   // \param send_initial_view Whether to send the current cluster view on the connection.
-  void RegisterConnection(std::shared_ptr<RaySyncerBidiReactor> connection, bool send_initial_view = true);
+  void RegisterConnection(std::shared_ptr<RaySyncerBidiReactor> connection,
+                          bool send_initial_view = true);
 
   std::shared_ptr<bool> stopped_;
 
