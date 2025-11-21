@@ -477,6 +477,30 @@ class RaySystemError(RayError):
         return error_msg
 
 
+@PublicAPI
+class AuthenticationError(RayError):
+    """Indicates that an authentication error occurred.
+
+    Most commonly, this is caused by a missing or mismatching token set on the client
+    (e.g., a Ray CLI command interacting with a remote cluster).
+
+    Only applicable when `RAY_AUTH_MODE` is not set to `disabled`.
+    """
+
+    def __init__(self, message: str):
+        self.message = message
+
+        # Always hide traceback for cleaner output
+        self.__suppress_context__ = True
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        return self.message + (
+            ". Ensure that you have `RAY_AUTH_MODE=token` set and the token for the cluster is available as the `RAY_AUTH_TOKEN` environment variable or a local file. "
+            "For more information, see: https://docs.ray.io/en/latest/ray-security/auth.html"
+        )
+
+
 @DeveloperAPI
 class UserCodeException(RayError):
     """Indicates that an exception occurred while executing user code.
@@ -963,4 +987,5 @@ RAY_EXCEPTION_TYPES = [
     OufOfBandObjectRefSerializationException,
     RayCgraphCapacityExceeded,
     UnserializableException,
+    AuthenticationError,
 ]
