@@ -447,7 +447,7 @@ def test_get_all_reported_checkpoints_all_consistency_modes():
 def test_get_all_reported_checkpoints_empty_reports():
     def train_fn():
         ray.train.report(metrics={}, checkpoint=None)
-        ray.train.get_all_reported_checkpoints()
+        assert len(ray.train.get_all_reported_checkpoints()) == 0
 
     trainer = DataParallelTrainer(
         train_fn,
