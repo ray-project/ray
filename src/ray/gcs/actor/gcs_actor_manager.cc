@@ -1507,8 +1507,10 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
       mutable_actor_table_data->set_num_restarts_due_to_node_preemption(
           num_restarts_due_to_node_preemption + 1);
     }
-    mutable_actor_table_data->set_num_restarts(num_restarts + 1);
+    auto new_attempt_number = num_restarts + 1;
+    mutable_actor_table_data->set_num_restarts(new_attempt_number);
     actor->UpdateState(rpc::ActorTableData::RESTARTING);
+    actor->GetMutableTaskSpec()->set_attempt_number(new_attempt_number);
     // Make sure to reset the address before flushing to GCS. Otherwise,
     // GCS will mistakenly consider this lease request succeeds when restarting.
     actor->UpdateAddress(rpc::Address());
