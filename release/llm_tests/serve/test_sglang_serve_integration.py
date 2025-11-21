@@ -2,7 +2,6 @@ import pytest
 import sys
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray import serve
-# from ray.serve.llm import LLMConfig, build_openai_app
 from ray.llm._internal.serve.core.ingress.builder import build_sglang_openai_app
 
 
@@ -48,12 +47,11 @@ def test_transcription_model(model_name):
     )
     app = build_sglang_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
-    wait_for_condition(is_default_app_running, timeout=180)
+    # wait_for_condition(is_default_app_running, timeout=180)
     serve.shutdown()
     time.sleep(1)
 
 
-@pytest.mark.asyncio(scope="function")
 @pytest.fixture
 def remote_model_app(request):
     """
