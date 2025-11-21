@@ -4,13 +4,10 @@ from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray import serve
 from ray.llm._internal.serve.core.ingress.builder import build_sglang_openai_app
 
-
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.schema import ApplicationStatus
 import time
-
-
-
 
 def is_default_app_running():
     """Check if the default application is running successfully."""
@@ -20,37 +17,31 @@ def is_default_app_running():
     except (KeyError, AttributeError):
         return False
 
-
-
-
-
-@pytest.mark.parametrize("model_name", ["mistralai/Voxtral-Mini-3B-2507"])
+@pytest.mark.parametrize("model_name", ["hmellor/Ilama-3.2-1B"])
 def test_transcription_model(model_name):
     """
     Test that the transcription models can be loaded successfully.
     """
     llm_config = LLMConfig(
         model_loading_config=dict(
-            model_id=model_name,
-            model_source=model_name,
+            model_id="hmellor/Ilama-3.2-1B",
+            model_source="hmellor/Ilama-3.2-1B",
         ),
         deployment_config=dict(
             autoscaling_config=dict(min_replicas=1, max_replicas=4),
         ),
         engine_kwargs=dict(
             trust_remote_code=True,
+            model_path="hmellor/Ilama-3.2-1B",
             mem_fraction_static=0.9,
             context_length=2048,
-            tokenizer_mode="mistral",
-            load_format="mistral",
         ),
     )
     app = build_sglang_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
-    # wait_for_condition(is_default_app_running, timeout=180)
+    wait_for_condition(is_default_app_running, timeout=180)
     serve.shutdown()
     time.sleep(1)
-
 
 @pytest.fixture
 def remote_model_app(request):
@@ -66,12 +57,14 @@ def remote_model_app(request):
     base_config = {
         "model_loading_config": dict(
             model_id="hmellor/Ilama-3.2-1B",
+            model_source="hmellor/Ilama-3.2-1B",
         ),
         "deployment_config": dict(
             autoscaling_config=dict(min_replicas=1, max_replicas=1),
         ),
         "engine_kwargs": dict(
             trust_remote_code=remote_code,
+            model_path="hmellor/Ilama-3.2-1B",
         ),
     }
 
@@ -136,10 +129,3 @@ class TestRemoteCode:
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
-
-
-
-'''
-ray start --head
-
-'''
