@@ -198,7 +198,7 @@ def run_streaming_generator_workload(total_num_cpus, smoke):
 
         task = consume_streaming_generator.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=node_id, soft=False
+                node_id=node_id, soft=True
             )
         ).remote(ITEMS_PER_GENERATOR, ITEM_SIZE_MB, node_name)
         tasks.append(task)
@@ -242,8 +242,9 @@ def run_object_ref_borrowing_workload(total_num_cpus, smoke):
         return data
 
     @ray.remote(num_cpus=1, max_retries=-1)
-    def borrow_object(borrowed_ref):
-        data = ray.get(borrowed_ref)
+    def borrow_object(borrowed_refs):
+        """Receives a list of borrowed refs, gets the first one, returns size."""
+        data = ray.get(borrowed_refs[0])
         return len(data)
 
     # For smoke mode, run fewer iterations
@@ -260,7 +261,7 @@ def run_object_ref_borrowing_workload(total_num_cpus, smoke):
     refs = []
     for i in range(NUM_ITERATIONS):
         ref = create_object.remote(OBJECT_SIZE_MB)
-        refs.append(borrow_object.remote(ref))
+        refs.append(borrow_object.remote([ref]))
     sizes = ray.get(refs)
     num_completed = len(sizes)
     total_bytes = sum(sizes)
