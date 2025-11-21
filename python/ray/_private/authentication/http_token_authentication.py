@@ -117,13 +117,13 @@ def format_authentication_http_error(status: int, body: str) -> Optional[str]:
     if status == 401:
         return "Authentication required: {body}\n\n{details}".format(
             body=body,
-            details=authentication_constants.HTTP_REQUEST_MISSING_TOKEN_ERROR_MESSAGE,
+            details=authentication_constants.TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
         )
 
     if status == 403:
         return "Authentication failed: {body}\n\n{details}".format(
             body=body,
-            details=authentication_constants.HTTP_REQUEST_INVALID_TOKEN_ERROR_MESSAGE,
+            details=authentication_constants.TOKEN_INVALID_ERROR_MESSAGE,
         )
 
     return None
