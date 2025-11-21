@@ -150,7 +150,12 @@ class RaySyncerBidiReactorBase
   /// Clean up state of the reactor and call the cleanup_cb_.
   /// Should be called by subclasses when the RPC finishes (`OnDone` is called).
   void DoCleanup(bool restart) {
-    io_context_.dispatch([this, restart]() { cleanup_cb_(this, restart); self_ptr_.reset(); }, "");
+    io_context_.dispatch(
+        [this, restart]() {
+          cleanup_cb_(this, restart);
+          self_ptr_.reset();
+        },
+        "");
   }
 
  private:
