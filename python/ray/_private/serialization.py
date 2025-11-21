@@ -164,9 +164,16 @@ class SerializationContext:
         self._torch_custom_serializer_registered = False
 
         # Enable zero-copy serialization of tensors if the environment variable is set.
-        if ray_constants.RAY_ENABLE_ZERO_COPY_TORCH_TENSORS:
+        self._zero_copy_tensors_enabled = (
+            ray_constants.RAY_ENABLE_ZERO_COPY_TORCH_TENSORS
+        )
+        if self._zero_copy_tensors_enabled:
             try:
                 import torch
+
+                self._register_cloudpickle_reducer(
+                    torch.Tensor, tensor_serialization_utils.zero_copy_tensors_reducer
+                )
             except ImportError:
                 # Warn and disable zero-copy tensor serialization when PyTorch is missing,
                 # even if RAY_ENABLE_ZERO_COPY_TORCH_TENSORS is set.
@@ -176,11 +183,7 @@ class SerializationContext:
                     tensor_serialization_utils.ZeroCopyTensorsWarning,
                     stacklevel=3,
                 )
-                ray_constants.RAY_ENABLE_ZERO_COPY_TORCH_TENSORS = False
-            else:
-                self._register_cloudpickle_reducer(
-                    torch.Tensor, tensor_serialization_utils.zero_copy_tensors_reducer
-                )
+                self._zero_copy_tensors_enabled = False
 
         def actor_handle_reducer(obj):
             ray._private.worker.global_worker.check_connected()
