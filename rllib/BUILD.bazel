@@ -2299,6 +2299,87 @@ py_test(
     ],
 )
 
+# Generic testing
+py_test(
+    name = "algorithms/tests/test_custom_resource",
+    size = "large",  # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+    srcs = ["algorithms/tests/test_custom_resource.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "algorithms/tests/test_dependency_tf",
+    size = "small",
+    srcs = ["algorithms/tests/test_dependency_tf.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "algorithms/tests/test_dependency_torch",
+    size = "small",
+    srcs = ["algorithms/tests/test_dependency_torch.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "algorithms/tests/test_local",
+    size = "small",
+    srcs = ["algorithms/tests/test_local.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "algorithms/tests/test_ray_client",
+    size = "medium",
+    srcs = ["algorithms/tests/test_ray_client.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "algorithms/tests/test_telemetry",
+    size = "small",
+    srcs = ["algorithms/tests/test_telemetry.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "algorithms/tests/test_nn_framework_import_errors",
+    size = "small",
+    srcs = ["algorithms/tests/test_nn_framework_import_errors.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "algorithms/tests/test_placement_groups",
+    size = "large",  # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+    srcs = ["algorithms/tests/test_placement_groups.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
 # --------------------------------------------------------------------
 # Callback tests
 # rllib/callbacks/
@@ -2422,6 +2503,16 @@ py_test(
     name = "env/tests/test_single_agent_episode",
     size = "small",
     srcs = ["env/tests/test_single_agent_episode.py"],
+    tags = [
+        "env",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "env/tests/test_pettingzoo_env",
+    size = "medium",
+    srcs = ["env/tests/test_pettingzoo_env.py"],
     tags = [
         "env",
         "team:rllib",
@@ -2998,6 +3089,40 @@ py_test(
     ],
 )
 
+py_test(
+    name = "policy/tests/test_policy_checkpoint_restore",
+    size = "large",
+    srcs = ["policy/tests/test_policy_checkpoint_restore.py"],
+    data = glob([
+        "offline/tests/data/checkpoints/APPO_CartPole-v1-connector-enabled/**",
+    ]),
+    main = "policy/tests/test_policy_checkpoint_restore.py",
+    tags = [
+        "policy",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "policy/tests/test_timesteps",
+    size = "small",
+    srcs = ["policy/tests/test_timesteps.py"],
+    tags = [
+        "policy",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "policy/tests/test_lstm",
+    size = "medium",
+    srcs = ["policy/tests/test_lstm.py"],
+    tags = [
+        "policy",
+        "team:rllib",
+    ],
+)
+
 # --------------------------------------------------------------------
 # Utils:
 # rllib/utils/
@@ -3298,148 +3423,6 @@ py_test(
         "exclusive",
         "team:rllib",
         "utils",
-    ],
-)
-
-# --------------------------------------------------------------------
-# rllib/tests/ directory
-#
-# Tag: tests_dir
-#
-# NOTE: Add tests alphabetically into this list.
-# --------------------------------------------------------------------
-
-py_test(
-    name = "tests/test_catalog",
-    size = "medium",
-    srcs = ["tests/test_catalog.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "policy/tests/test_policy_checkpoint_restore",
-    size = "large",
-    srcs = ["policy/tests/test_policy_checkpoint_restore.py"],
-    data = glob([
-        "offline/tests/data/checkpoints/APPO_CartPole-v1-connector-enabled/**",
-    ]),
-    main = "policy/tests/test_policy_checkpoint_restore.py",
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_custom_resource",
-    size = "large",  # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/test_custom_resource.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_dependency_tf",
-    size = "small",
-    srcs = ["tests/test_dependency_tf.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_dependency_torch",
-    size = "small",
-    srcs = ["tests/test_dependency_torch.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_local",
-    size = "small",
-    srcs = ["tests/test_local.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_lstm",
-    size = "medium",
-    srcs = ["tests/test_lstm.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_nn_framework_import_errors",
-    size = "small",
-    srcs = ["tests/test_nn_framework_import_errors.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_pettingzoo_env",
-    size = "medium",
-    srcs = ["tests/test_pettingzoo_env.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_placement_groups",
-    size = "large",  # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/test_placement_groups.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_timesteps",
-    size = "small",
-    srcs = ["tests/test_timesteps.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_ray_client",
-    size = "medium",
-    srcs = ["tests/test_ray_client.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_telemetry",
-    size = "small",
-    srcs = ["tests/test_telemetry.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
     ],
 )
 
