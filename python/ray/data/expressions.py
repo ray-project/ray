@@ -486,7 +486,7 @@ class Expr(ABC):
         from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 
         return _StructNamespace(self)
-    
+
     @property
     def arr(self) -> "_ArrayNamespace":
         """Access fixed-size array operations for this expression.
