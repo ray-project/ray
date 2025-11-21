@@ -10,7 +10,6 @@ See https://arrow.apache.org/docs/python/filesystems.html for PyArrow filesystem
 import inspect
 import logging
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -79,12 +78,12 @@ def _detect_lakehouse_tables(
 ) -> List[LakehouseTable]:
     """Detect lakehouse tables in paths (only checks directories).
 
-        Args:
-        paths: List of paths to check for lakehouse table markers.
-        filesystem: PyArrow filesystem to use for inspection.
+    Args:
+    paths: List of paths to check for lakehouse table markers.
+    filesystem: PyArrow filesystem to use for inspection.
 
-        Returns:
-        List of detected lakehouse tables.
+    Returns:
+    List of detected lakehouse tables.
     """
     from ray.data._internal.format_detection import _detect_lakehouse_format
 
@@ -103,12 +102,12 @@ def _group_files_by_format(
 ) -> Dict[str, List[str]]:
     """Group file paths by detected format using extension detection.
 
-        Args:
-        paths: List of file paths to group.
-        warn_on_binary: Whether to warn when files fall back to binary format.
+    Args:
+    paths: List of file paths to group.
+    warn_on_binary: Whether to warn when files fall back to binary format.
 
-        Returns:
-        Dictionary mapping format names to lists of file paths.
+    Returns:
+    Dictionary mapping format names to lists of file paths.
     """
     from pathlib import Path
 
@@ -403,7 +402,7 @@ class DatasetReader:
                 kwargs[key] = value
 
         kwargs.update(self.config.reader_args)
-            return reader_func(**kwargs)
+        return reader_func(**kwargs)
 
     def _combine_datasets(self, datasets: List[Dataset]) -> Dataset:
         """Combine multiple datasets using union.
@@ -417,10 +416,10 @@ class DatasetReader:
         if len(datasets) == 1:
             return datasets[0]
 
-            result = datasets[0]
-            for ds in datasets[1:]:
-                result = result.union(ds)
-            return result
+        result = datasets[0]
+        for ds in datasets[1:]:
+            result = result.union(ds)
+        return result
 
 
 def _validate_read_parameters(
