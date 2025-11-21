@@ -15,7 +15,7 @@ This document provides a guide for deploying and interacting with the custom **S
 Your custom deployment consists of two main components:
 1. `SGLangServer` (**Backend**): The core Ray Serve deployment that initializes the SGLang runtime and model. This deployment contains the model's business logic, including resource requirements and generation methods (`completions` and `chat_completions`).
 2. `APIIngress` (**Frontend**): A FastAPI ingress deployment that listens on HTTP user assigned port `ex: 8000` and routes standard OpenAI requests to the backend `SGLangServer`.
-3. enable ENVVAR: `RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0`
+3. enable ENV-VAR: `RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0` on CUDA device or `RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES=0` on ROCm device
 ### Deploy an LLM model using SGLang Engine
 
 
@@ -44,6 +44,7 @@ llm_config = LLMConfig(
     accelerator_type="H100",
     # You can customize the engine arguments (e.g. SGLang engine kwargs)
     engine_kwargs={
+        "trust_remote_code": True
         "model_path": "unsloth/Llama-3.1-8B-Instruct",
         "tp_size": 2,
         "mem_fraction_static": 0.8,
