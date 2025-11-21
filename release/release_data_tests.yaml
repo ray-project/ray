@@ -593,7 +593,7 @@
       post_build_script: byod_install_pybase64.sh
 
   run:
-    timeout: 3600
+    timeout: 10800
     script: python image_embedding_from_jsonl/main.py {{args}}
 
 - name: text_embedding_{{case}}
