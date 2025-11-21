@@ -118,7 +118,7 @@ class DatasetSummary:
         if column not in table.schema.names:
             return None
 
-        df = table.to_pandas()[[self.STATISTIC_COLUMN, column]]
+        df = self._safe_convert_table(table)[[self.STATISTIC_COLUMN, column]]
         return df.rename(columns={column: "value"})
 
     def get_column_stats(self, column: str):
