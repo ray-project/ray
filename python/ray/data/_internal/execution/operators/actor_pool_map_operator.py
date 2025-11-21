@@ -384,6 +384,8 @@ class ActorPoolMapOperator(MapOperator):
         # trigger task dispatch.
         super().all_inputs_done()
 
+        # Mark inputs as done so future task dispatch will kill all inactive workers
+        # once the bundle queue is exhausted.
         self._inputs_done = True
 
         if self._metrics.num_inputs_received < self._actor_pool.min_size():
