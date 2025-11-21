@@ -7,6 +7,7 @@ from ray.data.block import BlockMetadata
 from ray.data.expressions import Expr
 
 if TYPE_CHECKING:
+    from ray.data._internal.logical.operators.map_operator import Project
     from ray.data.block import Schema
 
 
@@ -106,6 +107,64 @@ class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
         projection_map: Optional[Dict[str, str]],
     ) -> LogicalOperator:
         return self
+
+
+class LogicalOperatorSupportsProjectionPassThrough(LogicalOperator):
+    """Mixin for operators supporting projection passthrough
+
+    This is distinct from LogicalOperatorSupportsProjectionPushdown, which is for
+    operators that can *accept* predicates (like Read). This trait is for operators
+    that allow projections to *pass through* them.
+    """
+
+    def supports_projection_pass_through(self) -> bool:
+        """Operators can provide additional info on when a projection pass through can
+        occur.
+        """
+        return True
+
+    def requires_schema_based_branch_selection(self) -> bool:
+        """Returns True if projection pass-through requires schema analysis per branch.
+
+        When True (i.e: Join, Zip): Use schema analysis to determine which columns go to which branch.
+        When False (all others): Push same columns to all branches.
+
+        This is needed because because some operators do not change/update the schema, so if the schema
+        doesn't exist, we can safely ignore the schema during projection pass through.
+        """
+        return False
+
+    def get_referenced_keys(self) -> List[List[str]]:
+        """Returns columns/keys that this operator specifically references (e.g., sort keys, partition keys).
+
+        Returns List[List[str]] indexed by input dependency:
+        - Single-input operators: [[keys]] or [[]] if no keys
+        - Multi-input operators: [[left_keys], [right_keys], ...]
+
+        If no keys, returns empty lists: [[], [], ...] for each input.
+        """
+        return [[] for _ in self.input_dependencies]
+
+    @abstractmethod
+    def apply_projection_pass_through(
+        self,
+        renamed_keys: List[List[str]],
+        upstream_projects: List["Project"],
+    ) -> LogicalOperator:
+        """Apply projection pass-through by recreating the operator.
+
+        Args:
+            renamed_keys: The renamed version of operator-specific keys, indexed by input.
+                         Single-input: [[renamed_partition_keys]] or [[]] if no keys
+                         Multi-input: [[left_keys], [right_keys], ...]
+            upstream_projects: List of Project operators to place before this operator.
+                              Single-input operators use upstream_projects[0].
+                              Multi-input operators use all elements.
+
+        Returns:
+            The new operator: upstream_projects -> new_op
+        """
+        raise NotImplementedError
 
 
 class LogicalOperatorSupportsPredicatePushdown(LogicalOperator):

@@ -1,14 +1,16 @@
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.n_ary_operator import NAry
 
 if TYPE_CHECKING:
+    from ray.data._internal.logical.operators.map_operator import Project
     from ray.data.dataset import Schema
     from ray.data.expressions import Expr
 
@@ -34,7 +36,11 @@ class JoinSide(Enum):
     RIGHT = 1
 
 
-class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
+class Join(
+    NAry,
+    LogicalOperatorSupportsProjectionPassThrough,
+    LogicalOperatorSupportsPredicatePassThrough,
+):
     """Logical operator for join."""
 
     def __init__(
@@ -87,6 +93,66 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
 
         self._partition_size_hint = partition_size_hint
         self._aggregator_ray_remote_args = aggregator_ray_remote_args
+
+    def supports_projection_pass_through(self) -> bool:
+        """Currently, projection pass through is broken for joins when:
+            1. User provides a left or right suffix that is non-empty
+            2. left and right table share a column name
+        As a result, the joined table would contain columns with additional suffixes.
+
+        If a user selects a column with a _suffix we would need to handle whether
+        the column they selected has been renamed with _suffix. This _suffix
+        name can also collide with an existing columns pre-join.
+
+        Therefore, we are disabling projection pass through for joins for the
+        time being.
+        """
+        return not self._left_columns_suffix and not self._right_columns_suffix
+
+    def requires_schema_based_branch_selection(self) -> bool:
+        """Join requires schema analysis to determine which columns go to which branch."""
+        return True
+
+    def get_referenced_keys(self) -> List[List[str]]:
+        """Return join keys for left and right sides as List[List[str]].
+
+        For semi/anti joins, we still need the columns that are referenced,
+        so those need to be specified here as well.
+        """
+        left_keys = list(self._left_key_columns)
+        right_keys = list(self._right_key_columns)
+        return [left_keys, right_keys]
+
+    def apply_projection_pass_through(
+        self,
+        renamed_keys: List[List[str]],
+        upstream_projects: List["Project"],
+    ) -> LogicalOperator:
+        """Recreate Join with upstream projects and renamed keys.
+
+        Args:
+            renamed_keys: [[left_renamed_keys], [right_renamed_keys]]
+            upstream_projects: [left_project, right_project]
+
+        Returns:
+            New Join operator with updated inputs and renamed keys.
+        """
+        # Extract left and right renamed keys (index by input)
+        left_new_keys = renamed_keys[0]
+        right_new_keys = renamed_keys[1]
+
+        return Join(
+            left_input_op=upstream_projects[0],
+            right_input_op=upstream_projects[1],
+            join_type=self._join_type.value,
+            left_key_columns=tuple(left_new_keys),
+            right_key_columns=tuple(right_new_keys),
+            num_partitions=self._num_outputs,
+            left_columns_suffix=self._left_columns_suffix,
+            right_columns_suffix=self._right_columns_suffix,
+            partition_size_hint=self._partition_size_hint,
+            aggregator_ray_remote_args=self._aggregator_ray_remote_args,
+        )
 
     @staticmethod
     def _validate_schemas(
