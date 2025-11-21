@@ -283,7 +283,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
             scalar_type = (
                 agg_type.value_type
                 if DataType.from_arrow(agg_type).is_list_type()
-                else pa.float64()
+                else agg_type
             )
             if value is None:
                 # If we have explicit labels, expand to Nones for each label.
