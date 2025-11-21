@@ -406,7 +406,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._block_ref_bundler.add_bundle(refs)
         self._metrics.on_input_queued(refs)
 
-        if self._block_ref_bundler.has_bundle():
+        while self._block_ref_bundler.has_bundle():
             # The ref bundler combines one or more RefBundles into a new larger
             # RefBundle. Rather than dequeuing the new RefBundle, which was never
             # enqueued in the first place, we dequeue the original RefBundles.
@@ -544,7 +544,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
     def all_inputs_done(self):
         self._block_ref_bundler.done_adding_bundles()
-        if self._block_ref_bundler.has_bundle():
+        while self._block_ref_bundler.has_bundle():
             # Handle any leftover bundles in the bundler.
             (
                 _,
@@ -699,7 +699,11 @@ class BlockRefBundler(BaseRefBundler):
         self._bundle_buffer_size_bytes += bundle.size_bytes()
 
     def has_bundle(self) -> bool:
-        """Return whether the bundler currently holds a full bundle ready to emit."""
+        """Return whether there is enough buffered data to emit a bundle.
+
+        When `done_adding_bundles()` has been called, this will also return True for
+        leftover partial bundles so they can be flushed.
+        """
         return self._bundle_buffer and (
             self._min_rows_per_bundle is None
             or self._bundle_buffer_size >= self._min_rows_per_bundle
@@ -736,12 +740,10 @@ class BlockRefBundler(BaseRefBundler):
             bundle_size = self._get_bundle_size(bundle)
             # Allow adding to output_buffer if:
             # - the buffer is still empty (avoid empty bundle),
-            # - it does not exceed the min_rows threshold,
-            # - or we have finalized the bundler (flush everything).
+            # - it does not yet exceed the min_rows threshold.
             if (
                 output_buffer_size < self._min_rows_per_bundle
                 or output_buffer_size == 0
-                or self._finalized
             ):
                 output_buffer.append(bundle)
                 output_buffer_size += bundle_size
