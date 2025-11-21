@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -894,11 +895,11 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
     ],
 )
 def test_get_compatible_ref_bundler(
-    up_rows,
-    down_rows,
-    should_fuse,
-    expected_result,
-    description,
+    up_rows: tuple,
+    down_rows: tuple,
+    should_fuse: bool,
+    expected_result: tuple,
+    description: str,
 ):
     """Test the _get_compatible_ref_bundler method with various combinations of bundlers.
 
@@ -1071,12 +1072,12 @@ def test_get_compatible_ref_bundler(
     ],
 )
 def test_read_map_streaming_repartition_map_fusion_combinations(
-    ray_start_regular_shared_2_cpus,
-    first_batch_size,
-    target_num_rows,
-    second_batch_size,
-    expected_pattern,
-    description,
+    ray_start_regular_shared_2_cpus: Any,
+    first_batch_size: int,
+    target_num_rows: int,
+    second_batch_size: int,
+    expected_pattern: list,
+    description: str,
 ):
     """Test fusion behavior for Read->MapBatches->StreamingRepartition->MapBatches pipeline.
 
@@ -1097,6 +1098,7 @@ def test_read_map_streaming_repartition_map_fusion_combinations(
       MapBatches satisfy the fusion conditions with StreamingRepartition
 
     Args:
+        ray_start_regular_shared_2_cpus: Pytest fixture for Ray runtime
         first_batch_size: batch_size for first MapBatches (None or int)
         target_num_rows: target_num_rows_per_block for streaming repartition
         second_batch_size: batch_size for second MapBatches (None or int)
@@ -1235,13 +1237,13 @@ def test_read_map_streaming_repartition_map_fusion_combinations(
     ],
 )
 def test_streaming_repartition_fusion_bundler_validation(
-    ray_start_regular_shared_2_cpus,
-    first_batch_size,
-    target_num_rows,
-    second_batch_size,
-    expected_op_count,
-    expected_bundlers,
-    description,
+    ray_start_regular_shared_2_cpus: Any,
+    first_batch_size: int,
+    target_num_rows: int,
+    second_batch_size: int,
+    expected_op_count: int,
+    expected_bundlers: list,
+    description: str,
 ):
     """Test that fused operators have the correct block_ref_bundler after fusion.
 
@@ -1250,6 +1252,7 @@ def test_streaming_repartition_fusion_bundler_validation(
     operators have the appropriate bundler types and configurations.
 
     Args:
+        ray_start_regular_shared_2_cpus: Pytest fixture for Ray runtime
         first_batch_size: batch_size for first MapBatches (None or int)
         target_num_rows: target_num_rows_per_block for streaming repartition
         second_batch_size: batch_size for second MapBatches (None or int)
