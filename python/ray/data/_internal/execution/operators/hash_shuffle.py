@@ -64,7 +64,6 @@ from ray.data.block import (
 )
 from ray.data.context import (
     DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS,
-    DEFAULT_TARGET_MAX_BLOCK_SIZE,
     DataContext,
 )
 
@@ -665,10 +664,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 "num_cpus": 0.5,
                 "memory": self._estimate_shuffling_memory_req(
                     block_metadata,
-                    target_max_block_size=(
-                        self._data_context.target_max_block_size
-                        or DEFAULT_TARGET_MAX_BLOCK_SIZE
-                    ),
+                    target_max_block_size=2 * GiB,
                 ),
             }
 
