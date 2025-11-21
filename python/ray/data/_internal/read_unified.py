@@ -77,11 +77,11 @@ def _detect_lakehouse_tables(
     """Detect lakehouse tables in paths (only checks directories).
 
     Args:
-    paths: List of paths to check for lakehouse table markers.
-    filesystem: PyArrow filesystem to use for inspection.
+        paths: List of paths to check for lakehouse table markers.
+        filesystem: PyArrow filesystem to use for inspection.
 
     Returns:
-    List of detected lakehouse tables.
+        List of detected lakehouse tables.
     """
     from ray.data._internal.format_detection import _detect_lakehouse_format
 
