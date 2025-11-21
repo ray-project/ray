@@ -400,6 +400,7 @@ Datasink API
    Datasink
    datasource.RowBasedFileDatasink
    datasource.BlockBasedFileDatasink
+   datasource.TurbopufferDatasink
    datasource.FileBasedDatasource
    datasource.WriteResult
    datasource.WriteReturnType
