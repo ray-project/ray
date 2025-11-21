@@ -417,7 +417,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._block_ref_bundler.add_bundle(refs)
         self._metrics.on_input_queued(refs)
 
-        while self._block_ref_bundler.has_bundle():
+        if self._block_ref_bundler.has_bundle():
             # The ref bundler combines one or more RefBundles into a new larger
             # RefBundle. Rather than dequeuing the new RefBundle, which was never
             # enqueued in the first place, we dequeue the original RefBundles.
@@ -555,7 +555,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
     def all_inputs_done(self):
         self._block_ref_bundler.done_adding_bundles()
-        while self._block_ref_bundler.has_bundle():
+        if self._block_ref_bundler.has_bundle():
             # Handle any leftover bundles in the bundler.
             (
                 _,
@@ -726,12 +726,14 @@ class BlockRefBundler(BaseRefBundler):
         """Estimate the total size in bytes of buffered bundles."""
         return self._bundle_buffer_size_bytes
 
-    def get_next_bundle(self) -> Tuple[List[RefBundle], RefBundle]:
-        """Pop and return the next bundled input ready for task submission.
+    def get_next_bundle(
+        self,
+    ) -> Tuple[List[RefBundle], RefBundle]:
+        """Gets the next bundle.
 
         Returns:
-            A two-tuple. The first element is a list of bundles that were
-            combined into the output bundle. The second element is the output bundle.
+            A two-tuple. The first element is a list of bundles that were combined into
+            the output bundle. The second element is the output bundle.
         """
         assert self.has_bundle()
 
