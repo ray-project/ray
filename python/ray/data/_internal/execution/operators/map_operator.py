@@ -766,8 +766,13 @@ class BlockRefBundler(BaseRefBundler):
                 break
 
         self._bundle_buffer = remainder
-        self._bundle_buffer_size = sum(self._get_bundle_size(b) for b in remainder)
-        self._bundle_buffer_size_bytes = sum(b.size_bytes() for b in remainder)
+        self._bundle_buffer_size = sum(
+            self._get_bundle_size(bundle) for bundle in remainder
+        )
+        self._bundle_buffer_size_bytes = sum(
+            bundle.size_bytes() for bundle in remainder
+        )
+
         return list(output_buffer), _merge_ref_bundles(*output_buffer)
 
     def done_adding_bundles(self) -> None:
