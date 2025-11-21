@@ -11,7 +11,7 @@ When running Ray clusters for extended periods, the head node's memory usage can
 Why Head Node Memory Grows  
 ---------------------------  
   
-The head node runs additional singleton processes compared to worker nodes, including the autoscaler, GCS (Global Control Service), and Ray driver processes. Over time, several factors contribute to memory growth:  
+The head node runs critical ray system processes such as the autoscaler, GCS (Global Control Service), and Ray driver processes. These processes can consume significant memory over time. 
   
 Dashboard Event Caching  
 ~~~~~~~~~~~~~~~~~~~~~~~  
