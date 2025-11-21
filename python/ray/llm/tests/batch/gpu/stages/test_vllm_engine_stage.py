@@ -483,22 +483,30 @@ def test_vllm_output_data_logprobs():
 
     output_data = vLLMOutputData.from_vllm_engine_output(request_output)
 
-    assert output_data.logprobs is not None
-    assert len(output_data.logprobs) == 2
-    assert output_data.logprobs[0][123]["logprob"] == -0.5
-    assert output_data.logprobs[0][123]["rank"] == 1
-    assert output_data.logprobs[0][123]["decoded_token"] == "hello"
-    assert output_data.logprobs[0][456]["logprob"] == -1.2
-    assert output_data.logprobs[1][789]["logprob"] == -0.3
+    expected_logprobs = [
+        {
+            123: {"logprob": -0.5, "rank": 1, "decoded_token": "hello"},
+            456: {"logprob": -1.2, "rank": 2, "decoded_token": "hi"},
+        },
+        {
+            789: {"logprob": -0.3, "rank": 1, "decoded_token": "world"},
+            999: {"logprob": -1.5, "rank": 2, "decoded_token": "earth"},
+        },
+    ]
+    assert output_data.logprobs == expected_logprobs
 
-    assert output_data.prompt_logprobs is not None
-    assert len(output_data.prompt_logprobs) == 2
-    assert output_data.prompt_logprobs[0] is None
-    assert output_data.prompt_logprobs[1][111]["logprob"] == -0.1
+    expected_prompt_logprobs = [
+        None,
+        {
+            111: {"logprob": -0.1, "rank": 1, "decoded_token": "test"},
+            222: {"logprob": -0.8, "rank": 2, "decoded_token": "demo"},
+        },
+    ]
+    assert output_data.prompt_logprobs == expected_prompt_logprobs
 
     dumped = output_data.model_dump()
-    assert "logprobs" in dumped
-    assert "prompt_logprobs" in dumped
+    assert dumped["logprobs"] == expected_logprobs
+    assert dumped["prompt_logprobs"] == expected_prompt_logprobs
 
 
 def test_vllm_output_data_no_logprobs():
