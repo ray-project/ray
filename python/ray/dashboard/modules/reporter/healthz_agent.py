@@ -1,6 +1,7 @@
-from aiohttp.web import Request, Response
-
 import asyncio
+import logging
+
+from aiohttp.web import Request, Response
 
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
@@ -9,6 +10,8 @@ from ray._raylet import NodeID
 from ray.dashboard.modules.reporter.utils import HealthChecker
 
 routes = optional_utils.DashboardAgentRouteTable
+
+logger = logging.getLogger(__name__)
 
 
 class HealthzAgent(dashboard_utils.DashboardAgentModule):
