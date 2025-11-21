@@ -28,6 +28,7 @@
 #include "ray/gcs_rpc_client/accessor.h"
 #include "ray/gcs_rpc_client/accessor_factory_interface.h"
 #include "ray/gcs_rpc_client/accessors/actor_info_accessor_interface.h"
+#include "ray/gcs_rpc_client/accessors/internal_kv_accessor_interface.h"
 #include "ray/gcs_rpc_client/gcs_client_context.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/pubsub/gcs_subscriber.h"
@@ -227,9 +228,9 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   // Gets ClusterID. If it's not set in Connect(), blocks on a sync RPC to GCS to get it.
   virtual ClusterID GetClusterId() const;
 
-  /// Get the sub-interface for accessing worker information in GCS.
+  /// Get the sub-interface for accessing internal KV store in GCS.
   /// This function is thread safe.
-  virtual InternalKVAccessor &InternalKV() { return *internal_kv_accessor_; }
+  virtual InternalKVAccessorInterface &InternalKV() { return *internal_kv_accessor_; }
 
   virtual rpc::GcsRpcClient &GetGcsRpcClient() {
     return client_context_->GetGcsRpcClient();
@@ -251,7 +252,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<ErrorInfoAccessor> error_accessor_;
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
   std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
-  std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
+  std::unique_ptr<InternalKVAccessorInterface> internal_kv_accessor_;
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
   std::unique_ptr<RuntimeEnvAccessor> runtime_env_accessor_;
   std::unique_ptr<AutoscalerStateAccessor> autoscaler_state_accessor_;
