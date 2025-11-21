@@ -1,5 +1,6 @@
 import pytest
 import sys
+import requests
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray import serve
 from ray.llm._internal.serve.core.ingress.builder import build_sglang_openai_app
@@ -17,22 +18,22 @@ def is_default_app_running():
     except (KeyError, AttributeError):
         return False
 
-@pytest.mark.parametrize("model_name", ["hmellor/Ilama-3.2-1B"])
+@pytest.mark.parametrize("model_name", ["mistralai/Voxtral-Mini-3B-2507"])
 def test_transcription_model(model_name):
     """
     Test that the transcription models can be loaded successfully.
     """
     llm_config = LLMConfig(
         model_loading_config=dict(
-            model_id="hmellor/Ilama-3.2-1B",
-            model_source="hmellor/Ilama-3.2-1B",
+            model_id=model_name,
+            model_source=model_name,
         ),
         deployment_config=dict(
             autoscaling_config=dict(min_replicas=1, max_replicas=4),
         ),
         engine_kwargs=dict(
             trust_remote_code=True,
-            model_path="hmellor/Ilama-3.2-1B",
+            model_path=model_name,
             mem_fraction_static=0.9,
             context_length=2048,
         ),
@@ -40,6 +41,19 @@ def test_transcription_model(model_name):
     app = build_sglang_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=180)
+    url = "http://localhost:8000/v1/chat/completions"
+    payload = {
+        "model": target_model,
+        "messages": [
+            {"role": "user", "content": "Hello, are you working?"}
+        ],
+        "max_tokens": 10
+    }
+
+    # Send the request
+    response = requests.post(url, json=payload)
+    assert response.status_code == 200, f"Query failed: {response.text}"
+    
     serve.shutdown()
     time.sleep(1)
 
