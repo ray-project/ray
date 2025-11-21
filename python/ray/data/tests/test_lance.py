@@ -228,7 +228,7 @@ def test_lance_read_with_version(data_path):
     # Latest dataset should contain merged columns
     assert "three" in ds_latest.schema().names
 
-    # Read the original version (0) and ensure it contains the original columns
+    # Read the initial version and ensure it contains the original columns
     ds_prev = ray.data.read_lance(path, version=initial_version)
     assert ds_prev.count() == 6
     assert ds_prev.schema().names == ["one", "two"]
