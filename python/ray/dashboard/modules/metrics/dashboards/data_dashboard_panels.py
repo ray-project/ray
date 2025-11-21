@@ -1050,6 +1050,21 @@ ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL = Panel(
     stack=False,
 )
 
+ITERATION_PREFETCHED_BLOCKS_COUNT_PANEL = Panel(
+    id=90,
+    title="Iteration Prefetched Blocks Count",
+    description="Current number of prefetched blocks in the iterator",
+    unit="blocks",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_prefetched_blocks_count{{{global_filters}}}) by (dataset)",
+            legend="Prefetched Blocks: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
 # Ray Data Metrics (Miscellaneous)
 SCHEDULING_LOOP_DURATION_PANEL = Panel(
     id=47,
@@ -1390,6 +1405,7 @@ DATA_GRAFANA_ROWS = [
             ITERATION_BLOCKS_LOCAL_PANEL,
             ITERATION_BLOCKS_REMOTE_PANEL,
             ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL,
+            ITERATION_PREFETCHED_BLOCKS_COUNT_PANEL,
         ],
         collapsed=True,
     ),
