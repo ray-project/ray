@@ -202,12 +202,18 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
             return _add_ellipsis_for_string(unk_name, truncate_length)
 
 
-def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
+def dataset_metadata_to_proto(
+    dataset_metadata: DatasetMetadata,
+    include_data_context: bool = True,
+    include_op_args: bool = True,
+) -> Any:
     """Convert the dataset metadata to a protobuf message.
 
     Args:
         dataset_metadata: DatasetMetadata object containing the dataset's
             information and DAG structure.
+        include_data_context: If DataContext will be exported
+        include_op_args: If operator args will be exported
 
     Returns:
         The protobuf message representing the dataset metadata.
@@ -229,7 +235,8 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
     # Add operators to the DAG
     for op in dataset_metadata.topology.operators:
         args = Struct()
-        args.update(op.args)
+        if include_op_args:
+            args.update(op.args)
         proto_operator = ProtoOperator(
             name=op.name,
             id=op.id,
@@ -257,7 +264,8 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
 
     # Populate the data metadata proto
     data_context = Struct()
-    data_context.update(sanitize_for_struct(dataset_metadata.data_context))
+    if include_data_context:
+        data_context.update(sanitize_for_struct(dataset_metadata.data_context))
     proto_dataset_metadata = ProtoDatasetMetadata(
         dataset_id=dataset_metadata.dataset_id,
         job_id=dataset_metadata.job_id,
@@ -302,11 +310,18 @@ class DatasetMetadataExporter(ABC):
     """
 
     @abstractmethod
-    def export_dataset_metadata(self, dataset_metadata: DatasetMetadata) -> None:
+    def export_dataset_metadata(
+        self,
+        dataset_metadata: DatasetMetadata,
+        include_data_context: bool = True,
+        include_op_args: bool = True,
+    ) -> None:
         """Export dataset metadata to the destination.
 
         Args:
             dataset_metadata: DatasetMetadata object containing dataset information.
+            include_data_context: If DataContext will be exported
+            include_op_args: If operator args will be exported
         """
         pass
 
@@ -335,13 +350,24 @@ class LoggerDatasetMetadataExporter(DatasetMetadataExporter):
         """
         self._export_logger = logger
 
-    def export_dataset_metadata(self, dataset_metadata: DatasetMetadata) -> None:
+    def export_dataset_metadata(
+        self,
+        dataset_metadata: DatasetMetadata,
+        include_data_context: bool = True,
+        include_op_args: bool = True,
+    ) -> None:
         """Export dataset metadata using the export event logger.
 
         Args:
             dataset_metadata: DatasetMetadata object containing dataset information.
+            include_data_context: If DataContext will be exported
+            include_op_args: If operator args will be exported
         """
-        data_metadata_proto = dataset_metadata_to_proto(dataset_metadata)
+        data_metadata_proto = dataset_metadata_to_proto(
+            dataset_metadata,
+            include_data_context,
+            include_op_args,
+        )
         self._export_logger.send_event(data_metadata_proto)
 
     @classmethod
