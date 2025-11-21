@@ -18,9 +18,9 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleSpec
-from ray.rllib.env import INPUT_ENV_SPACES, INPUT_ENV_SINGLE_SPACES
+from ray.rllib.env import INPUT_ENV_SINGLE_SPACES, INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
+from ray.rllib.env.env_runner import ENV_STEP_FAILURE, EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
@@ -101,7 +101,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         )
 
         # Create the vectorized gymnasium env.
-        self.env: Optional[gym.Wrapper] = None
+        self.env: Optional[VectorMultiAgentEnv] = None
         self.num_envs: int = 0
         if (
             self.worker_index is None
@@ -489,6 +489,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     # can differ from `num_envs_per_env_runner` and would bias time
                     # measurements.
                     self._env_to_module(
+                        batch={},
                         episodes=done_episodes_to_run_env_to_module,
                         explore=explore,
                         rl_module=self.module,
@@ -496,6 +497,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         metrics=None,
                     )
                 self._cached_to_module = self._env_to_module(
+                    batch={},
                     episodes=episodes,
                     explore=explore,
                     rl_module=self.module,

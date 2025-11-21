@@ -6,12 +6,15 @@ import pytest
 
 import ray
 import ray.cloudpickle as ray_pickle
-from ray.air.config import CheckpointConfig
-from ray.train import Checkpoint, RunConfig, ScalingConfig
+from ray.tests.client_test_utils import create_remote_signal_actor
+from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import WorkerGroupError
-from ray.train.v2.api.report_config import CheckpointUploadMode
+from ray.train.v2.api.report_config import (
+    CheckpointConsistencyMode,
+    CheckpointUploadMode,
+)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -364,6 +367,57 @@ def test_report_checkpoint_upload_fn(tmp_path):
     assert load_dict_checkpoint(result.checkpoint) == {
         "checkpoint_key": "checkpoint_value"
     }
+
+
+def test_get_all_reported_checkpoints_all_consistency_modes():
+    signal_actor = create_remote_signal_actor(ray).remote()
+
+    def train_fn(config):
+        signal_actor = config["signal_actor"]
+
+        def validate_fn(checkpoint, config):
+            ray.get(signal_actor.wait.remote())
+            return {
+                "validation_score": 100,
+            }
+
+        if ray.train.get_context().get_world_rank() == 0:
+            # Assert that we get committed checkpoints
+            with create_dict_checkpoint({}) as cp1:
+                ray.train.report(
+                    metrics={"training_score": 1},
+                    checkpoint=cp1,
+                    validate_fn=validate_fn,
+                )
+            assert [
+                reported_checkpoint.metrics
+                for reported_checkpoint in ray.train.get_all_reported_checkpoints(
+                    consistency_mode=CheckpointConsistencyMode.COMMITTED
+                )
+            ] == [
+                {"training_score": 1},
+            ]
+
+            # Assert that we get validated chceckpoints
+            # modoru: replace with signal actor
+            signal_actor.send.remote()
+            assert [
+                reported_checkpoint.metrics
+                for reported_checkpoint in ray.train.get_all_reported_checkpoints(
+                    consistency_mode=CheckpointConsistencyMode.VALIDATED
+                )
+            ] == [
+                {"training_score": 1, "validation_score": 100},
+            ]
+        else:
+            ray.train.report(metrics={}, checkpoint=None)
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+        train_loop_config={"signal_actor": signal_actor},
+    )
+    trainer.fit()
 
 
 if __name__ == "__main__":

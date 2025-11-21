@@ -42,6 +42,7 @@ from ray.train.v2._internal.execution.controller.state import (
     RestartingState,
     RunningState,
     SchedulingState,
+    ShuttingDownState,
     TrainControllerState,
 )
 from ray.train.v2._internal.execution.failure_handling import (
@@ -67,6 +68,7 @@ from ray.train.v2.api.exceptions import (
     ControllerError,
     TrainingFailedError,
 )
+from ray.train.v2.api.report_config import CheckpointConsistencyMode
 from ray.train.v2.api.result import Result
 
 if TYPE_CHECKING:
@@ -251,8 +253,10 @@ class TrainController:
                 ),
             )
         elif failure_decision == FailureDecision.RAISE:
-            next_state = ErroredState(
-                training_failed_error=training_failed_error,
+            next_state = ShuttingDownState(
+                next_state=ErroredState(
+                    training_failed_error=training_failed_error,
+                ),
             )
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
@@ -271,6 +275,12 @@ class TrainController:
                 self._health_check_interval_s - time_since_last_poll, 0
             )
             await asyncio.sleep(remaining_time)
+            if self.get_state().is_terminal():
+                logger.debug(
+                    f"Controller is unexpectedly in terminal state {self.get_state()} after "
+                    "sleeping and before polling workers. Exiting actor."
+                )
+                ray.actor.exit_actor()
 
         status = self._worker_group.poll_status(timeout=self._health_check_interval_s)
         self._latest_poll_time = time_monotonic()
@@ -423,7 +433,9 @@ class TrainController:
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
-                    next_state=FinishedState(),
+                    next_state=ShuttingDownState(
+                        next_state=FinishedState(),
+                    ),
                 )
             if worker_group_status.errors:
                 worker_group_error = worker_group_status.get_worker_group_error()
@@ -461,6 +473,14 @@ class TrainController:
                     scaling_decision=controller_state.scaling_decision
                 ),
             )
+        elif isinstance(controller_state, ShuttingDownState):
+            # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
+            self._shutdown()
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=controller_state,
+                next_state=controller_state.next_state,
+            )
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
 
@@ -497,9 +517,6 @@ class TrainController:
         """Run the main control loop. Exits when training is finished or errored."""
         while not self.get_state().is_terminal():
             await self._run_control_loop_iteration()
-
-        # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
-        self._shutdown()
 
         # Call after_controller_finish with the final result
         result = self._build_result()
@@ -573,8 +590,10 @@ class TrainController:
         return None
 
     async def get_all_reported_checkpoints(
-        self, current_report_index: int
+        self,
+        current_report_index: int,
+        consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
     ) -> List["ReportedCheckpoint"]:
         return await self._checkpoint_manager.get_all_reported_checkpoints(
-            current_report_index
+            current_report_index, consistency_mode
         )

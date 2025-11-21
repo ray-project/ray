@@ -20,6 +20,7 @@ from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.bundle_queue.bundle_queue import BundleQueue
 from ray.data._internal.execution.interfaces import (
+    BlockSlice,
     ExecutionOptions,
     ExecutionResources,
     NodeIdStr,
@@ -32,12 +33,19 @@ from ray.data._internal.execution.node_trackers.actor_location import (
     ActorLocationTracker,
     get_or_create_actor_location_tracker,
 )
-from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
+from ray.data._internal.execution.operators.map_operator import (
+    BaseRefBundler,
+    MapOperator,
+    _map_task,
+)
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data.block import Block, BlockMetadata
-from ray.data.context import DataContext
+from ray.data.context import (
+    DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
+    DataContext,
+)
 from ray.types import ObjectRef
 from ray.util.common import INT32_MAX
 
@@ -68,6 +76,7 @@ class ActorPoolMapOperator(MapOperator):
         compute_strategy: ActorPoolStrategy,
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
+        ref_bundler: Optional[BaseRefBundler] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
@@ -88,6 +97,7 @@ class ActorPoolMapOperator(MapOperator):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            ref_bundler: The ref bundler to use for this operator.
             supports_fusion: Whether this operator supports fusion with other operators.
             map_task_kwargs: A dictionary of kwargs to pass to the map task. You can
                 access these kwargs through the `TaskContext.kwargs` dictionary.
@@ -110,6 +120,7 @@ class ActorPoolMapOperator(MapOperator):
             name,
             target_max_block_size_override,
             min_rows_per_bundle,
+            ref_bundler,
             supports_fusion,
             map_task_kwargs,
             ray_remote_args_fn,
@@ -141,12 +152,14 @@ class ActorPoolMapOperator(MapOperator):
             initial_size=compute_strategy.initial_size,
             max_actor_concurrency=max_actor_concurrency,
             max_tasks_in_flight_per_actor=(
-                # NOTE: Unless explicitly configured by the user, max tasks-in-flight config
-                #       will fall back to be 2 x of `max_concurrency`, entailing that for every
-                #       running task we'd allow 1 more task to be enqueued
+                # Unless explicitly overridden by the user, max tasks-in-flight config
+                # will fall back to be:
+                #
+                #   DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR * max_concurrency,
                 compute_strategy.max_tasks_in_flight_per_actor
                 or data_context.max_tasks_in_flight_per_actor
-                or max_actor_concurrency * 2
+                or max_actor_concurrency
+                * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
             ),
             _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
         )
@@ -161,6 +174,7 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_cls = None
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
+        self._actor_locality_enabled: Optional[bool] = None
 
         # Locality metrics
         self._locality_hits = 0
@@ -198,11 +212,17 @@ class ActorPoolMapOperator(MapOperator):
 
         return ray_actor_task_remote_args
 
-    def internal_queue_size(self) -> int:
+    def internal_input_queue_num_blocks(self) -> int:
         # NOTE: Internal queue size for ``ActorPoolMapOperator`` includes both
         #   - Input blocks bundler, alas
         #   - Own bundle's queue
-        return self._block_ref_bundler.num_bundles() + len(self._bundle_queue)
+        return self._block_ref_bundler.num_blocks() + self._bundle_queue.num_blocks()
+
+    def internal_input_queue_num_bytes(self) -> int:
+        return (
+            self._bundle_queue.estimate_size_bytes()
+            + self._block_ref_bundler.size_bytes()
+        )
 
     def start(self, options: ExecutionOptions):
         self._actor_locality_enabled = options.actor_locality_enabled
@@ -318,6 +338,7 @@ class ActorPoolMapOperator(MapOperator):
                 self.data_context,
                 ctx,
                 *input_blocks,
+                slices=bundle.slices,
                 **self.get_map_task_kwargs(),
             )
 
@@ -490,13 +511,12 @@ class ActorPoolMapOperator(MapOperator):
     def per_task_resource_allocation(
         self: "PhysicalOperator",
     ) -> ExecutionResources:
-        max_concurrency = self._ray_remote_args.get("max_concurrency", 1)
+        # For Actor tasks resource allocation is determined as:
+        #   - Per actor resource allocation divided by
+        #   - Actor's max task concurrency
+        max_concurrency = self._actor_pool.max_actor_concurrency()
         per_actor_resource_usage = self._actor_pool.per_actor_resource_usage()
         return per_actor_resource_usage.scale(1 / max_concurrency)
-
-    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
-        max_concurrency = self._ray_remote_args.get("max_concurrency", 1)
-        return max_concurrency * self._actor_pool.max_size()
 
     def min_scheduling_resources(
         self: "PhysicalOperator",
@@ -524,6 +544,9 @@ class ActorPoolMapOperator(MapOperator):
     def get_actor_info(self) -> _ActorPoolInfo:
         """Returns Actor counts for Alive, Restarting and Pending Actors."""
         return self._actor_pool.get_actor_info()
+
+    def get_max_concurrency_limit(self) -> Optional[int]:
+        return self._actor_pool.max_size() * self._actor_pool.max_actor_concurrency()
 
 
 class _MapWorker:
@@ -557,6 +580,7 @@ class _MapWorker:
         data_context: DataContext,
         ctx: TaskContext,
         *blocks: Block,
+        slices: Optional[List[BlockSlice]] = None,
         **kwargs: Dict[str, Any],
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
         yield from _map_task(
@@ -564,11 +588,14 @@ class _MapWorker:
             data_context,
             ctx,
             *blocks,
+            slices=slices,
             **kwargs,
         )
 
     def __repr__(self):
-        return f"MapWorker({self.src_fn_name})"
+        # Use getattr to handle case where __init__ failed before src_fn_name was set.
+        # This can happen during actor restarts or initialization failures.
+        return f"MapWorker({getattr(self, 'src_fn_name', '<initializing>')})"
 
     def on_exit(self):
         """Called when the actor is about to exist.

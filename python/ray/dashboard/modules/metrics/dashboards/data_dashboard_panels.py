@@ -330,7 +330,7 @@ OUTPUT_BYTES_BY_NODE_PANEL = Panel(
     unit="Bps",
     targets=[
         Target(
-            expr='sum(rate(ray_data_bytes_outputs_of_finished_tasks_per_node{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, node_ip)',
+            expr="sum(rate(ray_data_bytes_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
             legend="Bytes output / Second: {{dataset}}, {{node_ip}}",
         )
     ],
@@ -347,7 +347,7 @@ BLOCKS_BY_NODE_PANEL = Panel(
     unit="blocks/s",
     targets=[
         Target(
-            expr='sum(rate(ray_data_blocks_outputs_of_finished_tasks_per_node{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, node_ip)',
+            expr="sum(rate(ray_data_blocks_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
             legend="Blocks output / Second: {{dataset}}, {{node_ip}}",
         )
     ],
@@ -438,7 +438,7 @@ TASK_THROUGHPUT_BY_NODE_PANEL = Panel(
     unit="tasks/s",
     targets=[
         Target(
-            expr='sum(rate(ray_data_num_tasks_finished_per_node{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, node_ip)',
+            expr="sum(rate(ray_data_num_tasks_finished_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
             legend="Finished Tasks: {{dataset}}, {{node_ip}}",
         )
     ],
@@ -477,72 +477,184 @@ TASK_SUBMISSION_BACKPRESSURE_PANEL = Panel(
 )
 
 # Task Completion Time Percentiles
-TASK_COMPLETION_TIME_PANEL = Panel(
+TASK_COMPLETION_TIME_P50_PANEL = Panel(
     id=38,
-    title="Task Completion Time Histogram (s)",
-    description="Time (in seconds) spent (including backpressure) running tasks to completion. Larger bars means more tasks finished within that duration range.",
+    title="P50 Task Completion Time",
+    description="P50 time (in seconds) spent (including backpressure) running tasks to completion.",
     targets=[
         Target(
-            expr='sum by (le) (max_over_time(ray_data_task_completion_time_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
-            legend="{{le}} s",
-            template=TargetTemplate.HISTOGRAM_BAR_CHART,
+            expr='histogram_quantile(0.5, sum by (operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
+            legend="{{operator}}",
         ),
     ],
-    unit="short",
+    unit="s",
     fill=0,
     stack=False,
-    template=PanelTemplate.BAR_CHART,
 )
 
-BLOCK_COMPLETION_TIME_PANEL = Panel(
+TASK_COMPLETION_TIME_P90_PANEL = Panel(
+    id=82,
+    title="P90 Task Completion Time",
+    description="P90 time (in seconds) spent (including backpressure) running tasks to completion.",
+    targets=[
+        Target(
+            expr='histogram_quantile(0.9, sum by (operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
+            legend="{{operator}}",
+        ),
+    ],
+    unit="s",
+    fill=0,
+    stack=False,
+)
+
+TASK_COMPLETION_TIME_P99_PANEL = Panel(
+    id=83,
+    title="P99 Task Completion Time",
+    description="P99 time (in seconds) spent (including backpressure) running tasks to completion.",
+    targets=[
+        Target(
+            expr='histogram_quantile(0.99, sum by (operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
+            legend="{{operator}}",
+        ),
+    ],
+    unit="s",
+    fill=0,
+    stack=False,
+)
+
+BLOCK_COMPLETION_TIME_P50_PANEL = Panel(
+    id=84,
+    title="P50 Block Completion Time",
+    description="P50 time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process.",
+    targets=[
+        Target(
+            expr='histogram_quantile(0.5, sum by (operator, le) (rate(ray_data_block_completion_time_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
+            legend="{{operator}}",
+        ),
+    ],
+    unit="s",
+    fill=0,
+    stack=False,
+)
+
+BLOCK_COMPLETION_TIME_P90_PANEL = Panel(
     id=61,
-    title="Block Completion Time Histogram (s)",
-    description="Time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process. Larger bars means more blocks finished within that duration range.",
+    title="P90 Block Completion Time",
+    description="P90 time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process.",
     targets=[
         Target(
-            expr='sum by (le) (max_over_time(ray_data_block_completion_time_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
-            legend="{{le}} s",
-            template=TargetTemplate.HISTOGRAM_BAR_CHART,
+            expr='histogram_quantile(0.9, sum by (operator, le) (rate(ray_data_block_completion_time_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
+            legend="{{operator}}",
         ),
     ],
-    unit="short",
+    unit="s",
     fill=0,
     stack=False,
-    template=PanelTemplate.BAR_CHART,
 )
 
-BLOCK_SIZE_BYTES_PANEL = Panel(
+BLOCK_COMPLETION_TIME_P99_PANEL = Panel(
+    id=85,
+    title="P99 Block Completion Time",
+    description="P99 time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process.",
+    targets=[
+        Target(
+            expr='histogram_quantile(0.99, sum by (operator, le) (rate(ray_data_block_completion_time_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
+            legend="{{operator}}",
+        ),
+    ],
+    unit="s",
+    fill=0,
+    stack=False,
+)
+
+BLOCK_SIZE_BYTES_P50_PANEL = Panel(
+    id=86,
+    title="P50 Block Size (Bytes)",
+    description="P50 size (in bytes) per block.",
+    targets=[
+        Target(
+            expr='histogram_quantile(0.5, sum by (operator, le) (rate(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
+            legend="{{operator}}",
+        ),
+    ],
+    unit="bytes",
+    fill=0,
+    stack=False,
+)
+
+BLOCK_SIZE_BYTES_P90_PANEL = Panel(
     id=62,
-    title="Block Size (Bytes) Histogram",
-    description="Size (in bytes) per block. Larger bars means more blocks are within that size range.",
+    title="P90 Block Size (Bytes)",
+    description="P90 size (in bytes) per block.",
     targets=[
         Target(
-            expr='sum by (le) (max_over_time(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
-            legend="{{le}} bytes",
-            template=TargetTemplate.HISTOGRAM_BAR_CHART,
+            expr='histogram_quantile(0.9, sum by (operator, le) (rate(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
+            legend="{{operator}}",
         ),
     ],
-    unit="short",
+    unit="bytes",
     fill=0,
     stack=False,
-    template=PanelTemplate.BAR_CHART,
 )
 
-BLOCK_SIZE_ROWS_PANEL = Panel(
-    id=63,
-    title="Block Size (Rows) Histogram",
-    description="Number of rows per block. Larger bars means more blocks are within that number of rows range.",
+BLOCK_SIZE_BYTES_P99_PANEL = Panel(
+    id=87,
+    title="P99 Block Size (Bytes)",
+    description="P99 size (in bytes) per block.",
     targets=[
         Target(
-            expr='sum by (le) (max_over_time(ray_data_block_size_rows_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
-            legend="{{le}} rows",
-            template=TargetTemplate.HISTOGRAM_BAR_CHART,
+            expr='histogram_quantile(0.99, sum by (operator, le) (rate(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
+            legend="{{operator}}",
         ),
     ],
-    unit="short",
+    unit="bytes",
     fill=0,
     stack=False,
-    template=PanelTemplate.BAR_CHART,
+)
+
+BLOCK_SIZE_ROWS_P50_PANEL = Panel(
+    id=88,
+    title="P50 Block Size (Rows)",
+    description="P50 number of rows per block.",
+    targets=[
+        Target(
+            expr='histogram_quantile(0.5, sum by (operator, le) (rate(ray_data_block_size_rows_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
+            legend="{{operator}}",
+        ),
+    ],
+    unit="rows",
+    fill=0,
+    stack=False,
+)
+
+BLOCK_SIZE_ROWS_P90_PANEL = Panel(
+    id=63,
+    title="P90 Block Size (Rows)",
+    description="P90 number of rows per block.",
+    targets=[
+        Target(
+            expr='histogram_quantile(0.9, sum by (operator, le) (rate(ray_data_block_size_rows_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
+            legend="{{operator}}",
+        ),
+    ],
+    unit="rows",
+    fill=0,
+    stack=False,
+)
+
+BLOCK_SIZE_ROWS_P99_PANEL = Panel(
+    id=89,
+    title="P99 Block Size (Rows)",
+    description="P99 number of rows per block.",
+    targets=[
+        Target(
+            expr='histogram_quantile(0.99, sum by (operator, le) (rate(ray_data_block_size_rows_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
+            legend="{{operator}}",
+        ),
+    ],
+    unit="rows",
+    fill=0,
+    stack=False,
 )
 
 TASK_OUTPUT_BACKPRESSURE_TIME_PANEL = Panel(
@@ -1051,10 +1163,88 @@ ALL_RESOURCES_UTILIZATION_PANEL = Panel(
     stack=False,
 )
 
+OPERATOR_TASK_COMPLETION_TIME_PANEL = Panel(
+    id=78,
+    title="Task Completion Time Histogram (s)",
+    description="Time (in seconds) spent (including backpressure) running tasks to completion. Larger bars means more tasks finished within that duration range.",
+    targets=[
+        Target(
+            expr='sum by (le) (max_over_time(ray_data_task_completion_time_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
+            legend="{{le}} s",
+            template=TargetTemplate.HISTOGRAM_BAR_CHART,
+        ),
+    ],
+    unit="short",
+    fill=0,
+    stack=False,
+    template=PanelTemplate.BAR_CHART,
+)
+
+OPERATOR_BLOCK_COMPLETION_TIME_PANEL = Panel(
+    id=79,
+    title="Block Completion Time Histogram (s)",
+    description="Time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process. Larger bars means more blocks finished within that duration range.",
+    targets=[
+        Target(
+            expr='sum by (le) (max_over_time(ray_data_block_completion_time_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
+            legend="{{le}} s",
+            template=TargetTemplate.HISTOGRAM_BAR_CHART,
+        ),
+    ],
+    unit="short",
+    fill=0,
+    stack=False,
+    template=PanelTemplate.BAR_CHART,
+)
+
+OPERATOR_BLOCK_SIZE_BYTES_PANEL = Panel(
+    id=80,
+    title="Block Size (Bytes) Histogram",
+    description="Size (in bytes) per block. Larger bars means more blocks are within that size range.",
+    targets=[
+        Target(
+            expr='sum by (le) (max_over_time(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
+            legend="{{le}} bytes",
+            template=TargetTemplate.HISTOGRAM_BAR_CHART,
+        ),
+    ],
+    unit="short",
+    fill=0,
+    stack=False,
+    template=PanelTemplate.BAR_CHART,
+    # We hide the X axis because the values are too large to fit and they are not useful.
+    # We also cannot format it to higher units so it has too many digits.
+    hideXAxis=True,
+)
+
+OPERATOR_BLOCK_SIZE_ROWS_PANEL = Panel(
+    id=81,
+    title="Block Size (Rows) Histogram",
+    description="Number of rows per block. Larger bars means more blocks are within that number of rows range.",
+    targets=[
+        Target(
+            expr='sum by (le) (max_over_time(ray_data_block_size_rows_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
+            legend="{{le}} rows",
+            template=TargetTemplate.HISTOGRAM_BAR_CHART,
+        ),
+    ],
+    unit="short",
+    fill=0,
+    stack=False,
+    template=PanelTemplate.BAR_CHART,
+    # We hide the X axis because the values are too large to fit and they are not useful.
+    # We also cannot format it to higher units so it has too many digits.
+    hideXAxis=True,
+)
+
 OPERATOR_PANELS = [
     ROWS_OUTPUT_PER_SECOND_PANEL,
     ALL_RESOURCES_UTILIZATION_PANEL,
     COMBINED_INQUEUE_BLOCKS_PANEL,
+    OPERATOR_TASK_COMPLETION_TIME_PANEL,
+    OPERATOR_BLOCK_COMPLETION_TIME_PANEL,
+    OPERATOR_BLOCK_SIZE_BYTES_PANEL,
+    OPERATOR_BLOCK_SIZE_ROWS_PANEL,
 ]
 
 DATA_GRAFANA_ROWS = [
@@ -1117,8 +1307,12 @@ DATA_GRAFANA_ROWS = [
         title="Outputs",
         id=103,
         panels=[
-            BLOCK_SIZE_BYTES_PANEL,
-            BLOCK_SIZE_ROWS_PANEL,
+            BLOCK_SIZE_BYTES_P50_PANEL,
+            BLOCK_SIZE_BYTES_P90_PANEL,
+            BLOCK_SIZE_BYTES_P99_PANEL,
+            BLOCK_SIZE_ROWS_P50_PANEL,
+            BLOCK_SIZE_ROWS_P90_PANEL,
+            BLOCK_SIZE_ROWS_P99_PANEL,
             OUTPUT_BLOCKS_TAKEN_PANEL,
             OUTPUT_BYTES_TAKEN_PANEL,
             OUTPUT_BYTES_BY_NODE_PANEL,
@@ -1136,8 +1330,12 @@ DATA_GRAFANA_ROWS = [
         title="Tasks",
         id=104,
         panels=[
-            TASK_COMPLETION_TIME_PANEL,
-            BLOCK_COMPLETION_TIME_PANEL,
+            TASK_COMPLETION_TIME_P50_PANEL,
+            TASK_COMPLETION_TIME_P90_PANEL,
+            TASK_COMPLETION_TIME_P99_PANEL,
+            BLOCK_COMPLETION_TIME_P50_PANEL,
+            BLOCK_COMPLETION_TIME_P90_PANEL,
+            BLOCK_COMPLETION_TIME_P99_PANEL,
             TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL,
             TASK_OUTPUT_BACKPRESSURE_TIME_PANEL,
             TASK_SUBMISSION_BACKPRESSURE_PANEL,
@@ -1199,7 +1397,13 @@ DATA_GRAFANA_ROWS = [
     Row(
         title="Operator Panels",
         id=108,
-        panels=[ALL_RESOURCES_UTILIZATION_PANEL],
+        panels=[
+            ALL_RESOURCES_UTILIZATION_PANEL,
+            OPERATOR_TASK_COMPLETION_TIME_PANEL,
+            OPERATOR_BLOCK_COMPLETION_TIME_PANEL,
+            OPERATOR_BLOCK_SIZE_BYTES_PANEL,
+            OPERATOR_BLOCK_SIZE_ROWS_PANEL,
+        ],
         collapsed=True,
     ),
 ]

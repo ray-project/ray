@@ -4,13 +4,28 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, Generic, List, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    List,
+    TypeVar,
+    Union,
+)
 
 import pyarrow
+import pyarrow.compute as pc
 
 from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.namespace_expressions.list_namespace import _ListNamespace
+    from ray.data.namespace_expressions.string_namespace import _StringNamespace
+    from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 
 T = TypeVar("T")
 
@@ -123,18 +138,15 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
     """Visitor that converts Ray Data expressions to PyArrow compute expressions."""
 
     def visit_column(self, expr: "ColumnExpr") -> "pyarrow.compute.Expression":
-        import pyarrow.compute as pc
 
         return pc.field(expr.name)
 
     def visit_literal(self, expr: "LiteralExpr") -> "pyarrow.compute.Expression":
-        import pyarrow.compute as pc
 
         return pc.scalar(expr.value)
 
     def visit_binary(self, expr: "BinaryExpr") -> "pyarrow.compute.Expression":
         import pyarrow as pa
-        import pyarrow.compute as pc
 
         if expr.op in (Operation.IN, Operation.NOT_IN):
             left = self.visit(expr.left)
@@ -241,6 +253,29 @@ class Expr(ABC):
             TypeError: If the expression type cannot be converted to PyArrow.
         """
         return _PyArrowExpressionVisitor().visit(self)
+
+    def __repr__(self) -> str:
+        """Return a tree-structured string representation of the expression.
+
+        Returns:
+            A multi-line string showing the expression tree structure using
+            box-drawing characters for visual clarity.
+
+        Example:
+            >>> from ray.data.expressions import col, lit
+            >>> expr = (col("x") + lit(5)) * col("y")
+            >>> print(expr)
+            MUL
+                ├── left: ADD
+                │   ├── left: COL('x')
+                │   └── right: LIT(5)
+                └── right: COL('y')
+        """
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _TreeReprVisitor,
+        )
+
+        return _TreeReprVisitor().visit(self)
 
     def _bin(self, other: Any, op: Operation) -> "Expr":
         """Create a binary expression with the given operation.
@@ -382,12 +417,81 @@ class Expr(ABC):
             data_type=self.data_type, expr=self, _name=name, _is_rename=False
         )
 
+    @property
+    def list(self) -> "_ListNamespace":
+        """Access list operations for this expression.
+
+        Returns:
+            A _ListNamespace that provides list-specific operations.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> import ray
+            >>> ds = ray.data.from_items([
+            ...     {"items": [1, 2, 3]},
+            ...     {"items": [4, 5]}
+            ... ])
+            >>> ds = ds.with_column("num_items", col("items").list.len())
+            >>> ds = ds.with_column("first_item", col("items").list[0])
+            >>> ds = ds.with_column("slice", col("items").list[1:3])
+        """
+        from ray.data.namespace_expressions.list_namespace import _ListNamespace
+
+        return _ListNamespace(self)
+
+    @property
+    def str(self) -> "_StringNamespace":
+        """Access string operations for this expression.
+
+        Returns:
+            A _StringNamespace that provides string-specific operations.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> import ray
+            >>> ds = ray.data.from_items([
+            ...     {"name": "Alice"},
+            ...     {"name": "Bob"}
+            ... ])
+            >>> ds = ds.with_column("upper_name", col("name").str.upper())
+            >>> ds = ds.with_column("name_len", col("name").str.len())
+            >>> ds = ds.with_column("starts_a", col("name").str.starts_with("A"))
+        """
+        from ray.data.namespace_expressions.string_namespace import _StringNamespace
+
+        return _StringNamespace(self)
+
+    @property
+    def struct(self) -> "_StructNamespace":
+        """Access struct operations for this expression.
+
+        Returns:
+            A _StructNamespace that provides struct-specific operations.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> import ray
+            >>> import pyarrow as pa
+            >>> ds = ray.data.from_arrow(pa.table({
+            ...     "user": pa.array([
+            ...         {"name": "Alice", "age": 30}
+            ...     ], type=pa.struct([
+            ...         pa.field("name", pa.string()),
+            ...         pa.field("age", pa.int32())
+            ...     ]))
+            ... }))
+            >>> ds = ds.with_column("age", col("user").struct["age"])  # doctest: +SKIP
+        """
+        from ray.data.namespace_expressions.struct_namespace import _StructNamespace
+
+        return _StructNamespace(self)
+
     def _unalias(self) -> "Expr":
         return self
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class ColumnExpr(Expr):
     """Expression that references a column by name.
 
@@ -420,7 +524,7 @@ class ColumnExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class LiteralExpr(Expr):
     """Expression that represents a constant scalar value.
 
@@ -458,7 +562,7 @@ class LiteralExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class BinaryExpr(Expr):
     """Expression that represents a binary operation between two expressions.
 
@@ -494,7 +598,7 @@ class BinaryExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class UnaryExpr(Expr):
     """Expression that represents a unary operation on a single expression.
 
@@ -530,7 +634,7 @@ class UnaryExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class UDFExpr(Expr):
     """Expression that represents a user-defined function call.
 
@@ -671,8 +775,90 @@ def udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
     return decorator
 
 
+def _create_pyarrow_wrapper(
+    fn: Callable[..., BatchColumn]
+) -> Callable[..., BatchColumn]:
+    """Wrap a PyArrow compute function to auto-convert inputs to PyArrow format.
+
+    This wrapper ensures that pandas Series and numpy arrays are converted to
+    PyArrow Arrays before being passed to the function, enabling PyArrow compute
+    functions to work seamlessly with any block format.
+
+    Args:
+        fn: The PyArrow compute function to wrap
+
+    Returns:
+        A wrapped function that handles format conversion
+    """
+
+    @functools.wraps(fn)
+    def arrow_wrapper(*args, **kwargs):
+        import numpy as np
+        import pandas as pd
+        import pyarrow as pa
+
+        def to_arrow(val):
+            """Convert a value to PyArrow Array if needed."""
+            if isinstance(val, (pa.Array, pa.ChunkedArray)):
+                return val, False
+            elif isinstance(val, pd.Series):
+                return pa.Array.from_pandas(val), True
+            elif isinstance(val, np.ndarray):
+                return pa.array(val), False
+            else:
+                return val, False
+
+        # Convert inputs to PyArrow and track pandas flags
+        args_results = [to_arrow(arg) for arg in args]
+        kwargs_results = {k: to_arrow(v) for k, v in kwargs.items()}
+
+        converted_args = [v[0] for v in args_results]
+        converted_kwargs = {k: v[0] for k, v in kwargs_results.items()}
+        input_was_pandas = any(v[1] for v in args_results) or any(
+            v[1] for v in kwargs_results.values()
+        )
+
+        # Call function with converted inputs
+        result = fn(*converted_args, **converted_kwargs)
+
+        # Convert result back to pandas if input was pandas
+        if input_was_pandas and isinstance(result, (pa.Array, pa.ChunkedArray)):
+            result = result.to_pandas()
+
+        return result
+
+    return arrow_wrapper
+
+
+@PublicAPI(stability="alpha")
+def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
+    """Decorator for PyArrow compute functions with automatic format conversion.
+
+    This decorator wraps PyArrow compute functions to automatically convert pandas
+    Series and numpy arrays to PyArrow Arrays, ensuring the function works seamlessly
+    regardless of the underlying block format (pandas, arrow, or items).
+
+    Used internally by namespace methods (list, str, struct) that wrap PyArrow
+    compute functions.
+
+    Args:
+        return_dtype: The data type of the return value
+
+    Returns:
+        A callable that creates UDFExpr instances with automatic conversion
+    """
+
+    def decorator(func: Callable[..., BatchColumn]) -> Callable[..., UDFExpr]:
+        # Wrap the function with PyArrow conversion logic
+        wrapped_fn = _create_pyarrow_wrapper(func)
+        # Create UDFExpr callable using the wrapped function
+        return _create_udf_callable(wrapped_fn, return_dtype)
+
+    return decorator
+
+
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class DownloadExpr(Expr):
     """Expression that represents a download operation."""
 
@@ -687,7 +873,7 @@ class DownloadExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class AliasExpr(Expr):
     """Expression that represents an alias for an expression."""
 
@@ -719,7 +905,7 @@ class AliasExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True, eq=False, repr=False)
 class StarExpr(Expr):
     """Expression that represents all columns from the input.
 
@@ -866,9 +1052,30 @@ __all__ = [
     "DownloadExpr",
     "AliasExpr",
     "StarExpr",
+    "pyarrow_udf",
     "udf",
     "col",
     "lit",
     "download",
     "star",
+    "_ListNamespace",
+    "_StringNamespace",
+    "_StructNamespace",
 ]
+
+
+def __getattr__(name: str):
+    """Lazy import of namespace classes to avoid circular imports."""
+    if name == "_ListNamespace":
+        from ray.data.namespace_expressions.list_namespace import _ListNamespace
+
+        return _ListNamespace
+    elif name == "_StringNamespace":
+        from ray.data.namespace_expressions.string_namespace import _StringNamespace
+
+        return _StringNamespace
+    elif name == "_StructNamespace":
+        from ray.data.namespace_expressions.struct_namespace import _StructNamespace
+
+        return _StructNamespace
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

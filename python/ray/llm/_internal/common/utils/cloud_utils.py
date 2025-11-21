@@ -11,17 +11,20 @@ from typing import (
     List,
     NamedTuple,
     Optional,
-    Tuple,
     TypeVar,
     Union,
 )
 
-# Use pyarrow for cloud storage access
-import pyarrow.fs as pa_fs
 from pydantic import Field, field_validator
 
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.logging import get_logger
+from ray.llm._internal.common.utils.cloud_filesystem import (
+    AzureFileSystem,
+    GCSFileSystem,
+    PyArrowFileSystem,
+    S3FileSystem,
+)
 
 T = TypeVar("T")
 
@@ -42,6 +45,7 @@ def is_remote_path(path: str) -> bool:
         or path.startswith("gs://")
         or path.startswith("abfss://")
         or path.startswith("azure://")
+        or path.startswith("pyarrow-")
     )
 
 
@@ -132,154 +136,36 @@ class LoraMirrorConfig(BaseModelExtended):
 
 
 class CloudFileSystem:
-    """A unified interface for cloud file system operations using PyArrow.
+    """A unified interface for cloud file system operations.
 
     This class provides a simple interface for common operations on cloud storage
-    systems (S3, GCS, Azure) using PyArrow's filesystem interface.
+    systems (S3, GCS, Azure) by delegating to provider-specific implementations
+    for optimal performance.
     """
 
     @staticmethod
-    def get_fs_and_path(object_uri: str) -> Tuple[pa_fs.FileSystem, str]:
-        """Get the appropriate filesystem and path from a URI.
+    def _get_provider_fs(bucket_uri: str):
+        """Get the appropriate provider-specific filesystem class based on URI.
 
         Args:
-            object_uri: URI of the file (s3://, gs://, abfss://, or azure://)
-                If URI contains 'anonymous@', anonymous access is used.
-                Example: s3://anonymous@bucket/path
+            bucket_uri: URI of the cloud storage (s3://, gs://, abfss://, or azure://)
 
         Returns:
-            Tuple of (filesystem, path)
-        """
-        anonymous = False
-        # Check for anonymous access pattern (only for S3/GCS)
-        # e.g. s3://anonymous@bucket/path
-        if "@" in object_uri and not (
-            object_uri.startswith("abfss://") or object_uri.startswith("azure://")
-        ):
-            parts = object_uri.split("@", 1)
-            # Check if the first part ends with "anonymous"
-            if parts[0].endswith("anonymous"):
-                anonymous = True
-                # Remove the anonymous@ part, keeping the scheme
-                scheme = parts[0].split("://")[0]
-                object_uri = f"{scheme}://{parts[1]}"
-
-        if object_uri.startswith("s3://"):
-            endpoint = os.getenv("AWS_ENDPOINT_URL_S3", None)
-            virtual_hosted_style = os.getenv("AWS_S3_ADDRESSING_STYLE", None)
-            fs = pa_fs.S3FileSystem(
-                anonymous=anonymous,
-                endpoint_override=endpoint,
-                force_virtual_addressing=(virtual_hosted_style == "virtual"),
-            )
-            path = object_uri[5:]  # Remove "s3://"
-        elif object_uri.startswith("gs://"):
-            fs = pa_fs.GcsFileSystem(anonymous=anonymous)
-            path = object_uri[5:]  # Remove "gs://"
-        elif object_uri.startswith("abfss://"):
-            fs, path = CloudFileSystem._create_abfss_filesystem(object_uri)
-        elif object_uri.startswith("azure://"):
-            fs, path = CloudFileSystem._create_azure_filesystem(object_uri)
-        else:
-            raise ValueError(f"Unsupported URI scheme: {object_uri}")
-
-        return fs, path
-
-    @staticmethod
-    def _create_azure_filesystem(object_uri: str) -> Tuple[pa_fs.FileSystem, str]:
-        """Create an Azure filesystem for Azure Blob Storage or ABFSS.
-
-        Args:
-            object_uri: Azure URI (azure://container@account.blob.core.windows.net/path or
-                       abfss://container@account.dfs.core.windows.net/path)
-
-        Returns:
-            Tuple of (PyArrow FileSystem, path without scheme prefix)
+            The appropriate filesystem class (S3FileSystem, GCSFileSystem, or AzureFileSystem)
 
         Raises:
-            ImportError: If required dependencies are not installed.
-            ValueError: If the Azure URI format is invalid.
+            ValueError: If the URI scheme is not supported
         """
-        try:
-            import adlfs
-            from azure.identity import DefaultAzureCredential
-        except ImportError:
-            raise ImportError(
-                "You must `pip install adlfs azure-identity` "
-                "to use Azure/ABFSS URIs. "
-                "Note that these must be preinstalled on all nodes in the Ray cluster."
-            )
-
-        from urllib.parse import urlparse
-
-        # Parse and validate the Azure URI
-        parsed = urlparse(object_uri)
-        scheme = parsed.scheme.lower()
-
-        # Validate URI format: scheme://container@account.domain/path
-        if not parsed.netloc or "@" not in parsed.netloc:
-            raise ValueError(
-                f"Invalid {scheme.upper()} URI format - missing container@account: {object_uri}"
-            )
-
-        container_part, hostname_part = parsed.netloc.split("@", 1)
-
-        # Validate container name (must be non-empty)
-        if not container_part:
-            raise ValueError(
-                f"Invalid {scheme.upper()} URI format - empty container name: {object_uri}"
-            )
-
-        # Validate hostname format based on scheme
-        valid_hostname = False
-        if scheme == "abfss":
-            valid_hostname = hostname_part.endswith(".dfs.core.windows.net")
-            expected_domains = ".dfs.core.windows.net"
-        elif scheme == "azure":
-            valid_hostname = hostname_part.endswith(
-                ".blob.core.windows.net"
-            ) or hostname_part.endswith(".dfs.core.windows.net")
-            expected_domains = ".blob.core.windows.net or .dfs.core.windows.net"
-
-        if not hostname_part or not valid_hostname:
-            raise ValueError(
-                f"Invalid {scheme.upper()} URI format - invalid hostname (must end with {expected_domains}): {object_uri}"
-            )
-
-        # Extract and validate account name
-        azure_storage_account_name = hostname_part.split(".")[0]
-        if not azure_storage_account_name:
-            raise ValueError(
-                f"Invalid {scheme.upper()} URI format - empty account name: {object_uri}"
-            )
-
-        # Create the adlfs filesystem
-        adlfs_fs = adlfs.AzureBlobFileSystem(
-            account_name=azure_storage_account_name,
-            credential=DefaultAzureCredential(),
-        )
-
-        # Wrap with PyArrow's PyFileSystem for compatibility
-        fs = pa_fs.PyFileSystem(pa_fs.FSSpecHandler(adlfs_fs))
-
-        # Return the path without the scheme prefix
-        path = f"{container_part}{parsed.path}"
-
-        return fs, path
-
-    @staticmethod
-    def _create_abfss_filesystem(object_uri: str) -> Tuple[pa_fs.FileSystem, str]:
-        """Create an ABFSS filesystem for Azure Data Lake Storage Gen2.
-
-        This is a wrapper around _create_azure_filesystem for backward compatibility.
-
-        Args:
-            object_uri: ABFSS URI (abfss://container@account.dfs.core.windows.net/path)
-
-        Returns:
-            Tuple of (PyArrow FileSystem, path without abfss:// prefix)
-        """
-        return CloudFileSystem._create_azure_filesystem(object_uri)
+        if bucket_uri.startswith("pyarrow-"):
+            return PyArrowFileSystem
+        elif bucket_uri.startswith("s3://"):
+            return S3FileSystem
+        elif bucket_uri.startswith("gs://"):
+            return GCSFileSystem
+        elif bucket_uri.startswith(("abfss://", "azure://")):
+            return AzureFileSystem
+        else:
+            raise ValueError(f"Unsupported URI scheme: {bucket_uri}")
 
     @staticmethod
     def get_file(
@@ -288,62 +174,27 @@ class CloudFileSystem:
         """Download a file from cloud storage into memory.
 
         Args:
-            object_uri: URI of the file (s3:// or gs://)
+            object_uri: URI of the file (s3://, gs://, abfss://, or azure://)
             decode_as_utf_8: If True, decode the file as UTF-8
 
         Returns:
             File contents as string or bytes, or None if file doesn't exist
         """
-        try:
-            fs, path = CloudFileSystem.get_fs_and_path(object_uri)
-
-            # Check if file exists
-            if not fs.get_file_info(path).type == pa_fs.FileType.File:
-                logger.info(f"URI {object_uri} does not exist.")
-                return None
-
-            # Read file
-            with fs.open_input_file(path) as f:
-                body = f.read()
-
-            if decode_as_utf_8:
-                body = body.decode("utf-8")
-            return body
-        except Exception as e:
-            logger.info(f"Error reading {object_uri}: {e}")
-            return None
+        fs_class = CloudFileSystem._get_provider_fs(object_uri)
+        return fs_class.get_file(object_uri, decode_as_utf_8)
 
     @staticmethod
     def list_subfolders(folder_uri: str) -> List[str]:
         """List the immediate subfolders in a cloud directory.
 
         Args:
-            folder_uri: URI of the directory (s3:// or gs://)
+            folder_uri: URI of the directory (s3://, gs://, abfss://, or azure://)
 
         Returns:
             List of subfolder names (without trailing slashes)
         """
-        # Ensure that the folder_uri has a trailing slash.
-        folder_uri = f"{folder_uri.rstrip('/')}/"
-
-        try:
-            fs, path = CloudFileSystem.get_fs_and_path(folder_uri)
-
-            # List directory contents
-            file_infos = fs.get_file_info(pa_fs.FileSelector(path, recursive=False))
-
-            # Filter for directories and extract subfolder names
-            subfolders = []
-            for file_info in file_infos:
-                if file_info.type == pa_fs.FileType.Directory:
-                    # Extract just the subfolder name without the full path
-                    subfolder = os.path.basename(file_info.path.rstrip("/"))
-                    subfolders.append(subfolder)
-
-            return subfolders
-        except Exception as e:
-            logger.info(f"Error listing subfolders in {folder_uri}: {e}")
-            return []
+        fs_class = CloudFileSystem._get_provider_fs(folder_uri)
+        return fs_class.list_subfolders(folder_uri)
 
     @staticmethod
     def download_files(
@@ -360,50 +211,10 @@ class CloudFileSystem:
             substrings_to_include: Only include files containing these substrings
             suffixes_to_exclude: Exclude certain files from download (e.g .safetensors)
         """
-        try:
-            fs, source_path = CloudFileSystem.get_fs_and_path(bucket_uri)
-
-            # Ensure the destination directory exists
-            os.makedirs(path, exist_ok=True)
-
-            # List all files in the bucket
-            file_selector = pa_fs.FileSelector(source_path, recursive=True)
-            file_infos = fs.get_file_info(file_selector)
-
-            # Download each file
-            for file_info in file_infos:
-                if file_info.type != pa_fs.FileType.File:
-                    continue
-
-                # Get relative path from source prefix
-                rel_path = file_info.path[len(source_path) :].lstrip("/")
-
-                # Check if file matches substring filters
-                if substrings_to_include:
-                    if not any(
-                        substring in rel_path for substring in substrings_to_include
-                    ):
-                        continue
-
-                # Check if file matches suffixes to exclude filter
-                if suffixes_to_exclude:
-                    if any(rel_path.endswith(suffix) for suffix in suffixes_to_exclude):
-                        continue
-
-                # Create destination directory if needed
-                if "/" in rel_path:
-                    dest_dir = os.path.join(path, os.path.dirname(rel_path))
-                    os.makedirs(dest_dir, exist_ok=True)
-
-                # Download the file
-                dest_path = os.path.join(path, rel_path)
-                with fs.open_input_file(file_info.path) as source_file:
-                    with open(dest_path, "wb") as dest_file:
-                        dest_file.write(source_file.read())
-
-        except Exception as e:
-            logger.exception(f"Error downloading files from {bucket_uri}: {e}")
-            raise
+        fs_class = CloudFileSystem._get_provider_fs(bucket_uri)
+        fs_class.download_files(
+            path, bucket_uri, substrings_to_include, suffixes_to_exclude
+        )
 
     @staticmethod
     def download_model(
@@ -424,16 +235,17 @@ class CloudFileSystem:
             exclude_safetensors: If True, skip download of safetensor files
         """
         try:
-            fs, source_path = CloudFileSystem.get_fs_and_path(bucket_uri)
+            # Get the provider-specific filesystem
+            fs_class = CloudFileSystem._get_provider_fs(bucket_uri)
 
-            # Check for hash file
-            hash_path = os.path.join(source_path, "hash")
-            hash_info = fs.get_file_info(hash_path)
+            # Construct hash file URI
+            hash_uri = bucket_uri.rstrip("/") + "/hash"
 
-            if hash_info.type == pa_fs.FileType.File:
-                # Download and read hash file
-                with fs.open_input_file(hash_path) as f:
-                    f_hash = f.read().decode("utf-8").strip()
+            # Try to download and read hash file
+            hash_content = fs_class.get_file(hash_uri, decode_as_utf_8=True)
+
+            if hash_content is not None:
+                f_hash = hash_content.strip()
                 logger.info(
                     f"Detected hash file in bucket {bucket_uri}. "
                     f"Using {f_hash} as the hash."
@@ -484,20 +296,11 @@ class CloudFileSystem:
 
         Args:
             local_path: The local path of the files to upload.
-            bucket_uri: The bucket uri to upload the files to, must start with `s3://` or `gs://`.
+            bucket_uri: The bucket uri to upload the files to, must start with
+                `s3://`, `gs://`, `abfss://`, or `azure://`.
         """
-        try:
-            fs, dest_path = CloudFileSystem.get_fs_and_path(bucket_uri)
-
-            pa_fs.copy_files(
-                source=local_path,
-                destination=dest_path,
-                source_filesystem=pa_fs.LocalFileSystem(),
-                destination_filesystem=fs,
-            )
-        except Exception as e:
-            logger.exception(f"Error uploading files to {bucket_uri}: {e}")
-            raise
+        fs_class = CloudFileSystem._get_provider_fs(bucket_uri)
+        fs_class.upload_files(local_path, bucket_uri)
 
     @staticmethod
     def upload_model(

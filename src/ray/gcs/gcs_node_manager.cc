@@ -690,7 +690,14 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
       auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
           node_id, node_info.node_manager_address(), node_info.node_manager_port());
       auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
-      raylet_client->NotifyGCSRestart(nullptr);
+      raylet_client->NotifyGCSRestart(
+          [](const Status &status, const rpc::NotifyGCSRestartReply &reply) {
+            if (!status.ok()) {
+              RAY_LOG(WARNING) << "NotifyGCSRestart failed. This is expected if the "
+                                  "target node has died. Status: "
+                               << status;
+            }
+          });
     } else if (node_info.state() == rpc::GcsNodeInfo::DEAD) {
       dead_nodes_.emplace(node_id, std::make_shared<rpc::GcsNodeInfo>(node_info));
       sorted_dead_node_list_.emplace_back(node_id, node_info.end_time_ms());

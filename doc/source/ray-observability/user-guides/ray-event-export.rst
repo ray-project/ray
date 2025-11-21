@@ -6,9 +6,6 @@ Ray Event Export
 Starting from 2.49, Ray supports exporting structured events to a configured HTTP 
 endpoint. Each node sends events to the endpoint through an HTTP POST request.
 
-Ray 2.49 supports exporting task events. Future releases include support for other 
-event types, such as actor events, node events, job events, and more.
-
 Previously, Ray's :ref:`task events <task-events>` were only used internally by the Ray Dashboard 
 and :ref:`State API <state-api-overview-ref>` for monitoring and debugging. With the new event 
 export feature, you can now send these raw events to external systems for custom analytics, 
@@ -118,6 +115,163 @@ An example of a Task Definition Event and a Task Execution Event:
             "workerPid":0
         },
         "message":""
+    }
+
+Actor events
+^^^^^^^^^^^^
+
+For each actor, Ray exports two types of events: Actor Definition Events and Actor Lifecycle Events.
+
+* An Actor Definition Event contains the metadata of the actor when it is defined. See `src/ray/protobuf/public/events_actor_definition_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_actor_definition_event.proto>`_ for the event format.
+* An Actor Lifecycle Event contains the actor state transition information and metadata associated with each transition. See `src/ray/protobuf/public/events_actor_lifecycle_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_actor_lifecycle_event.proto>`_ for the event format.
+
+.. code-block:: json
+
+    // actor definition event
+    {
+        "eventId": "gsRtAfaWn5TZsjUPFm8nOXd/cKGz82FXdr3Lqg==",
+        "sourceType": "GCS",
+        "eventType": "ACTOR_DEFINITION_EVENT",
+        "timestamp": "2025-10-24T21:12:10.742651Z",
+        "severity": "INFO",
+        "sessionName": "session_2025-10-24_14-12-05_804800_55420",
+        "actorDefinitionEvent": {
+            "actorId": "0AFtngcXtEoxwqmJAQAAAA==", 
+            "jobId": "AQAAAA==", 
+            "name": "actor-test",
+            "rayNamespace": "bd2ad7f8-650b-495c-b709-55d4c8a7d09f",
+            "serializedRuntimeEnv": "{}",
+            "className": "test_ray_actor_events.<locals>.A",
+            "isDetached": false,
+            "requiredResources": {},
+            "placementGroupId": "",
+            "labelSelector": {}
+        },
+        "message": ""
+    }
+
+    // actor lifecycle event
+    {
+        "eventId": "mOdfn5SRx3X0B05OvEDV0rcIOzqf/SGBJmrD/Q==",
+        "sourceType": "GCS",
+        "eventType": "ACTOR_LIFECYCLE_EVENT",
+        "timestamp": "2025-10-24T21:12:10.742654Z",
+        "severity": "INFO",
+        "sessionName": "session_2025-10-24_14-12-05_804800_55420",
+        "actorLifecycleEvent": {
+            "actorId": "0AFtngcXtEoxwqmJAQAAAA==",
+            "stateTransitions": [
+                {
+                    "timestamp": "2025-10-24T21:12:10.742654Z",
+                    "state": "ALIVE",
+                    "nodeId": "zpLG7coqThVMl8df9RYHnhK6thhJqrgPodtfjg==",
+                    "workerId": "nrBehSG3HXu0PvHZBkPl2kovmjzAaoCuVj2KHA=="
+                }
+            ]
+        },
+        "message": ""
+    }
+
+Driver job events
+^^^^^^^^^^^^^^^^^^
+
+For each driver job, Ray exports two types of events: Driver Job Definition Events and Driver Job Lifecycle Events.
+
+* A Driver Job Definition Event contains the metadata of the driver job when it is defined. See `src/ray/protobuf/public/events_driver_job_definition_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_driver_job_definition_event.proto>`_ for the event format.
+* A Driver Job Lifecycle Event contains the driver job state transition information and metadata associated with each transition. See `src/ray/protobuf/public/events_driver_job_lifecycle_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_driver_job_lifecycle_event.proto>`_ for the event format.
+
+.. code-block:: json
+
+    // driver job definition event
+    {
+        "eventId": "7YnwZPJr0KUC28T7KnzsvGyceEIrjNDTHuQfrg==",
+        "sourceType": "GCS",
+        "eventType": "DRIVER_JOB_DEFINITION_EVENT",
+        "timestamp": "2025-10-24T21:17:07.316482Z",
+        "severity": "INFO",
+        "sessionName": "session_2025-10-24_14-17-05_575968_59360",
+        "driverJobDefinitionEvent": {
+            "jobId": "AQAAAA==", 
+            "driverPid": "59360", 
+            "driverNodeId": "9eHWUIruJWnMjQuPas0W+TRNUyjY5PwFpWUfjA==", 
+            "entrypoint": "...", 
+            "config": {
+                "serializedRuntimeEnv": "{}", 
+                "metadata": {}
+            }
+        },
+        "message": ""
+    }
+
+    // driver job lifecycle event
+    {
+        "eventId": "0cmbCI/RQghYe4ZQiJ+HrnK1RiZH+cg8ltBx2w==",
+        "sourceType": "GCS",
+        "eventType": "DRIVER_JOB_LIFECYCLE_EVENT",
+        "timestamp": "2025-10-24T21:17:07.316483Z",
+        "severity": "INFO",
+        "sessionName": "session_2025-10-24_14-17-05_575968_59360",
+        "driverJobLifecycleEvent": {
+            "jobId": "AQAAAA==", 
+            "stateTransitions": [
+                {
+                    "state": "CREATED", 
+                    "timestamp": "2025-10-24T21:17:07.316483Z"
+                }
+            ]
+        },
+        "message": ""
+    }
+
+Node events
+^^^^^^^^^^^
+
+For each node, Ray exports two types of events: Node Definition Events and Node Lifecycle Events.
+
+* A Node Definition Event contains the metadata of the node when it is defined. See `src/ray/protobuf/public/events_node_definition_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_node_definition_event.proto>`_ for the event format.
+* A Node Lifecycle Event contains the node state transition information and metadata associated with each transition. See `src/ray/protobuf/public/events_node_lifecycle_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_node_lifecycle_event.proto>`_ for the event format.
+
+.. code-block:: json
+
+    // node definition event
+    {
+        "eventId": "l7r4gwq4UPhmZGFJYEym6mUkcxqafra60LB6/Q==",
+        "sourceType": "GCS",
+        "eventType": "NODE_DEFINITION_EVENT",
+        "timestamp": "2025-10-24T21:19:14.063953Z",
+        "severity": "INFO",
+        "sessionName": "session_2025-10-24_14-19-12_675240_61141",
+        "nodeDefinitionEvent": {
+            "nodeId": "0yfRX1ex+VtcC+TFXjXcgesdpnEwM76+pEATrQ==", 
+            "nodeIpAddress": "127.0.0.1", 
+            "labels": {
+                "ray.io/node-id": "d327d15f57b1f95b5c0be4c55e35dc81eb1da6713033bebea44013ad"
+            }, 
+            "startTimestamp": "2025-10-24T21:19:14.063Z"
+        }, 
+        "message": ""
+    }
+
+    // node lifecycle event
+    {
+        "eventId": "u3KTG8615MIKBH5PLcii0BMfGFWcvLuSOXM6zg==",
+        "sourceType": "GCS",
+        "eventType": "NODE_LIFECYCLE_EVENT",
+        "timestamp": "2025-10-24T21:19:14.063955Z",
+        "severity": "INFO",
+        "sessionName": "session_2025-10-24_14-19-12_675240_61141",
+        "nodeLifecycleEvent": {
+            "nodeId": "0yfRX1ex+VtcC+TFXjXcgesdpnEwM76+pEATrQ==", 
+            "stateTransitions": [
+                {
+                    "timestamp": "2025-10-24T21:19:14.063955Z", 
+                    "resources": {"node:__internal_head__": 1.0, "CPU": 1.0, "object_store_memory": 157286400.0, "node:127.0.0.1": 1.0, "memory": 42964287488.0}, 
+                    "state": "ALIVE", 
+                    "aliveSubState": "UNSPECIFIED"
+                }
+            ]
+        },
+        "message": ""
     }
 
 High-level Architecture

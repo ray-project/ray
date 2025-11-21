@@ -4,7 +4,12 @@ import numpy as np
 import pytest
 
 import ray
-from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
+from ray._private.test_utils import (
+    RPC_FAILURE_MAP,
+    RPC_FAILURE_TYPES,
+    wait_for_condition,
+)
 from ray.core.generated import common_pb2, gcs_pb2
 from ray.exceptions import GetTimeoutError, TaskCancelledError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -14,7 +19,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
     "allow_out_of_order_execution",
     [True, False],
 )
-@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
+@pytest.mark.parametrize("deterministic_failure", RPC_FAILURE_TYPES)
 def test_push_actor_task_failure(
     monkeypatch,
     ray_start_cluster,
@@ -22,10 +27,10 @@ def test_push_actor_task_failure(
     deterministic_failure: str,
 ):
     with monkeypatch.context() as m:
+        failure = RPC_FAILURE_MAP[deterministic_failure]
         m.setenv(
             "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.PushTask=2:"
-            + ("100:0" if deterministic_failure == "request" else "0:100"),
+            f"CoreWorkerService.grpc_client.PushTask=2:{failure}",
         )
         m.setenv("RAY_actor_scheduling_queue_max_reorder_wait_seconds", "0")
         cluster = ray_start_cluster
@@ -47,15 +52,15 @@ def test_push_actor_task_failure(
         assert ray.get(refs) == list(range(10))
 
 
-@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
+@pytest.mark.parametrize("deterministic_failure", RPC_FAILURE_TYPES)
 def test_update_object_location_batch_failure(
     monkeypatch, ray_start_cluster, deterministic_failure
 ):
     with monkeypatch.context() as m:
+        failure = RPC_FAILURE_MAP[deterministic_failure]
         m.setenv(
             "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.UpdateObjectLocationBatch=1:"
-            + ("100:0" if deterministic_failure == "request" else "0:100"),
+            f"CoreWorkerService.grpc_client.UpdateObjectLocationBatch=1:{failure}",
         )
         cluster = ray_start_cluster
         head_node_id = cluster.add_node(
@@ -85,7 +90,7 @@ def test_update_object_location_batch_failure(
         assert ray.get(consume_ref, timeout=10) > 0
 
 
-@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
+@pytest.mark.parametrize("deterministic_failure", RPC_FAILURE_TYPES)
 def test_get_object_status_rpc_retry_and_idempotency(
     monkeypatch, shutdown_only, deterministic_failure
 ):
@@ -94,11 +99,10 @@ def test_get_object_status_rpc_retry_and_idempotency(
     Cross_worker_access_task triggers GetObjectStatus because it does
     not own objects and needs to request it from the driver.
     """
-
+    failure = RPC_FAILURE_MAP[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "CoreWorkerService.grpc_client.GetObjectStatus=1:"
-        + ("100:0" if deterministic_failure == "request" else "0:100"),
+        f"CoreWorkerService.grpc_client.GetObjectStatus=1:{failure}",
     )
 
     ray.init()
@@ -118,7 +122,7 @@ def test_get_object_status_rpc_retry_and_idempotency(
     assert final_result == [0, 2, 4, 6, 8]
 
 
-@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
+@pytest.mark.parametrize("deterministic_failure", RPC_FAILURE_TYPES)
 def test_wait_for_actor_ref_deleted_rpc_retry_and_idempotency(
     monkeypatch, shutdown_only, deterministic_failure
 ):
@@ -127,11 +131,10 @@ def test_wait_for_actor_ref_deleted_rpc_retry_and_idempotency(
     The GCS actor manager will trigger this RPC during actor initialization
     to monitor when the actor handles have gone out of scope and the actor should be destroyed.
     """
-
+    failure = RPC_FAILURE_MAP[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "CoreWorkerService.grpc_client.WaitForActorRefDeleted=1:"
-        + ("100:0" if deterministic_failure == "request" else "0:100"),
+        f"CoreWorkerService.grpc_client.WaitForActorRefDeleted=1:{failure}",
     )
 
     ray.init()
@@ -150,9 +153,7 @@ def test_wait_for_actor_ref_deleted_rpc_retry_and_idempotency(
     del actor
 
     def verify_actor_ref_deleted():
-        actor_info = ray._private.state.state.global_state_accessor.get_actor_info(
-            actor_id
-        )
+        actor_info = ray._private.state.state.get_actor_info(actor_id)
         if actor_info is None:
             return False
         actor_info = gcs_pb2.ActorTableData.FromString(actor_info)
@@ -168,15 +169,17 @@ def test_wait_for_actor_ref_deleted_rpc_retry_and_idempotency(
 @pytest.fixture
 def inject_cancel_remote_task_rpc_failure(monkeypatch, request):
     deterministic_failure = request.param
+    failure = RPC_FAILURE_MAP[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "CoreWorkerService.grpc_client.CancelRemoteTask=1:"
-        + ("100:0" if deterministic_failure == "request" else "0:100"),
+        f"CoreWorkerService.grpc_client.CancelRemoteTask=1:{failure}",
     )
 
 
 @pytest.mark.parametrize(
-    "inject_cancel_remote_task_rpc_failure", ["request", "response"], indirect=True
+    "inject_cancel_remote_task_rpc_failure",
+    RPC_FAILURE_TYPES,
+    indirect=True,
 )
 def test_cancel_remote_task_rpc_retry_and_idempotency(
     inject_cancel_remote_task_rpc_failure, ray_start_cluster
@@ -205,6 +208,33 @@ def test_cancel_remote_task_rpc_retry_and_idempotency(
     ray.cancel(inner)
     with pytest.raises(TaskCancelledError):
         ray.get(inner, timeout=10)
+
+
+def test_double_borrowing_with_rpc_failure(monkeypatch, shutdown_only):
+    """Regression test for https://github.com/ray-project/ray/issues/57997"""
+    monkeypatch.setenv(
+        "RAY_testing_rpc_failure", "CoreWorkerService.grpc_client.PushTask=3:0:100:0"
+    )
+
+    ray.init()
+
+    @ray.remote(max_task_retries=-1, max_restarts=-1)
+    class Actor:
+        def __init__(self, objs):
+            # Actor is a borrower of obj
+            self.obj = objs[0]
+
+        def test(self):
+            # Return the borrowed object inside the list
+            # so the caller is a borrower as well.
+            # This actor task will be retried since
+            # the first PushTask RPC response will be lost.
+            return [self.obj]
+
+    obj = ray.put(31)
+    actor = Actor.remote([obj])
+    result = ray.get(actor.test.remote())
+    assert ray.get(result[0]) == 31
 
 
 if __name__ == "__main__":
