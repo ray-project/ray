@@ -31,7 +31,7 @@ from ray.llm._internal.serve.core.ingress.builder import build_sglang_openai_app
 llm_config = LLMConfig(
     model_loading_config={
         "model_id": "Ilama-3.2-1B",
-        "model_source": ""hmellor/Ilama-3.2-1B",
+        "model_source": "hmellor/Ilama-3.2-1B",
     },
     deployment_config={
         "autoscaling_config": {
@@ -45,7 +45,7 @@ llm_config = LLMConfig(
     # You can customize the engine arguments (e.g. SGLang engine kwargs)
     engine_kwargs={
         "trust_remote_code": True
-        "model_path": "unsloth/Llama-3.1-8B-Instruct",
+        "model_path": "hmellor/Ilama-3.2-1B",
         "tp_size": 2,
         "mem_fraction_static": 0.8,
     },
