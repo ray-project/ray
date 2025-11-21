@@ -116,6 +116,30 @@ class TestDtypeAggregatorsForDataset:
 
         assert [type(agg) for agg in result.aggregators] == [Count, Mean]
 
+    def test_custom_dtype_mapping_pattern_precedence(self):
+        """Test that specific custom mappings take precedence over default patterns."""
+        import datetime
+
+        # Use from_arrow to ensure we get exactly timestamp[us]
+        t = pa.table(
+            {"ts": pa.array([datetime.datetime(2024, 1, 1)], type=pa.timestamp("us"))}
+        )
+        ds = ray.data.from_arrow(t)
+
+        # Override specific timestamp type to only use Count
+        # Default for temporal is [Count, Min, Max, MissingValuePercentage]
+        ts_dtype = DataType.from_arrow(pa.timestamp("us"))
+        custom_mapping = {ts_dtype: lambda col: [Count(on=col)]}
+
+        result = _dtype_aggregators_for_dataset(
+            ds.schema(), dtype_agg_mapping=custom_mapping
+        )
+
+        # Should only have 1 aggregator if our specific override was used.
+        # If the default DataType.temporal() pattern matched first, we'd get 4 aggregators.
+        assert len(result.aggregators) == 1
+        assert isinstance(result.aggregators[0], Count)
+
     @pytest.mark.parametrize(
         "pa_type",
         [

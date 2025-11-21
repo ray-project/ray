@@ -1002,6 +1002,8 @@ def _matches_dtype(column_dtype: "DataType", mapping_key: "DataType") -> bool:
 
     if logical_dtype == _LogicalDataType.TEMPORAL:
         return column_dtype.is_temporal_type()
+    elif logical_dtype == _LogicalDataType.TENSOR:
+        return column_dtype.is_tensor_type()
     elif logical_dtype in (_LogicalDataType.LIST, _LogicalDataType.LARGE_LIST):
         return column_dtype.is_list_type()
     elif logical_dtype == _LogicalDataType.STRUCT:

@@ -387,9 +387,15 @@ def _dtype_aggregators_for_dataset(
         raise ValueError(f"Columns {missing_cols} not found in dataset schema")
 
     # Build final mapping: default + user overrides
-    final_mapping = default_dtype_aggregators()
+    defaults = default_dtype_aggregators()
     if dtype_agg_mapping:
-        final_mapping.update(dtype_agg_mapping)
+        # Put user overrides first so they are checked before default patterns
+        final_mapping = dtype_agg_mapping.copy()
+        for k, v in defaults.items():
+            if k not in final_mapping:
+                final_mapping[k] = v
+    else:
+        final_mapping = defaults
 
     # Generate aggregators for each column
     column_to_dtype = {}
