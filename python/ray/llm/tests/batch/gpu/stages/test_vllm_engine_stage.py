@@ -11,6 +11,7 @@ from ray.llm._internal.batch.stages.vllm_engine_stage import (
     vLLMEngineStage,
     vLLMEngineStageUDF,
     vLLMEngineWrapper,
+    vLLMOutputData,
     vLLMTaskType,
 )
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -437,6 +438,98 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
 
     # Clean up GPU memory
     wrapper.shutdown()
+
+
+def test_vllm_output_data_logprobs():
+    """Test that logprobs and prompt_logprobs are correctly extracted."""
+    from vllm.logprobs import Logprob
+    from vllm.outputs import CompletionOutput, RequestOutput
+
+    logprobs = [
+        {
+            123: Logprob(logprob=-0.5, rank=1, decoded_token="hello"),
+            456: Logprob(logprob=-1.2, rank=2, decoded_token="hi"),
+        },
+        {
+            789: Logprob(logprob=-0.3, rank=1, decoded_token="world"),
+            999: Logprob(logprob=-1.5, rank=2, decoded_token="earth"),
+        },
+    ]
+
+    prompt_logprobs = [
+        None,
+        {
+            111: Logprob(logprob=-0.1, rank=1, decoded_token="test"),
+            222: Logprob(logprob=-0.8, rank=2, decoded_token="demo"),
+        },
+    ]
+
+    request_output = RequestOutput(
+        request_id="test",
+        prompt="test prompt",
+        prompt_token_ids=[1, 2],
+        prompt_logprobs=prompt_logprobs,
+        outputs=[
+            CompletionOutput(
+                index=0,
+                text="hello world",
+                token_ids=[123, 789],
+                cumulative_logprob=-0.8,
+                logprobs=logprobs,
+            )
+        ],
+        finished=True,
+    )
+
+    output_data = vLLMOutputData.from_vllm_engine_output(request_output)
+
+    assert output_data.logprobs is not None
+    assert len(output_data.logprobs) == 2
+    assert output_data.logprobs[0][123]["logprob"] == -0.5
+    assert output_data.logprobs[0][123]["rank"] == 1
+    assert output_data.logprobs[0][123]["decoded_token"] == "hello"
+    assert output_data.logprobs[0][456]["logprob"] == -1.2
+    assert output_data.logprobs[1][789]["logprob"] == -0.3
+
+    assert output_data.prompt_logprobs is not None
+    assert len(output_data.prompt_logprobs) == 2
+    assert output_data.prompt_logprobs[0] is None
+    assert output_data.prompt_logprobs[1][111]["logprob"] == -0.1
+
+    dumped = output_data.model_dump()
+    assert "logprobs" in dumped
+    assert "prompt_logprobs" in dumped
+
+
+def test_vllm_output_data_no_logprobs():
+    """Test that None logprobs are handled correctly when not requested."""
+    from vllm.outputs import CompletionOutput, RequestOutput
+
+    request_output = RequestOutput(
+        request_id="test",
+        prompt="test prompt",
+        prompt_token_ids=[1, 2],
+        prompt_logprobs=None,
+        outputs=[
+            CompletionOutput(
+                index=0,
+                text="test response",
+                token_ids=[4, 5, 6],
+                cumulative_logprob=None,
+                logprobs=None,
+            )
+        ],
+        finished=True,
+    )
+
+    output_data = vLLMOutputData.from_vllm_engine_output(request_output)
+
+    assert output_data.logprobs is None
+    assert output_data.prompt_logprobs is None
+
+    dumped = output_data.model_dump()
+    assert dumped["logprobs"] is None
+    assert dumped["prompt_logprobs"] is None
 
 
 if __name__ == "__main__":

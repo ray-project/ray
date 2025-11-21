@@ -120,7 +120,7 @@ class vLLMOutputData(BaseModel):
             data.generated_text = output.outputs[0].text
             data.num_generated_tokens = len(output.outputs[0].token_ids)
 
-            # Extract logprobs if available.
+            # Extract logprobs
             if output.outputs[0].logprobs is not None:
                 data.logprobs = [
                     {
@@ -130,7 +130,7 @@ class vLLMOutputData(BaseModel):
                     for logprob_dict in output.outputs[0].logprobs
                 ]
 
-            # Extract prompt_logprobs if available.
+            # Extract prompt_logprobs
             if output.prompt_logprobs is not None:
                 data.prompt_logprobs = [
                     {
