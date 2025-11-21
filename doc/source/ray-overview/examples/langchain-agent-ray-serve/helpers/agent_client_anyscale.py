@@ -33,3 +33,4 @@ def chat(user_request: str, thread_id: str | None = None) -> None:
 # Test the agent.
 chat("What's the weather in Palo Alto?")
 
+
