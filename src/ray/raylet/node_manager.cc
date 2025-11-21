@@ -3457,11 +3457,12 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
   if (!request.force_kill()) {
     worker->rpc_client()->CancelTask(
         cancel_task_request,
-        [reply, send_reply_callback](const Status &status,
-                                     const rpc::CancelTaskReply &cancel_task_reply) {
+        [reply,
+         send_reply_callback,
+         intended_task_id = TaskID::FromBinary(request.intended_task_id())](
+            const Status &status, const rpc::CancelTaskReply &cancel_task_reply) {
           if (!status.ok()) {
-            RAY_LOG(INFO) << "CancelTask RPC failed for task "
-                          << TaskID::FromBinary(request.intended_task_id()) << ": "
+            RAY_LOG(INFO) << "CancelTask RPC failed for task " << intended_task_id << ": "
                           << status.ToString();
           }
           reply->set_attempt_succeeded(cancel_task_reply.attempt_succeeded());
