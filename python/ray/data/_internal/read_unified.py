@@ -76,12 +76,12 @@ def _detect_lakehouse_tables(
 ) -> List[LakehouseTable]:
     """Detect lakehouse tables in paths (only checks directories).
 
-        Args:
-        paths: List of paths to check for lakehouse table markers.
-        filesystem: PyArrow filesystem to use for inspection.
+    Args:
+    paths: List of paths to check for lakehouse table markers.
+    filesystem: PyArrow filesystem to use for inspection.
 
-        Returns:
-        List of detected lakehouse tables.
+    Returns:
+    List of detected lakehouse tables.
     """
     from ray.data._internal.format_detection import _detect_lakehouse_format
 
@@ -100,12 +100,12 @@ def _group_files_by_format(
 ) -> Dict[str, List[str]]:
     """Group file paths by detected format using extension detection.
 
-        Args:
-        paths: List of file paths to group.
-        warn_on_binary: Whether to warn when files fall back to binary format.
+    Args:
+    paths: List of file paths to group.
+    warn_on_binary: Whether to warn when files fall back to binary format.
 
-        Returns:
-        Dictionary mapping format names to lists of file paths.
+    Returns:
+    Dictionary mapping format names to lists of file paths.
     """
     from pathlib import Path
 
@@ -133,7 +133,7 @@ def _group_files_by_format(
                 unknown_extensions.add(ext)
 
     if unknown_files:
-            if warn_on_binary:
+        if warn_on_binary:
             ext_list = (
                 ", ".join(sorted(unknown_extensions))
                 if unknown_extensions
@@ -415,9 +415,9 @@ class DatasetReader:
             return datasets[0]
 
         result = datasets[0]
-            for ds in datasets[1:]:
-                result = result.union(ds)
-            return result
+        for ds in datasets[1:]:
+            result = result.union(ds)
+        return result
 
 
 def _validate_read_parameters(
