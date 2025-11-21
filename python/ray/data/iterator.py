@@ -92,7 +92,12 @@ class DataIterator(abc.ABC):
     @abc.abstractmethod
     def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
+    ) -> Tuple[
+        Iterator[RefBundle],
+        Optional[DatasetStats],
+        bool,
+        Optional[Callable[[int, int], None]],
+    ]:
         """Returns the iterator to use for `iter_batches`.
 
         Returns:
@@ -101,6 +106,7 @@ class DataIterator(abc.ABC):
             stats during iteration.
             The third item is a boolean indicating if the blocks can be safely cleared
             after use.
+            The fourth item is an optional callback to report prefetch counts.
         """
         ...
 
@@ -161,9 +167,14 @@ class DataIterator(abc.ABC):
         )
 
     def _create_batch_iterator(
-        self, ref_bundles_iter: Iterator[RefBundle], **kwargs
+        self,
+        ref_bundles_iter: Iterator[RefBundle],
+        prefetch_count_update: Optional[Callable[[int, int], None]] = None,
+        **kwargs,
     ) -> BatchIterator:
-        return BatchIterator(ref_bundles_iter, **kwargs)
+        return BatchIterator(
+            ref_bundles_iter, prefetch_count_update=prefetch_count_update, **kwargs
+        )
 
     def _iter_batches(
         self,
@@ -189,6 +200,7 @@ class DataIterator(abc.ABC):
                 ref_bundles_iterator,
                 stats,
                 blocks_owned_by_consumer,
+                prefetch_count_update,
             ) = self._to_ref_bundle_iterator()
 
             dataset_tag = self._get_dataset_tag()
@@ -206,6 +218,7 @@ class DataIterator(abc.ABC):
                 shuffle_buffer_min_size=local_shuffle_buffer_size,
                 shuffle_seed=local_shuffle_seed,
                 prefetch_batches=prefetch_batches,
+                prefetch_count_update=prefetch_count_update,
             )
 
             if stats:
@@ -1016,7 +1029,7 @@ class DataIterator(abc.ABC):
 
         from ray.data.dataset import MaterializedDataset
 
-        ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
+        ref_bundles_iter, stats, _, _ = self._to_ref_bundle_iterator()
         ref_bundles = list(ref_bundles_iter)
         execution_plan = ExecutionPlan(stats, self.get_context())
         logical_plan = LogicalPlan(

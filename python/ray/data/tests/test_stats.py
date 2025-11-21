@@ -113,6 +113,8 @@ def gen_expected_metrics(
             "'num_external_inqueue_bytes': Z",
             "'num_external_outqueue_blocks': Z",
             "'num_external_outqueue_bytes': Z",
+            "'num_prefetched_blocks': Z",
+            "'num_prefetched_bytes': Z",
             "'num_tasks_submitted': N",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': N",
@@ -181,6 +183,8 @@ def gen_expected_metrics(
             "'num_external_inqueue_bytes': Z",
             "'num_external_outqueue_blocks': Z",
             "'num_external_outqueue_bytes': Z",
+            "'num_prefetched_blocks': Z",
+            "'num_prefetched_bytes': Z",
             "'num_tasks_submitted': Z",
             "'num_tasks_running': Z",
             "'num_tasks_have_outputs': Z",
@@ -409,6 +413,10 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
         is_map=False,
         extra_metrics=["'num_output_N': N", "'output_splitter_overhead_time': N"],
     )
+    # Override prefetch metrics to N (non-zero) for split operator
+    extra_metrics_2 = extra_metrics_2.replace(
+        "'num_prefetched_blocks': Z", "'num_prefetched_blocks': N"
+    ).replace("'num_prefetched_bytes': Z", "'num_prefetched_bytes': N")
     assert (
         canonicalize(stats)
         == f"""Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}
@@ -744,6 +752,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_external_inqueue_bytes: Z,\n"
         "      num_external_outqueue_blocks: Z,\n"
         "      num_external_outqueue_bytes: Z,\n"
+        "      num_prefetched_blocks: Z,\n"
+        "      num_prefetched_bytes: Z,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -886,6 +896,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_external_inqueue_bytes: Z,\n"
         "      num_external_outqueue_blocks: Z,\n"
         "      num_external_outqueue_bytes: Z,\n"
+        "      num_prefetched_blocks: Z,\n"
+        "      num_prefetched_bytes: Z,\n"
         "      num_tasks_submitted: N,\n"
         "      num_tasks_running: Z,\n"
         "      num_tasks_have_outputs: N,\n"
@@ -982,6 +994,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_external_inqueue_bytes: Z,\n"
         "            num_external_outqueue_blocks: Z,\n"
         "            num_external_outqueue_bytes: Z,\n"
+        "            num_prefetched_blocks: Z,\n"
+        "            num_prefetched_bytes: Z,\n"
         "            num_tasks_submitted: N,\n"
         "            num_tasks_running: Z,\n"
         "            num_tasks_have_outputs: N,\n"
