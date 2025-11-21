@@ -1,7 +1,7 @@
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Dict, List, Set
+from typing import TYPE_CHECKING, Callable, Dict, List, Set
 
 from ray.data._internal.issue_detection.issue_detector import (
     Issue,
@@ -45,11 +45,11 @@ class HangingExecutionIssueDetector(IssueDetector):
     def __init__(
         self,
         dataset_id: str,
-        operators: List["PhysicalOperator"],
-        config: HangingExecutionIssueDetectorConfig,
+        operators: Callable[[], List["PhysicalOperator"]],
+        config: "HangingExecutionIssueDetectorConfig",
     ):
         self._dataset_id = dataset_id
-        self._operators = operators
+        self._get_operators = operators
         self._detector_cfg = config
 
         self._op_task_stats_min_count = self._detector_cfg.op_task_stats_min_count
@@ -80,7 +80,7 @@ class HangingExecutionIssueDetector(IssueDetector):
         ctx = executor._data_context
         return cls(
             dataset_id=executor._dataset_id,
-            operators=list(executor._topology.keys()) if executor._topology else [],
+            operators=lambda: list(executor._topology.keys()) if executor._topology else [],
             config=ctx.issue_detectors_config.hanging_detector_config,
         )
 
@@ -116,7 +116,7 @@ class HangingExecutionIssueDetector(IssueDetector):
 
     def detect(self) -> List[Issue]:
         op_task_stats_map: Dict[str, "TaskDurationStats"] = {}
-        for operator in self._operators:
+        for operator in self._get_operators():
             op_metrics = operator.metrics
             op_task_stats_map[operator.id] = op_metrics._op_task_duration_stats
             self._op_id_to_name[operator.id] = operator.name
