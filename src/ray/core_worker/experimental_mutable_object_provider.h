@@ -15,6 +15,7 @@
 
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
@@ -239,12 +240,21 @@ class MutableObjectProvider : public MutableObjectProviderInterface {
   // and then send the changes to remote nodes via the network.
   std::vector<std::unique_ptr<std::thread>> io_threads_;
 
-  // Protects the `written_so_far_` map.
+  // Protects the `written_so_far_` map and `received_chunks_` set.
   absl::Mutex written_so_far_lock_;
   // For objects larger than the gRPC max payload size *that this node receives from a
   // writer node*, this map tracks how many bytes have been received so far for a single
   // object write.
   std::unordered_map<ObjectID, uint64_t> written_so_far_
+      ABSL_GUARDED_BY(written_so_far_lock_);
+  // Tracks which chunks (by offset) have been received for each object to handle retries
+  // idempotently. Each offset uniquely identifies a chunk.
+  std::unordered_map<ObjectID, std::unordered_set<uint64_t>> received_chunks_
+      ABSL_GUARDED_BY(written_so_far_lock_);
+  // Tracks whether WriteAcquire has been called for each object to handle out-of-order
+  // chunks. This ensures WriteAcquire is called exactly once, even if chunks arrive
+  // concurrently or out of order.
+  std::unordered_map<ObjectID, bool> write_acquired_
       ABSL_GUARDED_BY(written_so_far_lock_);
 
   friend class MutableObjectProvider_MutableObjectBufferReadRelease_Test;
