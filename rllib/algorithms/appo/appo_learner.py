@@ -29,6 +29,8 @@ class APPOLearner(IMPALALearner):
 
     @override(IMPALALearner)
     def build(self):
+        self._last_update_ts = 0
+
         self._learner_thread_in_queue = CircularBuffer(
             num_batches=self.config.circular_buffer_num_batches,
             iterations_per_batch=self.config.circular_buffer_iterations_per_batch,
@@ -92,9 +94,8 @@ class APPOLearner(IMPALALearner):
         for module_id, module in self.module._rl_modules.items():
             config = self.config.get_config_for_module(module_id)
 
-            last_update_ts_key = (module_id, LAST_TARGET_UPDATE_TS)
             if isinstance(module.unwrapped(), TargetNetworkAPI) and (
-                curr_timestep - self.metrics.peek(last_update_ts_key, default=0)
+                curr_timestep - self._last_update_ts
                 >= (
                     config.target_network_update_freq
                     * config.circular_buffer_num_batches
@@ -112,9 +113,14 @@ class APPOLearner(IMPALALearner):
                         tau=config.tau,
                     )
                 # Increase lifetime target network update counter by one.
-                self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
+                self.metrics.log_value(
+                    (module_id, NUM_TARGET_UPDATES), 1, reduce="lifetime_sum"
+                )
                 # Update the (single-value -> window=1) last updated timestep metric.
-                self.metrics.log_value(last_update_ts_key, curr_timestep, window=1)
+                self._last_update_ts = curr_timestep
+                self.metrics.log_value(
+                    (module_id, LAST_TARGET_UPDATE_TS), curr_timestep, reduce="max"
+                )
 
             if (
                 config.use_kl_loss
