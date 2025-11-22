@@ -219,17 +219,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             bundle = self._output_queue.get_next()
             self._metrics.on_output_dequeued(bundle)
 
-    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
-        assert input_index == 0, input_index
-        self._block_ref_bundler.add_bundle(refs)
-        self._metrics.on_input_queued(refs)
-
-        while self._block_ref_bundler.has_bundle():
-            input_refs, bundled_input = self._block_ref_bundler.get_next_bundle()
-            for bundle in input_refs:
-                self._metrics.on_input_dequeued(bundle)
-            self._add_bundled_input(bundled_input)
-
     @property
     def name(self) -> str:
         name = super().name
@@ -410,24 +399,26 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 "or pass them as ObjectRefs instead."
             )
 
-    def _add_input_inner(self, refs: RefBundle, input_index: int):
-        assert input_index == 0, input_index
+        def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
+            assert input_index == 0, input_index
 
-        # Add RefBundle to the bundler.
-        self._block_ref_bundler.add_bundle(refs)
-        self._metrics.on_input_queued(refs)
+            # Add RefBundle to the bundler.
+            self._block_ref_bundler.add_bundle(refs)
+            self._metrics.on_input_queued(refs)
 
-        if self._block_ref_bundler.has_bundle():
-            # The ref bundler combines one or more RefBundles into a new larger
-            # RefBundle. Rather than dequeuing the new RefBundle, which was never
-            # enqueued in the first place, we dequeue the original RefBundles.
-            (input_refs, bundled_input) = self._block_ref_bundler.get_next_bundle()
-            for bundle in input_refs:
-                self._metrics.on_input_dequeued(bundle)
+            # Drain all complete bundles from the bundler.
+            while self._block_ref_bundler.has_bundle():
+                # The ref bundler combines one or more RefBundles into a new larger
+                # RefBundle. Rather than dequeuing the new RefBundle, which was
+                # never enqueued in the first place, we dequeue the original
+                # RefBundles.
+                input_refs, bundled_input = self._block_ref_bundler.get_next_bundle()
+                for bundle in input_refs:
+                    self._metrics.on_input_dequeued(bundle)
 
-            # If the bundler has a full bundle, add it to the operator's task submission
-            # queue
-            self._add_bundled_input(bundled_input)
+                # If the bundler has a full bundle, add it to the operator's task
+                # submission queue.
+                self._add_bundled_input(bundled_input)
 
     def _get_dynamic_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
