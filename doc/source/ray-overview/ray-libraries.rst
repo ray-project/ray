@@ -83,18 +83,18 @@ more information.
 
     .. grid-item-card::
 
-        .. figure:: ../images/daft.webp
+        .. figure:: ../images/daft.png
             :class: card-figure
 
         .. div::
 
-            .. image:: https://img.shields.io/github/stars/daft/daft?style=social)]
+            .. image:: https://img.shields.io/github/stars/Eventual-Inc/Daft?style=social)
                 :target: https://github.com/Eventual-Inc/Daft
 
-            Daft is a data engine that supports SQL and Python DataFrames for data processing and analytics natively on your Ray clusters.
+            Daft is a high-performance multimodal data engine that provides simple and reliable data processing for any modality - from structured tables to images and embeddings. Built with Python and Rust for modern AI/ML workflows, Daft offers seamless scaling from local to distributed Ray clusters, enabling efficient batch inference, document processing, and multimodal ETL pipelines at scale.
 
         +++
-        .. button-link:: https://www.getdaft.io
+        .. button-link:: https://docs.daft.ai/en/stable/distributed/ray/
             :color: primary
             :outline:
             :expand:
