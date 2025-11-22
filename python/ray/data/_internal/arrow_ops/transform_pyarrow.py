@@ -560,12 +560,10 @@ def _align_struct_fields(
             if column_name in aligned_columns:
                 # Use the aligned column if available
                 new_columns.append(aligned_columns[column_name])
-            elif column_name in block.schema.names:
-                # Use the original column if not aligned
-                new_columns.append(block[column_name])
             else:
-                null_array = pa.nulls(len(block), type=schema.field(column_name).type)
-                new_columns.append(null_array)
+                # Use the original column if not aligned
+                assert column_name in block.schema.names
+                new_columns.append(block[column_name])
         aligned_blocks.append(pa.table(new_columns, schema=schema))
 
     # Return the list of aligned blocks
