@@ -550,6 +550,50 @@ class RuntimeContext(object):
 
         return worker.current_node_labels
 
+    def is_canceled(self) -> Optional[bool]:
+        """Check if the current task has been canceled.
+
+        This can be used to periodically check if ray.cancel() has been
+        called on the current task and perform graceful cleanup.
+
+        Example:
+
+            .. testcode::
+
+                import ray
+                import time
+
+                @ray.remote
+                def long_running_task():
+                    for i in range(1000):
+                        if ray.get_runtime_context().is_canceled():
+                            print("Task canceled, cleaning up...")
+                            return "canceled"
+                        time.sleep(0.01)
+                    return "completed"
+
+                # Start the task
+                obj_ref = long_running_task.remote()
+                # Cancel it
+                ray.cancel(obj_ref)
+                # The task will detect cancellation and exit gracefully
+                try:
+                    result = ray.get(obj_ref)
+                except ray.exceptions.TaskCancelledError:
+                    print("Task was cancelled")
+
+        Returns:
+            True if the task has been canceled, False otherwise.
+            None if called outside of a worker context.
+        """
+        if self.worker.mode != ray._private.worker.WORKER_MODE:
+            logger.debug(
+                "This method is only available when the process is a "
+                f"worker. Current mode: {self.worker.mode}"
+            )
+            return None
+        return self.worker.is_canceled
+
 
 _runtime_context = None
 _runtime_context_lock = threading.Lock()

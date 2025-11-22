@@ -534,6 +534,15 @@ bool TaskManager::IsTaskWaitingForExecution(const TaskID &task_id) const {
   return it->second.IsWaitingForExecution();
 }
 
+bool TaskManager::IsTaskCanceled(const TaskID &task_id) const {
+  absl::MutexLock lock(&mu_);
+  const auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return false;
+  }
+  return it->second.is_canceled_;
+}
+
 size_t TaskManager::NumSubmissibleTasks() const {
   absl::MutexLock lock(&mu_);
   return submissible_tasks_.size();

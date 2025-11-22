@@ -964,6 +964,12 @@ class CoreWorker {
   /// \param[out] Status
   Status CancelTask(const ObjectID &object_id, bool force_kill, bool recursive);
 
+  /// Check if a task has been canceled.
+  ///
+  /// \param[in] task_id The task ID to check.
+  /// \return Whether the task has been canceled.
+  bool IsTaskCanceled(const TaskID &task_id) const;
+
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
   ///

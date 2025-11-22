@@ -2494,6 +2494,10 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
   return Status::OK();
 }
 
+bool CoreWorker::IsTaskCanceled(const TaskID &task_id) const {
+  return task_manager_->IsTaskCanceled(task_id);
+}
+
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
   absl::flat_hash_set<TaskID> unknown_child_task_ids;
   auto child_task_ids = task_manager_->GetPendingChildrenTasks(task_id);
