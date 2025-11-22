@@ -1,3 +1,4 @@
+assess_quality
 autoscaler
 [Aa]vro
 [Bb]ackpressure
@@ -5,6 +6,7 @@ Dask
 [Dd]ata('s)?
 [Dd]atasource(s)?
 [Dd]iscretizer(s)?
+docstrings
 dtype
 FLAC
 [Gg]roup[bB]y
@@ -19,14 +21,18 @@ MCAP
 Modin
 [Mm]ultiget(s)?
 ndarray(s)?
+NLP
 [Oo]utqueue(s)?
+PDFs
 [Pp]ipelined
 Predibase('s)?
 [Pp]refetch
 [Pp]refetching
 [Pp]reprocess
 [Pp]reprocessor(s)?
+process_file
 [Pp]ushdown
+queryable
 RGB
 runai
 [Ss]calers
@@ -36,18 +42,3 @@ UDF(s)?
 VLM(s)?
 XGBoost
 YOLO
-[Ss]harding
-[Ss]harded
-[Dd]atabricks
-[Dd]ocstrings
-[pP][aA][rR][tT]
-PARTSUPP
-[Rr]ollups
-[Dd]atetime
-ad hoc
-hoc
-[Pp][Dd][Ff]s
-[Qq]ueryable
-NLP
-process_file
-assess_quality
