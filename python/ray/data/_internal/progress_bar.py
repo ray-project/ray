@@ -1,5 +1,7 @@
 import logging
+import sys
 import threading
+import time
 from abc import ABC, abstractmethod
 from typing import Any, List, Optional
 
@@ -131,14 +133,25 @@ class ProgressBar(AbstractProgressBar):
     ):
         self._desc = truncate_operator_name(name, self.MAX_NAME_LENGTH)
         self._progress = 0
+        self._total = total
         # Prepend a space to the unit for better formatting.
         if unit[0] != " ":
             unit = " " + unit
 
         if enabled is None:
-            from ray.data.context import DataContext
+            # When enabled is None (not explicitly set by the user),
+            # check if we're in a non-interactive terminal and disable progress bar.
+            if not sys.stdout.isatty():
+                enabled = False
+                if log_once("progress_bar_disabled"):
+                    logger.info(
+                        "Progress bar disabled because stdout is a non-interactive terminal.")
+            else:
+                from ray.data.context import DataContext
+                enabled = DataContext.get_current().enable_progress_bars
 
-            enabled = DataContext.get_current().enable_progress_bars
+        self._use_logging = not sys.stdout.isatty() and not enabled
+
         if not enabled:
             self._bar = None
         elif tqdm:
@@ -163,6 +176,12 @@ class ProgressBar(AbstractProgressBar):
                 needs_warning = False
             self._bar = None
 
+        # For logging progress in non-interactive terminals
+        self._last_logged_time = 0
+        # Log interval in seconds
+        from ray.data.context import DataContext
+        self._log_interval = DataContext.get_current().progress_bar_log_interval
+
     def set_description(self, name: str) -> None:
         name = truncate_operator_name(name, self.MAX_NAME_LENGTH)
         if self._bar and name != self._desc:
@@ -185,6 +204,20 @@ class ProgressBar(AbstractProgressBar):
                 # If the progress goes over 100%, update the total.
                 self._bar.total = self._progress
             self._bar.update(increment)
+        elif self._use_logging and (increment != 0):
+            self._progress += increment
+            if total is not None:
+                self._total = total
+
+            # Log progress periodically
+            current_time = time.time()
+            time_diff = current_time - self._last_logged_time
+            should_log = (self._last_logged_time == 0) or (time_diff >= self._log_interval)
+
+            if should_log:
+                logger.info(
+                    f"Progress ({self._desc}): {self._progress}/{self._total or 'unknown'}")
+                self._last_logged_time = current_time
 
     def close(self):
         if self._bar:
