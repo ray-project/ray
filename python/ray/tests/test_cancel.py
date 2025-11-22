@@ -461,13 +461,14 @@ def test_recursive_cancel(shutdown_only, use_force):
     ray.init(num_cpus=2)
 
     @ray.remote(num_cpus=1)
-    def inner():
+    def inner(signal_actor):
+        signal_actor.send.remote()
         while True:
             time.sleep(0.1)
 
     @ray.remote(num_cpus=1)
-    def outer():
-        _ = inner.remote()
+    def outer(signal_actor):
+        _ = inner.remote(signal_actor)
         while True:
             time.sleep(0.1)
 
@@ -475,7 +476,10 @@ def test_recursive_cancel(shutdown_only, use_force):
     def many_resources():
         return True
 
-    outer_fut = outer.remote()
+    signal_actor = SignalActor.remote()
+    outer_fut = outer.remote(signal_actor)
+    # Wait until both inner and outer are running
+    ray.get(signal_actor.wait.remote())
     many_fut = many_resources.remote()
     with pytest.raises(GetTimeoutError):
         ray.get(many_fut, timeout=1)
