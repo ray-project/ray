@@ -863,9 +863,13 @@ isoduration==20.11.0
 itsdangerous==2.1.2
     # via flask
 jax==0.4.20
-    # via -r python/requirements/ml/train-test-requirements.txt
+    # via
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   -r python/requirements/ml/train-test-requirements.txt
 jaxlib==0.4.20
-    # via -r python/requirements/ml/train-test-requirements.txt
+    # via
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   -r python/requirements/ml/train-test-requirements.txt
 jedi==0.19.1
     # via ipython
 jinja2==3.1.6
