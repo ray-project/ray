@@ -16,6 +16,7 @@ from ray.data._internal.block_batching.interfaces import (
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.types import ObjectRef
+from ray.util.debug import log_once
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
@@ -25,10 +26,10 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
     """Given a list of object references, returns how many are already on the local
     node, how many require fetching from another node, and how many have unknown
     locations. If `DataContext.get_current().enable_get_object_locations_for_metrics` is
-    False, this will return `(-1, -1, -1)` as getting object locations is disabled."""
+    False, this will return `(0, 0, 0)` as getting object locations is disabled."""
     current_node_id = ray.get_runtime_context().get_node_id()
 
-    ctx = ray.data.context.DataContext.get_current()
+    ctx = ray.data.DataContext.get_current()
     if ctx.enable_get_object_locations_for_metrics:
         locs = ray.experimental.get_object_locations(refs)
         nodes: List[List[str]] = [loc["node_ids"] for loc in locs.values()]
@@ -36,8 +37,13 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
         unknowns = sum(1 for node_ids in nodes if not node_ids)
         misses = len(nodes) - hits - unknowns
         return hits, misses, unknowns
+    elif log_once("enable_get_object_locations_for_metrics"):
+        logger.info(
+            "Tracking the number of object cache hits and misses is currently disabled. "
+            "Set `DataContext.get_current().enable_get_object_locations_for_metrics=True` to enable this."
+        )
 
-    return -1, -1, -1
+    return 0, 0, 0
 
 
 def resolve_block_refs(

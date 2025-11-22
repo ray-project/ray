@@ -94,6 +94,7 @@ class StreamSplitDataIterator(DataIterator):
                         schema=block_ref_and_md.schema,
                     )
 
+        self._base_dataset._plan._run_index += 1
         return gen_blocks(), self._iter_stats, False
 
     def stats(self) -> str:
