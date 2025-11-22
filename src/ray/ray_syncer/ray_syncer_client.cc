@@ -22,7 +22,31 @@
 
 namespace ray::syncer {
 
+std::shared_ptr<RayClientBidiReactor> RayClientBidiReactor::Create(
+    const std::string &remote_node_id,
+    const std::string &local_node_id,
+    instrumented_io_context &io_context,
+    std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
+    std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
+    std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub,
+    size_t max_batch_size,
+    uint64_t max_batch_delay_ms) {
+  auto reactor = std::make_shared<RayClientBidiReactor>(PrivateTag{},
+                                                        remote_node_id,
+                                                        local_node_id,
+                                                        io_context,
+                                                        message_processor,
+                                                        cleanup_cb,
+                                                        std::move(stub),
+                                                        max_batch_size,
+                                                        max_batch_delay_ms);
+
+  reactor->SetSelfPtr(reactor);
+  return reactor;
+}
+
 RayClientBidiReactor::RayClientBidiReactor(
+    PrivateTag,
     const std::string &remote_node_id,
     const std::string &local_node_id,
     instrumented_io_context &io_context,
@@ -34,10 +58,10 @@ RayClientBidiReactor::RayClientBidiReactor(
     : RaySyncerBidiReactorBase<ClientBidiReactor>(
           io_context,
           remote_node_id,
-          std::move(message_processor),
+          message_processor,
+          cleanup_cb,
           /* max_batch_size */ max_batch_size,
           /* max_batch_delay_ms */ max_batch_delay_ms),
-      cleanup_cb_(std::move(cleanup_cb)),
       stub_(std::move(stub)) {
   client_context_.AddMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
   // Add authentication token if token authentication is enabled
@@ -54,12 +78,7 @@ RayClientBidiReactor::RayClientBidiReactor(
 }
 
 void RayClientBidiReactor::OnDone(const grpc::Status &status) {
-  io_context_.dispatch(
-      [this, status]() {
-        cleanup_cb_(this, !status.ok());
-        self_ref_.reset();
-      },
-      "");
+  RaySyncerBidiReactorBase::DoCleanup(/*restart=*/!status.ok());
 }
 
 void RayClientBidiReactor::DoDisconnect() {

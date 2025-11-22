@@ -31,8 +31,14 @@ namespace ray::syncer {
 /// and cleanup.
 /// It keeps track of the message received and sent between two nodes and uses that to
 /// deduplicate the messages. It also supports the batching for performance purposes.
+///
+/// NOTE: RaySyncerBidiReactorBase depends on `shared_from_this`, so all subclass
+/// instances must be heap-allocated shared pointers.
 template <typename T>
-class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
+class RaySyncerBidiReactorBase
+    : public RaySyncerBidiReactor,
+      public T,
+      public std::enable_shared_from_this<RaySyncerBidiReactor> {
  public:
   /// Constructor of RaySyncerBidiReactor.
   ///
@@ -47,15 +53,23 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       instrumented_io_context &io_context,
       std::string remote_node_id,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
+      std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
       size_t max_batch_size,
       uint64_t max_batch_delay_ms)
       : RaySyncerBidiReactor(std::move(remote_node_id)),
         io_context_(io_context),
-        message_processor_(std::move(message_processor)),
+        message_processor_(message_processor),
+        cleanup_cb_(cleanup_cb),
         max_batch_size_(max_batch_size),
         max_batch_delay_ms_(std::chrono::milliseconds(max_batch_delay_ms)),
         batch_timer_(io_context),
         batch_timer_active_(false) {}
+
+  /// Set the `self_ptr` to ensure this object stays alive until `OnDone` is called.
+  /// Subclasses must call this after constructing.
+  void SetSelfPtr(std::shared_ptr<RaySyncerBidiReactor> self_ptr) {
+    self_ptr_ = std::move(self_ptr);
+  }
 
   bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message) override {
     if (*IsDisconnected()) {
@@ -99,7 +113,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
         batch_timer_active_ = true;
         batch_timer_.expires_after(max_batch_delay_ms_);
         // Use weak_ptr to avoid use-after-free when the reactor is destroyed.
-        auto weak_self = std::weak_ptr<RaySyncerBidiReactor>(self_ref_);
+        std::weak_ptr<RaySyncerBidiReactor> weak_self = shared_from_this();
         batch_timer_.async_wait([weak_self, this](const boost::system::error_code &ec) {
           auto self = weak_self.lock();
           if (!self) {
@@ -132,6 +146,17 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
  protected:
   /// The io context
   instrumented_io_context &io_context_;
+
+  /// Clean up state of the reactor and call the cleanup_cb_.
+  /// Should be called by subclasses when the RPC finishes (`OnDone` is called).
+  void DoCleanup(bool restart) {
+    io_context_.dispatch(
+        [this, restart]() {
+          cleanup_cb_(this, restart);
+          self_ptr_.reset();
+        },
+        "");
+  }
 
  private:
   /// Handle the updates sent from the remote node.
@@ -283,6 +308,13 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   const std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor_;
 
  private:
+  /// Cleanup callback when the the RPC call is finished.
+  const std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb_;
+
+  /// Shared pointer to this object.
+  /// Ensures that the object is kept alive until `DoCleanup` is called.
+  std::shared_ptr<RaySyncerBidiReactor> self_ptr_;
+
   /// Buffering all the updates. Sending will be done in an async way.
   absl::flat_hash_map<std::pair<std::string, MessageType>,
                       std::shared_ptr<const RaySyncMessage>>
