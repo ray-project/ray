@@ -389,12 +389,14 @@ class StreamingRepartition(AbstractMap):
         self,
         input_op: LogicalOperator,
         target_num_rows_per_block: int,
+        supports_fusion: bool = True,
     ):
         super().__init__(
             f"StreamingRepartition[num_rows_per_block={target_num_rows_per_block}]",
             input_op,
         )
         self._target_num_rows_per_block = target_num_rows_per_block
+        self._supports_fusion = supports_fusion
 
     @property
     def target_num_rows_per_block(self) -> int:
