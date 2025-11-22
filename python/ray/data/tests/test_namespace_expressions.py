@@ -45,6 +45,21 @@ def _create_dataset(
 
 # Pytest parameterization for all dataset creation formats
 DATASET_FORMATS = ["pandas", "arrow"]
+MAP_DATASET_FORMATS = ["arrow"]
+
+
+def _create_map_dataset(dataset_format: str):
+    """Create a dataset backed by an Arrow MapArray column."""
+
+    map_items = [
+        {"attrs": {"color": "red", "size": "M"}},
+        {"attrs": {"brand": "Ray"}},
+    ]
+    map_type = pa.map_(pa.string(), pa.string())
+    arrow_table = pa.table(
+        {"attrs": pa.array([row["attrs"] for row in map_items], type=map_type)}
+    )
+    return _create_dataset(map_items, dataset_format, arrow_table)
 
 
 # ──────────────────────────────────────
@@ -521,6 +536,59 @@ class TestStructNamespace:
             }
         )
         assert rows_same(result, expected)
+
+
+# ──────────────────────────────────────
+# Map Namespace Tests
+# ──────────────────────────────────────
+
+
+@pytest.mark.parametrize("dataset_format", MAP_DATASET_FORMATS)
+class TestMapNamespace:
+    """Tests for map namespace operations."""
+
+    def test_map_keys(self, dataset_format):
+        """Test map.keys() returns the list of keys for each map."""
+
+        ds = _create_map_dataset(dataset_format)
+        result = ds.with_column("keys", col("attrs").map.keys()).to_pandas()
+
+        def _as_list(value):
+            return value if isinstance(value, list) else list(value)
+
+        actual = [sorted(_as_list(keys)) for keys in result["keys"].tolist()]
+        assert actual == [["color", "size"], ["brand"]]
+
+    def test_map_values(self, dataset_format):
+        """Test map.values() returns the list of values for each map."""
+
+        ds = _create_map_dataset(dataset_format)
+        result = (
+            ds.with_column("keys", col("attrs").map.keys())
+            .with_column("values", col("attrs").map.values())
+            .to_pandas()
+        )
+
+        reconstructed = []
+        for keys, values in zip(result["keys"], result["values"]):
+            key_list = list(keys) if not isinstance(keys, list) else keys
+            value_list = list(values) if not isinstance(values, list) else values
+            reconstructed.append(dict(zip(key_list, value_list)))
+
+        assert reconstructed == [
+            {"color": "red", "size": "M"},
+            {"brand": "Ray"},
+        ]
+
+    def test_map_namespace_chaining(self, dataset_format):
+        """Test chaining map namespace output with list operations."""
+
+        ds = _create_map_dataset(dataset_format)
+        result = ds.with_column(
+            "num_keys", col("attrs").map.keys().list.len()
+        ).to_pandas()
+
+        assert result["num_keys"].tolist() == [2, 1]
 
 
 # ──────────────────────────────────────
