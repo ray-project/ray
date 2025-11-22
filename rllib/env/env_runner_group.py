@@ -814,8 +814,8 @@ class EnvRunnerGroup:
             self.foreach_env_runner(
                 lambda w: w.stop(), healthy_only=False, local_env_runner=True
             )
-        except Exception:
-            logger.exception("Failed to stop workers!")
+        except Exception as e:
+            logger.exception(f"Failed to stop workers with {e}")
         finally:
             self._worker_manager.clear()
 
@@ -1282,9 +1282,8 @@ class EnvRunnerGroup:
             .remote(**kwargs)
         )
 
-    @classmethod
-    def _valid_module(cls, class_path):
-        del cls
+    @staticmethod
+    def _valid_module(class_path):
         if (
             isinstance(class_path, str)
             and not os.path.isfile(class_path)
@@ -1295,9 +1294,8 @@ class EnvRunnerGroup:
                 spec = importlib.util.find_spec(module_path)
                 if spec is not None:
                     return True
-            except (ModuleNotFoundError, ValueError):
+            except (ModuleNotFoundError, ValueError) as e:
                 print(
-                    f"module {module_path} not found while trying to get "
-                    f"input {class_path}"
+                    f"module {module_path} not found using input {class_path} with error: {e}"
                 )
         return False
