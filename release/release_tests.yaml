@@ -3412,7 +3412,7 @@
     wait_for_nodes:
       num_nodes: 10
     script: >
-      python simulate_cross_az_network_failure.py --network-failure-interval 180 --network-failure-duration 5 --command python chaos_test/test_chaos.py --workload=tasks --disable-resource-killer
+      python simulate_cross_az_network_failure.py --network-failure-interval 60 --network-failure-duration 5 --command python chaos_test/test_chaos.py --workload=tasks --disable-resource-killer
 
   variations:
     - __suffix__: aws
@@ -3515,7 +3515,7 @@
     wait_for_nodes:
       num_nodes: 10
     script: >
-      python simulate_cross_az_network_failure.py --network-failure-interval 180 --network-failure-duration 5 --command python chaos_test/test_chaos.py --workload=actors --disable-resource-killer
+      python simulate_cross_az_network_failure.py --network-failure-interval 60 --network-failure-duration 5 --command python chaos_test/test_chaos.py --workload=actors --disable-resource-killer
 
   variations:
     - __suffix__: aws
@@ -3618,7 +3618,7 @@
     wait_for_nodes:
       num_nodes: 10
     script: >
-      python simulate_cross_az_network_failure.py --network-failure-interval 120 --network-failure-duration 5 --command python chaos_test/test_chaos.py --workload=streaming --disable-resource-killer
+      python simulate_cross_az_network_failure.py --network-failure-interval 60 --network-failure-duration 5 --command python chaos_test/test_chaos.py --workload=streaming --disable-resource-killer
 
   variations:
     - __suffix__: aws
@@ -3721,7 +3721,7 @@
     wait_for_nodes:
       num_nodes: 10
     script: >
-      python simulate_cross_az_network_failure.py --network-failure-interval 120 --network-failure-duration 5 --command python chaos_test/test_chaos.py --workload=borrowing --disable-resource-killer
+      python simulate_cross_az_network_failure.py --network-failure-interval 60 --network-failure-duration 5 --command python chaos_test/test_chaos.py --workload=borrowing --disable-resource-killer
 
   variations:
     - __suffix__: aws
