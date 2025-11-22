@@ -1,4 +1,5 @@
 import collections
+import functools
 import logging
 import os
 import warnings
@@ -128,6 +129,29 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
+
+
+def _track_data_connector_usage(connector_name: str):
+    """Decorator to track Ray Data connector usage for telemetry.
+
+    Args:
+        connector_name: The name of the connector (e.g., 'read_parquet').
+
+    Returns:
+        A decorator function that records connector usage before executing the function.
+    """
+
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            from ray._common.usage.usage_lib import record_data_connector_usage
+
+            record_data_connector_usage(connector_name)
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 @DeveloperAPI
@@ -463,6 +487,7 @@ def read_datasource(
 
 
 @PublicAPI(stability="alpha")
+@_track_data_connector_usage("read_audio")
 def read_audio(
     paths: Union[str, List[str]],
     *,
@@ -663,6 +688,7 @@ def read_videos(
 
 
 @PublicAPI(stability="alpha")
+@_track_data_connector_usage("read_mongo")
 def read_mongo(
     uri: str,
     database: str,
@@ -860,6 +886,7 @@ def read_bigquery(
 
 
 @PublicAPI
+@_track_data_connector_usage("read_parquet")
 def read_parquet(
     paths: Union[str, List[str]],
     *,
@@ -1057,6 +1084,7 @@ def read_parquet(
 
 
 @PublicAPI(stability="beta")
+@_track_data_connector_usage("read_images")
 def read_images(
     paths: Union[str, List[str]],
     *,
@@ -1374,6 +1402,7 @@ def read_parquet_bulk(
 
 
 @PublicAPI
+@_track_data_connector_usage("read_json")
 def read_json(
     paths: Union[str, List[str]],
     *,
@@ -1558,6 +1587,7 @@ def read_json(
 
 
 @PublicAPI
+@_track_data_connector_usage("read_csv")
 def read_csv(
     paths: Union[str, List[str]],
     *,
@@ -1738,6 +1768,7 @@ def read_csv(
 
 
 @PublicAPI
+@_track_data_connector_usage("read_text")
 def read_text(
     paths: Union[str, List[str]],
     *,
@@ -1866,6 +1897,7 @@ def read_text(
 
 
 @PublicAPI
+@_track_data_connector_usage("read_avro")
 def read_avro(
     paths: Union[str, List[str]],
     *,
@@ -1986,6 +2018,7 @@ def read_avro(
 
 
 @PublicAPI
+@_track_data_connector_usage("read_numpy")
 def read_numpy(
     paths: Union[str, List[str]],
     *,
@@ -2087,6 +2120,7 @@ def read_numpy(
 
 
 @PublicAPI(stability="alpha")
+@_track_data_connector_usage("read_tfrecords")
 def read_tfrecords(
     paths: Union[str, List[str]],
     *,
@@ -2262,6 +2296,7 @@ def read_tfrecords(
 
 
 @PublicAPI(stability="alpha")
+@_track_data_connector_usage("read_mcap")
 def read_mcap(
     paths: Union[str, List[str]],
     *,
@@ -2427,6 +2462,7 @@ def read_mcap(
 
 
 @PublicAPI(stability="alpha")
+@_track_data_connector_usage("read_webdataset")
 def read_webdataset(
     paths: Union[str, List[str]],
     *,
@@ -2526,6 +2562,7 @@ def read_webdataset(
 
 
 @PublicAPI
+@_track_data_connector_usage("read_binary_files")
 def read_binary_files(
     paths: Union[str, List[str]],
     *,
@@ -2654,6 +2691,7 @@ def read_binary_files(
 
 
 @PublicAPI(stability="alpha")
+@_track_data_connector_usage("read_sql")
 def read_sql(
     sql: str,
     connection_factory: Callable[[], Connection],
@@ -2787,6 +2825,7 @@ def read_sql(
 
 
 @PublicAPI(stability="alpha")
+@_track_data_connector_usage("read_snowflake")
 def read_snowflake(
     sql: str,
     connection_parameters: Dict[str, Any],
@@ -2865,6 +2904,7 @@ def read_snowflake(
 
 
 @PublicAPI(stability="alpha")
+@_track_data_connector_usage("read_databricks_tables")
 def read_databricks_tables(
     *,
     warehouse_id: str,
@@ -3026,6 +3066,7 @@ def read_databricks_tables(
 
 
 @PublicAPI(stability="alpha")
+@_track_data_connector_usage("read_hudi")
 def read_hudi(
     table_uri: str,
     *,
@@ -3555,6 +3596,7 @@ def from_arrow_refs(
 
 
 @PublicAPI(stability="alpha")
+@_track_data_connector_usage("read_delta_sharing_tables")
 def read_delta_sharing_tables(
     url: str,
     *,
@@ -3959,6 +4001,7 @@ def from_torch(
 
 
 @PublicAPI
+@_track_data_connector_usage("read_iceberg")
 def read_iceberg(
     *,
     table_identifier: str,
@@ -4080,6 +4123,7 @@ def read_iceberg(
 
 
 @PublicAPI
+@_track_data_connector_usage("read_lance")
 def read_lance(
     uri: str,
     *,
@@ -4163,6 +4207,7 @@ def read_lance(
 
 
 @PublicAPI(stability="alpha")
+@_track_data_connector_usage("read_clickhouse")
 def read_clickhouse(
     *,
     table: str,
@@ -4256,6 +4301,7 @@ def read_clickhouse(
 
 
 @PublicAPI(stability="alpha")
+@_track_data_connector_usage("read_unity_catalog")
 def read_unity_catalog(
     table: str,
     url: str,
@@ -4313,6 +4359,7 @@ def read_unity_catalog(
 
 
 @PublicAPI(stability="alpha")
+@_track_data_connector_usage("read_delta")
 def read_delta(
     path: Union[str, List[str]],
     version: Optional[int] = None,
