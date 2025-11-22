@@ -1,9 +1,10 @@
-import uuid
-
 import grpc
 import pytest
 from grpc import aio as aiogrpc
 
+from ray._private.authentication.authentication_token_generator import (
+    generate_new_authentication_token,
+)
 from ray._private.authentication_test_utils import (
     authentication_env_guard,
     reset_auth_token_state,
@@ -17,7 +18,7 @@ from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 @pytest.mark.asyncio
 async def test_async_server_and_client_with_valid_token(create_async_test_server):
     """Test async server + client with matching token succeeds."""
-    token = uuid.uuid4().hex
+    token = generate_new_authentication_token()
 
     with authentication_env_guard():
         set_auth_mode("token")
@@ -45,8 +46,8 @@ async def test_async_server_and_client_with_valid_token(create_async_test_server
 @pytest.mark.asyncio
 async def test_async_server_and_client_with_invalid_token(create_async_test_server):
     """Test async server + client with mismatched token fails."""
-    server_token = uuid.uuid4().hex
-    wrong_token = uuid.uuid4().hex
+    server_token = generate_new_authentication_token()
+    wrong_token = generate_new_authentication_token()
 
     with authentication_env_guard():
         # Set up server with server_token
@@ -77,7 +78,7 @@ async def test_async_server_and_client_with_invalid_token(create_async_test_serv
 @pytest.mark.asyncio
 async def test_async_server_with_auth_client_without_token(create_async_test_server):
     """Test async server with auth, client without token fails."""
-    token = uuid.uuid4().hex
+    token = generate_new_authentication_token()
 
     with authentication_env_guard():
         # Set up server with auth enabled

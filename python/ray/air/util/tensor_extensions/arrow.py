@@ -127,6 +127,8 @@ class ArrowExtensionSerializeDeserializeCache(abc.ABC):
 
     def __arrow_ext_serialize__(self) -> bytes:
         """Serialize the extension type using caching if enabled."""
+        if self._serialize_cache is not None:
+            return self._serialize_cache
         with self._cache_lock:
             if self._serialize_cache is None:
                 self._serialize_cache = self._arrow_ext_serialize_compute()

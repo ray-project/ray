@@ -22,7 +22,7 @@
 #include <utility>
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/util/function_traits.h"
+#include "ray/gcs/postable/function_traits.h"
 
 namespace ray {
 

@@ -530,6 +530,7 @@ customizations inside the old stack's Policy class, you need to move the logic i
 See :ref:`Learner <learner-guide>` for details on how to write a custom Learner .
 
 The following example scripts show how to write:
+
 - `a simple custom loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__
 - `a custom Learner with 2 optimizers and different learning rates for each <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/separate_vf_lr_and_optimizer.py>`__.
 

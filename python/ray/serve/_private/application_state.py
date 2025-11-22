@@ -61,6 +61,8 @@ from ray.serve.schema import (
     APIType,
     ApplicationStatus,
     DeploymentDetails,
+    DeploymentNode,
+    DeploymentTopology,
     LoggingConfig,
     ServeApplicationSchema,
 )
@@ -935,6 +937,46 @@ class ApplicationState:
 
         return target_state_changed
 
+    def get_deployment_topology(self) -> Optional[DeploymentTopology]:
+        """Get the deployment topology for this application.
+
+        Returns:
+            The deployment topology, or None if not yet built.
+        """
+        if not self.target_deployments:
+            return None
+
+        nodes = {}
+
+        # Using target deployments because we wish to build best effort topology based on current state.
+        for deployment_name in self.target_deployments:
+            deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
+
+            # Get outbound deployment names from deployment state
+            outbound_deployment = (
+                self._deployment_state_manager.get_deployment_outbound_deployments(
+                    deployment_id
+                )
+            ) or []
+
+            # Create node for this deployment
+            node = DeploymentNode(
+                name=deployment_name,
+                app_name=self._name,
+                outbound_deployments=[
+                    {"name": dep.name, "app_name": dep.app_name}
+                    for dep in outbound_deployment
+                ],
+                is_ingress=(deployment_name == self._ingress_deployment_name),
+            )
+            nodes[deployment_name] = node
+
+        return DeploymentTopology(
+            app_name=self._name,
+            ingress_deployment=self._ingress_deployment_name,
+            nodes=nodes,
+        )
+
     def update(self) -> Tuple[bool, bool]:
         """Attempts to reconcile this application to match its target state.
 
@@ -1279,6 +1321,20 @@ class ApplicationStateManager:
         if name not in self._application_states:
             return {}
         return self._application_states[name].list_deployment_details()
+
+    def get_deployment_topology(self, app_name: str) -> Optional[DeploymentTopology]:
+        """Get the deployment topology for an application.
+
+        Args:
+            app_name: Name of the application.
+
+        Returns:
+            The deployment topology for the application, or None if the application
+            doesn't exist or the topology hasn't been built yet.
+        """
+        if app_name not in self._application_states:
+            return None
+        return self._application_states[app_name].get_deployment_topology()
 
     def update(self):
         """Update each application state."""

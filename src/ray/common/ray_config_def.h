@@ -1017,3 +1017,15 @@ RAY_CONFIG(bool, start_python_gc_manager_thread, true)
 // Whether to enable the feature of outputting error log if the task is
 // still retryable.
 RAY_CONFIG(bool, enable_output_error_log_if_still_retry, true)
+
+// The maximum batch size for ray_syncer_bidi_reactor to sync messages to other nodes.
+// If `gcs_resource_broadcast_max_batch_size == 1`, the ray_syncer_bidi_reactor will
+// disable batching. Otherwise, it will start send with maximum of
+// `gcs_resource_broadcast_max_batch_size` messages before timeout.
+RAY_CONFIG(size_t, gcs_resource_broadcast_max_batch_size, 1)
+
+// The maximum period that the GCS will wait for resource update messages before
+// broadcasting the batch. If `gcs_resource_broadcast_max_batch_size` messages arrive
+// before the timeout, the batch will be broadcasted eagerly. This flag only applies if
+// `gcs_resource_broadcast_max_batch_size != 1`.
+RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
