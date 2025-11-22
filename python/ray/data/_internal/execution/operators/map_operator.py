@@ -385,20 +385,20 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._map_transformer_ref = ray.put(map_transformer)
         self._warn_large_udf()
 
-        def _warn_large_udf(self) -> None:
-            """Print a warning if the UDF is too large."""
-            udf_locations = ray.experimental.get_local_object_locations(
-                [self._map_transformer_ref]
+    def _warn_large_udf(self) -> None:
+        """Print a warning if the UDF is too large."""
+        udf_locations = ray.experimental.get_local_object_locations(
+            [self._map_transformer_ref]
+        )
+        udf_size = udf_locations[self._map_transformer_ref]["object_size"]
+        if udf_size > self.MAP_UDF_WARN_SIZE_THRESHOLD:
+            logger.warning(
+                f"The UDF of operator {self.name} is too large "
+                f"(size = {memory_string(udf_size)}). "
+                "Check if the UDF has accidentally captured large objects. "
+                "Load the large objects in the __init__ method or pass them "
+                "as ObjectRefs instead."
             )
-            udf_size = udf_locations[self._map_transformer_ref]["object_size"]
-            if udf_size > self.MAP_UDF_WARN_SIZE_THRESHOLD:
-                logger.warning(
-                    f"The UDF of operator {self.name} is too large "
-                    f"(size = {memory_string(udf_size)}). "
-                    "Check if the UDF has accidentally captured large objects. "
-                    "Load the large objects in the __init__ method or pass them "
-                    "as ObjectRefs instead."
-                )
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0, input_index
