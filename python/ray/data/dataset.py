@@ -2953,7 +2953,7 @@ class Dataset:
 
             >>> import ray
             >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-            >>> ds.unique("target")
+            >>> sorted(ds.unique("target"))
             [0, 1, 2]
 
             One common use case is to convert the class labels
