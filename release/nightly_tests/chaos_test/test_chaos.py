@@ -50,7 +50,6 @@ def main():
     else:
         assert False
 
-    print("Running with failures")
     start = time.time()
     node_killer = None
 
@@ -66,7 +65,7 @@ def main():
     workload(total_num_cpus, args.smoke)
     runtime_s = time.time() - start
     runtime_s = round(runtime_s, 2)
-    print(f"Runtime when there are many failures: {runtime_s}")
+    print(f"Total runtime: {runtime_s}")
 
     if node_killer is not None:
         node_killer.stop_run.remote()

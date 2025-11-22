@@ -3596,11 +3596,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_streaming_generator_iptable_failure_injection
   python: "3.10"
@@ -3704,11 +3699,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_object_ref_borrowing_iptable_failure_injection
   python: "3.10"
