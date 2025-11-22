@@ -1009,7 +1009,7 @@ run against the collection.
         collection="my_collection",
     )
 
-Reading message queues
+Reading from Kafka
 ======================
 
 Ray Data reads from message queues like Kafka.
