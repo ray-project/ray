@@ -296,13 +296,3 @@ class SplitCoordinator:
         assert self._output_iterator is not None
         return starting_epoch + 1
 
-    def _get_total_resources_for_testing(self) -> Optional[ExecutionResources]:
-        """Returns the total resources of the cluster autoscaler for testing purposes.
-
-        Returns None if the executor or cluster autoscaler is not available.
-        """
-        if self._executor and self._executor._cluster_autoscaler:
-            try:
-                return self._executor._cluster_autoscaler.get_total_resources()
-            except Exception:
-                return None
