@@ -428,6 +428,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool is_local_mode
         int num_workers
         (c_bool(const CTaskID &) nogil) kill_main
+        (c_bool(const CTaskID &) nogil) mark_task_canceled
         CCoreWorkerOptions()
         c_string serialized_job_config
         int metrics_agent_port

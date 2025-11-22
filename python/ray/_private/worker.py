@@ -1152,6 +1152,11 @@ class Worker:
         if self._gpu_object_manager:
             self._gpu_object_manager.shutdown()
 
+    @property
+    def is_canceled(self):
+        return self.core_worker.is_canceled()
+
+
 
 _connect_or_shutdown_lock = threading.RLock()
 
