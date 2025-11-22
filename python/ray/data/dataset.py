@@ -3322,7 +3322,7 @@ class Dataset:
 
             Custom aggregations for specific types:
 
-            >>> from ray.data import DataType
+            >>> from ray.data.datatype import DataType
             >>> from ray.data.aggregate import Sum, Count
             >>> # Override aggregations for int64 columns
             >>> custom_mapping = {
