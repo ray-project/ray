@@ -945,11 +945,9 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         col = BlockAccessor.for_block(block).to_arrow().column(self._target_col_name)
         if pa.types.is_list(col.type) and self._encode_lists:
             col = pc.list_flatten(col)
-        pickled = []
-        for v in col:
-            py_value = v.as_py()
-            if not self._ignore_nulls or py_value is not None:
-                pickled.append(pickle.dumps(py_value).hex())
+        if self._ignore_nulls:
+            col = pc.drop_null(col)
+        pickled = [pickle.dumps(v.as_py()).hex() for v in col]
         return pc.unique(pa.array(pickled)).to_pylist()
 
     def finalize(self, accumulator: Set[Any]) -> List[Any]:
