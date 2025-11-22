@@ -97,7 +97,7 @@ class _SerializationContext:
     ) -> Tuple[str, "np.ndarray", tuple[str, ...], Optional[list[str]], List[int]]:
         import torch.distributed as dist
 
-        mesh_np = dm.mesh.numpy()
+        mesh_np = dm.mesh.contiguous().numpy()
         dim_group_names = (
             dm._dim_group_names if hasattr(dm, "_dim_group_names") else None
         )
