@@ -130,7 +130,19 @@ class TorchRLModule(nn.Module, RLModule):
         # these keys (strict=False). This is most likely due to `state` coming from
         # an `inference_only=False` RLModule, while `self` is an `inference_only=True`
         # RLModule.
-        self.load_state_dict(convert_to_torch_tensor(state), strict=False)
+        missing_keys, unexpected_keys = self.load_state_dict(
+            convert_to_torch_tensor(state), strict=False
+        )
+
+        # For inference_only modules, missing_keys should always be empty.
+        # If there are missing keys, it means the target module expects parameters
+        # that don't exist in the source, indicating an architecture mismatch.
+        if self.inference_only and missing_keys:
+            raise ValueError(
+                f"Updating the module's state is missing keys: {list(missing_keys)} "
+                "This is most likely because the state has different layer names (or are missing layers). "
+                f"Complete list of state keys is {list(state.keys())}"
+            )
 
     @OverrideToImplementCustomLogic
     @override(RLModule)
