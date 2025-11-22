@@ -241,60 +241,21 @@ class ServerCallImpl : public ServerCall {
     if (record_metrics_) {
       grpc_server_req_handling_counter_.Record(1.0, {{"Method", call_name_}});
     }
-    if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
-      if (!service_handler_initialized_) {
-        service_handler_.WaitUntilInitialized();
-        service_handler_initialized_ = true;
-      }
-    }
-    state_ = ServerCallState::PROCESSING;
-    // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
-    // a different thread, and will cause `this` to be deleted.
-    const auto &factory = factory_;
-    if (factory.GetMaxActiveRPCs() == -1) {
-      // Create a new `ServerCall` to accept the next incoming request.
-      // We create this before handling the request only when no back pressure limit is
-      // set. So that the it can be populated by the completion queue in the background if
-      // a new request comes in.
-      factory.CreateCall();
-    }
     if (!io_service_.stopped()) {
-      io_service_.post([this, auth_success] { HandleRequestImpl(auth_success); },
-                       call_name_ + ".HandleRequestImpl",
-                       // Implement the delay of the rpc server call as the
-                       // delay of HandleRequestImpl().
-                       ray::asio::testing::GetDelayUs(call_name_));
-    } else {
-      // Handle service for rpc call has stopped, we must handle the call here
-      // to send reply and remove it from cq
-      RAY_LOG(DEBUG) << "Handle service has been closed.";
-      if (auth_success) {
-        SendReply(Status::Invalid("HandleServiceClosed"));
-      } else {
-        SendReply(Status::AuthError("WrongClusterID"));
+      if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
+        if (!service_handler_initialized_) {
+          service_handler_.WaitUntilInitialized();
+          service_handler_initialized_ = true;
+        }
       }
-    }
-  }
-
-  void HandleRequestImpl(bool auth_success) {
-    if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
-      if (!service_handler_initialized_) {
-        service_handler_.WaitUntilInitialized();
-        service_handler_initialized_ = true;
+      state_ = ServerCallState::PROCESSING;
+      if (factory_.GetMaxActiveRPCs() == -1) {
+        // Create a new `ServerCall` to accept the next incoming request.
+        // We create this before handling the request only when no back pressure limit is
+        // set. So that the it can be populated by the completion queue in the background
+        // if a new request comes in.
+        factory_.CreateCall();
       }
-    }
-    state_ = ServerCallState::PROCESSING;
-    // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
-    // a different thread, and will cause `this` to be deleted.
-    const auto &factory = factory_;
-    if (factory.GetMaxActiveRPCs() == -1) {
-      // Create a new `ServerCall` to accept the next incoming request.
-      // We create this before handling the request only when no back pressure limit is
-      // set. So that the it can be populated by the completion queue in the background if
-      // a new request comes in.
-      factory.CreateCall();
-    }
-    if (!io_service_.stopped()) {
       io_service_.post(
           [this, auth_success, token_auth_failed, cluster_id_auth_failed] {
             HandleRequestImpl(auth_success, token_auth_failed, cluster_id_auth_failed);
