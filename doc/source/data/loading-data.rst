@@ -1053,7 +1053,7 @@ Then, specify your Kafka configuration and read from topics.
     )
 
     # Read with authentication
-    from ray.data.read_api import KafkaAuthConfig
+    from ray.data import KafkaAuthConfig
 
     auth_config = KafkaAuthConfig(
         security_protocol="SASL_SSL",
