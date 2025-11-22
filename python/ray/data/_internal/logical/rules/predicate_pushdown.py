@@ -273,6 +273,9 @@ class PredicatePushdown(Rule):
 
         For operators with multiple inputs, we can push predicates that reference
         only one side down to that side, when semantically safe.
+
+        For joins with column suffixes, this method rewrites the predicate to use
+        original column names before pushing down.
         """
         # Check if operator supports conditional pushdown by having the required method
         if not hasattr(conditional_op, "which_side_to_push_predicate"):
@@ -289,11 +292,22 @@ class PredicatePushdown(Rule):
         # Use the enum value directly as branch index
         branch_idx = push_side.value
 
+        # Get the predicate expression, potentially rewritten to strip suffixes
+        predicate_expr = filter_op._predicate_expr
+
+        # Apply column substitution, passing the side context for Join operators
+        # This avoids the need for temporary mutable state
+        rename_map = conditional_op.get_column_substitutions(push_side)
+        if rename_map:
+            predicate_expr = cls._substitute_predicate_columns(
+                predicate_expr, rename_map
+            )
+
         # Push to the appropriate branch
         new_inputs = list(conditional_op.input_dependencies)
         branch_filter = Filter(
             new_inputs[branch_idx],
-            predicate_expr=filter_op._predicate_expr,
+            predicate_expr=predicate_expr,
         )
         new_inputs[branch_idx] = cls._try_push_down_predicate(branch_filter)
 
