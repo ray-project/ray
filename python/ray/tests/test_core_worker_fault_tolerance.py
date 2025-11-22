@@ -172,7 +172,7 @@ def inject_cancel_remote_task_rpc_failure(monkeypatch, request):
     failure = RPC_FAILURE_MAP[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        f"CoreWorkerService.grpc_client.CancelRemoteTask=1:{failure}",
+        f"CoreWorkerService.grpc_client.RequestOwnerToCancelTask=1:{failure}",
     )
 
 

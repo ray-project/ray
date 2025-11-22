@@ -318,6 +318,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                             rpc::KillLocalActorReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
+                             rpc::CancelLocalTaskReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 
