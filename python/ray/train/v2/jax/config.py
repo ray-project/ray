@@ -59,10 +59,13 @@ def _setup_jax_distributed_environment(
 
     if not jax_platforms and use_gpu:
         os.environ["JAX_PLATFORMS"] = "cuda"
-
-        num_gpus = resources_per_worker.get("GPU", 0)
-        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in range(num_gpus))
         jax_platforms = "cuda"
+
+    if "cuda" in jax_platforms.split(","):
+        num_gpus_per_worker = resources_per_worker.get("GPU", 0)
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
+            str(i) for i in range(num_gpus_per_worker)
+        )
 
     import jax
 
@@ -70,7 +73,6 @@ def _setup_jax_distributed_environment(
         jax.distributed.initialize(master_addr_with_port, num_workers, index)
 
     if "cuda" in jax_platforms.split(","):
-        num_gpus_per_worker = resources_per_worker.get("GPU", 0)
         if num_gpus_per_worker > 0:
             local_device_ids = list(range(num_gpus_per_worker))
         else:
@@ -78,9 +80,7 @@ def _setup_jax_distributed_environment(
         jax.distributed.initialize(
             master_addr_with_port, num_workers, index, local_device_ids
         )
-        print(
-            f">>> Initialized JAX distributed with {num_gpus_per_worker} GPUs per worker"
-        )
+    logger.info("Initialized JAX distributed.")
 
 
 def _shutdown_jax_distributed():
