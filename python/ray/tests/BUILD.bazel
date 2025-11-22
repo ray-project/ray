@@ -640,6 +640,7 @@ py_test_module_list(
     files = [
         "gpu_objects/test_gpu_objects_nccl.py",
         "gpu_objects/test_gpu_objects_nixl.py",
+        "test_tensor_zero_copy_serialization.py",
     ],
     tags = [
         "custom_setup",
