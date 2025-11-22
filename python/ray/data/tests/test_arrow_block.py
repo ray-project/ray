@@ -22,7 +22,7 @@ from ray.data._internal.arrow_block import (
     ArrowBlockColumnAccessor,
     _get_max_chunk_size,
 )
-from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
+from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array, concat
 from ray.data._internal.util import GiB, MiB
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
@@ -553,34 +553,24 @@ def test_arrow_block_max_chunk_size(table_data, max_chunk_size_bytes, expected):
 
 
 def test_arrow_block_concat():
-    def gen_block(table):
-        if table["item"][0].as_py() == 0:
-            return pa.table(
+    table1 = pa.table(
+        {
+            "a": [1, 2, 3],
+            "s": [
                 {
-                    "a": [1, 2, 3],
-                    "s": [
-                        {
-                            "x": 7,
-                        },
-                        {
-                            "x": 8,
-                        },
-                        {
-                            "x": 9,
-                        },
-                    ],
+                    "x": 1,
                 }
-            )
-        return pa.table(
-            {
-                "b": [4, 5, 6],
-            }
-        )
-
-    dataset = ray.data.from_items([0, 1], override_num_blocks=2)
-    mapped = dataset.map_batches(gen_block, batch_size=1, batch_format="pyarrow")
-    mapped = mapped.map_batches(lambda x: x, batch_size=2, batch_format="pyarrow")
-    mapped.materialize()
+                for _ in range(3)
+            ],
+        }
+    )
+    table2 = pa.table(
+        {
+            "b": [4, 5, 6],
+        }
+    )
+    table = concat([table1, table2])
+    assert set(table.column_names) == {"a", "s", "b"}
 
 
 if __name__ == "__main__":
