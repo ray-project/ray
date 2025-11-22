@@ -385,40 +385,40 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._map_transformer_ref = ray.put(map_transformer)
         self._warn_large_udf()
 
-    def _warn_large_udf(self):
-        """Print a warning if the UDF is too large."""
-        udf_size = ray.experimental.get_local_object_locations(
-            [self._map_transformer_ref]
-        )[self._map_transformer_ref]["object_size"]
-        if udf_size > self.MAP_UDF_WARN_SIZE_THRESHOLD:
-            logger.warning(
-                f"The UDF of operator {self.name} is too large "
-                f"(size = {memory_string(udf_size)}). "
-                "Check if the UDF has accidentally captured large objects. "
-                "Load the large objects in the __init__ method "
-                "or pass them as ObjectRefs instead."
+        def _warn_large_udf(self) -> None:
+            """Print a warning if the UDF is too large."""
+            udf_locations = ray.experimental.get_local_object_locations(
+                [self._map_transformer_ref]
             )
+            udf_size = udf_locations[self._map_transformer_ref]["object_size"]
+            if udf_size > self.MAP_UDF_WARN_SIZE_THRESHOLD:
+                logger.warning(
+                    f"The UDF of operator {self.name} is too large "
+                    f"(size = {memory_string(udf_size)}). "
+                    "Check if the UDF has accidentally captured large objects. "
+                    "Load the large objects in the __init__ method or pass them "
+                    "as ObjectRefs instead."
+                )
 
-        def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
-            assert input_index == 0, input_index
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
+        assert input_index == 0, input_index
+        # Add RefBundle to the bundler.
+        self._block_ref_bundler.add_bundle(refs)
+        self._metrics.on_input_queued(refs)
 
-            # Add RefBundle to the bundler.
-            self._block_ref_bundler.add_bundle(refs)
-            self._metrics.on_input_queued(refs)
+        # Drain all complete bundles from the bundler.
+        while self._block_ref_bundler.has_bundle():
+            # The ref bundler combines one or more RefBundles into a new larger
+            # RefBundle. Rather than dequeuing the new RefBundle, which was
+            # never enqueued in the first place, we dequeue the original
+            # RefBundles.
+            input_refs, bundled_input = self._block_ref_bundler.get_next_bundle()
+            for bundle in input_refs:
+                self._metrics.on_input_dequeued(bundle)
 
-            # Drain all complete bundles from the bundler.
-            while self._block_ref_bundler.has_bundle():
-                # The ref bundler combines one or more RefBundles into a new larger
-                # RefBundle. Rather than dequeuing the new RefBundle, which was
-                # never enqueued in the first place, we dequeue the original
-                # RefBundles.
-                input_refs, bundled_input = self._block_ref_bundler.get_next_bundle()
-                for bundle in input_refs:
-                    self._metrics.on_input_dequeued(bundle)
-
-                # If the bundler has a full bundle, add it to the operator's task
-                # submission queue.
-                self._add_bundled_input(bundled_input)
+            # If the bundler has a full bundle, add it to the operator's task
+            # submission queue.
+            self._add_bundled_input(bundled_input)
 
     def _get_dynamic_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
