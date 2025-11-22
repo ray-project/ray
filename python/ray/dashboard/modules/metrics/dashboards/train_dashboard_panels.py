@@ -42,8 +42,8 @@ CONTROLLER_OPERATION_TIME_PANEL = Panel(
 # Ray Train Metrics (Worker)
 WORKER_CHECKPOINT_REPORT_TIME_PANEL = Panel(
     id=3,
-    title="Checkpoint Report Time",
-    description="Time taken to report a checkpoint to storage.",
+    title="Cumulative Checkpoint Report Time",
+    description="Cumulative time taken to report checkpoints to storage.",
     unit="seconds",
     targets=[
         Target(
