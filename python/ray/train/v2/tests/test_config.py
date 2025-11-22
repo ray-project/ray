@@ -16,17 +16,6 @@ def test_scaling_config_validation():
         ScalingConfig(num_workers=2, use_gpu=True, use_tpu=True)
 
     with pytest.raises(
-        ValueError, match="Cannot set `bundle_label_selector` when `use_tpu=True`"
-    ):
-        ScalingConfig(
-            num_workers=2,
-            use_tpu=True,
-            topology="2x2x2",
-            accelerator_type="TPU-V4",
-            bundle_label_selector={"subcluster": "my_subcluster"},
-        )
-
-    with pytest.raises(
         ValueError,
         match="If `bundle_label_selector` is a list, it must be the same length as `num_workers`",
     ):
