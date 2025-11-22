@@ -151,7 +151,7 @@ class ProgressBar(AbstractProgressBar):
 
             enabled = DataContext.get_current().enable_progress_bars
 
-        self._use_logging = not sys.stdout.isatty() and not enabled
+        self._use_logging = not sys.stdout.isatty()
 
         if not enabled:
             self._bar = None
