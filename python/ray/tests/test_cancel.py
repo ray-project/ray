@@ -467,8 +467,7 @@ def test_recursive_cancel(shutdown_only, use_force):
 
     @ray.remote(num_cpus=1)
     def outer():
-        x = [inner.remote()]
-        print(x)
+        _ = inner.remote()
         while True:
             time.sleep(0.1)
 
@@ -480,11 +479,11 @@ def test_recursive_cancel(shutdown_only, use_force):
     many_fut = many_resources.remote()
     with pytest.raises(GetTimeoutError):
         ray.get(many_fut, timeout=1)
-    ray.cancel(outer_fut)
+    ray.cancel(outer_fut, force=use_force)
     with pytest.raises(valid_exceptions(use_force)):
         ray.get(outer_fut, timeout=10)
 
-    assert ray.get(many_fut, timeout=30)
+    assert ray.get(many_fut, timeout=30) == 300
 
 
 def test_recursive_cancel_actor_task(shutdown_only):
