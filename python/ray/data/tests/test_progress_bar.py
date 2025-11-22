@@ -36,7 +36,7 @@ def test_progress_bar(enable_tqdm_ray):
         bar.close = wrapped_close
 
     # Test basic usage
-    with patch('sys.stdout.isatty', return_value=True):
+    with patch("sys.stdout.isatty", return_value=True):
         pb = ProgressBar("", total, "unit", enabled=True)
         assert pb._bar is not None
         patch_close(pb._bar)
@@ -48,7 +48,7 @@ def test_progress_bar(enable_tqdm_ray):
         assert total_at_close == total
 
     # Test if update() exceeds the original total, the total will be updated.
-    with patch('sys.stdout.isatty', return_value=True):
+    with patch("sys.stdout.isatty", return_value=True):
         pb = ProgressBar("", total, "unit", enabled=True)
         assert pb._bar is not None
         patch_close(pb._bar)
@@ -61,7 +61,7 @@ def test_progress_bar(enable_tqdm_ray):
         assert total_at_close == new_total
 
     # Test that if the bar is not complete at close(), the total will be updated.
-    with patch('sys.stdout.isatty', return_value=True):
+    with patch("sys.stdout.isatty", return_value=True):
         pb = ProgressBar("", total, "unit")
         assert pb._bar is not None
         patch_close(pb._bar)
@@ -74,7 +74,7 @@ def test_progress_bar(enable_tqdm_ray):
         assert total_at_close == new_total
 
     # Test updating the total
-    with patch('sys.stdout.isatty', return_value=True):
+    with patch("sys.stdout.isatty", return_value=True):
         pb = ProgressBar("", total, "unit", enabled=True)
         assert pb._bar is not None
         patch_close(pb._bar)
@@ -106,7 +106,7 @@ def test_progress_bar_truncates_chained_operators(
     caplog,
     propagate_logs,
 ):
-    with patch('sys.stdout.isatty', return_value=True):
+    with patch("sys.stdout.isatty", return_value=True):
         with patch.object(ProgressBar, "MAX_NAME_LENGTH", max_line_length):
             pb = ProgressBar(name, None, "unit")
 
@@ -124,62 +124,64 @@ def test_progress_bar_non_interactive_terminal():
     total = 100
 
     # Mock non-interactive terminal
-    with patch('sys.stdout.isatty', return_value=False):
+    with patch("sys.stdout.isatty", return_value=False):
         # Even with enabled=True, progress bar should be disabled in non-interactive terminal
         pb = ProgressBar("test", total, "unit", enabled=True)
         assert pb._bar is None
 
-    with patch('sys.stdout.isatty', return_value=False):
+    with patch("sys.stdout.isatty", return_value=False):
         # Even with enabled=None, progress bar should be disabled in non-interactive terminal
         pb = ProgressBar("test", total, "unit")
         assert pb._bar is None
 
     # Mock interactive terminal
-    with patch('sys.stdout.isatty', return_value=True):
+    with patch("sys.stdout.isatty", return_value=True):
         # With enabled=True, progress bar should be enabled in interactive terminal
         pb = ProgressBar("test", total, "unit", enabled=True)
         assert pb._bar is not None
 
 
-@patch('ray.data._internal.progress_bar.logger')
+@patch("ray.data._internal.progress_bar.logger")
 def test_progress_bar_logging_in_non_interactive_terminal_with_total(mock_logger):
     """Test that progress is logged in non-interactive terminals with known total."""
     total = 10
-    
+
     # Mock time to ensure logging occurs
-    with patch('ray.data._internal.progress_bar.time.time', side_effect=[0, 10]), \
-         patch('sys.stdout.isatty', return_value=False):
+    with patch("ray.data._internal.progress_bar.time.time", side_effect=[0, 10]), patch(
+        "sys.stdout.isatty", return_value=False
+    ):
         pb = ProgressBar("test", total, "unit")
         assert pb._bar is None
         assert pb._use_logging is True
-        
+
         # Reset mock to clear the "progress bar disabled" log call
         mock_logger.info.reset_mock()
-        
+
         # Update progress - should log
         pb.update(5)
-        
+
         # Verify logger.info was called with expected message
         mock_logger.info.assert_called_once_with("Progress (test): 5/10")
 
 
-@patch('ray.data._internal.progress_bar.logger')
+@patch("ray.data._internal.progress_bar.logger")
 def test_progress_bar_logging_in_non_interactive_terminal_without_total(mock_logger):
     """Test that progress is logged in non-interactive terminals with unknown total."""
-    
+
     # Mock time to ensure logging occurs
-    with patch('ray.data._internal.progress_bar.time.time', side_effect=[0, 10]), \
-         patch('sys.stdout.isatty', return_value=False):
+    with patch("ray.data._internal.progress_bar.time.time", side_effect=[0, 10]), patch(
+        "sys.stdout.isatty", return_value=False
+    ):
         pb = ProgressBar("test2", None, "unit")
         assert pb._bar is None
         assert pb._use_logging is True
-        
+
         # Reset mock to clear the "progress bar disabled" log call
         mock_logger.info.reset_mock()
-        
+
         # Update progress - should log
         pb.update(3)
-        
+
         # Verify logger.info was called with expected message for unknown total
         mock_logger.info.assert_called_once_with("Progress (test2): 3/unknown")
 

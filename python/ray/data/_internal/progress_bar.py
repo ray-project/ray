@@ -142,11 +142,13 @@ class ProgressBar(AbstractProgressBar):
             enabled = False
             if log_once("progress_bar_disabled"):
                 logger.info(
-                    "Progress bar disabled because stdout is a non-interactive terminal.")
+                    "Progress bar disabled because stdout is a non-interactive terminal."
+                )
         elif enabled is None:
             # When enabled is None (not explicitly set by the user),
             # check DataContext setting
             from ray.data.context import DataContext
+
             enabled = DataContext.get_current().enable_progress_bars
 
         self._use_logging = not sys.stdout.isatty() and not enabled
@@ -179,6 +181,7 @@ class ProgressBar(AbstractProgressBar):
         self._last_logged_time = 0
         # Log interval in seconds
         from ray.data.context import DataContext
+
         self._log_interval = DataContext.get_current().progress_bar_log_interval
 
     def set_description(self, name: str) -> None:
@@ -211,11 +214,14 @@ class ProgressBar(AbstractProgressBar):
             # Log progress periodically
             current_time = time.time()
             time_diff = current_time - self._last_logged_time
-            should_log = (self._last_logged_time == 0) or (time_diff >= self._log_interval)
+            should_log = (self._last_logged_time == 0) or (
+                time_diff >= self._log_interval
+            )
 
             if should_log:
                 logger.info(
-                    f"Progress ({self._desc}): {self._progress}/{self._total or 'unknown'}")
+                    f"Progress ({self._desc}): {self._progress}/{self._total or 'unknown'}"
+                )
                 self._last_logged_time = current_time
 
     def close(self):
