@@ -245,6 +245,11 @@ class TurbopufferDatasink(Datasink):
         if self.id_column != "id":
             if self.id_column not in table.column_names:
                 raise ValueError(f"ID column '{self.id_column}' not found in table")
+            if "id" in table.column_names:
+                raise ValueError(
+                    "Table already has an 'id' column; cannot also rename "
+                    f"'{self.id_column}' to 'id'. Please disambiguate your schema."
+                )
 
             # Rename by reconstructing table with new schema
             idx = table.column_names.index(self.id_column)
@@ -254,6 +259,11 @@ class TurbopufferDatasink(Datasink):
 
         # Rename vector column if needed
         if self.vector_column != "vector" and self.vector_column in table.column_names:
+            if "vector" in table.column_names:
+                raise ValueError(
+                    "Table already has a 'vector' column; cannot also rename "
+                    f"'{self.vector_column}' to 'vector'. Please disambiguate your schema."
+                )
             idx = table.column_names.index(self.vector_column)
             new_names = list(table.column_names)
             new_names[idx] = "vector"
@@ -364,11 +374,16 @@ class TurbopufferDatasink(Datasink):
                     # Handle arrays of UUIDs (e.g., permissions_user_ids)
                     converted_list = []
                     for item in value:
-                        if isinstance(item, bytes) and len(item) == 16:
-                            # Convert 16-byte UUID to string
-                            converted_list.append(str(uuid_lib.UUID(bytes=item)))
+                        if isinstance(item, bytes):
+                            # Check if it's a 16-byte UUID
+                            if len(item) == 16:
+                                # Convert 16-byte UUID to string
+                                converted_list.append(str(uuid_lib.UUID(bytes=item)))
+                            else:
+                                # For other bytes, convert to hex string
+                                converted_list.append(item.hex())
                         else:
-                            # Keep non-UUID items as-is
+                            # Keep non-bytes items as-is
                             converted_list.append(item)
                     row[key] = converted_list
 

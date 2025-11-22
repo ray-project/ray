@@ -127,6 +127,30 @@ def test_prepare_arrow_table_missing_custom_id_column_raises():
         sink._prepare_arrow_table(table)
 
 
+def test_prepare_arrow_table_raises_on_conflicting_id_column_name():
+    # Table already has an 'id' column and a separate custom id column.
+    table = pa.table({"id": [1, 2], "doc_id": [10, 20]})
+    sink = make_sink(id_column="doc_id")
+
+    with pytest.raises(ValueError, match="already has an 'id' column"):
+        sink._prepare_arrow_table(table)
+
+
+def test_prepare_arrow_table_raises_on_conflicting_vector_column_name():
+    # Table already has a 'vector' column and a separate custom vector column.
+    table = pa.table(
+        {
+            "id": [1, 2],
+            "vector": [[0.1], [0.2]],
+            "emb": [[0.3], [0.4]],
+        }
+    )
+    sink = make_sink(vector_column="emb")
+
+    with pytest.raises(ValueError, match="already has a 'vector' column"):
+        sink._prepare_arrow_table(table)
+
+
 ### 4. Multi-namespace behavior
 
 
@@ -295,7 +319,8 @@ def test_transform_converts_uuid_bytes_and_hex_and_lists():
     assert row["uuid_col"] == str(u)
     assert row["bytes_col"] == other_bytes.hex()
     assert row["list_col"][0] == str(u)
-    assert row["list_col"][1] == other_bytes
+    # Non-UUID bytes inside lists should also be converted to hex for consistency.
+    assert row["list_col"][1] == other_bytes.hex()
 
 
 ### 7. Retry logic and backoff
