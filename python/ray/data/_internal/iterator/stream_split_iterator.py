@@ -167,30 +167,29 @@ class SplitCoordinator:
 
         def gen_epochs():
             epoch_num = 0
-            current_dataset = dataset
             while True:
                 # Call before_epoch_start callbacks in order
                 for callback in self._iterator_callbacks:
                     try:
-                        current_dataset = callback.before_epoch_start(
-                            epoch_num, current_dataset
+                        self._base_dataset = callback.before_epoch_start(
+                            epoch_num, self._base_dataset
                         )
                     except Exception as e:
                         logger.exception(
                             f"Error in before_epoch_start callback {callback.__class__.__name__}: {e}"
                         )
 
-                self._executor = current_dataset._plan.create_executor()
+                self._executor = self._base_dataset._plan.create_executor()
                 output_iterator = execute_to_legacy_bundle_iterator(
-                    self._executor, current_dataset._plan
+                    self._executor, self._base_dataset._plan
                 )
                 yield output_iterator
 
                 # Call after_epoch_ends callbacks in order
                 for callback in self._iterator_callbacks:
                     try:
-                        current_dataset = callback.after_epoch_ends(
-                            epoch_num, current_dataset
+                        self._base_dataset = callback.after_epoch_ends(
+                            epoch_num, self._base_dataset
                         )
                     except Exception as e:
                         logger.exception(
