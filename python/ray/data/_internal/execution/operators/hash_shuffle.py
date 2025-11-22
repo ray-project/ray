@@ -27,7 +27,10 @@ import pyarrow as pa
 
 import ray
 from ray import ObjectRef
-from ray._private.ray_constants import env_integer
+from ray._private.ray_constants import (
+    DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
+    env_integer,
+)
 from ray.actor import ActorHandle
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import (
@@ -1179,7 +1182,12 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         #
         cap = min(4.0, total_available_cluster_resources.cpu * 0.25 / num_aggregators)
 
-        target_num_cpus = min(cap, estimated_aggregator_memory_required / (4 * GiB))
+        worker_heap_memory_proportion = 1 - DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+        target_num_cpus = min(
+            cap,
+            estimated_aggregator_memory_required
+            / (4 * GiB * worker_heap_memory_proportion),
+        )
 
         # Round resource to 2d decimal point (for readability)
         return round(target_num_cpus, 2)
@@ -1260,7 +1268,7 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             +
             # Output (object store)
             output_object_store_memory_required
-        )
+        ) * 2  # When concatenating blocks, the memory usage need to be doubled
 
         logger.info(
             f"Estimated memory requirement for shuffling aggregator "
