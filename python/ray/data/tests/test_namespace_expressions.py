@@ -1,15 +1,17 @@
-"""Tests for list, string, and struct namespace expressions.
+"""Tests for list, string, struct, and image namespace expressions.
 
 This module tests the namespace accessor methods (list, str, struct) that provide
 convenient access to PyArrow compute functions through the expression API.
 """
 
+from io import BytesIO
 from typing import Any
 
 import pandas as pd
 import pyarrow as pa
 import pytest
 from packaging import version
+from PIL import Image
 
 import ray
 from ray.data._internal.util import rows_same
@@ -45,6 +47,21 @@ def _create_dataset(
 
 # Pytest parameterization for all dataset creation formats
 DATASET_FORMATS = ["pandas", "arrow"]
+
+
+def _create_image_bytes(
+    size: tuple[int, int] = (4, 4), color: tuple[int, int, int, int] = (255, 0, 0, 255)
+) -> bytes:
+    """Create an in-memory RGBA PNG image and return its bytes."""
+
+    img = Image.new("RGBA", size, color)
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _bytes_to_image(data: bytes) -> Image.Image:
+    return Image.open(BytesIO(data))
 
 
 # ──────────────────────────────────────
@@ -585,6 +602,64 @@ class TestNamespaceErrors:
 
         with pytest.raises(TypeError, match="List indices must be integers or slices"):
             col("items").list["invalid"]
+
+
+# ──────────────────────────────────────
+# Image Namespace Tests
+# ──────────────────────────────────────
+
+
+class TestImageNamespace:
+    """Tests for image namespace operations."""
+
+    def test_resize_outputs_expected_dimensions(self):
+        """Image.resize should emit PNG bytes with requested dimensions."""
+
+        data = [{"image": _create_image_bytes(size=(6, 4))}]
+        ds = ray.data.from_items(data)
+
+        resized_df = ds.with_column(
+            "resized", col("image").image.resize(2, 3)
+        ).to_pandas()
+
+        out_bytes = resized_df.loc[0, "resized"]
+        assert isinstance(out_bytes, bytes)
+        out_img = _bytes_to_image(out_bytes)
+        assert out_img.size == (2, 3)
+
+    def test_gaussian_blur_modifies_pixels(self):
+        """Gaussian blur should alter pixel intensities for sharp inputs."""
+
+        sharp = Image.new("RGBA", (5, 5), (0, 0, 0, 255))
+        sharp.putpixel((2, 2), (255, 0, 0, 255))
+        buf = BytesIO()
+        sharp.save(buf, format="PNG")
+        data = [{"image": buf.getvalue()}]
+
+        ds = ray.data.from_items(data)
+        blurred_df = ds.with_column(
+            "blurred", col("image").image.gaussian_blur(1.5)
+        ).to_pandas()
+
+        blurred_img = _bytes_to_image(blurred_df.loc[0, "blurred"])
+        assert blurred_img.size == sharp.size
+        assert blurred_img.getpixel((2, 2)) != sharp.getpixel((2, 2))
+
+    def test_image_ops_propagate_nulls(self):
+        """Image namespace functions should keep None inputs as None."""
+
+        data = [
+            {"image": None},
+            {"image": _create_image_bytes(size=(3, 3), color=(0, 255, 0, 255))},
+        ]
+        ds = ray.data.from_items(data)
+
+        resized_df = ds.with_column(
+            "resized", col("image").image.resize(1, 1)
+        ).to_pandas()
+
+        assert resized_df.loc[0, "resized"] is None
+        assert isinstance(resized_df.loc[1, "resized"], bytes)
 
 
 if __name__ == "__main__":
