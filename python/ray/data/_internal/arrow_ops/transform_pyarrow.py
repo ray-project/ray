@@ -718,6 +718,21 @@ def concat(
             f"{schemas_to_unify}"
         ) from e
 
+    # Backfill at the table level first
+    blocks = list(blocks)
+    for i, block in enumerate(blocks):
+        block_columns = set(block.schema.names)
+        blocks[i] = pa.table(
+            {
+                field.name: (
+                    block[field.name]
+                    if field.name in block_columns
+                    else pa.nulls(len(block), type=field.type)
+                )
+                for field in schema
+            }
+        )
+
     # Handle alignment of struct type columns.
     blocks = _align_struct_fields(blocks, schema)
 
