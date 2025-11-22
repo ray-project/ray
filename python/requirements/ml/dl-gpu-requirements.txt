@@ -18,7 +18,7 @@ torch-spline-conv==1.2.2+pt23cu121
 cupy-cuda12x==13.1.0; sys_platform != 'darwin'
 nixl==0.4.0; sys_platform != 'darwin'
 
--find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+--find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 # Downgrading to JAX 0.4.20 to be compatible with CUDA 12.1 (which is older than what JAX 0.4.23+ expects)
 jax==0.4.20; sys_platform != 'darwin'
 jaxlib==0.4.20+cuda12.cudnn89; sys_platform != 'darwin'
