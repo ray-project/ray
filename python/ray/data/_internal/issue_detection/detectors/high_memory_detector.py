@@ -91,6 +91,12 @@ class HighMemoryIssueDetector(IssueDetector):
             if op.metrics.average_max_uss_per_task is None:
                 continue
 
+            # Track if new operators are added after initialization
+            if op not in self._initial_memory_requests:
+                self._initial_memory_requests[op] = (
+                    op._get_dynamic_ray_remote_args().get("memory") or 0
+                )
+
             remote_args = op._get_dynamic_ray_remote_args()
             num_cpus_per_task = remote_args.get("num_cpus", 1)
             max_memory_per_task = self._MEMORY_PER_CORE_ESTIMATE * num_cpus_per_task
