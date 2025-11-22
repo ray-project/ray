@@ -385,37 +385,39 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._map_transformer_ref = ray.put(map_transformer)
         self._warn_large_udf()
 
-    def _warn_large_udf(self):
+    def _warn_large_udf(self) -> None:
         """Print a warning if the UDF is too large."""
-        udf_size = ray.experimental.get_local_object_locations(
+        udf_locations = ray.experimental.get_local_object_locations(
             [self._map_transformer_ref]
-        )[self._map_transformer_ref]["object_size"]
+        )
+        udf_size = udf_locations[self._map_transformer_ref]["object_size"]
         if udf_size > self.MAP_UDF_WARN_SIZE_THRESHOLD:
             logger.warning(
                 f"The UDF of operator {self.name} is too large "
                 f"(size = {memory_string(udf_size)}). "
                 "Check if the UDF has accidentally captured large objects. "
-                "Load the large objects in the __init__ method "
-                "or pass them as ObjectRefs instead."
+                "Load the large objects in the __init__ method or pass them "
+                "as ObjectRefs instead."
             )
 
-    def _add_input_inner(self, refs: RefBundle, input_index: int):
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0, input_index
-
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add_bundle(refs)
         self._metrics.on_input_queued(refs)
 
-        if self._block_ref_bundler.has_bundle():
+        # Drain all complete bundles from the bundler.
+        while self._block_ref_bundler.has_bundle():
             # The ref bundler combines one or more RefBundles into a new larger
-            # RefBundle. Rather than dequeuing the new RefBundle, which was never
-            # enqueued in the first place, we dequeue the original RefBundles.
-            (input_refs, bundled_input) = self._block_ref_bundler.get_next_bundle()
+            # RefBundle. Rather than dequeuing the new RefBundle, which was
+            # never enqueued in the first place, we dequeue the original
+            # RefBundles.
+            input_refs, bundled_input = self._block_ref_bundler.get_next_bundle()
             for bundle in input_refs:
                 self._metrics.on_input_dequeued(bundle)
 
-            # If the bundler has a full bundle, add it to the operator's task submission
-            # queue
+            # If the bundler has a full bundle, add it to the operator's task
+            # submission queue.
             self._add_bundled_input(bundled_input)
 
     def _get_dynamic_ray_remote_args(
@@ -689,24 +691,30 @@ class BlockRefBundler(BaseRefBundler):
         self._bundle_buffer_size_bytes = 0
         self._finalized = False
 
-    def num_blocks(self):
+    def num_blocks(self) -> int:
+        """Return the total number of blocks buffered inside the bundler."""
         return sum(len(b.block_refs) for b in self._bundle_buffer)
 
-    def add_bundle(self, bundle: RefBundle):
-        """Add a bundle to the bundler."""
+    def add_bundle(self, bundle: RefBundle) -> None:
+        """Add a new input bundle to the bundler."""
         self._bundle_buffer.append(bundle)
         self._bundle_buffer_size += self._get_bundle_size(bundle)
         self._bundle_buffer_size_bytes += bundle.size_bytes()
 
     def has_bundle(self) -> bool:
-        """Returns whether the bundler has a bundle."""
+        """Return whether there is enough buffered data to emit a bundle.
+
+        When `done_adding_bundles()` has been called, this will also return True for
+        leftover partial bundles so they can be flushed.
+        """
         return self._bundle_buffer and (
             self._min_rows_per_bundle is None
             or self._bundle_buffer_size >= self._min_rows_per_bundle
-            or (self._finalized and self._bundle_buffer_size >= 0)
+            or self._finalized
         )
 
     def size_bytes(self) -> int:
+        """Estimate the total size in bytes of buffered bundles."""
         return self._bundle_buffer_size_bytes
 
     def get_next_bundle(
@@ -720,8 +728,8 @@ class BlockRefBundler(BaseRefBundler):
         """
         assert self.has_bundle()
 
+        # Short-circuit if no row target was defined.
         if self._min_rows_per_bundle is None:
-            # Short-circuit if no bundle row target was defined.
             assert len(self._bundle_buffer) == 1
             bundle = self._bundle_buffer[0]
             self._bundle_buffer = []
@@ -729,24 +737,24 @@ class BlockRefBundler(BaseRefBundler):
             self._bundle_buffer_size_bytes = 0
             return [bundle], bundle
 
-        remainder = []
-        output_buffer = []
+        output_buffer: List[RefBundle] = []
         output_buffer_size = 0
-
+        remainder: List[RefBundle] = []
         for idx, bundle in enumerate(self._bundle_buffer):
             bundle_size = self._get_bundle_size(bundle)
-
-            # Add bundle to the output buffer so long as either
-            #   - Output buffer size is still 0
-            #   - Output buffer doesn't exceeds the `_min_rows_per_bundle` threshold
+            # Allow adding to output_buffer if:
+            # - the buffer is still empty (avoid empty bundle),
+            # - it does not yet exceed the min_rows threshold.
             if (
                 output_buffer_size < self._min_rows_per_bundle
                 or output_buffer_size == 0
+                or self._finalized
             ):
                 output_buffer.append(bundle)
                 output_buffer_size += bundle_size
             else:
                 remainder = self._bundle_buffer[idx:]
+                break
 
         self._bundle_buffer = remainder
         self._bundle_buffer_size = sum(
@@ -758,12 +766,12 @@ class BlockRefBundler(BaseRefBundler):
 
         return list(output_buffer), _merge_ref_bundles(*output_buffer)
 
-    def done_adding_bundles(self):
-        """Indicate that no more RefBundles will be added to this bundler."""
+    def done_adding_bundles(self) -> None:
+        """Signal that no additional bundles will be added; flush partial data."""
         self._finalized = True
 
     @staticmethod
-    def _get_bundle_size(bundle: RefBundle):
+    def _get_bundle_size(bundle: RefBundle) -> int:
         return bundle.num_rows() if bundle.num_rows() is not None else float("inf")
 
 
