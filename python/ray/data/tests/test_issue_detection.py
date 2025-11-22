@@ -104,36 +104,49 @@ class TestHangingExecutionIssueDetector:
     ):
         """Test hanging detector adaptive thresholds with real Ray Data pipelines and extreme configurations."""
 
-        ctx = DataContext.get_current()
-        # Configure hanging detector with extreme std_factor values
-        ctx.issue_detectors_config.hanging_detector_config = (
-            HangingExecutionIssueDetectorConfig(
-                op_task_stats_min_count=1,
-                op_task_stats_std_factor=1,
-                detection_time_interval_s=0,
+        from ray.data._internal.issue_detection.detectors.hanging_detector import (
+            HangingExecutionState as RealHangingExecutionState,
+        )
+
+        def mock_state_constructor(**kwargs):
+            # set start_time_hanging to 0 for task with task_idx == 1 to make
+            # time.perf_counter() - state_value.start_time_hanging large
+            if kwargs.get("task_idx") == 1:
+                kwargs["start_time_hanging"] = 0.0
+            # Call the real class with kwargs modified
+            return RealHangingExecutionState(**kwargs)
+
+        with patch(
+            "ray.data._internal.issue_detection.detectors.hanging_detector.HangingExecutionState"
+        ) as mock_state_cls:
+            mock_state_cls.side_effect = mock_state_constructor
+
+            ctx = DataContext.get_current()
+            # Configure hanging detector with extreme std_factor values
+            ctx.issue_detectors_config.hanging_detector_config = (
+                HangingExecutionIssueDetectorConfig(
+                    op_task_stats_min_count=1,
+                    op_task_stats_std_factor=1,
+                    detection_time_interval_s=0,
+                )
             )
-        )
 
-        # Create a pipeline with many small blocks to ensure concurrent tasks
-        def sleep_task(x):
-            if x["id"] == 2:
-                # Issue detection is based on the mean + stdev. One of the tasks must take
-                # awhile, so doing it just for one of the rows.
-                time.sleep(1)
-            return x
+            # Create a pipeline with many small blocks to ensure concurrent tasks
+            def sleep_task(x):
+                return x
 
-        with caplog.at_level(logging.WARNING):
-            ray.data.range(3, override_num_blocks=3).map(
-                sleep_task, concurrency=1
-            ).materialize()
+            with caplog.at_level(logging.WARNING):
+                ray.data.range(3, override_num_blocks=3).map(
+                    sleep_task, concurrency=1
+                ).materialize()
 
-        # Check if hanging detection occurred
-        hanging_detected = (
-            "has been running for" in caplog.text
-            and "longer than the average task duration" in caplog.text
-        )
+            # Check if hanging detection occurred
+            hanging_detected = (
+                "has been running for" in caplog.text
+                and "longer than the average task duration" in caplog.text
+            )
 
-        assert hanging_detected, caplog.text
+            assert hanging_detected, caplog.text
 
 
 @pytest.mark.parametrize(
