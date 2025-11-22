@@ -375,6 +375,25 @@ class OpenAiIngress(DeploymentProtocol):
         if len(llm_deployments) != len(self._llm_configs):
             raise ValueError("Duplicate models found. Make sure model ids are unique.")
 
+        # Store log_requests flag in app state for middleware to access
+        # If any LLM config has log_requests=True, enable request lifecycle logging
+        log_requests_enabled = any(
+            getattr(config, "log_requests", False)
+            for config in self._llm_configs.values()
+        )
+        # Set the flag in the app state so middleware can access it
+        # The app is available through serve context when the deployment is running
+        try:
+            from ray import serve as serve_module
+
+            app = serve_module.get_app()
+            if app is not None:
+                app.state.log_requests_enabled = log_requests_enabled
+        except (AttributeError, RuntimeError):
+            # App may not be available during initialization, that's okay
+            # The middleware will default to False (suppress logs)
+            pass
+
         self._init_completed.set()
 
     async def check_health(self):
