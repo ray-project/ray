@@ -125,12 +125,12 @@ def test_progress_bar_non_interactive_terminal():
 
     # Mock non-interactive terminal
     with patch('sys.stdout.isatty', return_value=False):
-        # Even with enabled=True, progress bar should be enabled in non-interactive terminal
+        # Even with enabled=True, progress bar should be disabled in non-interactive terminal
         pb = ProgressBar("test", total, "unit", enabled=True)
-        assert pb._bar is not None
+        assert pb._bar is None
 
     with patch('sys.stdout.isatty', return_value=False):
-        # Even with enabled=None, progress bar should be abled in non-interactive terminal
+        # Even with enabled=None, progress bar should be disabled in non-interactive terminal
         pb = ProgressBar("test", total, "unit")
         assert pb._bar is None
 
