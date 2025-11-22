@@ -4315,8 +4315,10 @@ def read_unity_catalog(
 @PublicAPI(stability="alpha")
 def read_delta(
     path: Union[str, List[str]],
-    version: Optional[int] = None,
     *,
+    version: Optional[Union[int, str]] = None,
+    storage_options: Optional[Dict[str, str]] = None,
+    partition_filters: Optional[List[tuple]] = None,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
@@ -4335,15 +4337,48 @@ def read_delta(
 ):
     """Creates a :class:`~ray.data.Dataset` from Delta Lake files.
 
+    Supports reading from Unity Catalog tables by directly accessing the underlying
+    S3/cloud storage paths. Provides time travel, partition filtering, and other
+    Delta Lake features.
+
     Examples:
+        Read latest version of Delta table:
 
         >>> import ray
-        >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/") # doctest: +SKIP
+        >>> ds = ray.data.read_delta("s3://bucket/path/to/delta-table/") # doctest: +SKIP
+
+        Read specific version (time travel):
+
+        >>> ds = ray.data.read_delta( # doctest: +SKIP
+        ...     "s3://bucket/path/to/delta-table/",
+        ...     version=5
+        ... )
+
+        Read from Unity Catalog managed table (direct S3 path):
+
+        >>> ds = ray.data.read_delta( # doctest: +SKIP
+        ...     "s3://bucket/catalog/schema/table/",
+        ...     storage_options={"AWS_REGION": "us-west-2"}
+        ... )
+
+        Read with partition filtering:
+
+        >>> ds = ray.data.read_delta( # doctest: +SKIP
+        ...     "s3://bucket/path/to/delta-table/",
+        ...     partition_filters=[("year", "=", "2024"), ("month", "=", "01")]
+        ... )
 
     Args:
         path: A single file path for a Delta Lake table. Multiple tables are not yet
             supported.
         version: The version of the Delta Lake table to read. If not specified, the latest version is read.
+        storage_options: Storage options to pass to the Delta Lake reader. These are
+            typically used for cloud storage authentication (e.g., AWS credentials,
+            region settings). For example: ``{"AWS_REGION": "us-west-2"}``.
+        partition_filters: A list of partition filter tuples. Each tuple should be
+            ``(column_name, operator, value)`` where operator is one of ``"="``, ``"!="``,
+            ``"<"``, ``"<="``, ``">"``, ``">="``, ``"in"``, or ``"not in"``.
+            For example: ``[("year", "=", "2024"), ("month", "=", "01")]``.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -4391,44 +4426,39 @@ def read_delta(
         files.
 
     """
-    # Modified from ray.data._internal.util._check_import, which is meant for objects,
-    # not functions. Move to _check_import if moved to a DataSource object.
-    import importlib
+    # Delegate to DeltaDatasource for cleaner implementation
+    from ray.data._internal.datasource.delta import DeltaDatasource
 
-    package = "deltalake"
-    try:
-        importlib.import_module(package)
-    except ImportError:
-        raise ImportError(
-            f"`ray.data.read_delta` depends on '{package}', but '{package}' "
-            f"couldn't be imported. You can install '{package}' by running `pip "
-            f"install {package}`."
-        )
-
-    from deltalake import DeltaTable
-
-    # This seems reasonable to keep it at one table, even Spark doesn't really support
-    # multi-table reads, it's usually up to the developer to keep it in one table.
+    # Validate path
     if not isinstance(path, str):
         raise ValueError("Only a single Delta Lake table path is supported.")
 
-    # Get the parquet file paths from the DeltaTable
-    paths = DeltaTable(path, version=version).file_uris()
-
-    return read_parquet(
-        paths,
+    # Create Delta datasource
+    datasource = DeltaDatasource(
+        path=path,
+        version=version,
+        storage_options=storage_options,
+        partition_filters=partition_filters,
         filesystem=filesystem,
         columns=columns,
-        parallelism=parallelism,
-        ray_remote_args=ray_remote_args,
+        partitioning=partitioning,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
-        partitioning=partitioning,
         shuffle=shuffle,
         include_paths=include_paths,
+        **arrow_parquet_args,
+    )
+
+    # Read dataset using standard datasource API
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
-        **arrow_parquet_args,
     )
 
 
