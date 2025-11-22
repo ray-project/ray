@@ -1,8 +1,12 @@
 import sys
+from unittest.mock import MagicMock, create_autospec
 
 import pytest
 
 import ray
+from ray.data._internal.execution.autoscaling_requester import (
+    get_or_create_autoscaling_requester_actor,
+)
 from ray.data._internal.iterator.stream_split_iterator import (
     SplitCoordinator,
     _DatasetWrapper,
@@ -59,32 +63,50 @@ def test_datasets_callback_multiple_datasets(ray_start_4_cpus):
     assert len(coordinator_actors) == 2
 
 
+def test_after_worker_group_abort():
+    callback = DatasetsCallback(create_dummy_run_context())
+
+    # Mock SplitCoordinator shutdown_executor method
+    coord_mock = create_autospec(SplitCoordinator)
+    remote_mock = MagicMock()
+    coord_mock.shutdown_executor.remote = remote_mock
+    callback._coordinator_actors = [coord_mock]
+
+    dummy_wg_context = WorkerGroupContext(
+        run_attempt_id="test",
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        num_workers=4,
+        resources_per_worker={"CPU": 1},
+    )
+    callback.after_worker_group_abort(dummy_wg_context)
+
+    # shutdown_executor called on SplitCoordinator
+    remote_mock.assert_called_once()
+
+
+def test_after_worker_group_shutdown():
+    callback = DatasetsCallback(create_dummy_run_context())
+
+    # Mock SplitCoordinator shutdown_executor method
+    coord_mock = create_autospec(SplitCoordinator)
+    remote_mock = MagicMock()
+    coord_mock.shutdown_executor.remote = remote_mock
+    callback._coordinator_actors = [coord_mock]
+
+    dummy_wg_context = WorkerGroupContext(
+        run_attempt_id="test",
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        num_workers=4,
+        resources_per_worker={"CPU": 1},
+    )
+    callback.after_worker_group_shutdown(dummy_wg_context)
+
+    # shutdown_executor called on SplitCoordinator
+    remote_mock.assert_called_once()
+
+
 def test_split_coordinator_shutdown_executor(ray_start_4_cpus):
     """Tests that the SplitCoordinator properly requests resources for the data executor and cleans up after it is shutdown"""
-
-    @ray.remote(num_cpus=0)
-    class DummyRequester:
-        def __init__(self):
-            self.calls = []
-
-        def request_resources(self, bundles, execution_id):
-            self.calls.append((bundles, execution_id))
-
-        def get_calls(self):
-            return self.calls
-
-        def clear(self):
-            self.calls = []
-
-    # Create the named requester actor that DefaultClusterAutoscaler will find.
-    dummy_requester = DummyRequester.options(
-        name="AutoscalingRequester",
-        namespace="AutoscalingRequester",
-        lifetime="detached",
-        get_if_exists=True,
-    ).remote()
-    ray.get(dummy_requester.clear.remote())
-
     # Start coordinator and executor
     NUM_SPLITS = 1
     dataset = ray.data.range(100)
@@ -92,16 +114,31 @@ def test_split_coordinator_shutdown_executor(ray_start_4_cpus):
         _DatasetWrapper(dataset), NUM_SPLITS, None
     )
     ray.get(coord.start_epoch.remote(0))
-    calls = ray.get(dummy_requester.get_calls.remote())
+
+    requester = get_or_create_autoscaling_requester_actor()
+    requests = ray.get(
+        requester.__ray_call__.remote(lambda requester: requester._resource_requests)
+    )
+
+    # One request made, with non-empty resource bundle
+    assert len(requests) == 1
+    resource_bundles = list(requests.values())[0][0]
+    assert isinstance(resource_bundles, list)
+    bundle = resource_bundles[0]
+    assert bundle != {}
 
     # Shutdown data executor
     ray.get(coord.shutdown_executor.remote())
-    calls = ray.get(dummy_requester.get_calls.remote())
 
-    # One request made for the data executor, one cleanup request
-    assert len(calls) == 2
-    # Cleanup request made for the data executor
-    assert any(bundles == {} and isinstance(exec_id, str) for bundles, exec_id in calls)
+    requests = ray.get(
+        requester.__ray_call__.remote(lambda requester: requester._resource_requests)
+    )
+
+    # Old resourece request overwritten by new cleanup request
+    assert len(requests) == 1
+    resource_bundles = list(requests.values())[0][0]
+    assert isinstance(resource_bundles, dict)
+    assert resource_bundles == {}
 
 
 if __name__ == "__main__":
