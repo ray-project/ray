@@ -1,6 +1,6 @@
 # If you make changes below this line, please also make the corresponding changes to `dl-cpu-requirements.txt`!
 
-tensorflow==2.20.0; python_version < '3.12' and (sys_platform != 'darwin' or platform_machine != 'arm64')
+tensorflow==2.15.1; python_version < '3.12' and (sys_platform != 'darwin' or platform_machine != 'arm64')
 tensorflow-macos==2.15.1; python_version < '3.12' and sys_platform == 'darwin' and platform_machine == 'arm64'
 tensorflow-probability==0.23.0; python_version < '3.12'
 tensorflow-datasets; python_version < '3.12'
@@ -17,3 +17,4 @@ torch-spline-conv==1.2.2+pt23cu121
 
 cupy-cuda12x==13.4.0; sys_platform != 'darwin'
 nixl==0.4.0; sys_platform != 'darwin'
+fastrlock==0.8.3; sys_platform != 'darwin'

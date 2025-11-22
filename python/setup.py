@@ -268,7 +268,7 @@ if setup_spec.type == SetupType.RAY:
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
         ],
         "observability": [
-            "memray; sys_platform != 'win32'",
+            "memray >= 1.14.0; sys_platform != 'win32'",
         ],
         "serve": [
             "uvicorn[standard]",
@@ -324,7 +324,7 @@ if setup_spec.type == SetupType.RAY:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
-        "dm_tree",
+        "dm_tree; python_version < '3.13'",
         "gymnasium==1.1.1",
         "lz4",
         "ormsgpack==1.7.0",
@@ -405,7 +405,7 @@ if setup_spec.type == SetupType.RAY:
         "click>=7.0",
         "filelock",
         "jsonschema",
-        "msgpack >= 1.0.0, < 2.0.0",
+        "msgpack >= 1.1.0, < 2.0.0",
         "packaging",
         "protobuf>=3.20.3",
         "pyyaml",

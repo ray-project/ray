@@ -27,3 +27,4 @@ torch-spline-conv==1.2.2
 torch-geometric==2.5.3
 
 cupy-cuda12x>=13.4.0; sys_platform != 'darwin'
+fastrlock==0.8.3; sys_platform != 'darwin'
