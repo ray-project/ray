@@ -4,7 +4,11 @@ import time
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
-from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
+from ray.data._internal.execution.interfaces import (
+    ExecutionResources,
+    NodeIdStr,
+    RefBundle,
+)
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block
@@ -46,8 +50,9 @@ class StreamSplitDataIterator(DataIterator):
         See also: `Dataset.streaming_split`.
         """
         # To avoid deadlock, the concurrency on this actor must be set to at least `n`.
+        # We add 1 to the concurrency to allow for a shutdown_executor thread to run.
         coord_actor = SplitCoordinator.options(
-            max_concurrency=n,
+            max_concurrency=n + 1,
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
@@ -246,6 +251,13 @@ class SplitCoordinator:
             # Track overhead time in the instance variable
             self._coordinator_overhead_s += time.perf_counter() - start_time
 
+    def shutdown_executor(self):
+        """Shuts down the internal data executor."""
+        with self._lock:
+            # Call shutdown on the executor
+            if self._executor is not None:
+                self._executor.shutdown(force=False)
+
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""
 
@@ -287,3 +299,4 @@ class SplitCoordinator:
 
         assert self._output_iterator is not None
         return starting_epoch + 1
+
