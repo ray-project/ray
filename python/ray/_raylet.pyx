@@ -280,7 +280,7 @@ cdef optional[ObjectIDIndexType] NULL_PUT_INDEX = nullopt
 # It is thread-safe.
 async_task_id = contextvars.ContextVar('async_task_id', default=None)
 async_task_name = contextvars.ContextVar('async_task_name', default=None)
-async_task_function_name = contextvars.ContextVar('async_task_function_name',                                                  default=None)
+async_task_function_name = contextvars.ContextVar('async_task_function_name', default=None)
 
 
 # Update the type names of the extension type so they are
@@ -2697,7 +2697,6 @@ cdef class CoreWorker:
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None
-        self.fd_to_cgname_dict = None
         self.eventloop_for_default_cg = None
         self.current_runtime_env = None
         self._task_id_to_future_lock = threading.Lock()
@@ -4196,7 +4195,6 @@ cdef class CoreWorker:
             CConcurrencyGroup c_concurrency_group
 
         self.cgname_to_eventloop_dict = {}
-        self.fd_to_cgname_dict = {}
 
         self.eventloop_for_default_cg = get_new_event_loop()
         self.thread_for_default_cg = threading.Thread(
@@ -4208,8 +4206,6 @@ cdef class CoreWorker:
         for i in range(c_defined_concurrency_groups.size()):
             c_concurrency_group = c_defined_concurrency_groups[i]
             cg_name = c_concurrency_group.GetName().decode("ascii")
-            function_descriptors = self.c_function_descriptors_to_python(
-                c_concurrency_group.GetFunctionDescriptors())
 
             async_eventloop = get_new_event_loop()
             async_thread = threading.Thread(
@@ -4222,9 +4218,6 @@ cdef class CoreWorker:
                 "eventloop": async_eventloop,
                 "thread": async_thread,
             }
-
-            for fd in function_descriptors:
-                self.fd_to_cgname_dict[fd] = cg_name
 
     def get_event_loop_executor(self) -> concurrent.futures.ThreadPoolExecutor:
         if self.event_loop_executor is None:
@@ -4243,23 +4236,11 @@ cdef class CoreWorker:
             return self.eventloop_for_default_cg, self.thread_for_default_cg
 
         if specified_cgname is not None:
-            if specified_cgname in self.cgname_to_eventloop_dict:
-                this_group = self.cgname_to_eventloop_dict[specified_cgname]
-                return (this_group["eventloop"], this_group["thread"])
+            this_group = self.cgname_to_eventloop_dict.get(specified_cgname, None)
+            if this_group is not None:
+                return this_group["eventloop"]
 
-        if function_descriptor in self.fd_to_cgname_dict:
-            curr_cgname = self.fd_to_cgname_dict[function_descriptor]
-            if curr_cgname in self.cgname_to_eventloop_dict:
-                return (
-                    self.cgname_to_eventloop_dict[curr_cgname]["eventloop"],
-                    self.cgname_to_eventloop_dict[curr_cgname]["thread"])
-            else:
-                raise ValueError(
-                    "The function {} is defined to be executed "
-                    "in the concurrency group {} . But there is no this group."
-                    .format(function_descriptor, curr_cgname))
-
-        return self.eventloop_for_default_cg, self.thread_for_default_cg
+        return self.eventloop_for_default_cg
 
     def run_async_func_or_coro_in_event_loop(
           self,
@@ -4308,8 +4289,7 @@ cdef class CoreWorker:
         # transport with max_concurrency flag.
         increase_recursion_limit()
 
-        eventloop, _ = self.get_event_loop(
-            function_descriptor, specified_cgname)
+        eventloop = self.get_event_loop(function_descriptor, specified_cgname)
 
         async def async_func():
             try:
