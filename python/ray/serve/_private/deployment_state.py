@@ -3731,6 +3731,33 @@ class DeploymentStateManager:
 
         return deployment_state._get_replica_ranks_mapping()
 
+    def set_prometheus_query_func(self, prom_query_func: Callable):
+        """Set the prometheus query function for testing purposes.
+
+        Args:
+            prom_query_func: Callable to use for Prometheus queries.
+        """
+        self._autoscaling_state_manager.set_prometheus_query_func(prom_query_func)
+
+        # Also propagate the prometheus handler to all running replicas
+        for deployment_state in self._deployment_states.values():
+            for replica in deployment_state._replicas.get(
+                states=[
+                    ReplicaState.RUNNING,
+                    ReplicaState.STARTING,
+                    ReplicaState.UPDATING,
+                ]
+            ):
+                try:
+                    if replica.actor_handle is not None:
+                        replica.actor_handle.set_prometheus_handler.remote(
+                            prom_query_func
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to set prometheus handler for replica {replica.replica_id}: {e}"
+                    )
+
     def get_deployment_outbound_deployments(
         self, deployment_id: DeploymentID
     ) -> Optional[List[DeploymentID]]:

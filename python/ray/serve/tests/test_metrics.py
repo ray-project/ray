@@ -17,11 +17,11 @@ from websockets.sync.client import connect
 import ray
 from ray import serve
 from ray._common.network_utils import parse_address
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import (
+from ray._common.prometheus_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,
 )
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
 from ray.serve._private.test_utils import (
     get_application_url,
