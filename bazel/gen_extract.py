@@ -12,7 +12,6 @@ def gen_extract(
     sub_dir: str = "python",
 ):
     r = runfiles.Create()
-    _repo_name = "io_ray"
 
     root_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
     if not root_dir:
@@ -30,7 +29,7 @@ def gen_extract(
             shutil.rmtree(os.path.join(extract_dir, d), ignore_errors=True)
 
     for zip_file in zip_files:
-        zip_path = r.Rlocation(_repo_name + "/" + zip_file)
+        zip_path = r.Rlocation("_main/" + zip_file)
         if not zip_path:
             raise ValueError(f"Zip file {zip_file} not found")
 
