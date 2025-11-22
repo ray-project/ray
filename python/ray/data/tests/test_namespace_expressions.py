@@ -523,7 +523,7 @@ class TestStructNamespace:
 
 
 # ──────────────────────────────────────
-# Struct Namespace Tests
+# Datatime Namespace Tests
 # ──────────────────────────────────────
 
 
