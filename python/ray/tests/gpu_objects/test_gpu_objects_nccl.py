@@ -11,6 +11,7 @@ from torch.distributed.tensor import (
 )
 
 import ray
+from ray._common.network_utils import find_free_port
 from ray.experimental.collective import create_collective_group
 
 
@@ -85,7 +86,7 @@ def test_p2p(ray_start_regular):
 def test_dtensor_transport(ray_start_regular):
     """Test DTensor transport between actors using NCCL."""
     world_size = 2
-    master_port = 29500
+    master_port = find_free_port()
 
     # Create actors
     actors = [
