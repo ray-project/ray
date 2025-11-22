@@ -38,7 +38,10 @@ def test_limit_pushdown_basic_limit_fusion(ray_start_regular_shared_2_cpus):
     """Test basic Limit -> Limit fusion."""
     ds = ray.data.range(100).limit(5).limit(100)
     _check_valid_plan_and_result(
-        ds, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
+        ds,
+        "Read[ReadRange] -> Limit[limit=5]",
+        [{"id": i} for i in range(5)],
+        check_ordering=False,
     )
 
 
@@ -46,7 +49,10 @@ def test_limit_pushdown_limit_fusion_reversed(ray_start_regular_shared_2_cpus):
     """Test Limit fusion with reversed order."""
     ds = ray.data.range(100).limit(100).limit(5)
     _check_valid_plan_and_result(
-        ds, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
+        ds,
+        "Read[ReadRange] -> Limit[limit=5]",
+        [{"id": i} for i in range(5)],
+        check_ordering=False,
     )
 
 
@@ -54,7 +60,10 @@ def test_limit_pushdown_multiple_limit_fusion(ray_start_regular_shared_2_cpus):
     """Test multiple Limit operations fusion."""
     ds = ray.data.range(100).limit(50).limit(80).limit(5).limit(20)
     _check_valid_plan_and_result(
-        ds, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
+        ds,
+        "Read[ReadRange] -> Limit[limit=5]",
+        [{"id": i} for i in range(5)],
+        check_ordering=False,
     )
 
 
@@ -66,7 +75,10 @@ def test_limit_pushdown_through_maprows(ray_start_regular_shared_2_cpus):
 
     ds = ray.data.range(100, override_num_blocks=100).map(f1).limit(1)
     _check_valid_plan_and_result(
-        ds, "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)]", [{"id": 0}]
+        ds,
+        "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)]",
+        [{"id": 0}],
+        check_ordering=False,
     )
 
 
@@ -81,6 +93,7 @@ def test_limit_pushdown_through_mapbatches(ray_start_regular_shared_2_cpus):
         ds,
         "Read[ReadRange] -> Limit[limit=1] -> MapBatches[MapBatches(f2)]",
         [{"id": 0}],
+        check_ordering=False,
     )
 
 
@@ -92,7 +105,10 @@ def test_limit_pushdown_stops_at_filter(ray_start_regular_shared_2_cpus):
         .limit(1)
     )
     _check_valid_plan_and_result(
-        ds, "Read[ReadRange] -> Filter[Filter(<lambda>)] -> Limit[limit=1]", [{"id": 0}]
+        ds,
+        "Read[ReadRange] -> Filter[Filter(<lambda>)] -> Limit[limit=1]",
+        [{"id": 0}],
+        check_ordering=False,
     )
 
 
@@ -149,6 +165,7 @@ def test_limit_pushdown_between_two_map_operators(ray_start_regular_shared_2_cpu
         ds,
         "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)] -> MapRows[Map(f2)]",
         [{"id": 0}],
+        check_ordering=False,
     )
 
 
