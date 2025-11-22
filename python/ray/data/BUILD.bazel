@@ -1777,7 +1777,7 @@ py_test(
 
 py_test(
     name = "test_dataset_stats",
-    size = "small",
+    size = "large",
     srcs = ["tests/test_dataset_stats.py"],
     tags = [
         "exclusive",

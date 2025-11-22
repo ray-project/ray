@@ -11,6 +11,7 @@ from typing import (
     Optional,
     Protocol,
     Set,
+    Tuple,
     TypeVar,
     Union,
 )
@@ -28,6 +29,8 @@ from ray.data.block import (
 from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
+    import pyarrow as pa
+
     from ray.data.dataset import Schema
 
 
@@ -199,6 +202,13 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         self._target_col_name = on
         self._ignore_nulls = ignore_nulls
 
+        # Extract and store the stat name (e.g., "sum" from "sum(col)")
+        # This avoids string parsing later
+        if "(" in name:
+            self._stat_name = name[: name.index("(")]
+        else:
+            self._stat_name = name
+
         _safe_combine = _null_safe_combine(self.combine, ignore_nulls)
         _safe_aggregate = _null_safe_aggregate(self.aggregate_block, ignore_nulls)
         _safe_finalize = _null_safe_finalize(self.finalize)
@@ -215,6 +225,90 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
 
     def get_target_column(self) -> Optional[str]:
         return self._target_col_name
+
+    def get_stat_name(self) -> str:
+        """Return the stat name (e.g., 'sum', 'mean', 'count').
+
+        Returns the aggregation type extracted from the name during initialization.
+        For example, returns 'sum' for an aggregator named 'sum(col)'.
+        """
+        return self._stat_name
+
+    def get_result_labels(self) -> Optional[List[str]]:
+        """Return labels for list-valued results.
+
+        For aggregators that return list results (e.g., quantiles), this method
+        returns meaningful labels for each element in the list. If the aggregator
+        returns a scalar result or doesn't have meaningful labels, returns None.
+
+        Returns:
+            List of string labels for each element in the result list, or None.
+        """
+        return None
+
+    def format_stats(
+        self, value: Any, agg_type: "pa.DataType", original_type: "pa.DataType"
+    ) -> Dict[str, Tuple[Any, "pa.DataType"]]:
+        """Format aggregation result into stat entries.
+
+        Takes the raw aggregation result and formats it into one or more stat
+        entries. For scalar results, returns a single entry. For list results,
+        expands into multiple indexed entries.
+
+        Args:
+            value: The aggregation result value
+            agg_type: PyArrow type of the aggregation result
+            original_type: PyArrow type of the original column
+
+        Returns:
+            Dictionary mapping stat names to (value, type) tuples
+        """
+        import pyarrow as pa
+
+        stat_name = self.get_stat_name()
+
+        # Handle list results: expand into separate indexed stats
+        # If the value is None but the type is list, it means we got a null result
+        # for a list-type aggregator (e.g., ignore_nulls=True and all nulls).
+        from ray.data.datatype import DataType
+
+        labels = self.get_result_labels()
+        is_list_type = (
+            pa.types.is_list(agg_type)
+            or (labels is not None and len(labels) > 0)
+            or DataType.from_arrow(agg_type).is_list_type()
+        )
+
+        if isinstance(value, list) or (value is None and is_list_type):
+            scalar_type = (
+                agg_type.value_type
+                if DataType.from_arrow(agg_type).is_list_type()
+                else agg_type
+            )
+            if value is None:
+                # If we have explicit labels, expand to Nones for each label.
+                # Otherwise, return as is (unexpanded) since we can't determine expansion size.
+                if labels is not None:
+                    return {
+                        f"{stat_name}[{label}]": (None, scalar_type) for label in labels
+                    }
+            else:
+                if not labels:
+                    labels = [str(idx) for idx in range(len(value))]
+                elif len(labels) != len(value):
+                    raise ValueError(
+                        f"Aggregator {self.__class__.__name__} returned {len(value)} values "
+                        f"but get_result_labels() returned {len(labels)} labels. "
+                        f"These must match to properly format statistics."
+                    )
+
+                return {
+                    f"{stat_name}[{label}]": (list_val, scalar_type)
+                    for label, list_val in zip(labels, value)
+                }
+
+        # Fallback to scalar result for non-list values or unexpandable Nones
+        return {stat_name: (value, agg_type)}
 
     @abc.abstractmethod
     def combine(
@@ -1431,6 +1525,10 @@ class ApproximateQuantile(AggregateFnV2):
 
     def finalize(self, accumulator: bytes) -> List[float]:
         return self._sketch_cls.deserialize(accumulator).get_quantiles(self._quantiles)
+
+    def get_result_labels(self) -> Optional[List[str]]:
+        """Return quantile values as labels for the result list."""
+        return [str(q) for q in self._quantiles]
 
 
 @PublicAPI(stability="alpha")
