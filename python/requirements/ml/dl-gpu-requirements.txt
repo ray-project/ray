@@ -17,3 +17,7 @@ torch-spline-conv==1.2.2+pt23cu121
 
 cupy-cuda12x==13.1.0; sys_platform != 'darwin'
 nixl==0.4.0; sys_platform != 'darwin'
+
+--find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+# Need to explicitly request jax[cuda12] to force upgrade from cpu version to cuda version
+jax[cuda12]==0.4.25; sys_platform != 'darwin'

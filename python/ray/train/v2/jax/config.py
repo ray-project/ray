@@ -124,7 +124,7 @@ class _JaxBackend(Backend):
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: JaxConfig):
         """Cleanup JAX distributed resources when shutting down worker group."""
-        if not backend_config.use_tpu or not backend_config.use_gpu:
+        if not backend_config.use_tpu and not backend_config.use_gpu:
             return
 
         # Shutdown JAX distributed on all workers

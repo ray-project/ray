@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from ray.train import RunConfig, ScalingConfig
@@ -16,6 +18,7 @@ def reduce_health_check_interval(monkeypatch):
     yield
 
 
+@pytest.mark.skipif(sys.platform == "darwin", reason="JAX GPU not supported on macOS")
 def test_jax_distributed_gpu_training(ray_start_4_cpus_2_gpus, tmp_path):
     """Test multi-GPU JAX distributed training.
 
