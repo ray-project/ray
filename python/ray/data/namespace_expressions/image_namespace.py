@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Callable
@@ -12,6 +13,10 @@ from ray.data.expressions import pyarrow_udf
 
 if TYPE_CHECKING:
     from ray.data.expressions import Expr, UDFExpr
+
+
+logger = logging.getLogger(__name__)
+
 
 # --- Optimized Helper Functions ---
 
@@ -54,7 +59,8 @@ def _apply_image_op(
             img = _to_pil(raw_val)
             processed_img = op(img)
             out_list.append(_pil_to_bytes(processed_img))
-        except Exception:
+        except Exception as e:
+            logger.exception(f"Failed to process image, Error: {e}")
             out_list.append(None)
 
     return pyarrow.array(out_list)
