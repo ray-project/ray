@@ -11,6 +11,7 @@ docker
 fault-tolerance
 handling-dependencies
 best-practices
+asyncio-best-practices
 ```
 
 
@@ -22,6 +23,7 @@ This section will walk you through a quickstart of how to generate a Serve confi
 For more details, you can check out the other pages in the production guide:
 - Understand the [Serve config file format](serve-in-production-config-file).
 - Understand how to [deploy on Kubernetes using KubeRay](serve-in-production-kubernetes).
+- Understand [asyncio and concurrency best practices in Ray Serve](serve-asyncio-best-practices).
 - Understand how to [monitor running Serve applications](serve-monitoring).
 
 For deploying on VMs instead of Kubernetes, see [Deploy on VM](serve-in-production-deploying).
@@ -126,6 +128,7 @@ For a deeper dive into how to deploy, update, and monitor Serve applications, se
 - Learn how to [deploy on Kubernetes using KubeRay](serve-in-production-kubernetes).
 - Learn how to [build custom Docker images](serve-custom-docker-images) to use with KubeRay.
 - Learn how to [monitor running Serve applications](serve-monitoring).
+- Learn about [Serve's asyncio concurrency model](serve-asyncio-best-practices).
 
 [KubeRay]: kuberay-index
 [RayService]: kuberay-rayservice-quickstart
