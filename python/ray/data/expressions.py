@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from ray.data.namespace_expressions.list_namespace import _ListNamespace
     from ray.data.namespace_expressions.string_namespace import _StringNamespace
     from ray.data.namespace_expressions.struct_namespace import _StructNamespace
+    from ray.data.namespace_expressions.uri_namespace import _UriNamespace
 
 T = TypeVar("T")
 
@@ -485,6 +486,19 @@ class Expr(ABC):
         from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 
         return _StructNamespace(self)
+
+    @property
+    def uri(self) -> "_UriNamespace":
+        """Access URI-specific operations for this expression.
+
+        Examples
+        --------
+        >>> from ray.data.expressions import col
+        >>> expr = col("uri").uri.download()  # "uri" is a column of URIs
+        """
+        from ray.data.namespace_expressions.uri_namespace import _UriNamespace
+
+        return _UriNamespace(self)
 
     def _unalias(self) -> "Expr":
         return self
@@ -1061,6 +1075,7 @@ __all__ = [
     "_ListNamespace",
     "_StringNamespace",
     "_StructNamespace",
+    "_UriNamespace",
 ]
 
 
@@ -1078,4 +1093,8 @@ def __getattr__(name: str):
         from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 
         return _StructNamespace
+    elif name == "_UriNamespace":
+        from ray.data.namespace_expressions.uri_namespace import _UriNamespace
+
+        return _UriNamespace
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
