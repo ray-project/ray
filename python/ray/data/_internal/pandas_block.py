@@ -38,6 +38,7 @@ from ray.data.expressions import Expr
 
 if TYPE_CHECKING:
     import pandas
+    import polars
     import pyarrow
 
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -478,6 +479,55 @@ class PandasBlockAccessor(TableBlockAccessor):
             arrow_table = arrow_table.set_column(idx, col_name, null_col)
 
         return arrow_table
+
+    def to_polars(self) -> "polars.DataFrame":
+        """Convert this Pandas block into a Polars DataFrame.
+
+        Converts a Pandas DataFrame to a Polars DataFrame. See
+        https://docs.pola.rs/ for Polars documentation.
+
+        Note: This conversion creates a copy of the data. Zero-copy conversion
+        from Pandas to Polars is not possible.
+
+        Returns:
+            A Polars DataFrame containing the data.
+
+        Raises:
+            ImportError: If Polars is not installed.
+            ValueError: If the Pandas DataFrame has duplicate column names or
+                invalid column names.
+        """
+        try:
+            import polars as pl
+        except ImportError:
+            raise ImportError(
+                "Polars is not installed. Install with `pip install polars`. "
+                "See https://docs.pola.rs/ for more information."
+            )
+
+        # Validate column names before conversion
+        # Polars doesn't allow duplicate column names
+        if len(self._table.columns) != len(set(self._table.columns)):
+            duplicates = [
+                col for col in self._table.columns
+                if list(self._table.columns).count(col) > 1
+            ]
+            raise ValueError(
+                f"Pandas DataFrame has duplicate column names: {duplicates}. "
+                "Rename duplicate columns before converting to Polars."
+            )
+
+        # Validate column names are strings
+        for col in self._table.columns:
+            if not isinstance(col, str):
+                raise ValueError(
+                    f"Pandas DataFrame has non-string column name: {col} (type: {type(col)}). "
+                    "All column names must be strings for Polars conversion."
+                )
+
+        # Convert to Polars DataFrame using from_pandas()
+        # See https://docs.pola.rs/api/dataframe/#polars.DataFrame.from_pandas
+        return pl.from_pandas(self._table)
 
     def num_rows(self) -> int:
         return self._table.shape[0]

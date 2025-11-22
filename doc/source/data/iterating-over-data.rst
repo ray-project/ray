@@ -94,6 +94,31 @@ formats by calling one of the following methods:
                sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
             0                5.1               3.5                1.4               0.2       0
             1                4.9               3.0                1.4               0.2       0
+
+    .. tab-item:: Polars
+
+        .. testcode::
+
+            import ray
+            import polars as pl
+
+            ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+
+            for batch in ds.iter_batches(batch_size=2, batch_format="polars"):
+                print(batch)
+
+        .. testoutput::
+            :options: +MOCK
+
+            shape: (2, 5)
+            ┌─────────────────┬────────────────┬─────────────────┬────────────────┬────────┐
+            │ sepal length... │ sepal width... │ petal length... │ petal width... │ target │
+            │ ---             │ ---            │ ---             │ ---            │ ---    │
+            │ f64             │ f64            │ f64             │ f64            │ i64    │
+            ╞═════════════════╪════════════════╪═════════════════╪════════════════╪════════╡
+            │ 5.1             │ 3.5            │ 1.4             │ 0.2            │ 0      │
+            │ 4.9             │ 3.0            │ 1.4             │ 0.2            │ 0      │
+            └─────────────────┴────────────────┴─────────────────┴────────────────┴────────┘
             ...
                sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
             0                6.2               3.4                5.4               2.3       2

@@ -142,7 +142,7 @@ batches is more performant than transforming rows.
 Configuring batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data represents batches as dicts of NumPy ndarrays or pandas DataFrames. By
+Ray Data represents batches as dicts of NumPy ndarrays, pandas DataFrames, or Polars DataFrames. By
 default, Ray Data represents batches as dicts of NumPy ndarrays. To configure the batch type,
 specify ``batch_format`` in :meth:`~ray.data.Dataset.map_batches`. You can return either
 format from your function, but ``batch_format`` should match the input of your function.
@@ -181,9 +181,24 @@ format from your function, but ``batch_format`` should match the input of your f
                 .map_batches(drop_nas, batch_format="pandas")
             )
 
+    .. tab-item:: Polars
+
+        .. testcode::
+
+            import polars as pl
+            import ray
+
+            def drop_nas(batch: pl.DataFrame) -> pl.DataFrame:
+                return batch.drop_nulls()
+
+            ds = (
+                ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+                .map_batches(drop_nas, batch_format="polars")
+            )
+
 The user defined function you pass to :meth:`~ray.data.Dataset.map_batches` is more flexible. Because you can represent batches
 in multiple ways (see :ref:`Configuring batch format <configure_batch_format>`), the function should be of type
-``Callable[DataBatch, DataBatch]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``. In
+``Callable[DataBatch, DataBatch]``, where ``DataBatch = Union[pd.DataFrame, pl.DataFrame, Dict[str, np.ndarray]]``. In
 other words, your function should take as input and output a batch of data which you can represent as a
 pandas DataFrame or a dictionary with string keys and NumPy ndarrays values. For example, your function might look like:
 

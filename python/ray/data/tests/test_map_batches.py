@@ -96,6 +96,26 @@ def test_map_batches_basic(
     values = [s["two"] for s in ds_list]
     assert values == [2, 3, 4]
 
+    # Test Polars
+    try:
+        import polars as pl
+
+        ds = ray.data.read_parquet(str(tmp_path))
+        ds2 = ds.map_batches(
+            lambda polars_df: polars_df.with_columns(
+                [pl.col("one") + 1, pl.col("two") + 1]
+            ),
+            batch_size=1,
+            batch_format="polars",
+        )
+        ds_list = ds2.take()
+        values = [s["one"] for s in ds_list]
+        assert values == [2, 3, 4]
+        values = [s["two"] for s in ds_list]
+        assert values == [3, 4, 5]
+    except ImportError:
+        pytest.skip("Polars not installed")
+
     # Test batch
     size = 300
     ds = ray.data.range(size)
@@ -732,6 +752,26 @@ def test_map_batches_timestamp_nanosecs(
         "datetime64[ns]"
     )
     pd.testing.assert_frame_equal(processed_df_pandas, expected_df)
+
+    # Using polars format
+    try:
+        import polars as pl
+
+        def process_timestamp_data_batch_polars(batch: pl.DataFrame) -> pl.DataFrame:
+            return batch.with_columns(
+                (pl.col("timestamp") + pl.duration(nanoseconds=1)).alias("timestamp")
+            )
+
+        result_polars = ray_data.map_batches(
+            process_timestamp_data_batch_polars, batch_format="polars"
+        )
+        processed_df_polars = result_polars.to_pandas()
+        processed_df_polars["timestamp"] = processed_df_polars["timestamp"].astype(
+            "datetime64[ns]"
+        )
+        pd.testing.assert_frame_equal(processed_df_polars, expected_df)
+    except ImportError:
+        pytest.skip("Polars not installed")
 
 
 def test_map_batches_async_exception_propagation(shutdown_only):
