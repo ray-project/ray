@@ -371,19 +371,16 @@ def test_report_checkpoint_upload_fn(tmp_path):
 
 def test_checkpoint_upload_fn_returns_checkpoint():
     def train_fn():
-        if ray.train.get_context().get_world_rank() == 0:
-            with create_dict_checkpoint({}) as checkpoint:
-                ray.train.report(
-                    metrics={},
-                    checkpoint=checkpoint,
-                    checkpoint_upload_fn=lambda x, y: None,
-                )
-        else:
-            ray.train.report(metrics={}, checkpoint=None)
+        with create_dict_checkpoint({}) as checkpoint:
+            ray.train.report(
+                metrics={},
+                checkpoint=checkpoint,
+                checkpoint_upload_fn=lambda x, y: None,
+            )
 
     trainer = DataParallelTrainer(
         train_fn,
-        scaling_config=ScalingConfig(num_workers=2),
+        scaling_config=ScalingConfig(num_workers=1),
     )
     with pytest.raises(
         WorkerGroupError, match="checkpoint_upload_fn must return a checkpoint"
