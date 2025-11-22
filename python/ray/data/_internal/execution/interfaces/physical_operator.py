@@ -226,6 +226,41 @@ class DataOpTask(OpTask):
                 break
 
             meta = meta_with_schema.metadata
+            SIZE_WARN_THRESHOLD_BYTES = 1024 * 1024  # 1 MiB
+            SIZE_WARN_THRESHOLD_PERCENT = 5
+            # Get actual object store size using get_local_object_locations API
+            # similar to _warn_large_udf
+            metadata_size: int = meta.size_bytes or 0
+            actual_size: int = metadata_size
+            locations = ray.experimental.get_local_object_locations(
+                [self._pending_block_ref]
+            )
+            if (
+                self._pending_block_ref in locations
+                and locations[self._pending_block_ref]["object_size"] is not None
+            ):
+                actual_size = locations[self._pending_block_ref]["object_size"]
+                # Update metadata with actual size
+                meta.size_bytes = actual_size
+                # Warn if there's a significant difference
+                if metadata_size > 0:
+                    size_diff = abs(actual_size - metadata_size)
+                    size_diff_percent = (size_diff / metadata_size) * 100
+                    # Warn if difference is >SIZE_WARN_THRESHOLD_PERCENT or >SIZE_WARN_THRESHOLD_BYTES
+                    if (
+                        size_diff_percent > SIZE_WARN_THRESHOLD_PERCENT
+                        or size_diff > SIZE_WARN_THRESHOLD_BYTES
+                    ):
+                        logger.warning(
+                            f"Block size mismatch detected for operator "
+                            f"{self.__class__.__name__}: "
+                            f"metadata size={metadata_size}, "
+                            f"actual object store size={actual_size}, "
+                            f"difference={size_diff} bytes "
+                            f"({size_diff_percent:.1f}%). "
+                            f"Using actual size for tracking."
+                        )
+
             self._output_ready_callback(
                 RefBundle(
                     [(self._pending_block_ref, meta)],
@@ -236,7 +271,7 @@ class DataOpTask(OpTask):
             self._pending_block_ref = ray.ObjectRef.nil()
             self._pending_meta_ref = ray.ObjectRef.nil()
 
-            bytes_read += meta.size_bytes
+            bytes_read += actual_size
 
         return bytes_read
 
