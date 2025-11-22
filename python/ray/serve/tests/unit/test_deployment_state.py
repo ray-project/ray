@@ -7,7 +7,10 @@ import pytest
 
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray._raylet import NodeID
-from ray.serve._private.autoscaling_state import AutoscalingStateManager
+from ray.serve._private.autoscaling_state import (
+    STALE_AUTOSCALING_METRICS_TIMEOUT,
+    AutoscalingStateManager,
+)
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
@@ -29,6 +32,7 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_scheduler import ReplicaSchedulingRequest
@@ -3634,19 +3638,20 @@ class TestAutoscaling:
         check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
         assert asm.get_total_num_requests_for_deployment(TEST_DEPLOYMENT_ID) == 2
 
-        # Simulate handle was on an actor that died. 10 seconds later
-        # the handle fails to push metrics
-        timer.advance(10)
+        # Simulate handle was on an actor that died. One push interval later,
+        # the handle fails to push metrics, but we're not past the timeout yet
+        # so the metrics will still valid.
+        timer.advance(RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S)
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
         self.scale(dsm, asm, [TEST_DEPLOYMENT_ID])
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
         assert asm.get_total_num_requests_for_deployment(TEST_DEPLOYMENT_ID) == 2
 
-        # Another 10 seconds later handle still fails to push metrics. At
-        # this point the data from the handle should be invalidated. As a
+        # After the metrics timeout, the handle still fails to push metrics.
+        # At this point the data from the handle should be invalidated. As a
         # result, the replicas should scale back down to 0.
-        timer.advance(10)
+        timer.advance(STALE_AUTOSCALING_METRICS_TIMEOUT)
         asm.drop_stale_handle_metrics(dsm.get_alive_replica_actor_ids())
         # The first update will trigger the first stage of downscaling to 1
         self.scale(dsm, asm, [TEST_DEPLOYMENT_ID])
