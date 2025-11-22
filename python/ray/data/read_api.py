@@ -4083,6 +4083,7 @@ def read_iceberg(
 def read_lance(
     uri: str,
     *,
+    version: Optional[Union[int, str]] = None,
     columns: Optional[List[str]] = None,
     filter: Optional[str] = None,
     storage_options: Optional[Dict[str, str]] = None,
@@ -4109,6 +4110,9 @@ def read_lance(
     Args:
         uri: The URI of the Lance dataset to read from. Local file paths, S3, and GCS
             are supported.
+        version: Load a specific version of the Lance dataset. This can be an
+            integer version number or a string tag. By default, the
+            latest version is loaded.
         columns: The columns to read. By default, all columns are read.
         filter: Read returns only the rows matching the filter. By default, no
             filter is applied.
@@ -4140,6 +4144,7 @@ def read_lance(
     """  # noqa: E501
     datasource = LanceDatasource(
         uri=uri,
+        version=version,
         columns=columns,
         filter=filter,
         storage_options=storage_options,
