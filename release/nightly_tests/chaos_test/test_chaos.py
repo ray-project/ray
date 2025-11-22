@@ -50,7 +50,6 @@ def main():
     else:
         assert False
 
-    start = time.time()
     node_killer = None
 
     if args.disable_resource_killer:
@@ -62,6 +61,7 @@ def main():
         node_killer.run.remote()
         print("ResourceKiller started")
 
+    start = time.time()
     workload(total_num_cpus, args.smoke)
     runtime_s = time.time() - start
     runtime_s = round(runtime_s, 2)
