@@ -326,19 +326,75 @@ cdef class InnerGcsClient:
 
     def get_all_node_info(
         self, timeout: Optional[int | float] = None,
-        state_filter: Optional[int] = None,
+        filters: Optional[List[Tuple[str, str, str]]] = None,
     ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
+        """Get all node info with optional filters.
+
+        Args:
+            timeout: Timeout in seconds
+            filters: List of (key, predicate, value) tuples. Supported keys:
+                - "node_id": Filter by node ID (hex string)
+                - "state": Filter by node state (string, e.g., "ALIVE")
+                - "node_name": Filter by node name
+                - "node_ip_address": Filter by node ip address
+                - "is_head_node": Filter by head node status (bool)
+
+        Returns:
+            Dictionary mapping NodeID to GcsNodeInfo
+        """
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[CGcsNodeInfo] reply
             CRayStatus status
             optional[CStatusOr[c_vector[CGcsNodeInfo]]] status_or
             optional[CGcsNodeState] c_state_filter = nullopt
-            optional[CNodeSelector] c_node_selector = nullopt
-        if state_filter is not None:
-            c_state_filter.emplace(<CGcsNodeState>state_filter)
+            c_vector[CNodeSelector] c_node_selectors
+            CNodeSelector node_selector
+
+        # Process filters if provided
+        if filters is not None:
+            from ray._raylet import NodeID as RayNodeID
+            from ray._common.utils import hex_to_binary
+            from ray.core.generated.gcs_pb2 import GcsNodeInfo
+
+            for filter_tuple in filters:
+                key, predicate, value = filter_tuple
+                if predicate != "=":
+                    # Only support EQUAL predicate for source side filtering
+                    continue
+
+                if key == "node_id":
+                    # For node_id, create a separate selector for each value
+                    node_id = RayNodeID.from_hex(value)
+                    node_selector = CNodeSelector()
+                    node_selector.set_node_id(node_id.binary())
+                    c_node_selectors.push_back(node_selector)
+                elif key == "state":
+                    value = value.upper()
+                    if value not in GcsNodeInfo.GcsNodeState.keys():
+                        raise ValueError(f"Invalid node state for filtering: {value}")
+                    enum_value = GcsNodeInfo.GcsNodeState.Value(value)
+                    c_state_filter = make_optional[CGcsNodeState](<CGcsNodeState>enum_value)
+                elif key == "node_name":
+                    node_selector = CNodeSelector()
+                    node_selector.set_node_name(value.encode('utf-8'))
+                    c_node_selectors.push_back(node_selector)
+                elif key == "node_ip_address":
+                    node_selector = CNodeSelector()
+                    node_selector.set_node_ip_address(value.encode('utf-8'))
+                    c_node_selectors.push_back(node_selector)
+                elif key == "is_head_node":
+                    # Convert string value to boolean
+                    if isinstance(value, str):
+                        is_head = value.lower() == "true"
+                    else:
+                        is_head = bool(value)
+                    node_selector = CNodeSelector()
+                    node_selector.set_is_head_node(is_head)
+                    c_node_selectors.push_back(node_selector)
+
         with nogil:
-            status_or = self.inner.get().Nodes().GetAllNoCache(timeout_ms, c_state_filter, c_node_selector)
+            status_or = self.inner.get().Nodes().GetAllNoCache(timeout_ms, c_state_filter, c_node_selectors)
         status = status_or.value().status()
         if status_or.value().ok():
             reply = move(status_or.value().value())
