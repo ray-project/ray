@@ -49,6 +49,7 @@ from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
+from ray.data._internal.datasource.turbopuffer_datasink import TurbopufferDatasink
 from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
@@ -5073,6 +5074,127 @@ class Dataset:
             client_kwargs=client_kwargs,
             table_settings=table_settings,
             max_insert_block_rows=max_insert_block_rows,
+        )
+
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @ConsumptionAPI
+    def write_turbopuffer(
+        self,
+        *,
+        namespace: Optional[str] = None,
+        namespace_column: Optional[str] = None,
+        namespace_format: str = "{namespace}",
+        api_key: Optional[str] = None,
+        region: Optional[str] = None,
+        schema: Optional[Dict[str, Any]] = None,
+        id_column: str = "id",
+        vector_column: str = "vector",
+        batch_size: int = 10000,
+        ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """Write the dataset to a Turbopuffer vector database namespace.
+
+        To control the number of parallel write tasks, use ``.repartition()``
+        before calling this method.
+
+        TurbopufferDatasink supports two write modes:
+
+        * **Single-namespace mode**: Provide ``namespace`` to write all rows into a
+          single Turbopuffer namespace.
+        * **Multi-namespace mode**: Provide ``namespace_column`` (and optionally
+          ``namespace_format``) to group rows by a column and write each group to a
+          separate namespace.
+
+        Examples:
+
+            Single-namespace write:
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds = ds.map_batches(
+                    lambda batch: {
+                        "id": batch["id"],
+                        "vector": ...,
+                    }
+                )
+
+                ds.write_turbopuffer(
+                    namespace="my-namespace",
+                    api_key="<YOUR_API_KEY>",
+                    region="gcp-us-central1",
+                )
+
+            Multi-namespace write (for example, multi-tenant workspaces):
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                # Each row has a "space_id" and an embedding vector.
+                ds = ...
+
+                ds.write_turbopuffer(
+                    namespace_column="space_id",
+                    namespace_format="notion-{namespace}",
+                    api_key="<YOUR_API_KEY>",
+                )
+
+        Args:
+            namespace: Name of a single Turbopuffer namespace to write into.
+                This argument is mutually exclusive with ``namespace_column``.
+            namespace_column: Name of the column whose values determine the
+                target namespace for each row (multi-namespace mode). This
+                argument is mutually exclusive with ``namespace``.
+            namespace_format: Python format string used to construct namespace
+                names in multi-namespace mode. It must contain the
+                ``"{namespace}"`` placeholder, which is replaced with the raw
+                column value (or its UUID or hex string representation).
+            api_key: Turbopuffer API key. If omitted, the value is read from
+                the ``TURBOPUFFER_API_KEY`` environment variable.
+            region: Turbopuffer region identifier (for example,
+                ``"gcp-us-central1"``). If omitted, defaults to
+                ``"gcp-us-central1"``.
+            schema: Optional Turbopuffer schema definition to pass along with
+                writes. If provided, it is forwarded as the ``schema`` argument
+                to ``namespace.write``.
+            id_column: Name of the column to treat as the document identifier.
+                Rows with null IDs are dropped before writing. Defaults to
+                ``"id"``.
+            vector_column: Name of the column containing embedding vectors. If
+                this differs from ``"vector"``, it is renamed to ``"vector"``
+                before writing. Defaults to ``"vector"``.
+            batch_size: Maximum number of rows to include in a single
+                Turbopuffer write call (logical row batching; subject to
+                Turbopuffer's 256MiB request-size limit). Defaults to ``10000``.
+            ray_remote_args: Kwargs passed to :func:`ray.remote` in the write
+                tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently.
+                Set this to control number of tasks to run concurrently. This
+                doesn't change the total number of tasks run. By default,
+                concurrency is dynamically decided based on the available
+                resources.
+        """
+        datasink = TurbopufferDatasink(
+            namespace=namespace,
+            namespace_column=namespace_column,
+            namespace_format=namespace_format,
+            api_key=api_key,
+            region=region,
+            schema=schema,
+            id_column=id_column,
+            vector_column=vector_column,
+            batch_size=batch_size,
         )
 
         self.write_datasink(
