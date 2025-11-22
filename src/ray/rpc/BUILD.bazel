@@ -91,6 +91,7 @@ ray_cc_library(
     hdrs = ["rpc_chaos.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//bazel:nlohmann_json",
         "//src/ray/common:ray_config",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
