@@ -31,6 +31,17 @@ class TensorTransportManager(ABC):
             bool: True if the backend is one-sided, False otherwise.
         """
 
+    @staticmethod
+    @abstractmethod
+    def can_abort_transport() -> bool:
+        """
+        Whether the backend can abort the transport.
+        If this returns False, then Ray will kill involved actors upon system errors to avoid hanging.
+
+        Returns:
+            bool: True if the backend can abort the transport.
+        """
+
     @abstractmethod
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
         """Whether the actor has the tensor transport available.
@@ -102,6 +113,7 @@ class TensorTransportManager(ABC):
     @abstractmethod
     def recv_multiple_tensors(
         tensors: List["torch.Tensor"],
+        obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
     ):
@@ -110,6 +122,7 @@ class TensorTransportManager(ABC):
 
         Args:
             tensors: The pre-allocated tensor space to receive the tensors.
+            obj_id: The object ID for related GPU object.
             tensor_transport_metadata: The tensor transport metadata for the GPU object.
             communicator_metadata: The communicator metadata for the send/recv operation.
 
@@ -138,4 +151,18 @@ class TensorTransportManager(ABC):
         Args:
             obj_id: The ID of the GPU object to garbage collect.
             tensor_transport_meta: The tensor transport metadata.
+        """
+
+    @staticmethod
+    @abstractmethod
+    def abort_transport(
+        obj_id: str,
+        communicator_metadata: CommunicatorMetadata,
+    ):
+        """
+        Abort the transport.
+
+        Args:
+            obj_id: The object ID for related GPU object.
+            communicator_metadata: The communicator metadata for the send/recv operation.
         """

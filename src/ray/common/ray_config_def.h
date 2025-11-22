@@ -39,7 +39,7 @@ RAY_CONFIG(bool, enable_cluster_auth, true)
 /// will be converted to AuthenticationMode enum defined in
 /// rpc/authentication/authentication_mode.h
 /// use GetAuthenticationMode() to get the authentication mode enum value.
-RAY_CONFIG(std::string, auth_mode, "disabled")
+RAY_CONFIG(std::string, AUTH_MODE, "disabled")
 
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available
@@ -271,6 +271,12 @@ RAY_CONFIG(int64_t, raylet_fetch_timeout_milliseconds, 1000)
 /// the worker SIGKILL.
 RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 5000)
 
+/// Timeout for graceful actor shutdown (e.g. when actor goes out of scope).
+/// If an actor does not gracefully shut down within this timeout, it will be force
+/// killed. Set to -1 for infinite timeout to prevent the actor from being force killed
+/// during graceful shutdown.
+RAY_CONFIG(int64_t, actor_graceful_shutdown_timeout_ms, 30000)
+
 /// The duration that we wait after the worker is launched before the
 /// starting_worker_timeout_callback() is called.
 RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
@@ -390,7 +396,7 @@ RAY_CONFIG(std::string, gcs_storage, "memory")
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 
 /// The threshold to trigger a global gc
-RAY_CONFIG(double, high_plasma_storage_usage, 0.7)
+RAY_CONFIG(double, plasma_store_usage_trigger_gc_threshold, 0.7)
 
 /// The amount of time between automatic local Python GC triggers.
 RAY_CONFIG(uint64_t, local_gc_interval_s, 90 * 60)
@@ -399,7 +405,7 @@ RAY_CONFIG(uint64_t, local_gc_interval_s, 90 * 60)
 RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
 
 /// The min amount of time between triggering global_gc in raylet. This only applies
-/// to global GCs triggered due to high_plasma_storage_usage.
+/// to global GCs triggered due to plasma_store_usage_trigger_gc_threshold.
 RAY_CONFIG(uint64_t, global_gc_min_interval_s, 30)
 
 /// Duration to wait between retries for failed tasks.
@@ -531,7 +537,12 @@ RAY_CONFIG(std::string, metric_cardinality_level, "legacy")
 
 /// Whether enable OpenTelemetry as the metrics collection backend. The default is
 /// using OpenCensus.
-RAY_CONFIG(bool, enable_open_telemetry, false)
+RAY_CONFIG(bool, enable_open_telemetry, true)
+
+/// Whether to disable the OpenTelemetry SDK logs. They are disabled by default
+/// to prevent noisy gRPC errors during shutdown.
+/// See https://github.com/ray-project/ray/issues/58256 for details.
+RAY_CONFIG(bool, disable_open_telemetry_sdk_log, true)
 
 /// Whether to enable Ray Event as the event collection backend. The default is
 /// using the Export API.
@@ -840,32 +851,37 @@ RAY_CONFIG(std::string, REDIS_CLIENT_KEY, "")
 RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 
 /// grpc delay testing flags
-///  To use this, simply do
+///  To use this,
 ///      export RAY_testing_asio_delay_us="method1=min_val:max_val,method2=20:100"
 //  The delay is a random number between the interval. If method equals '*',
 //  it will apply to all methods.
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
-/// To use this, simply do
-///     export
-///     RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob"
+/// To use this,
+///  export
+///  RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob:in_flight_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob:in_flight_failure_prob"
 /// If you want to test all rpc failures you can use * as the method name and you can set
 /// -1 max_num_failures to have unlimited failures.
-/// Ex. unlimited failures for all rpc's with 25% request failures and 50% response
-/// failures.
-///     export RAY_testing_rpc_failure="*=-1:25:50"
+/// Ex. unlimited failures for all rpc's with 25% request failures, 50% response
+/// failures, and 10% in-flight failures.
+///     export RAY_testing_rpc_failure="*=-1:25:50:10"
 /// NOTE: Setting the wildcard will override any configuration for other methods.
 ///
-/// You can also provide an optional fourth and/or fifth parameter to specify that there
-/// should be at least a certain amount of failures on the request and response. The
-/// fourth parameter is for the request and the fifth parameter is for the response. By
-/// default these are set to 0, but by setting them to positive values it guarantees
-/// that the first X request RPCs will fail, followed by Y response RPCs that will fail.
+/// You can also provide an optional fifth, sixth, and/or seventh parameter to specify
+/// that there should be at least a certain amount of failures.
+//  The 5th parameter is for request failures.
+//  The 6th parameter is for response failures.
+//  The 7th parameter is for in-flight failures.
+/// By default these are set to 0, but by setting them to positive values it guarantees
+/// that the first X request RPCs will fail, followed by Y response RPCs that will fail,
+/// followed by Z in-flight RPCs that will fail.
 /// Afterwards, it will revert to the probabilistic failures. You can combine this with
 /// the wildcard so that each RPC method will have the same lower bounds applied.
-/// Ex. unlimited failures for all rpc's with 25% request failures and 50% response
-/// failures with at least 2 request failures and 3 response failures.
-///     export RAY_testing_rpc_failure="*=-1:25:50:2:3"
+///
+/// Ex. unlimited failures for all rpc's with 25% request failures, 50% response failures,
+/// and 10% in-flight failures with at least 2 request failures, 3 response failures, and
+/// 1 in-flight failure.
+///     export RAY_testing_rpc_failure="*=-1:25:50:10:2:3:1"
 RAY_CONFIG(std::string, testing_rpc_failure, "")
 /// If this is set, when injecting RPC failures, we'll check if the server and client have
 /// the same address. If they do, we won't inject the failure.
@@ -1001,3 +1017,15 @@ RAY_CONFIG(bool, start_python_gc_manager_thread, true)
 // Whether to enable the feature of outputting error log if the task is
 // still retryable.
 RAY_CONFIG(bool, enable_output_error_log_if_still_retry, true)
+
+// The maximum batch size for ray_syncer_bidi_reactor to sync messages to other nodes.
+// If `gcs_resource_broadcast_max_batch_size == 1`, the ray_syncer_bidi_reactor will
+// disable batching. Otherwise, it will start send with maximum of
+// `gcs_resource_broadcast_max_batch_size` messages before timeout.
+RAY_CONFIG(size_t, gcs_resource_broadcast_max_batch_size, 1)
+
+// The maximum period that the GCS will wait for resource update messages before
+// broadcasting the batch. If `gcs_resource_broadcast_max_batch_size` messages arrive
+// before the timeout, the batch will be broadcasted eagerly. This flag only applies if
+// `gcs_resource_broadcast_max_batch_size != 1`.
+RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)

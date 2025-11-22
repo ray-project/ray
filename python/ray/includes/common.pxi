@@ -35,6 +35,7 @@ from ray.exceptions import (
     ActorDiedError,
     RayError,
     RaySystemError,
+    AuthenticationError,
     RayTaskError,
     ObjectStoreFullError,
     OutOfDiskError,
@@ -105,6 +106,8 @@ cdef int check_status(const CRayStatus& status) except -1 nogil:
         raise ValueError(message)
     elif status.IsIOError():
         raise IOError(message)
+    elif status.IsUnauthenticated():
+        raise AuthenticationError(message)
     elif status.IsRpcError():
         raise RpcError(message, rpc_code=status.rpc_code())
     elif status.IsIntentionalSystemExit():

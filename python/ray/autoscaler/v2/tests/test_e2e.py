@@ -498,7 +498,7 @@ while True:
                 "raylet_report_resources_period_milliseconds": 10000,
                 "global_gc_min_interval_s": 1,
                 "local_gc_interval_s": 1,
-                "high_plasma_storage_usage": 0.2,
+                "plasma_store_usage_trigger_gc_threshold": 0.2,
                 "raylet_check_gc_period_milliseconds": 10,
             },
         )

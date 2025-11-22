@@ -4,7 +4,10 @@ import pytest
 
 import ray
 from ray.data.exceptions import UserCodeException
-from ray.data.preprocessor import PreprocessorNotFittedException
+from ray.data.preprocessor import (
+    PreprocessorNotFittedException,
+    SerializablePreprocessorBase as SerializablePreprocessor,
+)
 from ray.data.preprocessors import (
     Categorizer,
     LabelEncoder,
@@ -731,6 +734,272 @@ def test_categorizer(predefined_dtypes):
     assert pred_out_df.dtypes["C"] == np.int64
     assert pred_out_df.dtypes["B_categorized"] == expected_dtypes["B"]
     assert pred_out_df.dtypes["C_categorized"] == expected_dtypes["C"]
+
+
+class TestEncoderSerialization:
+    """Test basic serialization/deserialization functionality for all encoder preprocessors."""
+
+    def setup_method(self):
+        """Set up test data for encoders."""
+        # Data for categorical encoders
+        self.categorical_df = pd.DataFrame(
+            {
+                "category": ["A", "B", "C", "A", "B", "C", "A"],
+                "grade": ["high", "medium", "low", "high", "medium", "low", "high"],
+                "region": ["north", "south", "east", "west", "north", "south", "east"],
+            }
+        )
+
+        # Data for multi-hot encoder (with lists)
+        self.multihot_df = pd.DataFrame(
+            {
+                "tags": [
+                    ["red", "car"],
+                    ["blue", "bike"],
+                    ["red", "truck"],
+                    ["green", "car"],
+                ],
+                "features": [
+                    ["fast", "loud"],
+                    ["quiet"],
+                    ["fast", "heavy"],
+                    ["quiet", "light"],
+                ],
+            }
+        )
+
+        # Data for label encoder
+        self.label_df = pd.DataFrame(
+            {
+                "target": ["cat", "dog", "bird", "cat", "dog", "bird"],
+                "other": [1, 2, 3, 4, 5, 6],
+            }
+        )
+
+    def test_ordinal_encoder_serialization(self):
+        """Test OrdinalEncoder save/load functionality."""
+        # Create and fit encoder
+        encoder = OrdinalEncoder(columns=["category", "grade"])
+        dataset = ray.data.from_pandas(self.categorical_df)
+        fitted_encoder = encoder.fit(dataset)
+
+        # Test CloudPickle serialization (primary format)
+        serialized = fitted_encoder.serialize()
+        assert isinstance(serialized, bytes)
+        assert serialized.startswith(SerializablePreprocessor.MAGIC_CLOUDPICKLE)
+
+        # Test deserialization
+        deserialized = SerializablePreprocessor.deserialize(serialized)
+        assert isinstance(deserialized, OrdinalEncoder)
+        assert deserialized._fitted
+        assert deserialized.columns == ["category", "grade"]
+        assert deserialized.encode_lists is True  # default value
+
+        # Test functional equivalence
+        test_df = pd.DataFrame({"category": ["A", "B"], "grade": ["high", "low"]})
+
+        original_result = fitted_encoder.transform_batch(test_df.copy())
+        deserialized_result = deserialized.transform_batch(test_df.copy())
+
+        pd.testing.assert_frame_equal(original_result, deserialized_result)
+
+    def test_onehot_encoder_serialization(self):
+        """Test OneHotEncoder save/load functionality."""
+        # Create and fit encoder
+        encoder = OneHotEncoder(columns=["category"], max_categories={"category": 3})
+        dataset = ray.data.from_pandas(self.categorical_df)
+        fitted_encoder = encoder.fit(dataset)
+
+        # Test CloudPickle serialization (primary format)
+        serialized = fitted_encoder.serialize()
+        assert isinstance(serialized, bytes)
+        assert serialized.startswith(SerializablePreprocessor.MAGIC_CLOUDPICKLE)
+
+        # Test deserialization
+        deserialized = SerializablePreprocessor.deserialize(serialized)
+        assert isinstance(deserialized, OneHotEncoder)
+        assert deserialized._fitted
+        assert deserialized.columns == ["category"]
+        assert deserialized.max_categories == {"category": 3}
+
+        # Test functional equivalence
+        test_df = pd.DataFrame({"category": ["A", "B", "C"]})
+
+        original_result = fitted_encoder.transform_batch(test_df.copy())
+        deserialized_result = deserialized.transform_batch(test_df.copy())
+
+        pd.testing.assert_frame_equal(original_result, deserialized_result)
+
+    def test_multihot_encoder_serialization(self):
+        """Test MultiHotEncoder save/load functionality."""
+        # Create and fit encoder
+        encoder = MultiHotEncoder(columns=["tags"], max_categories={"tags": 5})
+        dataset = ray.data.from_pandas(self.multihot_df)
+        fitted_encoder = encoder.fit(dataset)
+
+        # Test CloudPickle serialization (primary format)
+        serialized = fitted_encoder.serialize()
+        assert isinstance(serialized, bytes)
+        assert serialized.startswith(SerializablePreprocessor.MAGIC_CLOUDPICKLE)
+
+        # Test deserialization
+        deserialized = SerializablePreprocessor.deserialize(serialized)
+        assert isinstance(deserialized, MultiHotEncoder)
+        assert deserialized._fitted
+        assert deserialized.columns == ["tags"]
+        assert deserialized.max_categories == {"tags": 5}
+
+        # Test functional equivalence
+        test_df = pd.DataFrame({"tags": [["red", "car"], ["blue", "bike"]]})
+
+        original_result = fitted_encoder.transform_batch(test_df.copy())
+        deserialized_result = deserialized.transform_batch(test_df.copy())
+
+        pd.testing.assert_frame_equal(original_result, deserialized_result)
+
+    def test_label_encoder_serialization(self):
+        """Test LabelEncoder save/load functionality."""
+        # Create and fit encoder
+        encoder = LabelEncoder(label_column="target")
+        dataset = ray.data.from_pandas(self.label_df)
+        fitted_encoder = encoder.fit(dataset)
+
+        # Test CloudPickle serialization (primary format)
+        serialized = fitted_encoder.serialize()
+        assert isinstance(serialized, bytes)
+        assert serialized.startswith(SerializablePreprocessor.MAGIC_CLOUDPICKLE)
+
+        # Test deserialization
+        deserialized = SerializablePreprocessor.deserialize(serialized)
+        assert isinstance(deserialized, LabelEncoder)
+        assert deserialized._fitted
+        assert deserialized.label_column == "target"
+        assert deserialized.output_column == "target"  # default
+
+        # Test functional equivalence
+        test_df = pd.DataFrame({"target": ["cat", "dog", "bird"]})
+
+        original_result = fitted_encoder.transform_batch(test_df.copy())
+        deserialized_result = deserialized.transform_batch(test_df.copy())
+
+        pd.testing.assert_frame_equal(original_result, deserialized_result)
+
+    def test_categorizer_serialization(self):
+        """Test Categorizer save/load functionality."""
+        # Create categorizer with predefined dtypes
+        sex_dtype = pd.CategoricalDtype(categories=["male", "female"], ordered=False)
+        grade_dtype = pd.CategoricalDtype(
+            categories=["high", "medium", "low"], ordered=True
+        )
+
+        categorizer = Categorizer(
+            columns=["category", "grade"],
+            dtypes={"category": sex_dtype, "grade": grade_dtype},
+        )
+
+        # Test CloudPickle serialization (primary format, even without fitting)
+        serialized = categorizer.serialize()
+        assert isinstance(serialized, bytes)
+        assert serialized.startswith(SerializablePreprocessor.MAGIC_CLOUDPICKLE)
+
+        # Test deserialization
+        deserialized = SerializablePreprocessor.deserialize(serialized)
+        assert isinstance(deserialized, Categorizer)
+        assert deserialized.columns == ["category", "grade"]
+
+        # Test dtypes preservation
+        assert len(deserialized.dtypes) == 2
+        assert isinstance(deserialized.dtypes["category"], pd.CategoricalDtype)
+        assert isinstance(deserialized.dtypes["grade"], pd.CategoricalDtype)
+
+        # Check category preservation
+        assert list(deserialized.dtypes["category"].categories) == ["male", "female"]
+        assert deserialized.dtypes["category"].ordered is False
+
+        assert list(deserialized.dtypes["grade"].categories) == [
+            "high",
+            "medium",
+            "low",
+        ]
+        assert deserialized.dtypes["grade"].ordered is True
+
+    def test_categorizer_fitted_serialization(self):
+        """Test Categorizer save/load functionality after fitting."""
+        # Create and fit categorizer (without predefined dtypes)
+        categorizer = Categorizer(columns=["category", "grade"])
+        dataset = ray.data.from_pandas(self.categorical_df)
+        fitted_categorizer = categorizer.fit(dataset)
+
+        # Test CloudPickle serialization (primary format)
+        serialized = fitted_categorizer.serialize()
+        assert isinstance(serialized, bytes)
+        assert serialized.startswith(SerializablePreprocessor.MAGIC_CLOUDPICKLE)
+
+        # Test deserialization
+        deserialized = SerializablePreprocessor.deserialize(serialized)
+        assert isinstance(deserialized, Categorizer)
+        assert deserialized._fitted
+        assert deserialized.columns == ["category", "grade"]
+
+        # Test functional equivalence
+        test_df = pd.DataFrame({"category": ["A", "B"], "grade": ["high", "low"]})
+
+        original_result = fitted_categorizer.transform_batch(test_df.copy())
+        deserialized_result = deserialized.transform_batch(test_df.copy())
+
+        pd.testing.assert_frame_equal(original_result, deserialized_result)
+
+    def test_encoder_serialization_formats(self):
+        """Test that encoders work with different serialization formats."""
+        encoder = OrdinalEncoder(columns=["category"])
+        dataset = ray.data.from_pandas(self.categorical_df)
+        fitted_encoder = encoder.fit(dataset)
+
+        # Test CloudPickle format (default)
+        cloudpickle_serialized = fitted_encoder.serialize()
+        assert isinstance(cloudpickle_serialized, bytes)
+
+        # Test Pickle format (legacy)
+        pickle_serialized = fitted_encoder.serialize()
+        assert isinstance(pickle_serialized, bytes)
+
+        # Both should deserialize to equivalent objects
+        cloudpickle_deserialized = SerializablePreprocessor.deserialize(
+            cloudpickle_serialized
+        )
+        pickle_deserialized = SerializablePreprocessor.deserialize(pickle_serialized)
+
+        # Test functional equivalence
+        test_df = pd.DataFrame({"category": ["A", "B"]})
+
+        cloudpickle_result = cloudpickle_deserialized.transform_batch(test_df.copy())
+        pickle_result = pickle_deserialized.transform_batch(test_df.copy())
+
+        pd.testing.assert_frame_equal(cloudpickle_result, pickle_result)
+
+    def test_encoder_error_handling(self):
+        """Test error handling for encoder serialization."""
+        # Test unknown preprocessor type
+        import cloudpickle
+
+        unknown_data = {
+            "type": "NonExistentEncoder",
+            "version": 1,
+            "fields": {"columns": ["test"]},
+            "stats": {},
+            "stats_type": "default",
+        }
+
+        fake_serialized = (
+            SerializablePreprocessor.MAGIC_CLOUDPICKLE + cloudpickle.dumps(unknown_data)
+        )
+
+        from ray.data.preprocessors.version_support import UnknownPreprocessorError
+
+        with pytest.raises(UnknownPreprocessorError) as exc_info:
+            SerializablePreprocessor.deserialize(fake_serialized)
+
+        assert exc_info.value.preprocessor_type == "NonExistentEncoder"
 
 
 if __name__ == "__main__":

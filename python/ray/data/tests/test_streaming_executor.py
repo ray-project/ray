@@ -40,6 +40,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
+from ray.data._internal.execution.ranker import DefaultRanker
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
     StreamingExecutor,
@@ -49,7 +50,6 @@ from ray.data._internal.execution.streaming_executor import (
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
     OpState,
-    _rank_operators,
     build_streaming_topology,
     get_eligible_operators,
     process_completed_tasks,
@@ -380,9 +380,10 @@ def test_rank_operators(ray_start_regular_shared):
 
     resource_manager.get_op_usage.side_effect = _get_op_usage_mocked
 
-    ranks = _rank_operators([o1, o2, o3, o4], resource_manager)
+    ranker = DefaultRanker()
+    ranks = ranker.rank_operators([o1, o2, o3, o4], {}, resource_manager)
 
-    assert [(True, 1024), (True, 2048), (True, 4096), (False, 8092)] == ranks
+    assert [(1, 1024), (1, 2048), (1, 4096), (0, 8092)] == ranks
 
 
 def test_select_ops_to_run(ray_start_regular_shared):
@@ -428,7 +429,11 @@ def test_select_ops_to_run(ray_start_regular_shared):
         topo = build_streaming_topology(o4, opts)
 
         selected = select_operator_to_run(
-            topo, resource_manager, [], ensure_liveness=ensure_liveness
+            topo,
+            resource_manager,
+            [],
+            ensure_liveness=ensure_liveness,
+            ranker=DefaultRanker(),
         )
 
         assert selected is o4
@@ -439,7 +444,11 @@ def test_select_ops_to_run(ray_start_regular_shared):
         topo = build_streaming_topology(o3, opts)
 
         selected = select_operator_to_run(
-            topo, resource_manager, [], ensure_liveness=ensure_liveness
+            topo,
+            resource_manager,
+            [],
+            ensure_liveness=ensure_liveness,
+            ranker=DefaultRanker(),
         )
 
         assert selected is o1

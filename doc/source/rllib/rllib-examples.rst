@@ -186,7 +186,7 @@ Curriculum learning
 Debugging
 +++++++++
 
-- `Deterministic sampling and training <https://github.com/ray-project/ray/blob/master/rllib/examples/debugging/deterministic_training.py>`__:
+- `Deterministic sampling and training <https://github.com/ray-project/ray/blob/master/rllib/examples/debugging/deterministic_sampling_and_training.py>`__:
    Demonstrates the possibility to seed an experiment through the algorithm config. RLlib passes the seed through to all components that have a copy of the
    :ref:`RL environment <rllib-environments-doc>` and the :ref:`RLModule <rlmodule-guide>` and thus makes sure these components behave deterministically.
    When using a seed, train results should become repeatable. Note that some algorithms, such as :ref:`APPO <appo>` which rely on asynchronous sampling

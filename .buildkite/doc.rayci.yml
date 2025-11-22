@@ -10,7 +10,6 @@ steps:
     matrix:
       - "3.9"
       - "3.10"
-      - "3.12"
     env:
       PYTHON: "{{matrix}}"
       REQUIREMENTS_FILE: "python/deplocks/docs/docbuild_depset_py{{matrix}}.lock"
@@ -30,7 +29,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci/doc:cmd_build
     depends_on: docbuild
-    job_env: docbuild-py3.12
+    job_env: docbuild-py3.10
     tags:
       - oss
       - doc
@@ -54,7 +53,7 @@ steps:
     key: doc_api_annotations
     instance_type: medium
     depends_on: docbuild
-    job_env: docbuild-py3.12
+    job_env: docbuild-py3.10
     commands:
       - bash ci/lint/lint.sh api_annotations
 
@@ -76,8 +75,7 @@ steps:
     key: doc_api_policy_check
     instance_type: medium
     depends_on: docbuild
-    # TODO(aslonnie): migrate to Python 3.12
-    job_env: docbuild-py3.9
+    job_env: docbuild-py3.10
     commands:
       - bash ci/lint/lint.sh api_policy_check
 
@@ -87,7 +85,7 @@ steps:
     commands:
       - make -C doc/ linkcheck_all
     depends_on: docbuild
-    job_env: docbuild-py3.12
+    job_env: docbuild-py3.10
     tags:
       - oss
       - skip-on-premerge

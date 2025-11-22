@@ -755,7 +755,7 @@ async def test_get_upload_package(ray_start_context, tmp_path):
     package_uri = get_uri_for_file(str(pkg_dir / filename))
     protocol, package_name = uri_to_http_components(package_uri)
     package_file = tmp_path / package_name
-    create_package(str(pkg_dir), package_file)
+    create_package(str(pkg_dir), package_file, include_gitignore=True)
 
     resp = requests.get(url.format(protocol=protocol, package_name=package_name))
     assert resp.status_code == 404

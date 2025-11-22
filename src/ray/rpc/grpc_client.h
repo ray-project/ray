@@ -56,42 +56,21 @@ namespace rpc {
     INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms); \
   }
 
-inline std::shared_ptr<grpc::Channel> BuildChannel(
+/// Build a gRPC channel to the specified address.
+///
+/// This is the ONLY recommended way to create gRPC channels in Ray.
+/// Use of raw grpc::CreateCustomChannel() should be avoided.
+///
+/// Authentication tokens are automatically added in metadata when RAY_AUTH_MODE=token.
+///
+/// \param address The server address
+/// \param port The server port
+/// \param arguments Optional channel arguments for customization
+/// \return A shared pointer to the gRPC channel
+std::shared_ptr<grpc::Channel> BuildChannel(
     const std::string &address,
     int port,
-    std::optional<grpc::ChannelArguments> arguments = std::nullopt) {
-  if (!arguments.has_value()) {
-    arguments = grpc::ChannelArguments();
-  }
-
-  arguments->SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
-                    ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
-  arguments->SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
-  arguments->SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
-  arguments->SetInt(GRPC_ARG_HTTP2_WRITE_BUFFER_SIZE,
-                    ::RayConfig::instance().grpc_stream_buffer_size());
-  std::shared_ptr<grpc::Channel> channel;
-  if (::RayConfig::instance().USE_TLS()) {
-    std::string server_cert_file = std::string(::RayConfig::instance().TLS_SERVER_CERT());
-    std::string server_key_file = std::string(::RayConfig::instance().TLS_SERVER_KEY());
-    std::string root_cert_file = std::string(::RayConfig::instance().TLS_CA_CERT());
-    std::string server_cert_chain = ReadCert(server_cert_file);
-    std::string private_key = ReadCert(server_key_file);
-    std::string cacert = ReadCert(root_cert_file);
-
-    grpc::SslCredentialsOptions ssl_opts;
-    ssl_opts.pem_root_certs = cacert;
-    ssl_opts.pem_private_key = private_key;
-    ssl_opts.pem_cert_chain = server_cert_chain;
-    auto ssl_creds = grpc::SslCredentials(ssl_opts);
-    channel =
-        grpc::CreateCustomChannel(BuildAddress(address, port), ssl_creds, *arguments);
-  } else {
-    channel = grpc::CreateCustomChannel(
-        BuildAddress(address, port), grpc::InsecureChannelCredentials(), *arguments);
-  }
-  return channel;
-}
+    std::optional<grpc::ChannelArguments> arguments = std::nullopt);
 
 template <class GrpcService>
 class GrpcClient {
@@ -142,7 +121,7 @@ class GrpcClient {
                                       ? testing::RpcFailure::None
                                       : testing::GetRpcFailure(call_name);
     if (failure == testing::RpcFailure::Request) {
-      // Simulate the case where the PRC fails before server receives
+      // Simulate the case where the RPC fails before server receives
       // the request.
       RAY_LOG(INFO) << "Inject RPC request failure for " << call_name;
       client_call_manager_.GetMainService().post(
@@ -165,6 +144,26 @@ class GrpcClient {
           },
           std::move(call_name),
           method_timeout_ms);
+    } else if (failure == testing::RpcFailure::InFlight) {
+      // Simulate the case where the RPC fails after sending the request to the server but
+      // before the reply is sent back.
+      RAY_LOG(INFO) << "Inject RPC response failure while request in flight for "
+                    << call_name;
+      client_call_manager_.CreateCall<GrpcService, Request, Reply>(
+          *stub_,
+          prepare_async_function,
+          request,
+          [](const Status &, const Reply &) {
+            // The actual reply is dropped.
+          },
+          std::move(call_name),
+          method_timeout_ms);
+      client_call_manager_.GetMainService().post(
+          [callback]() {
+            callback(Status::RpcError("Unavailable", grpc::StatusCode::UNAVAILABLE),
+                     Reply());
+          },
+          "RpcChaos");
     } else {
       auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
           *stub_,

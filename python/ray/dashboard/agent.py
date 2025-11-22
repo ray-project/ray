@@ -82,6 +82,12 @@ class DashboardAgent:
     def _init_non_minimal(self):
         from grpc import aio as aiogrpc
 
+        from ray._private.authentication.authentication_utils import (
+            is_token_auth_enabled,
+        )
+        from ray._private.authentication.grpc_authentication_server_interceptor import (
+            AsyncAuthenticationServerInterceptor,
+        )
         from ray._private.tls_utils import add_port_to_grpc_server
         from ray.dashboard.http_server_agent import HttpServerAgent
 
@@ -98,7 +104,13 @@ class DashboardAgent:
         else:
             aiogrpc.init_grpc_aio()
 
+        # Add authentication interceptor if token auth is enabled
+        interceptors = []
+        if is_token_auth_enabled():
+            interceptors.append(AsyncAuthenticationServerInterceptor())
+
         self.server = aiogrpc.server(
+            interceptors=interceptors,
             options=(
                 ("grpc.so_reuseport", 0),
                 (
@@ -109,7 +121,7 @@ class DashboardAgent:
                     "grpc.max_receive_message_length",
                     AGENT_GRPC_MAX_MESSAGE_LENGTH,
                 ),
-            )  # noqa
+            ),  # noqa
         )
         try:
             add_port_to_grpc_server(self.server, build_address(self.ip, self.grpc_port))

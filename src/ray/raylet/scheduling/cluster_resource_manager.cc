@@ -20,6 +20,7 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 
@@ -300,6 +301,10 @@ void ClusterResourceManager::SetNodeLabels(
     it = nodes_.emplace(node_id, node_resources).first;
   }
   it->second.GetMutableLocalView()->labels = std::move(labels);
+}
+
+void ClusterResourceManager::RecordMetrics() const {
+  ray::stats::STATS_local_resource_view_node_count.Record(nodes_.size());
 }
 
 }  // namespace ray

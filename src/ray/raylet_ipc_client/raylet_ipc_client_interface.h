@@ -51,7 +51,7 @@ class ScopedResponse {
   }
 
   ScopedResponse &operator=(ScopedResponse &&other) {
-    if (this == &other) {
+    if (this != &other) {
       HandleCleanup();
       this->cleanup_ = other.cleanup_;
       other.cleanup_ = nullptr;
@@ -150,7 +150,8 @@ class RayletIpcClientInterface {
   /// request to clean up the GetObjectsRequest upon destruction.
   virtual StatusOr<ScopedResponse> AsyncGetObjects(
       const std::vector<ObjectID> &object_ids,
-      const std::vector<rpc::Address> &owner_addresses) = 0;
+      const std::vector<rpc::Address> &owner_addresses,
+      int64_t get_request_id) = 0;
 
   /// Wait for the given objects until timeout expires or num_return objects are
   /// found.

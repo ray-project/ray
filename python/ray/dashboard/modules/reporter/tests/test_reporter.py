@@ -198,23 +198,8 @@ def enable_grpc_metrics_collection():
     os.environ.pop("RAY_enable_grpc_metrics_collection_for", None)
 
 
-@pytest.fixture
-def enable_open_telemetry(request):
-    """
-    Fixture to enable OpenTelemetry for the test.
-    """
-    if request.param:
-        os.environ["RAY_enable_open_telemetry"] = "true"
-    else:
-        os.environ["RAY_enable_open_telemetry"] = "false"
-    yield
-    os.environ.pop("RAY_enable_open_telemetry", None)
-
-
 @pytest.mark.skipif(prometheus_client is None, reason="prometheus_client not installed")
-@pytest.mark.parametrize("enable_open_telemetry", [True, False], indirect=True)
 def test_prometheus_physical_stats_record(
-    enable_open_telemetry,
     enable_grpc_metrics_collection,
     enable_test_module,
     shutdown_only,
