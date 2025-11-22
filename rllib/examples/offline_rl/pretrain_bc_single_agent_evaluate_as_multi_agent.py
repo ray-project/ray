@@ -89,7 +89,7 @@ if __name__ == "__main__":
 
     rllib_dir = Path(__file__).parent.parent.parent
     print(f"rllib dir={rllib_dir}")
-    offline_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
+    offline_file = os.path.join(rllib_dir, "offline/tests/data/cartpole/large.json")
 
     base_config = (
         BCConfig()

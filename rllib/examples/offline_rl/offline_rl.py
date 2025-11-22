@@ -92,7 +92,7 @@ if __name__ == "__main__":
         .environment("Pendulum-v1", normalize_actions=True)
         .offline_data(
             input_config={
-                "paths": ["tests/data/pendulum/enormous.zip"],
+                "paths": ["offline/tests/data/pendulum/enormous.zip"],
                 "format": "json",
             }
         )

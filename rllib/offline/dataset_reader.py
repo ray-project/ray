@@ -61,7 +61,7 @@ def _unzip_if_needed(paths: List[str], format: str):
                 if not Path(path).exists():
                     relative_path = str(Path(__file__).parent.parent / path)
                     if not Path(relative_path).exists():
-                        raise FileNotFoundError(f"File not found: {path}")
+                        raise FileNotFoundError(f"File not found: {relative_path}")
                     path = relative_path
                 ret_paths.append(path)
     return ret_paths

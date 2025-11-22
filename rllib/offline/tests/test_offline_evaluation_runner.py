@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 class TestOfflineEvaluationRunner(unittest.TestCase):
     def setUp(self) -> None:
-        data_path = "tests/data/cartpole/cartpole-v1_large"
+        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
         self.base_path = Path(__file__).parents[2]
         self.data_path = "local://" + self.base_path.joinpath(data_path).as_posix()
         # Assign the observation and action spaces.

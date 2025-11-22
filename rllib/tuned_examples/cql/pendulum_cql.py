@@ -26,7 +26,7 @@ assert (
 base_path = Path(__file__).parents[2]
 # Use the larger data set of Pendulum we have. Note, these are
 # parquet data, the default in `AlgorithmConfig.offline_data`.
-data_path = base_path / "tests/data/pendulum/pendulum-v1_enormous"
+data_path = base_path / "offline/tests/data/pendulum/pendulum-v1_enormous"
 
 # Define the configuration.
 config = (
