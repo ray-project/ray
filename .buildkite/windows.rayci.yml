@@ -30,7 +30,9 @@ steps:
     depends_on: windowsbuild
 
   - label: ":ray: core: :windows: cpp tests"
-    tags: core_cpp
+    tags:
+      - core_cpp
+      - windows
     job_env: WINDOWS
     instance_type: windows
     commands:
@@ -46,7 +48,9 @@ steps:
     depends_on: windowsbuild
 
   - label: ":ray: core: :windows: python tests"
-    tags: python
+    tags:
+      - python
+      - windows
     job_env: WINDOWS
     instance_type: windows
     parallelism: 5
@@ -63,7 +67,9 @@ steps:
     depends_on: windowsbuild
 
   - label: ":ray-serve: serve: :windows: tests"
-    tags: serve
+    tags:
+      - serve
+      - windows
     job_env: WINDOWS
     instance_type: windows
     parallelism: 2
@@ -80,7 +86,9 @@ steps:
     depends_on: windowsbuild
 
   - label: ":ray-serve: serve: :windows: enormous tests"
-    tags: serve
+    tags:
+      - serve
+      - windows
     job_env: WINDOWS
     instance_type: windows
     commands:
@@ -98,6 +106,7 @@ steps:
   - label: ":train: ml: :windows: tests"
     tags:
       - train
+      - windows
     job_env: WINDOWS
     instance_type: windows
     commands:
@@ -114,6 +123,7 @@ steps:
     key: windows_core_flaky_tests
     tags:
       - flaky
+      - windows
       - skip-on-premerge
     job_env: WINDOWS
     instance_type: windows
@@ -136,6 +146,7 @@ steps:
     key: windows_serve_flaky_tests
     tags:
       - flaky
+      - windows
       - skip-on-premerge
     job_env: WINDOWS
     instance_type: windows
