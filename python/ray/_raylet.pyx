@@ -3764,6 +3764,7 @@ cdef class CoreWorker:
         cdef:
             CTaskID c_task_id
             c_bool is_canceled
+            TaskID task_id
 
         # Get the current task ID
         task_id = self.get_current_task_id()
