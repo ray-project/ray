@@ -2,6 +2,7 @@ import io
 import logging
 import re
 import time
+from typing import TYPE_CHECKING, List
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,7 +14,6 @@ from ray.data._internal.execution.operators.input_data_buffer import (
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     MapOperator,
 )
-from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.issue_detection.detectors.hanging_detector import (
     DEFAULT_OP_TASK_STATS_MIN_COUNT,
     DEFAULT_OP_TASK_STATS_STD_FACTOR,
@@ -25,6 +25,12 @@ from ray.data._internal.issue_detection.detectors.high_memory_detector import (
 )
 from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
+
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        PhysicalOperator,
+    )
 
 
 class TestHangingExecutionIssueDetector:
@@ -163,9 +169,15 @@ def test_high_memory_detection(
     )
     map_operator._metrics = MagicMock(average_max_uss_per_task=actual_memory)
     topology = {input_data_buffer: MagicMock(), map_operator: MagicMock()}
-    executor = MagicMock(_topology=topology)
 
-    detector = HighMemoryIssueDetector(executor, ctx)
+    def get_operators_fn() -> List["PhysicalOperator"]:
+        return list(topology.keys())
+
+    detector = HighMemoryIssueDetector(
+        dataset_id="id",
+        get_operators_fn=get_operators_fn,
+        config=ctx.issue_detectors_config.high_memory_detector_config,
+    )
     issues = detector.detect()
 
     assert should_return_issue == bool(issues)

@@ -1,6 +1,6 @@
 import textwrap
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Callable, Dict, List
 
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import memory_string
@@ -13,6 +13,9 @@ from ray.data._internal.issue_detection.issue_detector import (
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.context import DataContext
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        PhysicalOperator,
+    )
 
 HIGH_MEMORY_PERIODIC_WARNING = """
 Operator '{op_name}' uses {memory_per_task} of memory per task on average, but Ray
@@ -35,18 +38,22 @@ class HighMemoryIssueDetectorConfig:
 
 
 class HighMemoryIssueDetector(IssueDetector):
-
     # Many nodes have a 4 GiB : 1 core ratio, but this isn't always the case (e.g., for
     # high memory nodes).
     _MEMORY_PER_CORE_ESTIMATE = 4 * 1024**3
 
-    def __init__(self, executor: "StreamingExecutor", ctx: "DataContext"):
-        self._executor = executor
-        self._ctx = ctx
-        self._detector_cfg = ctx.issue_detectors_config.high_memory_detector_config
+    def __init__(
+        self,
+        dataset_id: str,
+        get_operators_fn: Callable[[], List["PhysicalOperator"]],
+        config: "HighMemoryIssueDetectorConfig",
+    ):
+        self._dataset_id = dataset_id
+        self._detector_cfg = config
+        self._get_operators = get_operators_fn
 
         self._initial_memory_requests: Dict[MapOperator, int] = {}
-        for op in self._executor._topology.keys():
+        for op in get_operators_fn():
             if isinstance(op, MapOperator):
                 self._initial_memory_requests[op] = (
                     op._get_dynamic_ray_remote_args().get("memory") or 0
@@ -62,11 +69,22 @@ class HighMemoryIssueDetector(IssueDetector):
         Returns:
             An instance of HighMemoryIssueDetector.
         """
-        return cls(executor, executor._data_context)
+
+        def get_operators_fn() -> List["PhysicalOperator"]:
+            if not executor._topology:
+                return []
+            return list(executor._topology.keys())
+
+        ctx = executor._data_context
+        return cls(
+            dataset_id=executor._dataset_id,
+            get_operators_fn=get_operators_fn,
+            config=ctx.issue_detectors_config.high_memory_detector_config,
+        )
 
     def detect(self) -> List[Issue]:
         issues = []
-        for op in self._executor._topology.keys():
+        for op in self._get_operators():
             if not isinstance(op, MapOperator):
                 continue
 
@@ -91,7 +109,7 @@ class HighMemoryIssueDetector(IssueDetector):
                 )
                 issues.append(
                     Issue(
-                        dataset_name=self._executor._dataset_id,
+                        dataset_name=self._dataset_id,
                         operator_id=op.id,
                         issue_type=IssueType.HIGH_MEMORY,
                         message=_format_message(message),
