@@ -19,7 +19,7 @@
 # Reading tests
 ###############
 
-- name: "ptest_read_parquet_{{scaling}}"
+- name: "read_parquet_{{scaling}}"
   python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
@@ -35,7 +35,7 @@
       s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
       --iter-bundles
 
-- name: "ptest_read_large_parquet_{{scaling}}"
+- name: "read_large_parquet_{{scaling}}"
   python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
@@ -51,7 +51,7 @@
       s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
       --iter-bundles
 
-- name: "ptest_read_images_{{scaling}}"
+- name: "read_images_{{scaling}}"
   python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
@@ -66,7 +66,7 @@
       python read_and_consume_benchmark.py
       s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
 
-- name: ptest_read_tfrecords
+- name: read_tfrecords
   python: "3.10"
   run:
     timeout: 3600
@@ -75,7 +75,7 @@
       s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
       --iter-bundles
 
-- name: "ptest_read_from_uris_{{scaling}}"
+- name: "read_from_uris_{{scaling}}"
   python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
