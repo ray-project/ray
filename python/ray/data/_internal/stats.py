@@ -1211,8 +1211,7 @@ class DatasetStatsSummary:
             output_num_rows = self.operators_stats[-1].output_num_rows
             total_num_out_rows = output_num_rows["sum"] if output_num_rows else 0
             wall_time = self.get_total_wall_time()
-            total_time_all_blocks = self.get_total_time_all_blocks()
-            if total_num_out_rows and wall_time and total_time_all_blocks:
+            if total_num_out_rows and wall_time:
                 out += "\n"
                 out += "Dataset throughput:\n"
                 out += (
@@ -1220,15 +1219,20 @@ class DatasetStatsSummary:
                     f" {total_num_out_rows / wall_time} "
                     "rows/s\n"
                 )
-                out += (
-                    "\t* Estimated single node throughput:"
-                    f" {total_num_out_rows / total_time_all_blocks} "
-                    "rows/s\n"
-                )
         if verbose_stats_logs and add_global_stats:
             out += "\n" + self.runtime_metrics()
 
         return out
+    
+    @property
+    def num_rows_per_s(self) -> float:
+        """Calculates the throughput in rows per second for the entire dataset."""
+        output_num_rows = self.operators_stats[-1].output_num_rows
+        total_num_out_rows = output_num_rows["sum"] if output_num_rows else 0
+        wall_time = self.get_total_wall_time()
+        if not total_num_out_rows or not wall_time:
+            return 0.0
+        return total_num_out_rows / wall_time
 
     @staticmethod
     def _collect_dataset_stats_summaries(
@@ -1377,6 +1381,20 @@ class OperatorStatsSummary:
     # node_count: "count" stat instead of "sum"
     node_count: Optional[Dict[str, float]] = None
     task_rows: Optional[Dict[str, float]] = None
+
+    @property
+    def num_rows_per_s(self) -> float:
+        """Calculates the overall throughput in rows per second for this operator."""
+        if not self.output_num_rows or not self.time_total_s:
+            return 0.0
+        return self.output_num_rows["sum"] / self.time_total_s
+
+    @property
+    def num_rows_per_task_s(self) -> float:
+        """Calculates the estimated single-task throughput in rows per second."""
+        if not self.output_num_rows or not self.wall_time:
+            return 0.0
+        return self.output_num_rows["sum"] / self.wall_time["sum"]
 
     @classmethod
     def from_block_metadata(
@@ -1652,7 +1670,7 @@ class OperatorStatsSummary:
                 "rows/s\n"
             )
             out += (
-                indent + "\t* Estimated single node throughput:"
+                indent + "\t* Estimated single task throughput:"
                 f" {total_num_out_rows / wall_time_stats['sum']} "
                 "rows/s\n"
             )
