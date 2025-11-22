@@ -258,6 +258,8 @@ class TrainContext:
                 persisted_checkpoint = checkpoint_upload_fn(
                     checkpoint, checkpoint_dir_name
                 )
+                if not persisted_checkpoint:
+                    raise ValueError("checkpoint_upload_fn must return a checkpoint")
             else:
                 persisted_checkpoint = self.storage_context.persist_current_checkpoint(
                     checkpoint, checkpoint_dir_name
