@@ -136,6 +136,9 @@ class WorkerContext {
 
   int64_t GetTaskDepth() const;
 
+  void SetCurrentTaskCanceled(bool is_canceled);
+  bool IsCurrentTaskCanceled() const;
+
  private:
   const WorkerType worker_type_;
   const WorkerID worker_id_;
