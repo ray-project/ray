@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray._raylet import GcsClient
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.serve._private.constants import RAY_GCS_RPC_TIMEOUT_S
 
 
@@ -24,11 +25,13 @@ class ClusterNodeInfoCache(ABC):
         cached node info avoiding any potential issues
         caused by inconsistent node info seen by different components.
         """
-        nodes = self._gcs_client.get_all_node_info(timeout=RAY_GCS_RPC_TIMEOUT_S)
+        nodes = self._gcs_client.get_all_node_info(
+            state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
+            timeout=RAY_GCS_RPC_TIMEOUT_S,
+        )
         alive_nodes = [
             (node_id.hex(), node.node_name, node.instance_id)
             for (node_id, node) in nodes.items()
-            if node.state == ray.core.generated.gcs_pb2.GcsNodeInfo.ALIVE
         ]
 
         # Sort on NodeID to ensure the ordering is deterministic across the cluster.
