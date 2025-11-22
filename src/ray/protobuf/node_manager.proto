@@ -562,7 +562,11 @@ service NodeManagerService {
   // without completing outstanding work.
   // Failure: Retries, it's idempotent.
   rpc KillLocalActor(KillLocalActorRequest) returns (KillLocalActorReply);
-  // Forwards the CancelTask request from the caller core worker to the executor
+  // Cancels a task on the local node. If the reply is OK, the task is canceled.
+  // If force_kill is true, the worker executing the task will be killed. We will
+  // initially try to gracefully kill the worker, and will escalate to a SIGKILL
+  // in the case of a hang.
+  // If force_kill is false, the worker remains alive for subsequent tasks.
   // Failure: Retries, it's idempotent.
   rpc CancelLocalTask(CancelLocalTaskRequest) returns (CancelLocalTaskReply);
 }

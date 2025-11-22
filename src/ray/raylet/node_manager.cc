@@ -3454,70 +3454,69 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
   cancel_task_request.set_force_kill(request.force_kill());
   cancel_task_request.set_recursive(request.recursive());
   cancel_task_request.set_caller_worker_id(request.caller_worker_id());
-  if (!request.force_kill()) {
-    worker->rpc_client()->CancelTask(
-        cancel_task_request,
-        [reply,
-         send_reply_callback,
-         intended_task_id = TaskID::FromBinary(request.intended_task_id())](
-            const Status &status, const rpc::CancelTaskReply &cancel_task_reply) {
-          if (!status.ok()) {
-            RAY_LOG(INFO) << "CancelTask RPC failed for task " << intended_task_id << ": "
-                          << status.ToString();
-          }
-          reply->set_attempt_succeeded(cancel_task_reply.attempt_succeeded());
-          reply->set_requested_task_running(cancel_task_reply.requested_task_running());
-          send_reply_callback(Status::OK(), nullptr, nullptr);
-        });
-    return;
-  }
-  std::shared_ptr<bool> replied = std::make_shared<bool>(false);
 
-  auto timer = execute_after(
-      io_service_,
-      [this, reply, send_reply_callback, worker_id, replied]() {
-        auto current_worker = worker_pool_.GetRegisteredWorker(worker_id);
-        if (*replied) {
-          return;
-        }
-        if (current_worker) {
-          // If the worker is still alive, force kill it
-          RAY_LOG(INFO) << "Worker with PID=" << current_worker->GetProcess().GetId()
-                        << " did not exit after "
-                        << RayConfig::instance().kill_worker_timeout_milliseconds()
-                        << "ms, force killing with SIGKILL.";
-          DestroyWorker(current_worker,
-                        rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
-                        "Force-killed by ray.cancel(force=True)",
-                        /*force=*/true);
-        }
-        *replied = true;
-        reply->set_attempt_succeeded(true);
-        reply->set_requested_task_running(false);
-        send_reply_callback(Status::OK(), nullptr, nullptr);
-      },
-      std::chrono::milliseconds(
-          RayConfig::instance().kill_worker_timeout_milliseconds()));
+  // The timer and RPC response can come back in any order since they can be queued on the
+  // io service before either is executed.
+  std::shared_ptr<bool> replied = std::make_shared<bool>(false);
+  std::shared_ptr<boost::asio::deadline_timer> timer;
+
+  if (request.force_kill()) {
+    timer = execute_after(
+        io_service_,
+        [this, reply, send_reply_callback, worker_id, replied]() {
+          if (*replied) {
+            return;
+          }
+          auto current_worker = worker_pool_.GetRegisteredWorker(worker_id);
+          if (current_worker) {
+            // If the worker is still alive, force kill it
+            RAY_LOG(INFO) << "Worker with PID=" << current_worker->GetProcess().GetId()
+                          << " did not exit after "
+                          << RayConfig::instance().kill_worker_timeout_milliseconds()
+                          << "ms, force killing with SIGKILL.";
+            DestroyWorker(current_worker,
+                          rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+                          "Force-killed by ray.cancel(force=True)",
+                          /*force=*/true);
+          }
+          *replied = true;
+          reply->set_attempt_succeeded(true);
+          reply->set_requested_task_running(false);
+          send_reply_callback(Status::OK(), nullptr, nullptr);
+        },
+        std::chrono::milliseconds(
+            RayConfig::instance().kill_worker_timeout_milliseconds()));
+  }
 
   worker->rpc_client()->CancelTask(
       cancel_task_request,
-      [task_id = request.intended_task_id(), timer, reply, send_reply_callback, replied](
-          const ray::Status &status, const rpc::CancelTaskReply &cancel_task_reply) {
+      [task_id = request.intended_task_id(),
+       executor_worker_id,
+       timer,
+       reply,
+       send_reply_callback,
+       replied](const ray::Status &status,
+                const rpc::CancelTaskReply &cancel_task_reply) {
+        // Check if timer already fired (only relevant for force_kill case)
         if (*replied) {
           return;
         }
         if (!status.ok()) {
-          RAY_LOG(DEBUG) << "CancelTask RPC failed for task "
-                         << TaskID::FromBinary(task_id) << ": " << status.ToString();
-          // NOTE: We'll escalate the graceful shutdown to SIGKILL which is done by the
-          // timer above
-          return;
+          RAY_LOG(WARNING) << "CancelTask RPC failed for task "
+                           << TaskID::FromBinary(task_id) << ": " << status.ToString()
+                           << "with Worker ID: " << executor_worker_id;
+          if (timer) {
+            RAY_LOG(WARNING) << "Escalating graceful shutdown to SIGKILL instead.";
+            return;
+          }
         }
         *replied = true;
         reply->set_attempt_succeeded(cancel_task_reply.attempt_succeeded());
         reply->set_requested_task_running(cancel_task_reply.requested_task_running());
         send_reply_callback(Status::OK(), nullptr, nullptr);
-        timer->cancel();
+        if (timer) {
+          timer->cancel();
+        }
       });
 }
 
