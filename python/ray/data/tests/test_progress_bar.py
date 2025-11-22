@@ -168,8 +168,8 @@ def test_progress_bar_logging_in_non_interactive_terminal_without_total(mock_log
     """Test that progress is logged in non-interactive terminals with unknown total."""
     
     # Mock time to ensure logging occurs
-    with patch('ray.data._internal.progress_bar.time.time', side_effect=[0, 10]), \
-         patch('sys.stdout.isatty', return_value=False):
+    with (patch('ray.data._internal.progress_bar.time.time', side_effect=[0, 10]),
+         patch('sys.stdout.isatty', return_value=False)):
         pb = ProgressBar("test2", None, "unit")
         assert pb._bar is None
         assert pb._use_logging is True
