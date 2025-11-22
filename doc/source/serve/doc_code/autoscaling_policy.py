@@ -93,3 +93,54 @@ def coordinated_scaling_policy(
 
 
 # __end_application_level_autoscaling_policy__
+
+
+# __begin_apply_autoscaling_config_example__
+from typing import Any, Dict
+from ray.serve.autoscaling_policy import apply_autoscaling_config
+from ray.serve.config import AutoscalingContext
+
+
+@apply_autoscaling_config
+def queue_length_based_autoscaling_policy(
+    ctx: AutoscalingContext,
+) -> tuple[int, Dict[str, Any]]:
+    # This policy calculates the "raw" desired replicas based on queue length.
+    # The decorator automatically applies:
+    # - Scaling factors (upscaling_factor, downscaling_factor)
+    # - Delays (upscale_delay_s, downscale_delay_s/downscale_to_zero_delay_s)
+    # - Min/Max replica bounds (min_replicas, max_replicas)
+
+    queue_length = ctx.total_num_requests
+
+    if queue_length > 50:
+        return 10, {}
+    elif queue_length > 10:
+        return 5, {}
+    else:
+        return 0, {}
+# __end_apply_autoscaling_config_example__
+
+# __begin_apply_autoscaling_config_usage__
+from ray import serve
+from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
+
+@serve.deployment(
+    autoscaling_config=AutoscalingConfig(
+        min_replicas=1,
+        max_replicas=10,
+        metrics_interval_s=0.1,
+        upscale_delay_s=1.0,
+        downscale_delay_s=1.0,
+        policy=AutoscalingPolicy(
+            policy_function=queue_length_based_autoscaling_policy
+        )
+    ),
+    max_ongoing_requests=5,
+)
+class MyDeployment:
+    def __call__(self) -> str:
+        return "Hello, world!"
+
+app = MyDeployment.bind()
+# __end_apply_autoscaling_config_usage__
