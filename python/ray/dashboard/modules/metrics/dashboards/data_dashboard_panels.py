@@ -1051,7 +1051,7 @@ ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL = Panel(
 )
 
 ITERATION_TIME_TO_FIRST_BATCH_PANEL = Panel(
-    id=78,
+    id=120,
     title="Iteration Time to First Batch",
     description="Seconds spent waiting for the first batch after starting iteration",
     unit="seconds",
@@ -1066,7 +1066,7 @@ ITERATION_TIME_TO_FIRST_BATCH_PANEL = Panel(
 )
 
 ITERATION_GET_REF_BUNDLES_PANEL = Panel(
-    id=79,
+    id=121,
     title="Iteration Get Ref Bundles Time",
     description="Seconds spent getting RefBundles from the dataset iterator",
     unit="seconds",
