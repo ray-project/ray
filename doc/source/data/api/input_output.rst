@@ -64,6 +64,15 @@ Text
 
    read_text
 
+HTML
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_html
+
 Audio
 -----
 
