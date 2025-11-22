@@ -16,6 +16,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
@@ -916,6 +917,10 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         ignore_nulls: Whether to ignore null values when collecting unique items.
                       Default is True (nulls are excluded).
         alias_name: Optional name for the resulting column.
+        encode_lists: If `True`, encode list elements.  If `False`, encode
+            whole lists (i.e., the entire list is considered as a single object).
+            `False` by default. Note that this is a top-level flatten (not a recursive
+            flatten) operation.
     """
 
     def __init__(
@@ -923,6 +928,7 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         on: Optional[str] = None,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
+        encode_lists: bool = False,
     ):
         super().__init__(
             alias_name if alias_name else f"unique({str(on)})",
@@ -930,15 +936,24 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
             ignore_nulls=ignore_nulls,
             zero_factory=set,
         )
+        self._encode_lists = encode_lists
 
     def combine(self, current_accumulator: Set[Any], new: Set[Any]) -> Set[Any]:
         return self._to_set(current_accumulator) | self._to_set(new)
 
     def aggregate_block(self, block: Block) -> List[Any]:
-        import pyarrow.compute as pac
-
         col = BlockAccessor.for_block(block).to_arrow().column(self._target_col_name)
-        return pac.unique(col).to_pylist()
+        if pa.types.is_list(col.type) and self._encode_lists:
+            col = pc.list_flatten(col)
+        pickled = []
+        for v in col:
+            py_value = v.as_py()
+            if not self._ignore_nulls or py_value is not None:
+                pickled.append(pickle.dumps(py_value).hex())
+        return pc.unique(pa.array(pickled)).to_pylist()
+
+    def finalize(self, accumulator: Set[Any]) -> List[Any]:
+        return [pickle.loads(bytes.fromhex(v)) for v in accumulator]
 
     @staticmethod
     def _to_set(x):
