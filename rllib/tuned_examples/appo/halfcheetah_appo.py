@@ -3,7 +3,7 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
     default_reward=9000.0,
-    default_timesteps=100000000,
+    default_timesteps=100_000_000,
 )
 parser.set_defaults(
     env="HalfCheetah-v4",
