@@ -21,7 +21,11 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
-from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_operator import (
+    BaseRefBundler,
+    BlockRefBundler,
+    MapOperator,
+)
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -35,6 +39,7 @@ from ray.data._internal.logical.operators.map_operator import (
     AbstractMap,
     AbstractUDFMap,
 )
+from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
 from ray.util.annotations import DeveloperAPI
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
@@ -144,6 +149,16 @@ class FuseOperators(Rule):
             * They have compatible remote arguments.
         """
         if not up_op.supports_fusion() or not down_op.supports_fusion():
+            return False
+
+        if (
+            isinstance(down_op, MapOperator)
+            and isinstance(up_op, MapOperator)
+            and self._get_compatible_ref_bundler(
+                up_op._block_ref_bundler, down_op._block_ref_bundler
+            )
+            is None
+        ):
             return False
 
         # We currently only support fusing for the following cases:
@@ -288,9 +303,10 @@ class FuseOperators(Rule):
         assert isinstance(up_logical_op, AbstractMap)
 
         # Derive min num rows per input bundle
-        min_rows_per_bundled_input = self._derive_bundle_min_num_rows(
-            down_logical_op, up_logical_op
+        ref_bundler = self._get_compatible_ref_bundler(
+            up_op._block_ref_bundler, down_op._block_ref_bundler
         )
+        assert ref_bundler is not None
 
         target_max_block_size = self._get_merged_target_max_block_size(
             up_op.target_max_block_size_override, down_op.target_max_block_size_override
@@ -322,7 +338,7 @@ class FuseOperators(Rule):
             target_max_block_size_override=target_max_block_size,
             name=name,
             compute_strategy=compute,
-            min_rows_per_bundle=min_rows_per_bundled_input,
+            ref_bundler=ref_bundler,
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
@@ -333,6 +349,11 @@ class FuseOperators(Rule):
         ):
             op.add_map_task_kwargs_fn(map_task_kwargs_fn)
 
+        min_rows_per_bundled_input = (
+            ref_bundler._min_rows_per_bundle
+            if isinstance(ref_bundler, BlockRefBundler)
+            else ref_bundler._target_num_rows
+        )
         # Build a map logical operator to be used as a reference for further fusion.
         # TODO(Scott): This is hacky, remove this once we push fusion to be purely based
         # on a lower-level operator spec.
@@ -371,22 +392,23 @@ class FuseOperators(Rule):
     @classmethod
     def _derive_bundle_min_num_rows(
         cls,
-        down_logical_op: AbstractMap,
-        up_logical_op: AbstractMap,
+        min_rows_per_bundled_input_up: Optional[int],
+        min_rows_per_bundled_input_down: Optional[int],
     ) -> Optional[int]:
-        us_bundle_min_rows_req = up_logical_op._min_rows_per_bundled_input
-        ds_bundle_min_rows_req = down_logical_op._min_rows_per_bundled_input
 
         # In case neither of the ops specify `min_rows_per_bundled_input`,
         # return None
-        if us_bundle_min_rows_req is None and ds_bundle_min_rows_req is None:
+        if (
+            min_rows_per_bundled_input_up is None
+            and min_rows_per_bundled_input_down is None
+        ):
             return None
 
         # Target min bundle size is selected as max of upstream and downstream ones
         # such that it could satisfy both of their requirements
         return max(
-            ds_bundle_min_rows_req or 0,
-            us_bundle_min_rows_req or 0,
+            min_rows_per_bundled_input_down or 0,
+            min_rows_per_bundled_input_up or 0,
         )
 
     def _get_fused_all_to_all_operator(
@@ -504,6 +526,84 @@ class FuseOperators(Rule):
             return False
 
         return True
+
+    @classmethod
+    def _get_compatible_ref_bundler(
+        cls, up_ref_bundler: BaseRefBundler, down_ref_bundler: BaseRefBundler
+    ) -> Optional[BaseRefBundler]:
+        """Determine if two ref bundlers are compatible for operator fusion.
+
+        This method checks whether upstream and downstream operators with different
+        ref bundler configurations can be fused together, and returns the merged
+        bundler if fusion is possible.
+
+        Args:
+            up_ref_bundler: The ref bundler from the upstream operator.
+            down_ref_bundler: The ref bundler from the downstream operator.
+
+        Returns:
+            A compatible merged BaseRefBundler if the bundlers can be fused together,
+            None if they are incompatible and fusion should not occur.
+
+        Fusion rules:
+            - BlockRefBundler + BlockRefBundler: Always compatible. Returns a
+              BlockRefBundler with min_rows_per_bundle set to the maximum of the two.
+            - StreamingRepartitionRefBundler + StreamingRepartitionRefBundler: Only
+              compatible if both have the same target_num_rows_per_block.
+            - BlockRefBundler + StreamingRepartitionRefBundler (mixed): Compatible
+              if target_num_rows >= min_rows_per_bundle (or min_rows_per_bundle is None).
+              Returns a StreamingRepartitionRefBundler.
+
+        Note:
+            This is a naive implementation that should be revisited once
+            StreamingRepartitionRefBundler is more widely used. There are potential
+            optimizations such as using the least common multiple for
+            StreamingRepartitionRefBundlers with different target row counts, or
+            finding a least multiple that satisfies both min_rows_per_bundle and
+            target_num_rows_per_block constraints in mixed cases.
+        """
+        if isinstance(up_ref_bundler, BlockRefBundler) and isinstance(
+            down_ref_bundler, BlockRefBundler
+        ):
+            return BlockRefBundler(
+                min_rows_per_bundle=cls._derive_bundle_min_num_rows(
+                    up_ref_bundler._min_rows_per_bundle,
+                    down_ref_bundler._min_rows_per_bundle,
+                )
+            )
+        elif isinstance(up_ref_bundler, StreamingRepartitionRefBundler) and isinstance(
+            down_ref_bundler, StreamingRepartitionRefBundler
+        ):
+            if up_ref_bundler._target_num_rows == down_ref_bundler._target_num_rows:
+                return StreamingRepartitionRefBundler(
+                    target_num_rows_per_block=up_ref_bundler._target_num_rows
+                )
+            else:
+                # TODO(xgui): Explore if we can use least common multiple of the two target_num_rows_per_block
+                return None
+        else:
+            supported_types = (BlockRefBundler, StreamingRepartitionRefBundler)
+            assert isinstance(up_ref_bundler, supported_types) and isinstance(
+                down_ref_bundler, supported_types
+            )
+            target_num_rows = (
+                up_ref_bundler._target_num_rows
+                if isinstance(up_ref_bundler, StreamingRepartitionRefBundler)
+                else down_ref_bundler._target_num_rows
+            )
+            min_rows_per_bundle = (
+                up_ref_bundler._min_rows_per_bundle
+                if isinstance(up_ref_bundler, BlockRefBundler)
+                else down_ref_bundler._min_rows_per_bundle
+            )
+            if min_rows_per_bundle is None or target_num_rows >= min_rows_per_bundle:
+                return StreamingRepartitionRefBundler(
+                    target_num_rows_per_block=target_num_rows
+                )
+            else:
+                # TODO(xgui): Explore if we can use least multiple of target_num_rows_per_block that is greater than min_rows_per_bundle
+                return None
+            return None
 
 
 @DeveloperAPI

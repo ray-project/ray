@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -5,7 +6,10 @@ import pytest
 
 import ray
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_operator import (
+    BlockRefBundler,
+    MapOperator,
+)
 from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
     BlockMapTransformFn,
@@ -21,9 +25,13 @@ from ray.data._internal.logical.operators.map_operator import (
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
+from ray.data._internal.logical.rules.operator_fusion import FuseOperators
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
+from ray.data._internal.streaming_repartition import (
+    StreamingRepartitionRefBundler,
+)
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data.expressions import star
@@ -740,6 +748,586 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
             BatchMapTransformFn,
         ],
     )
+
+
+@pytest.mark.parametrize(
+    "up_rows,down_rows,should_fuse,expected_result,description",
+    [
+        # BlockRefBundler + BlockRefBundler cases
+        # Format: ("block", value) for BlockRefBundler with min_rows_per_bundle
+        #         ("streaming", value) for StreamingRepartitionRefBundler with target_num_rows_per_block
+        (
+            ("block", None),
+            ("block", None),
+            True,
+            ("block", None),
+            "Both BlockRefBundler with None min_rows - should fuse with None",
+        ),
+        (
+            ("block", 10),
+            ("block", 10),
+            True,
+            ("block", 10),
+            "Both BlockRefBundler with same min_rows (10) - should fuse with 10",
+        ),
+        (
+            ("block", 10),
+            ("block", 20),
+            True,
+            ("block", 20),
+            "Both BlockRefBundler with different min_rows (10 vs 20) - should fuse with max (20)",
+        ),
+        (
+            ("block", None),
+            ("block", 10),
+            True,
+            ("block", 10),
+            "BlockRefBundler with None and 10 - should fuse with 10",
+        ),
+        (
+            ("block", 10),
+            ("block", None),
+            True,
+            ("block", 10),
+            "BlockRefBundler with 10 and None - should fuse with 10",
+        ),
+        (
+            ("block", 5),
+            ("block", 15),
+            True,
+            ("block", 15),
+            "BlockRefBundler with 5 and 15 - should fuse with max (15)",
+        ),
+        # StreamingRepartitionRefBundler + StreamingRepartitionRefBundler cases
+        (
+            ("streaming", 20),
+            ("streaming", 20),
+            True,
+            ("streaming", 20),
+            "Both StreamingRepartition with same target_num_rows (20) - should fuse",
+        ),
+        (
+            ("streaming", 20),
+            ("streaming", 30),
+            False,
+            None,
+            "Both StreamingRepartition with different target_num_rows (20 vs 30) - should NOT fuse",
+        ),
+        (
+            ("streaming", 50),
+            ("streaming", 50),
+            True,
+            ("streaming", 50),
+            "Both StreamingRepartition with same target_num_rows (50) - should fuse",
+        ),
+        # Mixed cases: BlockRefBundler + StreamingRepartitionRefBundler
+        (
+            ("block", None),
+            ("streaming", 20),
+            True,
+            ("streaming", 20),
+            "BlockRefBundler(None) + StreamingRepartition(20) - should fuse with target=20",
+        ),
+        (
+            ("block", 10),
+            ("streaming", 20),
+            True,
+            ("streaming", 20),
+            "BlockRefBundler(10) + StreamingRepartition(20) - should fuse (target >= min)",
+        ),
+        (
+            ("block", 30),
+            ("streaming", 20),
+            False,
+            None,
+            "BlockRefBundler(30) + StreamingRepartition(20) - should NOT fuse (target < min)",
+        ),
+        (
+            ("block", 20),
+            ("streaming", 20),
+            True,
+            ("streaming", 20),
+            "BlockRefBundler(20) + StreamingRepartition(20) - should fuse (target == min)",
+        ),
+        (
+            ("block", 15),
+            ("streaming", 25),
+            True,
+            ("streaming", 25),
+            "BlockRefBundler(15) + StreamingRepartition(25) - should fuse (target > min)",
+        ),
+        # Mixed cases: StreamingRepartitionRefBundler + BlockRefBundler
+        (
+            ("streaming", 20),
+            ("block", None),
+            True,
+            ("streaming", 20),
+            "StreamingRepartition(20) + BlockRefBundler(None) - should fuse with target=20",
+        ),
+        (
+            ("streaming", 20),
+            ("block", 10),
+            True,
+            ("streaming", 20),
+            "StreamingRepartition(20) + BlockRefBundler(10) - should fuse (target >= min)",
+        ),
+        (
+            ("streaming", 20),
+            ("block", 30),
+            False,
+            None,
+            "StreamingRepartition(20) + BlockRefBundler(30) - should NOT fuse (target < min)",
+        ),
+        (
+            ("streaming", 20),
+            ("block", 20),
+            True,
+            ("streaming", 20),
+            "StreamingRepartition(20) + BlockRefBundler(20) - should fuse (target == min)",
+        ),
+        (
+            ("streaming", 25),
+            ("block", 15),
+            True,
+            ("streaming", 25),
+            "StreamingRepartition(25) + BlockRefBundler(15) - should fuse (target > min)",
+        ),
+    ],
+)
+def test_get_compatible_ref_bundler(
+    up_rows: tuple,
+    down_rows: tuple,
+    should_fuse: bool,
+    expected_result: tuple,
+    description: str,
+):
+    """Test the _get_compatible_ref_bundler method with various combinations of bundlers.
+
+    This is a unit test that directly tests the FuseOperators._get_compatible_ref_bundler
+    classmethod to ensure proper fusion logic for different bundler types.
+
+    Args:
+        up_rows: Tuple of ("block", value) or ("streaming", value) for upstream bundler
+        down_rows: Tuple of ("block", value) or ("streaming", value) for downstream bundler
+        should_fuse: Whether fusion should succeed
+        expected_result: Expected result tuple ("block", value) or ("streaming", value), or None
+        description: Test case description
+    """
+    from ray.data._internal.execution.operators.map_operator import (
+        BlockRefBundler,
+    )
+    from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
+
+    # Create bundlers based on type and value
+    up_type, up_value = up_rows
+    if up_type == "streaming":
+        up_bundler = StreamingRepartitionRefBundler(target_num_rows_per_block=up_value)
+    else:  # "block"
+        up_bundler = BlockRefBundler(min_rows_per_bundle=up_value)
+
+    down_type, down_value = down_rows
+    if down_type == "streaming":
+        down_bundler = StreamingRepartitionRefBundler(
+            target_num_rows_per_block=down_value
+        )
+    else:  # "block"
+        down_bundler = BlockRefBundler(min_rows_per_bundle=down_value)
+
+    # Test the fusion logic
+    result = FuseOperators._get_compatible_ref_bundler(up_bundler, down_bundler)
+
+    if should_fuse:
+        assert (
+            result is not None
+        ), f"{description}: Expected successful fusion but got None"
+
+        expected_type, expected_value = expected_result
+
+        # Verify the result bundler type and value
+        if expected_type == "block":
+            assert isinstance(
+                result, BlockRefBundler
+            ), f"{description}: Expected BlockRefBundler but got {type(result).__name__}"
+            assert result._min_rows_per_bundle == expected_value, (
+                f"{description}: Expected min_rows_per_bundle={expected_value} "
+                f"but got {result._min_rows_per_bundle}"
+            )
+        else:  # "streaming"
+            assert isinstance(
+                result, StreamingRepartitionRefBundler
+            ), f"{description}: Expected StreamingRepartitionRefBundler but got {type(result).__name__}"
+            assert result._target_num_rows == expected_value, (
+                f"{description}: Expected target_num_rows={expected_value} "
+                f"but got {result._target_num_rows}"
+            )
+    else:
+        assert (
+            result is None
+        ), f"{description}: Expected fusion to fail (None) but got {result}"
+
+
+@pytest.mark.parametrize(
+    "first_batch_size,target_num_rows,second_batch_size,expected_pattern,description",
+    [
+        # Case 1: No batch_size, streaming repartition, no batch_size
+        # All three can fuse: MapBatches(fn1)->StreamingRepartition->MapBatches(fn2)
+        # But Read doesn't fuse because the result has min_rows_per_bundle set
+        (
+            None,
+            20,
+            None,
+            [
+                "ReadRange",
+                "MapBatches(fn1)->StreamingRepartition[num_rows_per_block=20]->MapBatches(fn2)",
+            ],
+            "No batch_size: All Maps+StreamingRepartition fuse, but not with Read",
+        ),
+        # Case 2: batch_size < target_num_rows, streaming repartition, no batch_size
+        # Map1+StreamingRepartition can fuse, then +Map2 (since Map2 has no batch_size)
+        (
+            10,
+            20,
+            None,
+            [
+                "ReadRange",
+                "MapBatches(fn1)->StreamingRepartition[num_rows_per_block=20]->MapBatches(fn2)",
+            ],
+            "First batch_size(10) < target(20): All three fuse together",
+        ),
+        # Case 3: batch_size > target_num_rows, streaming repartition, no batch_size
+        # Map1 cannot fuse with StreamingRepartition, but StreamingRepartition+Map2 can fuse
+        (
+            30,
+            20,
+            None,
+            [
+                "ReadRange",
+                "MapBatches(fn1)",
+                "StreamingRepartition[num_rows_per_block=20]->MapBatches(fn2)",
+            ],
+            "First batch_size(30) > target(20): Map1 isolated, StreamingRepartition+Map2 fuse",
+        ),
+        # Case 4: batch_size == target_num_rows, streaming repartition, no batch_size
+        # Map1+StreamingRepartition fuse, then +Map2
+        (
+            20,
+            20,
+            None,
+            [
+                "ReadRange",
+                "MapBatches(fn1)->StreamingRepartition[num_rows_per_block=20]->MapBatches(fn2)",
+            ],
+            "First batch_size(20) == target(20): All three fuse together",
+        ),
+        # Case 5: No batch_size, streaming repartition, batch_size < target_num_rows
+        # Map1+StreamingRepartition fuse, but Map2 with batch_size cannot fuse backward
+        (
+            None,
+            20,
+            10,
+            [
+                "ReadRange",
+                "MapBatches(fn1)->StreamingRepartition[num_rows_per_block=20]->MapBatches(fn2)",
+            ],
+            "Second batch_size(10) < target(20): All three fuse together",
+        ),
+        # Case 6: No batch_size, streaming repartition, batch_size > target_num_rows
+        # Map1+StreamingRepartition fuse, but Map2 cannot fuse (batch_size > target)
+        (
+            None,
+            20,
+            30,
+            [
+                "ReadRange",
+                "MapBatches(fn1)->StreamingRepartition[num_rows_per_block=20]",
+                "MapBatches(fn2)",
+            ],
+            "Second batch_size(30) > target(20): Map2 cannot fuse with StreamingRepartition",
+        ),
+        # Case 7: First batch_size > target, second batch_size < target
+        # Map1 isolated, StreamingRepartition+Map2 fuse
+        (
+            30,
+            20,
+            10,
+            [
+                "ReadRange",
+                "MapBatches(fn1)",
+                "StreamingRepartition[num_rows_per_block=20]->MapBatches(fn2)",
+            ],
+            "First batch_size > target, second < target: StreamingRepartition+Map2 fuse",
+        ),
+        # Case 8: Both batch_sizes < target_num_rows
+        # All three should fuse together
+        (
+            10,
+            20,
+            15,
+            [
+                "ReadRange",
+                "MapBatches(fn1)->StreamingRepartition[num_rows_per_block=20]->MapBatches(fn2)",
+            ],
+            "Both batch_sizes < target: All three fuse together",
+        ),
+    ],
+)
+def test_read_map_streaming_repartition_map_fusion_combinations(
+    ray_start_regular_shared_2_cpus: Any,
+    first_batch_size: int,
+    target_num_rows: int,
+    second_batch_size: int,
+    expected_pattern: list,
+    description: str,
+):
+    """Test fusion behavior for Read->MapBatches->StreamingRepartition->MapBatches pipeline.
+
+    This test demonstrates how different configurations of batch_size and streaming
+    repartition affect operator fusion based on the compatibility rules in
+    _get_compatible_ref_bundler.
+
+    Fusion rules:
+    - Read + MapBatches: Only fuses when MapBatches has no batch_size
+    - Read + (MapBatches+StreamingRepartition): Does NOT fuse (result has min_rows_per_bundle set)
+    - MapBatches + StreamingRepartition: Can fuse when:
+        * MapBatches has no batch_size (min_rows_per_bundle=None), OR
+        * target_num_rows_per_block >= batch_size (target >= min)
+    - StreamingRepartition + MapBatches: Can fuse when:
+        * MapBatches has no batch_size (min_rows_per_bundle=None), OR
+        * target_num_rows_per_block >= batch_size (target >= min)
+    - MapBatches + StreamingRepartition + MapBatches: All three can fuse if both
+      MapBatches satisfy the fusion conditions with StreamingRepartition
+
+    Args:
+        ray_start_regular_shared_2_cpus: Pytest fixture for Ray runtime
+        first_batch_size: batch_size for first MapBatches (None or int)
+        target_num_rows: target_num_rows_per_block for streaming repartition
+        second_batch_size: batch_size for second MapBatches (None or int)
+        expected_pattern: List of expected operator names in execution plan
+        description: Human-readable test case description
+    """
+
+    def fn1(batch):
+        return {"id": [x + 1 for x in batch["id"]]}
+
+    def fn2(batch):
+        return {"id": [x * 2 for x in batch["id"]]}
+
+    n = 100
+    ds = ray.data.range(n)
+
+    ds = ds.map_batches(fn1, batch_size=first_batch_size)
+
+    ds = ds.repartition(target_num_rows_per_block=target_num_rows)
+
+    ds = ds.map_batches(fn2, batch_size=second_batch_size)
+
+    result = ds.take_all()
+    assert len(result) == n, f"Expected {n} rows but got {len(result)}"
+
+    stats = ds.stats()
+
+    for pattern in expected_pattern:
+        assert pattern in stats, (
+            f"{description}\n"
+            f"Expected pattern '{pattern}' not found in stats.\n"
+            f"Stats:\n{stats}"
+        )
+
+    expected_op_count = len(expected_pattern)
+    import re
+
+    operator_lines = re.findall(r"Operator \d+", stats)
+    actual_op_count = len(set(operator_lines))
+
+    assert actual_op_count == expected_op_count, (
+        f"{description}\n"
+        f"Expected {expected_op_count} operators but found {actual_op_count}.\n"
+        f"Expected patterns: {expected_pattern}\n"
+        f"Stats:\n{stats}"
+    )
+
+
+@pytest.mark.parametrize(
+    "first_batch_size,target_num_rows,second_batch_size,expected_op_count,expected_bundlers,description",
+    [
+        # Case 1: All three fuse into one operator
+        (
+            None,
+            20,
+            None,
+            3,  # InputDataBuffer, ReadRange, Map1+StreamingRepartition+Map2
+            [("StreamingRepartitionRefBundler", 20), ("BlockRefBundler", None)],
+            "No batch_size: ReadRange has BlockRefBundler(None), fused Map has StreamingRepartitionRefBundler(20)",
+        ),
+        # Case 2: All three fuse into one operator
+        (
+            10,
+            20,
+            None,
+            3,  # InputDataBuffer, ReadRange, Map1+StreamingRepartition+Map2
+            [("StreamingRepartitionRefBundler", 20), ("BlockRefBundler", None)],
+            "First batch_size(10) < target(20): ReadRange has BlockRefBundler(None), fused Map has StreamingRepartitionRefBundler(20)",
+        ),
+        # Case 3: Map1 isolated, StreamingRepartition+Map2 fused
+        (
+            30,
+            20,
+            None,
+            4,  # InputDataBuffer, ReadRange, Map1, StreamingRepartition+Map2
+            [
+                ("StreamingRepartitionRefBundler", 20),
+                ("BlockRefBundler", 30),
+                ("BlockRefBundler", None),
+            ],
+            "First batch_size(30) > target(20): 3 MapOperators with bundlers [StreamingRepartitionRefBundler(20), BlockRefBundler(30), BlockRefBundler(None)]",
+        ),
+        # Case 4: All three fuse into one operator
+        (
+            20,
+            20,
+            None,
+            3,  # InputDataBuffer, ReadRange, Map1+StreamingRepartition+Map2
+            [("StreamingRepartitionRefBundler", 20), ("BlockRefBundler", None)],
+            "First batch_size(20) == target(20): ReadRange has BlockRefBundler(None), fused Map has StreamingRepartitionRefBundler(20)",
+        ),
+        # Case 5: All three fuse into one operator
+        (
+            None,
+            20,
+            10,
+            3,  # InputDataBuffer, ReadRange, Map1+StreamingRepartition+Map2
+            [("StreamingRepartitionRefBundler", 20), ("BlockRefBundler", None)],
+            "Second batch_size(10) < target(20): ReadRange has BlockRefBundler(None), fused Map has StreamingRepartitionRefBundler(20)",
+        ),
+        # Case 6: Map1+StreamingRepartition fused, Map2 isolated
+        (
+            None,
+            20,
+            30,
+            4,  # InputDataBuffer, ReadRange, Map1+StreamingRepartition, Map2
+            [
+                ("BlockRefBundler", 30),
+                ("StreamingRepartitionRefBundler", 20),
+                ("BlockRefBundler", None),
+            ],
+            "Second batch_size(30) > target(20): 3 MapOperators with bundlers [BlockRefBundler(30), StreamingRepartitionRefBundler(20), BlockRefBundler(None)]",
+        ),
+        # Case 7: Map1 isolated, StreamingRepartition+Map2 fused
+        (
+            30,
+            20,
+            10,
+            4,  # InputDataBuffer, ReadRange, Map1, StreamingRepartition+Map2
+            [
+                ("StreamingRepartitionRefBundler", 20),
+                ("BlockRefBundler", 30),
+                ("BlockRefBundler", None),
+            ],
+            "First > target, second < target: 3 MapOperators with bundlers [StreamingRepartitionRefBundler(20), BlockRefBundler(30), BlockRefBundler(None)]",
+        ),
+        # Case 8: All three fuse into one operator
+        (
+            10,
+            20,
+            15,
+            3,  # InputDataBuffer, ReadRange, Map1+StreamingRepartition+Map2
+            [("StreamingRepartitionRefBundler", 20), ("BlockRefBundler", None)],
+            "Both batch_sizes < target: ReadRange has BlockRefBundler(None), fused Map has StreamingRepartitionRefBundler(20)",
+        ),
+    ],
+)
+def test_streaming_repartition_fusion_bundler_validation(
+    ray_start_regular_shared_2_cpus: Any,
+    first_batch_size: int,
+    target_num_rows: int,
+    second_batch_size: int,
+    expected_op_count: int,
+    expected_bundlers: list,
+    description: str,
+):
+    """Test that fused operators have the correct block_ref_bundler after fusion.
+
+    This test validates that the _get_compatible_ref_bundler method correctly
+    merges bundlers when operators are fused, ensuring the resulting physical
+    operators have the appropriate bundler types and configurations.
+
+    Args:
+        ray_start_regular_shared_2_cpus: Pytest fixture for Ray runtime
+        first_batch_size: batch_size for first MapBatches (None or int)
+        target_num_rows: target_num_rows_per_block for streaming repartition
+        second_batch_size: batch_size for second MapBatches (None or int)
+        expected_op_count: Expected total number of operators (including Read)
+        expected_bundlers: List of (bundler_type, value) tuples for each MapOperator
+                          from downstream to upstream order
+        description: Human-readable test case description
+    """
+
+    def fn1(batch):
+        return {"id": [x + 1 for x in batch["id"]]}
+
+    def fn2(batch):
+        return {"id": [x * 2 for x in batch["id"]]}
+
+    n = 100
+    ds = ray.data.range(n)
+
+    ds = ds.map_batches(fn1, batch_size=first_batch_size)
+
+    ds = ds.repartition(target_num_rows_per_block=target_num_rows)
+
+    ds = ds.map_batches(fn2, batch_size=second_batch_size)
+
+    physical_plan = get_execution_plan(ds._logical_plan)
+
+    operators = []
+
+    def collect_operators(op):
+        operators.append(op)
+        for dep in op.input_dependencies:
+            collect_operators(dep)
+
+    collect_operators(physical_plan.dag)
+
+    assert len(operators) == expected_op_count, (
+        f"{description}\n"
+        f"Expected {expected_op_count} operators but found {len(operators)}"
+    )
+
+    map_operators = [op for op in operators if not isinstance(op, InputDataBuffer)]
+
+    assert len(map_operators) == len(expected_bundlers), (
+        f"{description}\n"
+        f"Expected {len(expected_bundlers)} MapOperators but found {len(map_operators)}"
+    )
+
+    for idx, (op, (expected_type, expected_value)) in enumerate(
+        zip(map_operators, expected_bundlers)
+    ):
+        bundler = op._block_ref_bundler
+        op_position = "downstream" if idx == 0 else f"upstream-{idx}"
+
+        if expected_type == "StreamingRepartitionRefBundler":
+            assert isinstance(bundler, StreamingRepartitionRefBundler), (
+                f"{description}\n"
+                f"Operator {op_position} ({op.name}): Expected StreamingRepartitionRefBundler "
+                f"but got {type(bundler).__name__}"
+            )
+            assert bundler._target_num_rows == expected_value, (
+                f"{description}\n"
+                f"Operator {op_position} ({op.name}): Expected target_num_rows={expected_value} "
+                f"but got {bundler._target_num_rows}"
+            )
+        else:  # BlockRefBundler
+            assert isinstance(bundler, BlockRefBundler), (
+                f"{description}\n"
+                f"Operator {op_position} ({op.name}): Expected BlockRefBundler "
+                f"but got {type(bundler).__name__}"
+            )
+            assert bundler._min_rows_per_bundle == expected_value, (
+                f"{description}\n"
+                f"Operator {op_position} ({op.name}): Expected min_rows_per_bundle={expected_value} "
+                f"but got {bundler._min_rows_per_bundle}"
+            )
 
 
 if __name__ == "__main__":
