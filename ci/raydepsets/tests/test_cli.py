@@ -738,49 +738,6 @@ class TestCli(unittest.TestCase):
             )
             manager.diff_lock_files()
 
-    def test_compile_with_packages(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir)
-            save_file_as(
-                Path(tmpdir) / "requirements_compiled_test.txt",
-                Path(tmpdir) / "requirements_compiled_test_packages.txt",
-            )
-            manager = _create_test_manager(tmpdir)
-            manager.compile(
-                constraints=["requirement_constraints_test.txt"],
-                packages=["emoji==2.9.0", "pyperclip==1.6.0"],
-                append_flags=["--no-annotate", "--no-header"],
-                name="packages_test_depset",
-                output="requirements_compiled_test_packages.txt",
-            )
-            output_file = Path(tmpdir) / "requirements_compiled_test_packages.txt"
-            output_text = output_file.read_text()
-            output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
-            output_text_valid = output_file_valid.read_text()
-            assert output_text == output_text_valid
-
-    def test_compile_with_packages_and_requirements(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir)
-            save_file_as(
-                Path(tmpdir) / "requirements_compiled_test.txt",
-                Path(tmpdir) / "requirements_compiled_test_packages.txt",
-            )
-            manager = _create_test_manager(tmpdir)
-            manager.compile(
-                constraints=["requirement_constraints_test.txt"],
-                packages=["emoji==2.9.0", "pyperclip==1.6.0"],
-                requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
-                name="packages_test_depset",
-                output="requirements_compiled_test_packages.txt",
-            )
-            output_file = Path(tmpdir) / "requirements_compiled_test_packages.txt"
-            output_text = output_file.read_text()
-            output_file_valid = Path(tmpdir) / "requirements_compiled_test.txt"
-            output_text_valid = output_file_valid.read_text()
-            assert output_text == output_text_valid
-
     @patch("sys.stdout", new_callable=io.StringIO)
     def test_requirements_ordering(self, mock_stdout):
         with tempfile.TemporaryDirectory() as tmpdir:

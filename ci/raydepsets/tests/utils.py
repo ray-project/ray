@@ -81,7 +81,6 @@ depsets:\n"""
       {f"source_depset: {depset.source_depset}" if depset.source_depset else ""}
       {f"append_flags: {depset.append_flags}" if depset.append_flags else ""}
       {f"override_flags: {depset.override_flags}" if depset.override_flags else ""}
-      {f"packages: {depset.packages}" if depset.packages else ""}
       {f"build_arg_sets: {build_arg_sets}" if build_arg_sets else ""}
                 """
             )
