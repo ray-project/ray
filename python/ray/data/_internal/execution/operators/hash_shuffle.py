@@ -1246,34 +1246,24 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         num_partitions: int,
         estimated_dataset_bytes: int,
     ) -> int:
+        max_partitions_for_aggregator = math.ceil(
+            num_partitions / num_aggregators
+        )  # Max number of partitions that a single aggregator might handle
         partition_byte_size_estimate = math.ceil(
             estimated_dataset_bytes / num_partitions
-        )
-
-        # Estimate of object store memory required to accommodate all partitions
-        # handled by a single aggregator
-        aggregator_shuffle_object_store_memory_required: int = math.ceil(
-            estimated_dataset_bytes / num_aggregators
-        )
-        # Estimate of memory required to accommodate single partition as an output
-        # (inside Object Store)
-        output_object_store_memory_required: int = partition_byte_size_estimate
+        )  # Estimated byte size of a single partition
 
         aggregator_total_memory_required: int = (
-            # Inputs (object store)
-            aggregator_shuffle_object_store_memory_required
-            +
-            # Output (object store)
-            output_object_store_memory_required
-        ) * 2  # When concatenating blocks, the memory usage need to be doubled
+            max_partitions_for_aggregator * partition_byte_size_estimate * 2
+        )
 
         logger.info(
             f"Estimated memory requirement for shuffling aggregator "
             f"(partitions={num_partitions}, "
             f"aggregators={num_aggregators}, "
             f"dataset (estimate)={estimated_dataset_bytes / GiB:.1f}GiB): "
-            f"shuffle={aggregator_shuffle_object_store_memory_required / MiB:.1f}MiB, "
-            f"output={output_object_store_memory_required / MiB:.1f}MiB, "
+            f"max partitions per aggregator={max_partitions_for_aggregator}, "
+            f"partition byte size estimate={partition_byte_size_estimate}, "
             f"total={aggregator_total_memory_required / MiB:.1f}MiB, "
         )
 
