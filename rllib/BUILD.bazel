@@ -488,7 +488,7 @@ py_test(
     name = "learning_tests_multi_agent_cartpole_w_100_policies_appo_old_api_stack",
     size = "large",
     srcs = ["algorithms/tests/run_regression_tests.py"],
-    args = ["--dir=tuned_examples/appo"],
+    args = ["--dir=../tuned_examples/appo"],
     data = ["tuned_examples/appo/multi-agent-cartpole-w-100-policies-appo.py"],
     main = "algorithms/tests/run_regression_tests.py",
     tags = [
