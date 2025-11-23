@@ -124,16 +124,12 @@ class BatchIterator:
         self._shuffle_seed = shuffle_seed
         self._ensure_copy = ensure_copy
         self._prefetch_batches = prefetch_batches
-        ctx = DataContext.get_current()
-        self._eager_free = clear_block_after_read and ctx.eager_free
-        max_get_blocks_batch_size = max(1, (prefetch_batches or 0) + 1)
-        self._block_get_batch_size = min(
-            ctx.iter_get_block_batch_size, max_get_blocks_batch_size
-        )
+        self._ctx = DataContext.get_current()
+        self._eager_free = clear_block_after_read and self._ctx.eager_free
 
         actor_prefetcher_enabled = (
             prefetch_batches > 0
-            and ctx.actor_prefetcher_enabled
+            and self._ctx.actor_prefetcher_enabled
             and not ray.util.client.ray.is_connected()
         )
         self._prefetcher = (
@@ -166,8 +162,16 @@ class BatchIterator:
         return resolve_block_refs(
             block_ref_iter=block_refs,
             stats=self._stats,
-            max_get_batch_size=self._block_get_batch_size,
+            ctx=self._ctx,
+            max_get_batch_size=self._max_block_get_batch_size,
         )
+
+    def _max_block_get_batch_size(self) -> int:
+        prefetched_blocks = self._prefetcher.num_prefetched_blocks()
+        if prefetched_blocks <= 0:
+            prefetched_blocks = self._prefetch_batches if self._prefetch_batches > 0 else 0
+        limit = max(1, prefetched_blocks + 1)
+        return min(self._ctx.iter_get_block_batch_size, limit)
 
     def _blocks_to_batches(self, blocks: Iterator[Block]) -> Iterator[Batch]:
         return blocks_to_batches(

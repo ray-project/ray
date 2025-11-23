@@ -93,6 +93,42 @@ def test_resolve_block_refs_max_batch_override(ray_start_regular_shared, monkeyp
 
     assert call_sizes == [3, 3, 1]
 
+# Ensures callable overrides are honored when provided.
+def test_resolve_block_refs_max_batch_callable(ray_start_regular_shared, monkeypatch):
+    ctx = ray.data.DataContext.get_current()
+    old_batch_size = ctx.iter_get_block_batch_size
+    ctx.iter_get_block_batch_size = 32
+
+    call_sizes = []
+    original_get = ray.get
+
+    def recording_get(refs, *args, **kwargs):
+        if isinstance(refs, list):
+            call_sizes.append(len(refs))
+        else:
+            call_sizes.append(1)
+        return original_get(refs, *args, **kwargs)
+
+    monkeypatch.setattr(ray, "get", recording_get)
+
+    provider_calls = {"count": 0}
+
+    def provider() -> int:
+        provider_calls["count"] += 1
+        return 2
+
+    block_refs = [ray.put(i) for i in range(5)]
+
+    try:
+        assert list(
+            resolve_block_refs(iter(block_refs), max_get_batch_size=provider)
+        ) == list(range(5))
+    finally:
+        ctx.iter_get_block_batch_size = old_batch_size
+
+    assert call_sizes == [2, 2, 1]
+    assert provider_calls["count"] > 0
+
 
 @pytest.mark.parametrize("block_size", [1, 10])
 @pytest.mark.parametrize("drop_last", [True, False])
