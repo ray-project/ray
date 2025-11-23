@@ -6,6 +6,8 @@ FROM "$BASE_IMAGE" AS main-build
 
 ENV TERM=xterm
 
+ENV CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+
 ARG SSH_PORT=5020
 
 ARG PYTHON_DEPSET
@@ -145,7 +147,7 @@ rm -rf "/tmp/aws-efa-installer-${EFA_VERSION}.tar.gz" /tmp/aws-efa-installer.key
 # Install GDRCopy
 if [[ "${GDRCOPY_VERSION}" != "" ]]; then
     echo "Installing gdrcopy for GPU images"
-    sudo apt-get -y install build-essential devscripts debhelper check libsubunit-dev fakeroot pkg-config dkms
+    sudo apt-get -y install build-essential devscripts debhelper check libsubunit-dev fakeroot pkg-config dkms libzmq3-dev
     wget -q "https://github.com/NVIDIA/gdrcopy/archive/refs/tags/v${GDRCOPY_VERSION}.tar.gz" -O "/tmp/v${GDRCOPY_VERSION}.tar.gz"
     tar -xzf "/tmp/v${GDRCOPY_VERSION}.tar.gz" -C /tmp
     (

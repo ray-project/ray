@@ -1862,9 +1862,9 @@ propcache==0.3.0 \
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.9.lock
     #   aiohttp
     #   yarl
-proto-plus==1.22.3 \
-    --hash=sha256:a49cd903bc0b6ab41f76bf65510439d56ca76f868adf0274e738bfdd096894df \
-    --hash=sha256:fdcd09713cbd42480740d2fe29c990f7fbd885a67efc328aa8be6ee3e9f76a6b
+proto-plus==1.25.0 \
+    --hash=sha256:c91fc4a65074ade8e458e95ef8bac34d4008daa7cce4a12d6707066fca648961 \
+    --hash=sha256:fbb17f57f7bd05a68b7707e745e26528b0b3c34e378db91eef93912c54982d91
     # via
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.9.lock
     #   google-api-core
@@ -2186,9 +2186,9 @@ rfc3986-validator==0.1.1 \
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.9.lock
     #   jsonschema
     #   jupyter-events
-rich==13.3.2 \
-    --hash=sha256:91954fe80cfb7985727a467ca98a7618e5dd15178cc2da10f553b36a93859001 \
-    --hash=sha256:a104f37270bf677148d8acb07d33be1569eeee87e2d1beb286a4e9113caf6f2f
+rich==13.3.3 \
+    --hash=sha256:540c7d6d26a1178e8e8b37e9ba44573a3cd1464ff6348b99ee7061b95d1c6333 \
+    --hash=sha256:dc84400a9d842b3a9c5ff74addd8eb798d155f36c1c91303888e0a66850d2a15
     # via
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.9.lock
     #   anyscale
