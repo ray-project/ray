@@ -86,7 +86,7 @@ const columns = [
       </Typography>
     ),
   },
-  { label: "GRAM" },
+  { label: "VRAM" },
   { label: "Object Store Memory" },
   {
     label: "Disk(root)",

@@ -1,3 +1,10 @@
-span.find-kws {
+/* Light mode - default yellow highlight */
+.hljs-light span.find-kws {
   background-color: #ffd800;
+}
+
+/* Dark mode - darker yellow with white text for better contrast */
+.hljs-dark span.find-kws {
+  background-color: #b89700;
+  color: #ffffff;
 }
