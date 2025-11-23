@@ -169,7 +169,9 @@ class BatchIterator:
     def _max_block_get_batch_size(self) -> int:
         prefetched_blocks = self._prefetcher.num_prefetched_blocks()
         if prefetched_blocks <= 0:
-            prefetched_blocks = self._prefetch_batches if self._prefetch_batches > 0 else 0
+            prefetched_blocks = (
+                self._prefetch_batches if self._prefetch_batches > 0 else 0
+            )
         limit = max(1, prefetched_blocks + 1)
         return min(self._ctx.iter_get_block_batch_size, limit)
 

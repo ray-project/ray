@@ -93,6 +93,7 @@ def test_resolve_block_refs_max_batch_override(ray_start_regular_shared, monkeyp
 
     assert call_sizes == [3, 3, 1]
 
+
 # Ensures callable overrides are honored when provided.
 def test_resolve_block_refs_max_batch_callable(ray_start_regular_shared, monkeypatch):
     ctx = ray.data.DataContext.get_current()

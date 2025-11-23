@@ -2,7 +2,10 @@ import dataclasses
 import logging
 import threading
 from contextlib import nullcontext
-from typing import Any, Callable, Iterator, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Iterator, List, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 
 import ray
 from ray.actor import ActorHandle
@@ -72,9 +75,7 @@ def resolve_block_refs(
         else:
             override = max_get_batch_size
 
-        candidate = (
-            override if override is not None else ctx.iter_get_block_batch_size
-        )
+        candidate = override if override is not None else ctx.iter_get_block_batch_size
         return max(1, candidate)
 
     pending: List[ObjectRef[Block]] = []
