@@ -2,8 +2,10 @@ import logging
 from types import ModuleType
 from typing import Dict, List, Optional
 
-from ray._private.authentication import authentication_constants
-from ray.dashboard import authentication_utils as auth_utils
+from ray._private.authentication import (
+    authentication_constants,
+    authentication_utils as auth_utils,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +43,30 @@ def get_token_auth_middleware(
         ):
             return await handler(request)
 
+        # Try to get authentication token from multiple sources (in priority order):
+        # 1. Standard "Authorization" header (for API clients, SDKs)
+        # 2. Fallback "X-Ray-Authorization" header (for proxies and KubeRay)
+        # 3. Cookie (for web dashboard sessions)
+
         auth_header = request.headers.get(
             authentication_constants.AUTHORIZATION_HEADER_NAME, ""
         )
+
+        if not auth_header:
+            auth_header = request.headers.get(
+                authentication_constants.RAY_AUTHORIZATION_HEADER_NAME, ""
+            )
+
+        if not auth_header:
+            token = request.cookies.get(
+                authentication_constants.AUTHENTICATION_TOKEN_COOKIE_NAME
+            )
+            if token:
+                # Format as Bearer token for validation
+                auth_header = (
+                    authentication_constants.AUTHORIZATION_BEARER_PREFIX + token
+                )
+
         if not auth_header:
             return aiohttp_module.web.Response(
                 status=401, text="Unauthorized: Missing authentication token"
@@ -94,13 +117,13 @@ def format_authentication_http_error(status: int, body: str) -> Optional[str]:
     if status == 401:
         return "Authentication required: {body}\n\n{details}".format(
             body=body,
-            details=authentication_constants.HTTP_REQUEST_MISSING_TOKEN_ERROR_MESSAGE,
+            details=authentication_constants.TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
         )
 
     if status == 403:
         return "Authentication failed: {body}\n\n{details}".format(
             body=body,
-            details=authentication_constants.HTTP_REQUEST_INVALID_TOKEN_ERROR_MESSAGE,
+            details=authentication_constants.TOKEN_INVALID_ERROR_MESSAGE,
         )
 
     return None
