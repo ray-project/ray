@@ -75,15 +75,12 @@ class _ArrayNamespace:
                 # PyArrow supports flattening FixedSizeListArray via list_flatten.
                 # This returns a ListArray with variable-length lists.
                 return pc.list_flatten(arr)
-            except (TypeError, NotImplementedError) as exc:
+            except (TypeError, NotImplementedError):
                 # On older Arrow versions or unsupported types, fall back to a
                 # simple Python implementation that preserves nulls and shapes.
-                try:
-                    return _fixed_size_list_to_list_array(arr)
-                except Exception:
-                    # If the fallback also fails, surface the original error so
-                    # users see the most relevant stack trace.
-                    raise exc
+                # If this fallback fails, its exception is propagated directly
+                # so we don't hide bugs in the fallback.
+                return _fixed_size_list_to_list_array(arr)
 
         return _flatten(self._expr)
 
