@@ -201,7 +201,7 @@ class TestStringPredicates:
 
 @pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
 @pytest.mark.parametrize(
-    "method_name,method_args,method_kwargs,input_values,expected_values",
+    "method_name,method_args,input_values,expected_values",
     [
         ("strip", (), ["  hello  ", " world "], ["hello", "world"]),
         ("strip", ("x",), ["xxxhelloxxx"], ["hello"]),
