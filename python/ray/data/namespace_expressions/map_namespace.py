@@ -98,7 +98,7 @@ class _MapNamespace:
         >>> # Extract keys from a map column (returns a list)
         >>> _ = col("tags").map.keys()
         >>> # Extract values from a map column (returns a list)
-        >>> expr = col("tags").map.values()
+        >>> _ = col("tags").map.values()
     """
 
     _expr: "Expr"
@@ -109,7 +109,7 @@ class _MapNamespace:
         Example:
             >>> from ray.data.expressions import col
             >>> # Get the keys from the "parameters" map column
-            >>> col("parameters").map.keys()
+            >>> _ = col("parameters").map.keys()
 
         Returns:
             An expression producing a list of keys for each map entry.
