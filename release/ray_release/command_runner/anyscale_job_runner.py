@@ -133,7 +133,11 @@ class AnyscaleJobRunner(CommandRunner):
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         self._wait_for_nodes_timeout = timeout
         self.job_manager.cluster_startup_timeout += timeout
-        super().wait_for_nodes(num_nodes, timeout)
+
+        # Give 30 seconds more to account for communication
+        self.run_prepare_command(
+            f"python wait_cluster.py {num_nodes} {timeout}", timeout=timeout + 30
+        )
 
     def save_metrics(self, start_time: float, timeout: float = 900):
         # Handled in run_command
