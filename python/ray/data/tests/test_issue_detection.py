@@ -26,7 +26,6 @@ from ray.data._internal.issue_detection.detectors.high_memory_detector import (
 from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
 
-
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,

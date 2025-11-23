@@ -11,11 +11,10 @@ from ray.data._internal.issue_detection.issue_detector import (
 )
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.streaming_executor import StreamingExecutor
-    from ray.data.context import DataContext
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
 HIGH_MEMORY_PERIODIC_WARNING = """
 Operator '{op_name}' uses {memory_per_task} of memory per task on average, but Ray

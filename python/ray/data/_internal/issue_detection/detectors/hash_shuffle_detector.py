@@ -15,14 +15,16 @@ from ray.data._internal.issue_detection.issue_detector import (
 from ray.data._internal.util import GiB
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
+
 
 @dataclass
 class HashShuffleAggregatorIssueDetectorConfig:
     """Configuration for HashShuffleAggregatorIssueDetector."""
+
     detection_time_interval_s: float = 30.0
     min_wait_time_s: float = 300.0
 
@@ -53,6 +55,7 @@ class HashShuffleAggregatorIssueDetector(IssueDetector):
         Returns:
             An instance of HashShuffleAggregatorIssueDetector.
         """
+
         def get_operators_fn() -> List["PhysicalOperator"]:
             if not executor._topology:
                 return []
@@ -116,10 +119,7 @@ class HashShuffleAggregatorIssueDetector(IssueDetector):
             return False
 
         # Check if enough time has passed since start
-        if (
-            current_time - info.started_at
-            < self._detector_cfg.min_wait_time_s
-        ):
+        if current_time - info.started_at < self._detector_cfg.min_wait_time_s:
             return False
 
         # Check if enough time has passed since last warning
