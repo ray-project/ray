@@ -3981,9 +3981,7 @@ void CoreWorker::CancelTaskOnExecutor(TaskID task_id,
   {
     absl::MutexLock lock(&mutex_);
     requested_task_running = main_thread_task_id_ == task_id;
-    // Mark the task as canceled in the global set so is_canceled() can check it.
-    // This works across threads - the cancellation request may come from the gRPC
-    // handler thread while the task executes on the main thread.
+
     if (requested_task_running) {
       canceled_tasks_.insert(task_id);
     }
@@ -4034,37 +4032,29 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
     // cancel it. If it is already running, we attempt to cancel it.
     bool success = false;
     bool is_running = false;
-    bool task_was_queued = task_receiver_->CancelQueuedActorTask(caller_worker_id, task_id);
+    bool task_present = task_receiver_->CancelQueuedActorTask(caller_worker_id, task_id);
+    if (task_present) {
+      {
+        absl::MutexLock lock(&mutex_);
+        is_running = running_tasks_.find(task_id) != running_tasks_.end();
 
-    // Check if the task is currently running, regardless of whether it was queued.
-    {
-      absl::MutexLock lock(&mutex_);
-      is_running = running_tasks_.find(task_id) != running_tasks_.end();
-      // Mark the task as canceled in the global set so is_canceled() can check it.
-      // This works across threads - the cancellation request may come from a different
-      // thread than the one executing the task.
-      if (is_running) {
-        canceled_tasks_.insert(task_id);
+        if (is_running) {
+          canceled_tasks_.insert(task_id);
+        }
       }
-    }
 
-    // Determine success based on whether we canceled it or it's running.
-    if (task_was_queued) {
-      // Task was successfully removed from queue before execution.
-      success = true;
-    } else if (is_running) {
-      // Task is currently running.
-      // Attempt to cancel the task if it's an async actor.
-      if (is_async_actor) {
+      // Attempt to cancel the task if it's running.
+      // We can't currently interrupt running tasks for non-async actors.
+      if (is_running && is_async_actor) {
         success = options_.cancel_async_actor_task(task_id);
       } else {
-        // For non-async actors, we can't interrupt running tasks, but we've
-        // marked it as canceled so is_canceled() will return true.
-        // Return success so the client won't retry.
+        // If the task wasn't running, it was successfully cancelled by CancelQueuedActorTask. 
+        // Else if for non-async actor, we can't interrupt running tasks, but we've marked 
+        // it as canceled so IsTaskCanceled() will return true. Return success so the 
+        // client won't retry.
         success = true;
       }
     }
-    // If task was neither queued nor running, success remains false.
 
     on_canceled(success, is_running);
   };
