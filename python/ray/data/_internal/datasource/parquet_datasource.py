@@ -302,7 +302,6 @@ class ParquetDatasource(Datasource):
         meta_provider: Optional[FileMetadataProvider] = None,
         partition_filter: PathPartitionFilter = None,
         partitioning: Optional[Partitioning] = Partitioning("hive"),
-        shuffle: Union[Literal["files"], None] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
@@ -430,13 +429,8 @@ class ParquetDatasource(Datasource):
         self._partition_schema = _get_partition_columns_schema(
             partitioning, self._pq_paths
         )
-        self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
-        if shuffle == "files":
-            self._file_metadata_shuffler = np.random.default_rng()
-        elif isinstance(shuffle, FileShuffleConfig):
-            self._file_metadata_shuffler = np.random.default_rng(shuffle.seed)
 
         # Sample small number of parquet files to estimate
         #   - Encoding ratio: ratio of file size on disk to approximate expected
@@ -471,17 +465,27 @@ class ParquetDatasource(Datasource):
         return self._estimate_in_mem_size(self._pq_fragments)
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        shuffle: Union[Literal["files"], None] = None,
     ) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
         # FileBasedDatasource's write side, however.
-        if self._file_metadata_shuffler is not None:
-            files_metadata = list(zip(self._pq_fragments, self._pq_paths))
+
+        file_metadata_shuffler = None
+        if shuffle == "files":
+            file_metadata_shuffler = np.random.default_rng()
+        elif isinstance(shuffle, FileShuffleConfig):
+            file_metadata_shuffler = np.random.default_rng(shuffle.seed)
+
+        if file_metadata_shuffler is not None:
+            files_metadata = list(zip(pq_fragments, pq_paths))
             shuffled_files_metadata = [
                 files_metadata[i]
-                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
+                for i in file_metadata_shuffler.permutation(len(files_metadata))
             ]
             pq_fragments, pq_paths = list(map(list, zip(*shuffled_files_metadata)))
         else:
