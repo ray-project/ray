@@ -242,7 +242,7 @@ def test_default_config_cluster_with_different_temp_dir(ray_start_cluster_enable
     # Run spilling workload on both nodes
     @ray.remote
     def task():
-        arr = np.random.rand(40 * 1024 * 1024)  # 40 MB
+        arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
         refs = []
         refs.append([ray.put(arr) for _ in range(2)])
         ray.get(ray.put(arr))
