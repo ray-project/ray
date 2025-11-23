@@ -370,6 +370,7 @@ def read_datasource(
     ray_remote_args: Dict[str, Any] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    shuffle: Union[Literal["files"], None] = None,
     **read_args,
 ) -> Dataset:
     """Read a stream from a custom :class:`~ray.data.Datasource`.
@@ -419,6 +420,7 @@ def read_datasource(
         memory,
         ray_remote_args,
     )
+    ctx.shuffle_config = shuffle
 
     datasource_or_legacy_reader = _get_datasource_or_legacy_reader(
         datasource,
@@ -1040,12 +1042,12 @@ def read_parquet(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
-        shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
     )
     return read_datasource(
         datasource,
+        shuffle=shuffle,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
