@@ -449,6 +449,9 @@ class TaskManager : public TaskManagerInterface {
 
   void MarkTaskCanceled(const TaskID &task_id) override;
 
+  /// Check if a task has been marked as cancelled.
+  bool IsTaskCanceled(const TaskID &task_id) const override;
+
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
 
   /// Return specs for pending children tasks of the given parent task.
