@@ -862,11 +862,11 @@ isoduration==20.11.0
     # via jsonschema
 itsdangerous==2.1.2
     # via flask
-jax==0.4.20
+jax==0.4.13
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   -r python/requirements/ml/train-test-requirements.txt
-jaxlib==0.4.20
+jaxlib==0.4.13
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   -r python/requirements/ml/train-test-requirements.txt

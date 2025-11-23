@@ -20,5 +20,5 @@ nixl==0.4.0; sys_platform != 'darwin'
 
 --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 # Downgrading to JAX 0.4.20 to be compatible with CUDA 12.1 (which is older than what JAX 0.4.23+ expects)
-jax==0.3.27; sys_platform != 'darwin'
-jaxlib==0.3.27+cuda12.cudnn89; sys_platform != 'darwin'
+jax==0.4.13; sys_platform != 'darwin'
+jaxlib==0.4.13+cuda12.cudnn89; sys_platform != 'darwin'
