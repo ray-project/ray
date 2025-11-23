@@ -635,6 +635,10 @@ class Worker:
         """Set the cached job id to speed `current_job_id()`."""
         self._cached_job_id = job_id
 
+    @property
+    def is_canceled(self):
+        return self.core_worker.is_canceled()
+
     @contextmanager
     def task_paused_by_debugger(self):
         """Use while the task is paused by debugger"""
