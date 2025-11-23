@@ -2495,24 +2495,10 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
 }
 
 bool CoreWorker::IsTaskCanceled(const TaskID &task_id) const {
-  auto current_task_id = worker_context_->GetCurrentTaskID();
-
-  if (current_task_id == task_id) {
-    // We're checking if the currently executing task is canceled (executor side).
-    // First check the thread-local state (for tasks canceled before execution started).
-    if (worker_context_->IsCurrentTaskCanceled()) {
-      return true;
-    }
-    // Then check the global canceled_tasks_ set (for tasks canceled during execution,
-    // possibly from a different thread via CancelTask RPC).
-    {
-      absl::MutexLock lock(&mutex_);
-      return canceled_tasks_.find(task_id) != canceled_tasks_.end();
-    }
-  }
-
-  // For submitted tasks (submitter side), check TaskManager.
-  return task_manager_->IsTaskCanceled(task_id);
+  // Check if the task is canceled on executor side. Check the canceled_tasks_ which is 
+  // populated when CancelTask RPC is received.
+  absl::MutexLock lock(&mutex_);
+  return canceled_tasks_.find(task_id) != canceled_tasks_.end();
 }
 
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {

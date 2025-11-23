@@ -98,24 +98,15 @@ struct WorkerThreadContext {
     SetCurrentPlacementGroupId(task_spec.PlacementGroupBundleId().first);
     SetPlacementGroupCaptureChildTasks(task_spec.PlacementGroupCaptureChildTasks());
     current_task_ = std::make_shared<const TaskSpecification>(task_spec);
-
-    is_current_task_canceled_.store(false);
   }
 
   void ResetCurrentTask() {
     SetCurrentTaskId(TaskID::Nil(), /*attempt_number=*/0);
     task_index_ = 0;
     put_counter_ = 0;
-    is_current_task_canceled_.store(false);
   }
 
   uint32_t GetMaxNumGeneratorReturnIndex() const { return max_num_generator_returns_; }
-
-  void SetCurrentTaskCanceled(bool is_canceled) {
-    is_current_task_canceled_.store(is_canceled);
-  }
-
-  bool IsCurrentTaskCanceled() const { return is_current_task_canceled_.load(); }
 
  private:
   /// The task ID for current task.
@@ -156,12 +147,6 @@ struct WorkerThreadContext {
 
   /// The maximum number of generator return values.
   uint32_t max_num_generator_returns_;
-
-  /// Whether the current task has been canceled via ray.cancel().
-  /// This is set to true when a CancelTask RPC is received for the currently executing task.
-  /// Using atomic because the cancellation request may come from a different thread
-  /// (e.g., via the gRPC handler thread) than the task execution thread.
-  std::atomic<bool> is_current_task_canceled_{false};
 };
 
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
@@ -488,19 +473,6 @@ WorkerThreadContext &WorkerContext::GetThreadContext() const {
   }
 
   return *thread_context_;
-}
-
-void WorkerContext::SetCurrentTaskCanceled(bool is_canceled) {
-  if (thread_context_ != nullptr) {
-    thread_context_->SetCurrentTaskCanceled(is_canceled);
-  }
-}
-
-bool WorkerContext::IsCurrentTaskCanceled() const {
-  if (thread_context_ != nullptr) {
-    return thread_context_->IsCurrentTaskCanceled();
-  }
-  return false;
 }
 
 }  // namespace core
