@@ -201,7 +201,7 @@ class TestStringPredicates:
 
 @pytest.mark.parametrize("dataset_format", DATASET_FORMATS)
 @pytest.mark.parametrize(
-    "method_name,method_args,input_values,expected_values",
+    "method_name,method_args,method_kwargs,input_values,expected_values",
     [
         ("strip", (), ["  hello  ", " world "], ["hello", "world"]),
         ("strip", ("x",), ["xxxhelloxxx"], ["hello"]),
@@ -458,7 +458,9 @@ class TestStructNamespace:
         )
         items_data = [
             {"user": {"name": "Alice", "address": {"city": "NYC", "zip": "10001"}}},
-            {"user": {"name": "Bob", "address": {"city": "LA", "zip": "90001"}}},
+            {
+                "user": {"name": "Bob", "address": {"city": "LA", "zip": "90001"}},
+            },
         ]
         ds = _create_dataset(items_data, dataset_format, arrow_table)
 
@@ -505,7 +507,9 @@ class TestStructNamespace:
         )
         items_data = [
             {"user": {"name": "Alice", "address": {"city": "NYC", "zip": "10001"}}},
-            {"user": {"name": "Bob", "address": {"city": "LA", "zip": "90001"}}},
+            {
+                "user": {"name": "Bob", "address": {"city": "LA", "zip": "90001"}},
+            },
         ]
         ds = _create_dataset(items_data, dataset_format, arrow_table)
 
@@ -525,18 +529,16 @@ class TestStructNamespace:
 
 
 # ──────────────────────────────────────
-# Datatime Namespace Tests
+# Datetime Namespace Tests
 # ──────────────────────────────────────
 
 
-def test_dt_namespace_extractors(ray_start_regular):
-    ds = ray.data.from_items(
-        [
-            {
-                "ts": datetime.datetime(2024, 1, 2, 3, 4, 5),
-            }
-        ]
-    )
+def test_datetime_namespace_all_operations(ray_start_regular):
+    """Test all datetime namespace operations on a datetime column."""
+
+    ts = datetime.datetime(2024, 1, 2, 10, 30, 0)
+
+    ds = ray.data.from_items([{"ts": ts}])
 
     result_ds = ds.select(
         [
@@ -546,51 +548,42 @@ def test_dt_namespace_extractors(ray_start_regular):
             col("ts").dt.hour().alias("hour"),
             col("ts").dt.minute().alias("minute"),
             col("ts").dt.second().alias("second"),
+            col("ts").dt.strftime("%Y-%m-%d").alias("date_str"),
+            col("ts").dt.floor("day").alias("ts_floor"),
+            col("ts").dt.ceil("day").alias("ts_ceil"),
+            col("ts").dt.round("day").alias("ts_round"),
         ]
     )
 
-    row = result_ds.take(1)[0]
-    assert row["year"] == 2024
-    assert row["month"] == 1
-    assert row["day"] == 2
-    assert row["hour"] == 3
-    assert row["minute"] == 4
-    assert row["second"] == 5
+    actual = result_ds.to_pandas()
 
-
-def test_dt_namespace_strftime(ray_start_regular):
-    ds = ray.data.from_items(
+    expected = pd.DataFrame(
         [
             {
-                "ts": datetime.datetime(2024, 1, 2, 3, 4, 5),
+                "year": 2024,
+                "month": 1,
+                "day": 2,
+                "hour": 10,
+                "minute": 30,
+                "second": 0,
+                "date_str": "2024-01-02",
+                "ts_floor": datetime.datetime(2024, 1, 2, 0, 0, 0),
+                "ts_ceil": datetime.datetime(2024, 1, 3, 0, 0, 0),
+                "ts_round": datetime.datetime(2024, 1, 3, 0, 0, 0),
             }
         ]
     )
 
-    result_ds = ds.select([col("ts").dt.strftime("%Y-%m-%d").alias("date_str")])
-
-    row = result_ds.take(1)[0]
-    assert row["date_str"] == "2024-01-02"
+    assert rows_same(actual, expected)
 
 
-def test_dt_namespace_rounding(ray_start_regular):
-    ts = datetime.datetime(2024, 1, 2, 10, 30, 0)
+def test_dt_namespace_invalid_dtype_raises(ray_start_regular):
+    """Test that dt namespace on non-datetime column raises an error."""
 
-    ds = ray.data.from_items([{"ts": ts}])
+    ds = ray.data.from_items([{"value": 1}])
 
-    floored = ds.select([col("ts").dt.floor("day").alias("ts_floor")]).take(1)[0][
-        "ts_floor"
-    ]
-    ceiled = ds.select([col("ts").dt.ceil("day").alias("ts_ceil")]).take(1)[0][
-        "ts_ceil"
-    ]
-    rounded = ds.select([col("ts").dt.round("day").alias("ts_round")]).take(1)[0][
-        "ts_round"
-    ]
-
-    assert floored == datetime.datetime(2024, 1, 2, 0, 0, 0)
-    assert ceiled == datetime.datetime(2024, 1, 3, 0, 0, 0)
-    assert rounded == datetime.datetime(2024, 1, 3, 0, 0, 0)
+    with pytest.raises(Exception):
+        ds.select(col("value").dt.year()).to_pandas()
 
 
 # ──────────────────────────────────────
