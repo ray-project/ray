@@ -902,7 +902,7 @@ fastjsonschema==2.19.0 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   nbformat
-fastrlock==0.8.3 ; sys_platform != 'darwin' \
+fastrlock==0.8.3 \
     --hash=sha256:001fd86bcac78c79658bac496e8a17472d64d558cd2227fdc768aa77f877fe40 \
     --hash=sha256:04bb5eef8f460d13b8c0084ea5a9d3aab2c0573991c880c0a34a56bb14951d30 \
     --hash=sha256:05029d7080c0c61a81d5fee78e842c9a1bf22552cd56129451a252655290dcef \
@@ -974,6 +974,7 @@ fastrlock==0.8.3 ; sys_platform != 'darwin' \
     --hash=sha256:fcb50e195ec981c92d0211a201704aecbd9e4f9451aea3a6f71ac5b1ec2c98cf
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   -r python/requirements/cloud-requirements.txt
     #   cupy-cuda12x
 filelock==3.17.0 \
     --hash=sha256:533dc2f7ba78dc2f0f531fc6c4940addf7b70a481e269a5a3b93be94ffbe8338 \
