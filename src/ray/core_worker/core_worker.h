@@ -1845,8 +1845,8 @@ class CoreWorker {
   /// contexts from GetCoreWorkerStats().
   absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
 
-  /// Tracks which tasks have been marked as canceled. For single-threaded, non-async actors this will
-  /// contain at most one task ID.
+  /// Tracks which tasks have been marked as canceled. For single-threaded, non-async
+  /// actors this will contain at most one task ID.
   ///
   /// We have to track this separately because cancellation requests come from gRPC
   /// thread than the thread executing the task, so we cannot get the cancellation status

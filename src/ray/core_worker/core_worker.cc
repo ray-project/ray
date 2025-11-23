@@ -2495,7 +2495,7 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
 }
 
 bool CoreWorker::IsTaskCanceled(const TaskID &task_id) const {
-  // Check if the task is canceled on executor side. Check the canceled_tasks_ which is 
+  // Check if the task is canceled on executor side. Check the canceled_tasks_ which is
   // populated when CancelTask RPC is received.
   absl::MutexLock lock(&mutex_);
   return canceled_tasks_.find(task_id) != canceled_tasks_.end();
@@ -4048,10 +4048,10 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
       if (is_running && is_async_actor) {
         success = options_.cancel_async_actor_task(task_id);
       } else {
-        // If the task wasn't running, it was successfully cancelled by CancelQueuedActorTask. 
-        // Else if for non-async actor, we can't interrupt running tasks, but we've marked 
-        // it as canceled so IsTaskCanceled() will return true. Return success so the 
-        // client won't retry.
+        // If the task wasn't running, it was successfully cancelled by
+        // CancelQueuedActorTask. Else if for non-async actor, we can't interrupt running
+        // tasks, but we've marked it as canceled so IsTaskCanceled() will return true.
+        // Return success so the client won't retry.
         success = true;
       }
     }
