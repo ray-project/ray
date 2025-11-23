@@ -71,6 +71,7 @@ def _setup_jax_distributed_environment(
 
     if "tpu" in jax_platforms.split(","):
         jax.distributed.initialize(master_addr_with_port, num_workers, index)
+        logger.info("Initialized JAX distributed on TPU.")
 
     if "cuda" in jax_platforms.split(","):
         if num_gpus_per_worker > 0:
@@ -80,7 +81,7 @@ def _setup_jax_distributed_environment(
         jax.distributed.initialize(
             master_addr_with_port, num_workers, index, local_device_ids
         )
-    logger.info("Initialized JAX distributed.")
+        logger.info("Initialized JAX distributed on CUDA.")
 
 
 def _shutdown_jax_distributed():
