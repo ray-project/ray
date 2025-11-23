@@ -13,9 +13,10 @@ This guide explains:
 
 The examples assume the following imports unless stated otherwise:
 
-```python
-from ray import serve
-import asyncio
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __imports_begin__
+:end-before: __imports_end__
+:language: python
 ```
 
 ## Quick guide: choose between `async def` and `def`
@@ -29,7 +30,7 @@ Use this decision table as a starting point:
 | Streaming responses | `async def` generator | Integrates with backpressure and non-blocking iteration. |
 | FastAPI ingress (`@serve.ingress`) | `def` or `async def` | FastAPI runs `def` endpoints in a threadpool, so they do not block the loop. |
 
-You can always mix styles inside a deployment. For example, use `async def` for request handling and offload CPU-heavy parts to a threadpool or Ray tasks.
+You can always mix styles inside a deployment. For example, use `async def` for request handling and offload CPU-heavy parts to a threadpool.
 
 ## How Ray Serve executes your code
 
@@ -56,12 +57,10 @@ Key ideas:
 
 For a simple deployment:
 
-```python
-@serve.deployment
-class Echo:
-    async def __call__(self, request):
-        await asyncio.sleep(0.1)
-        return "ok"
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __echo_async_begin__
+:end-before: __echo_async_end__
+:language: python
 ```
 
 - `async def __call__` runs directly on the replica's user event loop.
@@ -69,14 +68,10 @@ class Echo:
 
 For a synchronous deployment:
 
-```python
-@serve.deployment
-class BlockingEcho:
-    def __call__(self, request):
-        # Blocking.
-        import time
-        time.sleep(1)
-        return "ok"
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __blocking_echo_begin__
+:end-before: __blocking_echo_end__
+:language: python
 ```
 
 How this method executes depends on configuration:
@@ -88,26 +83,10 @@ How this method executes depends on configuration:
 
 When you use FastAPI ingress, FastAPI controls how endpoints run:
 
-```python
-from fastapi import FastAPI
-
-app = FastAPI()
-
-@serve.deployment
-@serve.ingress(app)
-class FastAPIDeployment:
-    @app.get("/sync")
-    def sync_endpoint(self):
-        # FastAPI runs this in a threadpool.
-        import time
-        time.sleep(1)
-        return "ok"
-
-    @app.get("/async")
-    async def async_endpoint(self):
-        # Runs directly on FastAPI's asyncio loop.
-        await asyncio.sleep(1)
-        return "ok"
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __fastapi_deployment_begin__
+:end-before: __fastapi_deployment_end__
+:language: python
 ```
 
 Important differences:
@@ -119,73 +98,32 @@ Important differences:
 
 Blocking code keeps the event loop from processing other work. Non-blocking code yields control back to the loop when it is waiting on something.
 
-### Blocking in `async def` is still blocking
-
-This handler looks asynchronous but is not:
-
-```python
-@serve.deployment
-class BadHandler:
-    async def __call__(self, request):
-        # ❌ Blocking: time.sleep blocks the entire event loop.
-        import time
-        time.sleep(2)
-        return "done"
-```
-
-Even though the method is `async def`, `time.sleep` blocks the loop. No other requests can run on this replica during those 2 seconds.
-
-The correct version uses `asyncio.sleep`:
-
-```python
-@serve.deployment
-class GoodHandler:
-    async def __call__(self, request):
-        # ✅ Non-blocking: allows other requests to run.
-        await asyncio.sleep(2)
-        return "done"
-```
-
 ### Blocking I/O vs asynchronous I/O
 
 Blocking I/O example:
 
-```python
-@serve.deployment
-class BlockingHTTP:
-    async def __call__(self, request):
-        # ❌ This blocks the event loop until the HTTP call finishes.
-        import requests
-        resp = requests.get("https://example.com/")
-        return resp.text
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __blocking_http_begin__
+:end-before: __blocking_http_end__
+:language: python
 ```
+
+Even though the method is `async def`, `requests.get` blocks the loop. No other requests can run on this replica during the request call. Blocking in `async def` is still blocking.
 
 Non-blocking equivalent with async HTTP client:
 
-```python
-@serve.deployment
-class AsyncHTTP:
-    async def __call__(self, request):
-        import httpx
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.get("https://example.com/")
-        return resp.text
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __async_http_begin__
+:end-before: __async_http_end__
+:language: python
 ```
 
 Non-blocking equivalent using a threadpool:
 
-```python
-@serve.deployment
-class ThreadedHTTP:
-    async def __call__(self, request):
-        import requests
-
-        def fetch():
-            return requests.get("https://example.com/").text
-
-        # ✅ Offload blocking I/O to a worker thread.
-        return await asyncio.to_thread(fetch)
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __threaded_http_begin__
+:end-before: __threaded_http_end__
+:language: python
 ```
 
 ## Concurrency does not equal parallelism in Python
@@ -205,7 +143,7 @@ This is ideal for high-throughput APIs that mostly wait on external systems.
 
 True CPU parallelism usually comes from:
 
-- Multiple processes (for example, multiple Serve replicas or Ray tasks).
+- Multiple processes (for example, multiple Serve replicas).
 - Native code that releases the GIL and runs across cores.
 
 Python's GIL means that pure Python bytecode runs one thread at a time in a process, even if you use a threadpool.
@@ -220,19 +158,10 @@ Many numeric and ML libraries release the GIL while doing heavy work in native c
 
 In these cases, you can still get useful parallelism from threads inside a single replica process:
 
-```python
-@serve.deployment
-class NumpyDeployment:
-    def _heavy_numpy(self, array):
-        import numpy as np
-        # Many NumPy ops release the GIL while executing C/Fortran code.
-        return np.linalg.svd(array)[0]
-
-    async def __call__(self, request):
-        array = ...
-        # ✅ Multiple threads can run _heavy_numpy in parallel if
-        # the underlying implementation releases the GIL.
-        return await asyncio.to_thread(self._heavy_numpy, array)
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __numpy_deployment_begin__
+:end-before: __numpy_deployment_end__
+:language: python
 ```
 
 However:
@@ -241,7 +170,7 @@ However:
 - Some libraries use their own internal threadpools; combining them with your own threadpools can oversubscribe CPUs.
 - You should verify that your model stack is thread-safe before relying on this form of parallelism.
 
-For predictable CPU scaling, it is usually simpler to increase the number of replicas or offload work to Ray tasks.
+For predictable CPU scaling, it is usually simpler to increase the number of replicas.
 
 ### Summary
 
@@ -253,12 +182,10 @@ For predictable CPU scaling, it is usually simpler to increase the number of rep
 
 Each deployment has a `max_ongoing_requests` configuration that controls how many in-flight requests a replica will handle at once.
 
-```python
-@serve.deployment(max_ongoing_requests=32)
-class MyService:
-    async def __call__(self, request):
-        await asyncio.sleep(1)
-        return "ok"
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __max_ongoing_requests_begin__
+:end-before: __max_ongoing_requests_end__
+:language: python
 ```
 
 Key points:
@@ -272,13 +199,10 @@ How useful `max_ongoing_requests` is depends on how your handler behaves.
 
 With an `async def` handler that spends most of its time awaiting I/O, `max_ongoing_requests` directly controls concurrency:
 
-```python
-@serve.deployment(max_ongoing_requests=100)
-class AsyncIOBound:
-    async def __call__(self, request):
-        # Mostly waiting on an external system.
-        await asyncio.sleep(0.1)
-        return "ok"
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __async_io_bound_begin__
+:end-before: __async_io_bound_end__
+:language: python
 ```
 
 - Up to 100 requests can be in-flight per replica.
@@ -288,14 +212,10 @@ class AsyncIOBound:
 
 With a blocking `def` handler that runs on the event loop (threadpool disabled), `max_ongoing_requests` does not give you the concurrency you expect:
 
-```python
-@serve.deployment(max_ongoing_requests=100)
-class BlockingCPU:
-    def __call__(self, request):
-        # ❌ Blocks the user event loop.
-        import time
-        time.sleep(1)
-        return "ok"
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __blocking_cpu_begin__
+:end-before: __blocking_cpu_end__
+:language: python
 ```
 
 In this case:
@@ -305,14 +225,10 @@ In this case:
 
 If you enable the sync-in-threadpool behavior (see the next section), each in-flight request can run in a thread:
 
-```python
-@serve.deployment(max_ongoing_requests=100)
-class CPUWithThreadpool:
-    def __call__(self, request):
-        # With RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1, each call runs in a thread.
-        import time
-        time.sleep(1)
-        return "ok"
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __cpu_with_threadpool_begin__
+:end-before: __cpu_with_threadpool_end__
+:language: python
 ```
 
 Now:
@@ -370,7 +286,7 @@ export RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1  # default
 This isolation:
 
 - Protects system tasks (health checks, controller communication) from being blocked by user code.
-- Adds a some amount of overhead to cross-loop communication.
+- Adds some amount of overhead to cross-loop communication.
 
 You can disable this behavior:
 
@@ -412,15 +328,10 @@ When you enable batching, Serve groups multiple incoming requests together and p
 
 The following example shows a batched deployment:
 
-```python
-
-class BatchedModel:
-    @serve.deployment(batch_size=32, max_ongoing_requests=64)
-    async def __call__(self, requests):
-        # requests is a list of request objects.
-        inputs = [await r.json() for r in requests]
-        outputs = await self._run_model(inputs)
-        return outputs
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __batched_model_begin__
+:end-before: __batched_model_end__
+:language: python
 ```
 
 The batch handler runs on the user event loop:
@@ -428,14 +339,11 @@ The batch handler runs on the user event loop:
 - If `_run_model` is CPU-heavy and runs inline, it blocks the loop for the duration of the batch.
 - You can offload the batch computation:
 
-```python
-    async def _run_model(self, inputs):
-        def run_sync():
-            # Heavy CPU or GIL-releasing native code here.
-            return [self.model(i) for i in inputs]
-
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, run_sync)
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __batched_model_offload_begin__
+:end-before: __batched_model_offload_end__
+:language: python
+:emphasize-lines: 9-16
 ```
 
 This keeps the event loop responsive while the model runs in a thread.
@@ -452,30 +360,18 @@ Streaming is especially sensitive to blocking:
 
 Bad streaming example:
 
-```python
-@serve.deployment
-class BlockingStream:
-    def __call__(self, request):
-        # ❌ Blocks the event loop between yields.
-        import time
-        for i in range(10):
-            time.sleep(1)
-            yield f"{i}\n"
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __blocking_stream_begin__
+:end-before: __blocking_stream_end__
+:language: python
 ```
 
 Better streaming example:
 
-```python
-@serve.deployment
-class AsyncStream:
-    async def __call__(self, request):
-        # ✅ Yields items without blocking the loop.
-        async def generator():
-            for i in range(10):
-                await asyncio.sleep(1)
-                yield f"{i}\n"
-
-        return generator()
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __async_stream_begin__
+:end-before: __async_stream_end__
+:language: python
 ```
 
 In streaming scenarios:
@@ -483,61 +379,36 @@ In streaming scenarios:
 - Prefer `async def` generators that use `await` between yields.
 - Avoid long CPU-bound loops between yields; offload them if needed.
 
-## Offloading patterns: I/O, CPU, and Ray tasks
+## Offloading patterns: I/O, CPU
 
 This section summarizes common offloading patterns you can use inside `async` handlers.
 
 ### Blocking I/O in `async def`
 
-```python
-@serve.deployment
-class OffloadIO:
-    async def __call__(self, request):
-        import requests
-
-        def fetch():
-            return requests.get("https://example.com/").text
-
-        # Offload to a thread, free the event loop.
-        body = await asyncio.to_thread(fetch)
-        return body
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __offload_io_begin__
+:end-before: __offload_io_end__
+:language: python
 ```
 
 ### CPU-heavy code in `async def`
 
-```python
-@serve.deployment
-class OffloadCPU:
-    def _compute(self, x):
-        # CPU-intensive work.
-        total = 0
-        for i in range(10_000_000):
-            total += (i * x) % 7
-        return total
-
-    async def __call__(self, request):
-        x = 123
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, self._compute, x)
-        return str(result)
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __offload_cpu_begin__
+:end-before: __offload_cpu_end__
+:language: python
 ```
 
-### Using Ray tasks or remote actors for true parallelism
+### (Advance) Using Ray tasks or remote actors for true parallelism
 
-```python
-@ray.remote
-def heavy_task(x):
-    # Heavy compute runs in its own worker process.
-    return x * x
+:::{note}
+While you can spawn Ray tasks from Ray Serve deployments, this approach isn't recommended because it lacks tooling for observability and debugging.
+:::
 
-
-@serve.deployment
-class RayParallel:
-    async def __call__(self, request):
-        values = [1, 2, 3, 4]
-        refs = [heavy_task.remote(v) for v in values]
-        results = await asyncio.gather(*[r for r in refs])
-        return {"results": results}
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __ray_parallel_begin__
+:end-before: __ray_parallel_end__
+:language: python
 ```
 
 This pattern:
@@ -550,4 +421,4 @@ This pattern:
 - Use `async def` for I/O-bound and streaming work so the event loop can stay responsive.
 - Use `max_ongoing_requests` to bound concurrency per replica, but remember that blocking `def` handlers can still serialize work if they run on the event loop.
 - Consider enabling `RAY_SERVE_RUN_SYNC_IN_THREADPOOL` once your code is thread-safe, and be aware of the sync-in-threadpool warning.
-- For CPU-heavy workloads, scale replicas or use Ray tasks and GIL-releasing native code for real parallelism.
+- For CPU-heavy workloads, scale replicas or GIL-releasing native code for real parallelism.
