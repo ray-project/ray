@@ -73,6 +73,24 @@ class AsyncCounter:
         return {"count": self.count}
 
 
+def test_ingress_wrapper_preserves_metadata():
+    app = FastAPI()
+
+    class OriginalIngress:
+        """Sample ingress class."""
+
+        value: int
+
+    wrapped_cls = serve.ingress(app)(OriginalIngress)
+
+    assert wrapped_cls.__name__ == OriginalIngress.__name__
+    assert wrapped_cls.__qualname__ == OriginalIngress.__qualname__
+    assert wrapped_cls.__module__ == OriginalIngress.__module__
+    assert wrapped_cls.__doc__ == OriginalIngress.__doc__
+    assert wrapped_cls.__annotations__ == OriginalIngress.__annotations__
+    assert getattr(wrapped_cls, "__wrapped__", None) is OriginalIngress
+
+
 class FakeRequestRouter(RequestRouter):
     async def choose_replicas(
         self,
