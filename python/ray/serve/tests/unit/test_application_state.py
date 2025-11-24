@@ -3363,7 +3363,7 @@ class TestDeploymentDAG:
         d1_id = DeploymentID(name="d1", app_name="test_app")
 
         # Deploy single deployment
-        app_state.deploy_app({"d1": deployment_info("d1", "/hi")})
+        app_state.deploy_app({"d1": deployment_info("d1", "/hi")}, ApplicationArgsProto(external_scaler_enabled=False))
         app_state.update()
 
         deployment_state_manager.set_deployment_healthy(d1_id)
@@ -3392,7 +3392,8 @@ class TestDeploymentDAG:
                 "d1": deployment_info("d1", "/hi"),
                 "d2": deployment_info("d2"),
                 "d3": deployment_info("d3"),
-            }
+            },
+            ApplicationArgsProto(external_scaler_enabled=False),
         )
         app_state.update()
 
@@ -3432,7 +3433,8 @@ class TestDeploymentDAG:
                 "d1": deployment_info("d1", "/hi"),
                 "d2": deployment_info("d2"),
                 "d3": deployment_info("d3"),
-            }
+            },
+            ApplicationArgsProto(external_scaler_enabled=False),
         )
         app_state.update()
 
@@ -3483,7 +3485,8 @@ class TestDeploymentDAG:
             {
                 "d1": deployment_info("d1", "/hi"),
                 "d2": deployment_info("d2"),
-            }
+            },
+            ApplicationArgsProto(external_scaler_enabled=False),
         )
         app_state.update()
 
@@ -3528,7 +3531,8 @@ class TestDeploymentDAG:
             {
                 "d1": deployment_info("d1", "/hi"),
                 "d2": deployment_info("d2"),
-            }
+            },
+            ApplicationArgsProto(external_scaler_enabled=False),
         )
         app_state.update()
 
@@ -3548,7 +3552,8 @@ class TestDeploymentDAG:
             {
                 "d2": deployment_info("d2", "/hi"),
                 "d3": deployment_info("d3"),
-            }
+            },
+            ApplicationArgsProto(external_scaler_enabled=False),
         )
         app_state.update()
 
@@ -3578,7 +3583,8 @@ class TestDeploymentDAG:
             {
                 "d1": deployment_info("d1", "/hi"),
                 "d2": deployment_info("d2"),
-            }
+            },
+            ApplicationArgsProto(external_scaler_enabled=False),
         )
         app_state.update()
 
@@ -3614,7 +3620,7 @@ class TestDeploymentDAG:
         d1_id = DeploymentID(name="d1", app_name="test_app")
 
         # Deploy app
-        app_state_manager.deploy_app("test_app", [deployment_params("d1", "/hi")])
+        app_state_manager.deploy_app("test_app", [deployment_params("d1", "/hi")], ApplicationArgsProto(external_scaler_enabled=False))
         app_state_manager.update()
 
         deployment_state_manager.set_deployment_healthy(d1_id)
@@ -3653,6 +3659,7 @@ class TestDeploymentDAG:
                 deployment_params("d1", "/app1"),
                 deployment_params("d2"),
             ],
+            ApplicationArgsProto(external_scaler_enabled=False),
         )
         app_state_manager.update()
         deployment_state_manager.set_deployment_healthy(app1_d1_id)
@@ -3668,6 +3675,7 @@ class TestDeploymentDAG:
                 deployment_params("d1", "/app2"),
                 deployment_params("d2"),
             ],
+            ApplicationArgsProto(external_scaler_enabled=False),
         )
         app_state_manager.update()
         deployment_state_manager.set_deployment_healthy(app2_d1_id)
@@ -3725,7 +3733,8 @@ class TestDeploymentDAG:
                 "worker2": deployment_info("worker2"),
                 "database": deployment_info("database"),
                 "cache": deployment_info("cache"),
-            }
+            },
+            ApplicationArgsProto(external_scaler_enabled=False),
         )
         app_state.update()
 
