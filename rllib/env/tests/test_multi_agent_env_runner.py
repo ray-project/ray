@@ -186,15 +186,15 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
             self.assertTrue(
                 isinstance(env_runner._env_to_module.connectors[0], EpisodeTracker)
             )
-            self.assertEquals(
+            self.assertEqual(
                 env_runner._env_to_module.connectors[0].episode_end_counter, 0
             )
 
             sampled_episodes = env_runner.sample(
                 num_episodes=num_episodes, random_actions=True
             )
-            self.assertEquals(len(sampled_episodes), num_episodes)
-            self.assertEquals(
+            self.assertEqual(len(sampled_episodes), num_episodes)
+            self.assertEqual(
                 env_runner._env_to_module.connectors[0].episode_end_counter,
                 num_episodes,
             )
