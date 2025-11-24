@@ -9,7 +9,7 @@ About:
 """
 from pathlib import Path
 
-from ray.rllib.examples.ppo.multi_agent_footsies_ppo import (
+from ray.rllib.examples.algorithms.ppo.multi_agent_footsies_ppo import (
     config,
     env_creator,
     stop,
