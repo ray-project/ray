@@ -16,7 +16,6 @@ from ray.data._internal.block_batching.interfaces import (
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.types import ObjectRef
-from ray.util.debug import log_once
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
@@ -37,11 +36,6 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
         unknowns = sum(1 for node_ids in nodes if not node_ids)
         misses = len(nodes) - hits - unknowns
         return hits, misses, unknowns
-    elif log_once("enable_get_object_locations_for_metrics"):
-        logger.info(
-            "Tracking the number of object cache hits and misses is currently disabled. "
-            "Set `DataContext.get_current().enable_get_object_locations_for_metrics=True` to enable this."
-        )
 
     return 0, 0, 0
 
