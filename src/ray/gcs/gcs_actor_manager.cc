@@ -1554,7 +1554,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   destroy_owned_placement_group_if_needed_(actor_id);
   // Calculate remaining restarts based on max_restarts, not on need_reschedule.
   // need_reschedule controls whether we automatically restart, but cleanup decision
-  // should be based on whether the actor can ever be restarted (manually or automatically).
+  // should be based on whether the actor can ever be restarted.
   if (max_restarts == -1) {
     remaining_restarts = -1;
   } else {
@@ -1580,9 +1580,19 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   bool is_explicit_termination = IsExplicitTermination(death_cause);
   bool should_block_restart = is_explicit_termination && !need_reschedule;
 
-  if (!should_block_restart &&
+  // Creation task failures (e.g. actor __init__ raising or invalid constructor
+  // arguments) are treated as permanent initialization failures and should not
+  // be automatically retried, regardless of max_restarts. This preserves the
+  // semantics that an exception in the constructor surfaces as
+  // RayActorError(actor_init_failed=True) instead of infinite restarts.
+  bool is_creation_failure = death_cause.has_creation_task_failure_context();
+
+  bool should_restart =
+      !is_creation_failure && !should_block_restart &&
       (remaining_restarts != 0 ||
-       (need_reschedule && max_restarts > 0 && mutable_actor_table_data->preempted()))) {
+       (need_reschedule && max_restarts > 0 && mutable_actor_table_data->preempted()));
+
+  if (should_restart) {
     // num_restarts must be set before updating GCS, or num_restarts will be
     // inconsistent between memory cache and storage.
     if (mutable_actor_table_data->preempted()) {
