@@ -1023,7 +1023,9 @@ class Worker:
             # Raise exceptions instead of returning them to the user.
             for i, value in enumerate(values):
                 if isinstance(value, RayError):
-                    if isinstance(value, ray.exceptions.ObjectLostError):
+                    if isinstance(
+                        value, ray.exceptions.ObjectLostError
+                    ) and not isinstance(value, ray.exceptions.OwnerDiedError):
                         global_worker.core_worker.log_plasma_usage()
                     if isinstance(value, RayTaskError):
                         raise value.as_instanceof_cause()
@@ -2155,7 +2157,7 @@ def custom_excepthook(type, value, tb):
         worker_type = common_pb2.DRIVER
         worker_info = {"exception": error_message}
 
-        ray._private.state.state._check_connected()
+        ray._private.state.state._connect_and_get_accessor()
         ray._private.state.state.add_worker(worker_id, worker_type, worker_info)
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
@@ -2608,13 +2610,24 @@ def connect(
     # environment here. If it's ray client, the environment will be prepared
     # at the server side.
     if mode == SCRIPT_MODE and not job_config._client_job and job_config.runtime_env:
+        from ray._private.ray_constants import RAY_RUNTIME_ENV_IGNORE_GITIGNORE
+
         scratch_dir: str = worker.node.get_runtime_env_dir_path()
         runtime_env = job_config.runtime_env or {}
+        # Determine whether to respect .gitignore files based on environment variable
+        # Default is True (respect .gitignore). Set to False if env var is "1".
+        include_gitignore = os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
         runtime_env = upload_py_modules_if_needed(
-            runtime_env, scratch_dir, logger=logger
+            runtime_env,
+            include_gitignore=include_gitignore,
+            scratch_dir=scratch_dir,
+            logger=logger,
         )
         runtime_env = upload_working_dir_if_needed(
-            runtime_env, scratch_dir, logger=logger
+            runtime_env,
+            include_gitignore=include_gitignore,
+            scratch_dir=scratch_dir,
+            logger=logger,
         )
         runtime_env = upload_worker_process_setup_hook_if_needed(
             runtime_env,
@@ -2972,7 +2985,11 @@ def get(
         )
         for i, value in enumerate(values):
             if isinstance(value, RayError):
-                if isinstance(value, ray.exceptions.ObjectLostError):
+                # If the object was lost and it wasn't due to owner death, it may be
+                # because the object store is full and objects needed to be evicted.
+                if isinstance(value, ray.exceptions.ObjectLostError) and not isinstance(
+                    value, ray.exceptions.OwnerDiedError
+                ):
                     worker.core_worker.log_plasma_usage()
                 if isinstance(value, RayTaskError):
                     raise value.as_instanceof_cause()
@@ -3036,13 +3053,11 @@ def put(
     if _owner is None:
         serialize_owner_address = None
     elif isinstance(_owner, ray.actor.ActorHandle):
-        # Ensure `ray._private.state.state.global_state_accessor` is not None
-        ray._private.state.state._check_connected()
+        # Ensure GlobalState is connected
+        ray._private.state.state._connect_and_get_accessor()
         serialize_owner_address = (
             ray._raylet._get_actor_serialized_owner_address_or_none(
-                ray._private.state.state.global_state_accessor.get_actor_info(
-                    _owner._actor_id
-                )
+                ray._private.state.state.get_actor_info(_owner._actor_id)
             )
         )
         if not serialize_owner_address:
@@ -3393,6 +3408,10 @@ def _make_remote(function_or_class, options):
 
 class RemoteDecorator(Protocol):
     @overload
+    def __call__(self, __t: Type[T]) -> ActorClass[T]:
+        ...
+
+    @overload
     def __call__(self, __function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
         ...
 
@@ -3450,12 +3469,6 @@ class RemoteDecorator(Protocol):
     def __call__(
         self, __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
     ) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
-        ...
-
-    # Pass on typing actors for now. The following makes it so no type errors
-    # are generated for actors.
-    @overload
-    def __call__(self, __t: type) -> Any:
         ...
 
 

@@ -96,7 +96,7 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
         self.visit(expr.expr)
 
 
-class _ColumnRefRebindingVisitor(_ExprVisitor[Expr]):
+class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
     """Visitor rebinding column references in ``Expression``s.
 
     This visitor traverses given ``Expression`` trees and substitutes column references
@@ -347,3 +347,26 @@ class _TreeReprVisitor(_ExprVisitor[str]):
 
     def visit_star(self, expr: "StarExpr") -> str:
         return self._make_tree_lines("COL(*)", expr=expr)
+
+
+def get_column_references(expr: Expr) -> List[str]:
+    """Extract all column references from an expression.
+
+    This is a convenience function that creates a _ColumnReferenceCollector,
+    visits the expression tree, and returns the list of referenced column names.
+
+    Args:
+        expr: The expression to extract column references from.
+
+    Returns:
+        List of column names referenced in the expression, in order of appearance.
+
+    Example:
+        >>> from ray.data.expressions import col
+        >>> expr = (col("a") > 5) & (col("b") == "test")
+        >>> get_column_references(expr)
+        ['a', 'b']
+    """
+    collector = _ColumnReferenceCollector()
+    collector.visit(expr)
+    return collector.get_column_refs()
