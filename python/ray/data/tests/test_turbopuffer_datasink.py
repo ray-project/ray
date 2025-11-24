@@ -476,6 +476,10 @@ def test_write_batch_with_retry_retries_then_succeeds(monkeypatch):
     assert attempts["count"] == 3
     # Two failures => two sleeps.
     assert len(sleep_calls) == 2
+    # With full jitter wait_time = random.uniform(0, backoff), and we've fixed
+    # the implementation to no longer add the base backoff. Since we return
+    # 0.0 from random.uniform, all computed wait times should be 0.0.
+    assert sleep_calls == [0.0, 0.0]
 
 
 def test_write_batch_with_retry_exhausts_retries_and_raises(monkeypatch):
