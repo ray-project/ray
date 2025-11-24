@@ -43,10 +43,10 @@ class Expectation:
     error_on_failure: bool = True
 
     def __post_init__(self):
-        if not self.name:
-            raise ValueError("Expectation name cannot be empty")
-        if not self.description:
-            raise ValueError("Expectation description cannot be empty")
+        if not self.name or (isinstance(self.name, str) and not self.name.strip()):
+            raise ValueError("Expectation name cannot be empty or whitespace-only")
+        if not self.description or (isinstance(self.description, str) and not self.description.strip()):
+            raise ValueError("Expectation description cannot be empty or whitespace-only")
 
     def validate(self, *args, **kwargs) -> bool:
         """Validate this expectation. Subclasses must implement this."""
@@ -116,9 +116,16 @@ class DataQualityExpectation(Expectation):
                     "False otherwise."
                 )
             return result
-        except Exception:
+        except Exception as e:
             if self.error_on_failure:
                 raise
+            # Log the exception for debugging when error_on_failure=False
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(
+                f"Expectation '{self.name}' validation raised exception (error_on_failure=False): {e}",
+                exc_info=True
+            )
             return False
 
 
@@ -425,8 +432,12 @@ def _extract_boolean_result(result: Any) -> bool:
         # Filter out None values (nulls) and check if all remaining are True
         non_null_values = [v for v in values if v is not None]
         if not non_null_values:
-            # All values are null - treat as passing (no data to validate)
-            return True
+            # All values are null - for validation purposes, NULL typically means "unknown"
+            # and should be treated as failing validation (conservative approach)
+            # However, empty batches pass validation (no data to validate)
+            # This case (all nulls in non-empty batch) means expression evaluated to NULL
+            # which should be treated as False (failed validation)
+            return False
 
         # All non-null values must be True
         return all(v is True for v in non_null_values)

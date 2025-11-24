@@ -2060,8 +2060,19 @@ class Dataset:
             if isinstance(batch, dict):
                 import numpy as np
 
-                num_rows = len(batch.get(list(batch.keys())[0], []))
-                batch["_validation_passed"] = np.array([flag_value] * num_rows)
+                # Handle empty dict
+                if not batch:
+                    batch["_validation_passed"] = np.array([], dtype=bool)
+                else:
+                    # Get first key to determine num_rows
+                    first_key = next(iter(batch.keys()))
+                    first_value = batch.get(first_key, [])
+                    if isinstance(first_value, (list, tuple, np.ndarray)):
+                        num_rows = len(first_value)
+                    else:
+                        # Single value - treat as 1 row
+                        num_rows = 1
+                    batch["_validation_passed"] = np.array([flag_value] * num_rows)
             return batch
 
         def validation_fn(batch: Any) -> Dict[str, Any]:
@@ -2246,9 +2257,12 @@ class Dataset:
 
         Returns:
             Dataset containing all batches, or empty dataset if batches is empty.
+            Empty dataset preserves schema from original dataset.
         """
         if not batches:
-            return ray.data.from_items([])
+            # Return empty dataset with schema preserved from original dataset
+            # Use limit(0) to preserve schema instead of from_items([])
+            return self.limit(0)
 
         from ray.data._internal.delegating_block_builder import (
             DelegatingBlockBuilder,
@@ -2426,12 +2440,17 @@ class Dataset:
             current_ds = passed_ds
 
         # Union all failed datasets to preserve distributed data
+        # Note: Union may contain duplicate rows if a row fails multiple expectations
+        # This is expected behavior - a row that fails expectation 1 and expectation 2
+        # will appear in both failed datasets, and union will include it twice
+        # Users can deduplicate if needed: failed_ds.distinct()
         if all_failed_datasets:
             failed_ds = all_failed_datasets[0]
             for ds in all_failed_datasets[1:]:
                 failed_ds = failed_ds.union(ds)
         else:
             # Create empty dataset with correct schema
+            # Use limit(0) to preserve schema from original dataset
             failed_ds = self.limit(0)
 
         return current_ds, failed_ds, results
