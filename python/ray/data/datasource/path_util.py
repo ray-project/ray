@@ -1,11 +1,12 @@
 import pathlib
 import sys
-import urllib
+from urllib.parse import quote, unquote, urlparse
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from ray.data._internal.util import RetryingPyFileSystem, _resolve_custom_scheme
 
 if TYPE_CHECKING:
+    import fsspec.spec
     import pyarrow
 
 
@@ -29,38 +30,44 @@ def _get_fsspec_http_filesystem() -> "pyarrow.fs.PyFileSystem":
     return PyFileSystem(FSSpecHandler(HTTPFileSystem()))
 
 
-def _wrap_fsspec_filesystem(
-    filesystem: "pyarrow.fs.FileSystem",
-) -> "pyarrow.fs.PyFileSystem":
-    """Validate and wrap an fsspec filesystem in PyArrow PyFileSystem.
+def _validate_and_wrap_filesystem(
+    filesystem: Optional[
+        Union["pyarrow.fs.FileSystem", "fsspec.spec.AbstractFileSystem"]
+    ],
+) -> Optional["pyarrow.fs.FileSystem"]:
+    """Validate filesystem and wrap fsspec filesystems in PyArrow.
 
     Args:
-        filesystem: Filesystem to validate and wrap.
+        filesystem: Filesystem to validate and potentially wrap. Can be None,
+            a pyarrow.fs.FileSystem, or an fsspec.spec.AbstractFileSystem.
 
     Returns:
-        PyFileSystem wrapping the fsspec filesystem.
+        None if filesystem is None, otherwise a pyarrow.fs.FileSystem
+        (either the original if already PyArrow, or wrapped if fsspec).
 
     Raises:
-        TypeError: If filesystem is not a valid pyarrow or fsspec filesystem.
+        TypeError: If filesystem is not None and not a valid pyarrow or fsspec filesystem.
     """
-    from pyarrow.fs import FSSpecHandler, PyFileSystem
+    if filesystem is None:
+        return None
 
-    err_msg = (
-        f"The filesystem passed must either conform to "
-        f"pyarrow.fs.FileSystem, or "
-        f"fsspec.spec.AbstractFileSystem. The provided "
-        f"filesystem was: {filesystem}"
-    )
+    from pyarrow.fs import FileSystem
+
+    if isinstance(filesystem, FileSystem):
+        return filesystem
+
     try:
         import fsspec  # noqa: F401
     except ModuleNotFoundError:
-        # If filesystem is not a pyarrow filesystem and fsspec isn't
-        # installed, then filesystem is neither a pyarrow filesystem nor
-        # an fsspec filesystem, so we raise a TypeError.
-        raise TypeError(err_msg) from None
+        raise TypeError("fsspec is not installed") from None
 
     if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
-        raise TypeError(err_msg)
+        raise TypeError(
+            f"Filesystem must conform to pyarrow.fs.FileSystem or "
+            f"fsspec.spec.AbstractFileSystem, got: {type(filesystem).__name__}"
+        )
+
+    from pyarrow.fs import FSSpecHandler, PyFileSystem
 
     return PyFileSystem(FSSpecHandler(filesystem))
 
@@ -80,17 +87,14 @@ def _try_resolve_with_encoding(
 
     Returns:
         Tuple of (resolved_filesystem, resolved_path).
-
-    Raises:
-        Exception: Re-raises any errors that aren't URI parsing related.
     """
     from pyarrow.fs import _resolve_filesystem_and_path
 
+    encoded_path = quote(path, safe="/:", errors="ignore")
     resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
-        _encode_url(path), filesystem
+        encoded_path, filesystem
     )
-    resolved_path = _decode_url(resolved_path)
-    return resolved_filesystem, resolved_path
+    return resolved_filesystem, unquote(resolved_path, errors="ignore")
 
 
 def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
@@ -149,13 +153,15 @@ def _resolve_single_path_with_fallback(
         ImportError: If required dependencies are missing.
     """
     import pyarrow as pa
-    from pyarrow.fs import FileSystem, _resolve_filesystem_and_path
+    from pyarrow.fs import _resolve_filesystem_and_path
 
     path = _resolve_custom_scheme(path)
 
-    # Validate/wrap fsspec filesystem if needed
-    if filesystem and not isinstance(filesystem, FileSystem):
-        filesystem = _wrap_fsspec_filesystem(filesystem)
+    # Validate/wrap filesystem if needed
+    try:
+        filesystem = _validate_and_wrap_filesystem(filesystem)
+    except TypeError as e:
+        raise ValueError(f"Invalid filesystem provided: {e}") from e
 
     # Try with provided filesystem first (fast path for cached FS)
     if filesystem is not None:
@@ -168,38 +174,31 @@ def _resolve_single_path_with_fallback(
             # Fall through to full resolution without cached filesystem
             pass
 
+    # Check scheme first to avoid relying on PyArrow error messages
+    parsed = urlparse(path, allow_fragments=False)
+    if parsed.scheme in ["http", "https"]:
+        # PyArrow doesn't support HTTP/HTTPS natively, use fsspec
+        try:
+            resolved_filesystem = _get_fsspec_http_filesystem()
+            resolved_path = path
+            return resolved_filesystem, resolved_path
+        except ImportError as import_error:
+            raise ImportError(
+                f"Cannot resolve HTTP path '{path}': {import_error}"
+            ) from import_error
+
     # Full resolution without cached filesystem
     try:
         resolved_filesystem, resolved_path = _resolve_filesystem_and_path(path, None)
-    except pa.lib.ArrowInvalid as e:
-        error_str = str(e)
-        if "Cannot parse URI" in error_str:
-            # Try URL encoding for special characters
-            try:
-                resolved_filesystem, resolved_path = _try_resolve_with_encoding(
-                    path, None
-                )
-            except Exception as encoding_error:
-                raise ValueError(
-                    f"Failed to resolve path '{path}': {encoding_error}"
-                ) from encoding_error
-        elif "Unrecognized filesystem type in URI" in error_str:
-            scheme = urllib.parse.urlparse(path, allow_fragments=False).scheme
-            if scheme in ["http", "https"]:
-                # Try fsspec HTTP filesystem
-                try:
-                    resolved_filesystem = _get_fsspec_http_filesystem()
-                    resolved_path = path
-                except ImportError as import_error:
-                    raise ImportError(
-                        f"Cannot resolve HTTP path '{path}': {import_error}"
-                    ) from import_error
-            else:
-                raise ValueError(
-                    f"Unrecognized filesystem type in URI '{path}': {error_str}"
-                ) from e
-        else:
-            raise ValueError(f"Failed to resolve path '{path}': {error_str}") from e
+    except (pa.lib.ArrowInvalid, ValueError) as e:
+        # Try URL encoding for paths with special characters that may cause parsing issues
+        try:
+            resolved_filesystem, resolved_path = _try_resolve_with_encoding(path, None)
+        except (ValueError, TypeError) as e:
+            # If encoding doesn't help, raise the original error
+            raise ValueError(f"Failed to resolve path '{path}' after encoding: {e}") from e
+    except TypeError as e:
+        raise ValueError(f"The path: '{path}' has an invalid type {e}") from e
 
     return resolved_filesystem, resolved_path
 
@@ -210,7 +209,7 @@ def _resolve_paths_and_filesystem(
 ) -> Tuple[List[str], "pyarrow.fs.FileSystem"]:
     """
     Resolves and normalizes all provided paths, infers a filesystem from the
-    paths and ensures that all paths use the same filesystem.
+    paths and assumes that all paths use the same filesystem.
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -235,9 +234,13 @@ def _resolve_paths_and_filesystem(
 
     resolved_paths = []
     for path in paths:
-        resolved_filesystem, resolved_path = _resolve_single_path_with_fallback(
-            path, filesystem
-        )
+        try:
+            resolved_filesystem, resolved_path = _resolve_single_path_with_fallback(
+                path, filesystem
+            )
+        except (ValueError, ImportError) as e:
+            resolved_paths.append(path)
+            continue
 
         if filesystem is None:
             filesystem = resolved_filesystem
@@ -285,7 +288,7 @@ def _unwrap_protocol(path):
         # This is executed when 'file://' is NOT included in the path.
         return pathlib.Path(path).as_posix()
 
-    parsed = urllib.parse.urlparse(path, allow_fragments=False)  # support '#' in path
+    parsed = urlparse(path, allow_fragments=False)  # support '#' in path
     params = ";" + parsed.params if parsed.params else ""  # support ';' in path
     query = "?" + parsed.query if parsed.query else ""  # support '?' in path
     netloc = parsed.netloc
@@ -311,11 +314,11 @@ def _unwrap_protocol(path):
 
 
 def _is_url(path) -> bool:
-    return urllib.parse.urlparse(path).scheme != ""
+    return urlparse(path).scheme != ""
 
 
 def _is_http_url(path) -> bool:
-    parsed = urllib.parse.urlparse(path)
+    parsed = urlparse(path)
     return parsed.scheme in ("http", "https")
 
 
@@ -334,11 +337,3 @@ def _is_local_windows_path(path: str) -> bool:
     ):
         return True
     return False
-
-
-def _encode_url(path):
-    return urllib.parse.quote(path, safe="/:")
-
-
-def _decode_url(path):
-    return urllib.parse.unquote(path)
