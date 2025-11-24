@@ -127,6 +127,13 @@ def test_prepare_arrow_table_missing_custom_id_column_raises():
         sink._prepare_arrow_table(table)
 
 
+def test_init_rejects_same_id_and_vector_column():
+    # Using the same column for both IDs and vectors is ambiguous and should
+    # be rejected up front with a clear error.
+    with pytest.raises(ValueError, match="id_column and vector_column"):
+        make_sink(id_column="doc_id", vector_column="doc_id")
+
+
 def test_prepare_arrow_table_raises_on_conflicting_id_column_name():
     # Table already has an 'id' column and a separate custom id column.
     table = pa.table({"id": [1, 2], "doc_id": [10, 20]})

@@ -5146,7 +5146,7 @@ class Dataset:
 
                 ds.write_turbopuffer(
                     namespace_column="space_id",
-                    namespace_format="notion-{namespace}",
+                    namespace_format="space-{namespace}",
                     api_key="<YOUR_API_KEY>",
                 )
 
