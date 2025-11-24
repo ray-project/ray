@@ -4,6 +4,10 @@ MCAP is a standardized format for storing timestamped messages from robotics and
 autonomous systems, commonly used for sensor data, control commands, and other
 time-series data.
 
+This datasource uses the mcap Python library (https://github.com/foxglove/mcap)
+for reading MCAP files. The library provides efficient footer-only reads for
+metadata extraction and supports predicate pushdown for file-level filtering.
+
 See https://mcap.dev/ for more information about the MCAP format.
 """
 
@@ -13,6 +17,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
@@ -32,6 +39,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Maximum safe time value for nanoseconds (2^63 - 1)
+_MAX_SAFE_TIME = (2**63) - 1
+
+# Column names that support predicate pushdown
+_FILTERABLE_COLUMN_TOPIC = "topic"
+_FILTERABLE_COLUMN_LOG_TIME = "log_time"
+_FILTERABLE_COLUMN_SCHEMA_NAME = "schema_name"
+_FILTERABLE_COLUMNS = {
+    _FILTERABLE_COLUMN_TOPIC,
+    _FILTERABLE_COLUMN_LOG_TIME,
+    _FILTERABLE_COLUMN_SCHEMA_NAME,
+}
 
 @dataclass
 class TimeRange:
@@ -57,6 +76,71 @@ class TimeRange:
                 f"time values must be non-negative, got start_time={self.start_time}, "
                 f"end_time={self.end_time}"
             )
+        if self.start_time > _MAX_SAFE_TIME or self.end_time > _MAX_SAFE_TIME:
+            raise ValueError(
+                f"time values exceed maximum safe value ({_MAX_SAFE_TIME}), "
+                f"got start_time={self.start_time}, end_time={self.end_time}"
+            )
+
+    def overlaps(self, start: Optional[int], end: Optional[int]) -> bool:
+        """Check if this time range overlaps with another range.
+
+        Args:
+            start: Start time of other range (inclusive), or None for unbounded start.
+            end: End time of other range (exclusive), or None for unbounded end.
+
+        Returns:
+            True if ranges overlap, False otherwise.
+        """
+        if start is None and end is None:
+            return True
+        if start is None:
+            return self.start_time < end
+        if end is None:
+            return self.end_time > start
+        return self.start_time < end and self.end_time > start
+
+    def intersection(self, other: "TimeRange") -> Optional["TimeRange"]:
+        """Compute intersection of two time ranges.
+
+        Args:
+            other: Other time range to intersect with.
+
+        Returns:
+            Intersection time range, or None if ranges don't overlap.
+        """
+        start_time = max(self.start_time, other.start_time)
+        end_time = min(self.end_time, other.end_time)
+        if start_time >= end_time:
+            return None
+        try:
+            return TimeRange(start_time=start_time, end_time=end_time)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def from_bounds(
+        start: Optional[int], end: Optional[int]
+    ) -> Optional["TimeRange"]:
+        """Create TimeRange from optional start and end bounds.
+
+        Args:
+            start: Start time (inclusive), or None for unbounded start.
+            end: End time (exclusive), or None for unbounded end.
+
+        Returns:
+            TimeRange if valid, None if both bounds are None or invalid.
+        """
+        if start is None and end is None:
+            return None
+        start_val = start if start is not None else 0
+        end_val = end if end is not None else _MAX_SAFE_TIME
+        if start_val < end_val:
+            try:
+                return TimeRange(start_time=start_val, end_time=end_val)
+            except ValueError:
+                return None
+        return None
 
 
 @dataclass
@@ -104,9 +188,9 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
         """
         super().__init__()
         _check_import(self, module="mcap", package="mcap")
-        self._topics = set(topics) if topics else None
+        self._topics = MCAPDatasource._normalize_filter_set(topics, "topics")
         self._time_range = time_range
-        self._message_types = set(message_types) if message_types else None
+        self._message_types = MCAPDatasource._normalize_filter_set(message_types, "message_types")
 
     def expand_paths(
         self,
@@ -118,9 +202,14 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
         """Expand paths and filter based on MCAP file metadata (file-level predicate pushdown)."""
         from ray.data.datasource.file_meta_provider import _expand_paths
 
+        if not paths:
+            return
+
         for path, file_size in _expand_paths(
             paths, filesystem, partitioning, ignore_missing_paths
         ):
+            if not path or not isinstance(path, str):
+                continue
             if not path.endswith(".mcap"):
                 continue
 
@@ -140,7 +229,14 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
         filesystem: "RetryingPyFileSystem",
         file_size: Optional[int],
     ) -> MCAPFileMetadata:
-        """Read metadata from MCAP file summary (footer-only, efficient read)."""
+        """Read metadata from MCAP file summary (footer-only, efficient read).
+
+        Uses mcap.reader.make_reader() to read only the file footer, which contains
+        the summary with channels, schemas, and statistics. This avoids reading the
+        entire file for metadata extraction.
+
+        See https://github.com/foxglove/mcap/tree/main/python/mcap for MCAP library docs.
+        """
         from mcap.reader import make_reader
 
         topics = set()
@@ -153,16 +249,18 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
             if file_size is None:
                 file_size = self._get_file_size(path, filesystem)
 
+            if file_size is not None and file_size == 0:
+                return self._empty_metadata(path, file_size)
+
             with filesystem.open_input_stream(path) as f:
                 reader = make_reader(f)
-                try:
-                    summary = reader.get_summary()
-                except Exception:
-                    summary = None
+                # MCAP reader.get_summary() returns Summary object or None
+                # Summary provides direct access to channels, schemas, and statistics
+                summary = reader.get_summary()
 
-            if summary is not None:
+            if summary:
                 topics, message_types = self._extract_from_summary(summary)
-                num_messages, start_time, end_time = self._extract_statistics(summary)
+                num_messages, start_time, end_time = self._extract_statistics(summary.statistics)
 
         except Exception as e:
             logger.warning(f"Failed to read MCAP metadata from {path}: {e}")
@@ -179,37 +277,56 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
         )
 
     def _extract_from_summary(self, summary) -> Tuple[Set[str], Set[str]]:
-        """Extract topics and message types from MCAP summary."""
+        """Extract topics and message types from MCAP summary.
+
+        Uses MCAP's Summary object which provides direct access to channels and schemas.
+        Also leverages Statistics.channel_message_counts for accurate topic filtering.
+        """
         topics = set()
         message_types = set()
-        if hasattr(summary, "channels") and summary.channels:
-            for channel in summary.channels.values():
+
+        # MCAP Summary provides channels and schemas as dictionaries (may be empty)
+        channels = summary.channels
+        schemas = summary.schemas
+
+        if not channels:
+            return topics, message_types
+
+        # Use Statistics.channel_message_counts to only include topics with messages
+        # This ensures we only include channels that actually have messages
+        stat = summary.statistics
+        channel_message_counts = (
+            stat.channel_message_counts if stat and hasattr(stat, "channel_message_counts") else None
+        )
+
+        for channel_id, channel in channels.items():
+            # Only include topics that have messages (if channel_message_counts available)
+            if channel_message_counts and channel_id not in channel_message_counts:
+                continue
+            # Extract topic (MCAP Channel always has topic attribute)
+            if channel.topic:
                 topics.add(channel.topic)
-                if (
-                    hasattr(channel, "schema_id")
-                    and channel.schema_id
-                    and hasattr(summary, "schemas")
-                    and summary.schemas
-                ):
-                    schema = summary.schemas.get(channel.schema_id)
-                    if schema:
-                        message_types.add(schema.name)
+            # Extract schema name (message type) from channel's schema_id
+            if channel.schema_id and schemas:
+                schema = schemas.get(channel.schema_id)
+                if schema and schema.name:
+                    message_types.add(schema.name)
         return topics, message_types
 
-    def _extract_statistics(self, summary) -> Tuple[int, Optional[int], Optional[int]]:
-        """Extract statistics from MCAP summary."""
-        num_messages = 0
-        start_time = None
-        end_time = None
-        if hasattr(summary, "statistics") and summary.statistics:
-            stat = summary.statistics
-            if hasattr(stat, "message_count"):
-                num_messages = stat.message_count or 0
-            if hasattr(stat, "message_start_time"):
-                start_time = stat.message_start_time
-            if hasattr(stat, "message_end_time"):
-                end_time = stat.message_end_time
-        return num_messages, start_time, end_time
+    def _extract_statistics(self, statistics) -> Tuple[int, Optional[int], Optional[int]]:
+        """Extract statistics from MCAP Statistics object.
+
+        MCAP Statistics provides message_count, message_start_time, message_end_time,
+        and channel_message_counts for accurate per-channel filtering.
+        """
+        if not statistics:
+            return 0, None, None
+        # MCAP Statistics object provides these attributes directly
+        return (
+            statistics.message_count or 0,
+            statistics.message_start_time,
+            statistics.message_end_time,
+        )
 
     def _get_file_size(
         self, path: str, filesystem: "RetryingPyFileSystem"
@@ -217,9 +334,11 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
         """Get file size from filesystem."""
         try:
             file_info = filesystem.get_file_info(path)
-            return file_info.size if file_info.size >= 0 else None
+            if file_info.size is not None and file_info.size > 0:
+                return file_info.size
         except Exception:
-            return None
+            pass
+        return None
 
     def _empty_metadata(self, path: str, file_size: Optional[int]) -> MCAPFileMetadata:
         """Return empty metadata for failed reads."""
@@ -235,24 +354,29 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
 
     def _should_include_file(self, metadata: MCAPFileMetadata) -> bool:
         """Check if file should be included based on filters. Includes conservatively if no metadata."""
-        has_metadata = bool(
-            metadata.topics or metadata.message_types or metadata.start_time
-        )
-        if not has_metadata:
+        # If no metadata available, include conservatively
+        if not (metadata.topics or metadata.message_types or metadata.start_time is not None):
             return True
 
-        if self._topics and not metadata.topics.intersection(self._topics):
-            return False
-        if self._message_types and not metadata.message_types.intersection(
-            self._message_types
+        # Check topic filter (empty set excludes all)
+        if self._topics is not None and (
+            not self._topics or not metadata.topics.intersection(self._topics)
         ):
             return False
-        if self._time_range and metadata.start_time and metadata.end_time:
-            if (
-                metadata.end_time <= self._time_range.start_time
-                or metadata.start_time >= self._time_range.end_time
-            ):
-                return False
+
+        # Check message type filter (empty set excludes all)
+        if self._message_types is not None and (
+            not self._message_types
+            or not metadata.message_types.intersection(self._message_types)
+        ):
+            return False
+
+        # Check time range filter
+        if self._time_range and not self._time_range.overlaps(
+            metadata.start_time, metadata.end_time
+        ):
+            return False
+
         return True
 
     def _get_block_metadata(
@@ -272,6 +396,14 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
         Returns:
             BlockMetadata with file sizes but no row counts.
         """
+        if not paths:
+            return BlockMetadata(
+                num_rows=0,
+                size_bytes=0,
+                input_files=[],
+                exec_stats=None,
+            )
+
         size_bytes = None if None in file_sizes else int(sum(file_sizes))
         return BlockMetadata(
             num_rows=None,  # Computed during execution
@@ -316,6 +448,13 @@ class MCAPDatasource(FileBasedDatasource):
                 metadata.
             **file_based_datasource_kwargs: Additional arguments for FileBasedDatasource.
         """
+        # Normalize and validate paths
+        paths = self._normalize_and_validate_paths(paths)
+
+        # Normalize filter sets (empty sets allowed after predicate pushdown)
+        topics = self._normalize_filter_set(topics, "topics")
+        message_types = self._normalize_filter_set(message_types, "message_types")
+
         # Use MCAP-specific metadata provider if none provided
         meta_provider = file_based_datasource_kwargs.get("meta_provider")
         if meta_provider is None or isinstance(
@@ -332,19 +471,50 @@ class MCAPDatasource(FileBasedDatasource):
 
         _check_import(self, module="mcap", package="mcap")
 
-        # Convert to sets for faster lookup
-        self._topics = set(topics) if topics else None
-        self._message_types = set(message_types) if message_types else None
+        self._topics = topics
+        self._message_types = message_types
         self._time_range = time_range
         self._include_metadata = include_metadata
         self._predicate_expr = None
 
-    def supports_predicate_pushdown(self) -> bool:
-        """Whether this datasource supports predicate pushdown.
+    @staticmethod
+    def _normalize_and_validate_paths(
+        paths: Union[str, List[str], Tuple[str, ...]]
+    ) -> List[str]:
+        """Normalize and validate paths input."""
+        if isinstance(paths, str):
+            paths = [paths]
+        elif not isinstance(paths, (list, tuple)):
+            raise TypeError(f"paths must be str, list, or tuple, got {type(paths)}")
 
-        MCAP datasource supports predicate pushdown for topic, time_range,
-        and message_type filters.
-        """
+        if not paths:
+            raise ValueError("paths cannot be empty")
+
+        validated_paths = []
+        for i, p in enumerate(paths):
+            if not isinstance(p, str):
+                raise TypeError(f"All paths must be strings, got {type(p)} at index {i}")
+            p = p.strip()
+            if not p:
+                raise ValueError(f"Path at index {i} cannot be empty")
+            validated_paths.append(p)
+        return validated_paths
+
+    @staticmethod
+    def _normalize_filter_set(
+        value: Optional[Union[List[str], Set[str], Tuple[str, ...]]], name: str
+    ) -> Optional[Set[str]]:
+        """Normalize filter set input to a set or None."""
+        if value is None:
+            return None
+        if isinstance(value, set):
+            return value
+        if isinstance(value, (list, tuple)):
+            return set(value)
+        raise TypeError(f"{name} must be list, tuple, or set, got {type(value)}")
+
+    def supports_predicate_pushdown(self) -> bool:
+        """Whether this datasource supports predicate pushdown."""
         return True
 
     def get_current_predicate(self) -> Optional[Expr]:
@@ -352,48 +522,62 @@ class MCAPDatasource(FileBasedDatasource):
         return self._predicate_expr
 
     def apply_predicate(self, predicate_expr: Expr) -> "MCAPDatasource":
-        """Apply predicate expression with file-level filtering via metadata."""
+        """Apply predicate expression with file-level filtering via metadata.
+
+        Extracts pushable filters (topics, time_range, message_types) from the predicate
+        and merges them with existing filters. The metadata provider filters files during
+        path expansion, and any remaining predicate parts are applied at block level.
+
+        Returns:
+            Shallow copy of datasource with updated filters if any filters were extracted,
+            otherwise returns self to keep the Filter operator in the plan.
+        """
+        import copy
+
+        if predicate_expr is None:
+            return self
+
+        # Extract pushable filters from predicate
         topics, time_range, message_types = self._extract_filters_from_predicate(
             predicate_expr
         )
 
+        # Check if we extracted any filters
+        has_extracted_filters = (
+            topics is not None
+            or time_range is not None
+            or message_types is not None
+        )
+
+        # If no filters extracted, return self to keep Filter operator in plan
+        if not has_extracted_filters:
+            return self
+
+        # Merge with existing filters
         new_topics = self._merge_filters(self._topics, topics)
         new_message_types = self._merge_filters(self._message_types, message_types)
         new_time_range = self._merge_time_ranges(self._time_range, time_range)
-        # Combine predicates using AND (matching default mixin behavior)
-        # _predicate_expr is initialized by _DatasourcePredicatePushdownMixin.__init__()
-        new_predicate_expr = (
+
+        # Create shallow copy and update filter attributes
+        clone = copy.copy(self)
+        clone._topics = new_topics
+        clone._message_types = new_message_types
+        clone._time_range = new_time_range
+
+        # Update metadata provider with new filters
+        clone._meta_provider = MCAPFileMetadataProvider(
+            topics=new_topics,
+            time_range=new_time_range,
+            message_types=new_message_types,
+        )
+
+        # Store remaining predicate for block-level filtering
+        clone._predicate_expr = (
             self._predicate_expr & predicate_expr
             if self._predicate_expr is not None
             else predicate_expr
         )
 
-        filesystem = (
-            self._filesystem.unwrap()
-            if hasattr(self._filesystem, "unwrap")
-            else self._filesystem
-        )
-
-        clone = MCAPDatasource(
-            paths=self._source_paths,
-            topics=new_topics,
-            time_range=new_time_range,
-            message_types=new_message_types,
-            include_metadata=self._include_metadata,
-            filesystem=filesystem,
-            meta_provider=MCAPFileMetadataProvider(
-                topics=new_topics,
-                time_range=new_time_range,
-                message_types=new_message_types,
-            ),
-            partition_filter=self._partition_filter,
-            partitioning=self._partitioning,
-            ignore_missing_paths=self._ignore_missing_paths,
-            shuffle=None,
-            include_paths=self._include_paths,
-            file_extensions=self._FILE_EXTENSIONS,
-        )
-        clone._predicate_expr = new_predicate_expr
         return clone
 
     def _merge_filters(
@@ -404,167 +588,106 @@ class MCAPDatasource(FileBasedDatasource):
             return existing
         if not existing:
             return new
-        return existing.intersection(new)
+        return existing.intersection(new)  # Empty intersection is valid (no matching data)
 
     def _extract_filters_from_predicate(
         self, predicate_expr: Expr
     ) -> Tuple[Optional[Set[str]], Optional[TimeRange], Optional[Set[str]]]:
-        """Extract MCAP filters from predicate expression.
+        """Extract simple MCAP filters from predicate expression.
 
-        Handles topics, time_range, message_types. Correctly handles AND/OR predicates
-        and commutative expressions (e.g., 1000 < col("log_time")).
+        Only extracts simple filters that can be pushed down to file-level:
+        - EQ/IN operations on topics and message_types
+        - Simple comparisons (GT, GE, LT, LE) on log_time
+        - Handles AND chains only (OR and complex expressions handled at block level)
+
+        Returns:
+            Tuple of (topics, time_range, message_types) that can be pushed down.
         """
         from ray.data.expressions import BinaryExpr, ColumnExpr, LiteralExpr, Operation
+
+        # Check if predicate references any filterable columns
+        referenced_cols = set(get_column_references(predicate_expr))
+        filterable_cols = referenced_cols & _FILTERABLE_COLUMNS
+        if not filterable_cols:
+            return None, None, None
 
         topics = None
         time_range_start = None
         time_range_end = None
         message_types = None
 
-        def normalize_to_set(values: Union[Any, Set, List]) -> Set:
-            """Normalize values to a set."""
-            if isinstance(values, (list, tuple)):
-                return set(values)
-            return {values} if not isinstance(values, set) else values
-
-        def update_set(
-            current: Optional[Set], new_values: Union[Any, Set, List], is_and: bool
-        ) -> Set:
-            """Update set with intersection (AND) or union (OR)."""
-            new_set = normalize_to_set(new_values)
-            return (
-                new_set
-                if current is None
-                else (current.intersection(new_set) if is_and else current | new_set)
-            )
-
-        def extract_value(expr: Expr) -> Optional[Union[Any, List[Any]]]:
-            """Extract value from literal expression."""
-            if isinstance(expr, LiteralExpr):
-                return expr.value
-            if hasattr(expr, "value") and isinstance(expr.value, (list, tuple)):
-                return expr.value
-            return None
-
-        def get_column_name(expr: Expr) -> Optional[str]:
-            """Recursively extract column name from an expression.
-
-            This function traverses nested BinaryExpr objects to find ColumnExpr
-            nodes. For example, it can extract "topic" from (col("topic") == value).
-
-            Args:
-                expr: Expression to extract column name from.
-
-            Returns:
-                Column name if found, None otherwise.
-            """
-            if isinstance(expr, ColumnExpr):
-                return expr.name
-            if isinstance(expr, BinaryExpr):
-                # Recursively check left side (columns are typically on the left)
-                left_col = get_column_name(expr.left)
-                if left_col:
-                    return left_col
-                # Check right side as fallback
-                return get_column_name(expr.right)
-            return None
-
-        def can_pushdown_or(expr: Expr) -> bool:
-            """Check if OR expression can be pushed down (both sides must reference same column)."""
-            if not isinstance(expr, BinaryExpr) or expr.op != Operation.OR:
-                return False
-            left_col = get_column_name(expr.left)
-            right_col = get_column_name(expr.right)
-            return (
-                left_col is not None
-                and left_col == right_col
-                and left_col in ("topic", "log_time", "schema_name")
-            )
-
-        def visit_expr(expr: Expr, is_and_context: bool = False):
-            """Visit expression tree and extract filters."""
+        def extract_simple_filter(expr: Expr):
+            """Extract simple filter from a single binary expression."""
             nonlocal topics, time_range_start, time_range_end, message_types
 
             if not isinstance(expr, BinaryExpr):
                 return
 
-            if expr.op == Operation.AND:
-                visit_expr(expr.left, is_and_context=True)
-                visit_expr(expr.right, is_and_context=True)
-                return
-
-            if expr.op == Operation.OR:
-                if can_pushdown_or(expr):
-                    visit_expr(expr.left, is_and_context=False)
-                    visit_expr(expr.right, is_and_context=False)
-                else:
-                    # Different columns or complex expressions - recursively visit both sides
-                    visit_expr(expr.left, is_and_context)
-                    visit_expr(expr.right, is_and_context)
-                return
-
-            # Handle commutative expressions: 1000 < col("log_time") -> col("log_time") > 1000
+            # Handle commutative expressions: normalize so column is on left
             left, right = expr.left, expr.right
             op = expr.op
 
-            if isinstance(right, ColumnExpr) and isinstance(left, LiteralExpr):
-                left, right = right, left
-                op_map = {
-                    Operation.LT: Operation.GT,
-                    Operation.LE: Operation.GE,
-                    Operation.GT: Operation.LT,
-                    Operation.GE: Operation.LE,
-                    Operation.EQ: Operation.EQ,
-                    Operation.NE: Operation.NE,
-                }
-                if op not in op_map:
-                    return
-                op = op_map[op]
+            # Swap if literal is on left (e.g., 1000 < col("log_time"))
+            if isinstance(left, LiteralExpr) and isinstance(right, ColumnExpr):
+                if op == Operation.LT:
+                    left, right, op = right, left, Operation.GT
+                elif op == Operation.LE:
+                    left, right, op = right, left, Operation.GE
+                elif op == Operation.GT:
+                    left, right, op = right, left, Operation.LT
+                elif op == Operation.GE:
+                    left, right, op = right, left, Operation.LE
+                elif op in (Operation.EQ, Operation.NE):
+                    left, right, op = right, left, op
 
-            if isinstance(left, ColumnExpr):
-                col_name = left.name
+            if not isinstance(left, ColumnExpr):
+                return
 
-                if op == Operation.IN:
-                    value = extract_value(right)
-                    if value is not None:
-                        if col_name == "topic":
-                            topics = update_set(topics, value, is_and_context)
-                        elif col_name == "schema_name":
-                            message_types = update_set(
-                                message_types, value, is_and_context
-                            )
-                    return
+            col_name = left.name
 
+            # Extract topics/message_types from EQ or IN
+            if col_name in (_FILTERABLE_COLUMN_TOPIC, _FILTERABLE_COLUMN_SCHEMA_NAME):
                 if op == Operation.EQ and isinstance(right, LiteralExpr):
-                    if col_name == "topic":
-                        topics = update_set(topics, {right.value}, is_and_context)
-                    elif col_name == "schema_name":
-                        message_types = update_set(
-                            message_types, {right.value}, is_and_context
-                        )
+                    value = {right.value}
+                elif op == Operation.IN and isinstance(right, LiteralExpr):
+                    value = set(right.value) if isinstance(right.value, (list, tuple, set)) else {right.value}
+                else:
                     return
 
-                if col_name == "log_time" and isinstance(right, LiteralExpr):
-                    value = right.value
-                    if op in (Operation.GT, Operation.GE):
-                        if time_range_start is None or value > time_range_start:
-                            time_range_start = value
-                    elif op in (Operation.LT, Operation.LE):
-                        if time_range_end is None or value < time_range_end:
-                            time_range_end = value
+                if col_name == _FILTERABLE_COLUMN_TOPIC:
+                    topics = value if topics is None else topics & value
+                else:
+                    message_types = value if message_types is None else message_types & value
+                return
+
+            # Extract time range from comparisons
+            if col_name == _FILTERABLE_COLUMN_LOG_TIME and isinstance(right, LiteralExpr):
+                value = right.value
+                if not isinstance(value, (int, float)):
                     return
+                value = int(value)
 
-            visit_expr(expr.left, is_and_context)
-            visit_expr(expr.right, is_and_context)
+                if op == Operation.GT:
+                    time_range_start = max(time_range_start, value + 1) if time_range_start is not None else value + 1
+                elif op == Operation.GE:
+                    time_range_start = max(time_range_start, value) if time_range_start is not None else value
+                elif op == Operation.LT:
+                    time_range_end = min(time_range_end, value) if time_range_end is not None else value
+                elif op == Operation.LE:
+                    time_range_end = min(time_range_end, value + 1) if time_range_end is not None else value + 1
 
-        visit_expr(predicate_expr)
+        def visit_and_chain(expr: Expr):
+            """Recursively visit AND chains to extract simple filters."""
+            if isinstance(expr, BinaryExpr) and expr.op == Operation.AND:
+                visit_and_chain(expr.left)
+                visit_and_chain(expr.right)
+            else:
+                extract_simple_filter(expr)
 
-        time_range = None
-        if time_range_start is not None or time_range_end is not None:
-            start = time_range_start if time_range_start is not None else 0
-            end = time_range_end if time_range_end is not None else (2**63 - 1)
-            if start < end:
-                time_range = TimeRange(start_time=start, end_time=end)
+        visit_and_chain(predicate_expr)
+
+        # Build TimeRange from extracted bounds
+        time_range = TimeRange.from_bounds(time_range_start, time_range_end)
 
         return topics, time_range, message_types
 
@@ -576,82 +699,205 @@ class MCAPDatasource(FileBasedDatasource):
             return existing
         if not existing:
             return new
-        start_time = max(existing.start_time, new.start_time)
-        end_time = min(existing.end_time, new.end_time)
-        if start_time >= end_time:
-            return TimeRange(start_time=start_time, end_time=start_time + 1)
-        return TimeRange(start_time=start_time, end_time=end_time)
+        return existing.intersection(new)
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
-        """Read MCAP file and yield blocks with predicate pushdown."""
+        """Read MCAP file and yield blocks with predicate pushdown.
+
+        Uses mcap.reader.make_reader() to create a reader, then iterates messages
+        with pushdown filters applied. Supports both decoded messages (via
+        iter_decoded_messages) and raw messages (via iter_messages) as fallback.
+
+        See https://github.com/foxglove/mcap/tree/main/python/mcap for MCAP library docs.
+        """
         from mcap.reader import make_reader
 
-        reader = make_reader(f)
-        messages = reader.iter_messages(
-            topics=list(self._topics) if self._topics else None,
-            start_time=self._time_range.start_time if self._time_range else None,
-            end_time=self._time_range.end_time if self._time_range else None,
-            log_time_order=True,
-            reverse=False,
-        )
+        try:
+            reader = make_reader(f)
+        except Exception as e:
+            raise RuntimeError(f"Failed to create MCAP reader for {path}: {e}") from e
 
+        # Early return if topics filter is empty set
+        if self._topics is not None and not self._topics:
+            return
+
+        # Get message iterator with pushdown filters
+        decoded_messages = self._get_message_iterator(reader, path)
+
+        # Build block from messages
+        block = self._build_block_from_messages(decoded_messages, path)
+        if block is None:
+            return
+
+        # Apply remaining predicate if needed
+        block = self._apply_block_predicate(block, path)
+        if block is None:
+            return
+
+        yield block
+
+    def _get_message_iterator(self, reader, path: str):
+        """Get message iterator with pushdown filters applied."""
+        topics_list = list(self._topics) if self._topics else None
+        start_time = self._time_range.start_time if self._time_range else None
+        end_time = self._time_range.end_time if self._time_range else None
+
+        # Common iterator arguments
+        iterator_kwargs = {
+            "topics": topics_list,
+            "start_time": start_time,
+            "end_time": end_time,
+            "log_time_order": True,
+            "reverse": False,
+        }
+
+        try:
+            # Try decoded messages first (automatic decoding)
+            return reader.iter_decoded_messages(**iterator_kwargs)
+        except Exception as decode_error:
+            # Fall back to raw messages if decoding fails
+            logger.debug(
+                f"Decoded messages not available for {path}, using raw messages: {decode_error}"
+            )
+            return reader.iter_messages(**iterator_kwargs)
+
+    def _build_block_from_messages(self, decoded_messages, path: str) -> Optional[Block]:
+        """Build block from MCAP messages."""
         builder = DelegatingBlockBuilder()
-        for schema, channel, message in messages:
+
+        for item in decoded_messages:
+            schema, channel, message, decoded_data = self._unpack_message_item(item)
+
             if not self._should_include_message(schema, channel, message):
                 continue
-            builder.add(self._message_to_dict(schema, channel, message, path))
 
-        if builder.num_rows() > 0:
-            block = builder.build()
-            # Apply predicate expression if it contains unpushed parts
-            if self._predicate_expr is not None:
-                try:
-                    filter_expr = self._predicate_expr.to_pyarrow()
-                    block_accessor = BlockAccessor.for_block(block)
-                    table = block_accessor.to_arrow()
-                    filtered_table = table.filter(filter_expr)
-                    block = block_accessor.from_arrow(filtered_table)
-                except Exception as e:
-                    logger.debug(
-                        f"Could not apply predicate expression to MCAP block: {e}"
-                    )
-            yield block
+            try:
+                message_dict = self._message_to_dict(
+                    schema, channel, message, path, decoded_data=decoded_data
+                )
+                builder.add(message_dict)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to convert MCAP message to dict from {path}: {e}. Skipping message."
+                )
+                continue
+
+        if builder.num_rows() == 0:
+            logger.debug(f"No messages matched filters in {path}")
+            return None
+
+        return builder.build()
+
+    @staticmethod
+    def _unpack_message_item(item) -> Tuple["Schema", "Channel", "Message", Optional[Any]]:
+        """Unpack message item from iterator (handles both decoded and raw messages)."""
+        if hasattr(item, "decoded_message"):
+            # DecodedMessageTuple from iter_decoded_messages
+            return item.schema, item.channel, item.message, item.decoded_message
+        else:
+            # Tuple from iter_messages
+            schema, channel, message = item
+            return schema, channel, message, None
+
+    def _apply_block_predicate(self, block: Block, path: str) -> Optional[Block]:
+        """Apply remaining predicate expression to block."""
+        if self._predicate_expr is None:
+            return block
+
+        try:
+            filter_expr = self._predicate_expr.to_pyarrow()
+            block_accessor = BlockAccessor.for_block(block)
+            filtered_table = block_accessor.to_arrow().filter(filter_expr)
+            if filtered_table.num_rows == 0:
+                return None
+            return block_accessor.from_arrow(filtered_table)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to apply predicate expression to MCAP block from {path}: {e}"
+            ) from e
+
+    @staticmethod
+    def _decode_message_data(
+        channel: "Channel", message: "Message", path: str, decoded_data: Optional[Any]
+    ) -> Any:
+        """Decode message data, using pre-decoded data if available."""
+        if decoded_data is not None:
+            return decoded_data
+
+        # Fallback: manually decode JSON if needed
+        final_data = message.data if message.data is not None else b""
+        if (
+            channel.message_encoding == "json"
+            and isinstance(message.data, bytes)
+            and message.data
+        ):
+            try:
+                final_data = json.loads(message.data.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                logger.debug(
+                    f"Failed to decode JSON message from {path}, using raw bytes: {e}"
+                )
+                final_data = message.data
+        return final_data
 
     def _should_include_message(
         self, schema: "Schema", channel: "Channel", message: "Message"
     ) -> bool:
         """Check if message should be included (applies message_types filter)."""
-        if self._message_types and schema and schema.name not in self._message_types:
+        if self._message_types is None:
+            return True
+        # Empty set excludes all messages
+        if not self._message_types:
             return False
-        return True
+        # Check schema name matches filter
+        return schema and schema.name and schema.name in self._message_types
 
     def _message_to_dict(
-        self, schema: "Schema", channel: "Channel", message: "Message", path: str
+        self,
+        schema: "Schema",
+        channel: "Channel",
+        message: "Message",
+        path: str,
+        decoded_data: Optional[Any] = None,
     ) -> Dict[str, Any]:
-        """Convert MCAP message to dictionary format."""
-        decoded_data = message.data
-        if channel.message_encoding == "json" and isinstance(message.data, bytes):
-            try:
-                decoded_data = json.loads(message.data.decode("utf-8"))
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                decoded_data = message.data
+        """Convert MCAP message to dictionary format.
 
+        Args:
+            schema: MCAP schema for the message.
+            channel: MCAP channel for the message.
+            message: MCAP message.
+            path: Path to the MCAP file.
+            decoded_data: Pre-decoded message data (from iter_decoded_messages).
+                If None, will attempt to decode manually.
+        """
+        if channel is None:
+            raise ValueError(f"Channel is None for message in {path}")
+        if message is None:
+            raise ValueError(f"Message is None in {path}")
+
+        # Decode message data
+        final_data = self._decode_message_data(channel, message, path, decoded_data)
+
+        # MCAP Message and Channel objects provide these attributes directly
         message_data = {
-            "data": decoded_data,
-            "topic": channel.topic,
-            "log_time": message.log_time,
-            "publish_time": message.publish_time,
-            "sequence": message.sequence,
+            "data": final_data,
+            "topic": channel.topic or "",
+            "log_time": message.log_time or 0,
+            "publish_time": message.publish_time or 0,
+            "sequence": message.sequence or 0,
         }
 
         if self._include_metadata:
+            # MCAP Schema provides name, encoding, and data attributes directly
+            # MCAP Channel provides metadata attribute (dict) if available
             message_data.update(
                 {
-                    "channel_id": message.channel_id,
-                    "message_encoding": channel.message_encoding,
+                    "channel_id": message.channel_id or 0,
+                    "message_encoding": channel.message_encoding or "",
                     "schema_name": schema.name if schema else None,
                     "schema_encoding": schema.encoding if schema else None,
                     "schema_data": schema.data if schema else None,
+                    "channel_metadata": channel.metadata if channel.metadata else None,
                 }
             )
 

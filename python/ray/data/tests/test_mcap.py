@@ -18,7 +18,13 @@ pytestmark = pytest.mark.skipif(
 
 
 def create_test_mcap_file(file_path: str, messages: list) -> None:
-    """Create a test MCAP file with given messages."""
+    """Create a test MCAP file with given messages.
+
+    Uses the mcap.writer library to create real MCAP files for testing.
+    This ensures tests validate functionality against actual MCAP format files.
+
+    See https://github.com/foxglove/mcap/tree/main/python/mcap for MCAP library docs.
+    """
     from mcap.writer import Writer
 
     with open(file_path, "wb") as stream:
