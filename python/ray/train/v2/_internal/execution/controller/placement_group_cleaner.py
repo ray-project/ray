@@ -46,8 +46,8 @@ class PlacementGroupCleaner:
             )
             return False
 
-        monitor_thread = self._monitor_thread
-        if monitor_thread is not None and monitor_thread.is_alive():
+        monitor_thread = self._active_monitor_thread()
+        if monitor_thread is not None:
             raise RuntimeError(
                 "Cannot start monitoring: monitor thread reference is not None."
             )
@@ -127,8 +127,8 @@ class PlacementGroupCleaner:
         Returns:
             bool: True if the thread was stopped, False if there was no active thread.
         """
-        monitor_thread = self._monitor_thread
-        if monitor_thread is None or not monitor_thread.is_alive():
+        monitor_thread = self._active_monitor_thread()
+        if monitor_thread is None:
             return False
 
         self._stopped = True
@@ -138,6 +138,8 @@ class PlacementGroupCleaner:
             logger.warning(
                 "Monitor thread did not exit within %.2f seconds", join_timeout
             )
+            # Stop request failed; clear the flag so future restarts are allowed.
+            self._stopped = False
             return False
 
         if self._monitor_thread is monitor_thread:
@@ -193,3 +195,14 @@ class PlacementGroupCleaner:
         except Exception as e:
             # If exit fails for any reason, just log it.
             logger.warning(f"Failed to exit actor: {e}")
+
+    def _active_monitor_thread(self) -> Optional[threading.Thread]:
+        """Return the running monitor thread, clearing stale references."""
+        monitor_thread = self._monitor_thread
+        if monitor_thread is None:
+            return None
+        if monitor_thread.is_alive():
+            return monitor_thread
+        if self._monitor_thread is monitor_thread:
+            self._monitor_thread = None
+        return None
