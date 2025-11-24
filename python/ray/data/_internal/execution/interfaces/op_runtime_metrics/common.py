@@ -247,5 +247,5 @@ class TaskMetrics:
 
     num_task_outputs_generated: int = 0
     average_max_uss_per_task: float = 0.0
-    op_task_duration_stats: TaskDurationStats = TaskDurationStats()
-    running_tasks: Dict[int, RunningTaskInfo] = {}
+    op_task_duration_stats: Optional[TaskDurationStats] = None
+    running_tasks: Optional[Dict[int, RunningTaskInfo]] = None

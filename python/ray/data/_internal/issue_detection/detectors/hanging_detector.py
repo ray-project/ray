@@ -92,6 +92,8 @@ class HangingExecutionIssueDetector(IssueDetector):
         op_task_stats_map: Dict[str, "TaskDurationStats"] = {}
         for operator, op_state in self._executor._topology.items():
             task_metrics = operator.metrics.task_metrics()
+            if task_metrics.op_task_duration_stats is None:
+                continue
             op_task_stats_map[operator.id] = task_metrics.op_task_duration_stats
             self._op_id_to_name[operator.id] = operator.name
             if op_state._finished:
