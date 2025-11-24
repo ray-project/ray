@@ -114,13 +114,13 @@ class DataConfig:
 
         locality_hints = worker_node_ids if self._enable_shard_locality else None
         for name, ds in datasets.items():
-            execution_option = self._get_execution_options(name)
+            execution_options = self._get_execution_options(name)
 
-            if execution_option.is_resource_limits_default():
+            if execution_options.is_resource_limits_default():
                 # If "resource_limits" is not overriden by the user,
                 # add training-reserved resources to Data's exclude_resources.
-                execution_option.exclude_resources = (
-                    execution_option.exclude_resources.add(
+                execution_options.exclude_resources = (
+                    execution_options.exclude_resources.add(
                         ExecutionResources(
                             cpu=self._num_train_cpus, gpu=self._num_train_gpus
                         )
@@ -128,7 +128,7 @@ class DataConfig:
                 )
 
             ds = ds.copy(ds)
-            ds.context.execution_options = execution_option
+            ds.context.execution_options = execution_options
 
             if name in datasets_to_split:
                 for i, split in enumerate(
