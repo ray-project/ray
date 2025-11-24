@@ -281,10 +281,8 @@ Examples:
         copy_files(file_paths)
         copy_licenses(package_names)
 
-    # if args.askalono:
     askalono_results = get_askalono_results(package_names)
     with open(f"{output_folder}/askalono_results.json", "w") as file:
         json.dump(askalono_results, file, indent=4)
     askalono_results_df = pd.DataFrame(askalono_results)
-    askalono_results_df.to_excel(f"{output_folder}/askalono_results.xlsx", index=False)
     generate_fossa_deps_file(askalono_results_df)
