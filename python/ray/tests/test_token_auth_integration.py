@@ -425,7 +425,6 @@ def test_get_auth_token_cli(use_generate):
     test_token = "a" * 64
 
     with authentication_env_guard():
-        set_auth_mode("token")
         if use_generate:
             # Test --generate flag (no token set)
             clear_auth_token_sources(remove_default=True)
@@ -473,7 +472,6 @@ def test_get_auth_token_cli(use_generate):
 def test_get_auth_token_cli_no_token_no_generate():
     """Test ray get-auth-token fails without token and without --generate."""
     with authentication_env_guard():
-        set_auth_mode("token")
         reset_auth_token_state()
         clear_auth_token_sources(remove_default=True)
         env = os.environ.copy()
@@ -500,7 +498,6 @@ def test_get_auth_token_cli_piping():
     test_token = "b" * 64
 
     with authentication_env_guard():
-        set_auth_mode("token")
         set_env_auth_token(test_token)
         reset_auth_token_state()
         env = os.environ.copy()
