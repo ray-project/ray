@@ -54,6 +54,8 @@ class HighMemoryIssueDetector(IssueDetector):
     def detect(self) -> List[Issue]:
         issues = []
         for op in self._executor._topology.keys():
+            if not isinstance(op, MapOperator):
+                continue
 
             task_info = op.metrics.task_metrics()
             if task_info.average_max_uss_per_task is None:
