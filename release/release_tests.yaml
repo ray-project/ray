@@ -4556,7 +4556,7 @@
 
   cluster:
     byod:
-      type: llm-cu128  # ["gpu", "cpu", "cu123", "llm-cu128"]
+      type: cpu  # ["gpu", "cpu", "cu123", "llm-cu128"]
       post_build_script: byod_unstructured_data_ingestion.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
