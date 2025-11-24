@@ -642,13 +642,14 @@ class OpenAiIngress(DeploymentProtocol):
             body, call_method=CallMethod.TRANSCRIPTIONS.value
         )
 
-    async def score(self, body: ScoreRequest) -> Response:
+    async def score(self, body: ScoreRequest, request: Request) -> Response:
         """Create scores for the provided text pairs.
 
         Note: This is a vLLM specific endpoint.
 
         Args:
             body: The score request containing input text pairs to score.
+            request: The raw FastAPI request object.
 
         Returns:
             A response object with scores.
@@ -656,7 +657,7 @@ class OpenAiIngress(DeploymentProtocol):
 
         async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
             results = self._get_response(
-                body=body, call_method="score", raw_request=None
+                body=body, call_method="score", raw_request=request
             )
             result = await results.__anext__()
             if isinstance(result, ErrorResponse):
