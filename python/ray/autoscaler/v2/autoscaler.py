@@ -79,7 +79,7 @@ class Autoscaler:
         self._metrics_reporter = metrics_reporter
 
         self._init_cloud_instance_provider(config, config_reader)
-        self.cloud_resource_monitor = None
+        self._cloud_resource_monitor = None
         self._init_instance_manager(
             session_name=session_name,
             config=config,
@@ -164,8 +164,8 @@ class Autoscaler:
                     max_concurrent_installs=config.get_max_num_worker_nodes() or 50,
                 )
             )
-        self.cloud_resource_monitor = CloudResourceMonitor()
-        subscribers.append(self.cloud_resource_monitor)
+        self._cloud_resource_monitor = CloudResourceMonitor()
+        subscribers.append(self._cloud_resource_monitor)
 
         self._instance_manager = InstanceManager(
             instance_storage=instance_storage,
@@ -207,7 +207,7 @@ class Autoscaler:
                 instance_manager=self._instance_manager,
                 scheduler=self._scheduler,
                 cloud_provider=self._cloud_instance_provider,
-                cloud_resource_monitor=self.cloud_resource_monitor,
+                cloud_resource_monitor=self._cloud_resource_monitor,
                 ray_cluster_resource_state=ray_cluster_resource_state,
                 non_terminated_cloud_instances=(
                     self._cloud_instance_provider.get_non_terminated()

@@ -726,9 +726,7 @@ class Reconciler:
                         f"{NodeStatus.Name(ray_node.status)}"
                     ),
                     ray_node_id=ray_node_id,
-                    instance_type=im_instance.instance_type
-                    if reconciled_im_status == IMInstance.RAY_RUNNING
-                    else None,
+                    instance_type=im_instance.instance_type,
                 )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)

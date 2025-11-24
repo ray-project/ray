@@ -1,6 +1,5 @@
 import copy
 import logging
-import random
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -1562,8 +1561,6 @@ class ResourceDemandScheduler(IResourceScheduler):
                 2.2. Cloud resource availabilities: prioritize node types with
                 the most available cloud resources, in order to minimize allocation
                 failures.
-                2.3. Random number: to diversify resource requests rather than
-                always requesting for the same type.
             3. Return the node with the highest score.
 
         The highest score node is updated with the scheduled requests, and the node is
@@ -1627,7 +1624,6 @@ class ResourceDemandScheduler(IResourceScheduler):
             key=lambda r: (
                 r.score,
                 cloud_resource_availabilities.get(r.node.node_type, 1),
-                random.random(),
             ),
             reverse=True,
         )

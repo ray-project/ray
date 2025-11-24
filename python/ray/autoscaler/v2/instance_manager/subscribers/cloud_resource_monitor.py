@@ -43,11 +43,11 @@ class CloudResourceMonitor(InstanceUpdatedSubscriber):
     def allocation_succeeded(self, succeeded_event: InstanceUpdateEvent):
         if succeeded_event.instance_type in self._last_unavailable_timestamp:
             self._last_unavailable_timestamp.pop(succeeded_event.instance_type)
-        logger.info(
-            f"Cloud Resource Type {succeeded_event.instance_type} is "
-            f"available at timestamp={time.time()}. We will higher its priority in "
-            f"feature schedules."
-        )
+            logger.info(
+                f"Cloud Resource Type {succeeded_event.instance_type} is "
+                f"available at timestamp={time.time()}. We will higher its priority in "
+                f"feature schedules."
+            )
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
         for event in events:
