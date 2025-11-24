@@ -168,7 +168,7 @@ INPUT_BLOCKS_PROCESSED_PANEL = Panel(
     id=19,
     title="Input Blocks Processed by Tasks / Second",
     description=(
-        "Measures the average rate (in blocks per second) at which tasks within an operator complete processing their assigned input blocks. This indicates task-level consumption rate of input data."
+        "Measures the average rate (in blocks per second) at which tasks consume input blocks within an operator. This block-level throughput metric measures how quickly tasks read through their assigned input."
     ),
     unit="blocks/sec",
     targets=[
@@ -185,7 +185,7 @@ INPUT_BYTES_PROCESSED_PANEL = Panel(
     id=20,
     title="Input Bytes Processed by Tasks / Second",
     description=(
-        "Measures the average rate (in bytes per second) at which tasks within an operator complete processing their assigned input data. This is a byte-level throughput metric for completed task input processing."
+        "Measures the average rate (in bytes per second) at which tasks consume input data within an operator. This byte-level throughput metric measures how quickly tasks read through their assigned input."
     ),
     unit="Bps",
     targets=[
