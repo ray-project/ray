@@ -356,9 +356,72 @@ void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
                                     const TaskID &work_item_id,
                                     const ActorID &failed_actor_id,
                                     const rpc::RayErrorInfo &error_info) {
-  // TODO(Phase 1): Implement failure handling and retry
-  // This will be implemented in To-do #9
-  RAY_LOG(FATAL) << "OnTaskFailed not yet implemented";
+  auto pool_it = pools_.find(pool_id);
+  if (pool_it == pools_.end()) {
+    RAY_LOG(WARNING) << "Pool not found: " << pool_id;
+    return;
+  }
+  
+  auto &pool_info = pool_it->second;
+  
+  // Update actor state
+  auto actor_state_it = pool_info.actor_states.find(failed_actor_id);
+  if (actor_state_it != pool_info.actor_states.end()) {
+    auto &actor_state = actor_state_it->second;
+    if (actor_state.num_tasks_in_flight > 0) {
+      actor_state.num_tasks_in_flight--;
+    }
+    actor_state.consecutive_failures++;
+  }
+  
+  pool_info.total_tasks_failed++;
+  
+  // Classify error to determine if we should retry
+  bool should_retry = ShouldRetryTask(pool_info.config, error_info);
+  
+  if (!should_retry) {
+    RAY_LOG(INFO) << "Work item " << work_item_id << " failed with non-retriable error, "
+                  << "not retrying. Error: " << error_info.error_message();
+    FailWorkItem(work_item_id, error_info);
+    return;
+  }
+  
+  // Get work item
+  auto work_item_it = work_items_.find(work_item_id);
+  if (work_item_it == work_items_.end()) {
+    RAY_LOG(WARNING) << "Work item " << work_item_id << " not found for retry";
+    return;
+  }
+  
+  auto work_item = std::move(work_item_it->second);
+  work_items_.erase(work_item_it);
+  
+  // Increment attempt number
+  work_item.attempt_number++;
+  
+  // Check if we've exceeded max retries
+  if (pool_info.config.max_retry_attempts >= 0 &&
+      work_item.attempt_number > pool_info.config.max_retry_attempts) {
+    RAY_LOG(INFO) << "Work item " << work_item_id << " exceeded max retry attempts ("
+                  << pool_info.config.max_retry_attempts << "), failing permanently";
+    FailWorkItem(work_item_id, error_info);
+    return;
+  }
+  
+  pool_info.total_tasks_retried++;
+  
+  // Calculate backoff for retry
+  int64_t backoff_ms = CalculateBackoff(work_item.attempt_number,
+                                        pool_info.config.retry_backoff_ms,
+                                        pool_info.config.retry_backoff_multiplier,
+                                        pool_info.config.max_retry_backoff_ms);
+  
+  RAY_LOG(INFO) << "Work item " << work_item_id << " failed on actor " << failed_actor_id
+                << ", retrying (attempt " << work_item.attempt_number << ") after "
+                << backoff_ms << "ms on different actor in pool " << pool_id;
+  
+  // Schedule retry with backoff
+  ScheduleRetry(pool_id, std::move(work_item), backoff_ms);
 }
 
 void ActorPoolManager::OnTaskSucceeded(const ActorPoolID &pool_id,
@@ -379,39 +442,122 @@ void ActorPoolManager::OnTaskSucceeded(const ActorPoolID &pool_id,
 void ActorPoolManager::ScheduleRetry(const ActorPoolID &pool_id,
                                      PoolWorkItem work_item,
                                      int64_t backoff_ms) {
-  // TODO(Phase 1): Implement retry scheduling
-  // This will be implemented in To-do #9
-  RAY_LOG(FATAL) << "ScheduleRetry not yet implemented";
+  if (backoff_ms <= 0) {
+    // Immediate retry
+    RetryWorkItem(pool_id, std::move(work_item));
+    return;
+  }
+  
+  // TODO(To-do #10): Schedule delayed retry using io_service
+  // For now, immediate retry (will add delay scheduling in CoreWorker integration)
+  RAY_LOG(DEBUG) << "Scheduling retry for work item " << work_item.work_item_id
+                 << " with backoff " << backoff_ms << "ms (immediate for now)";
+  RetryWorkItem(pool_id, std::move(work_item));
 }
 
 void ActorPoolManager::RetryWorkItem(const ActorPoolID &pool_id,
                                      PoolWorkItem work_item) {
-  // TODO(Phase 1): Implement work item retry
-  // This will be implemented in To-do #9
-  RAY_LOG(FATAL) << "RetryWorkItem not yet implemented";
+  auto pool_it = pools_.find(pool_id);
+  if (pool_it == pools_.end()) {
+    RAY_LOG(WARNING) << "Pool not found during retry: " << pool_id;
+    return;
+  }
+  
+  auto &work_queue = work_queues_[pool_id];
+  
+  // Extract arg IDs for locality-aware scheduling
+  std::vector<ObjectID> arg_ids;
+  for (const auto &arg : work_item.args) {
+    if (arg->IsPassedByReference()) {
+      arg_ids.push_back(arg->GetReference().OwnedByAddress()
+                            ? arg->GetReference().ObjectID()
+                            : ObjectID::Nil());
+    }
+  }
+  
+  // Select DIFFERENT actor (likely, due to load balancing)
+  ActorID selected_actor = SelectActorFromPool(pool_id, arg_ids);
+  
+  if (selected_actor.IsNil()) {
+    // No actors available, re-enqueue to wait for capacity
+    RAY_LOG(DEBUG) << "No actors available for retry of work item "
+                   << work_item.work_item_id << ", re-enqueueing";
+    work_queue->Push(std::move(work_item));
+    return;
+  }
+  
+  RAY_LOG(INFO) << "Retrying work item " << work_item.work_item_id 
+                << " on actor " << selected_actor << " (attempt "
+                << work_item.attempt_number << ")";
+  
+  // Submit to (likely different) actor
+  SubmitToActor(pool_id, selected_actor, std::move(work_item));
 }
 
 bool ActorPoolManager::ShouldRetryTask(const ActorPoolConfig &config,
                                        const rpc::RayErrorInfo &error_info) const {
-  // TODO(Phase 1): Implement error classification
-  // This will be implemented in To-do #9
-  return false;
+  if (!config.retry_on_system_errors) {
+    return false;
+  }
+  
+  // Classify error types
+  switch (error_info.error_type()) {
+    case rpc::ErrorType::ACTOR_DIED:
+    case rpc::ErrorType::ACTOR_UNAVAILABLE:
+    case rpc::ErrorType::NODE_DIED:
+    case rpc::ErrorType::WORKER_DIED:
+    case rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE:
+      // System errors - should retry
+      return true;
+    
+    case rpc::ErrorType::TASK_CANCELLED:
+      // Don't retry cancelled tasks
+      return false;
+    
+    case rpc::ErrorType::TASK_EXECUTION_EXCEPTION:
+    case rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED:
+      // User errors - don't retry by default (can be configured later)
+      return false;
+    
+    default:
+      // Unknown error - be conservative, don't retry
+      RAY_LOG(WARNING) << "Unknown error type: " << error_info.error_type()
+                       << ", not retrying";
+      return false;
+  }
 }
 
 int64_t ActorPoolManager::CalculateBackoff(int32_t attempt_number,
                                            int32_t base_backoff_ms,
                                            float multiplier,
                                            int32_t max_backoff_ms) const {
-  // TODO(Phase 1): Implement backoff calculation
-  // This will be implemented in To-do #9
-  return 0;
+  if (attempt_number <= 1) {
+    return base_backoff_ms;
+  }
+  
+  // Exponential backoff: base * multiplier^(attempt-1)
+  int64_t backoff = base_backoff_ms;
+  for (int32_t i = 1; i < attempt_number; i++) {
+    backoff = static_cast<int64_t>(backoff * multiplier);
+    if (backoff > max_backoff_ms) {
+      backoff = max_backoff_ms;
+      break;
+    }
+  }
+  
+  return std::min(backoff, static_cast<int64_t>(max_backoff_ms));
 }
 
 void ActorPoolManager::FailWorkItem(const TaskID &work_item_id,
                                     const rpc::RayErrorInfo &error_info) {
-  // TODO(Phase 1): Implement permanent failure
-  // This will be implemented in To-do #9
-  RAY_LOG(FATAL) << "FailWorkItem not yet implemented";
+  // Remove work item from tracking
+  work_items_.erase(work_item_id);
+  
+  RAY_LOG(INFO) << "Work item " << work_item_id << " failed permanently. Error: "
+                << error_info.error_message();
+  
+  // TODO(To-do #10): Fail the task in TaskManager when integrated with CoreWorker
+  // For now, just log the failure
 }
 
 }  // namespace core
