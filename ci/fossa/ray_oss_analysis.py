@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import subprocess
+from typing import List, Optional, Set, Tuple
 
 import pandas as pd
 import yaml
@@ -11,7 +12,9 @@ import yaml
 logger = logging.getLogger("ray_oss_analysis")
 
 
-def setup_logger(log_file=None, enable_debug=False):
+def setup_logger(log_file: Optional[str] = None, enable_debug: bool = False):
+    # you can either use default console logger or enable additional file logger if needed by passing the log_file.
+    # setting the log level to debug if enable_debug is true
     logger.setLevel(logging.DEBUG if enable_debug else logging.INFO)
 
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
@@ -29,12 +32,15 @@ def setup_logger(log_file=None, enable_debug=False):
     logger.info(f"Log Level Set to {logging.getLevelName(logger.level)}")
 
 
-def clean_bazel_line(line):
+def clean_bazel_line(line: str) -> Tuple[str, str]:
+    # split the line by whitespace, but only split at @ or //
     return re.split(r"\s+(?=@|//)", line.strip(), maxsplit=1)
 
 
-def isExcludedKind(kind_str):
+def isExcludedKind(kind_str: str) -> bool:
+    # split the kind_str by whitespace and get the first element as the kind
     kind = kind_str.split(" ")[0]
+    # list of non-target rule kinds
     non_target_rule_kinds = [
         "config_setting",
         "pkg_files",
@@ -52,26 +58,30 @@ def isExcludedKind(kind_str):
     return kind in target_rule_kinds
 
 
-def isBuildTool(label):
+def isBuildTool(label: str) -> bool:
+    # list of build package labels that are present in dependencies but not part of the target code
     build_package_labels = ["bazel_tools", "local_config_python", "cython"]
     return any(
         build_package_label in label for build_package_label in build_package_labels
     )
 
 
-def isOwnCode(label):
+def isOwnCode(label: str) -> bool:
+    # check if the label starts with //, which means it is part of the target code
+    # actual path can also be identified by running a bazel query, but it is too expensive, with no additional benefit
     # actualPath = subprocess.run(f"{bazel_command} query --output=location '{label}'", shell=True, capture_output=True, text=True).stdout.strip()
     return label.startswith("//")
 
 
-def isCppCode(label):
+def isCppCode(label: str) -> bool:
+    # list of C/C++ file extensions
     cExternsions = [".c", ".cc", ".cpp", ".cxx", ".c++", ".h", ".hpp", ".hxx"]
     return any(path in label for path in cExternsions)
 
 
-def get_bazel_dependencies(package_name):
+def get_bazel_dependencies(package_name: str) -> Tuple[List[str], Set[str]]:
     bazel_dependencies = []
-    package_names = set()
+    package_names = set() 
     command = f"{bazel_command} query --output=label_kind 'deps({package_name})'"
     logger.debug(f"Running command: {command}")
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
@@ -110,13 +120,6 @@ def copy_licenses(package_names):
             f"cp {bazel_output_base}/external/{package_name}/**COPYING* {output_folder}/{package_name}/",
             shell=True,
         )
-
-
-def readLicenseFile(path):
-    bad_chars = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F]")
-    with open(path, "r", encoding="utf-8", errors="replace") as file:
-        return bad_chars.sub("", file.read())
-
 
 def askalono_crawl(dependency):
     license_text = subprocess.run(
@@ -182,7 +185,7 @@ def get_askalono_results(dependencies):
                 "path": m.group(1).replace(f"{bazel_output_base}/external/", ""),
                 "license": m.group(2).strip(),
                 "score": float(m.group(3)),
-                "content": readLicenseFile(m.group(1)),
+                "licenseFilePath": m.group(1),
             }
             for m in askalono_pattern.finditer(license_text)
         ]
@@ -239,6 +242,7 @@ if __name__ == "__main__":
         "-p", "--package", help="Bazel package", default="//:gen_ray_pkg"
     )
     parser.add_argument("--log-file", help="Log file path")
+    parser.add_argument("--copy-files-for-fossa", action="store_true", help="Copy files for fossa analysis on top of askalono")
 
     parser.formatter_class = argparse.RawTextHelpFormatter
     parser.description = """
@@ -272,8 +276,9 @@ Examples:
         logger.debug(f"Dependency: {dependency}")
 
     output_folder = args.output
-    copy_files(file_paths)
-    copy_licenses(package_names)
+    if args.copy_files_for_fossa:
+        copy_files(file_paths)
+        copy_licenses(package_names)
 
     # if args.askalono:
     askalono_results = get_askalono_results(package_names)
