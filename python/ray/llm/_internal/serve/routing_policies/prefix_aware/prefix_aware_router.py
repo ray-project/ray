@@ -15,6 +15,7 @@ from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_tree import (
 from ray.serve._private.common import ReplicaID
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import (
@@ -104,17 +105,22 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         if tree_actor is None:
             # Create deployment-specific detached actor to avoid replica ID conflicts
             # in multi-deployment scenarios (e.g., PD disaggregation with DP)
-            # Inherit deployment name from RequestRouter
             deployment_name = self._deployment_id.name if self._deployment_id else None
+            app_name = self._deployment_id.app_name if self._deployment_id else None
             actor_name = "LlmPrefixTreeActor"
+            actor_namespace_components = [SERVE_NAMESPACE]
+
+            if app_name:
+                actor_namespace_components.append(app_name)
             if deployment_name:
-                safe_deployment_name = deployment_name.replace(":", "_").replace(
-                    "/", "_"
-                )
-                actor_name = f"LlmPrefixTreeActor_{safe_deployment_name}"
+                actor_namespace_components.append(deployment_name)
+            actor_namespace = "::".join(actor_namespace_components)
 
             self._tree_actor = PrefixTreeActor.options(
-                name=actor_name, get_if_exists=True, lifetime="detached"
+                name=actor_name,
+                namespace=actor_namespace,
+                get_if_exists=True,
+                lifetime="detached",
             ).remote()
         else:
             self._tree_actor = tree_actor
