@@ -288,7 +288,7 @@ TEST_F(AuthenticationTokenLoaderTest, TestErrorWhenAuthEnabledButNoToken) {
         auto &loader = AuthenticationTokenLoader::instance();
         loader.GetToken();
       },
-      "Ray Setup Error: Token authentication is enabled but Ray couldn't find an "
+      "Token authentication is enabled but Ray couldn't find an "
       "authentication token.");
 }
 
