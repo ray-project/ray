@@ -9,6 +9,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.interfaces.op_runtime_metrics import QueuedOpMetrics
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
@@ -75,6 +76,8 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             self._min_buffer_size = 0
         self._locality_hits = 0
         self._locality_misses = 0
+        # Initialize metrics directly for proper type inference
+        self._metrics = QueuedOpMetrics(data_context)
 
     def num_outputs_total(self) -> Optional[int]:
         # OutputSplitter does not change the number of blocks,
@@ -154,21 +157,9 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             bundles = self._split_from_buffer(count)
             for b in bundles:
                 b.output_split_idx = i
-                self._output_queue.append(b)
-                self._metrics.on_output_queued(b)
+            self._output_queue.append(b)
+            self._metrics.on_output_queued(b)
         self._buffer = []
-
-    def internal_input_queue_num_blocks(self) -> int:
-        return sum(len(b.block_refs) for b in self._buffer)
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return sum(b.size_bytes() for b in self._buffer)
-
-    def internal_output_queue_num_blocks(self) -> int:
-        return sum(len(b.block_refs) for b in self._output_queue)
-
-    def internal_output_queue_num_bytes(self) -> int:
-        return sum(b.size_bytes() for b in self._output_queue)
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queue."""

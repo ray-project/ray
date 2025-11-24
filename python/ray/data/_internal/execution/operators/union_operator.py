@@ -7,6 +7,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.interfaces.op_runtime_metrics import QueuedOpMetrics
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
     NAryOperator,
@@ -48,6 +49,8 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         self._output_buffer: collections.deque[RefBundle] = collections.deque()
         self._stats: StatsDict = {"Union": []}
         super().__init__(data_context, *input_ops)
+        # Initialize metrics directly for proper type inference
+        self._metrics = QueuedOpMetrics(data_context)
 
     def start(self, options: ExecutionOptions):
         # Whether to preserve the order of the input data (both the
@@ -72,18 +75,6 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
                 return None
             total_rows += input_num_rows
         return total_rows
-
-    def internal_input_queue_num_blocks(self) -> int:
-        return sum(q.num_blocks() for q in self._input_buffers)
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return sum(q.estimate_size_bytes() for q in self._input_buffers)
-
-    def internal_output_queue_num_blocks(self) -> int:
-        return sum(len(q.blocks) for q in self._output_buffer)
-
-    def internal_output_queue_num_bytes(self) -> int:
-        return sum(q.size_bytes() for q in self._output_buffer)
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queues."""

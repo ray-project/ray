@@ -10,6 +10,7 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
+from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskOpMetrics
 from ray.data._internal.execution.interfaces.physical_operator import (
     PhysicalOperator,
     ReportsExtraResourceUsage,
@@ -150,18 +151,19 @@ class ResourceManager:
         if isinstance(op, InputDataBuffer):
             return 0
 
-        # Pending task outputs.
-        mem_op_internal = op.metrics.obj_store_mem_pending_task_outputs or 0
-        # Op's internal output buffers.
-        mem_op_internal += op.metrics.obj_store_mem_internal_outqueue
+        # Op's internal output buffers (generator buffers, internal queues).
+        usage = op.metrics.get_object_store_usage_details()
+        mem_op_internal = usage.pending_task_outputs_memory or 0
+        mem_op_internal += usage.internal_outqueue_memory
 
         # Op's external output buffer.
         mem_op_outputs = state.output_queue_bytes()
         # Input buffers of the downstream operators.
         for next_op in op.output_dependencies:
+            next_usage = next_op.metrics.get_object_store_usage_details()
             mem_op_outputs += (
-                next_op.metrics.obj_store_mem_internal_inqueue
-                + next_op.metrics.obj_store_mem_pending_task_inputs
+                next_usage.internal_inqueue_memory
+                + next_usage.pending_task_inputs_memory
             )
 
         self._mem_op_internal[op] = mem_op_internal
@@ -218,9 +220,12 @@ class ResourceManager:
                 op_pending_usage
             )
 
-            # Update operator's object store usage, which is used by
-            # DatasetStats and updated on the Ray Data dashboard.
-            op._metrics.obj_store_mem_used = op_usage.object_store_memory
+            # Update operator's resource usage metrics via callback
+            op.metrics.on_resource_usage_updated(
+                cpu=op_usage.cpu or 0.0,
+                gpu=op_usage.gpu or 0.0,
+                object_store_memory=op_usage.object_store_memory,
+            )
 
         if self._op_resource_allocator is not None:
             self._op_resource_allocator.update_budgets(
@@ -445,7 +450,10 @@ class OpResourceAllocator(ABC):
 
         def detect_idle(self, op: PhysicalOperator):
             cur_time = time.time()
-            if cur_time - self.last_detection_time[op] > self.DETECTION_INTERVAL_S:
+            if cur_time - self.last_detection_time[
+                op
+            ] > self.DETECTION_INTERVAL_S and isinstance(op.metrics, TaskOpMetrics):
+
                 cur_num_outputs = op.metrics.num_task_outputs_generated
                 if cur_num_outputs > self.last_num_outputs[op]:
                     self.last_num_outputs[op] = cur_num_outputs

@@ -1,5 +1,4 @@
 import time
-from unittest.mock import MagicMock
 
 import pyarrow as pa
 import pytest
@@ -7,15 +6,16 @@ import pytest
 import ray
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-    OpRuntimeMetrics,
+    TaskOpMetrics,
 )
 from ray.data._internal.util import KiB
 from ray.data.block import BlockExecStats, BlockMetadata
+from ray.data.context import DataContext
 
 
 def test_average_max_uss_per_task():
     # No tasks submitted yet.
-    metrics = OpRuntimeMetrics(MagicMock())
+    metrics = TaskOpMetrics(DataContext())
     assert metrics.average_max_uss_per_task is None
 
     def create_bundle(uss_bytes: int):
@@ -50,7 +50,7 @@ def test_average_max_uss_per_task():
 
 def test_task_completion_time_histogram():
     """Test task completion time histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    metrics = TaskOpMetrics(DataContext())
 
     # Test different completion times
     # Buckets: [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 25.0, 50.0, 75.0, 100.0, 150.0, 500.0, 1000.0, 2500.0, 5000.0]
@@ -84,7 +84,7 @@ def test_task_completion_time_histogram():
 
 def test_block_completion_time_histogram():
     """Test block completion time histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    metrics = TaskOpMetrics(DataContext())
 
     # Test different block generation scenarios
     # Buckets: [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 25.0, 50.0, 75.0, 100.0, 150.0, 500.0, 1000.0, 2500.0, 5000.0]
@@ -120,7 +120,7 @@ def test_block_completion_time_histogram():
 
 def test_block_size_bytes_histogram():
     """Test block size bytes histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    metrics = TaskOpMetrics(DataContext())
 
     def create_bundle_with_size(size_bytes):
         block = ray.put(pa.Table.from_pydict({}))
@@ -167,7 +167,7 @@ def test_block_size_bytes_histogram():
 
 def test_block_size_rows_histogram():
     """Test block size rows histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    metrics = TaskOpMetrics(DataContext())
 
     def create_bundle_with_rows(num_rows):
         block = ray.put(pa.Table.from_pydict({}))

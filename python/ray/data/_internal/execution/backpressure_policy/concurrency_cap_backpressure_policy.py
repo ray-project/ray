@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Dict
 
 from .backpressure_policy import BackpressurePolicy
 from ray._private.ray_constants import env_float
+from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskOpMetrics
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
@@ -138,7 +139,10 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
 
     def can_add_input(self, op: "PhysicalOperator") -> bool:
         """Return whether `op` may accept another input now."""
-        num_tasks_running = op.metrics.num_tasks_running
+
+        num_tasks_running = 0
+        if isinstance(op.metrics, TaskOpMetrics):
+            num_tasks_running = op.metrics.num_tasks_running
 
         # If not a MapOperator or feature disabled, just enforce configured cap.
         if (

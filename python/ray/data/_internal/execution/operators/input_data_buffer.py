@@ -5,6 +5,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.interfaces.op_runtime_metrics import BaseOpMetrics
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
@@ -44,6 +45,8 @@ class InputDataBuffer(PhysicalOperator):
             self._is_input_initialized = False
         self._input_data_index = 0
         self.mark_execution_finished()
+        # Initialize metrics directly for proper type inference
+        self._metrics = BaseOpMetrics(data_context)
 
     def start(self, options: ExecutionOptions) -> None:
         if not self._is_input_initialized:

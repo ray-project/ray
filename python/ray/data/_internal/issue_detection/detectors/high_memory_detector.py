@@ -2,6 +2,7 @@ import textwrap
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List
 
+from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskOpMetrics
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.issue_detection.issue_detector import (
@@ -54,7 +55,8 @@ class HighMemoryIssueDetector(IssueDetector):
     def detect(self) -> List[Issue]:
         issues = []
         for op in self._executor._topology.keys():
-            if not isinstance(op, MapOperator):
+
+            if not isinstance(op.metrics, TaskOpMetrics):
                 continue
 
             if op.metrics.average_max_uss_per_task is None:

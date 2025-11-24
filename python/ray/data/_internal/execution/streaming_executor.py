@@ -22,9 +22,6 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
-from ray.data._internal.execution.operators.base_physical_operator import (
-    InternalQueueOperatorMixin,
-)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.progress_manager import RichExecutionProgressManager
 from ray.data._internal.execution.resource_manager import (
@@ -522,7 +519,7 @@ class StreamingExecutor(Executor, threading.Thread):
             if op.completed() and not self._has_op_completed[op]:
                 log_str = (
                     f"Operator {op} completed. "
-                    f"Operator Metrics:\n{op._metrics.as_dict(skip_internal_metrics=True)}"
+                    f"Operator Metrics:\n{op.metrics.as_dict(skip_internal_metrics=True)}"
                 )
                 logger.debug(log_str)
                 self._has_op_completed[op] = True
@@ -566,17 +563,27 @@ class StreamingExecutor(Executor, threading.Thread):
         """
         error_msg = "Expected {} Queue for {} to be empty, but found {} bundles"
 
-        if isinstance(op, InternalQueueOperatorMixin):
+        from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+            QueuedOpMetrics,
+        )
+
+        if isinstance(op.metrics, QueuedOpMetrics):
             # 1) Check Internal Input Queue is empty
-            assert op.internal_input_queue_num_blocks() == 0, error_msg.format(
-                "Internal Input", op.name, op.internal_input_queue_num_blocks()
+            assert (
+                op.metrics.obj_store_mem_internal_inqueue_blocks == 0
+            ), error_msg.format(
+                "Internal Input",
+                op.name,
+                op.metrics.obj_store_mem_internal_inqueue_blocks,
             )
 
             # 2) Check Internal Output Queue is empty
-            assert op.internal_output_queue_num_blocks() == 0, error_msg.format(
+            assert (
+                op.metrics.obj_store_mem_internal_outqueue_blocks == 0
+            ), error_msg.format(
                 "Internal Output",
                 op.name,
-                op.internal_output_queue_num_blocks(),
+                op.metrics.obj_store_mem_internal_outqueue_blocks,
             )
 
         # 3) Check that External Input Queue is empty

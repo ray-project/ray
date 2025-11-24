@@ -8,7 +8,7 @@ import pytest
 
 import ray
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
-from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
+from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskOpMetrics
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -481,7 +481,7 @@ def test_configure_map_task_memory_rule(
         ray_remote_args_fn=ray_remote_args_fn,
     )
     map_op._metrics = MagicMock(
-        spec=OpRuntimeMetrics, average_bytes_per_output=average_bytes_per_output
+        spec=TaskOpMetrics, average_bytes_per_output=average_bytes_per_output
     )
     plan = PhysicalPlan(map_op, op_map=MagicMock(), context=data_context)
     rule = ConfigureMapTaskMemoryUsingOutputSize()

@@ -7,6 +7,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.interfaces.op_runtime_metrics import QueuedOpMetrics
 from ray.data._internal.execution.interfaces.physical_operator import _create_sub_pb
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -15,25 +16,10 @@ from ray.data.context import DataContext
 
 
 class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
-    @abc.abstractmethod
-    def internal_input_queue_num_blocks(self) -> int:
-        """Returns Operator's internal input queue size (in blocks)"""
-        ...
+    """Mixin for operators with internal queues that need cleanup.
 
-    @abc.abstractmethod
-    def internal_input_queue_num_bytes(self) -> int:
-        """Returns Operator's internal input queue size (in bytes)"""
-        ...
-
-    @abc.abstractmethod
-    def internal_output_queue_num_blocks(self) -> int:
-        """Returns Operator's internal output queue size (in blocks)"""
-        ...
-
-    @abc.abstractmethod
-    def internal_output_queue_num_bytes(self) -> int:
-        """Returns Operator's internal output queue size (in bytes)"""
-        ...
+    This mixin provides abstract methods for clearing internal queues.
+    """
 
     @abc.abstractmethod
     def clear_internal_input_queue(self) -> None:
@@ -132,6 +118,8 @@ class AllToAllOperator(
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
         super().__init__(name, [input_op], data_context, target_max_block_size_override)
+        # Initialize metrics directly for proper type inference
+        self._metrics = QueuedOpMetrics(data_context)
 
     def num_outputs_total(self) -> Optional[int]:
         return (
@@ -152,18 +140,6 @@ class AllToAllOperator(
         assert input_index == 0, input_index
         self._input_buffer.append(refs)
         self._metrics.on_input_queued(refs)
-
-    def internal_input_queue_num_blocks(self) -> int:
-        return sum(len(bundle.block_refs) for bundle in self._input_buffer)
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return sum(bundle.size_bytes() for bundle in self._input_buffer)
-
-    def internal_output_queue_num_blocks(self) -> int:
-        return sum(len(bundle.block_refs) for bundle in self._output_buffer)
-
-    def internal_output_queue_num_bytes(self) -> int:
-        return sum(bundle.size_bytes() for bundle in self._output_buffer)
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queue."""
