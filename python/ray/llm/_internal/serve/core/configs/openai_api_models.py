@@ -27,25 +27,6 @@ from vllm.entrypoints.openai.protocol import (
 )
 from vllm.utils import random_uuid
 
-__all__ = [
-    "ChatCompletionRequest",
-    "ChatCompletionResponse",
-    "ChatCompletionStreamResponse",
-    "CompletionRequest",
-    "CompletionResponse",
-    "CompletionStreamResponse",
-    "EmbeddingChatRequest",
-    "EmbeddingCompletionRequest",
-    "EmbeddingResponse",
-    "ErrorInfo",
-    "ErrorResponse",
-    "ScoreRequest",
-    "ScoreResponse",
-    "TranscriptionRequest",
-    "TranscriptionResponse",
-    "TranscriptionStreamResponse",
-]
-
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 
