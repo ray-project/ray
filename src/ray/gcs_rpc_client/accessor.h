@@ -190,17 +190,10 @@ class NodeInfoAccessor {
   /// \param node_id The ID of node to look up in local cache.
   /// \param filter_dead_nodes Whether or not if this method will filter dead nodes.
   /// \return The item returned by GCS. If the item to read doesn't exist or the node is
-  virtual  /// dead, this optional object is empty.
-      const rpc::GcsNodeInfo *
-      Get(const NodeID &node_id, bool filter_dead_nodes = true) const;
+  /// dead, this optional object is empty.
+  virtual const rpc::GcsNodeInfo *Get(const NodeID &node_id,
+                                      bool filter_dead_nodes = true) const;
 
-  /// Get node address and liveness information from local cache.
-  /// Thread-safe.
-  /// Note, the local cache is only available if subscription methods are called.
-  ///
-  /// \param node_id The ID of node to look up in local cache.
-  /// \param filter_dead_nodes Whether or not if this method will filter dead nodes.
-  /// \return The node info if found and alive (if filtering), std::nullopt otherwise.
   virtual std::optional<rpc::GcsNodeAddressAndLiveness> GetNodeAddressAndLiveness(
       const NodeID &node_id, bool filter_dead_nodes = true) const;
 
@@ -211,11 +204,7 @@ class NodeInfoAccessor {
   ///
   /// \return All nodes in cache.
   virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
-  /// Get information of all nodes from local cache.
-  /// Thread-safe - returns a copy of the cache.
-  /// Note, the local cache is only available if subscription methods are called.
-  ///
-  /// \return All nodes in cache.
+
   virtual absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>
   GetAllNodeAddressAndLiveness() const;
 

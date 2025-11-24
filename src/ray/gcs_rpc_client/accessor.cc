@@ -405,7 +405,7 @@ std::optional<rpc::GcsNodeAddressAndLiveness> NodeInfoAccessor::GetNodeAddressAn
     if (filter_dead_nodes && entry->second.state() == rpc::GcsNodeInfo::DEAD) {
       return std::nullopt;
     }
-    return entry->second;  // Copy under lock
+    return entry->second;
   }
   return std::nullopt;
 }
@@ -518,14 +518,12 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
 void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info) {
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == rpc::GcsNodeInfo::ALIVE);
-
-  bool is_notif_new;
-  std::optional<rpc::GcsNodeAddressAndLiveness> node_copy_for_callback;
-
+  std::optional<rpc::GcsNodeAddressAndLiveness> node_info_copy_for_callback;
   {
     std::lock_guard<std::mutex> lock(node_cache_address_and_liveness_mutex_);
 
     auto entry = node_cache_address_and_liveness_.find(node_id);
+    bool is_notif_new;
     if (entry == node_cache_address_and_liveness_.end()) {
       // If the entry is not in the cache, then the notification is new.
       is_notif_new = true;
@@ -561,13 +559,13 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_
     }
 
     if (is_notif_new && node_change_callback_address_and_liveness_ != nullptr) {
-      node_copy_for_callback = node;
+      node_info_copy_for_callback = node;
     }
   }
 
   // If the notification is new, call registered callback.
-  if (node_copy_for_callback.has_value()) {
-    node_change_callback_address_and_liveness_(node_id, *node_copy_for_callback);
+  if (node_info_copy_for_callback) {
+    node_change_callback_address_and_liveness_(node_id, *node_info_copy_for_callback);
   }
 }
 
