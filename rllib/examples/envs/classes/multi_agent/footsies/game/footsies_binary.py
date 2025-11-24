@@ -94,14 +94,9 @@ class FootsiesBinary:
 
         # The underlying game can be quite spammy. So when we are not debugging it, we can suppress the output or at least redirect it to a file.
         suppress_output = self.config.get("suppress_unity_output", False)
-        log_file = self.config.get("unity_log_file", None)
 
         if suppress_output:
             stdout_dest = stderr_dest = subprocess.DEVNULL
-        elif log_file:
-            log_path = Path(log_file)
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            stdout_dest = stderr_dest = open(log_path, "a")
         else:
             stdout_dest = stderr_dest = None  # Use parent's stdout/stderr
 

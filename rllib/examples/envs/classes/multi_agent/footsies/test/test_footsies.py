@@ -88,7 +88,6 @@ def capture_stdout_stderr():
 
 class TestFootsies(unittest.TestCase):
     def test_default_output_mode(self):
-        """Test that by default, Unity output goes to terminal (stdout/stderr)."""
         with capture_stdout_stderr() as log_path:
             env = _create_env({})
             time.sleep(2)  # Give Unity time to write output
@@ -111,6 +110,8 @@ class TestFootsies(unittest.TestCase):
             env = _create_env({"suppress_unity_output": True})
             time.sleep(2)  # Give Unity time to write output
             env.close()
+            # Give a bit more time for any buffered output to be written
+            time.sleep(0.5)
 
         # Read the captured output
         with open(log_path, "r") as f:
@@ -121,22 +122,6 @@ class TestFootsies(unittest.TestCase):
         # Clean up
         if Path(log_path).exists():
             os.unlink(log_path)
-
-    def test_log_file_output_mode(self):
-        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".log") as tmp:
-            log_path = tmp.name
-
-        try:
-            env = _create_env({"unity_log_file": log_path})
-            time.sleep(2)  # Give Unity time to write to the log file
-            assert Path(log_path).exists(), "Log file should exist"
-            content = Path(log_path).read_text()
-            assert "[UnityMemory]" in content
-            env.close()
-        finally:
-            if Path(log_path).exists():
-                # Delete log file
-                Path(log_path).unlink()
 
 
 if __name__ == "__main__":
