@@ -87,7 +87,7 @@ if __name__ == "__main__":
     # we register our custom input creator with this convenient function
     register_input("custom_input", input_creator)
 
-    # Config modified from rllib/tuned_examples/cql/pendulum-cql.yaml
+    # Config modified from rllib/examples/algorithms/cql/pendulum-cql.yaml
     default_config = get_trainable_cls(args.run).get_default_config()
     config = (
         default_config.environment("Pendulum-v1", clip_actions=True)
