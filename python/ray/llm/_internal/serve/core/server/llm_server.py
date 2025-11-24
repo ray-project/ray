@@ -13,8 +13,6 @@ from typing import (
     Union,
 )
 
-from fastapi import Request
-
 import ray
 from ray import serve
 from ray._common.utils import import_attr
@@ -295,7 +293,7 @@ class LLMServer(LLMServerProtocol):
         *,
         engine_method: str,
         batch_output_stream: bool = False,
-        raw_request: Optional[Request] = None,
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[Any, None]:
         """Run the engine method on the request + perform batching when stream=True.
 
@@ -303,7 +301,7 @@ class LLMServer(LLMServerProtocol):
             request: The request to run.
             engine_method: The method to call on the engine.
             batch_output_stream: Whether to batch the output stream.
-            raw_request: The raw FastAPI request object.
+            raw_request_headers: Optional HTTP headers from the original request.
 
         Returns:
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the non-streaming response from engine directly.
@@ -311,11 +309,6 @@ class LLMServer(LLMServerProtocol):
 
         await self._maybe_add_request_id_to_request(request)
         await self._maybe_resolve_lora_from_multiplex()
-
-        # Extract headers from raw_request
-        raw_request_headers: Optional[Dict[str, str]] = None
-        if raw_request is not None:
-            raw_request_headers = dict(raw_request.headers.items())
 
         is_stream = hasattr(request, "stream") and request.stream
         if is_stream and batch_output_stream:
@@ -328,7 +321,9 @@ class LLMServer(LLMServerProtocol):
         return stream
 
     async def chat(
-        self, request: "ChatCompletionRequest", raw_request: Optional[Request] = None
+        self,
+        request: "ChatCompletionRequest",
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[
         Union[List[Union[str, "ErrorResponse"]], "ChatCompletionResponse"], None
     ]:
@@ -336,7 +331,7 @@ class LLMServer(LLMServerProtocol):
 
         Args:
             request: A ChatCompletionRequest object.
-            raw_request: The raw FastAPI request object.
+            raw_request_headers: Optional HTTP headers from the original request.
 
         Returns:
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of chat streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the ChatCompletionResponse object directly.
@@ -345,11 +340,13 @@ class LLMServer(LLMServerProtocol):
             request,
             engine_method="chat",
             batch_output_stream=True,
-            raw_request=raw_request,
+            raw_request_headers=raw_request_headers,
         )
 
     async def completions(
-        self, request: "CompletionRequest", raw_request: Optional[Request] = None
+        self,
+        request: "CompletionRequest",
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[
         Union[List[Union[str, "ErrorResponse"]], "CompletionResponse"], None
     ]:
@@ -357,7 +354,7 @@ class LLMServer(LLMServerProtocol):
 
         Args:
             request: A CompletionRequest object.
-            raw_request: The raw FastAPI request object.
+            raw_request_headers: Optional HTTP headers from the original request.
 
         Returns:
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of completion streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the CompletionResponse object directly.
@@ -366,11 +363,13 @@ class LLMServer(LLMServerProtocol):
             request,
             engine_method="completions",
             batch_output_stream=True,
-            raw_request=raw_request,
+            raw_request_headers=raw_request_headers,
         )
 
     async def embeddings(
-        self, request: "EmbeddingRequest", raw_request: Optional[Request] = None
+        self,
+        request: "EmbeddingRequest",
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[Union[List["ErrorResponse"], "EmbeddingResponse"], None]:
         """Runs an embeddings request to the engine and returns the response.
 
@@ -378,7 +377,7 @@ class LLMServer(LLMServerProtocol):
 
         Args:
             request: An EmbeddingRequest object.
-            raw_request: The raw FastAPI request object.
+            raw_request_headers: Optional HTTP headers from the original request.
 
         Returns:
             An AsyncGenerator over the EmbeddingResponse object.
@@ -388,7 +387,7 @@ class LLMServer(LLMServerProtocol):
             request,
             engine_method="embeddings",
             batch_output_stream=False,
-            raw_request=raw_request,
+            raw_request_headers=raw_request_headers,
         )
 
     async def transcriptions(
@@ -413,7 +412,9 @@ class LLMServer(LLMServerProtocol):
         )
 
     async def score(
-        self, request: "ScoreRequest", raw_request: Optional[Request] = None
+        self,
+        request: "ScoreRequest",
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[Union["ScoreResponse", "ErrorResponse"], None]:
         """Runs a score request to the engine and returns the response.
 
@@ -421,7 +422,7 @@ class LLMServer(LLMServerProtocol):
 
         Args:
             request: A ScoreRequest object.
-            raw_request: The raw FastAPI request object.
+            raw_request_headers: Optional HTTP headers from the original request.
 
         Returns:
             An AsyncGenerator over the ScoreResponse object.
@@ -431,7 +432,7 @@ class LLMServer(LLMServerProtocol):
             request,
             engine_method="score",
             batch_output_stream=False,
-            raw_request=raw_request,
+            raw_request_headers=raw_request_headers,
         )
 
     async def check_health(self) -> None:

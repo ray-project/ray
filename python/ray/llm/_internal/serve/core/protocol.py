@@ -9,8 +9,6 @@ from typing import (
     Union,
 )
 
-from fastapi import Request
-
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
     from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -45,14 +43,18 @@ class LLMServerProtocol(DeploymentProtocol):
         """
 
     async def chat(
-        self, request: "ChatCompletionRequest", raw_request: Optional[Request] = None
+        self,
+        request: "ChatCompletionRequest",
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[Union[str, "ChatCompletionResponse", "ErrorResponse"], None]:
         """
         Inferencing to the engine for chat, and return the response.
         """
 
     async def completions(
-        self, request: "CompletionRequest", raw_request: Optional[Request] = None
+        self,
+        request: "CompletionRequest",
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[
         Union[List[Union[str, "ErrorResponse"]], "CompletionResponse"], None
     ]:

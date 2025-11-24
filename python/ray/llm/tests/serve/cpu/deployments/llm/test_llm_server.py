@@ -441,23 +441,19 @@ class TestLLMServer:
     @pytest.mark.asyncio
     async def test_raw_request_reaches_vllm_engine(self, mock_llm_config):
         """Test that raw_request is passed to the vllm_engine."""
-        from unittest.mock import MagicMock
-
-        from fastapi import Request
-
         from ray.llm._internal.serve.configs.openai_api_models import (
             ChatCompletionRequest,
         )
 
         # Track if raw_request was received by the engine
-        captured_raw_request = []
+        captured_raw_request_headers = []
 
         # Create a mock engine that captures raw_request
         class RawRequestCapturingEngine(MockVLLMEngine):
-            async def chat(self, request, raw_request=None):
-                captured_raw_request.append(raw_request)
+            async def chat(self, request, raw_request_headers=None):
+                captured_raw_request_headers.append(raw_request_headers)
                 # Call parent implementation
-                async for response in super().chat(request, raw_request):
+                async for response in super().chat(request, raw_request_headers):
                     yield response
 
         # Create server with custom engine
@@ -466,11 +462,12 @@ class TestLLMServer:
         )
         await server.start()
 
-        # Create a mock FastAPI request
-        from starlette.datastructures import Headers
-
-        mock_request = MagicMock(spec=Request)
-        mock_request.headers = Headers({"content-type": "application/json"})
+        # Simulate headers extracted from the original request. Include a
+        # dedicated test header so it's obvious this flow is validated.
+        mock_headers = {
+            "content-type": "application/json",
+            "x-ray-serve-llm-test-header": "llm-server-raw-request",
+        }
 
         # Create a chat request
         chat_request = ChatCompletionRequest(
@@ -481,7 +478,7 @@ class TestLLMServer:
         )
 
         # Make a request through the server
-        response_gen = server.chat(chat_request, mock_request)
+        response_gen = server.chat(chat_request, mock_headers)
 
         # Consume the generator
         chunks = []
@@ -489,8 +486,8 @@ class TestLLMServer:
             chunks.append(chunk)
 
         # Verify that raw_request was passed to the engine
-        assert len(captured_raw_request) == 1
-        assert captured_raw_request[0] is mock_request
+        assert len(captured_raw_request_headers) == 1
+        assert captured_raw_request_headers[0] == mock_headers
 
     @pytest.mark.parametrize("api_type", ["chat", "completions"])
     @pytest.mark.parametrize("stream", [True])
