@@ -18,6 +18,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockMetadataWithSchema, _take_first_non_empty_schema
 from ray.data.context import DataContext
 from ray.data.exceptions import omit_traceback_stdout
+from ray.data.expectations import ExecutionTimeExpectation
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -88,6 +89,57 @@ class ExecutionPlan:
 
         self._context = data_context
 
+        # Track execution time expectations for optimization hints
+        self._execution_time_expectations: List[ExecutionTimeExpectation] = []
+
+    def add_execution_time_expectation(
+        self, expectation: ExecutionTimeExpectation
+    ) -> None:
+        """Add an execution time expectation to this execution plan.
+
+        This allows the execution plan to track execution time requirements and
+        inform optimization strategies.
+
+        Args:
+            expectation: The execution time expectation to add.
+
+        Raises:
+            TypeError: If expectation is not an ExecutionTimeExpectation instance.
+        """
+        if not isinstance(expectation, ExecutionTimeExpectation):
+            raise TypeError(
+                f"Expected ExecutionTimeExpectation, got {type(expectation).__name__}"
+            )
+        self._execution_time_expectations.append(expectation)
+
+    def get_execution_time_expectations(self) -> List[ExecutionTimeExpectation]:
+        """Get all execution time expectations attached to this plan.
+
+        Returns:
+            List of execution time expectations.
+        """
+        return self._execution_time_expectations.copy()
+
+    def get_max_execution_time_seconds(self) -> Optional[float]:
+        """Get the maximum execution time from execution time expectations.
+
+        Returns:
+            Minimum max execution time from all execution time expectations, or None if no time constraints.
+        """
+        if not self._execution_time_expectations:
+            return None
+
+        max_times = [
+            exp.get_max_execution_time_seconds()
+            for exp in self._execution_time_expectations
+            if exp.get_max_execution_time_seconds() is not None
+        ]
+
+        if not max_times:
+            return None
+
+        return min(max_times)
+
     def get_dataset_id(self) -> str:
         """Unique ID of the dataset, including the dataset name,
         UUID, and current execution index.
@@ -101,6 +153,7 @@ class ExecutionPlan:
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
         self._run_index += 1
+
         executor = StreamingExecutor(self._context, self.get_dataset_id())
         return executor
 
@@ -128,7 +181,6 @@ class ExecutionPlan:
 
         sections = []
         for title, convert_fn in zip(titles, convert_fns):
-
             # 2. Convert plan to new plan
             plan = convert_fn(plan)
 
@@ -359,6 +411,7 @@ class ExecutionPlan:
             plan_copy._snapshot_operator = self._snapshot_operator
             plan_copy._snapshot_stats = self._snapshot_stats
         plan_copy._dataset_name = self._dataset_name
+        plan_copy._execution_time_expectations = self._execution_time_expectations.copy()
         return plan_copy
 
     def deep_copy(self) -> "ExecutionPlan":
@@ -379,6 +432,9 @@ class ExecutionPlan:
             plan_copy._snapshot_operator = copy.copy(self._snapshot_operator)
             plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
         plan_copy._dataset_name = self._dataset_name
+        plan_copy._execution_time_expectations = copy.deepcopy(
+            self._execution_time_expectations
+        )
         return plan_copy
 
     def initial_num_blocks(self) -> Optional[int]:
