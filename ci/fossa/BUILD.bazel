@@ -1,8 +1,12 @@
 load("@rules_python//python:defs.bzl", "py_binary")
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 
 py_binary(
     name = "ray_oss_analysis",
     srcs = ["ray_oss_analysis.py"],
     exec_compatible_with = ["//bazel:py310"],
     visibility = ["//visibility:private"],
+    deps = [
+        ci_require("pyyaml"),
+    ],
 )
