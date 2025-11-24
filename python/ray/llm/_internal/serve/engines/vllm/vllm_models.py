@@ -340,14 +340,9 @@ class VLLMEngineConfig(BaseModelExtended):
                 continue
 
             gpu_value = bundle["GPU"]
-            try:
-                gpu_float = float(gpu_value)
-            except (TypeError, ValueError):
+            if gpu_value <= 0 or gpu_value >= 1:
                 return None
 
-            if gpu_float <= 0 or gpu_float >= 1:
-                return None
-
-            return gpu_float
+            return gpu_value
 
         return None
