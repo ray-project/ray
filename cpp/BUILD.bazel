@@ -60,13 +60,11 @@ cc_library(
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],
     deps = [
-        # TODO(irabbani): This just needs to be io context
-        # with the thread.
-        "//src/ray/common:asio",
         "//src/ray/common:constants",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:task_common",
+        "//src/ray/common/asio:instrumented_io_context",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/gcs_rpc_client:global_state_accessor_lib",
         "//src/ray/util:cmd_line_utils",
