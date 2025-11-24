@@ -1,6 +1,6 @@
 from .accelerators import AcceleratorSetupCallback
 from .backend_setup import BackendSetupCallback
-from .datasets import DatasetsCallback
+from .datasets import DatasetsSetupCallback
 from .state_manager import StateManagerCallback
 from .tpu_reservation_callback import TPUReservationCallback
 from .working_dir_setup import WorkingDirectorySetupCallback
@@ -8,7 +8,7 @@ from .working_dir_setup import WorkingDirectorySetupCallback
 __all__ = [
     "AcceleratorSetupCallback",
     "BackendSetupCallback",
-    "DatasetsCallback",
+    "DatasetsSetupCallback",
     "StateManagerCallback",
     "TPUReservationCallback",
     "WorkingDirectorySetupCallback",
