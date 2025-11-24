@@ -588,11 +588,15 @@ RDT_FETCH_FAIL_TIMEOUT_SECONDS = (
 # When enabled, Ray serializes PyTorch tensors by converting them to NumPy arrays
 # and leveraging pickle5's zero-copy buffer sharing. This avoids copying the
 # underlying tensor data, which can improve performance when passing large tensors
-# across tasks or actors.
+# across tasks or actors. Note that this is experimental and should be used with caution
+# as we won't copy and allow a write to shared memory. One process changing a tensor
+# after ray.get could be reflected in another process.
 #
 # This feature is experimental and works best under the following conditions:
 # - The tensor has `requires_grad=False` (i.e., is detached from the autograd graph).
-# - The tensor is contiguous in memory and resides on the CPU.
+# - The tensor is contiguous in memory
+# - Performance benefits from this are larger if the tensor resides in CPU memory
+# - You are not using Ray Direct Transport
 #
 # Tensors on GPU or non-contiguous tensors are still supported: Ray will
 # automatically move them to CPU and/or make them contiguous as needed.
