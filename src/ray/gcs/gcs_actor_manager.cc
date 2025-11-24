@@ -1020,15 +1020,10 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   if (it == registered_actors_.end()) {
     RAY_LOG(INFO).WithField(actor_id) << "Tried to destroy actor that does not exist";
     // If the actor has already been marked dead and moved to destroyed cache,
-    // complete any deferred cleanup (name and owner mappings).
+    // ensure we still clean up named actor registry for detached actors.
     auto destroyed_it = destroyed_actors_.find(actor_id);
     if (destroyed_it != destroyed_actors_.end()) {
       RemoveActorNameFromRegistry(destroyed_it->second);
-      // For non-detached actors, also remove owner mapping if this is an intentional
-      // termination. This completes cleanup that was deferred from initial failure.
-      if (!destroyed_it->second->IsDetached() && IsIntentionalTermination(death_cause)) {
-        RemoveActorFromOwner(destroyed_it->second);
-      }
     }
     if (done_callback) {
       done_callback();
