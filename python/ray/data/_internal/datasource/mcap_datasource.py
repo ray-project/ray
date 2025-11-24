@@ -205,12 +205,16 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
         if not paths:
             return
 
+        if filesystem is None:
+            raise ValueError("filesystem cannot be None")
+
         for path, file_size in _expand_paths(
             paths, filesystem, partitioning, ignore_missing_paths
         ):
             if not path or not isinstance(path, str):
                 continue
-            if not path.endswith(".mcap"):
+            # Check for .mcap extension (case-insensitive)
+            if not path.lower().endswith(".mcap"):
                 continue
 
             try:
@@ -249,27 +253,33 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
             if file_size is None:
                 file_size = self._get_file_size(path, filesystem)
 
-            if file_size is not None and file_size == 0:
+            if file_size is not None and file_size <= 0:
                 return self._empty_metadata(path, file_size)
 
+            # Read summary within context manager to ensure file stays open
             with filesystem.open_input_stream(path) as f:
                 reader = make_reader(f)
                 # MCAP reader.get_summary() returns Summary object or None
                 # Summary provides direct access to channels, schemas, and statistics
                 summary = reader.get_summary()
 
-            if summary:
-                topics, message_types = self._extract_from_summary(summary)
-                num_messages, start_time, end_time = self._extract_statistics(summary.statistics)
+                if summary:
+                    topics, message_types = self._extract_from_summary(summary)
+                    num_messages, start_time, end_time = self._extract_statistics(summary.statistics)
 
         except Exception as e:
             logger.warning(f"Failed to read MCAP metadata from {path}: {e}")
             return self._empty_metadata(path, file_size)
 
+        # Ensure file_size is non-negative
+        final_file_size = file_size if file_size is not None and file_size >= 0 else 0
+        # Ensure num_messages is non-negative
+        final_num_messages = num_messages if num_messages >= 0 else 0
+
         return MCAPFileMetadata(
             path=path,
-            file_size=file_size or 0,
-            num_messages=num_messages,
+            file_size=final_file_size,
+            num_messages=final_num_messages,
             topics=topics,
             message_types=message_types,
             start_time=start_time,
@@ -285,9 +295,9 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
         topics = set()
         message_types = set()
 
-        # MCAP Summary provides channels and schemas as dictionaries (may be empty)
-        channels = summary.channels
-        schemas = summary.schemas
+        # MCAP Summary provides channels and schemas as dictionaries (may be empty or None)
+        channels = summary.channels if summary.channels is not None else {}
+        schemas = summary.schemas if summary.schemas is not None else {}
 
         if not channels:
             return topics, message_types
@@ -304,12 +314,14 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
             if channel_message_counts and channel_id not in channel_message_counts:
                 continue
             # Extract topic (MCAP Channel always has topic attribute)
-            if channel.topic:
+            # Empty string is a valid topic name, so check for None explicitly
+            if channel.topic is not None:
                 topics.add(channel.topic)
             # Extract schema name (message type) from channel's schema_id
             if channel.schema_id and schemas:
                 schema = schemas.get(channel.schema_id)
-                if schema and schema.name:
+                # Empty string is a valid schema name, so check for None explicitly
+                if schema and schema.name is not None:
                     message_types.add(schema.name)
         return topics, message_types
 
@@ -322,11 +334,18 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
         if not statistics:
             return 0, None, None
         # MCAP Statistics object provides these attributes directly
-        return (
-            statistics.message_count or 0,
-            statistics.message_start_time,
-            statistics.message_end_time,
-        )
+        message_count = statistics.message_count or 0
+        # Ensure non-negative message count
+        if message_count < 0:
+            message_count = 0
+        start_time = statistics.message_start_time
+        end_time = statistics.message_end_time
+        # Validate time values are non-negative
+        if start_time is not None and start_time < 0:
+            start_time = None
+        if end_time is not None and end_time < 0:
+            end_time = None
+        return (message_count, start_time, end_time)
 
     def _get_file_size(
         self, path: str, filesystem: "RetryingPyFileSystem"
@@ -334,7 +353,7 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
         """Get file size from filesystem."""
         try:
             file_info = filesystem.get_file_info(path)
-            if file_info.size is not None and file_info.size > 0:
+            if file_info.size is not None and file_info.size >= 0:
                 return file_info.size
         except Exception:
             pass
@@ -354,22 +373,30 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
 
     def _should_include_file(self, metadata: MCAPFileMetadata) -> bool:
         """Check if file should be included based on filters. Includes conservatively if no metadata."""
-        # If no metadata available, include conservatively
-        if not (metadata.topics or metadata.message_types or metadata.start_time is not None):
+        # If no metadata available (empty sets and None times), include conservatively
+        has_metadata = (
+            (metadata.topics and len(metadata.topics) > 0)
+            or (metadata.message_types and len(metadata.message_types) > 0)
+            or metadata.start_time is not None
+        )
+        if not has_metadata:
             return True
 
         # Check topic filter (empty set excludes all)
-        if self._topics is not None and (
-            not self._topics or not metadata.topics.intersection(self._topics)
-        ):
-            return False
+        if self._topics is not None:
+            if not self._topics:
+                # Empty filter set means exclude all
+                return False
+            if not metadata.topics or not metadata.topics.intersection(self._topics):
+                return False
 
         # Check message type filter (empty set excludes all)
-        if self._message_types is not None and (
-            not self._message_types
-            or not metadata.message_types.intersection(self._message_types)
-        ):
-            return False
+        if self._message_types is not None:
+            if not self._message_types:
+                # Empty filter set means exclude all
+                return False
+            if not metadata.message_types or not metadata.message_types.intersection(self._message_types):
+                return False
 
         # Check time range filter
         if self._time_range and not self._time_range.overlaps(
@@ -404,7 +431,19 @@ class MCAPFileMetadataProvider(BaseFileMetadataProvider):
                 exec_stats=None,
             )
 
-        size_bytes = None if None in file_sizes else int(sum(file_sizes))
+        # Validate file_sizes length matches paths length
+        if len(file_sizes) != len(paths):
+            logger.warning(
+                f"file_sizes length ({len(file_sizes)}) doesn't match paths length ({len(paths)})"
+            )
+
+        # Filter out None and negative values, sum remaining
+        valid_sizes = [s for s in file_sizes if s is not None and s >= 0]
+        if None in file_sizes or len(valid_sizes) != len(file_sizes):
+            size_bytes = None
+        else:
+            size_bytes = int(sum(valid_sizes))
+
         return BlockMetadata(
             num_rows=None,  # Computed during execution
             size_bytes=size_bytes,
@@ -491,12 +530,17 @@ class MCAPDatasource(FileBasedDatasource):
             raise ValueError("paths cannot be empty")
 
         validated_paths = []
+        seen_paths = set()
         for i, p in enumerate(paths):
             if not isinstance(p, str):
                 raise TypeError(f"All paths must be strings, got {type(p)} at index {i}")
             p = p.strip()
             if not p:
-                raise ValueError(f"Path at index {i} cannot be empty")
+                raise ValueError(f"Path at index {i} cannot be empty or whitespace")
+            # Check for duplicate paths
+            if p in seen_paths:
+                logger.debug(f"Duplicate path at index {i}: {p}")
+            seen_paths.add(p)
             validated_paths.append(p)
         return validated_paths
 
@@ -508,9 +552,11 @@ class MCAPDatasource(FileBasedDatasource):
         if value is None:
             return None
         if isinstance(value, set):
-            return value
+            # Filter out None values and empty strings if desired
+            return {v for v in value if v is not None}
         if isinstance(value, (list, tuple)):
-            return set(value)
+            # Filter out None values
+            return {v for v in value if v is not None}
         raise TypeError(f"{name} must be list, tuple, or set, got {type(value)}")
 
     def supports_predicate_pushdown(self) -> bool:
@@ -560,6 +606,9 @@ class MCAPDatasource(FileBasedDatasource):
 
         # Create shallow copy and update filter attributes
         clone = copy.copy(self)
+        if clone is None:
+            raise RuntimeError("Failed to create datasource clone")
+
         clone._topics = new_topics
         clone._message_types = new_message_types
         clone._time_range = new_time_range
@@ -572,11 +621,14 @@ class MCAPDatasource(FileBasedDatasource):
         )
 
         # Store remaining predicate for block-level filtering
-        clone._predicate_expr = (
-            self._predicate_expr & predicate_expr
-            if self._predicate_expr is not None
-            else predicate_expr
-        )
+        try:
+            clone._predicate_expr = (
+                self._predicate_expr & predicate_expr
+                if self._predicate_expr is not None
+                else predicate_expr
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to combine predicate expressions: {e}") from e
 
         return clone
 
@@ -659,7 +711,14 @@ class MCAPDatasource(FileBasedDatasource):
                 if op == Operation.EQ and isinstance(right, LiteralExpr):
                     value = {right.value}
                 elif op == Operation.IN and isinstance(right, LiteralExpr):
-                    value = set(right.value) if isinstance(right.value, (list, tuple, set)) else {right.value}
+                    # Handle IN operation: value must be iterable (list/tuple/set), not string
+                    if isinstance(right.value, (list, tuple, set)):
+                        value = set(right.value)
+                    elif isinstance(right.value, str):
+                        # String IN means single value, not set of characters
+                        value = {right.value}
+                    else:
+                        return
                 else:
                     return
 
@@ -676,14 +735,26 @@ class MCAPDatasource(FileBasedDatasource):
                     return
                 value = int(value)
 
+                # Validate value is non-negative and within safe range
+                if value < 0:
+                    return
+                if value >= _MAX_SAFE_TIME:
+                    return
+
                 if op == Operation.GT:
-                    time_range_start = max(time_range_start, value + 1) if time_range_start is not None else value + 1
+                    new_start = value + 1
+                    if new_start > _MAX_SAFE_TIME:
+                        return
+                    time_range_start = max(time_range_start, new_start) if time_range_start is not None else new_start
                 elif op == Operation.GE:
                     time_range_start = max(time_range_start, value) if time_range_start is not None else value
                 elif op == Operation.LT:
                     time_range_end = min(time_range_end, value) if time_range_end is not None else value
                 elif op == Operation.LE:
-                    time_range_end = min(time_range_end, value + 1) if time_range_end is not None else value + 1
+                    new_end = value + 1
+                    if new_end > _MAX_SAFE_TIME:
+                        return
+                    time_range_end = min(time_range_end, new_end) if time_range_end is not None else new_end
 
         def visit_and_chain(expr: Expr):
             """Recursively visit AND chains to extract simple filters."""
@@ -695,6 +766,13 @@ class MCAPDatasource(FileBasedDatasource):
 
         visit_and_chain(predicate_expr)
 
+        # Validate extracted time bounds before creating TimeRange
+        if time_range_start is not None and time_range_end is not None:
+            if time_range_start >= time_range_end:
+                # Invalid range, don't push down time filter
+                time_range_start = None
+                time_range_end = None
+
         # Build TimeRange from extracted bounds
         time_range = TimeRange.from_bounds(time_range_start, time_range_end)
 
@@ -703,10 +781,18 @@ class MCAPDatasource(FileBasedDatasource):
     def _merge_time_ranges(
         self, existing: Optional[TimeRange], new: Optional[TimeRange]
     ) -> Optional[TimeRange]:
-        """Merge two time ranges by taking their intersection."""
-        if not new:
+        """Merge two time ranges by taking their intersection.
+
+        Args:
+            existing: Existing time range, or None for no filter.
+            new: New time range, or None for no filter.
+
+        Returns:
+            Intersection of time ranges, or None if both are None or don't overlap.
+        """
+        if new is None:
             return existing
-        if not existing:
+        if existing is None:
             return new
         return existing.intersection(new)
 
@@ -721,10 +807,18 @@ class MCAPDatasource(FileBasedDatasource):
         """
         from mcap.reader import make_reader
 
+        if f is None:
+            raise ValueError(f"File handle is None for {path}")
+        if not path:
+            raise ValueError("Path cannot be empty")
+
         try:
             reader = make_reader(f)
         except Exception as e:
             raise RuntimeError(f"Failed to create MCAP reader for {path}: {e}") from e
+
+        if reader is None:
+            raise RuntimeError(f"MCAP reader is None for {path}")
 
         # Early return if topics filter is empty set
         if self._topics is not None and not self._topics:
@@ -747,9 +841,20 @@ class MCAPDatasource(FileBasedDatasource):
 
     def _get_message_iterator(self, reader, path: str):
         """Get message iterator with pushdown filters applied."""
-        topics_list = list(self._topics) if self._topics else None
+        if reader is None:
+            raise ValueError(f"Reader is None for {path}")
+
+        # Empty set means no topics match, pass empty list to exclude all
+        # None means no filter, pass None to include all
+        topics_list = list(self._topics) if self._topics is not None else None
         start_time = self._time_range.start_time if self._time_range else None
         end_time = self._time_range.end_time if self._time_range else None
+
+        # Validate time values are non-negative
+        if start_time is not None and start_time < 0:
+            raise ValueError(f"Invalid start_time {start_time} for {path}: must be non-negative")
+        if end_time is not None and end_time < 0:
+            raise ValueError(f"Invalid end_time {end_time} for {path}: must be non-negative")
 
         # Common iterator arguments
         iterator_kwargs = {
@@ -775,7 +880,18 @@ class MCAPDatasource(FileBasedDatasource):
         builder = DelegatingBlockBuilder()
 
         for item in decoded_messages:
-            schema, channel, message, decoded_data = self._unpack_message_item(item)
+            try:
+                schema, channel, message, decoded_data = self._unpack_message_item(item)
+            except (ValueError, AttributeError, IndexError) as e:
+                logger.warning(
+                    f"Failed to unpack message item from {path}: {e}. Skipping message."
+                )
+                continue
+
+            # Skip if required fields are None
+            if channel is None or message is None:
+                logger.debug(f"Skipping message with None channel or message in {path}")
+                continue
 
             if not self._should_include_message(schema, channel, message):
                 continue
@@ -802,10 +918,16 @@ class MCAPDatasource(FileBasedDatasource):
         """Unpack message item from iterator (handles both decoded and raw messages)."""
         if hasattr(item, "decoded_message"):
             # DecodedMessageTuple from iter_decoded_messages
-            return item.schema, item.channel, item.message, item.decoded_message
+            schema = getattr(item, "schema", None)
+            channel = getattr(item, "channel", None)
+            message = getattr(item, "message", None)
+            decoded_data = getattr(item, "decoded_message", None)
+            return schema, channel, message, decoded_data
         else:
             # Tuple from iter_messages
-            schema, channel, message = item
+            if not isinstance(item, (tuple, list)) or len(item) < 3:
+                raise ValueError(f"Invalid message item format: {type(item)}")
+            schema, channel, message = item[0], item[1], item[2]
             return schema, channel, message, None
 
     def _apply_block_predicate(self, block: Block, path: str) -> Optional[Block]:
@@ -813,10 +935,24 @@ class MCAPDatasource(FileBasedDatasource):
         if self._predicate_expr is None:
             return block
 
+        if block is None:
+            return None
+
         try:
             filter_expr = self._predicate_expr.to_pyarrow()
+            if filter_expr is None:
+                return block
+
             block_accessor = BlockAccessor.for_block(block)
-            filtered_table = block_accessor.to_arrow().filter(filter_expr)
+            arrow_table = block_accessor.to_arrow()
+            if arrow_table is None:
+                return block
+
+            filtered_table = arrow_table.filter(filter_expr)
+            if filtered_table is None:
+                return block
+
+            # num_rows is an attribute, not a method
             if filtered_table.num_rows == 0:
                 return None
             return block_accessor.from_arrow(filtered_table)
@@ -833,12 +969,22 @@ class MCAPDatasource(FileBasedDatasource):
         if decoded_data is not None:
             return decoded_data
 
+        if channel is None:
+            raise ValueError(f"Channel is None for message in {path}")
+        if message is None:
+            raise ValueError(f"Message is None in {path}")
+
         # Fallback: manually decode JSON if needed
-        final_data = message.data if message.data is not None else b""
+        if message.data is None:
+            return b""
+
+        final_data = message.data
+        # Check message_encoding is not None before comparing
         if (
-            channel.message_encoding == "json"
+            channel.message_encoding is not None
+            and channel.message_encoding == "json"
             and isinstance(message.data, bytes)
-            and message.data
+            and len(message.data) > 0
         ):
             try:
                 final_data = json.loads(message.data.decode("utf-8"))
@@ -846,6 +992,7 @@ class MCAPDatasource(FileBasedDatasource):
                 logger.debug(
                     f"Failed to decode JSON message from {path}, using raw bytes: {e}"
                 )
+                # Keep original bytes on decode failure
                 final_data = message.data
         return final_data
 
@@ -858,8 +1005,8 @@ class MCAPDatasource(FileBasedDatasource):
         # Empty set excludes all messages
         if not self._message_types:
             return False
-        # Check schema name matches filter
-        return schema and schema.name and schema.name in self._message_types
+        # Check schema name matches filter (empty string is valid schema name)
+        return schema and schema.name is not None and schema.name in self._message_types
 
     def _message_to_dict(
         self,
@@ -888,12 +1035,13 @@ class MCAPDatasource(FileBasedDatasource):
         final_data = self._decode_message_data(channel, message, path, decoded_data)
 
         # MCAP Message and Channel objects provide these attributes directly
+        # Use 0 as default for numeric fields, empty string for string fields
         message_data = {
             "data": final_data,
-            "topic": channel.topic or "",
-            "log_time": message.log_time or 0,
-            "publish_time": message.publish_time or 0,
-            "sequence": message.sequence or 0,
+            "topic": channel.topic if channel.topic is not None else "",
+            "log_time": message.log_time if message.log_time is not None else 0,
+            "publish_time": message.publish_time if message.publish_time is not None else 0,
+            "sequence": message.sequence if message.sequence is not None else 0,
         }
 
         if self._include_metadata:
@@ -901,12 +1049,12 @@ class MCAPDatasource(FileBasedDatasource):
             # MCAP Channel provides metadata attribute (dict) if available
             message_data.update(
                 {
-                    "channel_id": message.channel_id or 0,
-                    "message_encoding": channel.message_encoding or "",
-                    "schema_name": schema.name if schema else None,
-                    "schema_encoding": schema.encoding if schema else None,
-                    "schema_data": schema.data if schema else None,
-                    "channel_metadata": channel.metadata if channel.metadata else None,
+                    "channel_id": message.channel_id if message.channel_id is not None else 0,
+                    "message_encoding": channel.message_encoding if channel.message_encoding is not None else "",
+                    "schema_name": schema.name if schema and schema.name is not None else None,
+                    "schema_encoding": schema.encoding if schema and schema.encoding is not None else None,
+                    "schema_data": schema.data if schema and schema.data is not None else None,
+                    "channel_metadata": channel.metadata if channel.metadata is not None else None,
                 }
             )
 
