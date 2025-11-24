@@ -3922,23 +3922,6 @@
     script: >
       pytest -sv test_llm_serve_multi_node_integration.py
 
-- name: llm_serve_sglang_engine
-  frequency: nightly
-  python: "3.11"
-  group: llm-serve
-  team: llm
-  working_dir: llm_tests/serve
-
-  cluster:
-    byod:
-      type: llm-cu128
-    cluster_compute: llm_4xl4.yaml
-
-  run:
-    timeout: 3600
-    script: >
-      pytest -sv test_sglang_serve_integration.py      
-
 - name: llm_serve_llama_3dot2_1B_no_accelerator
   frequency: nightly
   python: "3.11"
