@@ -222,4 +222,3 @@ TEST(UnorderedPoolWorkQueueTest, WorkItemPreservesKey) {
 
 }  // namespace core
 }  // namespace ray
-

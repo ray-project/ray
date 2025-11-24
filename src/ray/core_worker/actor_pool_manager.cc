@@ -161,16 +161,16 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
     return {};
   }
   
-  auto &pool_info = pool_it->second;
   auto &work_queue = work_queues_[pool_id];
   
   // Extract argument object IDs for locality-aware scheduling
   std::vector<ObjectID> arg_ids;
   for (const auto &arg : args) {
-    if (arg->IsPassedByReference()) {
-      arg_ids.push_back(arg->GetReference().OwnedByAddress()
-                            ? arg->GetReference().ObjectID()
-                            : ObjectID::Nil());
+    // Check if this is a by-reference argument
+    rpc::TaskArg arg_proto;
+    arg->ToProto(&arg_proto);
+    if (arg_proto.has_object_ref()) {
+      arg_ids.push_back(ObjectID::FromBinary(arg_proto.object_ref().object_id()));
     }
   }
   
@@ -468,10 +468,10 @@ void ActorPoolManager::RetryWorkItem(const ActorPoolID &pool_id,
   // Extract arg IDs for locality-aware scheduling
   std::vector<ObjectID> arg_ids;
   for (const auto &arg : work_item.args) {
-    if (arg->IsPassedByReference()) {
-      arg_ids.push_back(arg->GetReference().OwnedByAddress()
-                            ? arg->GetReference().ObjectID()
-                            : ObjectID::Nil());
+    rpc::TaskArg arg_proto;
+    arg->ToProto(&arg_proto);
+    if (arg_proto.has_object_ref()) {
+      arg_ids.push_back(ObjectID::FromBinary(arg_proto.object_ref().object_id()));
     }
   }
   

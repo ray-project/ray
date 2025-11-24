@@ -29,7 +29,6 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/actor_pool_work_queue.h"
 #include "ray/core_worker/common.h"
-#include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -238,8 +237,7 @@ class ActorPoolManager {
   /// \return Rank value (locality * 10000 + load).
   int32_t RankActor(const ActorID &actor_id,
                     const std::vector<ObjectID> &arg_ids,
-                    const ActorPoolInfo &pool_info) const
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                    const ActorPoolInfo &pool_info) const;
   
   /// Submit a work item to a specific actor.
   ///

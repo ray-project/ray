@@ -636,6 +636,7 @@ DEFINE_UNIQUE_ID(ActorID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
 DEFINE_UNIQUE_ID(PlacementGroupID);
+DEFINE_UNIQUE_ID(ActorPoolID);
 DEFINE_UNIQUE_ID(LeaseID);
 #include "ray/common/id_def.h"
 
