@@ -46,7 +46,8 @@ class PlacementGroupCleaner:
             )
             return False
 
-        if self._monitor_thread is not None:
+        monitor_thread = self._monitor_thread
+        if monitor_thread is not None and monitor_thread.is_alive():
             raise RuntimeError(
                 "Cannot start monitoring: monitor thread reference is not None."
             )
@@ -82,6 +83,13 @@ class PlacementGroupCleaner:
                 break
 
             if not alive:
+                placement_group = self._placement_group
+                if placement_group is None:
+                    logger.debug(
+                        "Controller actor died but no placement group is currently tracked; "
+                        "skipping cleanup."
+                    )
+                    break
                 if not self._is_placement_group_removed():
                     logger.warning(
                         f"Detected that the Ray Train controller actor ({self._controller_actor_id}) is dead. "
@@ -89,9 +97,9 @@ class PlacementGroupCleaner:
                     )
                     try:
                         logger.debug(
-                            f"Cleaning up placement group: {self._placement_group.id}"
+                            f"Cleaning up placement group: {placement_group.id}"
                         )
-                        remove_placement_group(self._placement_group)
+                        remove_placement_group(placement_group)
                         logger.debug("Placement group cleanup successful")
                     except Exception as e:
                         logger.warning(f"Failed to clean up placement group: {e}")
@@ -115,18 +123,21 @@ class PlacementGroupCleaner:
         Returns:
             bool: True if the thread was stopped, False if there was no active thread.
         """
-        if self._monitor_thread is None or not self._monitor_thread.is_alive():
+        monitor_thread = self._monitor_thread
+        if monitor_thread is None or not monitor_thread.is_alive():
             return False
 
         self._stopped = True
-        monitor_thread = self._monitor_thread
         join_timeout = max(2.0, self._check_interval_s * 2)
         monitor_thread.join(timeout=join_timeout)
         if monitor_thread.is_alive():
             logger.warning(
                 "Monitor thread did not exit within %.2f seconds", join_timeout
             )
-        self._monitor_thread = None
+            return False
+
+        if self._monitor_thread is monitor_thread:
+            self._monitor_thread = None
         return True
 
     def stop_monitoring(self):
