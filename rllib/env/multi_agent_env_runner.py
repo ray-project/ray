@@ -467,7 +467,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     self._new_episode(
                         env_index,
                         episodes,
-                        call_on_episode_created=(eps != num_episodes)
+                        call_on_episode_created=(eps != num_episodes),
                     )
                     # Register the mapping of new episode ID to old episode ID.
                     shared_data["vector_env_episodes_map"].update(
