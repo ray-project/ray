@@ -1064,7 +1064,7 @@ ITERATION_PREFETCHED_BYTES_PANEL = Panel(
     fill=0,
     stack=False,
 )
-          
+
 ITERATION_TIME_TO_FIRST_BATCH_PANEL = Panel(
     id=120,
     title="Iteration Time to First Batch",
