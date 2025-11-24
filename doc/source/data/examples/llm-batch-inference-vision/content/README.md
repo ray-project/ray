@@ -63,6 +63,8 @@ for i, item in enumerate(sample):
 
 For this initial example, limit the dataset to 10,000 rows for faster processing and testing. Later, you can scale up to process the full dataset.
 
+By default, a large file might be read into few blocks, limiting parallelism in the next steps. Instead, you can repartition the data into a specified number of blocks to ensure good enough parallelization in rest of the pipeline.
+
 
 ```python
 # Limit the dataset to 100,000 images for this example.
