@@ -399,7 +399,7 @@ const rpc::GcsNodeInfo *NodeInfoAccessor::Get(const NodeID &node_id,
 std::optional<rpc::GcsNodeAddressAndLiveness> NodeInfoAccessor::GetNodeAddressAndLiveness(
     const NodeID &node_id, bool filter_dead_nodes) const {
   RAY_CHECK(!node_id.IsNil());
-  std::lock_guard<std::mutex> lock(node_cache_address_and_liveness_mutex_);
+  absl::MutexLock lock(&node_cache_address_and_liveness_mutex_);
   auto entry = node_cache_address_and_liveness_.find(node_id);
   if (entry != node_cache_address_and_liveness_.end()) {
     if (filter_dead_nodes && entry->second.state() == rpc::GcsNodeInfo::DEAD) {
@@ -416,7 +416,7 @@ const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &NodeInfoAccessor::GetAll() 
 
 absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>
 NodeInfoAccessor::GetAllNodeAddressAndLiveness() const {
-  std::lock_guard<std::mutex> lock(node_cache_address_and_liveness_mutex_);
+  absl::MutexLock lock(&node_cache_address_and_liveness_mutex_);
   return node_cache_address_and_liveness_;
 }
 
@@ -457,7 +457,7 @@ bool NodeInfoAccessor::IsNodeDead(const NodeID &node_id) const {
     return node_iter != node_cache_.end() &&
            node_iter->second.state() == rpc::GcsNodeInfo::DEAD;
   } else {
-    std::lock_guard<std::mutex> lock(node_cache_address_and_liveness_mutex_);
+    absl::MutexLock lock(&node_cache_address_and_liveness_mutex_);
     auto node_iter = node_cache_address_and_liveness_.find(node_id);
     return node_iter != node_cache_address_and_liveness_.end() &&
            node_iter->second.state() == rpc::GcsNodeInfo::DEAD;
@@ -520,7 +520,7 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_
   bool is_alive = (node_info.state() == rpc::GcsNodeInfo::ALIVE);
   std::optional<rpc::GcsNodeAddressAndLiveness> node_info_copy_for_callback;
   {
-    std::lock_guard<std::mutex> lock(node_cache_address_and_liveness_mutex_);
+    absl::MutexLock lock(&node_cache_address_and_liveness_mutex_);
 
     auto entry = node_cache_address_and_liveness_.find(node_id);
     bool is_notif_new;
@@ -554,7 +554,7 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_
       node.set_node_id(node_info.node_id());
       node.set_state(rpc::GcsNodeInfo::DEAD);
       if (node_info.has_death_info()) {
-        node.mutable_death_info()->CopyFrom(node_info.death_info());
+        *node.mutable_death_info() = std::move(*node_info.mutable_death_info());
       }
     }
 

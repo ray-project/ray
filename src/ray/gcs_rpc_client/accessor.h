@@ -14,12 +14,12 @@
 
 #pragma once
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "ray/common/gcs_callback_types.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
@@ -300,12 +300,13 @@ class NodeInfoAccessor {
   std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)>
       node_change_callback_address_and_liveness_ = nullptr;
 
+  /// Mutex to protect node_cache_address_and_liveness_ for thread-safe access
+  mutable absl::Mutex node_cache_address_and_liveness_mutex_;
+
   /// A cache for information about all nodes when using the address and liveness api
   absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>
-      node_cache_address_and_liveness_;
-
-  /// Mutex to protect node_cache_address_and_liveness_ for thread-safe access
-  mutable std::mutex node_cache_address_and_liveness_mutex_;
+      node_cache_address_and_liveness_
+          ABSL_GUARDED_BY(node_cache_address_and_liveness_mutex_);
 
   // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
   // https://github.com/ray-project/ray/issues/54805
