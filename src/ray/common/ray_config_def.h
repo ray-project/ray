@@ -533,7 +533,7 @@ RAY_CONFIG(bool, enable_metrics_collection, true)
 /// Determine if the high cardinality labels such as WorkerId, task and actor Name
 /// should be used in the metrics. For the complete definition, see
 /// RAY_METRIC_CARDINALITY_LEVEL in ray_constants.py
-RAY_CONFIG(std::string, metric_cardinality_level, "legacy")
+RAY_CONFIG(std::string, metric_cardinality_level, "recommended")
 
 /// Whether enable OpenTelemetry as the metrics collection backend. The default is
 /// using OpenCensus.
