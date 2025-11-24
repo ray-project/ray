@@ -193,9 +193,8 @@ def test_pg_cleaner_handles_duplicate_start():
     # Start monitoring asynchronously
     cleaner.start_monitoring.remote()
 
-    # Try to start again - should return False
-    result2 = ray.get(cleaner.start_monitoring.remote())
-    assert result2 is False
+    with pytest.raises(RuntimeError):
+        ray.get(cleaner.start_monitoring.remote())
 
     # Stop
     try:

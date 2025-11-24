@@ -33,7 +33,7 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
                 if the controller is still alive.
         """
         self._check_interval_s = check_interval_s
-        self._cleaner = None
+        self._cleaner: Optional[PlacementGroupCleaner] = None
         self._controller_actor_id: Optional[str] = None
 
     def after_controller_start(self, train_run_context: "TrainRunContext"):
@@ -68,7 +68,7 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
                 self._stop_cleaner()
                 return
 
-            logger.info(
+            logger.debug(
                 f"PlacementGroupCleaner launched for run_id={train_run_context.run_id}"
             )
         except Exception as e:
@@ -107,7 +107,7 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
 
             self._cleaner.start_monitoring.remote()
 
-            logger.info(
+            logger.debug(
                 f"Registered placement group {placement_group.id} with PlacementGroupCleaner."
             )
         except Exception as e:
@@ -115,6 +115,26 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
                 f"Failed to register placement group with cleaner: {e}. "
                 "Placement group may not be cleaned up if controller dies ungracefully."
             )
+
+    def before_worker_group_shutdown(self, worker_group: "WorkerGroup"):
+        """Stop monitoring the worker group's placement group when it shuts down.
+
+        This is called when a worker group shuts down (e.g., during restart/resize).
+        We stop monitoring the old placement group so that when a new worker group
+        starts, we can start monitoring the new placement group.
+        """
+        if not self._cleaner:
+            return
+
+        try:
+            ray.get(self._cleaner.stop_monitoring.remote(), timeout=2.0)
+            logger.debug("Stopped monitoring placement group for worker group shutdown")
+        except RayActorError:
+            logger.debug(
+                "PlacementGroupCleaner exited before stop_monitoring completed; ignoring."
+            )
+        except Exception:
+            logger.exception("Failed to stop monitoring placement group gracefully.")
 
     def before_controller_shutdown(self):
         self._stop_cleaner()

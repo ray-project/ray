@@ -23,7 +23,6 @@ class PlacementGroupCleaner:
         self._stopped: bool = False
         self._controller_actor_id: Optional[str] = None
         self._placement_group: Optional[PlacementGroup] = None
-        self._monitoring: bool = False
         self._monitor_thread: Optional[threading.Thread] = None
         self._get_actor_timeout_s = GET_ACTOR_TIMEOUT_S
         self._exiting: bool = False
@@ -33,7 +32,7 @@ class PlacementGroupCleaner:
     ):
         self._controller_actor_id = controller_actor_id
         self._placement_group = placement_group
-        logger.info(
+        logger.debug(
             "PlacementGroupCleaner registered controller %s with placement group %s",
             controller_actor_id,
             placement_group.id,
@@ -47,22 +46,22 @@ class PlacementGroupCleaner:
             )
             return False
 
-        if self._monitoring:
-            logger.warning("Already monitoring")
-            return False
+        if self._monitor_thread is not None:
+            raise RuntimeError(
+                "Cannot start monitoring: monitor thread reference is not None."
+            )
 
         if self._stopped:
             logger.warning("Cannot start monitoring: stop already requested")
             return False
 
-        self._monitoring = True
         self._monitor_thread = threading.Thread(
             target=self._monitor_loop,
             name="PlacementGroupCleanerMonitor",
             daemon=True,
         )
         self._monitor_thread.start()
-        logger.info("PlacementGroupCleaner started monitoring in background thread")
+        logger.debug("PlacementGroupCleaner started monitoring in background thread")
         return True
 
     def _monitor_loop(self):
@@ -76,66 +75,98 @@ class PlacementGroupCleaner:
                     actor_id=self._controller_actor_id,
                     timeout=self._get_actor_timeout_s,
                 )
-                if not alive:
-                    if not self._is_placement_group_removed():
-                        logger.warning(
-                            f"Detected that the Ray Train controller actor ({self._controller_actor_id}) is dead. "
-                            "Cleaning up placement group created by this run."
-                        )
-                    else:
-                        logger.info(
-                            "Controller actor died but placement group already removed; "
-                            "skipping cleanup."
-                        )
-                    break
-                time.sleep(self._check_interval_s)
-            except Exception:
+            except ray.util.state.exception.RayStateApiException:
                 logger.exception(
-                    "Failed to query controller state. Attempting cleanup."
+                    "Failed to query Ray Train Controller actor state. Attempting cleanup."
                 )
                 break
 
-        if not self._stopped:
-            try:
+            if not alive:
                 if not self._is_placement_group_removed():
-                    logger.info(
-                        f"Cleaning up placement group: {self._placement_group.id}"
+                    logger.warning(
+                        f"Detected that the Ray Train controller actor ({self._controller_actor_id}) is dead. "
+                        "Cleaning up placement group created by this run."
                     )
-                    remove_placement_group(self._placement_group)
-                    logger.info("Placement group cleanup successful")
-            except Exception as e:
-                logger.warning(f"Failed to clean up placement group: {e}")
+                    try:
+                        logger.debug(
+                            f"Cleaning up placement group: {self._placement_group.id}"
+                        )
+                        remove_placement_group(self._placement_group)
+                        logger.debug("Placement group cleanup successful")
+                    except Exception as e:
+                        logger.warning(f"Failed to clean up placement group: {e}")
+                else:
+                    logger.debug(
+                        "Controller actor died but placement group already removed; "
+                        "skipping cleanup."
+                    )
+                break
 
-        self._monitoring = False
+            time.sleep(self._check_interval_s)
+
         self._monitor_thread = None
 
         if not self._stopped:
             self._exit()
 
+    def _stop_monitor_thread(self):
+        """Stop the monitor thread and wait for it to exit.
+
+        Returns:
+            bool: True if the thread was stopped, False if there was no active thread.
+        """
+        if self._monitor_thread is None or not self._monitor_thread.is_alive():
+            return False
+
+        self._stopped = True
+        monitor_thread = self._monitor_thread
+        join_timeout = max(2.0, self._check_interval_s * 2)
+        monitor_thread.join(timeout=join_timeout)
+        if monitor_thread.is_alive():
+            logger.warning(
+                "Monitor thread did not exit within %.2f seconds", join_timeout
+            )
+        self._monitor_thread = None
+        return True
+
+    def stop_monitoring(self):
+        """Stop monitoring the current placement group without exiting the actor.
+
+        This is called when a worker group shuts down gracefully, so we stop
+        monitoring the old placement group. The cleaner actor remains alive
+        to monitor possible future placement groups.
+        """
+        if not self._stop_monitor_thread():
+            logger.debug("No active monitoring to stop")
+            return
+
+        logger.debug("Stopping monitoring for placement group shutdown")
+        # Reset stopped flag so we can start monitoring again later
+        self._stopped = False
+        # Clear the monitored placement group
+        self._placement_group = None
+
     def stop(self):
         """Request the cleaner to stop monitoring and exit."""
         self._stopped = True
-        logger.info("PlacementGroupCleaner stop requested")
-        monitor_thread = self._monitor_thread
-        if monitor_thread and monitor_thread.is_alive():
-            join_timeout = max(2.0, self._check_interval_s * 2)
-            monitor_thread.join(timeout=join_timeout)
-            if monitor_thread.is_alive():
-                logger.warning(
-                    "Monitor thread did not exit within %.2f seconds", join_timeout
-                )
-        self._monitoring = False
-        self._monitor_thread = None
+        self._stop_monitor_thread()
         self._exit()
 
     def _is_placement_group_removed(self) -> bool:
         """Check if a placement group has been removed."""
         if not self._placement_group:
             return True
-        table = ray.util.placement_group_table(self._placement_group)
-        if "state" not in table:
-            return True
-        return table["state"] == "REMOVED"
+        try:
+            table = ray.util.placement_group_table(self._placement_group)
+            if "state" not in table:
+                return True
+            return table["state"] == "REMOVED"
+        except Exception as e:
+            logger.warning(
+                f"Failed to query placement group table: {e}. "
+                "Assuming placement group is not removed."
+            )
+            return False
 
     def _exit(self):
         """Exit the actor."""
