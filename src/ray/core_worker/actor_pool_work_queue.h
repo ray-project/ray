@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@
 
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/common/task/task_util.h"
 #include "ray/core_worker/common.h"
 
 namespace ray {
@@ -136,4 +137,3 @@ class UnorderedPoolWorkQueue : public PoolWorkQueue {
 
 }  // namespace core
 }  // namespace ray
-

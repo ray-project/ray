@@ -202,7 +202,6 @@ ray_cc_library(
         ":common",
         "//src/ray/common:id",
         "//src/ray/common:task_common",
-        "//src/ray/common:task_spec",
     ],
 )
 
