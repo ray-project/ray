@@ -181,7 +181,9 @@ class ExecutionTimeExpectation(Expectation):
         if self.target_completion_time is not None:
             now = datetime.datetime.now()
             if self.target_completion_time <= now:
-                return 0.0
+                # Target time is in the past - return a very small positive value
+                # to indicate timeout immediately, but still positive for validation
+                return 0.001
             return (self.target_completion_time - now).total_seconds()
         return None
 
@@ -260,16 +262,43 @@ def expect(
         expr: Expression for data quality validation (e.g., col("value") > 0).
             Mutually exclusive with `validator_fn`.
         max_execution_time_seconds: Maximum execution time in seconds (for execution time expectations).
-        max_execution_time: Maximum execution time as timedelta (for execution time expectations).
-        target_completion_time: Target completion time as datetime (for execution time expectations).
+        max_execution_time: Maximum execution time as datetime.timedelta (for execution time expectations).
+        target_completion_time: Target completion time as datetime.datetime (for execution time expectations).
         error_on_failure: If True, raise exception on failure; if False, log warning.
         expectation_type: Type of expectation (auto-detected if not specified).
 
     Returns:
         An Expectation object that can be used with Dataset.expect().
     """
+    # Validate input types
+    if validator_fn is not None and not callable(validator_fn):
+        raise TypeError(
+            f"validator_fn must be callable, got {type(validator_fn).__name__}"
+        )
+    if max_execution_time is not None and not isinstance(max_execution_time, datetime.timedelta):
+        raise TypeError(
+            f"max_execution_time must be datetime.timedelta, got {type(max_execution_time).__name__}"
+        )
+    if target_completion_time is not None and not isinstance(target_completion_time, datetime.datetime):
+        raise TypeError(
+            f"target_completion_time must be datetime.datetime, got {type(target_completion_time).__name__}"
+        )
+    if name is not None and not isinstance(name, str):
+        raise TypeError(f"name must be str, got {type(name).__name__}")
+    if description is not None and not isinstance(description, str):
+        raise TypeError(f"description must be str, got {type(description).__name__}")
+
     # Handle expression-based data quality expectations
     _expr = expr
+
+    # Validate expr is an Expr object if provided
+    if _expr is not None:
+        from ray.data.expressions import Expr as _Expr
+        if not isinstance(_expr, _Expr):
+            raise TypeError(
+                f"expr must be a Ray Data Expr object, got {type(_expr).__name__}. "
+                f"Use col('column_name') > 0 or similar expression."
+            )
 
     # Check if expr is provided as keyword argument
     if _expr is not None:

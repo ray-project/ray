@@ -1800,6 +1800,17 @@ class Dataset:
                     error_on_failure=error_on_failure,
                 )
             elif validator_fn is not None:
+                # Validate validator_fn is callable
+                if not callable(validator_fn):
+                    raise TypeError(
+                        f"validator_fn must be callable, got {type(validator_fn).__name__}"
+                    )
+                # Validate name and description are strings if provided
+                if name is not None and not isinstance(name, str):
+                    raise TypeError(f"name must be str, got {type(name).__name__}")
+                if description is not None and not isinstance(description, str):
+                    raise TypeError(f"description must be str, got {type(description).__name__}")
+
                 from ray.data.expectations import expect as _expect
 
                 expectation = _expect(
@@ -2181,6 +2192,13 @@ class Dataset:
         # Actors process calls sequentially, so after materialization all results are ready
         validation_results = ray.get(aggregator.get_results.remote())
 
+        # Clean up the aggregator actor to avoid resource leaks
+        try:
+            ray.kill(aggregator)
+        except Exception:
+            # Ignore errors during cleanup
+            pass
+
         # Create expectation result with detailed message
         passed = validation_results["passed"]
         failure_count = validation_results["failure_count"]
@@ -2231,8 +2249,17 @@ class Dataset:
             # Fallback for unsupported formats
             try:
                 if isinstance(batch, dict):
+                    if not batch:
+                        return 0
                     first_key = next(iter(batch.keys()))
-                    return len(batch[first_key])
+                    first_value = batch.get(first_key, [])
+                    if isinstance(first_value, (list, tuple)):
+                        return len(first_value)
+                    # Single value or array-like
+                    try:
+                        return len(first_value)
+                    except (TypeError, ValueError):
+                        return 1  # Single value
                 else:
                     import pandas as pd  # https://pandas.pydata.org/docs/
 
@@ -2296,9 +2323,14 @@ class Dataset:
         import time
 
         max_time_seconds = expectation.get_max_execution_time_seconds()
-        if max_time_seconds is None or max_time_seconds <= 0:
+        if max_time_seconds is None:
             raise ValueError(
-                "Execution time expectation must have a valid max_execution_time_seconds > 0"
+                "Execution time expectation must have a valid max_execution_time_seconds"
+            )
+        if max_time_seconds <= 0:
+            raise ValueError(
+                f"Execution time expectation max_execution_time_seconds must be positive, "
+                f"got {max_time_seconds}"
             )
 
         start_time = time.perf_counter()
@@ -2332,7 +2364,8 @@ class Dataset:
             if expectation.error_on_failure:
                 raise
             logger.warning(
-                f"Execution time expectation '{expectation.name}' execution failed: {e}"
+                f"Execution time expectation '{expectation.name}' execution failed: {e}",
+                exc_info=True
             )
         else:
             # Only calculate elapsed_time here if no exception occurred
