@@ -1050,15 +1050,15 @@ ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL = Panel(
     stack=False,
 )
 
-ITERATION_PREFETCHED_BLOCKS_COUNT_PANEL = Panel(
+ITERATION_PREFETCHED_BYTES_PANEL = Panel(
     id=90,
-    title="Iteration Prefetched Blocks Count",
-    description="Current number of prefetched blocks in the iterator",
-    unit="blocks",
+    title="Iteration Prefetched Bytes",
+    description="Current bytes of prefetched blocks in the iterator",
+    unit="bytes",
     targets=[
         Target(
-            expr="sum(ray_data_iter_prefetched_blocks_count{{{global_filters}}}) by (dataset)",
-            legend="Prefetched Blocks: {{dataset}}",
+            expr="sum(ray_data_iter_prefetched_bytes{{{global_filters}}}) by (dataset)",
+            legend="Prefetched Bytes: {{dataset}}",
         )
     ],
     fill=0,
@@ -1405,7 +1405,7 @@ DATA_GRAFANA_ROWS = [
             ITERATION_BLOCKS_LOCAL_PANEL,
             ITERATION_BLOCKS_REMOTE_PANEL,
             ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL,
-            ITERATION_PREFETCHED_BLOCKS_COUNT_PANEL,
+            ITERATION_PREFETCHED_BYTES_PANEL,
         ],
         collapsed=True,
     ),
