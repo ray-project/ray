@@ -83,9 +83,9 @@ def get_bazel_dependencies(package_name: str) -> Tuple[List[str], Set[str]]:
     bazel_dependencies = []
     package_names = set() 
     command = f"{bazel_command} query --output=label_kind 'deps({package_name})'"
+    command = [bazel_command, "query", "--output=label_kind", f"deps({package_name})"]
     logger.debug(f"Running command: {command}")
-    result = subprocess.run(command, shell=True, capture_output=True, text=True)
-    lines = result.stdout.splitlines()
+    lines = subprocess.check_output(command, text=True).splitlines()
     logger.debug(f"Found {len(lines)} dependencies")
     for line in lines:
         logger.debug(f"Dependency: {line}")
@@ -137,20 +137,25 @@ def _askalono_crawl(path: str) -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
-    return license_text
+    licenses = [json.loads(license_text) for license_text in license_text.splitlines()]
+    cleaned_licenses = [license for license in licenses if 'error' not in license]
+    error_licenses = [license for license in licenses if 'error' in license]
+    for error_license in error_licenses:
+        logger.warning(f"License Crawl failed for {error_license['path']}: {error_license['error']}")
+    return cleaned_licenses
 
-def get_askalono_results(dependencies):
+def get_askalono_results(dependencies: List[str]) -> List[Dict]:
     license_info = []
     for dependency in dependencies:
         dependency_path = f"{bazel_output_base}/external/{dependency}"
-        license_text = _askalono_crawl(dependency_path)
-        if not license_text:
+        license_json = _askalono_crawl(dependency_path)
+        if not license_json:
             logger.warning(f"No license text found for {dependency}, trying to crawl licenses")
-            license_text = _askalono_crawl(dependency_path + "/**LICENSE*")
-        if not license_text:
+            license_json = _askalono_crawl(dependency_path + "/**LICENSE*")
+        if not license_json:
             logger.warning(f"No license text found for {dependency}, trying to crawl copying")
-            license_text = _askalono_crawl(dependency_path + "/**COPYING**")
-        if not license_text:
+            license_json = _askalono_crawl(dependency_path + "/**COPYING**")
+        if not license_json:
             logger.warning(f"No license text found for {dependency}")
             license_info.append(
                 {
@@ -162,11 +167,7 @@ def get_askalono_results(dependencies):
                 }
             )
             continue
-        licenses = [json.loads(license_text) for license_text in license_text.splitlines()]
-        for license in licenses:
-            if 'error' in license:
-                logger.warning(f"Error crawling license for {dependency} at {license['path']}: {license['error']}")
-                continue
+        for license in license_json:
             license_info.append(
                 {
                     "dependency": dependency,
