@@ -8,7 +8,6 @@ from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 
-# Optional: Simple dummy tool to verify tool-calling works even if MCP is empty.
 # ========== CONFIG ==========
 # Easy-to-edit default configurations.
 API_KEY = "VrBDo0s-qNOaP9kugBQtJQhGAIA6EUszb6iJHbB1xDQ"
@@ -24,7 +23,6 @@ API_KEY = os.getenv("OPENAI_API_KEY", API_KEY)
 OPENAI_COMPAT_BASE_URL = os.getenv("OPENAI_COMPAT_BASE_URL", OPENAI_COMPAT_BASE_URL)
 WEATHER_MCP_BASE_URL = os.getenv("WEATHER_MCP_BASE_URL", WEATHER_MCP_BASE_URL)
 WEATHER_MCP_TOKEN = os.getenv("WEATHER_MCP_TOKEN", WEATHER_MCP_TOKEN)
-
 
 
 # ========== LLM ==========
