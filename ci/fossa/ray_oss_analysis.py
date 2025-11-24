@@ -164,8 +164,10 @@ def get_askalono_results(dependencies):
             shell=True,
         ).stdout.strip()
         if not license_text:
+            logger.warning(f"No license text found for {dependency}, trying to crawl licenses")
             license_text = askalono_crawl_licenses(dependency)
         if not license_text:
+            logger.warning(f"No license text found for {dependency}, trying to crawl copying")
             license_text = askalono_crawl_copying(dependency)
         if not license_text:
             logger.warning(f"No license text found for {dependency}")
@@ -247,8 +249,7 @@ if __name__ == "__main__":
     parser.formatter_class = argparse.RawTextHelpFormatter
     parser.description = """
 Ray OSS Analysis Combo Tool - Analyze Ray's open source components
-default and mandatory behaviour is to copy the dependencies to the output folder
-current status: scans only c, cpp libraries are scanned
+current status: scans only c, cpp libraries are scanned and scanned via askalono
     """
     parser.epilog = """
 Examples:
@@ -263,20 +264,20 @@ Examples:
     bazel_output_base = subprocess.run(
         f"{bazel_command} info output_base", shell=True, capture_output=True, text=True
     ).stdout.strip()
-
+    output_folder = args.output
     bazel_dependencies, package_names = get_bazel_dependencies(args.package)
-    file_paths = [
-        re.sub(r"^@([^/]+)//(?::)?", r"\1/", dep).replace(":", "/")
-        for dep in bazel_dependencies
-    ]
 
     logger.info(f"Found {len(bazel_dependencies)} dependencies")
     logger.debug("Bazel Dependencies:")
     for dependency in bazel_dependencies:
         logger.debug(f"Dependency: {dependency}")
 
-    output_folder = args.output
     if args.copy_files_for_fossa:
+        file_paths = [
+            re.sub(r"^@([^/]+)//(?::)?", r"\1/", dep).replace(":", "/")
+            # replace @<package_name>// with <package_name>/, and replace : with /
+            for dep in bazel_dependencies
+        ]
         copy_files(file_paths)
         copy_licenses(package_names)
 
