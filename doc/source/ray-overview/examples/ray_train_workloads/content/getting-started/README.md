@@ -1,3 +1,9 @@
+<!--
+Do not modify this README. This file is a copy of the notebook and is not used to display the content.
+Modify 01_02_03_intro_to_ray_train.ipynb instead, then regenerate this file with:
+jupyter nbconvert "01_02_03_intro_to_ray_train.ipynb" --to markdown --output "README.md"
+-->
+
 # 01 · Introduction to Ray Train  
 In this notebook you’ll learn how to run **distributed data-parallel training with PyTorch** on an Anyscale cluster using **Ray Train**. You’ll train a **ResNet-18 model on MNIST** across multiple GPUs, with built-in support for **checkpointing, metrics reporting, and distributed orchestration**.  
 
@@ -323,7 +329,7 @@ def train_loop_ray_train(config: dict):  # pass in hyperparameters in config
       prepare_data_loader()
     </a>.
   </li>
-  <li>Config passed here, is defined below. Passed to the Ray Train's <a href="https://docs.ray.io/en/latest/train/api/doc/ray.train.torch.TorchTrainer.html#ray-train-torch-torchtrainer" target="_blank">TorchTrainer</a>.</li>
+  <li>Configuration passed here is defined below. Passed to the Ray Train's <a href="https://docs.ray.io/en/latest/train/api/doc/ray.train.torch.TorchTrainer.html#ray-train-torch-torchtrainer" target="_blank">TorchTrainer</a>.</li>
   <li>
     <a href="https://docs.ray.io/en/latest/train/api/doc/ray.train.v2.api.context.TrainContext.html#ray-train-v2-api-context-traincontext" target="_blank">
       TrainContext
@@ -1079,7 +1085,7 @@ train_ds = ray.data.read_parquet("/mnt/cluster_storage/cifar10.parquet")
 
 ## 05 · Define Image Transformation  
 
-To make the dataset usable by PyTorch, preprocess the raw image arrays with the same steps that pytorch data loader does.  
+To make the dataset usable by PyTorch, preprocess the raw image arrays with the same steps that PyTorch data loader does.  
 
 - Define a function `transform_images(row)` that:  
   * Converts the `"image"` array from `numpy` into a PIL image.  
