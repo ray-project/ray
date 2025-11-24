@@ -90,7 +90,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 self.total_request_sent += 1
                 break
             except Exception as e:
-                logger.warning(f"Report event failed, retrying... {e}")
+                logger.warning("Report event failed, retrying...", exc_info=True)
         else:
             data_str = str(data)
             limit = event_consts.LOG_ERROR_EVENT_STRING_LENGTH_LIMIT
