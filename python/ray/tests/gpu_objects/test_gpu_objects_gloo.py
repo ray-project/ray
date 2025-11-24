@@ -69,6 +69,7 @@ class ErrorActor:
     def recv(self, tensor):
         return tensor
 
+    @ray.method(concurrency_group="_ray_system")
     def clear_gpu_object_store(self):
         gpu_object_store = (
             ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
@@ -809,9 +810,6 @@ def test_wait_tensor_freed(ray_start_regular):
     assert not gpu_object_store.has_object(obj_id)
 
 
-@pytest.mark.skip(
-    reason="RDT currently doesn't support multiple objects containing the same tensor"
-)
 def test_wait_tensor_freed_double_tensor(ray_start_regular):
     """Unit test for ray.experimental.wait_tensor_freed when multiple objects
     contain the same tensor."""
@@ -851,9 +849,6 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     assert not gpu_object_store.has_object(obj_id2)
 
 
-@pytest.mark.skip(
-    reason="RDT currently doesn't support multiple objects containing the same tensor"
-)
 def test_send_back_and_dst_warning(ray_start_regular):
     # Test warning when object is sent back to the src actor and to dst actors
     world_size = 2

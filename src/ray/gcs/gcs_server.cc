@@ -39,6 +39,7 @@
 #include "ray/observability/metric_constants.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/stats/stats.h"
 #include "ray/util/network_util.h"
 
@@ -523,11 +524,12 @@ void GcsServer::InitGcsActorManager(
       schedule_success_handler,
       raylet_client_pool_,
       worker_client_pool_,
+      metrics_.scheduler_placement_time_ms_histogram,
       /*normal_task_resources_changed_callback=*/
       [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
         gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
       });
-  gcs_actor_manager_ = std::make_unique<GcsActorManager>(
+  gcs_actor_manager_ = std::make_shared<GcsActorManager>(
       std::move(scheduler),
       gcs_table_storage_.get(),
       io_context_provider_.GetDefaultIOContext(),
@@ -537,6 +539,7 @@ void GcsServer::InitGcsActorManager(
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
+      raylet_client_pool_,
       worker_client_pool_,
       *ray_event_recorder_,
       config_.session_name,
@@ -604,9 +607,23 @@ GcsServer::StorageType GcsServer::GetStorageType() const {
 }
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
+  if (RayConfig::instance().gcs_resource_broadcast_max_batch_delay_ms() > 0 &&
+      RayConfig::instance().gcs_resource_broadcast_max_batch_size() == 1) {
+    RAY_LOG(WARNING) << "Configuration inconsistency detected: "
+                        "gcs_resource_broadcast_max_batch_delay_ms > 0 "
+                     << "but gcs_resource_broadcast_max_batch_size = 1. The delay "
+                        "setting will have no effect "
+                     << "since only one message can be batched at a time. Consider "
+                        "increasing batch_size or "
+                     << "setting delay_ms to 0.";
+  }
+
   ray_syncer_ = std::make_unique<syncer::RaySyncer>(
       io_context_provider_.GetIOContext<syncer::RaySyncer>(),
       kGCSNodeID.Binary(),
+      /* batch_size */ RayConfig::instance().gcs_resource_broadcast_max_batch_size(),
+      /* batch_delay_ms */
+      RayConfig::instance().gcs_resource_broadcast_max_batch_delay_ms(),
       [this](const NodeID &node_id) {
         gcs_healthcheck_manager_->MarkNodeHealthy(node_id);
       });
@@ -614,7 +631,8 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(
       syncer::MessageType::COMMANDS, nullptr, gcs_resource_manager_.get());
-  rpc_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(*ray_syncer_));
+  rpc_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(
+      *ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken()));
 }
 
 void GcsServer::InitFunctionManager() {
@@ -960,7 +978,8 @@ void GcsServer::TryGlobalGC() {
   // To avoid spurious triggers, only those after two consecutive
   // detections and under throttling are sent out (similar to
   // `NodeManager::WarnResourceDeadlock()`).
-  if (task_pending_schedule_detected_++ > 0 && global_gc_throttler_->AbleToRun()) {
+  if (task_pending_schedule_detected_++ > 0 &&
+      global_gc_throttler_->CheckAndUpdateIfPossible()) {
     syncer::CommandsSyncMessage commands_sync_message;
     commands_sync_message.set_should_global_gc(true);
 
@@ -971,8 +990,8 @@ void GcsServer::TryGlobalGC() {
     std::string serialized_msg;
     RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
     msg->set_sync_message(std::move(serialized_msg));
+
     ray_syncer_->BroadcastMessage(std::move(msg));
-    global_gc_throttler_->RunNow();
   }
 }
 

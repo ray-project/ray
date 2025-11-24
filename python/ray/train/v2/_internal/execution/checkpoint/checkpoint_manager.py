@@ -20,6 +20,7 @@ from ray.train.v2._internal.execution.context import StorageContext
 from ray.train.v2._internal.execution.storage import _exists_at_fs_path, delete_fs_path
 from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2._internal.execution.worker_group import Worker
+from ray.train.v2.api.report_config import CheckpointConsistencyMode
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,8 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         self._condition = asyncio.Condition()
         super().__init__(checkpoint_config)
         # If the snapshot is found, the checkpoint manager will restore its state.
+        # TODO(xgui): CheckpointManager is used to save or restore the checkpoint manager state.
+        # We should sanity check if we should see old state in the storage folder.
         self._maybe_load_state_from_storage()
 
     def register_checkpoint(
@@ -135,11 +138,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
 
         self._current_report_index += 1
 
-        async def async_notify():
-            async with self._condition:
-                self._condition.notify_all()
-
-        asyncio.create_task(async_notify())
+        self._notify()
 
     def update_checkpoints_with_metrics(
         self, checkpoint_to_metrics: Dict[Checkpoint, Dict[str, Any]]
@@ -167,6 +166,16 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             )
             self._pending_training_results.pop(checkpoint)
         self._save_state_and_delete_old_checkpoints()
+        self._notify()
+
+    def _notify(self):
+        """Notify condition so all listeners know state has changed."""
+
+        async def async_notify():
+            async with self._condition:
+                self._condition.notify_all()
+
+        asyncio.create_task(async_notify())
 
     def _save_state_and_delete_old_checkpoints(self):
         """Delete the old checkpoints."""
@@ -358,20 +367,46 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         }
         return train_context_args
 
+    # --------------------------------
+    # Get all reported checkpoints API
+    # --------------------------------
+
     async def get_all_reported_checkpoints(
-        self, current_report_index: int
+        self,
+        current_report_index: int,
+        consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
     ) -> List[ReportedCheckpoint]:
-        """Once expected_num_checkpoints are reported, return the ReportedCheckpoints."""
-        async with self._condition:
-            await self._condition.wait_for(
-                lambda: self._current_report_index == current_report_index
-            )
-            # TODO: might be nice for CheckpointManager to manage ReportedCheckpoint
-            # instead of _TrainingResult but that is a large refactor.
-            return [
-                ReportedCheckpoint(
-                    checkpoint=tr.checkpoint,
-                    metrics=tr.metrics,
+        """Get all the reported checkpoints so far.
+
+        Args:
+            current_report_index: The current report index.
+            consistency_mode: Read semantics for checkpoint retrieval. Defaults to VALIDATED.
+
+        Returns:
+            A list of ReportedCheckpoint objects that represent the checkpoints and
+            corresponding metrics reported by the workers.
+        """
+        if consistency_mode == CheckpointConsistencyMode.COMMITTED:
+            async with self._condition:
+                await self._condition.wait_for(
+                    lambda: self._current_report_index == current_report_index
                 )
-                for tr in self._checkpoint_results
-            ]
+        elif consistency_mode == CheckpointConsistencyMode.VALIDATED:
+            async with self._condition:
+                await self._condition.wait_for(
+                    lambda: self._current_report_index == current_report_index
+                    and not self._pending_training_results
+                )
+        else:
+            raise ValueError(
+                f"Unexpected CheckpointConsistencyMode: {consistency_mode}"
+            )
+        # TODO: might be nice for CheckpointManager to manage ReportedCheckpoint
+        # instead of _TrainingResult but that is a large refactor.
+        return [
+            ReportedCheckpoint(
+                checkpoint=tr.checkpoint,
+                metrics=tr.metrics,
+            )
+            for tr in self._checkpoint_results
+        ]

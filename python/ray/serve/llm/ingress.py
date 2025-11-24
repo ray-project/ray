@@ -8,13 +8,16 @@ from ray.util.annotations import PublicAPI
 @PublicAPI(stability="alpha")
 class OpenAiIngress(_OpenAiIngress):
 
-    """The implementation of the OpenAI compatiple model router.
+    """The implementation of the OpenAI compatible model router.
 
     This deployment creates the following endpoints:
       - /v1/chat/completions: Chat interface (OpenAI-style)
       - /v1/completions: Text completion
       - /v1/models: List available models
       - /v1/models/{model}: Model information
+      - /v1/embeddings: Text embeddings
+      - /v1/audio/transcriptions: Audio transcription
+      - /v1/score: Text scoring
 
 
     Examples:

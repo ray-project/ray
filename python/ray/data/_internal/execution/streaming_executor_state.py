@@ -34,6 +34,7 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     HashShuffleProgressBarMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.ranker import Ranker
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
@@ -300,25 +301,33 @@ class OpState:
                 # Close all sub progress bars.
                 self.op.close_sub_progress_bars()
 
-    def total_enqueued_input_bundles(self) -> int:
-        """Total number of input bundles currently enqueued among:
+    def total_enqueued_input_blocks(self) -> int:
+        """Total number of blocks currently enqueued among:
         1. Input queue(s) pending dispatching (``OpState.input_queues``)
         2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
         """
+        external_queue_size = sum(q.num_blocks for q in self.input_queues)
         internal_queue_size = (
-            self.op.internal_queue_size()
+            self.op.internal_input_queue_num_blocks()
             if isinstance(self.op, InternalQueueOperatorMixin)
             else 0
         )
-        return self._pending_dispatch_input_bundles_count() + internal_queue_size
-
-    def _pending_dispatch_input_bundles_count(self) -> int:
-        """Return the number of input bundles that are pending dispatching to the
-        operator across (external) input queues"""
-        return sum(len(q) for q in self.input_queues)
+        return external_queue_size + internal_queue_size
 
     def has_pending_bundles(self) -> bool:
-        return self._pending_dispatch_input_bundles_count() > 0
+        return any(len(q) > 0 for q in self.input_queues)
+
+    def total_enqueued_input_blocks_bytes(self) -> int:
+        """Total number of bytes occupied by input bundles currently enqueued among:
+        1. Input queue(s) pending dispatching (``OpState.input_queues``)
+        2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
+        """
+        internal_queue_size_bytes = (
+            self.op.internal_input_queue_num_bytes()
+            if isinstance(self.op, InternalQueueOperatorMixin)
+            else 0
+        )
+        return self.input_queue_bytes() + internal_queue_size_bytes
 
     def update_display_metrics(self, resource_manager: ResourceManager):
         """Update display metrics with current metrics."""
@@ -328,7 +337,7 @@ class OpState:
         self.op_display_metrics.object_store_memory = usage.object_store_memory
 
         self.op_display_metrics.tasks = self.op.num_active_tasks()
-        self.op_display_metrics.queued = self.total_enqueued_input_bundles()
+        self.op_display_metrics.queued = self.total_enqueued_input_blocks()
         self.op_display_metrics.actors = self.op.get_actor_info().running
 
         self.op_display_metrics.task_backpressured = (
@@ -379,7 +388,9 @@ class OpState:
             self.progress_bar.set_description(self.summary_str(resource_manager))
             self.progress_bar.refresh()
 
-    def summary_str(self, resource_manager: ResourceManager) -> str:
+    def summary_str(
+        self, resource_manager: ResourceManager, verbose: bool = False
+    ) -> str:
         # Active tasks
         active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: Tasks: {active}"
@@ -400,8 +411,8 @@ class OpState:
         desc += f"; {_actor_info_summary_str(self.op.get_actor_info())}"
 
         # Queued blocks
-        desc += f"; Queued blocks: {self.total_enqueued_input_bundles()}"
-        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op)}"
+        desc += f"; Queued blocks: {self.total_enqueued_input_blocks()} ({memory_string(self.total_enqueued_input_blocks_bytes())})"
+        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op, verbose=verbose)}"
 
         # Any additional operator specific information.
         suffix = self.op.progress_str()
@@ -452,7 +463,7 @@ class OpState:
                 return ref
             time.sleep(0.01)
 
-    def inqueue_memory_usage(self) -> int:
+    def input_queue_bytes(self) -> int:
         """Return the object store memory of this operator's inqueue."""
         total = 0
         for op, inq in zip(self.op.input_dependencies, self.input_queues):
@@ -461,13 +472,9 @@ class OpState:
                 total += inq.memory_usage
         return total
 
-    def outqueue_memory_usage(self) -> int:
+    def output_queue_bytes(self) -> int:
         """Return the object store memory of this operator's outqueue."""
         return self.output_queue.memory_usage
-
-    def outqueue_num_blocks(self) -> int:
-        """Return the number of blocks in this operator's outqueue."""
-        return self.output_queue.num_blocks
 
     def mark_finished(self, exception: Optional[Exception] = None):
         """Marks this operator as finished. Used for exiting get_output_blocking."""
@@ -634,14 +641,6 @@ def update_operator_states(topology: Topology) -> None:
     Should be called after `process_completed_tasks()`."""
 
     for op, op_state in topology.items():
-        # Drain upstream output queue if current operator is execution finished.
-        # This is needed when the limit is reached, and `mark_execution_finished`
-        # is called manually.
-        if op.execution_finished():
-            for idx, dep in enumerate(op.input_dependencies):
-                upstream_state = topology[dep]
-                # Drain upstream output queue
-                upstream_state.output_queue.clear()
 
         # Call inputs_done() on ops where no more inputs are coming.
         if op_state.inputs_done_called:
@@ -663,13 +662,20 @@ def update_operator_states(topology: Topology) -> None:
     # For each op, if all of its downstream operators have completed.
     # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
-        if op.completed():
-            continue
+
         dependents_completed = len(op.output_dependencies) > 0 and all(
             dep.completed() for dep in op.output_dependencies
         )
         if dependents_completed:
             op.mark_execution_finished()
+
+        # Drain external input queue if current operator is execution finished.
+        # This is needed when the limit is reached, and `mark_execution_finished`
+        # is called manually.
+        if op.execution_finished():
+            for input_queue in op_state.input_queues:
+                # Drain input queue
+                input_queue.clear()
 
 
 def get_eligible_operators(
@@ -741,6 +747,7 @@ def select_operator_to_run(
     resource_manager: ResourceManager,
     backpressure_policies: List[BackpressurePolicy],
     ensure_liveness: bool,
+    ranker: "Ranker",
 ) -> Optional[PhysicalOperator]:
     """Select next operator to launch new tasks.
 
@@ -764,55 +771,13 @@ def select_operator_to_run(
     if not eligible_ops:
         return None
 
-    ranks = _rank_operators(eligible_ops, resource_manager)
+    ranks = ranker.rank_operators(eligible_ops, topology, resource_manager)
 
     assert len(eligible_ops) == len(ranks), (eligible_ops, ranks)
 
     next_op, _ = min(zip(eligible_ops, ranks), key=lambda t: t[1])
 
     return next_op
-
-
-def _rank_operators(
-    ops: List[PhysicalOperator], resource_manager: ResourceManager
-) -> List[Tuple]:
-    """Picks operator to run according to the following semantic:
-
-    Operator to run next is selected as the one with the *smallest* value
-    of the lexicographically ordered ranks composed of (in order):
-
-        1. Whether operator's could be throttled (bool)
-        2. Operators' object store utilization
-
-    Consider following examples:
-
-    Example 1:
-
-        Operator 1 with rank (True, 1024 bytes)
-        Operator 2 with rank (False, 2048 bytes)
-
-    In that case Operator 2 will be selected.
-
-    Example 2:
-
-        Operator 1 with rank (True, 1024 bytes)
-        Operator 2 with rank (True, 2048 bytes)
-
-    In that case Operator 1 will be selected.
-    """
-
-    assert len(ops) > 0, ops
-
-    def _ranker(op):
-        # Rank composition:
-        #   1. Whether throttling is enabled
-        #   2. Estimated Object Store usage
-        return (
-            not op.throttling_disabled(),
-            resource_manager.get_op_usage(op).object_store_memory,
-        )
-
-    return [_ranker(op) for op in ops]
 
 
 def _actor_info_summary_str(info: _ActorPoolInfo) -> str:

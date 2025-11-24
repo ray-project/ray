@@ -16,6 +16,7 @@ ray_cc_library(
     hdrs = ["test_utils.h"],
     deps = [
         ":asio",
+        ":function_descriptor",
         ":id",
         ":placement_group",
         ":ray_object",
@@ -230,10 +231,12 @@ ray_cc_library(
         ":ray_config",
         ":ray_object",
         ":runtime_env",
+        "//src/ray/common/scheduling:fallback_strategy",
         "//src/ray/common/scheduling:label_selector",
         "//src/ray/common/scheduling:resource_set",
         "//src/ray/common/scheduling:scheduling_class_util",
         "//src/ray/flatbuffers:node_manager_generated",
+        "//src/ray/observability:metric_interface",
         "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -276,13 +279,11 @@ ray_cc_library(
         "asio/instrumented_io_context.h",
         "asio/io_service_pool.h",
         "asio/periodical_runner.h",
-        "asio/postable.h",
     ],
     deps = [
         ":event_stats",
         ":ray_config",
         "//src/ray/util:array",
-        "//src/ray/util:function_traits",
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
@@ -329,32 +330,6 @@ ray_cc_library(
         "@boost//:algorithm",
         "@com_google_absl//absl/strings",
         "@nlohmann_json",
-    ],
-)
-
-ray_cc_library(
-    name = "ray_syncer",
-    srcs = [
-        "ray_syncer/node_state.cc",
-        "ray_syncer/ray_syncer.cc",
-        "ray_syncer/ray_syncer_client.cc",
-        "ray_syncer/ray_syncer_server.cc",
-    ],
-    hdrs = [
-        "ray_syncer/common.h",
-        "ray_syncer/node_state.h",
-        "ray_syncer/ray_syncer.h",
-        "ray_syncer/ray_syncer_bidi_reactor.h",
-        "ray_syncer/ray_syncer_bidi_reactor_base.h",
-        "ray_syncer/ray_syncer_client.h",
-        "ray_syncer/ray_syncer_server.h",
-    ],
-    deps = [
-        ":asio",
-        ":id",
-        "//:ray_syncer_cc_grpc",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -425,6 +400,13 @@ ray_cc_library(
     name = "metrics",
     hdrs = ["metrics.h"],
     deps = [
-        "//src/ray/stats:stats_lib",
+        "//src/ray/stats:stats_metric",
+    ],
+)
+
+ray_cc_library(
+    name = "python_callbacks",
+    hdrs = [
+        "python_callbacks.h",
     ],
 )

@@ -7,56 +7,23 @@
 # If you would like to help with the move in your PR, please use `git mv` so that the history of the file is retained.
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
-load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_runtime", "py_runtime_pair")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "ray_cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
 )
 
-# Hermetic python environment, currently only used for CI infra and scripts.
-
-py_runtime(
-    name = "python3_runtime",
-    interpreter = python39,
-    python_version = "PY3",
-    visibility = ["//visibility:private"],
-)
-
-py_runtime_pair(
-    name = "python_runtime_pair",
-    py2_runtime = None,
-    py3_runtime = ":python3_runtime",
-    visibility = ["//visibility:private"],
-)
-
-constraint_setting(name = "hermetic")
-
-constraint_value(
+alias(
     name = "hermetic_python",
-    constraint_setting = ":hermetic",
-)
-
-toolchain(
-    name = "python_toolchain",
-    exec_compatible_with = [":hermetic_python"],
-    toolchain = ":python_runtime_pair",
-    toolchain_type = "@bazel_tools//tools/python:toolchain_type",
-)
-
-platform(
-    name = "hermetic_python_platform",
-    constraint_values = [":hermetic_python"],
-    parents = ["@local_config_platform//:host"],
-    visibility = ["//visibility:private"],
+    actual = "//bazel:py310",
+    visibility = ["//visibility:public"],
 )
 
 # C/C++ toolchain constraint configs.
@@ -115,25 +82,13 @@ ray_cc_library(
         exclude = [
             "src/mock/ray/common/pubsub/publisher.h",
             "src/mock/ray/common/pubsub/subscriber.h",
-            "src/mock/ray/common/ray_syncer/ray_syncer.h",
+            "src/mock/ray/ray_syncer/ray_syncer.h",
         ],
     ),
     deps = [
         "//src/ray/observability:fake_metric",
         "//src/ray/observability:fake_ray_event_recorder",
     ],
-)
-
-ray_cc_library(
-    name = "ray_mock_syncer",
-    hdrs = ["src/mock/ray/common/ray_syncer/ray_syncer.h"],
-)
-
-cc_grpc_library(
-    name = "ray_syncer_cc_grpc",
-    srcs = ["//src/ray/protobuf:ray_syncer_proto"],
-    grpc_only = True,
-    deps = ["//src/ray/protobuf:ray_syncer_cc_proto"],
 )
 
 # This header is used to wrap some internal codes so we can reduce suspicious
@@ -235,10 +190,10 @@ pyx_library(
         "//:exported_internal",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
+        "//src/ray/common:python_callbacks",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/gcs:gcs_server_lib",
         "//src/ray/gcs/store_client:redis_store_client",
-        "//src/ray/gcs_rpc_client:gcs_python_callbacks",
         "//src/ray/gcs_rpc_client:global_state_accessor_lib",
         "//src/ray/protobuf:serialization_cc_proto",
         "//src/ray/pubsub:python_gcs_subscriber",

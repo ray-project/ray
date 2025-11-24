@@ -243,7 +243,19 @@ class RequestRouterConfig(BaseModel):
 
     def get_request_router_class(self) -> Callable:
         """Deserialize the request router from cloudpickled bytes."""
-        return cloudpickle.loads(self._serialized_request_router_cls)
+        try:
+            return cloudpickle.loads(self._serialized_request_router_cls)
+        except (ModuleNotFoundError, ImportError) as e:
+            raise ImportError(
+                f"Failed to deserialize custom request router: {e}\n\n"
+                "This typically happens when the router depends on external modules "
+                "that aren't available in the current environment. To fix this:\n"
+                "  - Ensure all dependencies are installed in your Docker image or environment\n"
+                "  - Package your router as a Python package and install it\n"
+                "  - Place the router module in PYTHONPATH\n\n"
+                "For more details, see: https://docs.ray.io/en/latest/serve/advanced-guides/"
+                "custom-request-router.html#gotchas-and-limitations"
+            ) from e
 
 
 DEFAULT_METRICS_INTERVAL_S = 10.0
@@ -313,7 +325,19 @@ class AutoscalingPolicy(BaseModel):
 
     def get_policy(self) -> Callable:
         """Deserialize policy from cloudpickled bytes."""
-        return cloudpickle.loads(self._serialized_policy_def)
+        try:
+            return cloudpickle.loads(self._serialized_policy_def)
+        except (ModuleNotFoundError, ImportError) as e:
+            raise ImportError(
+                f"Failed to deserialize custom autoscaling policy: {e}\n\n"
+                "This typically happens when the policy depends on external modules "
+                "that aren't available in the current environment. To fix this:\n"
+                "  - Ensure all dependencies are installed in your Docker image or environment\n"
+                "  - Package your policy as a Python package and install it\n"
+                "  - Place the policy module in PYTHONPATH\n\n"
+                "For more details, see: https://docs.ray.io/en/latest/serve/advanced-guides/"
+                "advanced-autoscaling.html#gotchas-and-limitations"
+            ) from e
 
 
 @PublicAPI(stability="stable")

@@ -2,8 +2,8 @@ from ray.rllib.algorithms.sac.default_sac_rl_module import DefaultSACRLModule
 from ray.rllib.core.models.configs import MLPHeadConfig
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 
 

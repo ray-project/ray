@@ -26,6 +26,10 @@ class CollectiveTensorTransport(TensorTransportManager):
     def is_one_sided() -> bool:
         return False
 
+    @staticmethod
+    def can_abort_transport() -> bool:
+        return False
+
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
         from ray.experimental.collective import get_collective_groups
 
@@ -36,6 +40,7 @@ class CollectiveTensorTransport(TensorTransportManager):
 
     @staticmethod
     def extract_tensor_transport_metadata(
+        obj_id: str,
         gpu_object: List["torch.Tensor"],
     ) -> CollectiveTransportMetadata:
         tensor_meta = []
@@ -71,7 +76,7 @@ class CollectiveTensorTransport(TensorTransportManager):
             # timeout.
             gpu_object = gpu_object_store.wait_and_get_object(obj_id)
             return CollectiveTensorTransport.extract_tensor_transport_metadata(
-                gpu_object
+                obj_id, gpu_object
             )
 
         # Submit a Ray actor task to the source actor to get the tensor metadata.
@@ -136,6 +141,7 @@ class CollectiveTensorTransport(TensorTransportManager):
     @staticmethod
     def recv_multiple_tensors(
         tensors,
+        obj_id: str,
         tensor_transport_metadata: CollectiveTransportMetadata,
         communicator_metadata: CollectiveCommunicatorMetadata,
     ):
@@ -178,5 +184,16 @@ class CollectiveTensorTransport(TensorTransportManager):
             )
 
     @staticmethod
-    def garbage_collect(tensor_transport_meta: CollectiveTransportMetadata):
+    def garbage_collect(
+        obj_id: str, tensor_transport_meta: CollectiveTransportMetadata
+    ):
         pass
+
+    @staticmethod
+    def abort_transport(
+        obj_id: str,
+        communicator_metadata: CollectiveCommunicatorMetadata,
+    ):
+        raise NotImplementedError(
+            "Collective transport does not support abort_transport for now."
+        )

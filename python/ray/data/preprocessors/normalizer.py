@@ -103,6 +103,7 @@ class Normalizer(Preprocessor):
         *,
         output_columns: Optional[List[str]] = None,
     ):
+        super().__init__()
         self.columns = columns
         self.norm = norm
 
