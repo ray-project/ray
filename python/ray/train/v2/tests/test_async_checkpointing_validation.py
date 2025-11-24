@@ -383,7 +383,8 @@ def test_checkpoint_upload_fn_returns_checkpoint():
         scaling_config=ScalingConfig(num_workers=1),
     )
     with pytest.raises(
-        WorkerGroupError, match="checkpoint_upload_fn must return a checkpoint"
+        WorkerGroupError,
+        match="checkpoint_upload_fn must return a `ray.train.Checkpoint`",
     ):
         trainer.fit()
 
