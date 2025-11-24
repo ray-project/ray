@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch
 
 import gymnasium as gym
+from gymnasium.envs.classic_control.cartpole import CartPoleVectorEnv
 from gymnasium.envs.mujoco.swimmer_v4 import SwimmerEnv
 
 import ray
@@ -23,6 +24,11 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             lambda cfg: SimpleCorridor({"corridor_length": 10} | cfg),
         )
 
+        tune.register_env(
+            "tune-registered-vector",
+            lambda cfg: CartPoleVectorEnv(**cfg),
+        )
+
         gym.register(
             "TestEnv-v0",
             entry_point=SimpleCorridor,
@@ -40,6 +46,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         ray.shutdown()
 
         _global_registry.unregister(ENV_CREATOR, "tune-registered")
+        _global_registry.unregister(ENV_CREATOR, "tune-registered-vector")
         gym.registry.pop("TestEnv-v0")
         gym.registry.pop("TestEnv-v1")
 
@@ -242,6 +249,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
     def test_vector_env(self, num_envs_per_env_runner=5, rollout_fragment_length=10):
         """Tests, whether SingleAgentEnvRunner can run various vectorized envs."""
 
+        # "ALE/Pong-v5" works but ale-py is not installed on microcheck
         for env in ["CartPole-v1", SimpleCorridor, "tune-registered"]:
             config = (
                 AlgorithmConfig()
@@ -319,6 +327,86 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         )
         env_runner = SingleAgentEnvRunner(config=config)
         assert env_runner.env.env.get_attr("end_pos") == (5.0,)
+
+    def test_vectorize_mode(self):
+        """Test different vectorize mode for creating the environment."""
+
+        # default
+        config = (
+            AlgorithmConfig()
+            .environment("CartPole-v1")
+            .env_runners(num_envs_per_env_runner=3)
+        )
+        env_runner = SingleAgentEnvRunner(config=config)
+        assert isinstance(env_runner.env.env, gym.vector.SyncVectorEnv)
+
+        # different vectorize mode options contained in gymnasium registry
+        for env_name, mode, expected_env_type in [
+            ("CartPole-v1", "sync", gym.vector.SyncVectorEnv),
+            ("CartPole-v1", gym.VectorizeMode.SYNC, gym.vector.SyncVectorEnv),
+            ("CartPole-v1", "async", gym.vector.AsyncVectorEnv),
+            ("CartPole-v1", gym.VectorizeMode.ASYNC, gym.vector.AsyncVectorEnv),
+            ("CartPole-v1", "vector_entry_point", CartPoleVectorEnv),
+            ("CartPole-v1", gym.VectorizeMode.VECTOR_ENTRY_POINT, CartPoleVectorEnv),
+            # TODO (mark) re-add with ale-py 0.11 support
+            # ("ALE/Pong-v5", "vector_entry_point", AtariVectorEnv),
+            # ("ALE/Pong-v5", gym.VectorizeMode.VECTOR_ENTRY_POINT, AtariVectorEnv),
+        ]:
+            config = (
+                AlgorithmConfig()
+                .environment(env_name)
+                .env_runners(gym_env_vectorize_mode=mode, num_envs_per_env_runner=3)
+            )
+            env_runner = SingleAgentEnvRunner(config=config)
+            assert isinstance(env_runner.env.env, expected_env_type)
+
+        # test with tune registered vector environment
+        config = (
+            AlgorithmConfig()
+            .environment(
+                "tune-registered-vector", env_config={"sutton_barto_reward": True}
+            )
+            .env_runners(
+                gym_env_vectorize_mode="vector_entry_point", num_envs_per_env_runner=3
+            )
+        )
+        env_runner = SingleAgentEnvRunner(config=config)
+        assert isinstance(env_runner.env.env, CartPoleVectorEnv)
+        assert env_runner.env.env._sutton_barto_reward is True
+
+        # test with callable vector environment
+        config = (
+            AlgorithmConfig()
+            .environment(
+                lambda cfg: CartPoleVectorEnv(**cfg),
+                env_config={"sutton_barto_reward": True},
+            )
+            .env_runners(
+                gym_env_vectorize_mode="vector_entry_point", num_envs_per_env_runner=3
+            )
+        )
+        env_runner = SingleAgentEnvRunner(config=config)
+        assert isinstance(env_runner.env.env, CartPoleVectorEnv)
+        assert env_runner.env.env._sutton_barto_reward is True
+
+        # check passing the env config with a gym_env_vectorize_mode
+        config = (
+            AlgorithmConfig()
+            .environment("CartPole-v1", env_config={"sutton_barto_reward": True})
+            .env_runners(gym_env_vectorize_mode="sync", num_envs_per_env_runner=3)
+        )
+        env_runner = SingleAgentEnvRunner(config=config)
+        assert env_runner.env.env.get_attr("_sutton_barto_reward") == (True, True, True)
+
+        config = (
+            AlgorithmConfig()
+            .environment("CartPole-v1", env_config={"sutton_barto_reward": True})
+            .env_runners(
+                gym_env_vectorize_mode="vector_entry_point", num_envs_per_env_runner=3
+            )
+        )
+        env_runner = SingleAgentEnvRunner(config=config)
+        assert env_runner.env.env._sutton_barto_reward is True
 
 
 if __name__ == "__main__":
