@@ -26,9 +26,9 @@ Use this decision table as a starting point:
 | Workload type | Recommended handler | Why |
 | --- | --- | --- |
 | I/O-bound (databases, HTTP calls, queues) | `async def` | Lets the event loop handle many requests while each waits on I/O. |
-| CPU-bound (model inference, heavy numeric compute) | `def` or `async def` + offload | Async alone does not make CPU work faster. You need more replicas, threads, or native parallelism. |
+| CPU-bound (model inference, heavy numeric compute) | `def` or `async def` with offload | Async alone doesn't make CPU work faster. You need more replicas, threads, or native parallelism. |
 | Streaming responses | `async def` generator | Integrates with backpressure and non-blocking iteration. |
-| FastAPI ingress (`@serve.ingress`) | `def` or `async def` | FastAPI runs `def` endpoints in a threadpool, so they do not block the loop. |
+| FastAPI ingress (`@serve.ingress`) | `def` or `async def` | FastAPI runs `def` endpoints in a threadpool, so they don't block the loop. |
 
 You can always mix styles inside a deployment. For example, use `async def` for request handling and offload CPU-heavy parts to a threadpool.
 
@@ -50,8 +50,8 @@ Replica actor
 Key ideas:
 
 - Serve uses asyncio event loops for routing and for running replicas.
-- By default, user code runs on a separate event loop from the replica's main/control loop, so blocking user code does not interfere with health checks and autoscaling.
-- Depending on configuration, `def` handlers may run directly on the user event loop (blocking) or in a threadpool (non-blocking for the loop).
+- By default, user code runs on a separate event loop from the replica's main/control loop, so blocking user code doesn't interfere with health checks and autoscaling.
+- Depending on the configuration, `def` handlers may run directly on the user event loop (blocking) or in a threadpool (non-blocking for the loop).
 
 ### Pure Serve deployments (no FastAPI ingress)
 
@@ -91,14 +91,14 @@ When you use FastAPI ingress, FastAPI controls how endpoints run:
 
 Important differences:
 
-- In FastAPI, `def` endpoints are always dispatched to a threadpool.
-- In pure Serve, `def` methods currently run on the event loop unless you opt into threadpool behavior.
+- FastAPI  always dispatches `def` endpoints to a threadpool.
+- In pure Serve, `def` methods run on the event loop unless you opt into threadpool behavior.
 
-## Blocking vs non-blocking in practice
+## Blocking versus non-blocking in practice
 
-Blocking code keeps the event loop from processing other work. Non-blocking code yields control back to the loop when it is waiting on something.
+Blocking code keeps the event loop from processing other work. Non-blocking code yields control back to the loop when it's waiting on something.
 
-### Blocking I/O vs asynchronous I/O
+### Blocking I/O versus asynchronous I/O
 
 Blocking I/O example:
 
@@ -126,11 +126,11 @@ Non-blocking equivalent using a threadpool:
 :language: python
 ```
 
-## Concurrency does not equal parallelism in Python
+## Concurrency doesn't equal parallelism in Python
 
-It is common to expect `async` code to "use all the cores" or make CPU-heavy code faster. That is not what asyncio does.
+It's common to expect `async` code to "use all the cores" or make CPU-heavy code faster. asyncio doesn't do that.
 
-### Concurrency: handling many waiting operations
+### Concurrency: Handling many waiting operations
 
 Asyncio gives you **concurrency** for I/O-bound workloads:
 
@@ -139,7 +139,7 @@ Asyncio gives you **concurrency** for I/O-bound workloads:
 
 This is ideal for high-throughput APIs that mostly wait on external systems.
 
-### Parallelism: using multiple CPU cores
+### Parallelism: Using multiple CPU cores
 
 True CPU parallelism usually comes from:
 
@@ -170,17 +170,17 @@ However:
 - Some libraries use their own internal threadpools; combining them with your own threadpools can oversubscribe CPUs.
 - You should verify that your model stack is thread-safe before relying on this form of parallelism.
 
-For predictable CPU scaling, it is usually simpler to increase the number of replicas.
+For predictable CPU scaling, it's usually simpler to increase the number of replicas.
 
 ### Summary
 
 - `async def` improves **concurrency** for I/O-bound code.
-- CPU-bound code does not become faster just because it is `async`.
+- CPU-bound code doesn't become faster merely because it's `async`.
 - Parallel CPU scaling comes mostly from **more processes** (replicas or tasks) and, in some cases, native code that releases the GIL.
 
 ## How `max_ongoing_requests` and replica concurrency work
 
-Each deployment has a `max_ongoing_requests` configuration that controls how many in-flight requests a replica will handle at once.
+Each deployment has a `max_ongoing_requests` configuration that controls how many in-flight requests a replica handles at once.
 
 ```{literalinclude} ../doc_code/asyncio_best_practices.py
 :start-after: __max_ongoing_requests_begin__
@@ -210,7 +210,7 @@ With an `async def` handler that spends most of its time awaiting I/O, `max_ongo
 
 ### Blocking `def` handlers and `max_ongoing_requests`
 
-With a blocking `def` handler that runs on the event loop (threadpool disabled), `max_ongoing_requests` does not give you the concurrency you expect:
+With a blocking `def` handler that runs on the event loop (threadpool disabled), `max_ongoing_requests` doesn't give you the concurrency you expect:
 
 ```{literalinclude} ../doc_code/asyncio_best_practices.py
 :start-after: __blocking_cpu_begin__
@@ -239,7 +239,7 @@ Now:
   - Whether your workload is CPU-bound or GIL-releasing.
   - Underlying native libraries and system resources.
 
-For heavily CPU-bound workloads, it is usually better to:
+For heavily CPU-bound workloads, it's usually better to:
 
 - Keep `max_ongoing_requests` modest (to avoid queueing too many heavy tasks), and
 - Scale **replicas** (`num_replicas`) rather than pushing a single replica's concurrency too high.
@@ -250,14 +250,14 @@ Ray Serve exposes several environment variables that control how user code inter
 
 ### `RAY_SERVE_RUN_SYNC_IN_THREADPOOL`
 
-By default (`RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0`), synchronous methods in a deployment run directly on the user event loop. To help you migrate to a safer model, Serve emits a warning like:
+By default (`RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0`), which means synchronous methods in a deployment run directly on the user event loop. To help you migrate to a safer model, Serve emits a warning like:
 
 > `RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING`: Calling sync method '...' directly on the asyncio loop. In a future version, sync methods will be run in a threadpool by default...
 
 This warning means:
 
 - You have a `def` method that is currently running on the event loop.
-- In a future version, that method will run in a threadpool instead.
+- In a future version, that method runs in a threadpool instead.
 
 You can opt in to the future behavior now by setting:
 
@@ -320,7 +320,7 @@ For most production deployments, you should keep the defaults (`1`) for both sep
 
 ## Batching and streaming semantics
 
-Batching and streaming both rely on the event loop to stay responsive. They do not change where your code runs: batched handlers and streaming handlers still run on the same user event loop as any other handler. This means that if you add batching or streaming on top of blocking code, you can make event loop blocking effects much worse.
+Batching and streaming both rely on the event loop to stay responsive. They don't change where your code runs: batched handlers and streaming handlers still run on the same user event loop as any other handler. This means that if you add batching or streaming on top of blocking code, you can make event loop blocking effects much worse.
 
 ### Batching
 
@@ -355,7 +355,7 @@ Streaming is different from a regular response because the client starts receivi
 Streaming is especially sensitive to blocking:
 
 - If you block between chunks, you delay the next piece of data to the client.
-- While the generator is blocked on the event loop, other requests on that loop cannot make progress.
+- While the generator is blocked on the event loop, other requests on that loop can't make progress.
 - The system also cannot react quickly to slow clients (backpressure) or cancellation.
 
 Bad streaming example:
