@@ -195,8 +195,7 @@ class VLLMEngine(LLMEngine):
         state = State()
         # TODO (Kourosh): There might be some variables that needs protection?
         args = argparse.Namespace(
-            **vllm_frontend_args.__dict__,
-            **vllm_engine_args.__dict__,
+            **(vllm_frontend_args.__dict__ | **vllm_engine_args.__dict__)
         )
 
         await init_app_state(
