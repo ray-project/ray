@@ -144,6 +144,7 @@ config = (
             "binary_download_dir": args.binary_download_dir,
             "binary_extract_dir": args.binary_extract_dir,
             "binary_to_download": args.binary_to_download,
+            "suppress_unity_output": True,
         },
     )
     .learners(
