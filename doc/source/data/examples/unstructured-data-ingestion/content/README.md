@@ -15,15 +15,15 @@ jupyter nbconvert "$nb_filename" --to markdown --output "README.md"
 
 Build a comprehensive document ingestion pipeline that transforms unstructured documents from data lakes into structured, analytics-ready datasets using Ray Data's distributed processing capabilities for enterprise data warehouse workflows.
 
-## Table of Contents
+## Table of contents
 
-1. [Data Lake Document Discovery](#step-1-data-lake-document-discovery) (8 min)
-2. [Document Processing and Classification](#step-2-document-processing-and-classification) (10 min)
-3. [Text Extraction and Enrichment](#step-3-text-chunking-and-enrichment) (8 min)
-4. [Data Warehouse Output](#step-4-data-warehouse-schema-and-output) (6 min)
-5. [Verification and Summary](#verification) (3 min)
+1. [Data lake document discovery](#step-1-data-lake-document-discovery) (8 min)
+2. [Document processing and classification](#step-2-document-processing-and-classification) (10 min)
+3. [Text extraction and enrichment](#step-3-text-chunking-and-enrichment) (8 min)
+4. [Data warehouse output](#step-4-data-warehouse-schema-and-output) (6 min)
+5. [Verification and summary](#verification) (3 min)
 
-## Learning Objectives
+## Learning objectives
 
 **Why unstructured data ingestion matters**: Enterprise data lakes contain vast amounts of unstructured documents (PDFs, Word docs, presentations, reports) that need systematic processing to extract business value for analytics and reporting.
 
@@ -44,19 +44,19 @@ Build a comprehensive document ingestion pipeline that transforms unstructured d
 
 **Solution**: Ray Data enables end-to-end document ingestion pipelines with native distributed operations for processing millions of documents efficiently.
 
-- **Scale**: Using Streaming Execution and massive scalability capabilities to process petabytes or even exabytes of data.
+- **Scale**: Using streaming execution and massive scalability capabilities to process petabytes or even exabytes of data.
 - **Consistency**: A flexible API for supporting quality checks through `map` as well as support for any type of PyArrow schema. All data read also has to be consistent or else the pipeline fails along with additional configuration options for this behavior.
-- **Integration**: Supports integration with all data types as well as any AI types, running on CPUs/GPUs/Accelerators on cloud and on-prem
+- **Integration**: Supports integration with all data types as well as any AI types, running on CPUs/GPUs/accelerators on cloud and on-prem
 - **Warehouse integration**: Pre-built connectors to popular data warehouses as well as having the ability to build custom connectors easily.
-- **Increasing data sizes**: Can be used for single node optimization to scaling across 10k+ nodes
+- **Increasing data sizes**: Supports single node optimization to scaling across 10k+ nodes
 
-## Prerequisites Checklist
+## Prerequisites checklist
 
 Before starting, ensure you have:
-- [ ] Understanding of data lake and data warehouse concepts
+- [ ] An understanding of data lake and data warehouse concepts
 - [ ] Experience with document processing and text extraction
 - [ ] Knowledge of structured data formats (Parquet, Delta Lake, Iceberg)
-- [ ] Python environment with Ray Data and document processing libraries
+- [ ] A Python environment with Ray Data and document processing libraries
 - [ ] Access to S3 or other cloud storage for document sources
 
 Setup and initialize Ray Data:
@@ -323,7 +323,7 @@ def enrich_business_metadata(record: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-# Apply Business Metadata enrichment to all documents
+# Apply business metadata enrichment to all documents
 print("Enriching with business metadata (using zero-shot NLP)...")
 
 # Note: zero-shot and LLM models can be heavy;
@@ -347,7 +347,7 @@ documents_with_metadata.limit(5).to_pandas()
 # - What's the size distribution?
 # - Which categories have the most content?
 
-# AGGREGATION 1: Document Type Distribution
+# AGGREGATION 1: Document type distribution
 # Group by document_type and calculate statistics
 
 doc_type_stats = documents_with_metadata.groupby("document_type").aggregate(
@@ -357,7 +357,7 @@ doc_type_stats = documents_with_metadata.groupby("document_type").aggregate(
     Max("estimated_pages")  # Largest document per type
 )
 
-# AGGREGATION 2: Business Category Analysis
+# AGGREGATION 2: Business category analysis
 # Understand the distribution across business categories
 # This helps with warehouse partitioning strategy
 
@@ -368,7 +368,7 @@ category_stats = documents_with_metadata.groupby("business_category").aggregate(
 )
 ```
 
-## Step 2: Document Processing and Classification
+## Step 2: Document processing and classification
 
 ### Text extraction and quality assessment
 
@@ -398,7 +398,7 @@ def assess_document_quality(batch: pd.DataFrame) -> pd.DataFrame:
     quality_ratings = []  # Text rating (high/medium/low)
     quality_issues_list = []  # List of issues found
     
-    # We iterate through rows to apply business rules for quality
+    # Iterate through rows to apply business rules for quality
     # Each document gets a score from 0-4 based on quality criteria
     
     for idx, row in batch.iterrows():
@@ -450,7 +450,7 @@ def assess_document_quality(batch: pd.DataFrame) -> pd.DataFrame:
     return batch
 
 
-# Apply Quality Assessment to all documents
+# Apply quality assessment to all documents
 
 # Parameters:
 #   - batch_format="pandas": Process as pandas DataFrame (easier than numpy arrays)
@@ -466,7 +466,7 @@ quality_assessed_docs = documents_with_metadata.map_batches(
 )
 ```
 
-## Step 3: Text Chunking and Enrichment
+## Step 3: Text chunking and enrichment
 
 
 ```python
@@ -531,7 +531,7 @@ def create_text_chunks(record: Dict[str, Any]) -> List[Dict[str, Any]]:
         
         chunks.append(chunk_record)
         
-        # If we've reached the end of the text, we're done
+        # If you've reached the end of the text, you're done
         if end >= len(text):
             break
         
@@ -549,11 +549,11 @@ def create_text_chunks(record: Dict[str, Any]) -> List[Dict[str, Any]]:
         chunk["total_chunks"] = len(chunks)
     
     # Return the list of chunk records
-    # Ray Data's flat_map() will automatically flatten this list
+    # Ray Data's flat_map() automatically flattens this list
     return chunks
 
 
-# Apply Text Chunking to all documents
+# Apply text chunking to all documents
 # Use flat_map() for one-to-many transformations
 # One document becomes multiple chunks
 print("Creating text chunks...")
@@ -576,7 +576,7 @@ chunked_documents = quality_assessed_docs.flat_map(
 )
 ```
 
-## Step 4: Data Warehouse Schema and Output
+## Step 4: Data warehouse schema and output
 
 ### Create data warehouse schema
 
@@ -591,7 +591,7 @@ print("Creating data warehouse schema...")
 
 
 # Get today's date in ISO format (YYYY-MM-DD)
-# This will be used to partition the data by date in the warehouse
+# Ray Data uses this to partition the data by date in the warehouse
 processing_date = datetime.now().isoformat()[:10]
 
 
@@ -722,7 +722,7 @@ print("Main warehouse table written successfully")
 # Each team gets only the data they need with relevant columns
 
 
-# Example: Compliance Analytics Dataset
+# Example: Compliance analytics dataset
 # Compliance team needs: document content, quality, and priority
 # Priority matters for compliance review workflows
 
@@ -756,7 +756,7 @@ compliance_analytics.write_parquet(
 # Summary tables = faster analytics queries
 
 
-# SUMMARY TABLE 1: Processing Metrics by Category and Date
+# SUMMARY TABLE 1: Processing metrics by category and date
 
 # Answer questions like:
 # - How many documents processed per category per day?
@@ -788,7 +788,7 @@ processing_metrics.write_parquet(
 
 ```python
 
-# SUMMARY TABLE 2: Quality Distribution
+# SUMMARY TABLE 2: Quality distribution
 # Answer questions like:
 # - What percentage of documents are high/medium/low quality?
 # - Which categories have the highest quality scores?
@@ -890,26 +890,26 @@ for i, record in enumerate(samples):
 
 ## Summary
 
-You have built a complete end-to-end document ingestion pipeline using Ray Data. This section reviews what you learned and where to go from here.
+You built a complete end-to-end document ingestion pipeline using Ray Data. This section reviews what you learned and where to go from here.
 
-### What You Built
+### What you built
 
-**Complete ETL Pipeline**: Extract → Transform → Load
+**Complete ETL pipeline**: Extract → Transform → Load
 1. **Extract**: Read 100 documents from S3 data lake
 2. **Transform**: Extract text, classify, assess quality, create chunks
 3. **Load**: Write to partitioned data warehouse with analytics tables
 
-**Final Output**: From raw documents to structured warehouse
+**Final output**: From raw documents to structured warehouse
 - **Main table**: 10,000+ text chunks ready for analysis
 - **Business datasets**: Finance and compliance specific views
 - **Summary tables**: Pre-computed metrics for dashboards
 - **Partitioned storage**: Optimized for query performance
 
-### Ray Data Operations You Used
+### Ray Data operations you used
 
 This pipeline demonstrated all major Ray Data operations:
 
-| Operation | Purpose | When to Use |
+| Operation | Purpose | When to use |
 |-----------|---------|-------------|
 | `read_binary_files()` | Load documents from S3/storage | Reading PDFs, images, any binary files |
 | `map()` | Transform each record individually | Variable-size processing, I/O-bound tasks |
@@ -921,57 +921,57 @@ This pipeline demonstrated all major Ray Data operations:
 | `groupby().aggregate()` | Calculate statistics | Analytics, metrics, summaries |
 | `write_parquet()` | Save to warehouse | Final output, checkpointing |
 
-### Key Concepts for Beginners
+### Key concepts for beginners
 
-**1. Distributed Processing**
+**1. Distributed processing**
 - Your code runs on a cluster of machines (not just one)
 - Ray Data automatically distributes work across workers
 - Each function (process_file, assess_quality) runs in parallel
 - 100 documents processed simultaneously = 100x faster
 
-**2. Lazy Evaluation**
+**2. Lazy evaluation**
 - Operations like `map()` and `filter()` don't execute immediately
 - Ray builds a plan and optimizes it
 - Execution happens when you call `write_parquet()`, `count()`, or `take()`
 - This allows Ray to optimize the entire pipeline
 
-**3. Resource Management**
+**3. Resource management**
 - `batch_size`: How many records per batch
 - `concurrency`: How many tasks run in parallel (advanced)
 - `num_cpus`: How many CPU cores per task (advanced)
 - Balance these based on your workload
 
-**4. Partitioning Strategy**
+**4. Partitioning strategy**
 - Partitions = folders organized by column values
 - `partition_cols=["business_category", "processing_date"]`
 - Query engines skip entire folders when filtering
 - Enables efficient query performance by reducing data scanned
 
-### Implementation Patterns Applied
+### Implementation patterns applied
 
-**Code Organization**:
+**Code organization**:
 - Separate functions for each processing stage
 - Clear docstrings explaining purpose
 - Type hints for inputs and outputs
 - Comments explaining "why" not just "what"
 
-**Ray Data Implementation Patterns**:
+**Ray Data implementation patterns**:
 - Use `batch_format="pandas"` for clarity
 - Process text early (don't pass binary through pipeline)
 - Appropriate resource allocation per operation type
 - Partition writes for query optimization
 - Use native Ray Data operations (not custom code)
 
-**Data Engineering Patterns**:
+**Data engineering patterns**:
 - Immediate text extraction (reduces memory)
 - Separate classification stage (easier debugging)
 - Quality assessment (data validation)
 - Schema transformation (clean warehouse schema)
 - Verification step (always check output)
 
-### Production Recommendations
+### Production recommendations
 
-**Scaling to Production:**
+**Scaling to production:**
 
 1. **Remove the `.limit(100)` to process full dataset**
    - Currently processing 100 docs for demo
@@ -1017,23 +1017,23 @@ This pipeline demonstrated all major Ray Data operations:
    - Verify foreign key relationships
    - Monitor quality metrics over time
 
-### What You Learned
+### What you learned
 
-**Ray Data Fundamentals**:
+**Ray Data fundamentals**:
 - How to read from cloud storage (S3)
 - Distributed data processing patterns
-- Batch vs. row-based operations
+- Batch versus row-based operations
 - Resource management and tuning
 - Writing to data warehouses
 
-**Data Engineering Skills**:
+**Data engineering skills**:
 - ETL pipeline design
 - Document processing at scale
 - Quality assessment strategies
 - Data warehouse schema design
 - Partitioning for performance
 
-**Production Practices**:
+**Production practices**:
 - Verification and testing
 - Error handling approaches
 - Resource optimization
