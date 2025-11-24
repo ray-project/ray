@@ -1064,6 +1064,36 @@ ITERATION_PREFETCHED_BYTES_PANEL = Panel(
     fill=0,
     stack=False,
 )
+          
+ITERATION_TIME_TO_FIRST_BATCH_PANEL = Panel(
+    id=120,
+    title="Iteration Time to First Batch",
+    description="Seconds spent waiting for the first batch after starting iteration",
+    unit="seconds",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_time_to_first_batch_seconds{{{global_filters}}}) by (dataset)",
+            legend="Seconds: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ITERATION_GET_REF_BUNDLES_PANEL = Panel(
+    id=121,
+    title="Iteration Get Ref Bundles Time",
+    description="Seconds spent getting RefBundles from the dataset iterator",
+    unit="seconds",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_get_ref_bundles_seconds{{{global_filters}}}) by (dataset)",
+            legend="Seconds: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
 
 # Ray Data Metrics (Miscellaneous)
 SCHEDULING_LOOP_DURATION_PANEL = Panel(
@@ -1406,6 +1436,8 @@ DATA_GRAFANA_ROWS = [
             ITERATION_BLOCKS_REMOTE_PANEL,
             ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL,
             ITERATION_PREFETCHED_BYTES_PANEL,
+            ITERATION_TIME_TO_FIRST_BATCH_PANEL,
+            ITERATION_GET_REF_BUNDLES_PANEL,
         ],
         collapsed=True,
     ),
