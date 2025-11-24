@@ -369,6 +369,26 @@ def test_report_checkpoint_upload_fn(tmp_path):
     }
 
 
+def test_checkpoint_upload_fn_returns_checkpoint():
+    def train_fn():
+        with create_dict_checkpoint({}) as checkpoint:
+            ray.train.report(
+                metrics={},
+                checkpoint=checkpoint,
+                checkpoint_upload_fn=lambda x, y: None,
+            )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+    )
+    with pytest.raises(
+        WorkerGroupError,
+        match="checkpoint_upload_fn must return a `ray.train.Checkpoint`",
+    ):
+        trainer.fit()
+
+
 def test_report_get_all_reported_checkpoints():
     """Check that get_all_reported_checkpoints returns checkpoints depending on # report calls."""
 

@@ -15,7 +15,6 @@ from filelock import FileLock
 from ray._private.path_utils import is_path
 from ray._private.ray_constants import (
     GRPC_CPP_MAX_MESSAGE_SIZE,
-    RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
 )
@@ -86,16 +85,17 @@ def _dir_travel(
     path: Path,
     excludes: List[Callable],
     handler: Callable,
+    include_gitignore: bool,
     logger: Optional[logging.Logger] = default_logger,
 ):
     """Travels the path recursively, calling the handler on each subpath.
 
     Respects excludes, which will be called to check if this path is skipped.
     """
-    e = _get_gitignore(path)
-
-    if e is not None:
-        excludes.append(e)
+    new_excludes = get_excludes_from_ignore_files(
+        path, include_gitignore=include_gitignore, logger=logger
+    )
+    excludes.extend(new_excludes)
 
     skip = any(e(path) for e in excludes)
     if not skip:
@@ -106,9 +106,15 @@ def _dir_travel(
             raise e
         if path.is_dir():
             for sub_path in path.iterdir():
-                _dir_travel(sub_path, excludes, handler, logger=logger)
+                _dir_travel(
+                    sub_path,
+                    excludes,
+                    handler,
+                    include_gitignore=include_gitignore,
+                    logger=logger,
+                )
 
-    if e is not None:
+    for _ in range(len(new_excludes)):
         excludes.pop()
 
 
@@ -166,6 +172,7 @@ def _hash_directory(
     root: Path,
     relative_path: Path,
     excludes: Optional[Callable],
+    include_gitignore: bool,
     logger: Optional[logging.Logger] = default_logger,
 ) -> bytes:
     """Helper function to create hash of a directory.
@@ -183,7 +190,9 @@ def _hash_directory(
         hash_val = _xor_bytes(hash_val, file_hash)
 
     excludes = [] if excludes is None else [excludes]
-    _dir_travel(root, excludes, handler, logger=logger)
+    _dir_travel(
+        root, excludes, handler, include_gitignore=include_gitignore, logger=logger
+    )
     return hash_val
 
 
@@ -280,24 +289,21 @@ def _get_excludes(path: Path, excludes: List[str]) -> Callable:
     return match
 
 
-def _get_gitignore(path: Path) -> Optional[Callable]:
+def _get_ignore_file(path: Path, ignore_file: str) -> Optional[Callable]:
     """Returns a function that returns True if the path should be excluded.
 
-    Returns None if there is no .gitignore file in the path, or if the
-    RAY_RUNTIME_ENV_IGNORE_GITIGNORE environment variable is set to 1.
+    Returns None if there is no ignore_file in the path.
 
     Args:
-        path: The path to the directory to check for a .gitignore file.
+        path: The path to the directory to check for an ignore file.
+        ignore_file: The name of the ignore file.
 
     Returns:
         A function that returns True if the path should be excluded.
     """
-    ignore_gitignore = os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") == "1"
-    if ignore_gitignore:
-        return None
 
     path = path.absolute()
-    ignore_file = path / ".gitignore"
+    ignore_file = path / ignore_file
     if ignore_file.is_file():
         with ignore_file.open("r") as f:
             pathspec = PathSpec.from_lines("gitwildmatch", f.readlines())
@@ -309,6 +315,43 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
         return match
     else:
         return None
+
+
+def get_excludes_from_ignore_files(
+    path: Path,
+    include_gitignore: bool,
+    logger: Optional[logging.Logger] = default_logger,
+) -> List[Callable]:
+    """Get exclusion functions from .gitignore and .rayignore files in the current path.
+
+    Args:
+        path: The path to check for ignore files.
+        include_gitignore: Whether to respect .gitignore files.
+        logger: Logger to use.
+
+    Returns:
+        List[Callable]: List of exclusion functions. Each function takes a Path
+            and returns True if the path should be excluded based on the ignore
+            patterns in the respective ignore file.
+    """
+    ignore_files = []
+
+    to_ignore: List[Optional[Callable]] = []
+    if include_gitignore:
+        g = _get_ignore_file(path, ignore_file=".gitignore")
+        if g is not None:
+            to_ignore.append(g)
+            ignore_files.append(path / ".gitignore")
+
+    r = _get_ignore_file(path, ignore_file=".rayignore")
+    if r is not None:
+        to_ignore.append(r)
+        ignore_files.append(path / ".rayignore")
+
+    if ignore_files:
+        logger.info(f"Ignoring upload to cluster for these files: {ignore_files}")
+
+    return to_ignore
 
 
 def pin_runtime_env_uri(uri: str, *, expiration_s: Optional[int] = None) -> None:
@@ -403,6 +446,7 @@ def _zip_files(
     path_str: str,
     excludes: List[str],
     output_path: str,
+    include_gitignore: bool,
     include_parent_dir: bool = False,
     logger: Optional[logging.Logger] = default_logger,
 ) -> None:
@@ -440,7 +484,13 @@ def _zip_files(
                 zip_handler.write(path, to_path)
 
         excludes = [_get_excludes(file_path, excludes)]
-        _dir_travel(file_path, excludes, handler, logger=logger)
+        _dir_travel(
+            file_path,
+            excludes,
+            handler,
+            include_gitignore=include_gitignore,
+            logger=logger,
+        )
 
 
 def package_exists(pkg_uri: str) -> bool:
@@ -508,7 +558,11 @@ def get_uri_for_file(file: str) -> str:
     )
 
 
-def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) -> str:
+def get_uri_for_directory(
+    directory: str,
+    include_gitignore: bool,
+    excludes: Optional[List[str]] = None,
+) -> str:
     """Get a content-addressable URI from a directory's contents.
 
     This function generates the name of the package by the directory.
@@ -524,6 +578,7 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
 
     Args:
         directory: The directory.
+        include_gitignore: Whether to respect .gitignore files.
         excludes (list[str]): The dir or files that should be excluded.
 
     Returns:
@@ -539,7 +594,12 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
     if not directory.exists() or not directory.is_dir():
         raise ValueError(f"directory {directory} must be an existing directory")
 
-    hash_val = _hash_directory(directory, directory, _get_excludes(directory, excludes))
+    hash_val = _hash_directory(
+        directory,
+        directory,
+        _get_excludes(directory, excludes),
+        include_gitignore=include_gitignore,
+    )
 
     return "{protocol}://{pkg_name}.zip".format(
         protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val.hex()
@@ -574,6 +634,7 @@ def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes) -> None:
 def create_package(
     module_path: str,
     target_path: Path,
+    include_gitignore: bool,
     include_parent_dir: bool = False,
     excludes: Optional[List[str]] = None,
     logger: Optional[logging.Logger] = default_logger,
@@ -590,6 +651,7 @@ def create_package(
             module_path,
             excludes,
             str(target_path),
+            include_gitignore=include_gitignore,
             include_parent_dir=include_parent_dir,
             logger=logger,
         )
@@ -599,6 +661,7 @@ def upload_package_if_needed(
     pkg_uri: str,
     base_directory: str,
     module_path: str,
+    include_gitignore: bool,
     include_parent_dir: bool = False,
     excludes: Optional[List[str]] = None,
     logger: Optional[logging.Logger] = default_logger,
@@ -617,6 +680,7 @@ def upload_package_if_needed(
         include_parent_dir: If true, includes the top-level directory as a
             directory inside the zip file.
         excludes: List specifying files to exclude.
+        include_gitignore: Whether to respect .gitignore files. Default is True.
 
     Raises:
         RuntimeError: If the upload fails.
@@ -646,6 +710,7 @@ def upload_package_if_needed(
     create_package(
         module_path,
         package_file,
+        include_gitignore=include_gitignore,
         include_parent_dir=include_parent_dir,
         excludes=excludes,
     )

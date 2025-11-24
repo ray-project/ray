@@ -348,6 +348,7 @@ class SubmissionClient:
         self,
         package_uri: str,
         package_path: str,
+        include_gitignore: bool,
         include_parent_dir: Optional[bool] = False,
         excludes: Optional[List[str]] = None,
         is_file: bool = False,
@@ -362,6 +363,7 @@ class SubmissionClient:
                 create_package(
                     package_path,
                     package_file,
+                    include_gitignore=include_gitignore,
                     include_parent_dir=include_parent_dir,
                     excludes=excludes,
                 )
@@ -381,6 +383,7 @@ class SubmissionClient:
     def _upload_package_if_needed(
         self,
         package_path: str,
+        include_gitignore: bool,
         include_parent_dir: bool = False,
         excludes: Optional[List[str]] = None,
         is_file: bool = False,
@@ -388,12 +391,15 @@ class SubmissionClient:
         if is_file:
             package_uri = get_uri_for_package(Path(package_path))
         else:
-            package_uri = get_uri_for_directory(package_path, excludes=excludes)
+            package_uri = get_uri_for_directory(
+                package_path, include_gitignore, excludes=excludes
+            )
 
         if not self._package_exists(package_uri):
             self._upload_package(
                 package_uri,
                 package_path,
+                include_gitignore=include_gitignore,
                 include_parent_dir=include_parent_dir,
                 excludes=excludes,
                 is_file=is_file,
@@ -404,23 +410,44 @@ class SubmissionClient:
         return package_uri
 
     def _upload_working_dir_if_needed(self, runtime_env: Dict[str, Any]):
+        from ray._private.ray_constants import RAY_RUNTIME_ENV_IGNORE_GITIGNORE
+
+        # Determine whether to respect .gitignore files based on environment variable
+        # Default is True (respect .gitignore). Set to False if env var is "1".
+        include_gitignore = os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
+
         def _upload_fn(working_dir, excludes, is_file=False):
             self._upload_package_if_needed(
                 working_dir,
+                include_gitignore=include_gitignore,
                 include_parent_dir=False,
                 excludes=excludes,
                 is_file=is_file,
             )
 
-        upload_working_dir_if_needed(runtime_env, upload_fn=_upload_fn)
+        upload_working_dir_if_needed(
+            runtime_env, include_gitignore=include_gitignore, upload_fn=_upload_fn
+        )
 
     def _upload_py_modules_if_needed(self, runtime_env: Dict[str, Any]):
+        from ray._private.ray_constants import RAY_RUNTIME_ENV_IGNORE_GITIGNORE
+
+        # Determine whether to respect .gitignore files based on environment variable
+        # Default is True (respect .gitignore). Set to False if env var is "1".
+        include_gitignore = os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
+
         def _upload_fn(module_path, excludes, is_file=False):
             self._upload_package_if_needed(
-                module_path, include_parent_dir=True, excludes=excludes, is_file=is_file
+                module_path,
+                include_gitignore=include_gitignore,
+                include_parent_dir=True,
+                excludes=excludes,
+                is_file=is_file,
             )
 
-        upload_py_modules_if_needed(runtime_env, upload_fn=_upload_fn)
+        upload_py_modules_if_needed(
+            runtime_env, include_gitignore=include_gitignore, upload_fn=_upload_fn
+        )
 
     @PublicAPI(stability="beta")
     def get_version(self) -> str:
