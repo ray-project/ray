@@ -199,18 +199,70 @@ bool ActorPoolManager::HasPool(const ActorPoolID &pool_id) const {
 
 ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
                                                const std::vector<ObjectID> &arg_ids) {
-  // TODO(Phase 1): Implement actor selection
-  // This will be implemented in To-do #7
-  RAY_LOG(FATAL) << "SelectActorFromPool not yet implemented";
-  return ActorID::Nil();
+  auto pool_it = pools_.find(pool_id);
+  if (pool_it == pools_.end()) {
+    RAY_LOG(WARNING) << "Pool not found: " << pool_id;
+    return ActorID::Nil();
+  }
+  
+  const auto &pool_info = pool_it->second;
+  
+  // Filter: only alive actors with available capacity
+  std::vector<ActorID> candidates;
+  for (const auto &actor_id : pool_info.actor_ids) {
+    auto state_it = pool_info.actor_states.find(actor_id);
+    if (state_it == pool_info.actor_states.end()) {
+      continue;
+    }
+    
+    const auto &state = state_it->second;
+    // TODO: Get actual max_concurrency from actor handle
+    // For now, assume max_concurrency = 1 (single-threaded actors)
+    const int32_t max_concurrency = 1;
+    
+    if (state.is_alive && state.num_tasks_in_flight < max_concurrency) {
+      candidates.push_back(actor_id);
+    }
+  }
+  
+  if (candidates.empty()) {
+    RAY_LOG(DEBUG) << "No available actors in pool " << pool_id;
+    return ActorID::Nil();
+  }
+  
+  // Select the actor with the lowest rank (best choice)
+  auto best_actor =
+      *std::min_element(candidates.begin(),
+                        candidates.end(),
+                        [&](const ActorID &a, const ActorID &b) {
+                          return RankActor(a, arg_ids, pool_info) <
+                                 RankActor(b, arg_ids, pool_info);
+                        });
+  
+  RAY_LOG(DEBUG) << "Selected actor " << best_actor << " from pool " << pool_id;
+  return best_actor;
 }
 
 int32_t ActorPoolManager::RankActor(const ActorID &actor_id,
                                     const std::vector<ObjectID> &arg_ids,
                                     const ActorPoolInfo &pool_info) const {
-  // TODO(Phase 1): Implement actor ranking
-  // This will be implemented in To-do #7
-  return 0;
+  auto state_it = pool_info.actor_states.find(actor_id);
+  if (state_it == pool_info.actor_states.end()) {
+    return INT32_MAX;  // Worst rank
+  }
+  
+  const auto &state = state_it->second;
+  
+  // Simple ranking: lower is better
+  // For Phase 1, rank purely by load (number of in-flight tasks)
+  // Phase 2 can add locality awareness
+  int32_t rank = state.num_tasks_in_flight;
+  
+  // TODO(Phase 2): Add locality-aware ranking
+  // int32_t locality_rank = GetLocalityRank(state.location, arg_ids);
+  // rank = locality_rank * 10000 + state.num_tasks_in_flight;
+  
+  return rank;
 }
 
 std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
@@ -287,4 +339,3 @@ void ActorPoolManager::FailWorkItem(const TaskID &work_item_id,
 
 }  // namespace core
 }  // namespace ray
-
