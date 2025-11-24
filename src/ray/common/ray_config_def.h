@@ -898,10 +898,17 @@ RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)
 /// The threshold to consider a node dead.
 RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 
-/// The pool size for grpc server call.
+/// Thread pool size for sending replies in grpc server (system components: raylet, GCS).
 RAY_CONFIG(int64_t,
            num_server_call_thread,
            std::max((int64_t)1, (int64_t)(std::thread::hardware_concurrency() / 4U)))
+
+/// Thread pool size for sending replies in grpc server (CoreWorkers).
+/// https://github.com/ray-project/ray/issues/58351 shows the
+/// reply path is light enough that 2 threads is sufficient.
+RAY_CONFIG(int64_t,
+           core_worker_num_server_call_thread,
+           std::thread::hardware_concurrency() >= 8 ? 2 : 1);
 
 /// Use madvise to prevent worker/raylet coredumps from including
 /// the mapped plasma pages.

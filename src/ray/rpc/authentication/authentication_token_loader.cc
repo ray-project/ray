@@ -40,7 +40,8 @@ AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
   return instance;
 }
 
-std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken() {
+std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken(
+    bool ignore_auth_mode) {
   std::lock_guard<std::mutex> lock(token_mutex_);
 
   // If already loaded, return cached value
@@ -48,17 +49,17 @@ std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken() {
     return cached_token_;
   }
 
-  // If token or k8s auth is not enabled, return std::nullopt
-  if (!RequiresTokenAuthentication()) {
+  // If token or k8s auth is not enabled, return std::nullopt (unless ignoring auth mode)
+  if (!ignore_auth_mode && !RequiresTokenAuthentication()) {
     cached_token_ = std::nullopt;
     return std::nullopt;
   }
 
-  // Token auth is enabled, try to load from sources
+  // Token auth is enabled (or we're ignoring auth mode), try to load from sources
   AuthenticationToken token = LoadTokenFromSources();
 
   // If no token found and auth is enabled, fail with RAY_CHECK
-  if (token.empty()) {
+  if (token.empty() && !ignore_auth_mode) {
     RAY_LOG(FATAL)
         << "Token authentication is enabled but Ray couldn't find an "
            "authentication token. "
@@ -72,7 +73,7 @@ std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken() {
   return *cached_token_;
 }
 
-bool AuthenticationTokenLoader::HasToken() {
+bool AuthenticationTokenLoader::HasToken(bool ignore_auth_mode) {
   std::lock_guard<std::mutex> lock(token_mutex_);
 
   // If already loaded, check if it's a valid token
@@ -80,13 +81,13 @@ bool AuthenticationTokenLoader::HasToken() {
     return !cached_token_->empty();
   }
 
-  // If token or k8s auth is not enabled, no token needed
-  if (!RequiresTokenAuthentication()) {
+  // If token or k8s auth is not enabled, no token needed (unless ignoring auth mode)
+  if (!ignore_auth_mode && !RequiresTokenAuthentication()) {
     cached_token_ = std::nullopt;
     return false;
   }
 
-  // Token auth is enabled, try to load from sources
+  // Token auth is enabled (or we're ignoring auth mode), try to load from sources
   AuthenticationToken token = LoadTokenFromSources();
 
   // Cache the result

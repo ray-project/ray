@@ -256,6 +256,7 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
     # Set the environment variables used by the raylet and worker
     monkeypatch.setenv("RAY_worker_num_grpc_internal_threads", "1")
     monkeypatch.setenv("RAY_num_server_call_thread", "1")
+    monkeypatch.setenv("RAY_core_worker_num_server_call_thread", "1")
 
     # TODO(#55215): The for loop and the 'assert ... in {..,..}' complicates this
     # test unnecessarily. We should only need to call the assert after

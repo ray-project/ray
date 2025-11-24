@@ -216,6 +216,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                             ],
                         }
                     },
+                    "external_scaler_enabled": False,
                     "deployment_topology": {
                         "app_name": "default",
                         "nodes": {

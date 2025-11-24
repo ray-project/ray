@@ -27,7 +27,7 @@ from ray.data.datasource import (
 from ray.data.iterator import DataIterator, DatasetIterator
 from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401
-    KafkaAuthConfig,
+    KafkaAuthConfig,  # noqa: F401
     from_arrow,
     from_arrow_refs,
     from_blocks,

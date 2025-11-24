@@ -369,6 +369,26 @@ def test_report_checkpoint_upload_fn(tmp_path):
     }
 
 
+def test_checkpoint_upload_fn_returns_checkpoint():
+    def train_fn():
+        with create_dict_checkpoint({}) as checkpoint:
+            ray.train.report(
+                metrics={},
+                checkpoint=checkpoint,
+                checkpoint_upload_fn=lambda x, y: None,
+            )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+    )
+    with pytest.raises(
+        WorkerGroupError,
+        match="checkpoint_upload_fn must return a `ray.train.Checkpoint`",
+    ):
+        trainer.fit()
+
+
 def test_get_all_reported_checkpoints_all_consistency_modes():
     signal_actor = create_remote_signal_actor(ray).remote()
 

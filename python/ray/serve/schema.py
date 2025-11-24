@@ -473,6 +473,12 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
             field for field, value in self.dict().items() if value is not DEFAULT.VALUE
         }
 
+    def is_autoscaling_configured(self) -> bool:
+        return self.num_replicas == "auto" or self.autoscaling_config not in [
+            None,
+            DEFAULT.VALUE,
+        ]
+
 
 def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSchema:
     """Converts a DeploymentInfo object to DeploymentSchema."""
@@ -579,6 +585,13 @@ class ServeApplicationSchema(BaseModel):
         default=None,
         description="Logging config for configuring serve application logs.",
     )
+    external_scaler_enabled: bool = Field(
+        default=False,
+        description=(
+            "If True, indicates that an external autoscaler will manage replica scaling for this application. "
+            "When enabled, Serve's built-in autoscaling cannot be used for any deployments in this application."
+        ),
+    )
 
     @property
     def deployment_names(self) -> List[str]:
@@ -639,6 +652,30 @@ class ServeApplicationSchema(BaseModel):
                 )
 
         return v
+
+    @root_validator
+    def validate_external_scaler_and_autoscaling(cls, values):
+        external_scaler_enabled = values.get("external_scaler_enabled", False)
+        deployments = values.get("deployments", [])
+
+        if external_scaler_enabled:
+            deployments_with_autoscaling = []
+            for deployment in deployments:
+                if deployment.is_autoscaling_configured():
+                    deployments_with_autoscaling.append(deployment.name)
+
+            if deployments_with_autoscaling:
+                deployment_names = ", ".join(
+                    f'"{name}"' for name in deployments_with_autoscaling
+                )
+                raise ValueError(
+                    f"external_scaler_enabled is set to True, but the following "
+                    f"deployment(s) have autoscaling configured: {deployment_names}. "
+                    "When using an external autoscaler, Serve's built-in autoscaling must "
+                    "be disabled for all deployments in the application."
+                )
+
+        return values
 
     @staticmethod
     def get_empty_schema_dict() -> Dict:
@@ -1206,6 +1243,9 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     )
     deployments: Dict[str, DeploymentDetails] = Field(
         description="Details about the deployments in this application."
+    )
+    external_scaler_enabled: bool = Field(
+        description="Whether external scaling is enabled for this application.",
     )
 
     application_details_route_prefix_format = validator(
