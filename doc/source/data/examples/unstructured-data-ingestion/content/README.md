@@ -54,9 +54,7 @@ Before starting, ensure you have:
 - [ ] Python environment with Ray Data and document processing libraries
 - [ ] Access to S3 or other cloud storage for document sources
 
-## Quick start (3 minutes)
-
-This section demonstrates large-scale document ingestion using Ray Data:
+Setup and initialize Ray Data:
 
 
 ```python
@@ -91,7 +89,7 @@ ray.init(ignore_reinit_error=True)
 
 
 ```python
-# STEP 1: READ DOCUMENTS FROM DATA LAKE (S3)
+# READ DOCUMENTS FROM DATA LAKE (S3)
 
 # Use Ray Data's read_binary_files() to load documents from S3
 # Why read_binary_files()?
@@ -123,8 +121,7 @@ print(f"Dataset schema: {document_collection.schema()}")
 
 
 ```python
-
-# STEP 2: TEXT EXTRACTION FUNCTION
+# TEXT EXTRACTION FUNCTION
 # This function extracts text from various document formats (PDF, DOCX, etc.)
 # It processes one document at a time (distirbuted by Ray) and returns structured metadata + text
 
@@ -242,8 +239,7 @@ documents_with_text.limit(25).to_pandas()
 
 
 ```python
-
-# STEP 3: BUSINESS METADATA ENRICHMENT FUNCTION (Modern Approach)
+# BUSINESS METADATA ENRICHMENT FUNCTION (Modern Approach)
 # Instead of simple string matching, apply basic NLP for categorization.
 # For high-quality production, you'd use an ML or LLM model endpoint here.
 
@@ -374,7 +370,7 @@ category_stats = documents_with_metadata.groupby("business_category").aggregate(
 
 ```python
 
-# STEP 4: QUALITY ASSESSMENT FUNCTION
+# QUALITY ASSESSMENT FUNCTION
 # Evaluate document quality to filter out low-quality or problematic documents
 
 def assess_document_quality(batch: pd.DataFrame) -> pd.DataFrame:
@@ -470,7 +466,7 @@ quality_assessed_docs = documents_with_metadata.map_batches(
 
 ```python
 
-# STEP 5: TEXT CHUNKING FUNCTION
+# TEXT CHUNKING FUNCTION
 # Split long documents into smaller chunks for downstream processing
 # Why chunk? Many applications (LLMs, vector databases) have size limits
 
@@ -582,7 +578,7 @@ chunked_documents = quality_assessed_docs.flat_map(
 
 ```python
 
-# STEP 6: DATA WAREHOUSE SCHEMA TRANSFORMATION
+# DATA WAREHOUSE SCHEMA TRANSFORMATION
 # Transform the raw processing data into a clean warehouse schema
 # This is the "ETL" part - Extract (done), Transform (now), Load (next)
 
@@ -660,7 +656,7 @@ warehouse_dataset = (
 
 ```python
 
-# STEP 7: WRITE TO DATA WAREHOUSE - MAIN TABLE
+# WRITE TO DATA WAREHOUSE - MAIN TABLE
 # Save all processed chunks to Parquet format with partitioning
 # This is the "Load" part of ETL
 
@@ -716,7 +712,7 @@ print("Main warehouse table written successfully")
 ```python
 
 
-# STEP 8: CREATE BUSINESS-SPECIFIC DATASETS
+# CREATE BUSINESS-SPECIFIC DATASETS
 # Create specialized datasets for specific business teams
 # Each team gets only the data they need with relevant columns
 
@@ -750,7 +746,7 @@ compliance_analytics.write_parquet(
 
 ```python
 
-# STEP 9: CREATE ANALYTICS SUMMARY TABLES
+# CREATE ANALYTICS SUMMARY TABLES
 # Pre-compute common aggregations for fast dashboard queries
 # Summary tables = faster analytics queries
 
@@ -832,7 +828,7 @@ After writing data to the warehouse, verify everything worked correctly. This se
 
 ```python
 
-# STEP 10: VERIFY DATA WAREHOUSE OUTPUT
+# VERIFY DATA WAREHOUSE OUTPUT
 # Always verify your data pipeline worked correctly
 # This is a critical production practice
 print("Verifying data warehouse integration...")
