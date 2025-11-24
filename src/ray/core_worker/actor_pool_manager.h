@@ -30,6 +30,7 @@
 #include "ray/core_worker/actor_pool_work_queue.h"
 #include "ray/core_worker/common.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "ray/util/time.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -145,8 +146,10 @@ class ActorPoolManager {
   ///
   /// \param actor_manager Reference to the ActorManager.
   /// \param task_submitter Reference to the ActorTaskSubmitter.
+  /// \param task_manager Reference to the TaskManager.
   ActorPoolManager(ActorManager &actor_manager,
-                   ActorTaskSubmitterInterface &task_submitter);
+                   ActorTaskSubmitterInterface &task_submitter,
+                   TaskManagerInterface &task_manager);
   
   ~ActorPoolManager() = default;
   
@@ -316,6 +319,9 @@ class ActorPoolManager {
   
   /// Reference to the actor task submitter.
   ActorTaskSubmitterInterface &task_submitter_;
+  
+  /// Reference to the task manager.
+  TaskManagerInterface &task_manager_;
   
   /// Mutex protecting all pool state.
   mutable absl::Mutex mu_;

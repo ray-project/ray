@@ -18,14 +18,20 @@
 #include <memory>
 
 #include "ray/core_worker/actor_manager.h"
+#include "ray/core_worker/task_manager_interface.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 namespace core {
 
 ActorPoolManager::ActorPoolManager(ActorManager &actor_manager,
-                                   ActorTaskSubmitterInterface &task_submitter)
-    : actor_manager_(actor_manager), task_submitter_(task_submitter) {}
+                                   ActorTaskSubmitterInterface &task_submitter,
+                                   TaskManagerInterface &task_manager)
+    : actor_manager_(actor_manager),
+      task_submitter_(task_submitter),
+      task_manager_(task_manager) {
+  RAY_LOG(INFO) << "ActorPoolManager initialized";
+}
 
 ActorPoolID ActorPoolManager::RegisterPool(const ActorPoolConfig &config,
                                            const std::vector<ActorID> &initial_actors) {
@@ -147,10 +153,55 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
     std::vector<std::unique_ptr<TaskArg>> args,
     const TaskOptions &task_options,
     const std::string &key) {
-  // TODO(Phase 1): Implement task submission
-  // This will be implemented in To-do #8
-  RAY_LOG(FATAL) << "SubmitTaskToPool not yet implemented";
-  return {};
+  absl::MutexLock lock(&mu_);
+  
+  auto pool_it = pools_.find(pool_id);
+  if (pool_it == pools_.end()) {
+    RAY_LOG(ERROR) << "Pool not found: " << pool_id;
+    return {};
+  }
+  
+  auto &pool_info = pool_it->second;
+  auto &work_queue = work_queues_[pool_id];
+  
+  // Extract argument object IDs for locality-aware scheduling
+  std::vector<ObjectID> arg_ids;
+  for (const auto &arg : args) {
+    if (arg->IsPassedByReference()) {
+      arg_ids.push_back(arg->GetReference().OwnedByAddress()
+                            ? arg->GetReference().ObjectID()
+                            : ObjectID::Nil());
+    }
+  }
+  
+  // Create work item
+  // Note: This will need proper JobID from WorkerContext when integrated with CoreWorker
+  TaskID work_item_id = TaskID::ForNormalTask(JobID(), TaskID(), 0);
+  PoolWorkItem work_item;
+  work_item.work_item_id = work_item_id;
+  work_item.function = function;
+  work_item.args = std::move(args);
+  work_item.options = task_options;
+  work_item.key = key;
+  work_item.attempt_number = 0;
+  work_item.enqueued_at_ms = current_time_ms();
+  
+  // Select actor from pool
+  ActorID selected_actor = SelectActorFromPool(pool_id, arg_ids);
+  
+  if (selected_actor.IsNil()) {
+    // No actors available, enqueue work
+    RAY_LOG(DEBUG) << "No actors available in pool " << pool_id
+                   << ", enqueueing work item " << work_item_id;
+    work_queue->Push(std::move(work_item));
+    return {};  // Return empty refs; work will be submitted when actor becomes available
+  }
+  
+  // Store work item for retry tracking before submission
+  auto work_item_copy = std::move(work_item);
+  
+  // Submit to selected actor
+  return SubmitToActor(pool_id, selected_actor, std::move(work_item_copy));
 }
 
 std::vector<ActorID> ActorPoolManager::GetPoolActors(const ActorPoolID &pool_id) const {
@@ -269,9 +320,35 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
     const ActorPoolID &pool_id,
     const ActorID &actor_id,
     PoolWorkItem work_item) {
-  // TODO(Phase 1): Implement submission to specific actor
-  // This will be implemented in To-do #8
-  RAY_LOG(FATAL) << "SubmitToActor not yet implemented";
+  auto pool_it = pools_.find(pool_id);
+  if (pool_it == pools_.end()) {
+    RAY_LOG(ERROR) << "Pool not found: " << pool_id;
+    return {};
+  }
+  
+  auto &pool_info = pool_it->second;
+  
+  // Update actor state
+  auto &actor_state = pool_info.actor_states[actor_id];
+  actor_state.num_tasks_in_flight++;
+  pool_info.total_tasks_submitted++;
+  
+  RAY_LOG(DEBUG) << "Submitting work item " << work_item.work_item_id 
+                 << " to actor " << actor_id << " in pool " << pool_id
+                 << " (attempt " << work_item.attempt_number << ")";
+  
+  // TODO(Phase 1, To-do #10): Full implementation requires CoreWorker integration
+  // Will need to:
+  // 1. Get actor handle from actor_manager_
+  // 2. Build TaskSpec with pool metadata (actor_pool_id, actor_pool_work_item_id)
+  // 3. Register task callback for failure handling
+  // 4. Submit via task_submitter_
+  // 5. Return object references
+  //
+  // Stub for now - this will be implemented when ActorPoolManager is integrated
+  // into CoreWorker (To-do #10)
+  
+  RAY_LOG(WARNING) << "SubmitToActor is a stub pending CoreWorker integration";
   return {};
 }
 
