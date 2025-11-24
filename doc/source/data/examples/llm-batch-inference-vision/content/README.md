@@ -381,6 +381,28 @@ processor_config = vLLMEngineProcessorConfig(
 )
 ```
 
+**Scale to larger models with model parallelism**  
+Model parallelism distributes large models across multiple GPUs when they don't fit on a single GPU. Use tensor parallelism to split model layers horizontally across multiple GPUs within a single node and use pipeline parallelism to split model layers vertically across multiple nodes, with each node processing different layers of the model.
+
+Forward model parallelism parameters to your inference engine using the `engine_kwargs` argument of your `vLLMEngineProcessorConfig` object. If your GPUs span multiple nodes, set `ray` as the distributed executor backend to enable cross-node parallelism:
+
+```python
+processor_config = vLLMEngineProcessorConfig(
+    model_source="meta-llama/Llama-3.2-90B-Vision-Instruct",
+    accelerator_type="H100",
+    engine_kwargs={
+        "tensor_parallel_size": 8,  # 8 GPUs per node
+        "pipeline_parallel_size": 2,  # Split across 2 nodes
+        "distributed_executor_backend": "ray", # Required to enable cross-node parallelism
+
+    },
+    concurrency=1,
+)
+# Each worker uses: 8 GPUs × 2 nodes = 16 GPUs total
+```
+
+Each inference worker allocates GPUs based on `tensor_parallel_size × pipeline_parallel_size`. For detailed guidance on parallelism strategies, see the [vLLM parallelism and scaling documentation](https://docs.vllm.ai/en/stable/serving/distributed_serving.html).
+
 **Monitor GPU utilization**  
 Use the Ray Dashboard to identify bottlenecks and adjust parameters.
 
