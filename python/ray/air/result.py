@@ -10,6 +10,7 @@ import pandas as pd
 import pyarrow
 
 import ray
+from ray._private.dict import unflattened_lookup
 from ray.air.constants import (
     EXPR_ERROR_PICKLE_FILE,
     EXPR_PROGRESS_FILE,
@@ -272,7 +273,9 @@ class Result:
 
         op = max if mode == "max" else min
         valid_checkpoints = [
-            ckpt_info for ckpt_info in self.best_checkpoints if metric in ckpt_info[1]
+            ckpt_info
+            for ckpt_info in self.best_checkpoints
+            if unflattened_lookup(metric, ckpt_info[1], default=None) is not None
         ]
 
         if not valid_checkpoints:
@@ -281,4 +284,4 @@ class Result:
                 f"You may choose from the following metrics: {self.metrics.keys()}."
             )
 
-        return op(valid_checkpoints, key=lambda x: x[1][metric])[0]
+        return op(valid_checkpoints, key=lambda x: unflattened_lookup(metric, x[1]))[0]
