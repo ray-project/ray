@@ -19,11 +19,11 @@ The examples assume the following imports unless stated otherwise:
 :language: python
 ```
 
-## Quick guide: choose between `async def` and `def`
+## How to choose between `async def` and `def`
 
 Use this decision table as a starting point:
 
-| Workload type | Recommended handler | Why |
+| Workload type | Recommended handler | Reason |
 | --- | --- | --- |
 | I/O-bound (databases, HTTP calls, queues) | `async def` | Lets the event loop handle many requests while each waits on I/O. |
 | CPU-bound (model inference, heavy numeric compute) | `def` or `async def` with offload | Async alone doesn't make CPU work faster. You need more replicas, threads, or native parallelism. |
@@ -47,7 +47,7 @@ Replica actor
        └─ Optional threadpool for sync methods
 ```
 
-Key ideas:
+The following are the key ideas to consider when deciding to use `async def` or `def`:
 
 - Serve uses asyncio event loops for routing and for running replicas.
 - By default, user code runs on a separate event loop from the replica's main/control loop, so blocking user code doesn't interfere with health checks and autoscaling.
