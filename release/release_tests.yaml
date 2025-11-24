@@ -4571,3 +4571,28 @@
       frequency: manual
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: ray_train_workloads  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: train
+  working_dir: //doc/source/ray-overview/examples/ray_train_workloads  # use // from repo root
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_ray_train_workloads.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses the default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir

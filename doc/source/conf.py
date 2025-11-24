@@ -232,6 +232,7 @@ exclude_patterns = [
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
     "ray-overview/examples/**/README.md",  # Exclude .md files in examples subfolders
+    "ray-overview/examples/ray_train_workloads/content/workload-patterns/README.ipynb",
     "train/examples/**/README.md",
     "serve/tutorials/deployment-serve-llm/README.*",
     "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",

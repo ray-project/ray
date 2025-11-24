@@ -35,10 +35,14 @@ breakpoint
 BTS
 bursty
 chatbot
+[Cc]heckpointed
+[Cc]heckpointing
 CLI
-configs
+[cC]onfig(s)?
 CPU(s)?
 CRD(s)?
+[dD]ata[fF]rame
+DDP
 DeepSpeed
 deserialization
 deserialization
@@ -56,6 +60,7 @@ ETDataset
 eval
 Flink
 g[Rr][Pp][Cc]
+[Gg]rayscale
 GGUF
 GKE
 GPTQ
@@ -69,6 +74,8 @@ KTO
 kubectl
 Kubernetes
 Kueue
+lakehouse(s)?
+LGBM
 LLMServer
 LMs
 LSH
@@ -77,16 +84,20 @@ Megatron
 Mixtral
 MLflow
 MLOps
+MNIST
 namespace
 NER
+NLP
 Nsight
 NumPy
 NVIDIA
 NVLink
+NVMe
 OOM
 open-source
 PACK
 pipelining
+PIL
 Podman
 preemptible
 pretraining
@@ -96,6 +107,7 @@ QPS
 Quantizing
 Quickstarts
 Qwen
+Reimplement
 retrigger
 RISECamp
 RLHF
@@ -112,6 +124,7 @@ streamable
 subprocess
 teardown
 tiktoken
+TPU(s)?
 uncaptured
 URI(s)?
 UUID
@@ -121,3 +134,4 @@ verl
 VM(s)?
 VPC(s)?
 VS Code
+XGB
