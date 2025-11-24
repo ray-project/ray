@@ -505,6 +505,30 @@ def test_write_batch_with_retry_exhausts_retries_and_raises(monkeypatch):
     assert len(sleep_calls) == 4
 
 
+def test_write_batch_with_retry_uses_configurable_distance_metric(monkeypatch):
+    # Users can override the distance metric from the default \"cosine_distance\".
+    sink = make_sink(schema={\"field\": \"value\"}, distance_metric=\"euclidean_squared\")
+    namespace = MagicMock()
+    batch_data = [{\"id\": 1}]
+
+    # Make sleep and randomness deterministic/no-op in case of unexpected retries.
+    monkeypatch.setattr(
+        \"ray.data._internal.datasource.turbopuffer_datasink.time.sleep\", lambda _: None
+    )
+    monkeypatch.setattr(
+        \"ray.data._internal.datasource.turbopuffer_datasink.random.uniform\",
+        lambda a, b: 0.0,
+    )
+
+    sink._write_batch_with_retry(namespace, batch_data, \"ns\")
+
+    namespace.write.assert_called_once_with(
+        upsert_rows=batch_data,
+        schema={\"field\": \"value\"},
+        distance_metric=\"euclidean_squared\",
+    )
+
+
 ### 8. Top-level write orchestration
 
 
