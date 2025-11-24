@@ -255,6 +255,73 @@ def test_write_multi_namespace_raises_on_null_namespace_values():
         sink._write_multi_namespace(client, table)
 
 
+def test_write_multi_namespace_uses_renamed_id_column_for_namespace_grouping():
+    # When the namespace column is also the custom id column, _prepare_arrow_table
+    # renames it to "id". The multi-namespace logic should then group by the
+    # renamed "id" column instead of the original name.
+    table = pa.table(
+        {
+            "space_id": ["a", "b", "a"],
+            "emb": [[1.0], [2.0], [3.0]],
+        }
+    )
+    sink = make_sink(
+        namespace=None,
+        namespace_column="space_id",
+        namespace_format="ns-{namespace}",
+        id_column="space_id",
+        vector_column="emb",
+    )
+    client = MagicMock()
+
+    with patch.object(sink, "_write_single_namespace") as mock_write_single:
+        prepared = sink._prepare_arrow_table(table)
+        sink._write_multi_namespace(client, prepared)
+
+    assert mock_write_single.call_count == 2
+
+    seen_namespaces = set()
+    rows_per_namespace = {}
+
+    for call in mock_write_single.call_args_list:
+        client_arg, group_table, ns_name = call.args
+        assert client_arg is client
+        seen_namespaces.add(ns_name)
+        rows_per_namespace[ns_name] = group_table.num_rows
+
+    assert seen_namespaces == {"ns-a", "ns-b"}
+    # space_id == "a" appears twice, "b" once.
+    assert rows_per_namespace["ns-a"] == 2
+    assert rows_per_namespace["ns-b"] == 1
+
+
+def test_write_multi_namespace_uses_renamed_vector_column_for_namespace_grouping():
+    # When the namespace column is also the custom vector column, _prepare_arrow_table
+    # renames it to "vector". The multi-namespace logic should then group by the
+    # renamed "vector" column instead of the original name.
+    # Use scalar floats instead of list vectors because pyarrow.compute.unique
+    # does not support list-typed arrays. This still exercises the renaming
+    # logic in _prepare_arrow_table.
+    table = pa.table({"id": [1, 2, 3], "emb": [1.0, 2.0, 1.0]})
+    sink = make_sink(
+        namespace=None,
+        namespace_column="emb",
+        namespace_format="ns-{namespace}",
+        vector_column="emb",
+    )
+    client = MagicMock()
+
+    with patch.object(sink, "_write_single_namespace") as mock_write_single:
+        prepared = sink._prepare_arrow_table(table)
+        sink._write_multi_namespace(client, prepared)
+
+    assert mock_write_single.call_count == 2
+
+    seen_namespaces = {call.args[2] for call in mock_write_single.call_args_list}
+    expected = {"ns-1.0", "ns-2.0"}
+    assert seen_namespaces == expected
+
+
 ### 5. Single-namespace batching and write flow
 
 
