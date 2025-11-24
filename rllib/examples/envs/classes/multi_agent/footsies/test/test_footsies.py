@@ -132,7 +132,7 @@ class TestFootsies(unittest.TestCase):
             assert Path(log_path).exists(), "Log file should exist"
             content = Path(log_path).read_text()
             assert "[UnityMemory]" in content
-            del env
+            env.close()
         finally:
             if Path(log_path).exists():
                 # Delete log file
