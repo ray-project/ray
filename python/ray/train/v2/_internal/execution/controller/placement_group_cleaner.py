@@ -114,8 +114,12 @@ class PlacementGroupCleaner:
 
         self._monitor_thread = None
 
-        if not self._stopped:
-            self._exit()
+        if self._stopped:
+            # Stop was requested; clear the flag so future monitoring can start.
+            self._stopped = False
+            return
+
+        self._exit()
 
     def _stop_monitor_thread(self):
         """Stop the monitor thread and wait for it to exit.
