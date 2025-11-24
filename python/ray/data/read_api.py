@@ -2394,7 +2394,17 @@ def read_mcap(
                 "Time range must be a tuple of (start_time, end_time): got "
                 f"{time_range}"
             )
-        time_range = TimeRange(start_time=time_range[0], end_time=time_range[1])
+        start_time, end_time = time_range[0], time_range[1]
+        # Validate types before creating TimeRange
+        if not isinstance(start_time, (int, float)) or not isinstance(end_time, (int, float)):
+            raise TypeError(
+                f"Time range values must be numeric, got start_time={type(start_time)}, "
+                f"end_time={type(end_time)}"
+            )
+        try:
+            time_range = TimeRange(start_time=int(start_time), end_time=int(end_time))
+        except ValueError as e:
+            raise ValueError(f"Invalid time range: {e}") from e
 
     datasource = MCAPDatasource(
         paths,
