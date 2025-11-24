@@ -85,7 +85,7 @@ class _DatetimeNamespace:
 
     def ceil(self, unit: TemporalUnit) -> "UDFExpr":
         """Ceil timestamps to the next multiple of the given unit."""
-        return_dtype = DataType.temporal()
+        return_dtype = self._expr.data_type
 
         @pyarrow_udf(return_dtype=return_dtype)
         def _ceil(arr: pyarrow.Array) -> pyarrow.Array:
@@ -95,7 +95,7 @@ class _DatetimeNamespace:
 
     def floor(self, unit: TemporalUnit) -> "UDFExpr":
         """Floor timestamps to the previous multiple of the given unit."""
-        return_dtype = DataType.temporal()
+        return_dtype = self._expr.data_type
 
         @pyarrow_udf(return_dtype=return_dtype)
         def _floor(arr: pyarrow.Array) -> pyarrow.Array:
@@ -105,7 +105,7 @@ class _DatetimeNamespace:
 
     def round(self, unit: TemporalUnit) -> "UDFExpr":
         """Round timestamps to the nearest multiple of the given unit."""
-        return_dtype = DataType.temporal()
+        return_dtype = self._expr.data_type
 
         @pyarrow_udf(return_dtype=return_dtype)
         def _round(arr: pyarrow.Array) -> pyarrow.Array:
