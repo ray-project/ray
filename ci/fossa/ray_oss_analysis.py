@@ -6,13 +6,14 @@ import logging
 import re
 import subprocess
 from typing import Dict, List, Optional, Set, Tuple
+import glob
 
 import yaml
 
 logger = logging.getLogger("ray_oss_analysis")
 
 
-def setup_logger(log_file: Optional[str] = None, enable_debug: bool = False):
+def _setup_logger(log_file: Optional[str] = None, enable_debug: bool = False):
     # you can either use default console logger or enable additional file logger if needed by passing the log_file.
     # setting the log level to debug if enable_debug is true
     logger.setLevel(logging.DEBUG if enable_debug else logging.INFO)
@@ -121,16 +122,6 @@ def copy_licenses(package_names):
             shell=True,
         )
 
-def askalono_crawl(dependency):
-    license_text = subprocess.run(
-        f"askalono crawl {bazel_output_base}/external/{dependency}",
-        capture_output=True,
-        text=True,
-        shell=True,
-    ).stdout.strip()
-    return license_text
-
-
 def _askalono_crawl(path: str) -> str:
     license_text = subprocess.run(
         ["askalono", "--format=json","crawl", path],
@@ -144,17 +135,33 @@ def _askalono_crawl(path: str) -> str:
         logger.warning(f"License Crawl failed for {error_license['path']}: {error_license['error']}")
     return cleaned_licenses
 
+def _expand_and_crawl(path: str, patterns: List[str] = None) -> List[Dict]:
+    """Expand glob patterns and crawl matching files"""
+    if patterns is None:
+        patterns = ["**LICENSE*", "**COPYING*", "**NOTICE*"]
+    
+    all_licenses = []
+    for pattern in patterns:
+        full_pattern = os.path.join(path, pattern)
+        matching_paths = glob.glob(full_pattern, recursive=True)
+        logger.debug(f"Pattern {full_pattern} matched {len(matching_paths)} files")
+        for matched_path in matching_paths:
+            licenses = _askalono_crawl(matched_path)
+            all_licenses.extend(licenses)
+    
+    if not all_licenses:
+        logger.debug(f"No license files found in {path} matching patterns: {patterns}")
+    
+    return all_licenses
+
 def get_askalono_results(dependencies: List[str]) -> List[Dict]:
     license_info = []
     for dependency in dependencies:
         dependency_path = f"{bazel_output_base}/external/{dependency}"
         license_json = _askalono_crawl(dependency_path)
         if not license_json:
-            logger.warning(f"No license text found for {dependency}, trying to crawl licenses")
-            license_json = _askalono_crawl(dependency_path + "/**LICENSE*")
-        if not license_json:
-            logger.warning(f"No license text found for {dependency}, trying to crawl copying")
-            license_json = _askalono_crawl(dependency_path + "/**COPYING**")
+            logger.warning(f"No license text found for {dependency}, trying to crawl licenses and copying files manually")
+            license_json = _expand_and_crawl(dependency_path)
         if not license_json:
             logger.warning(f"No license text found for {dependency}")
             license_info.append(
@@ -186,7 +193,7 @@ def generate_fossa_deps_file(askalono_results: List[Dict]) -> Dict:
         logger.debug("generating fossa deps file: result: %s", result)
         dep = result["dependency"]
         license_name = result["license"]
-        license_file_path = result.get("licenseFilePath", "N/A")
+        license_file_path = result.get("path", "N/A")
         
         if dep not in dependency_data:
             dependency_data[dep] = {"licenses": set(), "file_licenses": []}
@@ -228,7 +235,7 @@ def generate_fossa_deps_file(askalono_results: List[Dict]) -> Dict:
     return fossa_deps_file
 
 def change_working_directory():
-    # change working directory to the workspace in case being executed from bazel
+    # change working directory to the workspace in case being executed as bazel py_binary
     workspace = os.environ.get("BUILD_WORKING_DIRECTORY")
     if workspace:
         os.chdir(workspace)
@@ -271,7 +278,7 @@ Examples:
 
     change_working_directory()
 
-    setup_logger(args.log_file, args.verbose)
+    _setup_logger(args.log_file, args.verbose)
     bazel_command = args.bazel_cmd
     bazel_output_base = subprocess.run(
         f"{bazel_command} info output_base", shell=True, capture_output=True, text=True
@@ -280,6 +287,7 @@ Examples:
     bazel_dependencies, package_names = get_bazel_dependencies(args.package)
 
     logger.info(f"Found {len(bazel_dependencies)} dependencies")
+    logger.info(f"Found {len(package_names)} package names")
     logger.debug("Bazel Dependencies:")
     for dependency in bazel_dependencies:
         logger.debug(f"Dependency: {dependency}")
