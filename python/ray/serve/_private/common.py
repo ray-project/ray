@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from starlette.types import Scope
 
@@ -124,8 +124,9 @@ class EndpointInfo:
         app_is_cross_language: Whether the deployment uses a different language
             than the proxy (e.g., Java deployment with Python proxy). This affects
             how the proxy serializes/deserializes requests.
-        route_patterns: List of all ASGI route patterns for this deployment
-            (e.g., ["/", "/users/{user_id}", "/items/{item_id}/details"]).
+        route_patterns: List of (methods, path) tuples for ASGI route patterns.
+            methods is None for routes without method restrictions, or a list of HTTP methods.
+            Examples: [(["GET", "POST"], "/"), (["PUT"], "/users/{id}"), (None, "/websocket")]
             Used by proxies to match incoming requests to specific route patterns
             for accurate metrics tagging. This avoids high cardinality by using
             parameterized patterns instead of individual request paths.
@@ -134,7 +135,7 @@ class EndpointInfo:
 
     route: str
     app_is_cross_language: bool = False
-    route_patterns: Optional[List[str]] = None
+    route_patterns: Optional[List[Tuple[Optional[List[str]], str]]] = None
 
 
 # Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts

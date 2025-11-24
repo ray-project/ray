@@ -829,9 +829,9 @@ class TestProxyRouterMatchRoutePattern:
                 DeploymentID("api", "default"): EndpointInfo(
                     route="/api",
                     route_patterns=[
-                        "/api/",
-                        "/api/users/{user_id}",
-                        "/api/items/{item_id}/details",
+                        (None, "/api/"),
+                        (None, "/api/users/{user_id}"),
+                        (None, "/api/items/{item_id}/details"),
                     ],
                 )
             }
@@ -859,7 +859,7 @@ class TestProxyRouterMatchRoutePattern:
             {
                 DeploymentID("api", "default"): EndpointInfo(
                     route="/api",
-                    route_patterns=["/api/users/{user_id}"],
+                    route_patterns=[(None, "/api/users/{user_id}")],
                 )
             }
         )
@@ -885,7 +885,7 @@ class TestProxyRouterMatchRoutePattern:
             {
                 DeploymentID("api", "default"): EndpointInfo(
                     route="/api",
-                    route_patterns=["/api/users/{user_id}"],
+                    route_patterns=[(None, "/api/users/{user_id}")],
                 )
             }
         )
@@ -899,7 +899,7 @@ class TestProxyRouterMatchRoutePattern:
             {
                 DeploymentID("api", "default"): EndpointInfo(
                     route="/api",
-                    route_patterns=["/api/items/{item_id}"],
+                    route_patterns=[(None, "/api/items/{item_id}")],
                 )
             }
         )
@@ -927,7 +927,7 @@ class TestProxyRouterMatchRoutePattern:
             {
                 DeploymentID("api", "default"): EndpointInfo(
                     route="/api",
-                    route_patterns=["/api/users/{user_id}"],
+                    route_patterns=[(None, "/api/users/{user_id}")],
                 )
             }
         )
