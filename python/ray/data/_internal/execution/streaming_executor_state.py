@@ -19,9 +19,6 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
-from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-    QueuedOpMetrics,
-)
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
@@ -312,9 +309,7 @@ class OpState:
         # Internal queue size is now tracked by metrics
 
         internal_queue_size = (
-            self.op.metrics.obj_store_mem_internal_inqueue_blocks
-            if isinstance(self.op.metrics, QueuedOpMetrics)
-            else 0
+            self.op.metrics.get_object_store_usage_details().internal_inqueue_num_blocks
         )
         return external_queue_size + internal_queue_size
 
@@ -327,9 +322,7 @@ class OpState:
         2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
         """
         internal_queue_size_bytes = (
-            self.op.metrics.obj_store_mem_internal_inqueue
-            if isinstance(self.op.metrics, QueuedOpMetrics)
-            else 0
+            self.op.metrics.get_object_store_usage_details().internal_inqueue_memory
         )
         return self.input_queue_bytes() + internal_queue_size_bytes
 
@@ -345,10 +338,10 @@ class OpState:
         self.op_display_metrics.actors = self.op.get_actor_info().running
 
         self.op_display_metrics.task_backpressured = (
-            self.op.metrics.in_task_submission_backpressure()
+            self.op.in_task_submission_backpressure()
         )
         self.op_display_metrics.output_backpressured = (
-            self.op.metrics.in_task_output_backpressure()
+            self.op.in_task_output_backpressure()
         )
 
         self.op_display_metrics.extra_info = self.op.progress_str()
@@ -396,14 +389,14 @@ class OpState:
         active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: Tasks: {active}"
         if (
-            self.op.metrics.in_task_submission_backpressure()
-            or self.op.metrics.in_task_output_backpressure()
+            self.op.in_task_submission_backpressure()
+            or self.op.in_task_output_backpressure()
         ):
             backpressure_types = []
-            if self.op.metrics.in_task_submission_backpressure():
+            if self.op.in_task_submission_backpressure():
                 # The op is backpressured from submitting new tasks.
                 backpressure_types.append("tasks")
-            if self.op.metrics.in_task_output_backpressure():
+            if self.op.in_task_output_backpressure():
                 # The op is backpressured from producing new outputs.
                 backpressure_types.append("outputs")
             desc += f" [backpressured:{','.join(backpressure_types)}]"
@@ -559,7 +552,7 @@ def process_completed_tasks(
 
         # If no policy provides a limit, there's no limit
         # Notify task output backpressure (no-op if not TaskOpMetrics)
-        op.metrics.notify_in_task_output_backpressure(max_bytes_to_read == 0)
+        op.notify_in_task_output_backpressure(max_bytes_to_read == 0)
         if max_bytes_to_read is not None:
             max_bytes_to_read_per_op[state] = max_bytes_to_read
 
@@ -727,7 +720,7 @@ def get_eligible_operators(
         # Signal whether op in backpressure for stats collections
         # TODO(hchen): also report which policy triggers backpressure.
         # Notify task submission backpressure (no-op if not TaskOpMetrics)
-        op.metrics.notify_in_task_submission_backpressure(in_backpressure)
+        op.notify_in_task_submission_backpressure(in_backpressure)
 
     # To ensure liveness, allow at least 1 operator to schedule tasks regardless of
     # limits in case when topology is entirely idle (no active tasks running)

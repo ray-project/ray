@@ -2,7 +2,6 @@ import abc
 import copy
 from typing import Any, Dict, Optional
 
-from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskOpMetrics
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.interfaces import Rule
 from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
@@ -79,5 +78,4 @@ class ConfigureMapTaskMemoryUsingOutputSize(ConfigureMapTaskMemoryRule):
         # "memory" resource is exclusive of the Object Store memory allocated on the
         # node (i.e., its total allocatable value is Total memory - Object Store
         # memory).
-        assert isinstance(op.metrics, TaskOpMetrics)
         return op.metrics.average_bytes_per_output

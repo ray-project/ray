@@ -284,14 +284,6 @@ class ActorPoolMapOperator(MapOperator):
                 # Actor has already been killed.
                 return
 
-            # Update actor metrics after actor becomes running
-            # Query actor info and update metrics
-            actor_info = self.get_actor_info()
-            if actor_info is not None:
-                self._metrics.num_alive_actors = actor_info.running
-                self._metrics.num_pending_actors = actor_info.pending
-                self._metrics.num_restarting_actors = actor_info.restarting
-
             # A new actor has started, we try to dispatch queued tasks.
             self._dispatch_tasks()
 

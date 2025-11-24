@@ -3,13 +3,15 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List
 
-from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+from ray.data._internal.execution.bundle_queue import create_bundle_queue
+from ray.data._internal.execution.interfaces.op_runtime_metrics.common import (
     _METRICS,
     MetricDefinition,
     MetricsGroup,
     NodeMetrics,
-    ObjectStoreUsageDetails,
+    ObjectStoreUsageBreakdown,
     OpRuntimesMetricsMeta,
+    TaskMetrics,
     metric_field,
     metric_property,
 )
@@ -23,14 +25,18 @@ if TYPE_CHECKING:
 class BaseOpMetrics(metaclass=OpRuntimesMetricsMeta):
     """Base runtime metrics for operators.
 
-    Contains INPUTS, OUTPUTS, MISC, and basic RESOURCE_USAGE (cpu/gpu) metrics.
-    Used by operators that don't have internal queues or tasks.
+    Contains all common metrics: INPUTS, OUTPUTS, PENDING_INPUTS, PENDING_OUTPUTS,
+    MISC, and basic RESOURCE_USAGE (cpu/gpu) metrics.
 
-    Examples: InputDataBuffer, AggregateNumRows
+    All operators use this class or TaskOpMetrics (which extends it).
 
     Available callbacks:
     - on_input_received(): Tracks input blocks received
     - on_output_taken(): Tracks output blocks taken by downstream operators
+    - on_input_queued(): Tracks blocks added to internal input queue
+    - on_input_dequeued(): Tracks blocks removed from internal input queue
+    - on_output_queued(): Tracks blocks added to internal output queue
+    - on_output_dequeued(): Tracks blocks removed from internal output queue
     """
 
     # === Inputs-related metrics ===
@@ -95,6 +101,56 @@ class BaseOpMetrics(metaclass=OpRuntimesMetricsMeta):
 
     # === Miscellaneous metrics ===
 
+    issue_detector_hanging: int = metric_field(
+        default=0,
+        description="Indicates if the operator is hanging.",
+        metrics_group=MetricsGroup.MISC,
+        internal_only=True,
+    )
+    issue_detector_high_memory: int = metric_field(
+        default=0,
+        description="Indicates if the operator is using high memory.",
+        metrics_group=MetricsGroup.MISC,
+        internal_only=True,
+    )
+
+    # === External queue metrics (all operators have external queues) ===
+
+    num_external_inqueue_blocks: int = metric_field(
+        default=0,
+        description="Number of blocks in the external inqueue",
+        metrics_group=MetricsGroup.PENDING_INPUTS,
+    )
+    num_external_inqueue_bytes: int = metric_field(
+        default=0,
+        description="Byte size of blocks in the external inqueue",
+        metrics_group=MetricsGroup.PENDING_INPUTS,
+    )
+    num_external_outqueue_blocks: int = metric_field(
+        default=0,
+        description="Number of blocks in the external outqueue",
+        metrics_group=MetricsGroup.PENDING_OUTPUTS,
+    )
+    num_external_outqueue_bytes: int = metric_field(
+        default=0,
+        description="Byte size of blocks in the external outqueue",
+        metrics_group=MetricsGroup.PENDING_OUTPUTS,
+    )
+
+    # === Internal queue metrics (for operators with internal queues) ===
+
+    obj_store_mem_internal_inqueue_blocks: int = metric_field(
+        default=0,
+        description="Number of blocks in operator's internal input queue.",
+        metrics_group=MetricsGroup.PENDING_INPUTS,
+    )
+
+    obj_store_mem_internal_outqueue_blocks: int = metric_field(
+        default=0,
+        description="Number of blocks in the operator's internal output queue.",
+        metrics_group=MetricsGroup.PENDING_OUTPUTS,
+    )
+
     def __init__(self, data_context: "DataContext"):
         """Initialize BaseOpMetrics.
 
@@ -103,8 +159,10 @@ class BaseOpMetrics(metaclass=OpRuntimesMetricsMeta):
         """
         self._data_context = data_context
         self._extra_metrics: Dict[str, Any] = {}
-        self._issue_detector_hanging = 0
-        self._issue_detector_high_memory = 0
+        # Internal queues for operators that need them
+        # Will remain empty/unused for simple operators like InputDataBuffer
+        self._internal_inqueue = create_bundle_queue()
+        self._internal_outqueue = create_bundle_queue()
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -143,48 +201,55 @@ class BaseOpMetrics(metaclass=OpRuntimesMetricsMeta):
         result.extend(self._extra_metrics.items())
         return dict(result)
 
-    # === Miscellaneous metric properties ===
+    def on_input_queued(self, input: "RefBundle"):
+        """Callback when the operator queues an input to its internal queue."""
+        self.obj_store_mem_internal_inqueue_blocks += len(input.blocks)
+        self._internal_inqueue.add(input)
+
+    def on_input_dequeued(self, input: "RefBundle"):
+        """Callback when the operator dequeues an input from its internal queue."""
+        self.obj_store_mem_internal_inqueue_blocks -= len(input.blocks)
+        input_size = input.size_bytes()
+        self._internal_inqueue.remove(input)
+        assert self.obj_store_mem_internal_inqueue >= 0, (
+            self.obj_store_mem_internal_inqueue,
+            input_size,
+        )
+
+    def on_output_queued(self, output: "RefBundle"):
+        """Callback when an output is queued to the operator's internal queue."""
+        self.obj_store_mem_internal_outqueue_blocks += len(output.blocks)
+        self._internal_outqueue.add(output)
+
+    def on_output_dequeued(self, output: "RefBundle"):
+        """Callback when an output is dequeued from the operator's internal queue."""
+        self.obj_store_mem_internal_outqueue_blocks -= len(output.blocks)
+        output_size = output.size_bytes()
+        self._internal_outqueue.remove(output)
+        assert self.obj_store_mem_internal_outqueue >= 0, (
+            self.obj_store_mem_internal_outqueue,
+            output_size,
+        )
+
+    # === Internal queue metric properties ===
 
     @metric_property(
-        description="Indicates if the operator is hanging.",
-        metrics_group=MetricsGroup.MISC,
-        internal_only=True,
+        description="Byte size of input blocks in the operator's internal input queue.",
+        metrics_group=MetricsGroup.PENDING_INPUTS,
     )
-    def issue_detector_hanging(self) -> int:
-        return self._issue_detector_hanging
+    def obj_store_mem_internal_inqueue(self) -> int:
+        return self._internal_inqueue.estimate_size_bytes()
 
     @metric_property(
-        description="Indicates if the operator is using high memory.",
-        metrics_group=MetricsGroup.MISC,
-        internal_only=True,
-    )
-    def issue_detector_high_memory(self) -> int:
-        return self._issue_detector_high_memory
-
-    # === External queue metrics (all operators have external queues) ===
-
-    num_external_inqueue_blocks: int = metric_field(
-        default=0,
-        description="Number of blocks in the external inqueue",
-        metrics_group=MetricsGroup.PENDING_INPUTS,
-    )
-    num_external_inqueue_bytes: int = metric_field(
-        default=0,
-        description="Byte size of blocks in the external inqueue",
-        metrics_group=MetricsGroup.PENDING_INPUTS,
-    )
-    num_external_outqueue_blocks: int = metric_field(
-        default=0,
-        description="Number of blocks in the external outqueue",
+        description=(
+            "Byte size of output blocks in the operator's internal output queue."
+        ),
         metrics_group=MetricsGroup.PENDING_OUTPUTS,
     )
-    num_external_outqueue_bytes: int = metric_field(
-        default=0,
-        description="Byte size of blocks in the external outqueue",
-        metrics_group=MetricsGroup.PENDING_OUTPUTS,
-    )
+    def obj_store_mem_internal_outqueue(self) -> int:
+        return self._internal_outqueue.estimate_size_bytes()
 
-    # === Callbacks (only those that BaseOpMetrics actually implements) ===
+    # === Callbacks ===
 
     def on_input_received(self, input: "RefBundle"):
         """Callback when the operator receives a new input."""
@@ -264,22 +329,21 @@ class BaseOpMetrics(metaclass=OpRuntimesMetricsMeta):
         self.gpu_usage = gpu
         self.obj_store_mem_used = object_store_memory
 
-    def get_object_store_usage_details(self) -> ObjectStoreUsageDetails:
+    def get_object_store_usage_details(self) -> ObjectStoreUsageBreakdown:
         """Get object store memory usage details for this operator.
 
         Returns a dataclass containing breakdown of object store memory usage
         by buffer type (internal queues, pending tasks, etc.). Used by the
         resource manager for memory tracking.
 
-        Base implementation returns zeros since BaseOpMetrics doesn't track
-        queues or tasks.
-
         Returns:
-            ObjectStoreUsageDetails with all memory values set to 0 or None.
+            ObjectStoreUsageBreakdown with internal queue memory populated.
         """
-        return ObjectStoreUsageDetails(
-            internal_outqueue_memory=0,
-            internal_inqueue_memory=0,
+        return ObjectStoreUsageBreakdown(
+            internal_outqueue_memory=self.obj_store_mem_internal_outqueue,
+            internal_inqueue_memory=self.obj_store_mem_internal_inqueue,
+            internal_outqueue_num_blocks=self.obj_store_mem_internal_outqueue_blocks,
+            internal_inqueue_num_blocks=self.obj_store_mem_internal_inqueue_blocks,
             pending_task_outputs_memory=None,
             pending_task_inputs_memory=0,
         )
@@ -290,42 +354,12 @@ class BaseOpMetrics(metaclass=OpRuntimesMetricsMeta):
         Returns a dictionary mapping node IDs to NodeMetrics objects containing
         per-node execution statistics (tasks run, blocks processed, etc.).
 
-        Base implementation returns an empty dict since BaseOpMetrics doesn't
-        track per-node statistics. Only TaskOpMetrics and its subclasses track
-        per-node metrics.
-
         Returns:
             Dict mapping node IDs to NodeMetrics, or empty dict if not tracked.
         """
         return {}
 
-    def in_task_submission_backpressure(self) -> bool:
-        """Check if the operator is currently in task submission backpressure.
-
-        Task submission backpressure occurs when the operator is prevented from
-        submitting new tasks due to resource constraints or policy limits.
-
-        Returns:
-            True if in task submission backpressure, False otherwise.
-        """
-        return False
-
-    def in_task_output_backpressure(self) -> bool:
-        """Check if the operator is currently in task output backpressure.
-
-        Task output backpressure occurs when the operator has too many pending
-        task outputs that haven't been consumed, indicating downstream consumers
-        are slow or blocked.
-
-        Returns:
-            True if in task output backpressure, False otherwise.
-        """
-        return False
-
-    def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
-        """Called from executor to update task submission backpressure. No-op in base class."""
-        pass
-
-    def notify_in_task_output_backpressure(self, in_backpressure: bool) -> None:
-        """Called from executor to update task output backpressure. No-op in base class."""
-        pass
+    def task_metrics(self) -> TaskMetrics:
+        """Returns the task stats for this operator.
+        Used in issue detection to check if the operator is stuck."""
+        return TaskMetrics()

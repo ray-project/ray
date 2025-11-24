@@ -17,13 +17,14 @@ from ray.data._internal.execution.interfaces.common import (
 )
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NODE_UNKNOWN,
+    BaseOpMetrics,
     MetricsGroup,
     MetricsType,
     NodeMetrics,
-    ObjectStoreUsageDetails,
-    QueuedOpMetrics,
+    ObjectStoreUsageBreakdown,
     RunningTaskInfo,
     TaskDurationStats,
+    TaskMetrics,
     metric_field,
     metric_property,
     node_id_from_block_metadata,
@@ -37,16 +38,16 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class TaskOpMetrics(QueuedOpMetrics):
+class TaskOpMetrics(BaseOpMetrics):
     """Metrics for operators that execute tasks (including actor pools).
 
-    Adds TASKS, ACTORS, and advanced RESOURCE_USAGE metrics to QueuedOpMetrics.
+    Adds TASKS, ACTORS, and advanced RESOURCE_USAGE metrics to BaseOpMetrics.
     Also adds task-specific INPUTS and OUTPUTS metrics.
     Used by operators that execute Ray tasks or actor pool tasks.
 
     Examples: TaskPoolMapOperator, ActorPoolMapOperator
 
-    Available callbacks (in addition to QueuedOpMetrics):
+    Available callbacks (in addition to BaseOpMetrics):
     - on_task_submitted(): Tracks when a task is submitted
     - on_task_output_generated(): Tracks when a task generates output blocks
     - on_task_finished(): Tracks when a task completes or fails (also updates actor state if op provided)
@@ -230,7 +231,7 @@ class TaskOpMetrics(QueuedOpMetrics):
             data_context: DataContext instance for accessing configuration settings.
         """
         super().__init__(data_context)
-        self._running_tasks: Dict[int, RunningTaskInfo] = {}
+        self.running_tasks: Dict[int, RunningTaskInfo] = {}
         self._pending_task_inputs = create_bundle_queue()
         self._op_task_duration_stats = TaskDurationStats()
         self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
@@ -445,7 +446,7 @@ class TaskOpMetrics(QueuedOpMetrics):
             return self._cum_max_uss_bytes / self.num_task_outputs_generated
 
     # === Callbacks (override to implement task tracking) ===
-    @override
+
     def on_task_submitted(self, task_index: int, inputs: "RefBundle"):
         """Callback when the operator submits a task."""
         self.num_tasks_submitted += 1
@@ -453,7 +454,7 @@ class TaskOpMetrics(QueuedOpMetrics):
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
         self.rows_inputs_of_submitted_tasks += inputs.num_rows() or 0
         self._pending_task_inputs.add(inputs)
-        self._running_tasks[task_index] = RunningTaskInfo(
+        self.running_tasks[task_index] = RunningTaskInfo(
             inputs=inputs,
             num_outputs=0,
             bytes_outputs=0,
@@ -462,7 +463,6 @@ class TaskOpMetrics(QueuedOpMetrics):
             cum_block_gen_time=0,
         )
 
-    @override
     def on_task_output_generated(self, task_index: int, output: "RefBundle"):
         """Callback when a new task generates an output."""
         num_outputs = len(output)
@@ -478,7 +478,7 @@ class TaskOpMetrics(QueuedOpMetrics):
             if block.num_rows is not None:
                 self.block_size_rows.observe(block.num_rows)
 
-        task_info = self._running_tasks[task_index]
+        task_info = self.running_tasks[task_index]
         if task_info.num_outputs == 0:
             self.num_tasks_have_outputs += 1
 
@@ -509,7 +509,6 @@ class TaskOpMetrics(QueuedOpMetrics):
                 node_metrics.bytes_outputs_of_finished_tasks += meta.size_bytes
                 node_metrics.blocks_outputs_of_finished_tasks += 1
 
-    @override
     def on_task_finished(
         self,
         task_index: int,
@@ -528,7 +527,7 @@ class TaskOpMetrics(QueuedOpMetrics):
         if exception is not None:
             self.num_tasks_failed += 1
 
-        task_info = self._running_tasks[task_index]
+        task_info = self.running_tasks[task_index]
 
         self.num_outputs_of_finished_tasks += task_info.num_outputs
         self.bytes_outputs_of_finished_tasks += task_info.bytes_outputs
@@ -550,7 +549,7 @@ class TaskOpMetrics(QueuedOpMetrics):
         self._op_task_duration_stats.add_duration(task_time_delta)
 
         self.task_completion_time_excl_backpressure_s += task_info.cum_block_gen_time
-        inputs = self._running_tasks[task_index].inputs
+        inputs = self.running_tasks[task_index].inputs
         self.num_task_inputs_processed += len(inputs)
         total_input_size = inputs.size_bytes()
         self.bytes_task_inputs_processed += total_input_size
@@ -585,7 +584,7 @@ class TaskOpMetrics(QueuedOpMetrics):
                 node_ids.add(node_id)
 
         inputs.destroy_if_owned()
-        del self._running_tasks[task_index]
+        del self.running_tasks[task_index]
 
         # Update actor pool state if actor_info is provided (ActorPoolMapOperator)
         if actor_info is not None:
@@ -593,8 +592,7 @@ class TaskOpMetrics(QueuedOpMetrics):
             self.num_pending_actors = actor_info.pending
             self.num_restarting_actors = actor_info.restarting
 
-    @override
-    def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
+    def on_toggle_task_submission_backpressure(self, in_backpressure: bool) -> None:
         """Called periodically from the executor to update internal in backpressure
         status for stats collection purposes.
 
@@ -613,8 +611,7 @@ class TaskOpMetrics(QueuedOpMetrics):
             )
             self._task_submission_backpressure_start_time = -1
 
-    @override
-    def notify_in_task_output_backpressure(self, in_backpressure: bool) -> None:
+    def on_toggle_task_output_backpressure(self, in_backpressure: bool) -> None:
         """Called periodically from the executor to update internal output backpressure
         status for stats collection purposes.
 
@@ -631,40 +628,23 @@ class TaskOpMetrics(QueuedOpMetrics):
             self._task_output_backpressure_start_time = -1
 
     @override
-    def in_task_submission_backpressure(self) -> bool:
-        return self._task_submission_backpressure_start_time != -1
-
-    @override
-    def in_task_output_backpressure(self) -> bool:
-        return self._task_output_backpressure_start_time != -1
-
-    @override
-    def get_object_store_usage_details(self) -> "ObjectStoreUsageDetails":
-        """Get object store memory usage details for this operator.
-
-        Returns queue memory + task memory usage. TaskOpMetrics tracks both
-        internal queues (from parent) and task-related memory.
-
-        Returns:
-            ObjectStoreUsageDetails with all memory values populated.
-        """
-
-        return ObjectStoreUsageDetails(
+    def get_object_store_usage_details(self) -> "ObjectStoreUsageBreakdown":
+        return ObjectStoreUsageBreakdown(
             internal_outqueue_memory=self.obj_store_mem_internal_outqueue,
             internal_inqueue_memory=self.obj_store_mem_internal_inqueue,
+            internal_outqueue_num_blocks=self.obj_store_mem_internal_outqueue_blocks,
+            internal_inqueue_num_blocks=self.obj_store_mem_internal_inqueue_blocks,
             pending_task_outputs_memory=self.obj_store_mem_pending_task_outputs,
             pending_task_inputs_memory=self.obj_store_mem_pending_task_inputs,
         )
 
     @override
     def get_per_node_metrics(self) -> Dict[str, NodeMetrics]:
-        """Get per-node metrics for this operator.
-
-        Returns a dictionary mapping node IDs to NodeMetrics objects containing
-        per-node execution statistics. Only populated if per-node metrics are
-        enabled in DataContext.
-
-        Returns:
-            Dict mapping node IDs to NodeMetrics with execution stats per node.
-        """
         return dict(self._per_node_metrics)
+
+    def task_metrics(self) -> TaskMetrics:
+        return TaskMetrics(
+            num_task_outputs_generated=self.num_task_outputs_generated,
+            average_max_uss_per_task=self.average_max_uss_per_task,
+            op_task_duration_stats=self._op_task_duration_stats,
+        )

@@ -247,16 +247,18 @@ class TestResourceManager:
             )
             op.extra_resource_usage = MagicMock(return_value=ExecutionResources.zero())
 
-            # Mock get_object_store_usage_details() to return ObjectStoreUsageDetails
+            # Mock get_object_store_usage_details() to return ObjectStoreUsageBreakdown
             from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-                ObjectStoreUsageDetails,
+                ObjectStoreUsageBreakdown,
             )
 
             op._metrics = MagicMock(
                 get_object_store_usage_details=MagicMock(
-                    return_value=ObjectStoreUsageDetails(
+                    return_value=ObjectStoreUsageBreakdown(
                         internal_outqueue_memory=mock_internal_outqueue[op],
                         internal_inqueue_memory=mock_internal_inqueue[op],
+                        internal_outqueue_num_blocks=1,
+                        internal_inqueue_num_blocks=1,
                         pending_task_outputs_memory=mock_pending_task_outputs[op],
                         pending_task_inputs_memory=mock_pending_task_inputs[op],
                     )

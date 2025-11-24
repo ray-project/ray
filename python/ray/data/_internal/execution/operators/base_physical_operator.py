@@ -7,7 +7,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.interfaces.op_runtime_metrics import QueuedOpMetrics
+from ray.data._internal.execution.interfaces.op_runtime_metrics import BaseOpMetrics
 from ray.data._internal.execution.interfaces.physical_operator import _create_sub_pb
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -118,8 +118,7 @@ class AllToAllOperator(
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
         super().__init__(name, [input_op], data_context, target_max_block_size_override)
-        # Initialize metrics directly for proper type inference
-        self._metrics = QueuedOpMetrics(data_context)
+        self._metrics = BaseOpMetrics(data_context)
 
     def num_outputs_total(self) -> Optional[int]:
         return (

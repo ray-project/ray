@@ -2,7 +2,6 @@ import textwrap
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List
 
-from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskOpMetrics
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.issue_detection.issue_detector import (
@@ -56,10 +55,8 @@ class HighMemoryIssueDetector(IssueDetector):
         issues = []
         for op in self._executor._topology.keys():
 
-            if not isinstance(op.metrics, TaskOpMetrics):
-                continue
-
-            if op.metrics.average_max_uss_per_task is None:
+            task_info = op.metrics.task_metrics()
+            if task_info.average_max_uss_per_task is None:
                 continue
 
             remote_args = op._get_dynamic_ray_remote_args()
@@ -67,12 +64,12 @@ class HighMemoryIssueDetector(IssueDetector):
             max_memory_per_task = self._MEMORY_PER_CORE_ESTIMATE * num_cpus_per_task
 
             if (
-                op.metrics.average_max_uss_per_task > self._initial_memory_requests[op]
-                and op.metrics.average_max_uss_per_task >= max_memory_per_task
+                task_info.average_max_uss_per_task > self._initial_memory_requests[op]
+                and task_info.average_max_uss_per_task >= max_memory_per_task
             ):
                 message = HIGH_MEMORY_PERIODIC_WARNING.format(
                     op_name=op.name,
-                    memory_per_task=memory_string(op.metrics.average_max_uss_per_task),
+                    memory_per_task=memory_string(task_info.average_max_uss_per_task),
                     initial_memory_request=memory_string(
                         self._initial_memory_requests[op]
                     ),

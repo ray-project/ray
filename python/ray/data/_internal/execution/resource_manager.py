@@ -10,7 +10,6 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
-from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskOpMetrics
 from ray.data._internal.execution.interfaces.physical_operator import (
     PhysicalOperator,
     ReportsExtraResourceUsage,
@@ -450,11 +449,9 @@ class OpResourceAllocator(ABC):
 
         def detect_idle(self, op: PhysicalOperator):
             cur_time = time.time()
-            if cur_time - self.last_detection_time[
-                op
-            ] > self.DETECTION_INTERVAL_S and isinstance(op.metrics, TaskOpMetrics):
-
-                cur_num_outputs = op.metrics.num_task_outputs_generated
+            if cur_time - self.last_detection_time[op] > self.DETECTION_INTERVAL_S:
+                task_info = op.metrics.task_metrics()
+                cur_num_outputs = task_info.num_task_outputs_generated
                 if cur_num_outputs > self.last_num_outputs[op]:
                     self.last_num_outputs[op] = cur_num_outputs
                     self.last_output_time[op] = cur_time

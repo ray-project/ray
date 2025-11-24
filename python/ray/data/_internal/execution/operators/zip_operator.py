@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
-from ray.data._internal.execution.interfaces.op_runtime_metrics import QueuedOpMetrics
+from ray.data._internal.execution.interfaces.op_runtime_metrics import BaseOpMetrics
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
     NAryOperator,
@@ -55,8 +55,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             data_context,
             *input_ops,
         )
-        # Initialize metrics directly for proper type inference
-        self._metrics = QueuedOpMetrics(data_context)
+        self._metrics = BaseOpMetrics(data_context)
 
     def num_outputs_total(self) -> Optional[int]:
         num_outputs = None

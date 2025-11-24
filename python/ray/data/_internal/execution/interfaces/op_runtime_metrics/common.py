@@ -3,13 +3,12 @@
 import math
 from dataclasses import Field, dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
+from ray.data._internal.execution.interfaces.op_runtime_metrics.base import (
+    TaskDurationStats,
+)
 from ray.data.block import BlockMetadata
-
-if TYPE_CHECKING:
-    pass
-
 
 # A metadata key used to mark a dataclass field as a metric.
 _IS_FIELD_METRIC_KEY = "__is_metric"
@@ -18,6 +17,7 @@ _METRIC_FIELD_DESCRIPTION_KEY = "__metric_description"
 _METRIC_FIELD_METRICS_GROUP_KEY = "__metric_metrics_group"
 _METRIC_FIELD_METRICS_TYPE_KEY = "__metric_metrics_type"
 _METRIC_FIELD_METRICS_ARGS_KEY = "__metric_metrics_args"
+_METRIC_FIELD_INTERNAL_ONLY_KEY = "__metric_internal_only"
 
 _METRICS: List["MetricDefinition"] = []
 
@@ -25,7 +25,16 @@ NODE_UNKNOWN = "unknown"
 
 
 @dataclass
-class ObjectStoreUsageDetails:
+class TaskMetrics:
+    """Task metrics for an operator."""
+
+    num_task_outputs_generated: int = 0
+    average_max_uss_per_task: float = 0.0
+    op_task_duration_stats: TaskDurationStats = TaskDurationStats()
+
+
+@dataclass
+class ObjectStoreUsageBreakdown:
     """Object store memory usage details for an operator.
 
     This dataclass encapsulates different types of object store memory usage
@@ -37,9 +46,10 @@ class ObjectStoreUsageDetails:
 
     # Internal output buffers (e.g., generator buffers, internal queues)
     internal_outqueue_memory: int = 0
-
+    internal_outqueue_num_blocks: int = 0
     # Internal input buffers (e.g., internal input queues)
     internal_inqueue_memory: int = 0
+    internal_inqueue_num_blocks: int = 0
 
     # Pending task outputs (e.g., in Ray generator buffers)
     pending_task_outputs_memory: Optional[int] = None
@@ -110,6 +120,7 @@ def metric_field(
     metadata[_METRIC_FIELD_METRICS_GROUP_KEY] = metrics_group
     metadata[_METRIC_FIELD_METRICS_TYPE_KEY] = metrics_type
     metadata[_METRIC_FIELD_METRICS_ARGS_KEY] = metrics_args or {}
+    metadata[_METRIC_FIELD_INTERNAL_ONLY_KEY] = internal_only
 
     return field(metadata=metadata, **field_kwargs)
 
@@ -187,6 +198,7 @@ class OpRuntimesMetricsMeta(type):
                     metrics_group=value.metadata[_METRIC_FIELD_METRICS_GROUP_KEY],
                     metrics_type=value.metadata[_METRIC_FIELD_METRICS_TYPE_KEY],
                     metrics_args=value.metadata[_METRIC_FIELD_METRICS_ARGS_KEY],
+                    internal_only=value.metadata[_METRIC_FIELD_INTERNAL_ONLY_KEY],
                 )
                 _METRICS.append(metric)
 

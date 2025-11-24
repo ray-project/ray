@@ -163,7 +163,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._next_metadata_task_idx = 0
         # Keep track of all finished streaming generators.
         super().__init__(name, input_op, data_context, target_max_block_size_override)
-        # Initialize metrics directly for proper type inference
         self._metrics = TaskOpMetrics(data_context)
         # If set, then all output blocks will be split into
         # this many sub-blocks. This is to avoid having
@@ -173,6 +172,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # Callback functions that generate additional task kwargs
         # for the map task.
         self._map_task_kwargs_fns: List[Callable[[], Dict[str, Any]]] = []
+
+    @property
+    def metrics(self) -> TaskOpMetrics:
+        return super().metrics
 
     def add_map_task_kwargs_fn(self, map_task_kwargs_fn: Callable[[], Dict[str, Any]]):
         """Add a callback function that generates additional kwargs for the map tasks.
@@ -197,6 +200,22 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
     def set_additional_split_factor(self, k: int):
         self._additional_split_factor = k
+
+    def in_task_submission_backpressure(self) -> bool:
+        """Check if the operator is currently in task submission backpressure."""
+        return self._metrics._task_submission_backpressure_start_time != -1
+
+    def in_task_output_backpressure(self) -> bool:
+        """Check if the operator is currently in task output backpressure."""
+        return self._metrics._task_output_backpressure_start_time != -1
+
+    def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
+        """Notify about task submission backpressure and update metrics."""
+        self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
+
+    def notify_in_task_output_backpressure(self, in_backpressure: bool) -> None:
+        """Notify about task output backpressure and update metrics."""
+        self._metrics.on_toggle_task_output_backpressure(in_backpressure)
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queue (block ref bundler)."""
@@ -500,7 +519,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 self._estimated_num_output_bundles,
                 self._estimated_output_num_rows,
             ) = estimate_total_num_of_blocks(
-                self._next_data_task_idx, self.upstream_op_num_outputs(), self._metrics
+                self.upstream_op_num_outputs(), self._metrics
             )
 
             self._data_tasks.pop(task_index)

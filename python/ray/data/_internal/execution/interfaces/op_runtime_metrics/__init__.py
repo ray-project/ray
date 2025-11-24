@@ -2,13 +2,11 @@
 
 This module provides a hierarchy of metrics classes for tracking operator performance:
 
-- BaseOpMetrics: Basic metrics for all operators (inputs, outputs, resource usage)
-- QueuedOpMetrics: Adds queue metrics for operators with internal buffers
-- TaskOpMetrics: Adds task and actor execution metrics for operators that run Ray tasks/actors
+- BaseOpMetrics: Metrics for all operators (inputs, outputs, queues, resource usage)
+- TaskOpMetrics: Extends BaseOpMetrics with task and actor execution metrics
 
 The hierarchy allows operators to use the appropriate metrics class for their needs,
-ensuring consistent metric schemas for Prometheus export while avoiding unnecessary
-metric overhead.
+ensuring consistent metric schemas for Prometheus export.
 """
 
 # Re-export all public classes and utilities
@@ -22,16 +20,14 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics.common import (
     MetricsGroup,
     MetricsType,
     NodeMetrics,
-    ObjectStoreUsageDetails,
+    ObjectStoreUsageBreakdown,
     OpRuntimesMetricsMeta,
     RunningTaskInfo,
     TaskDurationStats,
+    TaskMetrics,
     metric_field,
     metric_property,
     node_id_from_block_metadata,
-)
-from ray.data._internal.execution.interfaces.op_runtime_metrics.queued import (
-    QueuedOpMetrics,
 )
 from ray.data._internal.execution.interfaces.op_runtime_metrics.task import (
     TaskOpMetrics,
@@ -40,7 +36,6 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics.task import (
 __all__ = [
     # Metrics classes (hierarchy)
     "BaseOpMetrics",
-    "QueuedOpMetrics",
     "TaskOpMetrics",
     # Enums
     "MetricsGroup",
@@ -54,9 +49,10 @@ __all__ = [
     "NodeMetrics",
     "TaskDurationStats",
     "OpRuntimesMetricsMeta",
-    "ObjectStoreUsageDetails",
+    "ObjectStoreUsageBreakdown",
     # Utilities
     "node_id_from_block_metadata",
+    "TaskMetrics",
     "NODE_UNKNOWN",
     # Internal
     "_METRICS",

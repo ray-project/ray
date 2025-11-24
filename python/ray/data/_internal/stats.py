@@ -686,7 +686,12 @@ class _StatsActor:
                     operator.execution_end_time = update_time
 
         self.dataset_metadatas[dataset_id] = updated_dataset_metadata
-        self._metadata_exporter.export_dataset_metadata(updated_dataset_metadata)
+        if self._metadata_exporter is not None:
+            self._metadata_exporter.export_dataset_metadata(
+                updated_dataset_metadata,
+                include_data_context=False,
+                include_op_args=False,
+            )
 
     def update_dataset_metadata_operator_states(
         self, dataset_id: str, operator_states: Dict[str, str]
@@ -728,7 +733,12 @@ class _StatsActor:
                         operator.execution_start_time = update_time
 
         self.dataset_metadatas[dataset_id] = updated_dataset_metadata
-        self._metadata_exporter.export_dataset_metadata(updated_dataset_metadata)
+        if self._metadata_exporter is not None:
+            self._metadata_exporter.export_dataset_metadata(
+                updated_dataset_metadata,
+                include_data_context=False,
+                include_op_args=False,
+            )
 
     def _create_tags(
         self,

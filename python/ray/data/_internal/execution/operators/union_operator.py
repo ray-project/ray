@@ -7,7 +7,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
-from ray.data._internal.execution.interfaces.op_runtime_metrics import QueuedOpMetrics
+from ray.data._internal.execution.interfaces.op_runtime_metrics import BaseOpMetrics
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
     NAryOperator,
@@ -49,8 +49,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         self._output_buffer: collections.deque[RefBundle] = collections.deque()
         self._stats: StatsDict = {"Union": []}
         super().__init__(data_context, *input_ops)
-        # Initialize metrics directly for proper type inference
-        self._metrics = QueuedOpMetrics(data_context)
+        self._metrics = BaseOpMetrics(data_context)
 
     def start(self, options: ExecutionOptions):
         # Whether to preserve the order of the input data (both the

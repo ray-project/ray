@@ -70,7 +70,7 @@ def test_task_completion_time_histogram():
         metrics.on_task_submitted(i, input_bundle)
 
         # Manually adjust the start time to simulate the completion time
-        metrics._running_tasks[i].start_time = time.perf_counter() - completion_time
+        metrics.running_tasks[i].start_time = time.perf_counter() - completion_time
 
         # Complete the task
         metrics.on_task_finished(i, None)  # None means no exception
@@ -103,8 +103,8 @@ def test_block_completion_time_histogram():
         metrics.on_task_submitted(i, input_bundle)
 
         # Manually set the task info to simulate the block generation
-        metrics._running_tasks[i].num_outputs = num_blocks
-        metrics._running_tasks[i].cum_block_gen_time = total_time
+        metrics.running_tasks[i].num_outputs = num_blocks
+        metrics.running_tasks[i].cum_block_gen_time = total_time
 
         # Complete the task
         metrics.on_task_finished(i, None)  # None means no exception
