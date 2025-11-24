@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.data._internal.util import rows_same
 from ray.data.preprocessor import (
     PreprocessorNotFittedException,
     SerializablePreprocessorBase,
@@ -143,9 +144,7 @@ def test_simple_imputer():
         {"A": most_frequent_processed_col_a, "B": most_frequent_processed_col_b}
     )
 
-    pd.testing.assert_frame_equal(
-        most_frequent_out_df, most_frequent_expected_df, check_like=True
-    )
+    assert rows_same(most_frequent_out_df, most_frequent_expected_df)
 
     # Test "constant" strategy.
     constant_col_a = ["apple", None]

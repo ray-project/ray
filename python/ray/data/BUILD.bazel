@@ -1130,6 +1130,20 @@ py_test(
 )
 
 py_test(
+    name = "test_kafka",
+    size = "medium",
+    srcs = ["tests/test_kafka.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_metadata_provider",
     size = "small",
     srcs = ["tests/test_metadata_provider.py"],

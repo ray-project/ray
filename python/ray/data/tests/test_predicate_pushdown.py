@@ -11,7 +11,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
     Sort,
 )
-from ray.data._internal.logical.operators.map_operator import Filter
+from ray.data._internal.logical.operators.map_operator import Filter, Project
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
@@ -541,6 +541,187 @@ class TestPassthroughWithSubstitutionBehavior:
         assert not plan_has_operator(
             optimized_plan, Filter
         ), "All filters should be fused, rebound, and pushed into Read"
+
+
+class TestProjectionWithFilterEdgeCases:
+    """Tests for edge cases with select_columns and with_column followed by filters.
+
+    These tests verify that filters correctly handle:
+    - Columns that are kept by select (should push through)
+    - Columns that are removed by select (should NOT push through)
+    - Computed columns from with_column (should NOT push through)
+    """
+
+    @pytest.fixture
+    def base_ds(self, ray_start_regular_shared):
+        return ray.data.from_items(
+            [
+                {"a": 1, "b": 2, "c": 3},
+                {"a": 2, "b": 5, "c": 8},
+                {"a": 3, "b": 6, "c": 9},
+            ]
+        )
+
+    def test_select_then_filter_on_selected_column(self, base_ds):
+        """Filter on selected column should push through select."""
+        ds = base_ds.select_columns(["a", "b"]).filter(expr=col("a") > 1)
+
+        # Verify correctness
+        result_df = ds.to_pandas()
+        expected_df = pd.DataFrame(
+            [
+                {"a": 2, "b": 5},
+                {"a": 3, "b": 6},
+            ]
+        )
+        # Sort columns before comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
+        assert rows_same(result_df, expected_df)
+
+        # Verify plan: filter pushed through select
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert plan_operator_comes_before(
+            optimized_plan, Filter, Project
+        ), "Filter should be pushed before Project"
+
+    def test_select_then_filter_on_removed_column(self, base_ds):
+        """Filter on removed column should fail, not push through."""
+        ds = base_ds.select_columns(["a"])
+
+        with pytest.raises((KeyError, ray.exceptions.RayTaskError)):
+            ds.filter(expr=col("b") == 2).take_all()
+
+    def test_with_column_then_filter_on_computed_column(self, base_ds):
+        """Filter on computed column should not push through."""
+
+        from ray.data.expressions import lit
+
+        ds = base_ds.with_column("d", lit(4)).filter(expr=col("d") == 4)
+
+        # Verify correctness - all rows should pass (d is always 4)
+        result_df = ds.to_pandas()
+        expected_df = pd.DataFrame(
+            [
+                {"a": 1, "b": 2, "c": 3, "d": 4},
+                {"a": 2, "b": 5, "c": 8, "d": 4},
+                {"a": 3, "b": 6, "c": 9, "d": 4},
+            ]
+        )
+        # Sort columns before comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
+        assert rows_same(result_df, expected_df)
+
+        # Verify plan: filter should NOT push through (stays after with_column)
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert plan_has_operator(
+            optimized_plan, Filter
+        ), "Filter should remain (not pushed through)"
+
+    def test_rename_then_filter_on_old_column_name(self, base_ds):
+        """Filter using old column name after rename should fail."""
+        ds = base_ds.rename_columns({"b": "B"})
+
+        with pytest.raises((KeyError, ray.exceptions.RayTaskError)):
+            ds.filter(expr=col("b") == 2).take_all()
+
+    @pytest.mark.parametrize(
+        "ds_factory,rename_map,filter_col,filter_value,expected_rows",
+        [
+            # In-memory dataset: rename a->b, b->b_old
+            (
+                lambda: ray.data.from_items(
+                    [
+                        {"a": 1, "b": 2, "c": 3},
+                        {"a": 2, "b": 5, "c": 8},
+                        {"a": 3, "b": 6, "c": 9},
+                    ]
+                ),
+                {"a": "b", "b": "b_old"},
+                "b",
+                1,
+                [{"b": 2, "b_old": 5, "c": 8}, {"b": 3, "b_old": 6, "c": 9}],
+            ),
+            # Parquet dataset: rename sepal.length->sepal.width, sepal.width->old_width
+            (
+                lambda: ray.data.read_parquet("example://iris.parquet"),
+                {"sepal.length": "sepal.width", "sepal.width": "old_width"},
+                "sepal.width",
+                5.0,
+                None,  # Will verify via alternative computation
+            ),
+        ],
+        ids=["in_memory", "parquet"],
+    )
+    def test_rename_chain_with_name_reuse(
+        self,
+        ray_start_regular_shared,
+        ds_factory,
+        rename_map,
+        filter_col,
+        filter_value,
+        expected_rows,
+    ):
+        """Test rename chains where an output name matches another rename's input name.
+
+        This tests the fix for a bug where rename(a->b, b->c) followed by filter(b>5)
+        would incorrectly block pushdown, even though 'b' is a valid output column
+        (created by a->b).
+
+        Example: rename({'a': 'b', 'b': 'temp'}) creates 'b' from 'a' and 'temp' from 'b'.
+        A filter on 'b' should be able to push through.
+        """
+        ds = ds_factory()
+
+        # Apply rename and filter
+        ds_renamed_filtered = ds.rename_columns(rename_map).filter(
+            expr=col(filter_col) > filter_value
+        )
+
+        # Verify correctness
+        if expected_rows is not None:
+            # For in-memory, compare against expected rows
+            result_df = ds_renamed_filtered.to_pandas()
+            expected_df = pd.DataFrame(expected_rows)
+            result_df = result_df[sorted(result_df.columns)]
+            expected_df = expected_df[sorted(expected_df.columns)]
+            assert rows_same(result_df, expected_df)
+        else:
+            # For parquet, compare against alternative computation
+            # Filter on original column, then rename
+            original_col = next(k for k, v in rename_map.items() if v == filter_col)
+            expected = ds.filter(expr=col(original_col) > filter_value).rename_columns(
+                rename_map
+            )
+            assert rows_same(ds_renamed_filtered.to_pandas(), expected.to_pandas())
+
+        # Verify plan optimization
+        optimized_plan = LogicalOptimizer().optimize(
+            ds_renamed_filtered._plan._logical_plan
+        )
+
+        # Determine if the data source supports predicate pushdown by checking
+        # if the filter was completely eliminated (pushed into the read operator)
+        has_filter = plan_has_operator(optimized_plan, Filter)
+        has_project = plan_has_operator(optimized_plan, Project)
+
+        # For file-based reads that support predicate pushdown (e.g., parquet),
+        # the filter should be completely pushed into the read operator.
+        # We detect this by checking if the filter is gone after optimization.
+        if not has_filter and not has_project:
+            # Filter was pushed into Read - this is the optimal case
+            pass  # Test passes
+        elif has_filter and has_project:
+            # For in-memory datasets, filter should at least push through projection
+            assert plan_operator_comes_before(
+                optimized_plan, Filter, Project
+            ), "Filter should be pushed before Project after rebinding through rename chain"
+        else:
+            # Unexpected state - either filter or project but not both
+            raise AssertionError(
+                f"Unexpected optimization state: has_filter={has_filter}, has_project={has_project}"
+            )
 
 
 class TestPushIntoBranchesBehavior:

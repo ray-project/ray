@@ -42,6 +42,10 @@ from ray.data._internal.datasource.json_datasource import (
     ArrowJSONDatasource,
     PandasJSONDatasource,
 )
+from ray.data._internal.datasource.kafka_datasource import (
+    KafkaAuthConfig,
+    KafkaDatasource,
+)
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
@@ -4079,6 +4083,7 @@ def read_iceberg(
 def read_lance(
     uri: str,
     *,
+    version: Optional[Union[int, str]] = None,
     columns: Optional[List[str]] = None,
     filter: Optional[str] = None,
     storage_options: Optional[Dict[str, str]] = None,
@@ -4105,6 +4110,9 @@ def read_lance(
     Args:
         uri: The URI of the Lance dataset to read from. Local file paths, S3, and GCS
             are supported.
+        version: Load a specific version of the Lance dataset. This can be an
+            integer version number or a string tag. By default, the
+            latest version is loaded.
         columns: The columns to read. By default, all columns are read.
         filter: Read returns only the rows matching the filter. By default, no
             filter is applied.
@@ -4136,6 +4144,7 @@ def read_lance(
     """  # noqa: E501
     datasource = LanceDatasource(
         uri=uri,
+        version=version,
         columns=columns,
         filter=filter,
         storage_options=storage_options,
@@ -4420,6 +4429,107 @@ def read_delta(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
         **arrow_parquet_args,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_kafka(
+    topics: Union[str, List[str]],
+    *,
+    bootstrap_servers: Union[str, List[str]],
+    trigger: Literal["once"] = "once",
+    start_offset: Union[int, Literal["earliest"]] = "earliest",
+    end_offset: Union[int, Literal["latest"]] = "latest",
+    kafka_auth_config: Optional[KafkaAuthConfig] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    override_num_blocks: Optional[int] = None,
+    timeout_ms: int = 10000,
+) -> Dataset:
+    """Read data from Kafka topics.
+
+    This function supports bounded reads from Kafka topics, reading messages
+    between a start and end offset. Only the "once" trigger is
+    supported for now, which performs a single bounded read. Currently we only
+    have one read task for each partition.
+
+    Examples:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            # Read from a single topic with offset range
+            ds = ray.data.read_kafka(
+                topics="my-topic",
+                bootstrap_servers="localhost:9092",
+                start_offset=0,
+                end_offset=1000,
+            )
+
+
+    Args:
+        topics: Kafka topic name(s) to read from. Can be a single topic name
+            or a list of topic names.
+        bootstrap_servers: Kafka broker addresses. Can be a single string or
+            a list of strings.
+        trigger: Trigger mode for reading. Only "once" is supported, which
+            performs a single bounded read.
+        start_offset: Starting position for reading. Can be:
+            - int: Offset number
+            - str: "earliest"
+        end_offset: Ending position for reading (exclusive). Can be:
+            - int: Offset number
+            - str: "latest"
+        kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+        timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).
+            If the read task does not reach end_offset within the timeout, it will stop polling and return the messages
+            it has read so far.
+
+    Returns:
+        A :class:`~ray.data.Dataset` containing Kafka messages with the following schema:
+        - offset: int64 - Message offset within partition
+        - key: binary - Message key as raw bytes
+        - value: binary - Message value as raw bytes
+        - topic: string - Topic name
+        - partition: int32 - Partition ID
+        - timestamp: int64 - Message timestamp in milliseconds
+        - timestamp_type: int32 - 0=CreateTime, 1=LogAppendTime
+        - headers: map<string, binary> - Message headers (keys as strings, values as bytes)
+
+    Raises:
+        ValueError: If invalid parameters are provided.
+        ImportError: If kafka-python is not installed.
+    """  # noqa: E501
+    if trigger != "once":
+        raise ValueError(f"Only trigger='once' is supported. Got trigger={trigger!r}")
+
+    return ray.data.read_datasource(
+        KafkaDatasource(
+            topics=topics,
+            bootstrap_servers=bootstrap_servers,
+            start_offset=start_offset,
+            end_offset=end_offset,
+            kafka_auth_config=kafka_auth_config,
+            timeout_ms=timeout_ms,
+        ),
+        parallelism=-1,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
+        override_num_blocks=override_num_blocks,
     )
 
 

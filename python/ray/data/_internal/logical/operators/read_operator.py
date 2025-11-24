@@ -187,9 +187,9 @@ class Read(
         return self._datasource.get_current_predicate()
 
     def apply_predicate(self, predicate_expr: Expr) -> "Read":
-        clone = copy.copy(self)
-
         predicated_datasource = self._datasource.apply_predicate(predicate_expr)
+
+        clone = copy.copy(self)
         clone._datasource = predicated_datasource
         clone._datasource_or_legacy_reader = predicated_datasource
 

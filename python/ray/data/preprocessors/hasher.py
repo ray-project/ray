@@ -82,6 +82,7 @@ class FeatureHasher(Preprocessor):
         num_features: int,
         output_column: str,
     ):
+        super().__init__()
         self.columns = columns
         # TODO(matt): Set default number of features.
         # This likely requires sparse matrix support to avoid explosion of columns.
@@ -109,6 +110,12 @@ class FeatureHasher(Preprocessor):
         df.loc[:, self.output_column] = pd.Series(list(concatenated))
 
         return df
+
+    def get_input_columns(self) -> List[str]:
+        return self.columns
+
+    def get_output_columns(self) -> List[str]:
+        return [self.output_column]
 
     def __repr__(self):
         return (

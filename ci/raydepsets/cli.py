@@ -16,8 +16,8 @@ from networkx import DiGraph, ancestors as networkx_ancestors, topological_sort
 from ci.raydepsets.workspace import Depset, Workspace
 
 DEFAULT_UV_FLAGS = """
+    --no-header
     --generate-hashes
-    --index-url https://pypi.org/simple
     --index-strategy unsafe-best-match
     --no-strip-markers
     --emit-index-url
@@ -399,7 +399,7 @@ class DependencySetManager:
 
     def check_subset_exists(self, source_depset: Depset, requirements: List[str]):
         for req in requirements:
-            if req not in source_depset.requirements:
+            if req not in self.get_expanded_depset_requirements(source_depset.name, []):
                 raise RuntimeError(
                     f"Requirement {req} is not a subset of {source_depset.name} in config {source_depset.config_name}"
                 )

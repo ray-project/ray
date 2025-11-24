@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/util/function_traits.h"
+#include "ray/gcs/postable/function_traits.h"
 
 #include <gtest/gtest.h>
 

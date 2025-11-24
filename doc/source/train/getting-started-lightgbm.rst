@@ -125,6 +125,8 @@ This function automatically configures the necessary network settings for worker
          params = {
              # Your LightGBM training parameters here
              ...
+    +        "tree_learner": "data_parallel",
+    +        "pre_partition": True,
     +        **ray.train.lightgbm.get_network_params(),
          }
          
@@ -133,6 +135,10 @@ This function automatically configures the necessary network settings for worker
              ...
          )
          ...
+
+.. note::
+    Make sure to set ``tree_learner`` to enable distributed training. See the `LightGBM documentation <https://lightgbm.readthedocs.io/en/latest/Parallel-Learning-Guide.html#tree-learner>`_ for more details.
+    You should also set ``pre_partition=True`` if using Ray Data to load and shard your dataset, as shown in the quickstart example.
 
 Report metrics and save checkpoints
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
