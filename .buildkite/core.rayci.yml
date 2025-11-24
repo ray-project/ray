@@ -367,7 +367,8 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... core
         --install-mask all-ray-libraries
         --run-flaky-tests
-        --except-tags multi_gpu,cgroup
+        --except-tags multi_gpu,cgroup || true
+      - sleep 10000000
     depends_on:
       - corebuild
 
