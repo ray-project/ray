@@ -12,7 +12,6 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
 from ray.data._internal.util import KiB
 from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.context import (
-    DEFAULT_TARGET_MAX_BLOCK_SIZE,
     MAX_SAFE_BLOCK_SIZE_FACTOR,
     DataContext,
 )
@@ -307,15 +306,6 @@ def metrics_config_pending_outputs_none(restore_data_context):  # noqa: F811
             ),
         ),
         (
-            "metrics_config_no_sample_with_none",
-            "obj_store_mem_max_pending_output_per_task",
-            lambda m: (
-                DEFAULT_TARGET_MAX_BLOCK_SIZE
-                * MAX_SAFE_BLOCK_SIZE_FACTOR
-                * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
-            ),
-        ),
-        (
             "metrics_config_with_sample",
             "obj_store_mem_max_pending_output_per_task",
             lambda m: (
@@ -329,16 +319,6 @@ def metrics_config_pending_outputs_none(restore_data_context):  # noqa: F811
             lambda m: (
                 m.num_tasks_running
                 * m._op.data_context.target_max_block_size
-                * MAX_SAFE_BLOCK_SIZE_FACTOR
-                * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
-            ),
-        ),
-        (
-            "metrics_config_pending_outputs_none",
-            "obj_store_mem_pending_task_outputs",
-            lambda m: (
-                m.num_tasks_running
-                * DEFAULT_TARGET_MAX_BLOCK_SIZE
                 * MAX_SAFE_BLOCK_SIZE_FACTOR
                 * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
             ),
