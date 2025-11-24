@@ -162,32 +162,47 @@ class GrpcServer {
 
   /// Name of this server, used for logging and debugging purpose.
   const std::string name_;
+
   /// Port of this server.
   int port_;
+
   /// Listen to localhost (127.0.0.1) only if it's true, otherwise listen to all network
   /// interfaces (0.0.0.0)
   const bool listen_to_localhost_only_;
+
   /// Token representing ID of this cluster.
   ClusterID cluster_id_;
+
   /// Authentication token for token-based authentication.
   std::optional<AuthenticationToken> auth_token_;
+
   /// Indicates whether this server is in shutdown state.
   std::atomic<bool> is_shutdown_;
+
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
   std::vector<std::unique_ptr<grpc::Service>> grpc_services_;
+
   /// The `GrpcService`(defined below) objects which contain grpc::Service objects not in
   /// the above vector.
   std::vector<std::unique_ptr<GrpcService>> services_;
+
   /// The `ServerCallFactory` objects.
   std::vector<std::unique_ptr<ServerCallFactory>> server_call_factories_;
-  /// The number of completion queues the server is polling from.
+
+  /// The number of threads and completion queues the server is polling from for incoming
+  /// requests. These threads are also responsible for creating the proto request objects.
   int num_threads_;
+
   /// The `ServerCompletionQueue` object used for polling events.
   std::vector<std::unique_ptr<grpc::ServerCompletionQueue>> cqs_;
+
   /// The `Server` object.
   std::unique_ptr<grpc::Server> server_;
-  /// The polling threads used to check the completion queues.
+
+  /// The polling threads used to check the completion queues and create the proto request
+  /// objects.
   std::vector<std::thread> polling_threads_;
+
   /// The interval to send a new gRPC keepalive timeout from server -> client.
   /// gRPC server cannot get the ping response within the time, it triggers
   /// the watchdog timer fired error, which will close the connection.
