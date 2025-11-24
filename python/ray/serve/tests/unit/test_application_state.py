@@ -3363,7 +3363,10 @@ class TestDeploymentDAG:
         d1_id = DeploymentID(name="d1", app_name="test_app")
 
         # Deploy single deployment
-        app_state.deploy_app({"d1": deployment_info("d1", "/hi")}, ApplicationArgsProto(external_scaler_enabled=False))
+        app_state.deploy_app(
+            {"d1": deployment_info("d1", "/hi")},
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
         app_state.update()
 
         deployment_state_manager.set_deployment_healthy(d1_id)
@@ -3620,7 +3623,11 @@ class TestDeploymentDAG:
         d1_id = DeploymentID(name="d1", app_name="test_app")
 
         # Deploy app
-        app_state_manager.deploy_app("test_app", [deployment_params("d1", "/hi")], ApplicationArgsProto(external_scaler_enabled=False))
+        app_state_manager.deploy_app(
+            "test_app",
+            [deployment_params("d1", "/hi")],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
         app_state_manager.update()
 
         deployment_state_manager.set_deployment_healthy(d1_id)
