@@ -3208,7 +3208,8 @@ def test_get_external_scaler_enabled(mocked_application_state_manager):
 
     # Test that get_external_scaler_enabled returns True for app with external scaler enabled
     assert (
-        app_state_manager.get_external_scaler_enabled("app_with_external_scaler") is True
+        app_state_manager.get_external_scaler_enabled("app_with_external_scaler")
+        is True
     )
 
     # Test that get_external_scaler_enabled returns False for app without external scaler
