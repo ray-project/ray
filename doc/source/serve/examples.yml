@@ -150,7 +150,7 @@ examples:
     link: tutorials/java
     related_technology: integrations
   - title: Asynchronous Inference using Ray Serve
-    skill_level: beginner
+    skill_level: advanced
     use_cases:
       - generative ai
     link: tutorials/asynchronous-inference/content/README

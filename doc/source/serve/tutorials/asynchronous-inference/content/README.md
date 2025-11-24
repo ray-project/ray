@@ -1,6 +1,6 @@
 # Asynchronous Inference with Ray Serve
 
-**⏱️ Time to complete**: 30 minutes
+**⏱️ Time to complete:** 30 minutes
 
 This template demonstrates how to build scalable asynchronous inference services using Ray Serve. Learn how to handle long-running PDF processing tasks without blocking HTTP responses, using Celery task queues and Redis as a message broker.
 
@@ -13,297 +13,6 @@ Traditional synchronous APIs block until processing completes, causing timeouts 
 3. Allowing clients to poll for status and retrieve results
 
 This example implements a **PDF processing service** that extracts text and generates summaries from PDF documents.
-
-## Prerequisites
-
-- Python 3.9+
-- Ray 2.50.0+
-- Redis (for message broker and result backend)
-
-## Step 1: Setup Redis
-
-Redis serves as both the message broker (task queue) and result backend.
-
-**Install and start Redis (Google Colab compatible)**
-
-
-```python
-# Install and start Redis server
-!sudo apt-get update -qq
-!sudo apt-get install -y redis-server
-!redis-server --port 6399 --save "" --appendonly no --daemonize yes
-
-# Verify Redis is running
-!redis-cli -p 6399 ping
-```
-
-**Alternative methods:**
-
-- macOS: `brew install redis && brew services start redis`
-- Docker: `docker run -d -p 6379:6379 redis:latest`
-- [Official Redis Installation Guide](https://redis.io/docs/getting-started/installation/)
-
-## Step 2: Install Dependencies
-
-
-```python
-!pip install -q ray[serve-async-inference]>=2.50.0 requests>=2.31.0 PyPDF2>=3.0.0 celery[redis]
-```
-
-
-## Step 3: Start the Ray Serve Application
-
-First, let's run the complete example to see it in action. We have the server code written in `server.py`, where we have mentioned our app with producer and consumer deployments.
-
-
-```python
-from ray import serve
-from server import app
-
-serve.run(
-    target=app,
-    blocking=False
-)
-```
-
-### Understanding the Server Code
-
-Now let's break down the key components of `server.py` that make asynchronous inference work:
-
-#### 1. Configure the Task Adapter
-
-First, we configure the Celery adapter to connect to Redis:
-
-```python
-from ray.serve.asynchronous_inference.celery import CeleryAdapterConfig
-from ray.serve.asynchronous_inference import TaskProcessorConfig
-
-TASK_PROCESSOR_CONFIG = TaskProcessorConfig(
-    queue_name="pdf_processing_queue",
-    adapter_config=CeleryAdapterConfig(
-        broker_url="redis://127.0.0.1:6399/0",
-        backend_url="redis://127.0.0.1:6399/0",
-    ),
-    max_retries=3,
-    failed_task_queue_name="failed_pdfs",
-    unprocessable_task_queue_name="invalid_pdfs",
-)
-```
-
-This tells Ray Serve where to send tasks (broker) and store results (backend).
-
-#### 2. Create the Task Consumer Deployment
-
-The `PDFProcessor` deployment processes PDF tasks from the queue:
-
-```python
-@serve.deployment(num_replicas=2, max_ongoing_requests=5)
-@task_consumer(
-    TaskProcessorConfig(
-        queue_name="pdf_processing_queue",
-        adapter_config=adapter_config,
-        max_retries=3,
-    )
-)
-class PDFProcessor:
-    @task_handler(name="process_pdf")
-    def process_pdf(self, pdf_url: str, max_summary_paragraphs: int = 3):
-        # Download and process PDF
-        response = requests.get(pdf_url)
-        pdf_reader = PdfReader(BytesIO(response.content))
-        
-        # Extract text from all pages
-        full_text = ""
-        for page in pdf_reader.pages:
-            full_text += page.extract_text()
-        
-        # Generate summary (first N paragraphs)
-        paragraphs = [p.strip() for p in full_text.split("\n\n") if p.strip()]
-        summary = "\n\n".join(paragraphs[:max_summary_paragraphs])
-        
-        return {
-            "status": "success",
-            "page_count": len(pdf_reader.pages),
-            "word_count": len(full_text.split()),
-            "summary": summary,
-            "processing_time_seconds": time.time() - start_time,
-        }
-```
-
-Key points:
-- `num_replicas=2` scales to 2 worker instances for parallel processing
-- `@task_consumer` decorator makes this deployment consume tasks from the queue
-- `@task_handler` decorator registers the `process_pdf` method as a task handler
-
-#### 3. Create the API Ingress Deployment
-
-The `AsyncPDFAPI` deployment handles HTTP requests and enqueues tasks:
-
-```python
-@serve.deployment
-class AsyncPDFAPI:
-    def __init__(self, pdf_processor_handle):
-        self.pdf_processor_handle = pdf_processor_handle
-        self.adapter = CeleryAdapter(adapter_config)
-    
-    @serve.route("/process", methods=["POST"])
-    async def process_pdf(self, request: Request):
-        data = await request.json()
-        
-        # Enqueue task and immediately return task ID
-        task_id = await self.adapter.enqueue_task(
-            task_name="process_pdf",
-            kwargs={
-                "pdf_url": data["pdf_url"],
-                "max_summary_paragraphs": data.get("max_summary_paragraphs", 3),
-            },
-        )
-        
-        return {"task_id": task_id.dict(), "status": "PENDING"}
-    
-    @serve.route("/status/{task_id}", methods=["GET"])
-    async def get_status(self, task_id: str):
-        # Check task status in Redis
-        status = await self.adapter.get_task_status(TaskID(id=task_id))
-        
-        response = {
-            "task_id": task_id,
-            "status": status.state.value,
-        }
-        
-        if status.state == TaskState.SUCCESS:
-            response["result"] = status.result
-        elif status.state == TaskState.FAILURE:
-            response["error"] = str(status.result)
-        
-        return response
-```
-
-Key points:
-- `/process` endpoint enqueues tasks and returns immediately with a task ID
-- `/status/{task_id}` endpoint polls Redis to check task status
-- No blocking - responses are instant regardless of processing time
-
-#### 4. Bind Deployments into an Application
-
-Finally, we wire everything together:
-
-```python
-pdf_processor = PDFProcessor.bind()
-
-app = AsyncPDFAPI.bind(pdf_processor)
-```
-
-The `pdf_processor` handle is passed to the API so it knows which deployment's queue to enqueue tasks to.
-
-## Step 4: Test the Service
-
-Now we will execute the `client.py`, which basically calls our above-created ray serve application to process the PDF, and then poll those task ids for the result.
-
-
-```python
-# Run the client to test the async PDF processing service
-!python client.py
-```
-
-### Understanding the Client Code
-
-Now let's break down how the async workflow works. We'll use the client methods interactively:
-
-```python
-import requests
-import time
-
-BASE_URL = "http://localhost:8000"
-```
-
-
-
-#### 1. Submit a PDF Processing Task
-
-Submit returns immediately with a task ID, without waiting for processing:
-
-```python
-pdf_url = "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"
-
-response = requests.post(
-    f"{BASE_URL}/process",
-    json={
-        "pdf_url": pdf_url,
-        "max_summary_paragraphs": 2
-    }
-)
-
-task_data = response.json()
-task_id = task_data["task_id"]["id"]
-
-print(f"✓ Task submitted!")
-print(f"  Task ID: {task_id}")
-print(f"  Status: {task_data['status']}")
-```
-
-#### 2. Poll for Task Status
-
-Check the task status to see if it's complete:
-
-```python
-# Check status (may need to run this cell multiple times)
-response = requests.get(f"{BASE_URL}/status/{task_id}")
-status_data = response.json()
-
-print(f"Task status: {status_data['status']}")
-
-if status_data['status'] == 'SUCCESS':
-    result = status_data['result']
-    print(f"\n✓ Complete!")
-    print(f"  Pages: {result['page_count']}")
-    print(f"  Words: {result['word_count']}")
-    print(f"  Time: {result['processing_time_seconds']}s")
-elif status_data['status'] == 'FAILURE':
-    print(f"\n✗ Failed: {status_data.get('error')}")
-else:
-    print(f"  Still processing... (Status: {status_data['status']})")
-```
-
-#### 3. Wait for Completion
-
-Or use a polling loop to automatically wait:
-
-```python
-# Submit a new task and wait for completion
-pdf_url = "https://arxiv.org/pdf/1706.03762.pdf"
-
-response = requests.post(
-    f"{BASE_URL}/process",
-    json={"pdf_url": pdf_url, "max_summary_paragraphs": 3}
-)
-
-task_id = response.json()["task_id"]["id"]
-print(f"Task submitted: {task_id}\n")
-
-# Poll until complete
-max_attempts = 40
-for attempt in range(max_attempts):
-    response = requests.get(f"{BASE_URL}/status/{task_id}")
-    status_data = response.json()
-    
-    if status_data['status'] == 'SUCCESS':
-        result = status_data['result']
-        print(f"\n✓ Complete!")
-        print(f"  Pages: {result['page_count']}")
-        print(f"  Words: {result['word_count']}")
-        print(f"  Time: {result['processing_time_seconds']}s")
-        print(f"\n  Summary preview:")
-        print(f"  {result['summary'][:200]}...")
-        break
-    elif status_data['status'] == 'FAILURE':
-        print(f"✗ Failed: {status_data.get('error')}")
-        break
-    elif attempt % 5 == 0:
-        print(f"  Still processing... ({status_data['status']})")
-    
-    time.sleep(3)
-```
 
 ## Architecture Overview
 
@@ -332,65 +41,357 @@ for attempt in range(max_attempts):
 └─────────────────────┘
 ```
 
-## Key Concepts
+## Prerequisites
 
-### Task Consumer
+- Python 3.9+
+- Ray 2.50.0+
+- Redis (for message broker and result backend)
 
-The `@task_consumer` decorator transforms a Ray Serve deployment into a Celery worker that processes tasks from a queue:
+## Step 1: Setup Redis
+
+Redis serves as both the message broker (task queue) and result backend.
+
+**Install and start Redis (Google Colab compatible):**
+
 
 ```python
-@serve.deployment(num_replicas=2, max_ongoing_requests=5)
-@task_consumer(
-    TaskProcessorConfig(
-        queue_name="pdf_processing_queue",
-        adapter_config=CeleryAdapterConfig(...),
-        max_retries=3,
-    )
+# Install and start Redis server
+!sudo apt-get update -qq
+!sudo apt-get install -y redis-server
+!redis-server --port 6399 --save "" --appendonly no --daemonize yes
+
+# Verify Redis is running
+!redis-cli -p 6399 ping
+```
+
+**Alternative methods:**
+
+- **macOS:** `brew install redis && brew services start redis`
+- **Docker:** `docker run -d -p 6379:6379 redis:latest`
+- **Other platforms:** [Official Redis Installation Guide](https://redis.io/docs/getting-started/installation/)
+
+## Step 2: Install Dependencies
+
+
+```python
+!pip install -q ray[serve-async-inference]>=2.50.0 requests>=2.31.0 PyPDF2>=3.0.0 celery[redis]
+```
+
+## Step 3: Start the Ray Serve Application
+
+Let's see and run the code for the service. We will go through each component independently.
+
+### 3.1 Ingress Deployment to Handle HTTP Requests
+
+The `AsyncPDFAPI` deployment handles HTTP requests and enqueues tasks.
+
+
+```python
+import logging
+from fastapi import FastAPI
+from pydantic import BaseModel, HttpUrl
+from ray import serve
+from ray.serve.handle import DeploymentHandle
+from ray.serve.schema import TaskProcessorConfig
+from ray.serve.task_consumer import instantiate_adapter_from_config
+
+fastapi_app = FastAPI(title="Async PDF Processing API")
+logger = logging.getLogger("ray.serve")
+
+@serve.deployment(ray_actor_options={"num_cpus": 0.1})
+@serve.ingress(fastapi_app)
+class AsyncPDFAPI:
+    """
+    HTTP API for submitting and checking PDF processing tasks.
+
+    Endpoints:
+    - POST /process: Submit a PDF processing task
+    - GET /status/{task_id}: Check task status and get results
+    """
+
+    class ProcessPDFRequest(BaseModel):
+        """Request schema for PDF processing."""
+        pdf_url: HttpUrl
+        max_summary_paragraphs: int = 3
+
+    def __init__(self, task_processor_config: TaskProcessorConfig, handler: DeploymentHandle):
+        """Initialize the API with task adapter."""
+        self.adapter = instantiate_adapter_from_config(task_processor_config)
+        logger.info("AsyncPDFAPI initialized")
+
+    @fastapi_app.post("/process")
+    async def process_pdf(self, request: ProcessPDFRequest):
+        """
+        Submit a PDF processing task.
+
+        Returns task_id immediately without waiting for processing to complete.
+        Client should poll /status/{task_id} to check progress.
+        """
+        task_result = self.adapter.enqueue_task_sync(
+            task_name="process_pdf",
+            kwargs={
+                "pdf_url": str(request.pdf_url),
+                "max_summary_paragraphs": request.max_summary_paragraphs,
+            },
+        )
+
+        logger.info(f"Enqueued task: {task_result}")
+
+        return {
+            "task_id": task_result.id,
+            "status": task_result.status,
+            "message": "PDF processing task submitted successfully",
+        }
+
+    @fastapi_app.get("/status/{task_id}")
+    async def get_status(self, task_id: str):
+        """
+        Get task status and results.
+
+        Status values:
+        - PENDING: Task queued, waiting for worker
+        - STARTED: Worker is processing the task
+        - SUCCESS: Task completed successfully (result available)
+        - FAILURE: Task failed (error message available)
+        """
+        status = self.adapter.get_task_status_sync(task_id)
+
+        return {
+            "task_id": task_id,
+            "status": status.status,
+            "result": status.result if status.status == "SUCCESS" else None,
+            "error": str(status.result) if status.status == "FAILURE" else None,
+        }
+
+```
+
+**Key points:**
+
+- `/process` endpoint enqueues tasks and returns immediately with a task ID
+- `/status/{task_id}` endpoint polls Redis to check task status
+- No blocking - responses are instant regardless of processing time
+
+### 3.2 Create the Task Consumer Deployment
+
+Now, below is the deployment consumer code, which will read from the task queue and implement the tasks.
+
+**What's a Task Consumer?**
+
+The `@task_consumer` decorator transforms a Ray Serve deployment into a worker that consumes tasks from a queue.
+
+**What's a Task Handler?**
+
+The `@task_handler` decorator registers a method to process a specific task type. Each handler corresponds to a task name that producers use when enqueuing work.
+
+For more details, see the [Asynchronous Inference Guide](https://docs.ray.io/en/master/serve/asynchronous-inference.html).
+
+
+```python
+import io
+import time
+from typing import Dict, Any
+import requests
+from PyPDF2 import PdfReader
+from ray import serve
+from ray.serve.schema import CeleryAdapterConfig, TaskProcessorConfig
+from ray.serve.task_consumer import (
+    task_consumer,
+    task_handler,
 )
+
+TASK_PROCESSOR_CONFIG = TaskProcessorConfig(
+    queue_name="pdf_processing_queue",
+    adapter_config=CeleryAdapterConfig(
+        broker_url="redis://127.0.0.1:6399/0",
+        backend_url="redis://127.0.0.1:6399/0",
+    ),
+    max_retries=3,
+    failed_task_queue_name="failed_pdfs",
+    unprocessable_task_queue_name="invalid_pdfs",
+)
+
+@serve.deployment(num_replicas=2, max_ongoing_requests=5, ray_actor_options={"num_cpus": 0.1})
+@task_consumer(task_processor_config=TASK_PROCESSOR_CONFIG)
 class PDFProcessor:
-    ...
+    """
+    Background worker that processes PDF documents asynchronously.
+
+    Configuration:
+    - num_replicas=2: Run 2 worker instances
+    - max_ongoing_requests=5: Each worker handles up to 5 concurrent tasks
+    - max_retries=3: Retry failed tasks up to 3 times
+    """
+
+    @task_handler(name="process_pdf")
+    def process_pdf(
+        self, pdf_url: str, max_summary_paragraphs: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Download PDF, extract text, and generate summary.
+        """
+        start_time = time.time()
+        logger.info(f"Processing PDF: {pdf_url}")
+
+        try:
+            # Download PDF from URL
+            response = requests.get(pdf_url, timeout=30)
+            response.raise_for_status()
+
+            # Parse PDF content
+            pdf_file = io.BytesIO(response.content)
+            try:
+                pdf_reader = PdfReader(pdf_file)
+            except Exception as e:
+                raise ValueError(f"Invalid PDF file: {str(e)}")
+
+            if len(pdf_reader.pages) == 0:
+                raise ValueError("PDF contains no pages")
+
+            # Extract text from all pages
+            full_text = ""
+            for page in pdf_reader.pages:
+                text = page.extract_text()
+                if text:
+                    full_text += text + "\n"
+
+            if not full_text.strip():
+                raise ValueError("PDF contains no extractable text")
+
+            # Generate summary (first N paragraphs)
+            paragraphs = [p.strip() for p in full_text.split("\n\n") if p.strip()]
+            summary = "\n\n".join(paragraphs[:max_summary_paragraphs])
+
+            # Calculate metadata
+            result = {
+                "status": "success",
+                "pdf_url": pdf_url,
+                "page_count": len(pdf_reader.pages),
+                "word_count": len(full_text.split()),
+                "full_text": full_text,
+                "summary": summary,
+                "processing_time_seconds": round(time.time() - start_time, 2),
+            }
+
+            logger.info(f"Processed PDF: {result['page_count']} pages, {result['word_count']} words")
+            return result
+
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Failed to download PDF: {str(e)}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        except Exception as e:
+            error_msg = f"Failed to process PDF: {str(e)}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
 ```
 
-### Task Handler
+**Key points:**
 
-The `@task_handler` decorator marks a method that processes a specific task type:
+- `num_replicas=2` scales to 2 worker instances for parallel processing
+- The consumer automatically polls the queue and processes tasks
+- Failed tasks retry up to `max_retries` times before moving to the dead letter queue
 
-```python
-@task_handler(name="process_pdf")
-def process_pdf(self, pdf_url: str, max_summary_paragraphs: int = 3):
-    # Download PDF, extract text, generate summary
-    return {"status": "success", ...}
-```
+### 3.3 Bind Deployments into an Application
 
-### Task Adapter
+Now, we will combine the deployments and run the application.
 
-The adapter provides methods to interact with the task queue:
 
 ```python
-# Enqueue a task
-task_id = adapter.enqueue_task_sync(
-    task_name="process_pdf",
-    kwargs={"pdf_url": url}
+consumer = PDFProcessor.bind()
+
+app = AsyncPDFAPI.bind(task_processor_config=TASK_PROCESSOR_CONFIG, handler=consumer)
+
+serve.run(
+    target=app,
+    blocking=False
 )
+```
 
-# Check status
-status = adapter.get_task_status_sync(task_id)
+## Step 4: Test the service
+
+Let's execute the client code, which calls the Ray Serve application to process PDFs and then polls for results using task IDs. First, define the base URL to query and import the required modules.
+
+
+```python
+import time
+from typing import Dict, Any
+
+import requests
+
+# Base URL of your Ray Serve/FastAPI app
+BASE_URL = "http://localhost:8000".rstrip("/")
+```
+
+Submit two tasks. The application returns a `task_id` for each request that you can use to poll for results.
+
+
+```python
+def process_pdf(pdf_url: str, max_summary_paragraphs: int = 3) -> str:
+    """
+    Submit a PDF processing task and return the task_id.
+    """
+    response = requests.post(
+        f"{BASE_URL}/process",
+        json={
+            "pdf_url": pdf_url,
+            "max_summary_paragraphs": max_summary_paragraphs,
+        },
+    )
+    response.raise_for_status()
+    data = response.json()
+    return data["task_id"]
+
+
+pdf_urls = [
+    "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+    "https://arxiv.org/pdf/1706.03762.pdf",
+]
+
+task_ids = []
+
+for i, url in enumerate(pdf_urls, 1):
+        task_id = process_pdf(url)
+        task_ids.append((task_id, url))
+        print(f"   ✓ Task {i} submitted: {task_id}  ({url})")
+```
+
+Next, poll the Ray Serve application using the `task_id` obtained in the previous step to retrieve the result.
+
+
+```python
+def get_task_status(task_id: str) -> Dict[str, Any]:
+    response = requests.get(f"{BASE_URL}/status/{task_id}")
+    response.raise_for_status()
+    return response.json()
+
+for i, (task_id, url) in enumerate(task_ids, 1):
+        print(f"\nTask {i} ({url.split('/')[-1]}):")
+        result = get_task_status(task_id)
+        res = result.get("result")
+        if res:
+            print(f"   ✓ Complete: {res.get('page_count')} pages, {res.get('word_count')} words")
+            print(f"   ✓ Processing time: {res.get('processing_time_seconds')}s")
+        else:
+            print("   ✗ No result payload found in response.")
 ```
 
 ## Deploy to Anyscale
 
-1. Update Redis configuration in `server.py` with your production Redis instance
+To deploy this application to production on Anyscale:
+
+1. Update Redis configuration in your server code with your production Redis instance
 2. Deploy using the Anyscale CLI:
 
-```bash
-anyscale service deploy -f service.yaml
-```
+   ```bash
+   anyscale service deploy -f service.yaml
+   ```
 
 3. Get your service URL:
 
-```bash
-anyscale service status
-```
+   ```bash
+   anyscale service status
+   ```
 
 ## Learn More
 

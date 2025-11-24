@@ -8,7 +8,8 @@ Demonstrates:
 """
 
 import time
-from typing import Dict, Any
+import argparse
+from typing import Dict, Any, Optional
 
 import requests
 
@@ -16,11 +17,18 @@ import requests
 class AsyncPDFClient:
     """Client for interacting with the async PDF processing API."""
 
-    def __init__(self, base_url: str = "http://localhost:8000"):
+    def __init__(self, base_url: str, auth_header: Optional[str] = None):
         """
         Initialize the client.
+
+        :param base_url: Base URL of the async PDF processing API
+        :param auth_header: Optional Authorization header value, e.g. "Bearer TOKEN"
         """
         self.base_url = base_url.rstrip("/")
+        self.headers: Dict[str, str] = {}
+        if auth_header:
+            # Use the provided value as the Authorization header
+            self.headers["Authorization"] = auth_header
 
     def process_pdf(self, pdf_url: str, max_summary_paragraphs: int = 3) -> str:
         """
@@ -32,14 +40,19 @@ class AsyncPDFClient:
                 "pdf_url": pdf_url,
                 "max_summary_paragraphs": max_summary_paragraphs,
             },
+            headers=self.headers,
         )
+        response.raise_for_status()
         return response.json()["task_id"]
 
     def get_task_status(self, task_id: str) -> Dict[str, Any]:
         """
         Get the current status of a task.
         """
-        response = requests.get(f"{self.base_url}/status/{task_id}")
+        response = requests.get(
+            f"{self.base_url}/status/{task_id}",
+            headers=self.headers,
+        )
         response.raise_for_status()
         return response.json()
 
@@ -75,9 +88,28 @@ class AsyncPDFClient:
                 time.sleep(poll_interval)
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Asynchronous PDF Processing Client"
+    )
+    parser.add_argument(
+        "base_url",
+        help="Base URL of the async PDF processing API, e.g. http://localhost:8000",
+    )
+    parser.add_argument(
+        "-H",
+        "--header",
+        dest="auth_header",
+        help="Authorization header value, e.g. 'Bearer YOUR_TOKEN'",
+    )
+    return parser.parse_args()
+
+
 def main():
     """Run example PDF processing tasks."""
-    client = AsyncPDFClient()
+    args = parse_args()
+
+    client = AsyncPDFClient(base_url=args.base_url, auth_header=args.auth_header)
 
     print("=" * 70)
     print("Asynchronous PDF Processing Example")
@@ -114,7 +146,9 @@ def main():
             result = client.wait_for_task(task_id, timeout=60.0)
             if result["result"]:
                 res = result["result"]
-                print(f"   ✓ Complete: {res['page_count']} pages, {res['word_count']} words")
+                print(
+                    f"   ✓ Complete: {res['page_count']} pages, {res['word_count']} words"
+                )
                 print(f"   ✓ Processing time: {res['processing_time_seconds']}s")
         except Exception as e:
             print(f"   ✗ Error: {e}")
