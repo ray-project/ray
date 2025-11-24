@@ -35,15 +35,15 @@ def is_default_app_running():
 @pytest.mark.parametrize(
     "tp_size,pp_size",
     [
-        (2, 4),  # TP×PP=8 > 4 GPUs/node, FORCES cross-node placement
-        (4, 2),  # TP×PP=8 > 4 GPUs/node, FORCES cross-node placement
+        (2, 4),  # TPxPP=8 > 4 GPUs/node, FORCES cross-node placement
+        (4, 2),  # TPxPP=8 > 4 GPUs/node, FORCES cross-node placement
     ],
 )
 def test_llm_serve_multi_node(tp_size, pp_size):
     """Test multi-node Ray Serve LLM deployment with custom placement groups.
 
-    Cluster: 2 nodes × 4 GPUs = 8 total GPUs
-    TP×PP=8 exceeds per-node capacity, forcing cross-node deployment.
+    Cluster: 2 nodes x 4 GPUs = 8 total GPUs
+    TPxPP=8 exceeds per-node capacity, forcing cross-node deployment.
     """
     total_gpus = tp_size * pp_size
     placement_group_config = {
@@ -148,9 +148,9 @@ def test_llm_serve_prefill_decode_with_data_parallelism():
     4. KV transfer works between PD stages with DP
     5. Expert Parallel works alongside DP
 
-    Cluster: 2 nodes × 4 GPUs = 8 GPUs total
-    - Prefill: DP=4 (2 GPUs/node × 2 nodes)
-    - Decode: DP=4 (2 GPUs/node × 2 nodes)
+    Cluster: 2 nodes x 4 GPUs = 8 GPUs total
+    - Prefill: DP=4
+    - Decode: DP=4
     """
     base_config = {
         "model_loading_config": {
@@ -194,7 +194,7 @@ def test_llm_serve_prefill_decode_with_data_parallelism():
             },
         },
         experimental_configs={
-            "dp_size_per_node": 5,
+            "dp_size_per_node": 4,
         },
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
