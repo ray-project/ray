@@ -31,14 +31,25 @@
 #  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 #  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 
-from typing import Dict, List, Optional, Set, Tuple
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Set
 
 from starlette.routing import Match, Mount, Route
 from starlette.types import ASGIApp, Scope
 
-# Type alias for route pattern: (methods, path)
-# methods is None if the route accepts all HTTP methods, otherwise a list of methods
-RoutePattern = Tuple[Optional[List[str]], str]
+
+@dataclass(frozen=True)
+class RoutePattern:
+    """Represents a route pattern with optional HTTP method restrictions.
+
+    Attributes:
+        methods: List of HTTP methods (e.g., ["GET", "POST"]), or None if the route
+                 accepts all methods (e.g., WebSocket routes, ASGI apps).
+        path: The route path pattern (e.g., "/", "/users/{user_id}").
+    """
+
+    methods: Optional[List[str]]
+    path: str
 
 
 def _get_route_name(
@@ -106,10 +117,10 @@ def extract_route_patterns(app: ASGIApp) -> List[RoutePattern]:
         app: The ASGI application (typically FastAPI or Starlette)
 
     Returns:
-        List of (methods, path) tuples. Examples:
-        - (["GET", "POST"], "/"): GET and POST requests to root
-        - (["GET"], "/users/{id}"): GET request to users endpoint
-        - (None, "/websocket"): Route with no method restriction (e.g., WebSocket, ASGI app)
+        List of RoutePattern objects. Examples:
+        - RoutePattern(methods=["GET", "POST"], path="/"): GET and POST to root
+        - RoutePattern(methods=["GET"], path="/users/{id}"): GET to users endpoint
+        - RoutePattern(methods=None, path="/websocket"): No method restrictions
     """
     # Use a dict to store path -> set of methods mapping
     # This allows us to track which methods apply to each path
@@ -163,16 +174,16 @@ def extract_route_patterns(app: ASGIApp) -> List[RoutePattern]:
         # This shouldn't break the system
         return []
 
-    # Convert path_methods dict to list of (methods, path) tuples
+    # Convert path_methods dict to list of RoutePattern objects
     patterns: List[RoutePattern] = []
     for path, methods in path_methods.items():
         if methods is None:
-            # No method restrictions - add as (None, path)
-            patterns.append((None, path))
+            # No method restrictions
+            patterns.append(RoutePattern(methods=None, path=path))
         else:
             # Convert set to sorted list for consistent ordering
             methods_list = sorted(methods)
-            patterns.append((methods_list, path))
+            patterns.append(RoutePattern(methods=methods_list, path=path))
 
     # Sort by path for consistent ordering
-    return sorted(patterns, key=lambda x: x[1])
+    return sorted(patterns, key=lambda x: x.path)

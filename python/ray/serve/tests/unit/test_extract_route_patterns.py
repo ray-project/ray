@@ -4,19 +4,21 @@ from fastapi import FastAPI
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 
-from ray.serve._private.thirdparty.get_asgi_route_name import extract_route_patterns
+from ray.serve._private.thirdparty.get_asgi_route_name import (
+    extract_route_patterns,
+)
 
 
 def has_path(patterns, path):
     """Helper to check if a path exists in patterns list."""
-    return any(p == path for methods, p in patterns)
+    return any(pattern.path == path for pattern in patterns)
 
 
 def get_methods_for_path(patterns, path):
     """Helper to get methods for a specific path."""
-    for methods, p in patterns:
-        if p == path:
-            return methods
+    for pattern in patterns:
+        if pattern.path == path:
+            return pattern.methods
     return None
 
 
@@ -202,7 +204,7 @@ def test_extract_route_patterns_multiple_methods_same_path():
     patterns = extract_route_patterns(app)
 
     # Path should appear only once with all methods grouped
-    path_count = sum(1 for methods, p in patterns if p == "/items/{item_id}")
+    path_count = sum(1 for pattern in patterns if pattern.path == "/items/{item_id}")
     assert path_count == 1
 
     # Check that all methods are present
@@ -270,7 +272,7 @@ def test_extract_route_patterns_sorted_output():
     patterns = extract_route_patterns(app)
 
     # Extract just the paths
-    paths = [p for methods, p in patterns]
+    paths = [pattern.path for pattern in patterns]
 
     # Find the user-defined routes
     user_routes = [p for p in paths if p in ["/zebra", "/apple", "/banana"]]
@@ -294,7 +296,7 @@ def test_extract_route_patterns_special_characters():
     patterns = extract_route_patterns(app)
 
     # Extract just the paths
-    paths = [p for methods, p in patterns]
+    paths = [pattern.path for pattern in patterns]
 
     # FastAPI converts these to standard patterns
     assert any("user_id" in p for p in paths)

@@ -221,8 +221,8 @@ class ProxyRouter:
                     pass
 
                 routes = [
-                    Route(path, dummy_endpoint, methods=methods)
-                    for methods, path in patterns
+                    Route(pattern.path, dummy_endpoint, methods=pattern.methods)
+                    for pattern in patterns
                 ]
                 mock_app = Starlette(routes=routes)
 
