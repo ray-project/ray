@@ -325,7 +325,7 @@ print("\nSample outputs:")
 pprint(processed_large.take(3))
 ```
 
-### Performance optimization tips
+## Performance optimization tips
 
 When scaling to larger datasets, consider these optimizations:
 
