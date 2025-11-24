@@ -384,7 +384,7 @@ processor_config = vLLMEngineProcessorConfig(
 **Monitor GPU utilization**  
 Use the Ray Dashboard to identify bottlenecks and adjust parameters.
 
-For performance tuning, see the [Ray Data performance guide](https://docs.ray.io/en/latest/data/performance-tips.html). To configure your inference engine, see the [vLLM configuration options](https://docs.vllm.ai/en/latest/serving/engine_args.html).
+For performance tuning, see the [Ray Data performance guide](https://docs.ray.io/en/latest/data/performance-tips.html) or the [throughput optimization guide with Anyscale](https://docs.anyscale.com/llm/batch-inference/throughput-optimization). To configure your inference engine, see the [vLLM configuration options](https://docs.vllm.ai/en/latest/serving/engine_args.html).
 
 
 ## Summary
