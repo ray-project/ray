@@ -248,8 +248,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:fake_periodical_runner",
         "//src/ray/common:test_utils",
+        "//src/ray/common/asio:fake_periodical_runner",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/core_worker:grpc_service",
         "//src/ray/core_worker:memory_store",
