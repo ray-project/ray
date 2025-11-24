@@ -311,7 +311,17 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table.num_rows if self._table.num_columns > 0 else 0
 
     def size_bytes(self) -> int:
-        return self._table.nbytes
+        # PyArrow's table.nbytes only returns the size of the underlying Arrow
+        # buffers, which doesn't account for the actual serialized size in Ray's
+        # object store. We use Ray's serialization context to get the actual
+        # serialized size, which includes Ray's serialization overhead.
+        import ray
+
+        serialization_context = (
+            ray._private.worker.global_worker.get_serialization_context()
+        )
+        serialized = serialization_context.serialize(self._table)
+        return serialized.total_bytes
 
     def _zip(self, acc: BlockAccessor) -> "Block":
         r = self.to_arrow()
