@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import os
 import json
 import logging
 import re
@@ -156,11 +157,11 @@ def get_askalono_results(dependencies):
         r"^(\/[^\n]+)\nLicense:\s*([^\n]+)\nScore:\s*([0-9.]+)", re.M
     )
     for dependency in dependencies:
+        dependency_path = f"{bazel_output_base}/external/{dependency}"
         license_text = subprocess.run(
-            f"askalono crawl {bazel_output_base}/external/{dependency}",
+            ["askalono", "crawl", dependency_path],
             capture_output=True,
             text=True,
-            shell=True,
         ).stdout.strip()
         if not license_text:
             logger.warning(f"No license text found for {dependency}, trying to crawl licenses")
@@ -242,6 +243,11 @@ def generate_fossa_deps_file(askalono_results: List[Dict]) -> Dict:
 
     return fossa_deps_file
 
+def change_working_directory():
+    # change working directory to the workspace in case being executed from bazel
+    workspace = os.environ.get("BUILD_WORKING_DIRECTORY")
+    if workspace:
+        os.chdir(workspace)
 
 if __name__ == "__main__":
     global bazel_command
@@ -251,7 +257,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OSS Analysis Combo Tool")
 
     parser.add_argument(
-        "-o", "--output", help="Output folder path", default="oss_analysis"
+        "-o", "--output", help="Output folder path", required=True
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose output"
@@ -278,6 +284,9 @@ Examples:
     """
 
     args = parser.parse_args()
+
+    change_working_directory()
+
     setup_logger(args.log_file, args.verbose)
     bazel_command = args.bazel_cmd
     bazel_output_base = subprocess.run(
