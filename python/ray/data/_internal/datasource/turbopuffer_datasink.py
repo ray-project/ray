@@ -322,13 +322,13 @@ class TurbopufferDatasink(Datasink):
                 f"Available columns: {table.column_names}"
             )
 
-        # Group by namespace column
-        # Note: PyArrow doesn't have a built-in group_by for tables,
-        # so we'll use a simpler approach: get unique values and filter.
+        # Group rows by the (possibly renamed) namespace column. We build the
+        # groups in a single pass over the column indices to avoid repeatedly
+        # scanning the full table for each unique namespace value.
         namespace_col = table.column(group_col_name)
 
-        # Disallow null namespace values: they would otherwise be silently
-        # dropped because pc.equal(namespace_col, None) returns all-false.
+        # Disallow null namespace values to avoid silently dropping them during
+        # grouping or filtering.
         null_mask = pc.is_null(namespace_col)
         if pc.any(null_mask).as_py():
             raise ValueError(
@@ -336,18 +336,17 @@ class TurbopufferDatasink(Datasink):
                 "fill or drop them before writing with namespace_column."
             )
 
-        # Get unique namespace values (now guaranteed to be non-null).
-        unique_namespaces = pc.unique(namespace_col)
+        # Build index groups per namespace value in a single pass.
+        index_groups: Dict[Any, list[int]] = {}
+        for idx, value in enumerate(namespace_col.to_pylist()):
+            index_groups.setdefault(value, []).append(idx)
 
-        logger.debug(f"Writing to {len(unique_namespaces)} namespaces")
+        logger.debug(f"Writing to {len(index_groups)} namespaces")
 
         # Process each namespace group
-        for i in range(len(unique_namespaces)):
-            namespace_value = unique_namespaces[i].as_py()
-
-            # Filter table for this namespace
-            mask = pc.equal(namespace_col, namespace_value)
-            group_table = table.filter(mask)
+        for namespace_value, row_indices in index_groups.items():
+            # Materialize this group's rows via a single take() call.
+            group_table = table.take(pa.array(row_indices, type=pa.int64()))
 
             # Format namespace name
             # Convert bytes to UUID string if needed
