@@ -482,7 +482,7 @@ class ParquetDatasource(Datasource):
             file_metadata_shuffler = np.random.default_rng(shuffle.seed)
 
         if file_metadata_shuffler is not None:
-            files_metadata = list(zip(pq_fragments, pq_paths))
+            files_metadata = list(zip(self._pq_fragments, self._pq_paths))
             shuffled_files_metadata = [
                 files_metadata[i]
                 for i in file_metadata_shuffler.permutation(len(files_metadata))
