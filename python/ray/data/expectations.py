@@ -469,7 +469,8 @@ def _extract_boolean_result(result: Any) -> bool:
             return False
 
         # All non-null values must be True
-        return all(v is True for v in non_null_values)
+        # Convert to bool to handle truthy/falsy values correctly
+        return all(bool(v) is True for v in non_null_values)
     elif isinstance(result, (list, tuple)):
         if not result:
             return True

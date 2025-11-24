@@ -1888,7 +1888,13 @@ class Dataset:
                         stacklevel=2
                     )
                     validation_col_name = "_validation_passed_2"
-                validated_ds = self.with_column(validation_col_name, expr)
+                try:
+                    validated_ds = self.with_column(validation_col_name, expr)
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Failed to evaluate expression {expr} on dataset: {e}. "
+                        f"This may indicate an issue with the expression or dataset schema."
+                    ) from e
 
                 # Split into passed and failed datasets using the validation flag
                 # Filtering on a boolean column is fast (expression already evaluated)
@@ -1944,10 +1950,12 @@ class Dataset:
                     sample_failed_values = []
                     try:
                         # Get a sample of failed rows for context
+                        # Limit to 5 rows to avoid performance issues
                         failed_sample = failed_ds.take(5)
-                        if failed_sample:
+                        if failed_sample and isinstance(failed_sample, list) and len(failed_sample) > 0:
                             # Extract column values from failed rows
-                            if isinstance(failed_sample[0], dict):
+                            first_row = failed_sample[0]
+                            if isinstance(first_row, dict):
                                 # Try to identify which column failed
                                 if hasattr(expectation, "_expr"):
                                     expr_str = str(getattr(expectation, "_expr", ""))
@@ -1962,10 +1970,11 @@ class Dataset:
                                         if match:
                                             col_name = match.group(1)
 
-                                    if col_name and col_name in failed_sample[0]:
+                                    if col_name and col_name in first_row:
+                                        # Extract up to 3 sample values
                                         sample_failed_values = [
                                             str(row.get(col_name, "N/A"))
-                                            for row in failed_sample[:3]
+                                            for row in failed_sample[:min(3, len(failed_sample))]
                                         ]
                     except Exception:
                         pass  # If sampling fails, continue without samples
@@ -1978,7 +1987,7 @@ class Dataset:
                     # Add context about failed values
                     if sample_failed_values:
                         sample_str = ", ".join(sample_failed_values)
-                        if len(sample_failed_values) == 3:
+                        if len(sample_failed_values) >= 3:
                             message += f". Sample failed values: [{sample_str}]"
                         else:
                             message += f". Failed values: [{sample_str}]"
@@ -2342,10 +2351,13 @@ class Dataset:
 
         try:
             # Use iter_batches to process incrementally and monitor time
-            for batch in self.iter_batches():
+            # Note: iter_batches() may not respect timeout for very large datasets
+            # as it processes batches sequentially and timeout check happens between batches
+            batch_iter = self.iter_batches()
+            for batch in batch_iter:
                 elapsed_time = time.perf_counter() - start_time
 
-                # Check if timeout exceeded
+                # Check if timeout exceeded before processing this batch
                 if elapsed_time >= max_time_seconds:
                     timeout_exceeded = True
                     # Halt execution by breaking out of iteration
@@ -2355,6 +2367,12 @@ class Dataset:
                 processed_batches.append(batch)
                 # Count rows in batch using helper function
                 processed_rows += self._count_rows_in_batch(batch)
+
+                # Check timeout again after processing batch (in case batch took a long time)
+                elapsed_time = time.perf_counter() - start_time
+                if elapsed_time >= max_time_seconds:
+                    timeout_exceeded = True
+                    break
 
         except Exception as e:
             # If execution fails, don't treat as timeout - it's a different error
