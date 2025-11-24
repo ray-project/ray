@@ -116,6 +116,7 @@ class TurbopufferDatasink(Datasink):
         id_column: str = "id",
         vector_column: str = "vector",
         batch_size: int = 10000,
+        distance_metric: str = "cosine_distance",
         concurrency: Optional[int] = None,
     ):
         # Import validation
@@ -154,6 +155,7 @@ class TurbopufferDatasink(Datasink):
         self.id_column = id_column
         self.vector_column = vector_column
         self.batch_size = batch_size
+        self.distance_metric = distance_metric
 
         # Validate column configuration
         if self.id_column == self.vector_column:
@@ -456,7 +458,7 @@ class TurbopufferDatasink(Datasink):
                 namespace.write(
                     upsert_rows=batch_data,
                     schema=self.schema,
-                    distance_metric="cosine_distance",
+                    distance_metric=self.distance_metric,
                 )
 
                 logger.debug(

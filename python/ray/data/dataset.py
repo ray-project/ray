@@ -5270,6 +5270,7 @@ class Dataset:
         id_column: str = "id",
         vector_column: str = "vector",
         batch_size: int = 10000,
+        distance_metric: str = "cosine_distance",
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> None:
@@ -5352,6 +5353,8 @@ class Dataset:
             batch_size: Maximum number of rows to include in a single
                 Turbopuffer write call (logical row batching; subject to
                 Turbopuffer's 256MiB request-size limit). Defaults to ``10000``.
+            distance_metric: Name of the distance metric to use for the
+                Turbopuffer namespace. Defaults to ``"cosine_distance"``.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write
                 tasks.
             concurrency: The maximum number of Ray tasks to run concurrently.
@@ -5370,6 +5373,7 @@ class Dataset:
             id_column=id_column,
             vector_column=vector_column,
             batch_size=batch_size,
+            distance_metric=distance_metric,
         )
 
         self.write_datasink(
