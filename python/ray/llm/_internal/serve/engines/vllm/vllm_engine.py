@@ -1,6 +1,7 @@
 import argparse
 import os
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, Tuple, Union
+import inspect
 
 from starlette.datastructures import State
 from starlette.requests import Request
@@ -195,16 +196,22 @@ class VLLMEngine(LLMEngine):
         state = State()
         # TODO (Kourosh): There might be some variables that needs protection?
         args = argparse.Namespace(
-            **(vllm_frontend_args.__dict__ | **vllm_engine_args.__dict__)
+            **(vllm_frontend_args.__dict__ | vllm_engine_args.__dict__)
         )
 
-        await init_app_state(
-            engine_client=self._engine_client,
-            # TODO (ahao): remove vllm_config for vllm v1.12
-            vllm_config=vllm_engine_config,
-            state=state,
-            args=args,
-        )
+        if "vllm_config" in inspect.signature(init_app_state).parameters:
+            await init_app_state(
+                self._engine_client,
+                vllm_config=vllm_engine_config,
+                state=state,
+                args=args,
+            )
+        else:
+            await init_app_state(
+                self._engine_client,
+                state=state,
+                args=args,
+            )
 
         self._oai_models = state.openai_serving_models
         self._oai_serving_chat = state.openai_serving_chat
