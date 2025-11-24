@@ -205,7 +205,7 @@ class ServeHead(SubprocessModule):
         from ray.serve._private.common import DeploymentID
         from ray.serve._private.exceptions import (
             DeploymentIsBeingDeletedError,
-            ExternalScalerNotEnabledError,
+            ExternalScalerDisabledError,
         )
         from ray.serve.schema import ScaleDeploymentRequest
 
@@ -259,7 +259,7 @@ class ServeHead(SubprocessModule):
                 return self._create_json_response(
                     {"error": "Deployment is deleted"}, 412
                 )
-            elif isinstance(e, ExternalScalerNotEnabledError):
+            elif isinstance(e, ExternalScalerDisabledError):
                 return self._create_json_response({"error": str(e.cause)}, 412)
             if isinstance(e, ValueError) and "not found" in str(e):
                 return self._create_json_response(

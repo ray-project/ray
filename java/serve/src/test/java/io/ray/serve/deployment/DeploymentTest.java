@@ -212,7 +212,7 @@ public class DeploymentTest extends BaseServeTest2 {
      *
      * In production, when external_scaler_enabled=false, attempts to scale via the
      * HTTP dashboard API would return 412 (Precondition Failed) with an
-     * ExternalScalerNotEnabledError. However, as explained in externalScalerEnabledTest,
+     * ExternalScalerDisabledError. However, as explained in externalScalerEnabledTest,
      * we cannot reliably test the HTTP API in this test environment due to dashboard
      * and controller lifecycle management issues.
      *

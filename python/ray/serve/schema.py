@@ -1205,7 +1205,7 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
         description="Details about the deployments in this application."
     )
     external_scaler_enabled: bool = Field(
-        description="Whether external autoscaling is enabled for this application.",
+        description="Whether external scaling is enabled for this application.",
     )
 
     application_details_route_prefix_format = validator(

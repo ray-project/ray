@@ -1292,7 +1292,7 @@ class ApplicationStateManager:
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
 
-    def is_external_scaler_enabled(self, app_name: str) -> bool:
+    def get_external_scaler_enabled(self, app_name: str) -> bool:
         """Check if external scaler is enabled for the application.
 
         Args:
@@ -1301,10 +1301,7 @@ class ApplicationStateManager:
         Returns:
             True if external_scaler_enabled is set for the application, False otherwise.
         """
-        if self.does_app_exist(app_name):
-            return self._application_states[app_name].external_scaler_enabled
-
-        return False
+        return self.does_app_exist(app_name) and self._application_states[app_name].external_scaler_enabled
 
     def list_app_statuses(
         self, source: Optional[APIType] = None

@@ -332,7 +332,7 @@ class ServeControllerClient:
         wait_for_applications_running: bool = True,
     ) -> List[DeploymentHandle]:
         name_to_deployment_args_list = {}
-        name_to_application_args_list = {}
+        name_to_application_args = {}
         for app in built_apps:
             deployment_args_list = []
             for deployment in app.deployments:
@@ -372,7 +372,7 @@ class ServeControllerClient:
             application_args_proto.external_scaler_enabled = app.external_scaler_enabled
 
             name_to_deployment_args_list[app.name] = deployment_args_list
-            name_to_application_args_list[
+            name_to_application_args[
                 app.name
             ] = application_args_proto.SerializeToString()
 
@@ -381,7 +381,7 @@ class ServeControllerClient:
 
         ray.get(
             self._controller.deploy_applications.remote(
-                name_to_deployment_args_list, name_to_application_args_list
+                name_to_deployment_args_list, name_to_application_args
             )
         )
 
