@@ -5,9 +5,6 @@ from dataclasses import Field, dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from ray.data._internal.execution.interfaces.op_runtime_metrics.base import (
-    TaskDurationStats,
-)
 from ray.data.block import BlockMetadata
 
 # A metadata key used to mark a dataclass field as a metric.
@@ -22,15 +19,6 @@ _METRIC_FIELD_INTERNAL_ONLY_KEY = "__metric_internal_only"
 _METRICS: List["MetricDefinition"] = []
 
 NODE_UNKNOWN = "unknown"
-
-
-@dataclass
-class TaskMetrics:
-    """Task metrics for an operator."""
-
-    num_task_outputs_generated: int = 0
-    average_max_uss_per_task: float = 0.0
-    op_task_duration_stats: TaskDurationStats = TaskDurationStats()
 
 
 @dataclass
@@ -251,3 +239,13 @@ class TaskDurationStats:
     def stddev(self) -> float:
         """Return the current standard deviation of the observed durations."""
         return math.sqrt(self._variance())
+
+
+@dataclass
+class TaskMetrics:
+    """Task metrics for an operator."""
+
+    num_task_outputs_generated: int = 0
+    num_tasks_running: int = 0
+    average_max_uss_per_task: float = 0.0
+    op_task_duration_stats: TaskDurationStats = TaskDurationStats()

@@ -645,6 +645,7 @@ class TaskOpMetrics(BaseOpMetrics):
     def task_metrics(self) -> TaskMetrics:
         return TaskMetrics(
             num_task_outputs_generated=self.num_task_outputs_generated,
+            num_tasks_running=self.num_tasks_running,
             average_max_uss_per_task=self.average_max_uss_per_task,
             op_task_duration_stats=self._op_task_duration_stats,
         )

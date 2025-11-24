@@ -140,7 +140,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     def can_add_input(self, op: "PhysicalOperator") -> bool:
         """Return whether `op` may accept another input now."""
 
-        num_tasks_running = op.num_active_tasks()
+        num_tasks_running = op.metrics.task_metrics().num_tasks_running
 
         # If not a MapOperator or feature disabled, just enforce configured cap.
         if (
