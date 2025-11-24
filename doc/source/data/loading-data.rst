@@ -1016,9 +1016,6 @@ Ray Data reads from message queues like Kafka.
 
 .. _reading_kafka:
 
-Reading Kafka
-~~~~~~~~~~~~~
-
 To read data from Kafka topics, call :func:`~ray.data.read_kafka` and specify
 the topic names and broker addresses. Ray Data performs bounded reads between
 a start and end offset.
