@@ -6,9 +6,6 @@
 
 set -exo pipefail
 
-# Limit the dataset size to 10000 rows for faster testing.
-export LARGE_DATASET_LIMIT=10000
-
 python ci/nb2py.py "content/llm_batch_inference_text.ipynb" "content/llm_batch_inference_text.py" --ignore-cmds
 python "content/llm_batch_inference_text.py"
 rm "content/llm_batch_inference_text.py"

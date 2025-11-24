@@ -72,10 +72,11 @@ def convert_notebook(
                 else:
                     # Regular Python cell:
                     code = cell.source.rstrip()
-                    if "client.chat.completions.create" in code:
-                        continue  # Model isn't deployed in CI so skip cells calling the service
+                    if "ds_large = ds.limit(1_000_000)" in code:
+                        # Instead of testing a large dataset in CI, test a small dataset
+                        code = code.replace("ds.limit(1_000_000)", "ds.limit(10_000)")
                     # else, dump as-is
-                    out.write(cell.source.rstrip() + "\n\n")
+                    out.write(code + "\n\n")
 
 
 def main() -> None:
