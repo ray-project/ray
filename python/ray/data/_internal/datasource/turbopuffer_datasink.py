@@ -289,10 +289,19 @@ class TurbopufferDatasink(Datasink):
 
         # Group by namespace column
         # Note: PyArrow doesn't have a built-in group_by for tables,
-        # so we'll use a simpler approach: get unique values and filter
+        # so we'll use a simpler approach: get unique values and filter.
         namespace_col = table.column(self.namespace_column)
 
-        # Get unique namespace values
+        # Disallow null namespace values: they would otherwise be silently
+        # dropped because pc.equal(namespace_col, None) returns all-false.
+        null_mask = pc.is_null(namespace_col)
+        if pc.any(null_mask).as_py():
+            raise ValueError(
+                f"Namespace column '{self.namespace_column}' contains null values; "
+                "fill or drop them before writing with namespace_column."
+            )
+
+        # Get unique namespace values (now guaranteed to be non-null).
         unique_namespaces = pc.unique(namespace_col)
 
         logger.debug(f"Writing to {len(unique_namespaces)} namespaces")

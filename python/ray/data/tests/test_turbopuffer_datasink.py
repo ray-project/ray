@@ -227,6 +227,27 @@ def test_write_multi_namespace_missing_column_raises():
         sink._write_multi_namespace(client, table)
 
 
+def test_write_multi_namespace_raises_on_null_namespace_values():
+    # When the namespace column contains nulls, we should raise a clear error
+    # instead of silently dropping those rows.
+    table = pa.table(
+        {
+            "space_id": ["a", None, "b"],
+            "id": [1, 2, 3],
+            "vector": [[1.0], [2.0], [3.0]],
+        }
+    )
+    sink = make_sink(
+        namespace=None,
+        namespace_column="space_id",
+        namespace_format="ns-{namespace}",
+    )
+    client = MagicMock()
+
+    with pytest.raises(ValueError, match="contains null values"):
+        sink._write_multi_namespace(client, table)
+
+
 ### 5. Single-namespace batching and write flow
 
 
