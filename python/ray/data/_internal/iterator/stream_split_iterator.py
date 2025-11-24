@@ -4,11 +4,7 @@ import time
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
-from ray.data._internal.execution.interfaces import (
-    ExecutionResources,
-    NodeIdStr,
-    RefBundle,
-)
+from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block
@@ -299,4 +295,3 @@ class SplitCoordinator:
 
         assert self._output_iterator is not None
         return starting_epoch + 1
-
