@@ -583,10 +583,19 @@ class MCAPDatasource(FileBasedDatasource):
     def _merge_filters(
         self, existing: Optional[Set[str]], new: Optional[Set[str]]
     ) -> Optional[Set[str]]:
-        """Merge two filter sets by taking their intersection."""
-        if not new:
+        """Merge two filter sets by taking their intersection.
+
+        Args:
+            existing: Existing filter set, or None for no filter.
+            new: New filter set, or None for no filter.
+
+        Returns:
+            Intersection of filters, or None if both are None.
+            Empty set means "filter to nothing" (no matches).
+        """
+        if new is None:
             return existing
-        if not existing:
+        if existing is None:
             return new
         return existing.intersection(new)  # Empty intersection is valid (no matching data)
 
@@ -901,8 +910,8 @@ class MCAPDatasource(FileBasedDatasource):
                 }
             )
 
-        if self._include_paths:
-            message_data["path"] = path
+        # Note: FileBasedDatasource automatically adds "path" column when include_paths=True
+        # Do not add it here to avoid duplicate columns
 
         return message_data
 
