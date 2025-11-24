@@ -1,6 +1,7 @@
 import collections
 from typing import List, Optional
 
+from ray.data._internal.execution.bundle_queue import BundleQueue, FIFOBundleQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -35,8 +36,8 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
         # Intermediary buffers used to store blocks from each input dependency.
         # Only used when `self._prserve_order` is True.
-        self._input_buffers: List[collections.deque[RefBundle]] = [
-            collections.deque() for _ in range(len(input_ops))
+        self._input_buffers: List[BundleQueue] = [
+            FIFOBundleQueue() for _ in range(len(input_ops))
         ]
 
         # The index of the input dependency that is currently the source of
@@ -72,8 +73,30 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
             total_rows += input_num_rows
         return total_rows
 
-    def internal_queue_size(self) -> int:
-        return sum([len(buf) for buf in self._input_buffers])
+    def internal_input_queue_num_blocks(self) -> int:
+        return sum(q.num_blocks() for q in self._input_buffers)
+
+    def internal_input_queue_num_bytes(self) -> int:
+        return sum(q.estimate_size_bytes() for q in self._input_buffers)
+
+    def internal_output_queue_num_blocks(self) -> int:
+        return sum(len(q.blocks) for q in self._output_buffer)
+
+    def internal_output_queue_num_bytes(self) -> int:
+        return sum(q.size_bytes() for q in self._output_buffer)
+
+    def clear_internal_input_queue(self) -> None:
+        """Clear internal input queues."""
+        for input_buffer in self._input_buffers:
+            while input_buffer:
+                bundle = input_buffer.get_next()
+                self._metrics.on_input_dequeued(bundle)
+
+    def clear_internal_output_queue(self) -> None:
+        """Clear internal output queue."""
+        while self._output_buffer:
+            bundle = self._output_buffer.popleft()
+            self._metrics.on_output_dequeued(bundle)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
@@ -83,7 +106,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
             self._output_buffer.append(refs)
             self._metrics.on_output_queued(refs)
         else:
-            self._input_buffers[input_index].append(refs)
+            self._input_buffers[input_index].add(refs)
             self._metrics.on_input_queued(refs)
 
     def all_inputs_done(self) -> None:
@@ -95,7 +118,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         assert len(self._output_buffer) == 0, len(self._output_buffer)
         for input_buffer in self._input_buffers:
             while input_buffer:
-                refs = input_buffer.popleft()
+                refs = input_buffer.get_next()
                 self._metrics.on_input_dequeued(refs)
                 self._output_buffer.append(refs)
                 self._metrics.on_output_queued(refs)

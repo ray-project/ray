@@ -1,4 +1,6 @@
+import logging
 import random
+import re
 import sys
 import threading
 import time
@@ -58,6 +60,29 @@ class GPUTestActor:
         raise Exception(error_message)
 
 
+@ray.remote
+class ErrorActor:
+    @ray.method(tensor_transport="gloo")
+    def send(self, tensor):
+        return tensor
+
+    def recv(self, tensor):
+        return tensor
+
+    def clear_gpu_object_store(self):
+        gpu_object_store = (
+            ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
+        )
+
+        with gpu_object_store._lock:
+            assert len(gpu_object_store._gpu_object_store) > 0
+            gpu_object_store._gpu_object_store.clear()
+
+    @ray.method(concurrency_group="_ray_system")
+    def block_background_thread(self):
+        time.sleep(100)
+
+
 @pytest.mark.parametrize("data_size_bytes", [100])
 def test_gc_gpu_object(ray_start_regular, data_size_bytes):
     """
@@ -71,7 +96,7 @@ def test_gc_gpu_object(ray_start_regular, data_size_bytes):
     """
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     small_tensor = torch.randn((1,))
     cpu_data = b"1" * data_size_bytes
@@ -105,6 +130,23 @@ def test_gc_gpu_object(ray_start_regular, data_size_bytes):
     )
 
 
+def test_gc_gpu_object_metadata(ray_start_regular):
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    create_collective_group(actors, backend="gloo")
+
+    tensor = torch.randn((100, 100))
+    ref = actors[0].echo.remote(tensor)
+    gpu_obj_id = ref.hex()
+    gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
+    assert gpu_obj_id in gpu_object_manager.managed_gpu_object_metadata
+    ray.get(actors[1].double.remote(ref))
+    del ref
+
+    wait_for_condition(
+        lambda: gpu_obj_id not in gpu_object_manager.managed_gpu_object_metadata,
+    )
+
+
 @pytest.mark.parametrize("data_size_bytes", [100])
 def test_gc_del_ref_before_recv_finish(ray_start_regular, data_size_bytes):
     """
@@ -113,7 +155,7 @@ def test_gc_del_ref_before_recv_finish(ray_start_regular, data_size_bytes):
     """
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     small_tensor = torch.randn((1,))
     cpu_data = b"1" * data_size_bytes
@@ -147,7 +189,7 @@ def test_gc_intra_actor_gpu_object(ray_start_regular):
     This test checks that passes a GPU object ref to the same actor multiple times.
     """
     actor = GPUTestActor.remote()
-    create_collective_group([actor], backend="torch_gloo")
+    create_collective_group([actor], backend="gloo")
 
     small_tensor = torch.randn((1,))
 
@@ -173,7 +215,7 @@ def test_gc_pass_ref_to_same_and_different_actors(ray_start_regular):
     """
     actor1 = GPUTestActor.remote()
     actor2 = GPUTestActor.remote()
-    create_collective_group([actor1, actor2], backend="torch_gloo")
+    create_collective_group([actor1, actor2], backend="gloo")
 
     small_tensor = torch.randn((1,))
 
@@ -201,7 +243,7 @@ def test_gc_pass_ref_to_same_and_different_actors(ray_start_regular):
 def test_p2p(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     small_tensor = torch.randn((1,))
     sender = actors[0]
@@ -268,7 +310,7 @@ def test_p2p_blocking(ray_start_regular, has_tensor_transport_method):
 
     sender, receiver = GPUTestActor.remote(), GPUTestActor.remote()
     signal = SignalActor.remote()
-    create_collective_group([sender, receiver], backend="torch_gloo")
+    create_collective_group([sender, receiver], backend="gloo")
     tensor = torch.randn((500, 500))
     # If the actor does not have a tensor transport method declared, declare it
     # dynamically using .options().
@@ -292,7 +334,7 @@ def test_p2p_blocking(ray_start_regular, has_tensor_transport_method):
 def test_p2p_with_cpu_data(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     sender = actors[0]
     receiver = actors[1]
@@ -306,7 +348,7 @@ def test_p2p_with_cpu_data(ray_start_regular):
 def test_send_same_ref_to_same_actor_task_multiple_times(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     small_tensor = torch.randn((1,))
     sender = actors[0]
@@ -326,7 +368,7 @@ def test_send_same_ref_to_same_actor_task_multiple_times(ray_start_regular):
 def test_send_same_ref_to_same_actor_multiple_times(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     small_tensor = torch.randn((1,))
     sender = actors[0]
@@ -342,7 +384,7 @@ def test_send_same_ref_to_same_actor_multiple_times(ray_start_regular):
 
 def test_intra_gpu_tensor_transfer(ray_start_regular):
     actor = GPUTestActor.remote()
-    create_collective_group([actor], backend="torch_gloo")
+    create_collective_group([actor], backend="gloo")
 
     small_tensor = torch.randn((1,))
 
@@ -373,7 +415,7 @@ def test_intra_gpu_tensor_transfer(ray_start_regular):
 
 def test_send_same_ref_multiple_times_intra_actor(ray_start_regular):
     actor = GPUTestActor.remote()
-    create_collective_group([actor], backend="torch_gloo")
+    create_collective_group([actor], backend="gloo")
 
     small_tensor = torch.randn((1,))
 
@@ -385,7 +427,7 @@ def test_send_same_ref_multiple_times_intra_actor(ray_start_regular):
 def test_mix_cpu_gpu_data(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     tensor = torch.randn((1,))
     cpu_data = random.randint(0, 100)
@@ -408,7 +450,7 @@ def test_object_in_plasma(ray_start_regular):
     """
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     tensor = torch.randn((1,))
     cpu_data = b"1" * 1000 * 1000
@@ -426,7 +468,7 @@ def test_object_in_plasma(ray_start_regular):
 def test_multiple_tensors(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     tensor1 = torch.randn((1,))
     tensor2 = torch.randn((2,))
@@ -461,7 +503,7 @@ def test_multiple_tensors(ray_start_regular):
 def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     src_actor, dst_actor = actors[0], actors[1]
 
@@ -493,7 +535,7 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
 
 def test_fetch_gpu_object_to_driver(ray_start_regular):
     actor = GPUTestActor.remote()
-    create_collective_group([actor], backend="torch_gloo")
+    create_collective_group([actor], backend="gloo")
 
     tensor1 = torch.tensor([1, 2, 3])
     tensor2 = torch.tensor([4, 5, 6])
@@ -534,7 +576,7 @@ def test_invalid_tensor_transport(ray_start_regular):
 def test_tensordict_transfer(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     td = TensorDict(
         {"action": torch.randn((2,)), "reward": torch.randn((2,))}, batch_size=[2]
@@ -555,7 +597,7 @@ def test_tensordict_transfer(ray_start_regular):
 def test_nested_tensordict(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     inner_td = TensorDict(
         {"action": torch.randn((2,)), "reward": torch.randn((2,))}, batch_size=[2]
@@ -579,7 +621,7 @@ def test_nested_tensordict(ray_start_regular):
 )
 def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular):
     actor = GPUTestActor.remote()
-    create_collective_group([actor], backend="torch_gloo")
+    create_collective_group([actor], backend="gloo")
 
     td = TensorDict(
         {"action": torch.randn((2,)), "reward": torch.randn((2,))}, batch_size=[2]
@@ -623,7 +665,7 @@ def test_dynamic_tensor_transport_via_options(
     # Create actor without any tensor_transport decorators
     sender = TestActor.remote()
     receiver = TestActor.remote()
-    create_collective_group([sender, receiver], backend="torch_gloo")
+    create_collective_group([sender, receiver], backend="gloo")
 
     # Test normal method call
     result = ray.get(sender.normal_method.remote())
@@ -650,7 +692,7 @@ def test_dynamic_tensor_transport_via_options(
 def test_app_error_inter_actor(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     src_actor, dst_actor = actors[0], actors[1]
 
@@ -668,7 +710,7 @@ def test_app_error_inter_actor(ray_start_regular):
 
 def test_app_error_intra_actor(ray_start_regular):
     actor = GPUTestActor.remote()
-    create_collective_group([actor], backend="torch_gloo")
+    create_collective_group([actor], backend="gloo")
 
     # Make sure the receiver can receive an exception from the sender.
     ref = actor.fail.options(tensor_transport="gloo").remote("test_app_error")
@@ -684,7 +726,7 @@ def test_app_error_intra_actor(ray_start_regular):
 
 def test_app_error_fetch_to_driver(ray_start_regular):
     actor = GPUTestActor.remote()
-    create_collective_group([actor], backend="torch_gloo")
+    create_collective_group([actor], backend="gloo")
 
     ref = actor.fail.options(tensor_transport="gloo").remote("test_app_error")
     with pytest.raises(Exception, match="test_app_error"):
@@ -719,7 +761,7 @@ def test_write_after_save(ray_start_regular):
 
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     medium_tensor = torch.randn((500, 500))
     sender, receiver = actors
@@ -810,7 +852,7 @@ def test_send_back_and_dst_warning(ray_start_regular):
     # Test warning when object is sent back to the src actor and to dst actors
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
 
     src_actor, dst_actor = actors[0], actors[1]
 
@@ -833,7 +875,7 @@ def test_send_back_and_dst_warning(ray_start_regular):
 def test_duplicate_objectref_transfer(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
-    create_collective_group(actors, backend="torch_gloo")
+    create_collective_group(actors, backend="gloo")
     actor0, actor1 = actors[0], actors[1]
 
     small_tensor = torch.randn((1,))
@@ -883,6 +925,93 @@ def test_transfer_from_not_actor_creator(ray_start_regular):
     assert ray.get(actor[2].do_transfer.remote(actor[0], actor[1])) == pytest.approx(
         torch.tensor([1, 2, 3])
     )
+
+
+def test_send_fails(ray_start_regular):
+    actors = [ErrorActor.remote() for _ in range(2)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    # The gpu object will be gone when we trigger the transfer
+    # so the send will error out
+    gpu_obj_ref = actors[0].send.remote(torch.randn((100, 100)))
+    ray.get(actors[0].clear_gpu_object_store.remote())
+    result_ref = actors[1].recv.remote(gpu_obj_ref)
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(result_ref)
+
+
+def test_send_actor_dies(ray_start_regular):
+    actors = [ErrorActor.remote() for _ in range(2)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    # Try a transfer with the sender's background thread blocked,
+    # so the send doesn't happen before the actor is killed
+    gpu_obj_ref = actors[0].send.remote(torch.randn((100, 100)))
+    actors[0].block_background_thread.remote()
+    result_ref = actors[1].recv.remote(gpu_obj_ref)
+    ray.kill(actors[0])
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(result_ref)
+
+
+def test_recv_actor_dies(ray_start_regular, caplog, propagate_logs):
+    actors = [ErrorActor.remote() for _ in range(2)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    # Do a transfer with the receiver's background thread blocked,
+    # so the recv doesn't happen before the actor is killed
+    gpu_obj_ref = actors[0].send.remote(torch.randn((100, 100)))
+    actors[1].block_background_thread.remote()
+    result_ref = actors[1].recv.remote(gpu_obj_ref)
+    ray.kill(actors[1])
+
+    def check_logs():
+        records = caplog.records
+        return any(
+            record.levelno == logging.ERROR
+            and re.search(r"RDT transfer with.*failed", record.message)
+            for record in records
+        ) and any(
+            record.levelno == logging.ERROR
+            and "Destroyed collective group" in record.message
+            for record in records
+        )
+
+    wait_for_condition(check_logs)
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(result_ref)
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(actors[0].recv.remote(1))
+
+
+@pytest.mark.skip(
+    "Lineage Reconstruction currently results in a check failure with RDT"
+)
+def test_rdt_lineage_reconstruction(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1)
+    worker_to_kill = cluster.add_node(num_cpus=1, resources={"to_restart": 1})
+
+    @ray.remote(max_restarts=1, max_task_retries=1, resources={"to_restart": 1})
+    class RecvRestartableActor:
+        def recv(self, obj):
+            return obj
+
+    send_actor = GPUTestActor.remote()
+    recv_actor = RecvRestartableActor.remote()
+    create_collective_group([send_actor, recv_actor], backend="gloo")
+
+    one_mb_tensor = torch.randn((1024 * 1024,))
+    ref = recv_actor.recv.remote(send_actor.echo.remote(one_mb_tensor))
+    ray.wait([ref], fetch_local=False)
+    cluster.remove_node(worker_to_kill, allow_graceful=False)
+    cluster.add_node(num_cpus=1, resources={"to_restart": 1})
+    assert ray.get(ref).nbytes >= (1024 * 1024)
 
 
 if __name__ == "__main__":

@@ -30,7 +30,7 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/pubsub/publisher_interface.h"
-#include "ray/rpc/server_call.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray {

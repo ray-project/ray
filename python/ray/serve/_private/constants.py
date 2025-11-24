@@ -55,9 +55,11 @@ HTTP_PROXY_TIMEOUT = 60
 #: If no replicas at target version is running by the time we're at
 #: max constructor retry count, deploy() is considered failed.
 #: By default we set threshold as min(num_replicas * 3, this value)
+#: This constant is deprecated and will be removed in the future.
+#: Please use 'max_constructor_retry_count' instead in configurations.
 MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = get_env_int(
     "RAY_SERVE_MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT",
-    get_env_int("MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", 20),
+    get_env_int("MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", None),
 )
 
 # Max retry on deployment constructor is
@@ -149,6 +151,8 @@ DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
 DEFAULT_MAX_ONGOING_REQUESTS = 5
 DEFAULT_TARGET_ONGOING_REQUESTS = 2
+DEFAULT_CONSUMER_CONCURRENCY = DEFAULT_MAX_ONGOING_REQUESTS
+DEFAULT_CONSTRUCTOR_RETRY_COUNT = 20
 
 # HTTP Proxy health check configs
 PROXY_HEALTH_CHECK_TIMEOUT_S = get_env_float_positive(
@@ -497,12 +501,23 @@ HEALTHY_MESSAGE = "success"
 # This should be at the end.
 RAY_SERVE_THROUGHPUT_OPTIMIZED = get_env_bool("RAY_SERVE_THROUGHPUT_OPTIMIZED", "0")
 if RAY_SERVE_THROUGHPUT_OPTIMIZED:
-    RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = False
-    RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = 1000
-    RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = False
-    RAY_SERVE_LOG_TO_STDERR = False
+    RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = get_env_bool(
+        "RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD", "0"
+    )
+    RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = get_env_int(
+        "RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE", 1000
+    )
+    RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = get_env_bool(
+        "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP", "0"
+    )
+    RAY_SERVE_LOG_TO_STDERR = get_env_bool("RAY_SERVE_LOG_TO_STDERR", "0")
 
 # The maximum allowed RPC latency in milliseconds.
 # This is used to detect and warn about long RPC latencies
 # between the controller and the replicas.
 RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS = 2000
+
+# Feature flag to aggregate metrics at the controller instead of the replicas or handles.
+RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
+    "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER", "0"
+)

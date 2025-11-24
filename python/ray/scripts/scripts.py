@@ -26,12 +26,16 @@ import ray._private.services as services
 from ray._common.network_utils import build_address, parse_address
 from ray._common.usage import usage_lib
 from ray._common.utils import load_class
+from ray._private.authentication.authentication_token_setup import (
+    ensure_token_if_auth_enabled,
+)
 from ray._private.internal_api import memory_summary
 from ray._private.label_utils import (
     parse_node_labels_from_yaml_file,
     parse_node_labels_json,
     parse_node_labels_string,
 )
+from ray._private.log import format_returncode, setup_process_exit_logger
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.utils import (
     get_ray_client_dependency_error,
@@ -526,7 +530,8 @@ Windows powershell users need additional escaping:
     "--block",
     is_flag=True,
     default=False,
-    help="provide this argument to block forever in this command",
+    help="provide this argument to block forever in this command."
+    "Process exit logs will be saved to ray_process_exit.log in the logs directory.",
 )
 @click.option(
     "--plasma-directory",
@@ -648,20 +653,20 @@ Windows powershell users need additional escaping:
     "--system-reserved-cpu",
     required=False,
     type=float,
-    help="The amount of cpu cores to reserve for ray system processes. Cores can be "
-    "fractional i.e. 0.5 means half a cpu core. "
-    "By default, the min of 20% and 1 core will be reserved."
-    "Must be >= 0.5 and < total number of available cores. "
-    "This option only works if --enable-resource-isolation is set.",
+    help=" The number of cpu cores to reserve for ray system processes. "
+    "Cores can be fractional i.e. 1.5 means one and a half a cpu core. "
+    "By default, the value will be atleast 1 core, and at maximum 3 cores. The default value "
+    "is calculated using the formula min(3.0, max(1.0, 0.05 * num_cores_on_the_system)) "
+    "This option only works if --enable_resource_isolation is set.",
 )
 @click.option(
     "--system-reserved-memory",
     required=False,
     type=int,
     help="The amount of memory (in bytes) to reserve for ray system processes. "
-    "By default, the min of 10% and 25GB plus object_store_memory will be reserved. "
-    "Must be >= 100MB and system-reserved-memory + object-store-bytes < total available memory "
-    "This option only works if --enable-resource-isolation is set.",
+    "By default, the value will be atleast 500MB, and at most 10GB. The default value is  "
+    "calculated using the formula min(10GB, max(500MB, 0.10 * memory_available_on_the_system)) "
+    "This option only works if --enable_resource_isolation is set.",
 )
 @click.option(
     "--cgroup-path",
@@ -670,9 +675,9 @@ Windows powershell users need additional escaping:
     type=str,
     help="The path for the cgroup the raylet should use to enforce resource isolation. "
     "By default, the cgroup used for resource isolation will be /sys/fs/cgroup. "
-    "The raylet must have read/write permissions to this path. "
+    "The process starting ray must have read/write permissions to this path.  "
     "Cgroup memory and cpu controllers be enabled for this cgroup. "
-    "This option only works if --enable-resource-isolation is set.",
+    "This option only works if enable_resource_isolation is True.",
 )
 @add_click_logging_options
 @PublicAPI
@@ -937,6 +942,9 @@ def start(
                     " flag of `ray start` command."
                 )
 
+        # Ensure auth token is available if authentication mode is token
+        ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
+
         node = ray._private.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
         )
@@ -1094,13 +1102,13 @@ def start(
 
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
 
+        # Ensure auth token is available if authentication mode is token
+        ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
+
         node = ray._private.node.Node(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
         )
         temp_dir = node.get_temp_dir_path()
-
-        # TODO(hjiang): Validate whether specified resource is true for physical
-        # resource.
 
         # Ray and Python versions should probably be checked before
         # initializing Node.
@@ -1120,6 +1128,8 @@ def start(
     ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
 
     if block:
+        logs_dir = node.get_logs_dir_path()
+        process_exit_log_path = os.path.join(logs_dir, "ray_process_exit.log")
         cli_logger.newline()
         with cli_logger.group(cf.bold("--block")):
             cli_logger.print(
@@ -1130,7 +1140,15 @@ def start(
                 "printed if any of them terminate unexpectedly. Subprocesses "
                 "exit with SIGTERM will be treated as graceful, thus NOT reported."
             )
+            cli_logger.print(
+                "Process exit logs will be saved to: {}", cf.bold(process_exit_log_path)
+            )
             cli_logger.flush()
+            try:
+                process_exit_logger = setup_process_exit_logger(process_exit_log_path)
+            except Exception as e:
+                cli_logger.warning("Failed to init process exit logger: {}", e)
+                process_exit_logger = None
 
         while True:
             time.sleep(1)
@@ -1157,6 +1175,7 @@ def start(
                 cli_logger.newline()
                 cli_logger.error("Some Ray subprocesses exited unexpectedly:")
 
+                lines_for_file = []
                 with cli_logger.indented():
                     for process_type, process in unexpected_deceased:
                         cli_logger.error(
@@ -1164,9 +1183,21 @@ def start(
                             cf.bold(str(process_type)),
                             _tags={"exit code": str(process.returncode)},
                         )
+                        rc = getattr(process, "returncode", None)
+                        rc_str = format_returncode(rc)
+                        lines_for_file.append(f"  {process_type} [exit code={rc_str}]")
+                try:
+                    file_msg = (
+                        "Some Ray subprocesses exited unexpectedly:\n"
+                        + "\n".join(lines_for_file)
+                    )
+                    process_exit_logger.error("%s", file_msg)
+                except Exception as e:
+                    cli_logger.warning("Failed to write process exit log: {}", e)
 
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
+
                 # explicitly kill all processes since atexit handlers
                 # will not exit with errors.
                 node.kill_all_processes(check_alive=False, allow_graceful=False)
@@ -2680,6 +2711,65 @@ def shutdown_prometheus():
         sys.exit(1)
 
 
+@cli.command(name="get-auth-token")
+@click.option(
+    "--generate",
+    is_flag=True,
+    default=False,
+    help="Generate a new token if none exists",
+)
+def get_auth_token(generate):
+    """Prints the Ray authentication token to stdout when RAY_AUTH_MODE=token.
+
+    If --generate is specified, a new token is created and saved to ~/.ray/auth_token if one does not exist.
+    """
+    from ray._private.authentication.authentication_token_setup import (
+        generate_and_save_token,
+    )
+    from ray._raylet import (
+        AuthenticationMode,
+        AuthenticationTokenLoader,
+        get_authentication_mode,
+    )
+
+    # Check if token auth mode is enabled and provide guidance if not
+    if get_authentication_mode() != AuthenticationMode.TOKEN:
+        click.echo(
+            "Note: Token authentication is not currently enabled.",
+            err=True,
+        )
+        click.echo(
+            "To enable token authentication, set: export RAY_AUTH_MODE=token",
+            err=True,
+        )
+        click.echo("", err=True)
+
+    # Try to load existing token
+    loader = AuthenticationTokenLoader.instance()
+
+    if not loader.has_token():
+        if generate:
+            click.echo("Generating new authentication token...", err=True)
+            generate_and_save_token()
+            loader.reset_cache()
+        else:
+            click.echo(
+                "Error: No authentication token found. Use --generate to create one.",
+                err=True,
+            )
+            sys.exit(1)
+
+    # Get raw token value
+    token = loader.get_raw_token()
+
+    if not token:
+        click.echo("Error: Failed to load authentication token.", err=True)
+        sys.exit(1)
+
+    # Print token to stdout (for piping) without newline
+    click.echo(token, nl=False)
+
+
 def add_command_alias(command, name, hidden):
     new_command = copy.deepcopy(command)
     new_command.hidden = hidden
@@ -2720,6 +2810,7 @@ cli.add_command(drain_node)
 cli.add_command(check_open_ports)
 cli.add_command(sanity_check)
 cli.add_command(symmetric_run, name="symmetric-run")
+cli.add_command(get_auth_token)
 
 try:
     from ray.util.state.state_cli import (

@@ -21,6 +21,7 @@
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
 #include "ray/pubsub/gcs_publisher.h"
+#include "ray/stats/metric.h"
 
 namespace ray {
 namespace gcs {
@@ -80,10 +81,10 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
   std::vector<std::function<void(std::shared_ptr<rpc::WorkerTableData>)>>
       worker_dead_listeners_;
 
-  /// Tracks the number of occurences of worker crash due to system error
+  /// Tracks the number of occurrences of worker crash due to system error
   int32_t worker_crash_system_error_count_ = 0;
 
-  /// Tracks the number of occurences of worker crash due to OOM
+  /// Tracks the number of occurrences of worker crash due to OOM
   int32_t worker_crash_oom_count_ = 0;
 
   /// Ray metrics

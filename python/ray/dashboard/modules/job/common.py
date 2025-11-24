@@ -14,7 +14,7 @@ from ray._private.event.export_event_logger import (
     get_export_event_logger,
 )
 from ray._private.runtime_env.packaging import parse_uri
-from ray._raylet import GcsClient
+from ray._raylet import RAY_INTERNAL_NAMESPACE_PREFIX, GcsClient
 from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.core.generated.export_submission_job_event_pb2 import (
     ExportSubmissionJobEventData,
@@ -25,9 +25,7 @@ from ray.util.annotations import PublicAPI
 # they're exposed in the snapshot API.
 JOB_ID_METADATA_KEY = "job_submission_id"
 JOB_NAME_METADATA_KEY = "job_name"
-JOB_ACTOR_NAME_TEMPLATE = (
-    f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_id}"
-)
+JOB_ACTOR_NAME_TEMPLATE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_id}"
 # In order to get information about SupervisorActors launched by different jobs,
 # they must be set to the same namespace.
 SUPERVISOR_ACTOR_RAY_NAMESPACE = "SUPERVISOR_ACTOR_RAY_NAMESPACE"
@@ -227,7 +225,7 @@ class JobInfoStorageClient:
 
     # Please keep this format in sync with JobDataKey()
     # in src/ray/gcs/gcs_server/gcs_job_manager.h.
-    JOB_DATA_KEY_PREFIX = f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_info_"
+    JOB_DATA_KEY_PREFIX = f"{RAY_INTERNAL_NAMESPACE_PREFIX}job_info_"
     JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}{{job_id}}"
 
     def __init__(

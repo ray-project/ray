@@ -18,6 +18,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/pubsub/gcs_publisher.h"
 

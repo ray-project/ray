@@ -27,13 +27,16 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/gcs/gcs_actor.h"
 #include "ray/gcs/gcs_actor_manager.h"
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/observability/fake_metric.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/pubsub/publisher.h"
-#include "ray/rpc/worker/core_worker_client.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/util/event.h"
 
 namespace ray {
@@ -80,13 +83,13 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
   std::vector<std::shared_ptr<gcs::GcsActor>> actors;
 };
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   explicit MockWorkerClient(instrumented_io_context &io_service)
       : io_service_(io_service) {}
 
   void WaitForActorRefDeleted(
-      const rpc::WaitForActorRefDeletedRequest &request,
+      rpc::WaitForActorRefDeletedRequest &&request,
       const rpc::ClientCallback<rpc::WaitForActorRefDeletedReply> &callback) override {
     callbacks_.push_back(callback);
   }
@@ -162,6 +165,10 @@ class GcsActorManagerTest : public ::testing::Test {
     function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
     auto actor_scheduler = std::make_unique<MockActorScheduler>();
     mock_actor_scheduler_ = actor_scheduler.get();
+    raylet_client_pool_ =
+        std::make_unique<rpc::RayletClientPool>([](const rpc::Address &address) {
+          return std::make_shared<rpc::FakeRayletClient>();
+        });
     worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
         [this](const rpc::Address &address) { return worker_client_; });
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
@@ -172,7 +179,12 @@ class GcsActorManagerTest : public ::testing::Test {
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},
-        *worker_client_pool_);
+        *raylet_client_pool_,
+        *worker_client_pool_,
+        /*ray_event_recorder=*/fake_ray_event_recorder_,
+        /*session_name=*/"",
+        actor_by_state_gauge_,
+        gcs_actor_by_state_gauge_);
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -259,6 +271,7 @@ class GcsActorManagerTest : public ::testing::Test {
   // Actor scheduler's ownership lies in actor manager.
   MockActorScheduler *mock_actor_scheduler_ = nullptr;
   std::shared_ptr<MockWorkerClient> worker_client_;
+  std::unique_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
@@ -270,6 +283,9 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   std::string log_dir_;
+  observability::FakeRayEventRecorder fake_ray_event_recorder_;
+  ray::observability::FakeGauge actor_by_state_gauge_;
+  ray::observability::FakeGauge gcs_actor_by_state_gauge_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {

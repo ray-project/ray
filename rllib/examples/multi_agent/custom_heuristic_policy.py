@@ -42,8 +42,8 @@ better than "random":
 """
 
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.utils.test_utils import (
@@ -51,7 +51,6 @@ from ray.rllib.utils.test_utils import (
     run_rllib_example_script_experiment,
 )
 from ray.tune.registry import register_env
-
 
 parser = add_rllib_example_script_args(
     default_iters=40, default_reward=500.0, default_timesteps=200000

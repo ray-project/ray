@@ -1,3 +1,4 @@
+from collections.abc import Iterator as IteratorABC
 from functools import partial
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
@@ -98,7 +99,7 @@ class GroupedData:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        zero_copy_batch: bool = False,
+        zero_copy_batch: bool = True,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         fn_args: Optional[Iterable[Any]] = None,
@@ -161,7 +162,20 @@ class GroupedData:
                 batch of zero or more records, similar to map_batches().
             zero_copy_batch: If True, each group of rows (batch) will be provided w/o
                 making an additional copy.
-            compute: This argument is deprecated. Use ``concurrency`` argument.
+            compute: The compute strategy to use for the map operation.
+
+                * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
+
+                * Use ``ray.data.TaskPoolStrategy(size=n)`` to launch at most ``n`` concurrent Ray tasks.
+
+                * If ``compute`` is not specified for a callable class, will use ``ray.data.ActorPoolStrategy(min_size=1, max_size=None)`` to launch an autoscaling actor pool from 1 to unlimited workers.
+
+                * Use ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers.
+
+                * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` to use an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)`` to use an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
+
             batch_format: Specify ``"default"`` to use the default block format
                 (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
                 select ``pyarrow.Table``, or ``"numpy"`` to select
@@ -186,27 +200,7 @@ class GroupedData:
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature.
-            concurrency: The semantics of this argument depend on the type of ``fn``:
-
-                * If ``fn`` is a function and ``concurrency`` isn't set (default), the
-                  actual concurrency is implicitly determined by the available
-                  resources and number of input blocks.
-
-                * If ``fn`` is a function and ``concurrency`` is an  int ``n``, Ray Data
-                  launches *at most* ``n`` concurrent tasks.
-
-                * If ``fn`` is a class and ``concurrency`` is an int ``n``, Ray Data
-                  uses an actor  pool with *exactly* ``n`` workers.
-
-                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
-                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
-
-                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n, initial)``, Ray
-                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
-
-                * If ``fn`` is a class and ``concurrency`` isn't set (default), this
-                  method raises an error.
-
+            concurrency: This argument is deprecated. Use ``compute`` argument.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -308,6 +302,7 @@ class GroupedData:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
+            udf_modifying_row_count=False,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
@@ -544,7 +539,10 @@ class GroupedData:
 
 
 def _apply_udf_to_groups(
-    udf: Callable[[DataBatch, ...], DataBatch],
+    udf: Union[
+        Callable[[DataBatch, ...], DataBatch],
+        Callable[[DataBatch, ...], Iterator[DataBatch]],
+    ],
     block: Block,
     keys: List[str],
     batch_format: Optional[str],
@@ -554,7 +552,8 @@ def _apply_udf_to_groups(
     """Apply UDF to groups of rows having the same set of values of the specified
     columns (keys).
 
-    NOTE: This function is defined at module level to avoid capturing closures and make it serializable."""
+    NOTE: This function is defined at module level to avoid capturing closures and make it serializable.
+    """
     block_accessor = BlockAccessor.for_block(block)
 
     boundaries = block_accessor._get_group_boundaries_sorted(keys)
@@ -566,7 +565,17 @@ def _apply_udf_to_groups(
         # Convert corresponding block of each group to batch format here,
         # because the block format here can be different from batch format
         # (e.g. block is Arrow format, and batch is NumPy format).
-        yield udf(group_block_accessor.to_batch_format(batch_format), *args, **kwargs)
+        result = udf(
+            group_block_accessor.to_batch_format(batch_format), *args, **kwargs
+        )
+
+        # Check if the UDF returned an iterator/generator.
+        if isinstance(result, IteratorABC):
+            # If so, yield each item from the iterator.
+            yield from result
+        else:
+            # Otherwise, yield the single result.
+            yield result
 
 
 # Backwards compatibility alias.

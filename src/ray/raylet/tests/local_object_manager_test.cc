@@ -28,14 +28,14 @@
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/gcs_client/accessor.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/object_manager/ownership_object_directory.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
-#include "ray/rpc/worker/core_worker_client.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -87,7 +87,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
   }
 
   MOCK_METHOD3(Unsubscribe,
-               bool(rpc::ChannelType channel_type,
+               void(rpc::ChannelType channel_type,
                     const rpc::Address &publisher_address,
                     const std::optional<std::string> &key_id_binary));
 
@@ -104,7 +104,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
       callbacks;
 };
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   void UpdateObjectLocationBatch(
       rpc::UpdateObjectLocationBatchRequest &&request,
@@ -133,7 +133,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
       update_object_location_batch_callbacks;
 };
 
-class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockIOWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   void SpillObjects(
       const rpc::SpillObjectsRequest &request,
@@ -349,7 +349,8 @@ class LocalObjectManagerTestWithMinSpillingSize {
               return unevictable_objects_.count(object_id) == 0;
             },
             /*core_worker_subscriber=*/subscriber_.get(),
-            object_directory_.get()),
+            object_directory_.get(),
+            fake_object_store_memory_gauge_),
         unpins(std::make_shared<absl::flat_hash_map<ObjectID, int>>()) {
     RayConfig::instance().initialize(R"({"object_spilling_config": "dummy"})");
     manager.min_spilling_size_ = min_spilling_size;
@@ -405,6 +406,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
   std::unique_ptr<gcs::GcsClient> gcs_client_;
   std::unique_ptr<IObjectDirectory> object_directory_;
   LocalObjectManager manager;
+  ray::observability::FakeGauge fake_object_store_memory_gauge_;
 
   std::unordered_set<ObjectID> freed;
   // This hashmap is incremented when objects are unpinned by destroying their

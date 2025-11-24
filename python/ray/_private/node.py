@@ -22,7 +22,12 @@ from filelock import FileLock
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
-from ray._common.network_utils import build_address, parse_address
+from ray._common.network_utils import (
+    build_address,
+    get_localhost_ip,
+    is_ipv6,
+    parse_address,
+)
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
@@ -35,6 +40,8 @@ from ray._private.utils import (
     validate_socket_filepath,
 )
 from ray._raylet import GcsClient, get_session_key_from_storage
+
+import psutil
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -138,7 +145,7 @@ class Node:
         )
 
         self._resource_and_label_spec = None
-        self._localhost = socket.gethostbyname("localhost")
+        self._localhost = get_localhost_ip()
         self._ray_params = ray_params
         self._config = ray_params._system_config or {}
 
@@ -880,7 +887,10 @@ class Node:
         if allocated_ports is None:
             allocated_ports = set()
 
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s = socket.socket(
+            socket.AF_INET6 if is_ipv6(self._node_ip_address) else socket.AF_INET,
+            socket.SOCK_STREAM,
+        )
         s.bind(("", 0))
         port = s.getsockname()[1]
 
@@ -893,7 +903,10 @@ class Node:
                 # This port is allocated for other usage already,
                 # so we shouldn't use it even if it's not in use right now.
                 continue
-            new_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            new_s = socket.socket(
+                socket.AF_INET6 if is_ipv6(self._node_ip_address) else socket.AF_INET,
+                socket.SOCK_STREAM,
+            )
             try:
                 new_s.bind(("", new_port))
             except OSError:
@@ -1185,6 +1198,10 @@ class Node:
             create_err=True,
         )
 
+        self.resource_isolation_config.add_system_pids(
+            self._get_system_processes_for_resource_isolation()
+        )
+
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
@@ -1426,6 +1443,28 @@ class Node:
             self.start_log_monitor()
 
         self.start_raylet(plasma_directory, fallback_directory, object_store_memory)
+
+    def _get_system_processes_for_resource_isolation(self) -> str:
+        """Returns a list of system processes that will be isolated by raylet.
+
+        NOTE: If a new system process is started before the raylet starts up, it needs to be
+        added to self.all_processes so it can be moved into the raylet's managed cgroup
+        hierarchy.
+        """
+        system_process_pids = [
+            str(p[0].process.pid) for p in self.all_processes.values()
+        ]
+
+        # If the dashboard api server was started on the head node, then include all of the api server's
+        # child processes.
+        if ray_constants.PROCESS_TYPE_DASHBOARD in self.all_processes:
+            dashboard_pid = self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][
+                0
+            ].process.pid
+            dashboard_process = psutil.Process(dashboard_pid)
+            system_process_pids += [str(p.pid) for p in dashboard_process.children()]
+
+        return ",".join(system_process_pids)
 
     def _kill_process_type(
         self,

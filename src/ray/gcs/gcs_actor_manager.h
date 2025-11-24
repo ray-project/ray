@@ -27,6 +27,8 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
+#include "ray/core_worker_rpc_client/core_worker_client_interface.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_actor.h"
 #include "ray/gcs/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_function_manager.h"
@@ -34,9 +36,8 @@
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
+#include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
-#include "ray/rpc/worker/core_worker_client.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -89,7 +90,8 @@ namespace gcs {
 /// will update its state to `DEAD` and remove it from `registered_actors_` and
 /// `created_actors_`.
 /// 9: A dead actor caused by out-of-scope is lineage reconstructed.
-class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
+class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
+                        public std::enable_shared_from_this<GcsActorManager> {
  public:
   /// Create a GcsActorManager
   ///
@@ -104,9 +106,14 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
       RuntimeEnvManager &runtime_env_manager,
       GCSFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
-      rpc::CoreWorkerClientPool &worker_client_pool);
+      rpc::RayletClientPool &raylet_client_pool,
+      rpc::CoreWorkerClientPool &worker_client_pool,
+      observability::RayEventRecorderInterface &ray_event_recorder,
+      const std::string &session_name,
+      ray::observability::MetricInterface &actor_by_state_gauge,
+      ray::observability::MetricInterface &gcs_actor_by_state_gauge);
 
-  ~GcsActorManager() override = default;
+  ~GcsActorManager() override;
 
   void HandleRegisterActor(rpc::RegisterActorRequest request,
                            rpc::RegisterActorReply *reply,
@@ -203,10 +210,10 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// node being removed) will not be restarted. If any workers on this node
   /// owned an actor, those actors will be destroyed.
   ///
-  /// \param node_id The specified node id.
+  /// \param node The specified node id.
   /// \param node_ip_address The ip address of the dead node.
-  void OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
-                  const std::string node_ip_address);
+  void OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
+                  const std::string &node_ip_address);
 
   /// Handle a worker failure. This will restart the associated actor, if any,
   /// which may be pending or already created. If the worker owned other
@@ -280,13 +287,12 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
 
  private:
   const ray::rpc::ActorDeathCause GenNodeDiedCause(
-      const ray::gcs::GcsActor *actor, std::shared_ptr<rpc::GcsNodeInfo> node);
+      const ray::gcs::GcsActor *actor, std::shared_ptr<const rpc::GcsNodeInfo> node);
   /// A data structure representing an actor's owner.
   struct Owner {
-    explicit Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
-        : client_(std::move(client)) {}
-    /// A client that can be used to contact the owner.
-    std::shared_ptr<rpc::CoreWorkerClientInterface> client_;
+    explicit Owner(rpc::Address address) : address_(std::move(address)) {}
+    /// The address of the owner.
+    rpc::Address address_;
     /// The IDs of actors owned by this worker.
     absl::flat_hash_set<ActorID> children_actor_ids_;
   };
@@ -307,10 +313,13 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// \param[in] death_cause The reason why actor is destroyed.
   /// \param[in] force_kill Whether destory the actor forcelly.
   /// \param[in] done_callback Called when destroy finishes.
+  /// \param[in] graceful_shutdown_timeout_ms Timeout in ms for graceful shutdown.
+  ///            If graceful shutdown doesn't complete, falls back to force kill.
   void DestroyActor(const ActorID &actor_id,
                     const rpc::ActorDeathCause &death_cause,
                     bool force_kill = true,
-                    std::function<void()> done_callback = nullptr);
+                    std::function<void()> done_callback = nullptr,
+                    int64_t graceful_shutdown_timeout_ms = -1);
 
   /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>
@@ -349,14 +358,14 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// \param force_kill Whether to force kill an actor by killing the worker.
   void KillActor(const ActorID &actor_id, bool force_kill);
 
-  /// Notify CoreWorker to kill the specified actor.
+  /// Notify Raylet to kill the specified actor.
   ///
   /// \param actor The actor to be killed.
   /// \param death_cause Context about why this actor is dead.
   /// \param force_kill Whether to force kill an actor by killing the worker.
-  void NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
-                                   const rpc::ActorDeathCause &death_cause,
-                                   bool force_kill = true);
+  void NotifyRayletToKillActor(const std::shared_ptr<GcsActor> &actor,
+                               const rpc::ActorDeathCause &death_cause,
+                               bool force_kill = true);
 
   /// Add the destroyed actor to the cache. If the cache is full, one actor is randomly
   /// evicted.
@@ -475,8 +484,13 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   instrumented_io_context &io_context_;
   /// A publisher for publishing gcs messages.
   pubsub::GcsPublisher *gcs_publisher_;
+  /// This is used to communicate with raylets where actors are located.
+  rpc::RayletClientPool &raylet_client_pool_;
   /// This is used to communicate with actors and their owners.
   rpc::CoreWorkerClientPool &worker_client_pool_;
+  /// Event recorder for emitting actor events
+  observability::RayEventRecorderInterface &ray_event_recorder_;
+  std::string session_name_;
   /// A callback that is used to destroy placemenet group owned by the actor.
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
@@ -495,6 +509,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   /// Counter of actors broken down by (State, ClassName).
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       actor_state_counter_;
+  ray::observability::MetricInterface &actor_by_state_gauge_;
+  ray::observability::MetricInterface &gcs_actor_by_state_gauge_;
 
   /// Total number of successfully created actors in the cluster lifetime.
   int64_t liftime_num_created_actors_ = 0;
@@ -502,6 +518,11 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler {
   // Make sure our unprotected maps are accessed from the same thread.
   // Currently protects actor_to_register_callbacks_.
   ThreadChecker thread_checker_;
+
+  /// Fallback timers for graceful actor shutdowns, keyed by WorkerID.
+  /// Canceled on actor restart to avoid redundant kill requests for old instances.
+  absl::flat_hash_map<WorkerID, std::unique_ptr<boost::asio::deadline_timer>>
+      graceful_shutdown_timers_;
 
   // Debug info.
   enum CountType {

@@ -10,8 +10,13 @@ ray_cc_library(
 ray_cc_library(
     name = "client_call",
     hdrs = ["client_call.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        ":__pkg__",
+        "//src/ray/core_worker:__pkg__",
+    ],
     deps = [
+        ":metrics",
+        ":rpc_callback_types",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
@@ -22,15 +27,19 @@ ray_cc_library(
 
 ray_cc_library(
     name = "grpc_client",
+    srcs = ["grpc_client.cc"],
     hdrs = ["grpc_client.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":client_call",
         ":common",
         ":rpc_chaos",
+        "//src/ray/common:constants",
         "//src/ray/common:grpc_util",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/rpc/authentication:authentication_mode",
+        "//src/ray/rpc/authentication:token_auth_client_interceptor",
         "//src/ray/util:network_util",
     ],
 )
@@ -41,8 +50,8 @@ ray_cc_library(
     hdrs = ["retryable_grpc_client.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":client_call",
         ":grpc_client",
+        "//src/ray/util:exponential_backoff",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
@@ -92,13 +101,19 @@ ray_cc_library(
     name = "server_call",
     srcs = ["server_call.cc"],
     hdrs = ["server_call.h"],
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     deps = [
+        ":metrics",
+        ":rpc_callback_types",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/rpc/authentication:authentication_mode",
+        "//src/ray/rpc/authentication:authentication_token",
+        "//src/ray/rpc/authentication:authentication_token_loader",
+        "//src/ray/rpc/authentication:authentication_token_validator",
         "//src/ray/stats:stats_metric",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -115,6 +130,7 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:network_util",
         "//src/ray/util:thread_utils",
         "@com_github_grpc_grpc//:grpc++",
@@ -131,74 +147,52 @@ ray_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":grpc_server",
-        ":server_call",
         "//src/ray/protobuf:node_manager_cc_grpc",
+        "//src/ray/rpc/authentication:authentication_token",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
 ray_cc_library(
-    name = "raylet_client_interface",
+    name = "object_manager_server",
     hdrs = [
-        "raylet/raylet_client_interface.h",
+        "object_manager_server.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//src/ray/protobuf:autoscaler_cc_proto",
+        "//src/ray/common:asio",
+        "//src/ray/object_manager:object_manager_grpc_client_manager",
+        "//src/ray/protobuf:object_manager_cc_grpc",
+        "//src/ray/rpc:grpc_server",
+        "//src/ray/rpc/authentication:authentication_token",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
+    name = "utils",
+    hdrs = ["utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/protobuf:node_manager_cc_proto",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
 ray_cc_library(
-    name = "raylet_client_pool",
-    srcs = ["raylet/raylet_client_pool.cc"],
-    hdrs = [
-        "raylet/raylet_client_pool.h",
-    ],
+    name = "rpc_callback_types",
+    hdrs = ["rpc_callback_types.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":raylet_client_interface",
-        "//src/ray/gcs_client",
-    ],
-)
-
-ray_cc_library(
-    name = "raylet_client_lib",
-    srcs = ["raylet/raylet_client.cc"],
-    hdrs = ["raylet/raylet_client.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":raylet_client_interface",
-        ":retryable_grpc_client",
-        "//src/ray/common:bundle_spec",
-        "//src/ray/common:ray_config",
-        "//src/ray/protobuf:node_manager_cc_grpc",
-        "//src/ray/util:logging",
-    ],
-)
-
-ray_cc_library(
-    name = "core_worker_client",
-    srcs = [
-        "worker/core_worker_client.cc",
-        "worker/core_worker_client_pool.cc",
-    ],
-    hdrs = [
-        "worker/core_worker_client.h",
-        "worker/core_worker_client_pool.h",
-    ],
-    deps = [
-        ":raylet_client_interface",
-        ":raylet_client_pool",
-        "//src/ray/common:id",
         "//src/ray/common:status",
-        "//src/ray/gcs_client",
-        "//src/ray/protobuf:core_worker_cc_grpc",
-        "//src/ray/pubsub:subscriber",
-        "//src/ray/util:logging",
-        "//src/ray/util:network_util",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    deps = [
+        "//src/ray/stats:stats_metric",
     ],
 )

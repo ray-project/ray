@@ -13,69 +13,7 @@
 // limitations under the License.
 #pragma once
 #include "gmock/gmock.h"
-#include "ray/gcs_client/accessor.h"
-
-namespace ray {
-namespace gcs {
-
-class MockActorInfoAccessor : public ActorInfoAccessor {
- public:
-  MOCK_METHOD(void,
-              AsyncGet,
-              (const ActorID &actor_id,
-               const OptionalItemCallback<rpc::ActorTableData> &callback),
-              (override));
-  MOCK_METHOD(void,
-              AsyncGetAllByFilter,
-              (const std::optional<ActorID> &actor_id,
-               const std::optional<JobID> &job_id,
-               const std::optional<std::string> &actor_state_name,
-               const MultiItemCallback<rpc::ActorTableData> &callback,
-               int64_t timeout_ms),
-              (override));
-  MOCK_METHOD(void,
-              AsyncGetByName,
-              (const std::string &name,
-               const std::string &ray_namespace,
-               const OptionalItemCallback<rpc::ActorTableData> &callback,
-               int64_t timeout_ms),
-              (override));
-  MOCK_METHOD(void,
-              AsyncRegisterActor,
-              (const TaskSpecification &task_spec,
-               const StatusCallback &callback,
-               int64_t timeout_ms),
-              (override));
-  MOCK_METHOD(Status,
-              SyncRegisterActor,
-              (const TaskSpecification &task_spec),
-              (override));
-  MOCK_METHOD(void,
-              AsyncKillActor,
-              (const ActorID &actor_id,
-               bool force_kill,
-               bool no_restart,
-               const StatusCallback &callback,
-               int64_t timeout_ms),
-              (override));
-  MOCK_METHOD(void,
-              AsyncCreateActor,
-              (const TaskSpecification &task_spec,
-               const rpc::ClientCallback<rpc::CreateActorReply> &callback),
-              (override));
-  MOCK_METHOD(Status,
-              AsyncSubscribe,
-              (const ActorID &actor_id,
-               (const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe),
-               const StatusCallback &done),
-              (override));
-  MOCK_METHOD(Status, AsyncUnsubscribe, (const ActorID &actor_id), (override));
-  MOCK_METHOD(void, AsyncResubscribe, (), (override));
-  MOCK_METHOD(bool, IsActorUnsubscribed, (const ActorID &actor_id), (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
+#include "ray/gcs_rpc_client/accessor.h"
 
 namespace ray {
 namespace gcs {
@@ -91,7 +29,7 @@ class MockJobInfoAccessor : public JobInfoAccessor {
               AsyncMarkFinished,
               (const JobID &job_id, const StatusCallback &callback),
               (override));
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               AsyncSubscribeAll,
               ((const SubscribeCallback<JobID, rpc::JobTableData> &subscribe),
                const StatusCallback &done),
@@ -116,19 +54,13 @@ namespace gcs {
 
 class MockNodeInfoAccessor : public NodeInfoAccessor {
  public:
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               RegisterSelf,
-              (const rpc::GcsNodeInfo &local_node_info, const StatusCallback &callback),
+              (rpc::GcsNodeInfo && local_node_info, const StatusCallback &callback),
               (override));
-  MOCK_METHOD(const NodeID &, GetSelfId, (), (const, override));
-  MOCK_METHOD(const rpc::GcsNodeInfo &, GetSelfInfo, (), (const, override));
   MOCK_METHOD(void,
               AsyncRegister,
               (const rpc::GcsNodeInfo &node_info, const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(void,
-              AsyncCheckSelfAlive,
-              (const std::function<void(Status, bool)> &callback, int64_t timeout_ms),
               (override));
   MOCK_METHOD(void,
               AsyncCheckAlive,
@@ -143,16 +75,36 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
                const std::vector<NodeID> &node_ids),
               (override));
   MOCK_METHOD(void,
+              AsyncGetAllNodeAddressAndLiveness,
+              (const MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+               int64_t timeout_ms,
+               const std::vector<NodeID> &node_ids),
+              (override));
+  MOCK_METHOD(void,
               AsyncSubscribeToNodeChange,
               (std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
                StatusCallback done),
               (override));
+  MOCK_METHOD(
+      void,
+      AsyncSubscribeToNodeAddressAndLivenessChange,
+      (std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
+       StatusCallback done),
+      (override));
   MOCK_METHOD(const rpc::GcsNodeInfo *,
               Get,
               (const NodeID &node_id, bool filter_dead_nodes),
               (const, override));
+  MOCK_METHOD(const rpc::GcsNodeAddressAndLiveness *,
+              GetNodeAddressAndLiveness,
+              (const NodeID &node_id, bool filter_dead_nodes),
+              (const, override));
   MOCK_METHOD((const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &),
               GetAll,
+              (),
+              (const, override));
+  MOCK_METHOD((const absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> &),
+              GetAllNodeAddressAndLiveness,
               (),
               (const, override));
   MOCK_METHOD(Status,
@@ -177,7 +129,6 @@ class MockNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
               AsyncGetAllAvailableResources,
               (const MultiItemCallback<rpc::AvailableResources> &callback),
               (override));
-  MOCK_METHOD(void, AsyncResubscribe, (), (override));
   MOCK_METHOD(void,
               AsyncGetAllResourceUsage,
               (const ItemCallback<rpc::ResourceUsageBatchData> &callback),
@@ -217,7 +168,7 @@ namespace gcs {
 
 class MockWorkerInfoAccessor : public WorkerInfoAccessor {
  public:
-  MOCK_METHOD(Status,
+  MOCK_METHOD(void,
               AsyncSubscribeToWorkerFailures,
               (const ItemCallback<rpc::WorkerDeltaData> &subscribe,
                const StatusCallback &done),
