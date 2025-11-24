@@ -2126,7 +2126,7 @@ def test_get_nodes_packing_heuristic():
 
     assert get_nodes_for([{"GPU": 8}]) == {"p2.8xlarge": 1}
     assert get_nodes_for([{"GPU": 1}] * 6) == {"p2.8xlarge": 1}
-    assert get_nodes_for([{"GPU": 1}] * 2) == {"p2.xlarge": 2}
+    assert get_nodes_for([{"GPU": 1}] * 4) == {"p2.xlarge": 4}
     assert get_nodes_for([{"CPU": 32, "GPU": 1}] * 3) == {"p2.8xlarge": 3}
     assert get_nodes_for([{"CPU": 64, "GPU": 1}] * 3) == {}
     assert get_nodes_for([{"CPU": 64}] * 3) == {"m4.16xlarge": 3}
