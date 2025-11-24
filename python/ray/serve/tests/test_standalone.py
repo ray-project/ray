@@ -412,7 +412,7 @@ def _reuse_port_is_available():
 
 
 @pytest.mark.skipif(
-    not _reuse_port_is_available(),
+    sys.platform == "win32" or not _reuse_port_is_available(),
     reason=(
         "Port sharing only works on newer verion of Linux. "
         "This test can only be ran when port sharing is supported."
