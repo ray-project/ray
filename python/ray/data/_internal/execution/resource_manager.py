@@ -164,6 +164,14 @@ class ResourceManager:
                 + next_op.metrics.obj_store_mem_pending_task_inputs
             )
 
+        # Account for prefetched blocks in the iterator.
+        # These blocks have been taken from the operator's output queue but are still
+        # in the object store waiting to be consumed by the user.
+        num_prefetched_blocks = op.metrics.num_prefetched_blocks or 0
+        num_prefetched_bytes = op.metrics.num_prefetched_bytes or 0
+        if num_prefetched_blocks > 0 and not op.execution_finished():
+            mem_op_outputs += num_prefetched_bytes
+
         self._mem_op_internal[op] = mem_op_internal
         self._mem_op_outputs[op] = mem_op_outputs
 
