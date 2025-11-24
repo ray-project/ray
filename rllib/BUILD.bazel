@@ -4316,6 +4316,16 @@ py_test(
     ],
 )
 
+py_test(
+    name = "test_footsies_env",
+    size = "large",
+    srcs = ["examples/envs/classes/multi_agent/footsies/test/test_footsies.py"],
+    tags = [
+        "examples",
+        "team:rllib",
+    ],
+)
+
 # subdirectory: evaluation/
 # ....................................
 py_test(
