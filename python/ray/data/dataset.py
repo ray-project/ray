@@ -1864,29 +1864,56 @@ class Dataset:
                 # Optimize: Use with_column to evaluate expression once, then filter twice
                 # This avoids evaluating the expression twice (once for passed, once for failed)
                 # Add validation flag column based on expression
-                validated_ds = self.with_column("_validation_passed", expr)
+                # Check if column already exists (shouldn't happen, but be defensive)
+                schema = self.schema()
+                validation_col_name = "_validation_passed"
+                if schema and hasattr(schema, "names") and validation_col_name in schema.names:
+                    # Column already exists - use a different name to avoid conflict
+                    import warnings
+                    warnings.warn(
+                        f"Column '{validation_col_name}' already exists in dataset. "
+                        f"Using '{validation_col_name}_2' instead.",
+                        UserWarning,
+                        stacklevel=2
+                    )
+                    validation_col_name = "_validation_passed_2"
+                validated_ds = self.with_column(validation_col_name, expr)
 
                 # Split into passed and failed datasets using the validation flag
                 # Filtering on a boolean column is fast (expression already evaluated)
                 from ray.data.expressions import col, lit
 
+                # Filter passed rows: must be True (not False, not NULL)
+                # NULL values from expression evaluation are treated as False (failed)
                 passed_ds = validated_ds.filter(
-                    expr=col("_validation_passed") == lit(True)
+                    expr=col(validation_col_name).is_not_null() & (col(validation_col_name) == lit(True))
                 )
+                # Filter failed rows: False or NULL
                 failed_ds = validated_ds.filter(
-                    expr=col("_validation_passed") == lit(False)
+                    expr=col(validation_col_name).is_null() | (col(validation_col_name) == lit(False))
                 )
 
                 # Remove validation flag column from both datasets
-                # Get original columns (exclude _validation_passed)
+                # Get original columns (exclude validation column)
                 schema = self.schema()
                 if schema and hasattr(schema, "names"):
                     original_cols = [
-                        c for c in schema.names if c != "_validation_passed"
+                        c for c in schema.names if c != validation_col_name
                     ]
+                    # Only select columns if we have original columns and they exist in validated schema
                     if original_cols:
-                        passed_ds = passed_ds.select_columns(cols=original_cols)
-                        failed_ds = failed_ds.select_columns(cols=original_cols)
+                        try:
+                            validated_schema = validated_ds.schema()
+                            if validated_schema and hasattr(validated_schema, "names"):
+                                # Ensure all original columns exist in validated schema
+                                validated_cols = set(validated_schema.names)
+                                existing_cols = [c for c in original_cols if c in validated_cols]
+                                if existing_cols:
+                                    passed_ds = passed_ds.select_columns(cols=existing_cols)
+                                    failed_ds = failed_ds.select_columns(cols=existing_cols)
+                        except Exception:
+                            # If schema access fails, skip column removal
+                            pass
 
                 failed_rows = failed_ds.count()
                 passed = failed_rows == 0
@@ -1988,6 +2015,13 @@ class Dataset:
 
             def get_results(self):
                 """Get aggregated validation results."""
+                # If no batches were processed, consider it passing (empty dataset)
+                if self.total_count == 0:
+                    return {
+                        "passed": True,
+                        "failure_count": 0,
+                        "total_count": 0,
+                    }
                 return {
                     "passed": self.failure_count == 0,
                     "failure_count": self.failure_count,
@@ -2010,10 +2044,12 @@ class Dataset:
                 import pyarrow as pa
 
                 if isinstance(batch, pa.Table):
-                    import pyarrow.compute as pc
-
                     if is_empty:
-                        passed_col = pc.fill_null(pc.scalar(flag_value), flag_value)
+                        # For empty tables, create an empty array with the flag value
+                        # Use pa.nulls(0) and fill with scalar, or create array directly
+                        passed_array = pa.array([], type=pa.bool_())
+                        # Empty table - just add empty column with correct type
+                        passed_col = passed_array
                     else:
                         passed_array = pa.array([flag_value] * len(batch))
                         passed_col = passed_array
@@ -2091,17 +2127,45 @@ class Dataset:
         # Use filter on the validation flag column
         from ray.data.expressions import col, lit
 
-        passed_ds = validated_ds.filter(expr=col("_validation_passed") == lit(True))
-        failed_ds = validated_ds.filter(expr=col("_validation_passed") == lit(False))
+        # Determine validation column name (might be _validation_passed or _validation_passed_2)
+        validation_col_name = "_validation_passed"
+        try:
+            validated_schema = validated_ds.schema()
+            if validated_schema and hasattr(validated_schema, "names"):
+                if "_validation_passed_2" in validated_schema.names:
+                    validation_col_name = "_validation_passed_2"
+        except Exception:
+            pass
+
+        # Filter passed rows: must be True (not False, not NULL)
+        # NULL values from expression evaluation are treated as False (failed)
+        passed_ds = validated_ds.filter(
+            expr=col(validation_col_name).is_not_null() & (col(validation_col_name) == lit(True))
+        )
+        # Filter failed rows: False or NULL
+        failed_ds = validated_ds.filter(
+            expr=col(validation_col_name).is_null() | (col(validation_col_name) == lit(False))
+        )
 
         # Remove validation flag column from both datasets
-        # Get original columns (exclude _validation_passed)
+        # Get original columns (exclude validation column)
         schema = self.schema()
         if schema and hasattr(schema, "names"):
-            original_cols = [c for c in schema.names if c != "_validation_passed"]
+            original_cols = [c for c in schema.names if c != validation_col_name]
+            # Only select columns if we have original columns and they exist in validated schema
             if original_cols:
-                passed_ds = passed_ds.select_columns(cols=original_cols)
-                failed_ds = failed_ds.select_columns(cols=original_cols)
+                try:
+                    validated_schema = validated_ds.schema()
+                    if validated_schema and hasattr(validated_schema, "names"):
+                        # Ensure all original columns exist in validated schema
+                        validated_cols = set(validated_schema.names)
+                        existing_cols = [c for c in original_cols if c in validated_cols]
+                        if existing_cols:
+                            passed_ds = passed_ds.select_columns(cols=existing_cols)
+                            failed_ds = failed_ds.select_columns(cols=existing_cols)
+                except Exception:
+                    # If schema access fails, skip column removal
+                    pass
 
         # Actors process calls sequentially, so after materialization all results are ready
         validation_results = ray.get(aggregator.get_results.remote())
@@ -2247,17 +2311,20 @@ class Dataset:
                 processed_rows += self._count_rows_in_batch(batch)
 
         except Exception as e:
-            # If execution fails, treat as timeout exceeded
-            timeout_exceeded = True
+            # If execution fails, don't treat as timeout - it's a different error
             elapsed_time = time.perf_counter() - start_time
+            timeout_exceeded = False  # Not a timeout, but execution failed
 
             if expectation.error_on_failure:
                 raise
             logger.warning(
                 f"Execution time expectation '{expectation.name}' execution failed: {e}"
             )
+        else:
+            # Only calculate elapsed_time here if no exception occurred
+            elapsed_time = time.perf_counter() - start_time
 
-        elapsed_time = time.perf_counter() - start_time
+        # Calculate passed status: must not have timed out AND must be within time limit
         passed = not timeout_exceeded and elapsed_time <= max_time_seconds
 
         # Create datasets from processed batches using helper function
@@ -2270,9 +2337,15 @@ class Dataset:
         failed_ds = self.limit(0)
 
         # Shutdown executor if timeout exceeded to halt execution
-        if timeout_exceeded and self._current_executor:
-            self._current_executor.shutdown(force=True)
-            self._current_executor = None
+        # Note: iter_batches() doesn't actually halt distributed execution,
+        # this is a limitation of the current implementation
+        if timeout_exceeded and hasattr(self, "_current_executor") and self._current_executor is not None:
+            try:
+                self._current_executor.shutdown(force=True)
+                self._current_executor = None
+            except Exception:
+                # Ignore errors during executor shutdown
+                pass
 
         # Create result
         if passed:
