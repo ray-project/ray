@@ -201,6 +201,7 @@ def download_bytes_threaded(
                     fs = RetryingPyFileSystem.wrap(
                         resolved_fs, retryable_errors=data_context.retried_io_errors
                     )
+                    # We only pass one uri to resolve and unwrap it from the list of resolved paths
                     resolved_path = resolved_paths[0]
 
                     # Download bytes
@@ -211,16 +212,12 @@ def download_bytes_threaded(
                     logger.debug(
                         f"OSError reading uri '{uri}' for column '{uri_column_name}': {e}"
                     )
-                    # Reset cache on error to ensure fresh resolution for next URI
-                    cached_fs = None
                 except Exception as e:
                     # Catch unexpected errors like pyarrow.lib.ArrowInvalid caused by an invalid uri like
                     # `foo://bar` to avoid failing because of one invalid uri.
                     logger.warning(
                         f"Unexpected error reading uri '{uri}' for column '{uri_column_name}': {e}"
                     )
-                    # Reset cache on error to ensure fresh resolution for next URI
-                    cached_fs = None
                 finally:
                     yield read_bytes
 
@@ -337,6 +334,7 @@ class PartitionActor:
             return []
 
         # Get the filesystem from the URIs (assumes all URIs use same filesystem for sampling)
+        # This is for sampling the file sizes which doesn't require a full resolution of the paths.
         try:
             paths, fs = _resolve_paths_and_filesystem(uris)
             fs = RetryingPyFileSystem.wrap(
