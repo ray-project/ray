@@ -99,7 +99,7 @@ class TurbopufferDatasink(Datasink):
            ds.write_datasink(
                TurbopufferDatasink(
                    namespace_column=\"space_id\",
-                   namespace_format=\"notion-{namespace}\",
+                   namespace_format=\"space-{namespace}\",
                    api_key=\"<YOUR_API_KEY>\",
                )
            )
@@ -154,6 +154,13 @@ class TurbopufferDatasink(Datasink):
         self.id_column = id_column
         self.vector_column = vector_column
         self.batch_size = batch_size
+
+        # Validate column configuration
+        if self.id_column == self.vector_column:
+            raise ValueError(
+                "id_column and vector_column refer to the same column "
+                f"'{self.id_column}'. They must be distinct."
+            )
 
         # Validate API key
         if not self.api_key:
@@ -258,7 +265,11 @@ class TurbopufferDatasink(Datasink):
             table = table.rename_columns(new_names)
 
         # Rename vector column if needed
-        if self.vector_column != "vector" and self.vector_column in table.column_names:
+        if self.vector_column != "vector":
+            if self.vector_column not in table.column_names:
+                raise ValueError(
+                    f"Vector column '{self.vector_column}' not found in table"
+                )
             if "vector" in table.column_names:
                 raise ValueError(
                     "Table already has a 'vector' column; cannot also rename "
@@ -281,7 +292,29 @@ class TurbopufferDatasink(Datasink):
         """
         Write table to multiple namespaces grouped by namespace_column.
         """
-        if self.namespace_column not in table.column_names:
+        # Determine the actual column name in the prepared table that should be
+        # used for namespace grouping. The configured namespace_column may have
+        # been renamed in _prepare_arrow_table when it overlaps with the id or
+        # vector columns.
+        group_col_name = self.namespace_column
+
+        # If the namespace column is the configured id_column and that was
+        # renamed to "id", use "id" for grouping.
+        if (
+            self.id_column != "id"
+            and self.namespace_column == self.id_column
+            and "id" in table.column_names
+        ):
+            group_col_name = "id"
+        # Likewise for the vector column.
+        elif (
+            self.vector_column != "vector"
+            and self.namespace_column == self.vector_column
+            and "vector" in table.column_names
+        ):
+            group_col_name = "vector"
+
+        if group_col_name not in table.column_names:
             raise ValueError(
                 f"Namespace column '{self.namespace_column}' not found in table. "
                 f"Available columns: {table.column_names}"
@@ -290,7 +323,7 @@ class TurbopufferDatasink(Datasink):
         # Group by namespace column
         # Note: PyArrow doesn't have a built-in group_by for tables,
         # so we'll use a simpler approach: get unique values and filter.
-        namespace_col = table.column(self.namespace_column)
+        namespace_col = table.column(group_col_name)
 
         # Disallow null namespace values: they would otherwise be silently
         # dropped because pc.equal(namespace_col, None) returns all-false.
@@ -368,14 +401,12 @@ class TurbopufferDatasink(Datasink):
             raise ValueError("Table must have 'id' column")
 
         # Convert bytes to proper formats (e.g., UUIDs)
-        import uuid as uuid_lib
-
         for row in rows:
             for key, value in list(row.items()):
                 if isinstance(value, bytes):
                     # Check if it's a 16-byte UUID
                     if len(value) == 16:
-                        row[key] = str(uuid_lib.UUID(bytes=value))
+                        row[key] = str(uuid.UUID(bytes=value))
                     else:
                         # For other bytes, convert to hex string
                         row[key] = value.hex()
@@ -387,7 +418,7 @@ class TurbopufferDatasink(Datasink):
                             # Check if it's a 16-byte UUID
                             if len(item) == 16:
                                 # Convert 16-byte UUID to string
-                                converted_list.append(str(uuid_lib.UUID(bytes=item)))
+                                converted_list.append(str(uuid.UUID(bytes=item)))
                             else:
                                 # For other bytes, convert to hex string
                                 converted_list.append(item.hex())
