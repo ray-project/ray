@@ -341,9 +341,6 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         metrics: List[Dict[str, Any]],
     ):
         if not training_report.checkpoint:
-            logger.warning(
-                "No checkpoint reported. At least one worker's `ray.train.report` call must report a checkpoint."
-            )
             self._current_report_index += 1
             self._notify()
             return
