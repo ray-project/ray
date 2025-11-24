@@ -54,7 +54,7 @@ class DataConfig:
             default_execution_options = execution_options
         # If None, all datasets will use the default ingest options.
         self._execution_options: Dict[str, ExecutionOptions] = defaultdict(
-            lambda: default_execution_options
+            lambda: copy.deepcopy(default_execution_options)
         )
         if isinstance(execution_options, dict):
             self._execution_options.update(execution_options)
