@@ -315,19 +315,15 @@ class SGLangServer:
         )
 
         ray_actor_options = deployment_options.get("ray_actor_options", {})
-        
-        existing_runtime_env = ray_actor_options.get("runtime_env")
-        if existing_runtime_env is None:
-            existing_runtime_env = {}
-            
-        existing_runtime_env.setdefault(
+
+        runtime_env = ray_actor_options.setdefault("runtime_env", {})
+
+        runtime_env.setdefault(
              "worker_process_setup_hook", "ray.llm._internal.serve._worker_process_setup_hook"
         )
 
-        ray_actor_options["runtime_env"] = existing_runtime_env
-
         if llm_config.runtime_env:
-            ray_actor_options["runtime_env"].update(llm_config.runtime_env)
+            runtime_env.update(llm_config.runtime_env)
 
         deployment_options["ray_actor_options"] = ray_actor_options
 
