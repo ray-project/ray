@@ -77,7 +77,7 @@ class SchedulerStats {
   int64_t num_leases_to_grant_ = 0;
 
   /// Ray metrics
-  ray::stats::Gauge ray_metric_num_spilled_tasks_{
+  ray::stats::Count ray_metric_num_spilled_tasks_{
       /*name=*/"internal_num_spilled_tasks",
       /*description=*/
       "The cumulative number of lease requeusts that this raylet has spilled to other "

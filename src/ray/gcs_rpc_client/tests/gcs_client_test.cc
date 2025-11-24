@@ -369,9 +369,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   bool SubscribeToNodeChange(
-      std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe) {
+      std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &, const bool)>
+          subscribe) {
     std::promise<bool> promise;
-    gcs_client_->Nodes().AsyncSubscribeToNodeChange(
+    gcs_client_->Nodes().AsyncSubscribeToNodeAddressAndLivenessChange(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -608,14 +609,15 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   // Subscribe to node addition and removal events from GCS.
   std::atomic<int> register_count(0);
   std::atomic<int> unregister_count(0);
-  auto on_subscribe = [&register_count, &unregister_count](const NodeID &node_id,
-                                                           const rpc::GcsNodeInfo &data) {
-    if (data.state() == rpc::GcsNodeInfo::ALIVE) {
-      ++register_count;
-    } else if (data.state() == rpc::GcsNodeInfo::DEAD) {
-      ++unregister_count;
-    }
-  };
+  auto on_subscribe =
+      [&register_count, &unregister_count](
+          const NodeID &node_id, const rpc::GcsNodeAddressAndLiveness &data, bool) {
+        if (data.state() == rpc::GcsNodeInfo::ALIVE) {
+          ++register_count;
+        } else if (data.state() == rpc::GcsNodeInfo::DEAD) {
+          ++unregister_count;
+        }
+      };
   ASSERT_TRUE(SubscribeToNodeChange(on_subscribe));
 
   // Register local node to GCS.
@@ -802,9 +804,8 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   // Subscribe to node addition and removal events from GCS and cache those information.
   std::atomic<int> node_change_count(0);
   auto node_subscribe = [&node_change_count](const NodeID &id,
-                                             const rpc::GcsNodeInfo &result) {
-    ++node_change_count;
-  };
+                                             const rpc::GcsNodeAddressAndLiveness &result,
+                                             bool) { ++node_change_count; };
   ASSERT_TRUE(SubscribeToNodeChange(node_subscribe));
 
   auto node_info = GenNodeInfo(1);
