@@ -44,7 +44,7 @@ llm_config = LLMConfig(
     engine_kwargs={
         "trust_remote_code": True,
         "model_path": "unsloth/Llama-3.1-8B-Instruct",
-        "tp_size": 2,
+        "tp_size": 1,
         "mem_fraction_static": 0.8,
     },
 )
