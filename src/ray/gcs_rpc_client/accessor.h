@@ -14,6 +14,8 @@
 
 #pragma once
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -192,10 +194,15 @@ class NodeInfoAccessor {
       const rpc::GcsNodeInfo *
       Get(const NodeID &node_id, bool filter_dead_nodes = true) const;
 
-  virtual  /// dead, this optional object is empty.
-      const rpc::GcsNodeAddressAndLiveness *
-      GetNodeAddressAndLiveness(const NodeID &node_id,
-                                bool filter_dead_nodes = true) const;
+  /// Get node address and liveness information from local cache.
+  /// Thread-safe.
+  /// Note, the local cache is only available if subscription methods are called.
+  ///
+  /// \param node_id The ID of node to look up in local cache.
+  /// \param filter_dead_nodes Whether or not if this method will filter dead nodes.
+  /// \return The node info if found and alive (if filtering), std::nullopt otherwise.
+  virtual std::optional<rpc::GcsNodeAddressAndLiveness> GetNodeAddressAndLiveness(
+      const NodeID &node_id, bool filter_dead_nodes = true) const;
 
   /// Get information of all nodes from local cache.
   /// Non-thread safe.
@@ -204,8 +211,13 @@ class NodeInfoAccessor {
   ///
   /// \return All nodes in cache.
   virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
-  virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>
-      &GetAllNodeAddressAndLiveness() const;
+  /// Get information of all nodes from local cache.
+  /// Thread-safe - returns a copy of the cache.
+  /// Note, the local cache is only available if subscription methods are called.
+  ///
+  /// \return All nodes in cache.
+  virtual absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>
+  GetAllNodeAddressAndLiveness() const;
 
   /// Get information of all nodes from an RPC to GCS synchronously with optional filters.
   ///
@@ -302,6 +314,9 @@ class NodeInfoAccessor {
   /// A cache for information about all nodes when using the address and liveness api
   absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>
       node_cache_address_and_liveness_;
+
+  /// Mutex to protect node_cache_address_and_liveness_ for thread-safe access
+  mutable std::mutex node_cache_address_and_liveness_mutex_;
 
   // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
   // https://github.com/ray-project/ray/issues/54805

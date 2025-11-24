@@ -95,7 +95,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               Get,
               (const NodeID &node_id, bool filter_dead_nodes),
               (const, override));
-  MOCK_METHOD(const rpc::GcsNodeAddressAndLiveness *,
+  MOCK_METHOD(std::optional<rpc::GcsNodeAddressAndLiveness>,
               GetNodeAddressAndLiveness,
               (const NodeID &node_id, bool filter_dead_nodes),
               (const, override));
@@ -103,7 +103,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               GetAll,
               (),
               (const, override));
-  MOCK_METHOD((const absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> &),
+  MOCK_METHOD((absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>),
               GetAllNodeAddressAndLiveness,
               (),
               (const, override));

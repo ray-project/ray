@@ -720,9 +720,9 @@ std::shared_ptr<rpc::ObjectManagerClientInterface> ObjectManager::GetRpcClient(
   if (it != remote_object_manager_clients_.end()) {
     return it->second;
   }
-  auto *node_info =
+  auto node_info =
       gcs_client_.Nodes().GetNodeAddressAndLiveness(node_id, /*filter_dead_nodes=*/true);
-  if (node_info == nullptr) {
+  if (!node_info) {
     return nullptr;
   }
   auto object_manager_client =
