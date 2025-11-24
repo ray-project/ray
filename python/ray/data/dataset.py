@@ -1948,6 +1948,7 @@ class Dataset:
                     # Build detailed error message with context
                     # Sample failed values for better debugging
                     sample_failed_values = []
+                    failed_columns = []
                     try:
                         # Get a sample of failed rows for context
                         # Limit to 5 rows to avoid performance issues
@@ -1956,26 +1957,35 @@ class Dataset:
                             # Extract column values from failed rows
                             first_row = failed_sample[0]
                             if isinstance(first_row, dict):
-                                # Try to identify which column failed
+                                # Try to identify which columns are involved in the expectation
                                 if hasattr(expectation, "_expr"):
-                                    expr_str = str(getattr(expectation, "_expr", ""))
-                                    # Extract column name from expression if possible
-                                    col_name = None
-                                    if "col(" in expr_str:
-                                        import re
+                                    expr = getattr(expectation, "_expr", None)
+                                    if expr is not None:
+                                        # Extract column references from expression
+                                        try:
+                                            from ray.data._internal.planner.plan_expression.expression_visitors import (
+                                                _ColumnReferenceCollector,
+                                            )
+                                            collector = _ColumnReferenceCollector()
+                                            collector.visit(expr)
+                                            col_refs = collector.get_column_refs()
+                                            failed_columns = list(col_refs) if col_refs else []
+                                        except (ImportError, AttributeError, Exception):
+                                            # Fallback to string parsing if collector not available
+                                            expr_str = str(expr)
+                                            import re
+                                            matches = re.findall(r"col\(['\"](.*?)['\"]\)", expr_str)
+                                            failed_columns = list(set(matches))
 
-                                        match = re.search(
-                                            r"col\(['\"](.*?)['\"]\)", expr_str
-                                        )
-                                        if match:
-                                            col_name = match.group(1)
-
-                                    if col_name and col_name in first_row:
+                                # Extract sample values from first column that exists
+                                for col_name in failed_columns:
+                                    if col_name in first_row:
                                         # Extract up to 3 sample values
                                         sample_failed_values = [
                                             str(row.get(col_name, "N/A"))
                                             for row in failed_sample[:min(3, len(failed_sample))]
                                         ]
+                                        break  # Use first available column
                     except Exception:
                         pass  # If sampling fails, continue without samples
 
@@ -1983,6 +1993,13 @@ class Dataset:
                         f"Expectation '{expectation.name}' failed: "
                         f"{failed_rows}/{total_rows} rows failed validation ({failure_rate:.1f}%)"
                     )
+
+                    # Add column context if available
+                    if failed_columns:
+                        if len(failed_columns) == 1:
+                            message += f". Column: {failed_columns[0]}"
+                        else:
+                            message += f". Columns: {', '.join(failed_columns)}"
 
                     # Add context about failed values
                     if sample_failed_values:

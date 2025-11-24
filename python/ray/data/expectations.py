@@ -5,7 +5,10 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    List,
     Optional,
+    Set,
+    Union,
 )
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -548,3 +551,352 @@ def _create_validator_from_expression(expr: "Expr") -> Callable[[Any], bool]:
             raise ValueError(error_msg) from e
 
     return validator_fn
+
+
+# Convenience functions for common expectations
+# These follow Ray Data's expression-based API pattern
+
+
+@PublicAPI(stability="alpha")
+def expect_column_min(
+    column: str,
+    min_value: Union[int, float],
+    *,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    error_on_failure: bool = True,
+) -> Expectation:
+    """Create an expectation that a column's minimum value meets a threshold.
+
+    This is a convenience function for the common pattern of checking column minimums.
+
+    Examples:
+        >>> from ray.data.expectations import expect_column_min
+        >>> exp = expect_column_min("age", 0)
+        >>> ds = ray.data.from_items([{"age": 25}, {"age": 30}])
+        >>> passed_ds, failed_ds, result = ds.expect(exp)
+
+    Args:
+        column: Name of the column to validate.
+        min_value: Minimum allowed value (inclusive).
+        name: Optional name for the expectation.
+        description: Optional description of what this expectation checks.
+        error_on_failure: If True, raise exception on failure; if False, log warning.
+
+    Returns:
+        An Expectation object that can be used with Dataset.expect().
+    """
+    from ray.data.expressions import col
+
+    if name is None:
+        name = f"Column '{column}' minimum >= {min_value}"
+    if description is None:
+        description = f"Validate that column '{column}' has minimum value >= {min_value}"
+
+    return expect(
+        expr=col(column) >= min_value,
+        name=name,
+        description=description,
+        error_on_failure=error_on_failure,
+    )
+
+
+@PublicAPI(stability="alpha")
+def expect_column_max(
+    column: str,
+    max_value: Union[int, float],
+    *,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    error_on_failure: bool = True,
+) -> Expectation:
+    """Create an expectation that a column's maximum value meets a threshold.
+
+    This is a convenience function for the common pattern of checking column maximums.
+
+    Examples:
+        >>> from ray.data.expectations import expect_column_max
+        >>> exp = expect_column_max("age", 120)
+        >>> ds = ray.data.from_items([{"age": 25}, {"age": 30}])
+        >>> passed_ds, failed_ds, result = ds.expect(exp)
+
+    Args:
+        column: Name of the column to validate.
+        max_value: Maximum allowed value (inclusive).
+        name: Optional name for the expectation.
+        description: Optional description of what this expectation checks.
+        error_on_failure: If True, raise exception on failure; if False, log warning.
+
+    Returns:
+        An Expectation object that can be used with Dataset.expect().
+    """
+    from ray.data.expressions import col
+
+    if name is None:
+        name = f"Column '{column}' maximum <= {max_value}"
+    if description is None:
+        description = f"Validate that column '{column}' has maximum value <= {max_value}"
+
+    return expect(
+        expr=col(column) <= max_value,
+        name=name,
+        description=description,
+        error_on_failure=error_on_failure,
+    )
+
+
+@PublicAPI(stability="alpha")
+def expect_column_range(
+    column: str,
+    min_value: Union[int, float],
+    max_value: Union[int, float],
+    *,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    error_on_failure: bool = True,
+) -> Expectation:
+    """Create an expectation that a column's values are within a range.
+
+    This is a convenience function for the common pattern of checking value ranges.
+
+    Examples:
+        >>> from ray.data.expectations import expect_column_range
+        >>> exp = expect_column_range("age", 0, 120)
+        >>> ds = ray.data.from_items([{"age": 25}, {"age": 30}])
+        >>> passed_ds, failed_ds, result = ds.expect(exp)
+
+    Args:
+        column: Name of the column to validate.
+        min_value: Minimum allowed value (inclusive).
+        max_value: Maximum allowed value (inclusive).
+        name: Optional name for the expectation.
+        description: Optional description of what this expectation checks.
+        error_on_failure: If True, raise exception on failure; if False, log warning.
+
+    Returns:
+        An Expectation object that can be used with Dataset.expect().
+    """
+    from ray.data.expressions import col
+
+    if name is None:
+        name = f"Column '{column}' in range [{min_value}, {max_value}]"
+    if description is None:
+        description = (
+            f"Validate that column '{column}' values are in range "
+            f"[{min_value}, {max_value}]"
+        )
+
+    return expect(
+        expr=(col(column) >= min_value) & (col(column) <= max_value),
+        name=name,
+        description=description,
+        error_on_failure=error_on_failure,
+    )
+
+
+@PublicAPI(stability="alpha")
+def expect_column_not_null(
+    column: str,
+    *,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    error_on_failure: bool = True,
+) -> Expectation:
+    """Create an expectation that a column has no null values.
+
+    This is a convenience function for the common pattern of checking for nulls.
+
+    Examples:
+        >>> from ray.data.expectations import expect_column_not_null
+        >>> exp = expect_column_not_null("email")
+        >>> ds = ray.data.from_items([{"email": "test@example.com"}, {"email": None}])
+        >>> passed_ds, failed_ds, result = ds.expect(exp)
+
+    Args:
+        column: Name of the column to validate.
+        name: Optional name for the expectation.
+        description: Optional description of what this expectation checks.
+        error_on_failure: If True, raise exception on failure; if False, log warning.
+
+    Returns:
+        An Expectation object that can be used with Dataset.expect().
+    """
+    from ray.data.expressions import col
+
+    if name is None:
+        name = f"Column '{column}' is not null"
+    if description is None:
+        description = f"Validate that column '{column}' has no null values"
+
+    return expect(
+        expr=col(column).is_not_null(),
+        name=name,
+        description=description,
+        error_on_failure=error_on_failure,
+    )
+
+
+@PublicAPI(stability="alpha")
+def expect_column_in(
+    column: str,
+    values: Union[List[Any], Set[Any]],
+    *,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    error_on_failure: bool = True,
+) -> Expectation:
+    """Create an expectation that a column's values are in a set of allowed values.
+
+    This is a convenience function for the common pattern of checking allowed values.
+
+    Examples:
+        >>> from ray.data.expectations import expect_column_in
+        >>> exp = expect_column_in("status", ["active", "inactive", "pending"])
+        >>> ds = ray.data.from_items([{"status": "active"}, {"status": "invalid"}])
+        >>> passed_ds, failed_ds, result = ds.expect(exp)
+
+    Args:
+        column: Name of the column to validate.
+        values: Set or list of allowed values.
+        name: Optional name for the expectation.
+        description: Optional description of what this expectation checks.
+        error_on_failure: If True, raise exception on failure; if False, log warning.
+
+    Returns:
+        An Expectation object that can be used with Dataset.expect().
+    """
+    from ray.data.expressions import col
+
+    if not isinstance(values, (list, set, tuple)):
+        raise TypeError(f"values must be list, set, or tuple, got {type(values).__name__}")
+
+    values_set = set(values)
+    if name is None:
+        name = f"Column '{column}' in allowed values"
+    if description is None:
+        description = f"Validate that column '{column}' values are in {values_set}"
+
+    return expect(
+        expr=col(column).is_in(list(values_set)),
+        name=name,
+        description=description,
+        error_on_failure=error_on_failure,
+    )
+
+
+@PublicAPI(stability="alpha")
+def expect_column_unique(
+    column: str,
+    *,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    error_on_failure: bool = True,
+) -> Expectation:
+    """Create an expectation that a column has unique values.
+
+    Note: This checks that all values in the column are unique. For large datasets,
+    this may be expensive as it requires checking all values.
+
+    Examples:
+        >>> from ray.data.expectations import expect_column_unique
+        >>> exp = expect_column_unique("id")
+        >>> ds = ray.data.from_items([{"id": 1}, {"id": 2}, {"id": 1}])
+        >>> passed_ds, failed_ds, result = ds.expect(exp)
+
+    Args:
+        column: Name of the column to validate.
+        name: Optional name for the expectation.
+        description: Optional description of what this expectation checks.
+        error_on_failure: If True, raise exception on failure; if False, log warning.
+
+    Returns:
+        An Expectation object that can be used with Dataset.expect().
+    """
+    if name is None:
+        name = f"Column '{column}' is unique"
+    if description is None:
+        description = f"Validate that column '{column}' has unique values"
+
+    def validator_fn(batch: Any) -> bool:
+        """Check if column values are unique in batch."""
+        from ray.data.block import BlockAccessor
+
+        try:
+            accessor = BlockAccessor.for_block(batch)
+            if accessor.num_rows() == 0:
+                return True
+
+            arrow_table = accessor.to_arrow()
+            if arrow_table is None:
+                return False
+
+            column_data = arrow_table[column]
+            if column_data is None:
+                return False
+
+            # Convert to Python list and check uniqueness
+            values = column_data.to_pylist()
+            # Filter out None values for uniqueness check
+            non_null_values = [v for v in values if v is not None]
+            unique_values = set(non_null_values)
+            # All non-null values must be unique
+            return len(non_null_values) == len(unique_values)
+        except Exception:
+            return False
+
+    return expect(
+        validator_fn=validator_fn,
+        name=name,
+        description=description,
+        error_on_failure=error_on_failure,
+    )
+
+
+@PublicAPI(stability="alpha")
+def expect_suite(
+    expectations: List[Expectation],
+    *,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+) -> List[Expectation]:
+    """Create a suite of expectations to apply together.
+
+    This is a convenience function for grouping related expectations.
+    The suite can be passed directly to Dataset.expect().
+
+    Examples:
+        >>> from ray.data.expectations import expect_suite, expect_column_min, expect_column_not_null
+        >>> suite = expect_suite([
+        ...     expect_column_min("age", 0),
+        ...     expect_column_not_null("email")
+        ... ])
+        >>> ds = ray.data.from_items([{"age": 25, "email": "test@example.com"}])
+        >>> passed_ds, failed_ds, results = ds.expect(suite)
+
+    Args:
+        expectations: List of Expectation objects to include in the suite.
+        name: Optional name for the suite (for documentation purposes).
+        description: Optional description of what this suite validates.
+
+    Returns:
+        List of Expectation objects that can be passed to Dataset.expect().
+
+    Raises:
+        ValueError: If expectations list is empty or contains non-Expectation objects.
+    """
+    if not expectations:
+        raise ValueError("expectations list cannot be empty")
+    if not isinstance(expectations, list):
+        raise TypeError(f"expectations must be a list, got {type(expectations).__name__}")
+
+    # Validate all items are Expectations
+    for i, exp in enumerate(expectations):
+        if not isinstance(exp, Expectation):
+            raise TypeError(
+                f"All items in expectations list must be Expectation objects. "
+                f"Item at index {i} is {type(exp).__name__}."
+            )
+
+    # Return the list as-is (Dataset.expect() handles lists directly)
+    # The name and description are for documentation only
+    return expectations
