@@ -14,3 +14,4 @@ typer
 meson
 pybind11
 hf_transfer
+wandb
