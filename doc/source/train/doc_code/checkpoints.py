@@ -559,7 +559,7 @@ def train_fn():
     for _ in range(epochs):
         metrics = ...
         checkpoint = ...
-        ray.train.report(metrics, checkpoint, validate_fn=..., validate_config=...)
+        ray.train.report(metrics, checkpoint=checkpoint, validate_fn=..., validate_config=...)
     uploaded_checkpoints = ray.train.get_all_reported_checkpoints()
     validated_checkpoints = ray.train.get_all_reported_checkpoints(
         consistency_mode=CheckpointConsistencyMode.VALIDATED)
