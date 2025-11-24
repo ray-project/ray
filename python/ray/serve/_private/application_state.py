@@ -51,6 +51,7 @@ from ray.serve.api import ASGIAppReplicaWrapper
 from ray.serve.config import AutoscalingConfig, AutoscalingPolicy, RequestRouterConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
+    ApplicationArgs as ApplicationArgsProto,
     ApplicationStatus as ApplicationStatusProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
     DeploymentLanguage,
@@ -212,6 +213,8 @@ class ApplicationTargetState:
     target_capacity_direction: the scale direction to use when
         running the Serve autoscaler.
     deleting: whether the application is being deleted.
+    external_scaler_enabled: whether external autoscaling is enabled for
+        this application.
     serialized_application_autoscaling_policy_def: Optional[bytes]
     """
 
@@ -223,6 +226,7 @@ class ApplicationTargetState:
     deleting: bool
     api_type: APIType
     serialized_application_autoscaling_policy_def: Optional[bytes]
+    external_scaler_enabled: bool
 
 
 class ApplicationState:
@@ -235,6 +239,7 @@ class ApplicationState:
         autoscaling_state_manager: AutoscalingStateManager,
         endpoint_state: EndpointState,
         logging_config: LoggingConfig,
+        external_scaler_enabled: bool,
     ):
         """
         Initialize an ApplicationState instance.
@@ -245,6 +250,8 @@ class ApplicationState:
             autoscaling_state_manager: Manages autoscaling decisions in the cluster.
             endpoint_state: Manages endpoints in the system.
             logging_config: Logging configuration schema.
+            external_scaler_enabled: Whether external autoscaling is enabled for
+                this application.
         """
 
         self._name = name
@@ -269,6 +276,7 @@ class ApplicationState:
             target_capacity_direction=None,
             deleting=False,
             api_type=APIType.UNKNOWN,
+            external_scaler_enabled=external_scaler_enabled,
             serialized_application_autoscaling_policy_def=None,
         )
         self._logging_config = logging_config
@@ -276,6 +284,10 @@ class ApplicationState:
     @property
     def route_prefix(self) -> Optional[str]:
         return self._route_prefix
+
+    @property
+    def external_scaler_enabled(self) -> bool:
+        return self._target_state.external_scaler_enabled
 
     @property
     def docs_path(self) -> Optional[str]:
@@ -335,6 +347,7 @@ class ApplicationState:
             target_capacity=checkpoint_data.target_capacity,
             target_capacity_direction=checkpoint_data.target_capacity_direction,
             deleting=checkpoint_data.deleting,
+            external_scaler_enabled=checkpoint_data.external_scaler_enabled,
         )
 
         # Restore route prefix and docs path from checkpointed deployments when
@@ -365,6 +378,7 @@ class ApplicationState:
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
         deleting: bool = False,
+        external_scaler_enabled: bool = False,
         serialized_application_autoscaling_policy_def: Optional[bytes] = None,
     ):
         """Set application target state.
@@ -396,6 +410,7 @@ class ApplicationState:
             target_capacity_direction,
             deleting,
             api_type=api_type,
+            external_scaler_enabled=external_scaler_enabled,
             serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
         )
 
@@ -412,6 +427,7 @@ class ApplicationState:
             code_version=None,
             target_config=None,
             deleting=True,
+            external_scaler_enabled=self.external_scaler_enabled,
         )
 
     def _clear_target_state_and_store_config(
@@ -429,6 +445,9 @@ class ApplicationState:
             code_version=None,
             target_config=target_config,
             deleting=False,
+            external_scaler_enabled=target_config.external_scaler_enabled
+            if target_config
+            else False,
         )
 
     def _delete_deployment(self, name: str) -> bool:
@@ -567,7 +586,11 @@ class ApplicationState:
 
         return target_state_changed
 
-    def deploy_app(self, deployment_infos: Dict[str, DeploymentInfo]):
+    def deploy_app(
+        self,
+        deployment_infos: Dict[str, DeploymentInfo],
+        external_scaler_enabled: bool,
+    ):
         """(Re-)deploy the application from list of deployment infos.
 
         This function should only be called to deploy an app from an
@@ -587,6 +610,7 @@ class ApplicationState:
             target_config=None,
             target_capacity=None,
             target_capacity_direction=None,
+            external_scaler_enabled=external_scaler_enabled,
         )
 
     def apply_app_config(
@@ -626,6 +650,7 @@ class ApplicationState:
                     target_config=config,
                     target_capacity=target_capacity,
                     target_capacity_direction=target_capacity_direction,
+                    external_scaler_enabled=config.external_scaler_enabled,
                 )
             except (TypeError, ValueError, RayServeException):
                 self._clear_target_state_and_store_config(config)
@@ -1008,6 +1033,7 @@ class ApplicationState:
                     target_capacity_direction=(
                         self._build_app_task_info.target_capacity_direction
                     ),
+                    external_scaler_enabled=self._target_state.external_scaler_enabled,
                     serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
                 )
                 # Handling the case where the user turns off/turns on app-level autoscaling policy,
@@ -1129,6 +1155,7 @@ class ApplicationStateManager:
                     self._autoscaling_state_manager,
                     self._endpoint_state,
                     self._logging_config,
+                    checkpoint_data.external_scaler_enabled,
                 )
                 app_state.recover_target_state_from_checkpoint(checkpoint_data)
                 self._application_states[app_name] = app_state
@@ -1139,7 +1166,11 @@ class ApplicationStateManager:
             return
         self._application_states[name].delete()
 
-    def deploy_apps(self, name_to_deployment_args: Dict[str, List[Dict]]) -> None:
+    def deploy_apps(
+        self,
+        name_to_deployment_args: Dict[str, List[Dict]],
+        name_to_application_args: Dict[str, ApplicationArgsProto],
+    ) -> None:
         live_route_prefixes: Dict[str, str] = {
             app_state.route_prefix: app_name
             for app_name, app_state in self._application_states.items()
@@ -1169,6 +1200,9 @@ class ApplicationStateManager:
                 # against during this batch operation.
                 live_route_prefixes[deploy_app_prefix] = name
 
+            application_args = name_to_application_args.get(name)
+            external_scaler_enabled = application_args.external_scaler_enabled
+
             if name not in self._application_states:
                 self._application_states[name] = ApplicationState(
                     name,
@@ -1176,6 +1210,7 @@ class ApplicationStateManager:
                     self._autoscaling_state_manager,
                     self._endpoint_state,
                     self._logging_config,
+                    external_scaler_enabled,
                 )
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
@@ -1185,9 +1220,16 @@ class ApplicationStateManager:
                 )
                 for params in deployment_args
             }
-            self._application_states[name].deploy_app(deployment_infos)
+            self._application_states[name].deploy_app(
+                deployment_infos, external_scaler_enabled
+            )
 
-    def deploy_app(self, name: str, deployment_args: List[Dict]) -> None:
+    def deploy_app(
+        self,
+        name: str,
+        deployment_args: List[Dict],
+        application_args: ApplicationArgsProto,
+    ) -> None:
         """Deploy the specified app to the list of deployment arguments.
 
         This function should only be called if the app is being deployed
@@ -1196,12 +1238,9 @@ class ApplicationStateManager:
         Args:
             name: application name
             deployment_args_list: arguments for deploying a list of deployments.
-
-        Raises:
-            RayServeException: If the list of deployments is trying to
-                use a route prefix that is already used by another application
+            application_args: application arguments.
         """
-        self.deploy_apps({name: deployment_args})
+        self.deploy_apps({name: deployment_args}, {name: application_args})
 
     def apply_app_configs(
         self,
@@ -1227,6 +1266,7 @@ class ApplicationStateManager:
                     self._autoscaling_state_manager,
                     endpoint_state=self._endpoint_state,
                     logging_config=self._logging_config,
+                    external_scaler_enabled=app_config.external_scaler_enabled,
                 )
 
             self._application_states[app_config.name].apply_app_config(
@@ -1267,6 +1307,9 @@ class ApplicationStateManager:
 
         return self._application_states[name].status
 
+    def does_app_exist(self, name: str) -> bool:
+        return name in self._application_states
+
     def get_app_status_info(self, name: str) -> ApplicationStatusInfo:
         if name not in self._application_states:
             return ApplicationStatusInfo(
@@ -1290,6 +1333,20 @@ class ApplicationStateManager:
 
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
+
+    def get_external_scaler_enabled(self, app_name: str) -> bool:
+        """Check if external scaler is enabled for the application.
+
+        Args:
+            app_name: Name of the application.
+
+        Returns:
+            True if external_scaler_enabled is set for the application, False otherwise.
+        """
+        return (
+            self.does_app_exist(app_name)
+            and self._application_states[app_name].external_scaler_enabled
+        )
 
     def list_app_statuses(
         self, source: Optional[APIType] = None
