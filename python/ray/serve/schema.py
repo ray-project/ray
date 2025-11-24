@@ -1146,6 +1146,46 @@ class APIType(str, Enum):
         return [cls.IMPERATIVE.value, cls.DECLARATIVE.value]
 
 
+@PublicAPI(stability="alpha")
+class DeploymentNode(BaseModel):
+    """Represents a node in the deployment topology.
+
+    Each node represents a deployment and tracks which other deployments it calls.
+    """
+
+    name: str = Field(description="The name of the deployment.")
+    app_name: str = Field(
+        description="The name of the application this deployment belongs to."
+    )
+    # using name and app_name instead of just deployment name because outbound dependencies can be in different apps
+    outbound_deployments: List[dict] = Field(
+        default_factory=list,
+        description="The deployment IDs that this deployment calls (outbound dependencies).",
+    )
+    is_ingress: bool = Field(
+        default=False, description="Whether this is the ingress deployment."
+    )
+
+
+@PublicAPI(stability="alpha")
+class DeploymentTopology(BaseModel):
+    """Represents the dependency graph of deployments in an application.
+
+    The topology shows which deployments call which other deployments,
+    with the ingress deployment as the entry point.
+    """
+
+    app_name: str = Field(
+        description="The name of the application this topology belongs to."
+    )
+    nodes: Dict[str, DeploymentNode] = Field(
+        description="The adjacency list of deployment nodes."
+    )
+    ingress_deployment: Optional[str] = Field(
+        default=None, description="The name of the ingress deployment (entry point)."
+    )
+
+
 @PublicAPI(stability="stable")
 class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     """Detailed info about a Serve application."""
@@ -1211,6 +1251,11 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     application_details_route_prefix_format = validator(
         "route_prefix", allow_reuse=True
     )(_route_prefix_format)
+
+    deployment_topology: Optional[DeploymentTopology] = Field(
+        default=None,
+        description="The deployment topology showing how deployments in this application call each other.",
+    )
 
 
 @PublicAPI(stability="stable")
