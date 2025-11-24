@@ -48,8 +48,12 @@ class Expectation:
     def __post_init__(self):
         if not self.name or (isinstance(self.name, str) and not self.name.strip()):
             raise ValueError("Expectation name cannot be empty or whitespace-only")
-        if not self.description or (isinstance(self.description, str) and not self.description.strip()):
-            raise ValueError("Expectation description cannot be empty or whitespace-only")
+        if not self.description or (
+            isinstance(self.description, str) and not self.description.strip()
+        ):
+            raise ValueError(
+                "Expectation description cannot be empty or whitespace-only"
+            )
 
     def validate(self, *args, **kwargs) -> bool:
         """Validate this expectation. Subclasses must implement this."""
@@ -124,10 +128,11 @@ class DataQualityExpectation(Expectation):
                 raise
             # Log the exception for debugging when error_on_failure=False
             import logging
+
             logger = logging.getLogger(__name__)
             logger.debug(
                 f"Expectation '{self.name}' validation raised exception (error_on_failure=False): {e}",
-                exc_info=True
+                exc_info=True,
             )
             return False
 
@@ -278,11 +283,15 @@ def expect(
         raise TypeError(
             f"validator_fn must be callable, got {type(validator_fn).__name__}"
         )
-    if max_execution_time is not None and not isinstance(max_execution_time, datetime.timedelta):
+    if max_execution_time is not None and not isinstance(
+        max_execution_time, datetime.timedelta
+    ):
         raise TypeError(
             f"max_execution_time must be datetime.timedelta, got {type(max_execution_time).__name__}"
         )
-    if target_completion_time is not None and not isinstance(target_completion_time, datetime.datetime):
+    if target_completion_time is not None and not isinstance(
+        target_completion_time, datetime.datetime
+    ):
         raise TypeError(
             f"target_completion_time must be datetime.datetime, got {type(target_completion_time).__name__}"
         )
@@ -297,6 +306,7 @@ def expect(
     # Validate expr is an Expr object if provided
     if _expr is not None:
         from ray.data.expressions import Expr as _Expr
+
         if not isinstance(_expr, _Expr):
             raise TypeError(
                 f"expr must be a Ray Data Expr object, got {type(_expr).__name__}. "
@@ -591,7 +601,9 @@ def expect_column_min(
     if name is None:
         name = f"Column '{column}' minimum >= {min_value}"
     if description is None:
-        description = f"Validate that column '{column}' has minimum value >= {min_value}"
+        description = (
+            f"Validate that column '{column}' has minimum value >= {min_value}"
+        )
 
     return expect(
         expr=col(column) >= min_value,
@@ -635,7 +647,9 @@ def expect_column_max(
     if name is None:
         name = f"Column '{column}' maximum <= {max_value}"
     if description is None:
-        description = f"Validate that column '{column}' has maximum value <= {max_value}"
+        description = (
+            f"Validate that column '{column}' has maximum value <= {max_value}"
+        )
 
     return expect(
         expr=col(column) <= max_value,
@@ -768,7 +782,9 @@ def expect_column_in(
     from ray.data.expressions import col
 
     if not isinstance(values, (list, set, tuple)):
-        raise TypeError(f"values must be list, set, or tuple, got {type(values).__name__}")
+        raise TypeError(
+            f"values must be list, set, or tuple, got {type(values).__name__}"
+        )
 
     values_set = set(values)
     if name is None:
@@ -887,7 +903,9 @@ def expect_suite(
     if not expectations:
         raise ValueError("expectations list cannot be empty")
     if not isinstance(expectations, list):
-        raise TypeError(f"expectations must be a list, got {type(expectations).__name__}")
+        raise TypeError(
+            f"expectations must be a list, got {type(expectations).__name__}"
+        )
 
     # Validate all items are Expectations
     for i, exp in enumerate(expectations):

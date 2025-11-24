@@ -5,17 +5,15 @@ import itertools
 import logging
 import time
 import warnings
+from collections.abc import Iterable, Iterator, Mapping
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
     Dict,
     Generic,
-    Iterable,
-    Iterator,
     List,
     Literal,
-    Mapping,
     Optional,
     Tuple,
     TypeVar,
@@ -2219,10 +2217,13 @@ class Dataset:
         validation_results = ray.get(aggregator.get_results.remote())
 
         # Clean up the aggregator actor to avoid resource leaks
+        # Note: We use ray.kill() here because the actor is only used for this validation
+        # and we want to free resources immediately. For long-lived actors, Ray will
+        # automatically clean them up when references go out of scope.
         try:
             ray.kill(aggregator)
         except Exception:
-            # Ignore errors during cleanup
+            # Ignore errors during cleanup (actor may already be terminated)
             pass
 
         # Create expectation result with detailed message
@@ -7483,7 +7484,8 @@ class Dataset:
         self._current_executor = None
 
     def __del__(self):
-        if not self._current_executor:
+        # Check if _current_executor exists and is not None before accessing
+        if not hasattr(self, "_current_executor") or self._current_executor is None:
             return
 
         # When Python shuts down, `ray` might evaluate to `<module None from None>`.

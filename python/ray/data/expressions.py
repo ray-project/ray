@@ -4,7 +4,18 @@ import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, Generic, List, Optional, Set, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    List,
+    Optional,
+    Set,
+    TypeVar,
+    Union,
+)
 
 import pyarrow
 
@@ -480,11 +491,13 @@ class Expr(ABC):
         """
         from ray.data.expectations import expect as _expect
 
-        col_name = self.name if hasattr(self, "name") and self.name else "column"
+        col_name = self.name if self.name is not None else "column"
         if name is None:
             name = f"Column '{col_name}' minimum >= {min_value}"
         if description is None:
-            description = f"Validate that column '{col_name}' has minimum value >= {min_value}"
+            description = (
+                f"Validate that column '{col_name}' has minimum value >= {min_value}"
+            )
 
         return _expect(
             expr=self >= min_value,
@@ -524,11 +537,13 @@ class Expr(ABC):
         """
         from ray.data.expectations import expect as _expect
 
-        col_name = self.name if hasattr(self, "name") and self.name else "column"
+        col_name = self.name if self.name is not None else "column"
         if name is None:
             name = f"Column '{col_name}' maximum <= {max_value}"
         if description is None:
-            description = f"Validate that column '{col_name}' has maximum value <= {max_value}"
+            description = (
+                f"Validate that column '{col_name}' has maximum value <= {max_value}"
+            )
 
         return _expect(
             expr=self <= max_value,
@@ -570,7 +585,7 @@ class Expr(ABC):
         """
         from ray.data.expectations import expect as _expect
 
-        col_name = self.name if hasattr(self, "name") and self.name else "column"
+        col_name = self.name if self.name is not None else "column"
         if name is None:
             name = f"Column '{col_name}' in range [{min_value}, {max_value}]"
         if description is None:
@@ -615,7 +630,7 @@ class Expr(ABC):
         """
         from ray.data.expectations import expect as _expect
 
-        col_name = self.name if hasattr(self, "name") and self.name else "column"
+        col_name = self.name if self.name is not None else "column"
         if name is None:
             name = f"Column '{col_name}' is not null"
         if description is None:
@@ -660,14 +675,18 @@ class Expr(ABC):
         from ray.data.expectations import expect as _expect
 
         if not isinstance(values, (list, set, tuple)):
-            raise TypeError(f"values must be list, set, or tuple, got {type(values).__name__}")
+            raise TypeError(
+                f"values must be list, set, or tuple, got {type(values).__name__}"
+            )
 
         values_set = set(values)
-        col_name = self.name if hasattr(self, "name") and self.name else "column"
+        col_name = self.name if self.name is not None else "column"
         if name is None:
             name = f"Column '{col_name}' in allowed values"
         if description is None:
-            description = f"Validate that column '{col_name}' values are in {values_set}"
+            description = (
+                f"Validate that column '{col_name}' values are in {values_set}"
+            )
 
         return _expect(
             expr=self.is_in(list(values_set)),
