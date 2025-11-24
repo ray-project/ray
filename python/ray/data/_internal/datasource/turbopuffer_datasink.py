@@ -16,6 +16,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
 
@@ -120,14 +121,11 @@ class TurbopufferDatasink(Datasink):
         concurrency: Optional[int] = None,
     ):
         # Import validation
-        try:
-            import turbopuffer
+        _check_import(self, module="turbopuffer", package="turbopuffer")
 
-            self._turbopuffer = turbopuffer
-        except ImportError:
-            raise ImportError(
-                "turbopuffer package is required. Install with: pip install turbopuffer"
-            )
+        import turbopuffer
+
+        self._turbopuffer = turbopuffer
 
         # Validate namespace configuration
         if namespace and namespace_column:
@@ -250,7 +248,7 @@ class TurbopufferDatasink(Datasink):
         2. Rename vector column to "vector" if needed
         3. Filter out rows with null IDs
         """
-        # Rename ID column if needed
+        # Rename ID column if needed.
         if self.id_column != "id":
             if self.id_column not in table.column_names:
                 raise ValueError(f"ID column '{self.id_column}' not found in table")
@@ -260,13 +258,9 @@ class TurbopufferDatasink(Datasink):
                     f"'{self.id_column}' to 'id'. Please disambiguate your schema."
                 )
 
-            # Rename by reconstructing table with new schema
-            idx = table.column_names.index(self.id_column)
-            new_names = list(table.column_names)
-            new_names[idx] = "id"
-            table = table.rename_columns(new_names)
+            table = self._rename_single_column(table, self.id_column, "id")
 
-        # Rename vector column if needed
+        # Rename vector column if needed.
         if self.vector_column != "vector":
             if self.vector_column not in table.column_names:
                 raise ValueError(
@@ -277,10 +271,8 @@ class TurbopufferDatasink(Datasink):
                     "Table already has a 'vector' column; cannot also rename "
                     f"'{self.vector_column}' to 'vector'. Please disambiguate your schema."
                 )
-            idx = table.column_names.index(self.vector_column)
-            new_names = list(table.column_names)
-            new_names[idx] = "vector"
-            table = table.rename_columns(new_names)
+
+            table = self._rename_single_column(table, self.vector_column, "vector")
 
         # Filter out rows with null IDs
         if "id" in table.column_names:
@@ -289,6 +281,21 @@ class TurbopufferDatasink(Datasink):
             table = table.filter(mask)
 
         return table
+
+    def _rename_single_column(
+        self, table: pa.Table, src_name: str, dst_name: str
+    ) -> pa.Table:
+        """Return a new table with one column renamed.
+
+        This helper centralizes the rename logic used for both the id and vector
+        columns so that we don't duplicate the index and schema manipulation.
+        The caller is responsible for validating that src_name exists and that
+        dst_name doesn't already exist in the schema.
+        """
+        idx = table.column_names.index(src_name)
+        new_names = list(table.column_names)
+        new_names[idx] = dst_name
+        return table.rename_columns(new_names)
 
     def _write_multi_namespace(self, client, table: pa.Table):
         """
@@ -394,12 +401,12 @@ class TurbopufferDatasink(Datasink):
 
         Converts binary UUID fields (16 bytes) to string format.
         """
+        # Validate table has ID column by checking schema before conversion.
+        if "id" not in table.column_names:
+            raise ValueError("Table must have 'id' column")
+
         # Convert to list of row dictionaries
         rows = table.to_pylist()
-
-        # Validate all rows have ID
-        if rows and "id" not in rows[0]:
-            raise ValueError("Table must have 'id' column")
 
         # Convert bytes to proper formats (e.g., UUIDs)
         for row in rows:
@@ -469,8 +476,8 @@ class TurbopufferDatasink(Datasink):
                 if attempt < MAX_RETRIES - 1:
                     # Calculate exponential backoff with jitter
                     backoff = min(MAX_BACKOFF, INITIAL_BACKOFF * (2**attempt))
-                    jitter = random.uniform(0, backoff)  # 0-100% jitter
-                    wait_time = backoff + jitter
+                    # Full jitter: randomly choose wait_time in [0, backoff].
+                    wait_time = random.uniform(0, backoff)
 
                     logger.warning(
                         f"Write failed for namespace '{namespace_name}' "
