@@ -9,7 +9,7 @@ import sys
 import threading
 import time
 import urllib.parse
-from collections import Counter
+import uuid
 from queue import Empty, Full, Queue
 from types import ModuleType
 from typing import (
@@ -37,6 +37,7 @@ import pyarrow.fs
 import ray
 from ray._common.retry import call_with_retry
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
+from ray.util.annotations import DeveloperAPI
 
 import psutil
 
@@ -574,31 +575,33 @@ def get_compute_strategy(
             )
 
     if compute is not None:
-        # Legacy code path to support `compute` argument.
-        logger.warning(
-            "The argument ``compute`` is deprecated in Ray 2.9. Please specify "
-            "argument ``concurrency`` instead. For more information, see "
-            "https://docs.ray.io/en/master/data/transforming-data.html#"
-            "stateful-transforms."
-        )
         if is_callable_class and (
             compute == "tasks" or isinstance(compute, TaskPoolStrategy)
         ):
             raise ValueError(
-                "``compute`` must specify an actor compute strategy when using a "
-                f"callable class, but got: {compute}. For example, use "
-                "``compute=ray.data.ActorPoolStrategy(size=n)``."
+                f"You specified the callable class {fn} as your UDF with the compute "
+                f"{compute}, but Ray Data can't schedule callable classes with the task "
+                f"pool strategy. To fix this error, pass an ActorPoolStrategy to compute or "
+                f"None to use the default compute strategy."
             )
         elif not is_callable_class and (
             compute == "actors" or isinstance(compute, ActorPoolStrategy)
         ):
             raise ValueError(
-                f"``compute`` is specified as the actor compute strategy: {compute}, "
-                f"but ``fn`` is not a callable class: {fn}. Pass a callable class or "
-                "use the default ``compute`` strategy."
+                f"You specified the function {fn} as your UDF with the compute "
+                f"{compute}, but Ray Data can't schedule regular functions with the actor "
+                f"pool strategy. To fix this error, pass a TaskPoolStrategy to compute or "
+                f"None to use the default compute strategy."
             )
         return compute
     elif concurrency is not None:
+        # Legacy code path to support `concurrency` argument.
+        logger.warning(
+            "The argument ``concurrency`` is deprecated in Ray 2.51. Please specify "
+            "argument ``compute`` instead. For more information, see "
+            "https://docs.ray.io/en/master/data/transforming-data.html#"
+            "stateful-transforms."
+        )
         if isinstance(concurrency, tuple):
             # Validate tuple length and that all elements are integers
             if len(concurrency) not in (2, 3) or not all(
@@ -640,10 +643,7 @@ def get_compute_strategy(
             )
     else:
         if is_callable_class:
-            raise ValueError(
-                "``concurrency`` must be specified when using a callable class. "
-                "For example, use ``concurrency=n`` for a pool of ``n`` workers."
-            )
+            return ActorPoolStrategy(min_size=1, max_size=None)
         else:
             return TaskPoolStrategy()
 
@@ -1668,6 +1668,41 @@ def unzip(data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
     return tuple(map(list, zip(*data)))
 
 
+def _sort_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Sort DataFrame by columns and rows, and also handle unhashable types."""
+    df = df.copy()
+
+    def to_sortable(x):
+        if isinstance(x, (list, np.ndarray)):
+            return tuple(to_sortable(i) for i in x)
+        if isinstance(x, dict):
+            return tuple(sorted((k, to_sortable(v)) for k, v in x.items()))
+        return x
+
+    sort_cols = []
+    temp_cols = []
+    # Sort by all columns to ensure deterministic order.
+    columns = sorted(df.columns)
+
+    for col in columns:
+        if df[col].dtype == "object":
+            # Create a temporary column for sorting to handle unhashable types.
+            # Use UUID to avoid collisions with existing column names.
+            temp_col = f"__sort_proxy_{uuid.uuid4().hex}_{col}__"
+            df[temp_col] = df[col].map(to_sortable)
+            sort_cols.append(temp_col)
+            temp_cols.append(temp_col)
+        else:
+            sort_cols.append(col)
+
+    sorted_df = df.sort_values(sort_cols)
+
+    if temp_cols:
+        sorted_df = sorted_df.drop(columns=temp_cols)
+
+    return sorted_df
+
+
 def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     """Check if two DataFrames have the same rows.
 
@@ -1675,13 +1710,21 @@ def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     order of rows. This is useful for testing Ray Data because its interface doesn't
     usually guarantee the order of rows.
     """
-    actual_rows = actual.to_dict(orient="records")
-    expected_rows = expected.to_dict(orient="records")
+    if len(actual) != len(expected):
+        return False
 
-    actual_items_counts = Counter(frozenset(row.items()) for row in actual_rows)
-    expected_items_counts = Counter(frozenset(row.items()) for row in expected_rows)
+    if len(actual) == 0:
+        return True
 
-    return actual_items_counts == expected_items_counts
+    try:
+        pd.testing.assert_frame_equal(
+            _sort_df(actual).reset_index(drop=True),
+            _sort_df(expected).reset_index(drop=True),
+            check_dtype=False,
+        )
+        return True
+    except AssertionError:
+        return False
 
 
 def merge_resources_to_ray_remote_args(
@@ -1709,3 +1752,21 @@ def merge_resources_to_ray_remote_args(
     if memory is not None:
         ray_remote_args["memory"] = memory
     return ray_remote_args
+
+
+@DeveloperAPI
+def infer_compression(path: str) -> Optional[str]:
+    import pyarrow as pa
+
+    compression = None
+    try:
+        # Try to detect compression codec from path.
+        compression = pa.Codec.detect(path).name
+    except (ValueError, TypeError):
+        # Arrow's compression inference on the file path doesn't work for Snappy, so we double-check ourselves.
+        import pathlib
+
+        suffix = pathlib.Path(path).suffix
+        if suffix and suffix[1:] == "snappy":
+            compression = "snappy"
+    return compression

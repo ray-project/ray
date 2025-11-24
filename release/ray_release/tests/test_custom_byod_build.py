@@ -1,8 +1,9 @@
 import sys
-import pytest
 from unittest.mock import patch
 
+import pytest
 from click.testing import CliRunner
+
 from ray_release.scripts.custom_byod_build import main
 
 
@@ -78,7 +79,23 @@ def test_custom_byod_build_missing_arg(mock_build_anyscale_custom_byod_image):
         main, ["--image-name", "test-image", "--base-image", "test-base-image"]
     )
     assert result.exit_code == 2
-    assert "Error: Missing option '--post-build-script'" in result.output
+    assert (
+        "Error: Either post_build_script or python_depset must be provided"
+        in result.output
+    )
+
+    result = runner.invoke(
+        main,
+        [
+            "--image-name",
+            "test-image",
+            "--base-image",
+            "test-base-image",
+            "--python-depset",
+            "python_depset.lock",
+        ],
+    )
+    assert result.exit_code == 0
 
 
 if __name__ == "__main__":

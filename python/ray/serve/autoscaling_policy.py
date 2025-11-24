@@ -2,9 +2,8 @@ import logging
 import math
 from typing import Any, Dict, Optional, Tuple
 
-from ray.serve._private.autoscaling_state import AutoscalingContext
 from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S, SERVE_LOGGER_NAME
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, AutoscalingContext
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)

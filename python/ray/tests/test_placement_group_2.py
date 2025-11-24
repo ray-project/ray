@@ -7,7 +7,6 @@ import ray
 import ray.cluster_utils
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
-    generate_system_config_map,
     get_other_nodes,
     kill_actor_and_wait_for_failure,
     placement_group_assert_no_leak,
@@ -707,15 +706,6 @@ ray.shutdown()
     wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_external_redis",
-    [
-        generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
-        )
-    ],
-    indirect=True,
-)
 def test_create_placement_group_after_gcs_server_restart(
     ray_start_cluster_head_with_external_redis,
 ):
@@ -749,15 +739,6 @@ def test_create_placement_group_after_gcs_server_restart(
     assert table["state"] == "PENDING"
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_external_redis",
-    [
-        generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
-        )
-    ],
-    indirect=True,
-)
 def test_create_actor_with_placement_group_after_gcs_server_restart(
     ray_start_cluster_head_with_external_redis,
 ):
@@ -779,15 +760,6 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
     assert ray.get(actor_2.method.remote(1)) == 3
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head_with_external_redis",
-    [
-        generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
-        )
-    ],
-    indirect=True,
-)
 def test_bundle_recreated_when_raylet_fo_after_gcs_server_restart(
     ray_start_cluster_head_with_external_redis,
 ):

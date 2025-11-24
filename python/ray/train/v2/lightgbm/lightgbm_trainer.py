@@ -53,8 +53,10 @@ class LightGBMTrainer(DataParallelTrainer):
             # to set up the data parallel training worker group on your Ray cluster.
             params = {
                 "objective": "regression",
-                # Adding the line below is the only change needed
+                # Adding the lines below are the only changes needed
                 # for your `lgb.train` call!
+                "tree_learner": "data_parallel",
+                "pre_partition": True,
                 **ray.train.lightgbm.get_network_params(),
             }
             lgb.train(
@@ -105,12 +107,8 @@ class LightGBMTrainer(DataParallelTrainer):
         dataset_config: The configuration for ingesting the input ``datasets``.
             By default, all the Ray Dataset are split equally across workers.
             See :class:`~ray.train.DataConfig` for more details.
-        resume_from_checkpoint: A checkpoint to resume training from.
-            This checkpoint can be accessed from within ``train_loop_per_worker``
-            by calling ``ray.train.get_checkpoint()``.
-        metadata: Dict that should be made available via
-            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
-            for checkpoints saved from this Trainer. Must be JSON-serializable.
+        resume_from_checkpoint: [Deprecated]
+        metadata: [Deprecated]
     """
 
     def __init__(

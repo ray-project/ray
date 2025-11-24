@@ -35,7 +35,7 @@ During cluster initialization or as autoscaling events add nodes to your cluster
 | Label | Description |
 | --- | --- |
 | `ray.io/node-id` | A unique ID generated for the node. |
-| `ray.io/accelerator-type` | The accelerator type of the node, for example `L4`. CPU-only machines have an empty string. See {ref}`accelerator types <accelerator-types>` for a mapping of values. |
+| `ray.io/accelerator-type` | The accelerator type of the node, for example `L4`. CPU-only machines don't have the label. See {ref}`accelerator types <accelerator-types>` for a mapping of values. |
 
 ```{note} 
 You can override default values using `ray start` parameters.
@@ -44,7 +44,7 @@ You can override default values using `ray start` parameters.
 The following are examples of default labels:
 
 ```python
-"ray.io/accelerator-type": "" # Default label indicating the machine is CPU-only.
+"ray.io/accelerator-type": "L4" # Default label indicating the machine has Nvidia L4 GPU
 ```
 
 (custom)=
@@ -105,7 +105,7 @@ def f():
     pass
 
 # An example of specifying label_selector in actor's @ray.remote annotation
-@ray.remote(label_selector={"ray.io/accelerator-type": "nvidia-h100"})
+@ray.remote(label_selector={"ray.io/accelerator-type": "H100"})
 class Actor:
     pass
 
@@ -122,7 +122,7 @@ class Actor:
     pass
 
 actor_1 = Actor.options(
-    label_selector={"ray.io/accelerator-type": "nvidia-h100"},
+    label_selector={"ray.io/accelerator-type": "H100"},
 ).remote()
 ```
 
@@ -134,13 +134,13 @@ Use the `bundle_label_selector` option to add label selector to placement group 
 # All bundles require the same labels:
 ray.util.placement_group(
     bundles=[{"GPU": 1}, {"GPU": 1}],
-    bundle_label_selector=[{"ray.io/accelerator-type": "H100"} * 2],
+    bundle_label_selector=[{"ray.io/accelerator-type": "H100"}] * 2,
 )
 
 # Bundles require different labels:
 ray.util.placement_group(
-    bundles=[{"CPU": 1}] + [{"GPU": 1} * 2],
-    bundle_label_selector=[{"ray.io/market-type": "spot"}] + [{"ray.io/accelerator-type": "H100"} * 2]
+    bundles=[{"CPU": 1}] + [{"GPU": 1}] * 2,
+    bundle_label_selector=[{"ray.io/market-type": "spot"}] + [{"ray.io/accelerator-type": "H100"}] * 2
 )
 ```
 ## Using labels with autoscaler
@@ -149,7 +149,7 @@ Autoscaler V2 supports label-based scheduling. To enable autoscaler to scale up 
 
 ```python
     rayStartParams: {
-      labels: "region=me-central1,ray.io/accelerator-type=nvidia-h100"
+      labels: "region=me-central1,ray.io/accelerator-type=H100"
     }
 ```
 

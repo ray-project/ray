@@ -5,8 +5,8 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from ray_release.configs.global_config import (
-    init_global_config,
     get_global_config,
+    init_global_config,
 )
 
 _TEST_CONFIG = """

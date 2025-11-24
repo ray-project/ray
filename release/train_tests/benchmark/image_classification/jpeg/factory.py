@@ -96,31 +96,29 @@ class ImageClassificationJpegRayDataLoaderFactory(
         train_partitioning = Partitioning(
             "dir", base_dir=train_dir, field_names=["class"]
         )
-        train_ds = (
-            ray.data.read_images(
-                train_dir,
-                mode="RGB",
-                include_paths=False,
-                partitioning=train_partitioning,
-                filesystem=filesystem,
-            ).map(get_preprocess_map_fn(random_transforms=True))
-            # Add limit after map to enable operator fusion.
-            .limit(self.get_dataloader_config().limit_training_rows)
-        )
+        train_ds = ray.data.read_images(
+            train_dir,
+            mode="RGB",
+            include_paths=False,
+            partitioning=train_partitioning,
+            filesystem=filesystem,
+        ).map(get_preprocess_map_fn(random_transforms=True))
+
+        if self.get_dataloader_config().limit_training_rows > 0:
+            train_ds = train_ds.limit(self.get_dataloader_config().limit_training_rows)
 
         # Create validation dataset with same partitioning
         val_partitioning = Partitioning("dir", base_dir=val_dir, field_names=["class"])
-        val_ds = (
-            ray.data.read_images(
-                val_dir,
-                mode="RGB",
-                include_paths=False,
-                partitioning=val_partitioning,
-                filesystem=filesystem,
-            ).map(get_preprocess_map_fn(random_transforms=False))
-            # Add limit after map to enable operator fusion.
-            .limit(self.get_dataloader_config().limit_validation_rows)
-        )
+        val_ds = ray.data.read_images(
+            val_dir,
+            mode="RGB",
+            include_paths=False,
+            partitioning=val_partitioning,
+            filesystem=filesystem,
+        ).map(get_preprocess_map_fn(random_transforms=False))
+
+        if self.get_dataloader_config().limit_validation_rows > 0:
+            val_ds = val_ds.limit(self.get_dataloader_config().limit_validation_rows)
 
         return {
             DatasetKey.TRAIN: train_ds,

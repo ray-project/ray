@@ -125,6 +125,8 @@ class ReferenceCounterInterface {
   /// owner ID will change for workers executing normal tasks and it is
   /// possible to have leftover references after a task has finished.
   ///
+  /// NOTE: RAY CHECK fails if the object was already added.
+  ///
   /// \param[in] object_id The ID of the object that we own.
   /// \param[in] contained_ids ObjectIDs that are contained in the object's value.
   /// As long as the object_id is in scope, the inner objects should not be GC'ed.
@@ -286,13 +288,15 @@ class ReferenceCounterInterface {
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
 
-  /// Sets the callback that will be run when the object reference is deleted
+  /// Stores the callback that will be run when the object reference is deleted
   /// from the reference table (all refs including lineage ref count go to 0).
+  /// There could be multiple callbacks for the same object due to retries and we store
+  /// them all to prevent the message reordering case where an earlier callback overwrites
+  /// the later one.
   /// Returns true if the object was in the reference table and the callback was added
   /// else false.
-  virtual bool SetObjectRefDeletedCallback(
-      const ObjectID &object_id,
-      const std::function<void(const ObjectID &)> callback) = 0;
+  virtual bool AddObjectRefDeletedCallback(
+      const ObjectID &object_id, std::function<void(const ObjectID &)> callback) = 0;
 
   /// So we call PublishRefRemovedInternal when we are no longer borrowing this object
   /// (when our ref count goes to 0).
@@ -327,6 +331,9 @@ class ReferenceCounterInterface {
 
   /// Returns the total number of actors owned by this worker.
   virtual size_t NumActorsOwnedByUs() const = 0;
+
+  /// Reports observability metrics to underlying monitoring system
+  virtual void RecordMetrics() = 0;
 
   /// Returns a set of all ObjectIDs currently in scope (i.e., nonzero reference count).
   virtual std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const = 0;
@@ -370,6 +377,8 @@ class ReferenceCounterInterface {
   /// 2. We submitted a task that returned an ObjectID(s) in its return values
   /// and we are processing the worker's reply. In this case, we own the task's
   /// return objects and are borrowing the nested IDs.
+  ///
+  /// This method is idempotent.
   ///
   /// \param[in] object_id The ID of the object that contains other ObjectIDs.
   /// \param[in] inner_ids The object IDs are nested in object_id's value.

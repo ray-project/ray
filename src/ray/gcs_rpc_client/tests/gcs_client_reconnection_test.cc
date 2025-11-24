@@ -24,7 +24,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
-#include "ray/gcs_rpc_client/accessor.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/observability/fake_metric.h"
@@ -38,18 +37,39 @@ using namespace std::chrono;           // NOLINT
 
 class GcsClientReconnectionTest : public ::testing::Test {
  public:
-  GcsClientReconnectionTest()
-      : fake_dropped_events_counter_(std::make_unique<observability::FakeCounter>()) {
-    TestSetupUtil::StartUpRedisServers(std::vector<int>());
-  }
+  GcsClientReconnectionTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
 
   ~GcsClientReconnectionTest() { TestSetupUtil::ShutDownRedisServers(); }
 
   void StartGCS() {
     RAY_CHECK(gcs_server_ == nullptr);
     server_io_service_ = std::make_unique<instrumented_io_context>();
+
+    // Create the metrics struct
+    ray::gcs::GcsServerMetrics gcs_server_metrics{
+        /*actor_by_state_gauge=*/actor_by_state_gauge_,
+        /*gcs_actor_by_state_gauge=*/gcs_actor_by_state_gauge_,
+        /*running_job_gauge=*/running_job_gauge_,
+        /*finished_job_counter=*/finished_job_counter_,
+        /*job_duration_in_seconds_gauge=*/job_duration_in_seconds_gauge_,
+        /*placement_group_gauge=*/placement_group_gauge_,
+        /*placement_group_creation_latency_in_ms_histogram=*/
+        placement_group_creation_latency_in_ms_histogram_,
+        /*placement_group_scheduling_latency_in_ms_histogram=*/
+        placement_group_scheduling_latency_in_ms_histogram_,
+        /*placement_group_count_gauge=*/placement_group_count_gauge_,
+        /*task_events_reported_gauge=*/task_events_reported_gauge_,
+        /*task_events_dropped_gauge=*/task_events_dropped_gauge_,
+        /*task_events_stored_gauge=*/task_events_stored_gauge_,
+        /*event_recorder_dropped_events_counter=*/fake_dropped_events_counter_,
+        /*storage_operation_latency_in_ms_histogram=*/
+        storage_operation_latency_in_ms_histogram_,
+        /*storage_operation_count_counter=*/storage_operation_count_counter_,
+        scheduler_placement_time_ms_histogram_,
+    };
+
     gcs_server_ = std::make_unique<gcs::GcsServer>(
-        config_, *server_io_service_, *fake_dropped_events_counter_);
+        config_, gcs_server_metrics, *server_io_service_);
     gcs_server_->Start();
     server_io_service_thread_ = std::make_unique<std::thread>([this] {
       boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
@@ -163,7 +183,23 @@ class GcsClientReconnectionTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> server_io_service_thread_;
   std::unique_ptr<instrumented_io_context> server_io_service_;
-  std::unique_ptr<ray::observability::FakeCounter> fake_dropped_events_counter_;
+  // Fake metrics for testing
+  observability::FakeGauge actor_by_state_gauge_;
+  observability::FakeGauge gcs_actor_by_state_gauge_;
+  observability::FakeGauge running_job_gauge_;
+  observability::FakeCounter finished_job_counter_;
+  observability::FakeGauge job_duration_in_seconds_gauge_;
+  observability::FakeGauge placement_group_gauge_;
+  observability::FakeHistogram placement_group_creation_latency_in_ms_histogram_;
+  observability::FakeHistogram placement_group_scheduling_latency_in_ms_histogram_;
+  observability::FakeGauge placement_group_count_gauge_;
+  observability::FakeGauge task_events_reported_gauge_;
+  observability::FakeGauge task_events_dropped_gauge_;
+  observability::FakeGauge task_events_stored_gauge_;
+  observability::FakeHistogram storage_operation_latency_in_ms_histogram_;
+  observability::FakeCounter storage_operation_count_counter_;
+  observability::FakeCounter fake_dropped_events_counter_;
+  observability::FakeHistogram scheduler_placement_time_ms_histogram_;
 
   // GCS client.
   std::unique_ptr<std::thread> client_io_service_thread_;
@@ -178,7 +214,6 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
   RayConfig::instance().initialize(
       R"(
 {
-  "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis"
 }
   )");
@@ -192,7 +227,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
   std::promise<void> p0;
   auto f0 = p0.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p0](auto status, auto) {
+      "", "A", "B", false, rpc::GetGcsTimeoutMs(), [&p0](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p0.set_value();
       }));
@@ -205,7 +240,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
   std::promise<std::string> p1;
   auto f1 = p1.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVGet(
-      "", "A", gcs::GetGcsTimeoutMs(), [&p1](auto status, auto p) {
+      "", "A", rpc::GetGcsTimeoutMs(), [&p1](auto status, auto p) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p1.set_value(*p);
       }));
@@ -230,7 +265,6 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
   RayConfig::instance().initialize(
       R"(
 {
-  "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis",
   "gcs_grpc_initial_reconnect_backoff_ms": 2000,
   "gcs_grpc_max_reconnect_backoff_ms": 2000
@@ -241,7 +275,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
   std::promise<void> p1;
   auto f1 = p1.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p1](auto status, auto) {
+      "", "A", "B", false, rpc::GetGcsTimeoutMs(), [&p1](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p1.set_value();
       }));
@@ -255,7 +289,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
   std::promise<void> p2;
   auto f2 = p2.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p2](auto status, auto) {
+      "", "A", "B", false, rpc::GetGcsTimeoutMs(), [&p2](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p2.set_value();
       }));
@@ -303,7 +337,6 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   RayConfig::instance().initialize(
       R"(
 {
-  "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis",
   "gcs_grpc_max_request_queued_max_bytes": 10
 }
@@ -313,7 +346,7 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   std::promise<void> p1;
   auto f1 = p1.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p1](auto status, auto) {
+      "", "A", "B", false, rpc::GetGcsTimeoutMs(), [&p1](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p1.set_value();
       }));
@@ -325,7 +358,7 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   std::promise<void> p2;
   auto f2 = p2.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p2](auto status, auto) {
+      "", "A", "B", false, rpc::GetGcsTimeoutMs(), [&p2](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p2.set_value();
       }));
@@ -341,7 +374,7 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   std::promise<void> p4;
   auto f4 = p4.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p4](auto status, auto) {
+      "", "A", "B", false, rpc::GetGcsTimeoutMs(), [&p4](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p4.set_value();
       }));
@@ -363,7 +396,6 @@ TEST_F(GcsClientReconnectionTest, Timeout) {
   RayConfig::instance().initialize(
       R"(
 {
-  "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis",
   "gcs_grpc_max_request_queued_max_bytes": 10,
   "gcs_server_request_timeout_seconds": 10
@@ -373,17 +405,17 @@ TEST_F(GcsClientReconnectionTest, Timeout) {
   auto client = CreateGCSClient();
   bool added = false;
   ASSERT_TRUE(
-      client->InternalKV().Put("", "A", "B", false, gcs::GetGcsTimeoutMs(), added).ok());
+      client->InternalKV().Put("", "A", "B", false, rpc::GetGcsTimeoutMs(), added).ok());
   ASSERT_TRUE(added);
 
   ShutdownGCS();
   std::vector<std::string> values;
   ASSERT_TRUE(
-      client->InternalKV().Keys("", "A", gcs::GetGcsTimeoutMs(), values).IsTimedOut());
+      client->InternalKV().Keys("", "A", rpc::GetGcsTimeoutMs(), values).IsTimedOut());
   ASSERT_TRUE(values.empty());
 
   StartGCS();
-  ASSERT_TRUE(client->InternalKV().Keys("", "A", gcs::GetGcsTimeoutMs(), values).ok());
+  ASSERT_TRUE(client->InternalKV().Keys("", "A", rpc::GetGcsTimeoutMs(), values).ok());
   ASSERT_EQ(std::vector<std::string>{"A"}, values);
 }
 

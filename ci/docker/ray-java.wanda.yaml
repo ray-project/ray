@@ -13,6 +13,7 @@ srcs:
   - gen_ray_pkg.py
   - release/BUILD.bazel
   - release/requirements_buildkite.txt
+  - release/requirements_py310.txt
 build_args:
   - ARCH_SUFFIX
   - BUILDKITE_BAZEL_CACHE_URL

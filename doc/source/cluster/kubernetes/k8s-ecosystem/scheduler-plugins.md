@@ -29,7 +29,7 @@ You need to have the access to configure Kubernetes control plane to replace the
 KubeRay v1.4.0 and later versions support scheduler plugins.
 
 ```sh
-helm install kuberay-operator kuberay/kuberay-operator --version 1.4.2 --set batchScheduler.name=scheduler-plugins
+helm install kuberay-operator kuberay/kuberay-operator --version 1.5.0 --set batchScheduler.name=scheduler-plugins
 ```
 
 ## Step 4: Deploy a RayCluster with gang scheduling

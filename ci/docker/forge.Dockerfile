@@ -24,14 +24,14 @@ apt-get install -y ca-certificates curl zip unzip sudo gnupg tzdata git apt-tran
 mkdir -p /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 # Download and install Microsoft signing key
-curl -sLS https://packages.microsoft.com/keys/microsoft.asc |
+curl -fsSL https://packages.microsoft.com/keys/microsoft.asc |
   gpg --dearmor | tee /etc/apt/keyrings/microsoft.gpg > /dev/null
 chmod go+r /etc/apt/keyrings/microsoft.gpg
 
 echo \
   "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
   "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 # Add NodeJS APT repository
 curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
@@ -45,19 +45,36 @@ URIs: https://packages.microsoft.com/repos/azure-cli/
 Suites: ${AZ_DIST}
 Components: main
 Architectures: $(dpkg --print-architecture)
-Signed-by: /etc/apt/keyrings/microsoft.gpg" | sudo tee /etc/apt/sources.list.d/azure-cli.sources
+Signed-by: /etc/apt/keyrings/microsoft.gpg" | tee /etc/apt/sources.list.d/azure-cli.sources
 
 # Install packages
 
 apt-get update
 apt-get install -y \
-  awscli docker-ce-cli nodejs build-essential python-is-python3 \
+  awscli nodejs build-essential python-is-python3 \
   python3-pip openjdk-8-jre wget jq \
+  "docker-ce-cli=5:28.5.2-1~ubuntu.22.04~jammy" \
   azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
+
+# Install uv
+curl -fsSL https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+
+mkdir -p /usr/local/python
+# Install Python using uv
+UV_PYTHON_VERSION=3.10
+uv python install --install-dir /usr/local/python "$UV_PYTHON_VERSION"
+
+export UV_PYTHON_INSTALL_DIR=/usr/local/python
+# Make Python from uv the default by creating symlinks
+UV_PYTHON_BIN="$(uv python find --no-project "$UV_PYTHON_VERSION")"
+echo "uv python binary location: $UV_PYTHON_BIN"
+ln -s "$UV_PYTHON_BIN" "/usr/local/bin/python${UV_PYTHON_VERSION}"
+ln -s "$UV_PYTHON_BIN" /usr/local/bin/python3
+ln -s "$UV_PYTHON_BIN" /usr/local/bin/python
 
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
-python -m pip install pip==25.0 cffi==1.16.0
+uv pip install --system pip==25.0 cffi==1.16.0
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.
@@ -99,4 +116,4 @@ EOF
 CMD ["echo", "ray forge"]
 
 
-# last update: 2025-07-11
+# last update: 2025-11-12

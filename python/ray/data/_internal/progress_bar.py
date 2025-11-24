@@ -1,5 +1,6 @@
 import logging
 import threading
+from abc import ABC, abstractmethod
 from typing import Any, List, Optional
 
 import ray
@@ -40,93 +41,8 @@ def extract_num_rows(result: Any) -> int:
         return 1
 
 
-class ProgressBar:
-    """Thin wrapper around tqdm to handle soft imports.
-
-    If `total` is `None` known (for example, it is unknown
-    because no tasks have finished yet), doesn't display the full
-    progress bar. Still displays basic progress stats from tqdm."""
-
-    # If the name/description of the progress bar exceeds this length,
-    # it will be truncated.
-    MAX_NAME_LENGTH = 100
-
-    def __init__(
-        self,
-        name: str,
-        total: Optional[int],
-        unit: str,
-        position: int = 0,
-        enabled: Optional[bool] = None,
-    ):
-        self._desc = self._truncate_name(name)
-        self._progress = 0
-        # Prepend a space to the unit for better formatting.
-        if unit[0] != " ":
-            unit = " " + unit
-
-        if enabled is None:
-            from ray.data.context import DataContext
-
-            enabled = DataContext.get_current().enable_progress_bars
-        if not enabled:
-            self._bar = None
-        elif tqdm:
-            ctx = ray.data.context.DataContext.get_current()
-            if ctx.use_ray_tqdm:
-                self._bar = tqdm_ray.tqdm(total=total, unit=unit, position=position)
-            else:
-                self._bar = tqdm.tqdm(
-                    total=total or 0,
-                    position=position,
-                    dynamic_ncols=True,
-                    unit=unit,
-                    unit_scale=True,
-                )
-            self._bar.set_description(self._desc)
-        else:
-            global needs_warning
-            if needs_warning:
-                print("[dataset]: Run `pip install tqdm` to enable progress reporting.")
-                needs_warning = False
-            self._bar = None
-
-    def _truncate_name(self, name: str) -> str:
-        ctx = ray.data.context.DataContext.get_current()
-        if (
-            not ctx.enable_progress_bar_name_truncation
-            or len(name) <= self.MAX_NAME_LENGTH
-        ):
-            return name
-
-        op_names = name.split("->")
-        if len(op_names) == 1:
-            return op_names[0]
-
-        # Include as many operators as possible without approximately
-        # exceeding `MAX_NAME_LENGTH`. Always include the first and
-        # last operator names so it is easy to identify the DAG.
-        truncated_op_names = [op_names[0]]
-        for op_name in op_names[1:-1]:
-            if (
-                len("->".join(truncated_op_names))
-                + len("->")
-                + len(op_name)
-                + len("->")
-                + len(op_names[-1])
-            ) > self.MAX_NAME_LENGTH:
-                truncated_op_names.append("...")
-                if log_once("ray_data_truncate_operator_name"):
-                    logger.warning(
-                        f"Truncating long operator name to {self.MAX_NAME_LENGTH} "
-                        "characters. To disable this behavior, set "
-                        "`ray.data.DataContext.get_current()."
-                        "DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = False`."
-                    )
-                break
-            truncated_op_names.append(op_name)
-        truncated_op_names.append(op_names[-1])
-        return "->".join(truncated_op_names)
+class AbstractProgressBar(ABC):
+    """Abstract class to define a progress bar."""
 
     def block_until_complete(self, remaining: List[ObjectRef]) -> None:
         t = threading.current_thread()
@@ -175,8 +91,80 @@ class ProgressBar:
 
         return [ref_to_result[ref] for ref in refs]
 
+    @abstractmethod
     def set_description(self, name: str) -> None:
-        name = self._truncate_name(name)
+        ...
+
+    @abstractmethod
+    def get_description(self) -> str:
+        ...
+
+    @abstractmethod
+    def update(self, increment: int = 0, total: Optional[int] = None) -> None:
+        ...
+
+    def refresh(self):
+        pass
+
+    def close(self):
+        pass
+
+
+class ProgressBar(AbstractProgressBar):
+    """Thin wrapper around tqdm to handle soft imports.
+
+    If `total` is `None` known (for example, it is unknown
+    because no tasks have finished yet), doesn't display the full
+    progress bar. Still displays basic progress stats from tqdm."""
+
+    # If the name/description of the progress bar exceeds this length,
+    # it will be truncated.
+    MAX_NAME_LENGTH = 100
+
+    def __init__(
+        self,
+        name: str,
+        total: Optional[int],
+        unit: str,
+        position: int = 0,
+        enabled: Optional[bool] = None,
+    ):
+        self._desc = truncate_operator_name(name, self.MAX_NAME_LENGTH)
+        self._progress = 0
+        # Prepend a space to the unit for better formatting.
+        if unit[0] != " ":
+            unit = " " + unit
+
+        if enabled is None:
+            from ray.data.context import DataContext
+
+            enabled = DataContext.get_current().enable_progress_bars
+        if not enabled:
+            self._bar = None
+        elif tqdm:
+            from ray.data.context import DataContext
+
+            # TODO (kyuds): rename to use_tqdm_in_worker for clarity.
+            if DataContext.get_current().use_ray_tqdm:
+                self._bar = tqdm_ray.tqdm(total=total, unit=unit, position=position)
+            else:
+                self._bar = tqdm.tqdm(
+                    total=total or 0,
+                    position=position,
+                    dynamic_ncols=True,
+                    unit=unit,
+                    unit_scale=True,
+                )
+            self._bar.set_description(self._desc)
+        else:
+            global needs_warning
+            if needs_warning:
+                print("[dataset]: Run `pip install tqdm` to enable progress reporting.")
+                needs_warning = False
+            self._bar = None
+
+    def set_description(self, name: str) -> None:
+        name = truncate_operator_name(name, self.MAX_NAME_LENGTH)
         if self._bar and name != self._desc:
             self._desc = name
             self._bar.set_description(self._desc)
@@ -188,15 +176,15 @@ class ProgressBar:
         if self._bar:
             self._bar.refresh()
 
-    def update(self, i: int = 0, total: Optional[int] = None) -> None:
-        if self._bar and (i != 0 or self._bar.total != total):
-            self._progress += i
+    def update(self, increment: int = 0, total: Optional[int] = None) -> None:
+        if self._bar and (increment != 0 or self._bar.total != total):
+            self._progress += increment
             if total is not None:
                 self._bar.total = total
             if self._bar.total is not None and self._progress > self._bar.total:
                 # If the progress goes over 100%, update the total.
                 self._bar.total = self._progress
-            self._bar.update(i)
+            self._bar.update(increment)
 
     def close(self):
         if self._bar:
@@ -215,3 +203,40 @@ class ProgressBar:
 
     def __setstate__(self, state):
         self._bar = None  # Progress bar is disabled on remote nodes.
+
+
+def truncate_operator_name(name: str, max_name_length: int) -> str:
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    if not ctx.enable_progress_bar_name_truncation or len(name) <= max_name_length:
+        return name
+
+    op_names = name.split("->")
+    if len(op_names) == 1:
+        return op_names[0]
+
+    # Include as many operators as possible without approximately
+    # exceeding `MAX_NAME_LENGTH`. Always include the first and
+    # last operator names so it is easy to identify the DAG.
+    truncated_op_names = [op_names[0]]
+    for op_name in op_names[1:-1]:
+        if (
+            len("->".join(truncated_op_names))
+            + len("->")
+            + len(op_name)
+            + len("->")
+            + len(op_names[-1])
+        ) > max_name_length:
+            truncated_op_names.append("...")
+            if log_once("ray_data_truncate_operator_name"):
+                logger.warning(
+                    f"Truncating long operator name to {max_name_length} "
+                    "characters. To disable this behavior, set "
+                    "`ray.data.DataContext.get_current()."
+                    "DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = False`."
+                )
+            break
+        truncated_op_names.append(op_name)
+    truncated_op_names.append(op_names[-1])
+    return "->".join(truncated_op_names)

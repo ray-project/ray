@@ -228,10 +228,9 @@ void FillTaskInfo(rpc::TaskInfoEntry *task_info, const TaskSpecification &task_s
   if (task_spec.GetMessage().call_site().size() > 0) {
     task_info->set_call_site(task_spec.GetMessage().call_site());
   }
-  if (task_spec.GetMessage().label_selector().size() > 0) {
-    task_info->mutable_label_selector()->insert(
-        task_spec.GetMessage().label_selector().begin(),
-        task_spec.GetMessage().label_selector().end());
+  if (task_spec.GetMessage().label_selector().label_constraints_size() > 0) {
+    *task_info->mutable_label_selector() =
+        ray::LabelSelector(task_spec.GetMessage().label_selector()).ToStringMap();
   }
 }
 
@@ -287,10 +286,9 @@ void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_info,
   if (!pg_id.IsNil()) {
     task_info->set_placement_group_id(pg_id.Binary());
   }
-  if (task_spec.GetMessage().label_selector().size() > 0) {
-    task_info->mutable_label_selector()->insert(
-        task_spec.GetMessage().label_selector().begin(),
-        task_spec.GetMessage().label_selector().end());
+  if (task_spec.GetMessage().label_selector().label_constraints_size() > 0) {
+    *task_info->mutable_label_selector() =
+        ray::LabelSelector(task_spec.GetMessage().label_selector()).ToStringMap();
   }
 }
 

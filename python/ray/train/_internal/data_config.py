@@ -1,4 +1,5 @@
 import copy
+from collections import defaultdict
 from typing import Dict, List, Literal, Optional, Union
 
 import ray
@@ -19,7 +20,9 @@ class DataConfig:
     def __init__(
         self,
         datasets_to_split: Union[Literal["all"], List[str]] = "all",
-        execution_options: Optional[ExecutionOptions] = None,
+        execution_options: Optional[
+            Union[ExecutionOptions, Dict[str, ExecutionOptions]]
+        ] = None,
         enable_shard_locality: bool = True,
     ):
         """Construct a DataConfig.
@@ -28,12 +31,14 @@ class DataConfig:
             datasets_to_split: Specifies which datasets should be split among workers.
                 Can be set to "all" or a list of dataset names. Defaults to "all",
                 i.e. split all datasets.
-            execution_options: The execution options to pass to Ray Data. By default,
-                the options will be optimized for data ingest. When overriding this,
-                base your options off of `DataConfig.default_ingest_options()`.
-            enable_shard_locality: If true, when sharding the datasets across Train
-                workers, locality will be considered to minimize cross-node data transfer.
-                This is on by default.
+            execution_options: The execution options to pass to Ray Data. Can be either:
+                1. A single ExecutionOptions object that is applied to all datasets.
+                2. A dict mapping dataset names to ExecutionOptions. If a dataset name
+                is not in the dict, it defaults to ``DataConfig.default_ingest_options()``.
+                By default, the options are optimized for data ingest. When overriding,
+                base your options off ``DataConfig.default_ingest_options()``.
+            enable_shard_locality: If true, dataset sharding across Train workers will
+                consider locality to minimize cross-node data transfer. Enabled by default.
         """
         if isinstance(datasets_to_split, list) or datasets_to_split == "all":
             self._datasets_to_split = datasets_to_split
@@ -44,9 +49,16 @@ class DataConfig:
                 f"{type(datasets_to_split).__name__} with value {datasets_to_split}."
             )
 
-        self._execution_options: ExecutionOptions = (
-            execution_options or DataConfig.default_ingest_options()
+        default_execution_options = DataConfig.default_ingest_options()
+        if isinstance(execution_options, ExecutionOptions):
+            default_execution_options = execution_options
+        # If None, all datasets will use the default ingest options.
+        self._execution_options: Dict[str, ExecutionOptions] = defaultdict(
+            lambda: copy.deepcopy(default_execution_options)
         )
+        if isinstance(execution_options, dict):
+            self._execution_options.update(execution_options)
+
         self._enable_shard_locality = enable_shard_locality
 
         self._num_train_cpus = 0.0
@@ -61,6 +73,10 @@ class DataConfig:
         # TODO: We may also include other resources besides CPU and GPU.
         self._num_train_cpus = num_train_cpus
         self._num_train_gpus = num_train_gpus
+
+    def _get_execution_options(self, dataset_name: str) -> ExecutionOptions:
+        """Return a copy of the configured execution options for a given dataset name."""
+        return copy.deepcopy(self._execution_options[dataset_name])
 
     @DeveloperAPI
     def configure(
@@ -98,7 +114,7 @@ class DataConfig:
 
         locality_hints = worker_node_ids if self._enable_shard_locality else None
         for name, ds in datasets.items():
-            execution_options = copy.deepcopy(self._execution_options)
+            execution_options = self._get_execution_options(name)
 
             if execution_options.is_resource_limits_default():
                 # If "resource_limits" is not overriden by the user,
