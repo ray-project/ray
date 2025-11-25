@@ -101,6 +101,15 @@ Binary
 
    read_binary_files
 
+PDF
+---
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_pdfs
+
 TFRecords
 ---------
 

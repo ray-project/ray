@@ -52,6 +52,10 @@ from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.datasource.pdf_datasource import (
+    PDFDatasource,
+    PDFFileMetadataProvider,
+)
 from ray.data._internal.datasource.range_datasource import RangeDatasource
 from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
@@ -1202,6 +1206,263 @@ def read_images(
         paths,
         size=size,
         mode=mode,
+        include_paths=include_paths,
+        filesystem=filesystem,
+        meta_provider=meta_provider,
+        open_stream_args=arrow_open_file_args,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_pdfs(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    meta_provider: Optional[BaseFileMetadataProvider] = None,
+    ray_remote_args: Dict[str, Any] = None,
+    arrow_open_file_args: Optional[Dict[str, Any]] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = None,
+    pages: bool = True,
+    include_images: bool = False,
+    ocr: bool = False,
+    ocr_config: Optional[Dict[str, Any]] = None,
+    max_pages_per_block: Optional[int] = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
+    file_extensions: Optional[List[str]] = PDFDatasource._FILE_EXTENSIONS,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Creates a :class:`~ray.data.Dataset` from PDF files.
+
+    This function reads PDF files and extracts text content. By default, each row
+    represents a single page from a PDF document. You can also configure it to
+    return entire documents as single rows.
+
+    The function supports:
+
+    - Text extraction from text-based PDFs
+    - OCR (Optical Character Recognition) for image-based or scanned PDFs
+    - Page-level and document-level reading modes
+    - Metadata extraction (page numbers, dimensions, document properties)
+    - Optional image extraction from PDF pages
+
+    Examples:
+        Read PDF files with default settings (page-level):
+
+        >>> import ray  # doctest: +SKIP
+        >>> ds = ray.data.read_pdfs("s3://bucket/pdfs/")  # doctest: +SKIP
+        >>> ds.schema()  # doctest: +SKIP
+        Column       Type
+        ------       ----
+        text         string
+        page_number  int64
+        num_pages    int64
+
+        Read PDFs with file paths included:
+
+        >>> ds = ray.data.read_pdfs("s3://bucket/pdfs/", include_paths=True)  # doctest: +SKIP
+        >>> ds.schema()  # doctest: +SKIP
+        Column       Type
+        ------       ----
+        text         string
+        page_number  int64
+        num_pages    int64
+        path         string
+
+        Read entire PDF documents as single rows:
+
+        >>> ds = ray.data.read_pdfs("s3://bucket/pdfs/", pages=False)  # doctest: +SKIP
+        >>> ds.schema()  # doctest: +SKIP
+        Column       Type
+        ------       ----
+        text         string
+        num_pages    int64
+
+        Extract images from PDF pages:
+
+        >>> ds = ray.data.read_pdfs("s3://bucket/pdfs/", include_images=True)  # doctest: +SKIP
+        >>> row = ds.take(1)[0]  # doctest: +SKIP
+        >>> print(f"Page has {row['num_images']} images")  # doctest: +SKIP
+
+        Enable OCR for image-based PDFs:
+
+        >>> ds = ray.data.read_pdfs(  # doctest: +SKIP
+        ...     "s3://bucket/scanned-pdfs/",
+        ...     ocr=True,
+        ...     ocr_config={"lang": "eng"}
+        ... )
+
+        Handle very large PDFs efficiently by batching pages:
+
+        >>> # For a 500-page PDF, create 50 blocks of 10 pages each
+        >>> ds = ray.data.read_pdfs(  # doctest: +SKIP
+        ...     "s3://bucket/large-pdfs/",
+        ...     max_pages_per_block=10
+        ... )
+        >>> # This reduces memory overhead and improves performance
+
+    Args:
+        paths: A single file or directory, or a list of file or directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The PyArrow filesystem implementation to read from. These
+            filesystems are specified in the
+            `PyArrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker. PDF
+            parsing can be CPU-intensive, especially for large or complex documents.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker. This is typically not needed for PDF reading unless using GPU-
+            accelerated OCR.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+            PDF files can expand significantly in memory after parsing.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        arrow_open_file_args: kwargs passed to
+            `pyarrow.fs.FileSystem.open_input_file
+            <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_input_file>`_
+            when opening input files to read.
+        partition_filter: A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
+            with a custom callback to read only selected partitions of a dataset.
+            By default, this filters out any file paths whose file extension does not
+            match ``*.pdf``.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
+        pages: If ``True``, each row represents a single page from a PDF document.
+            If ``False``, each row represents an entire PDF document with all pages
+            combined. Defaults to ``True``.
+        include_images: If ``True``, extract and include images from PDF pages.
+            This significantly increases memory usage and processing time. Only works
+            when ``pages=True``. Defaults to ``False``.
+        ocr: If ``True``, use OCR (Optical Character Recognition) to extract text
+            from image-based PDFs or scanned documents. This requires ``pytesseract``
+            and ``tesseract`` to be installed. OCR is automatically applied to pages
+            where text extraction fails or returns empty results. Defaults to ``False``.
+        ocr_config: Configuration options for OCR processing. Only used if
+            ``ocr=True``. Common options include ``lang`` for language (e.g., "eng"
+            for English) and ``config`` for custom Tesseract configuration strings.
+            See `pytesseract documentation <https://github.com/madmaze/pytesseract>`_
+            for available options. Defaults to ``None``.
+        max_pages_per_block: Maximum number of pages to include in a single output
+            block. This helps manage memory usage for very large PDF files. For example,
+            if ``max_pages_per_block=10`` and you have a 100-page PDF, Ray Data will
+            yield 10 blocks with 10 pages each instead of 100 separate blocks. This
+            significantly reduces memory overhead and improves performance for large
+            documents. Only applicable when ``pages=True``. If ``None``, each page
+            becomes its own block (default behavior). Defaults to ``None``.
+        include_paths: If ``True``, include the path to each PDF file. File paths are
+            stored in the ``'path'`` column.
+        ignore_missing_paths: If True, ignores any file or directory paths in ``paths``
+            that are not found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by. Defaults to
+            ``["pdf"]``.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A :class:`~ray.data.Dataset` containing the extracted PDF content. The schema
+        depends on the configuration options:
+
+        - ``pages=True`` (default): Each row represents a PDF page with columns for
+          text content, page number, total page count, and optionally page dimensions.
+        - ``pages=False``: Each row represents a complete PDF document with combined
+          text from all pages.
+        - ``include_images=True``: Additional columns for extracted images and image
+          metadata.
+        - ``include_paths=True``: Additional column containing the source file path.
+
+    Raises:
+        ValueError: If invalid configuration options are provided (e.g.,
+            ``include_images=True`` with ``pages=False``).
+        ImportError: If required dependencies (PyPDF2, pytesseract) are not installed.
+
+    .. note::
+        Corrupted or password-protected PDF files are skipped with a warning rather
+        than raising an error. This allows processing to continue when encountering
+        invalid files in a dataset.
+
+    .. note::
+
+        OCR Support:
+
+        To enable OCR for image-based or scanned PDFs, you need to install additional
+        dependencies:
+
+        .. code-block:: bash
+
+            pip install pytesseract pdf2image
+            # On Ubuntu/Debian
+            sudo apt-get install tesseract-ocr poppler-utils
+            # On macOS
+            brew install tesseract poppler
+
+        OCR processing is significantly slower than standard text extraction and should
+        only be enabled when necessary.
+
+    .. note::
+
+        Performance Considerations:
+
+        - PDF parsing can be CPU-intensive. Consider increasing ``num_cpus`` for
+          faster processing of large or complex PDFs.
+        - Image extraction (``include_images=True``) dramatically increases memory
+          usage. Use with caution for PDFs with many or large images.
+        - OCR (``ocr=True``) is much slower than standard text extraction. Use only
+          for image-based or scanned PDFs where text extraction fails.
+        - For very large datasets, consider using ``pages=False`` to reduce the number
+          of output rows and simplify downstream processing.
+    """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
+    if meta_provider is None:
+        meta_provider = PDFFileMetadataProvider()
+
+    datasource = PDFDatasource(
+        paths,
+        pages=pages,
+        include_images=include_images,
+        ocr=ocr,
+        ocr_config=ocr_config,
+        max_pages_per_block=max_pages_per_block,
         include_paths=include_paths,
         filesystem=filesystem,
         meta_provider=meta_provider,
