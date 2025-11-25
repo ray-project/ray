@@ -121,7 +121,7 @@ class HangingExecutionIssueDetector(IssueDetector):
             op_metrics = operator.metrics
             op_task_stats_map[operator.id] = op_metrics._op_task_duration_stats
             self._op_id_to_name[operator.id] = operator.name
-            if operator.execution_finished():
+            if operator.has_execution_finished():
                 # Remove finished operators / tasks from the state map
                 if operator.id in self._state_map:
                     del self._state_map[operator.id]
