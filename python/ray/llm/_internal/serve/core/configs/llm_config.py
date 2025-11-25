@@ -75,7 +75,6 @@ class LLMEngine(str, Enum):
     """Enum that represents an LLMEngine."""
 
     vLLM = "vLLM"
-    SGLang = "SGLang"
 
 
 class LoraConfig(BaseModelExtended):
