@@ -27,34 +27,22 @@ class ShuffleFusion(Rule):
 
     @classmethod
     def fuse_with_upstream(cls, op: LogicalOperator) -> LogicalOperator:
-        prev_ops = op.input_dependencies
-        if len(prev_ops) == 1:
+        if not op.input_dependencies:
+            return op
 
-            prev_op = prev_ops[0]
+        prev_op = op.input_dependencies[0]
 
-            # Only fuse if the ops' remote arguments are compatible.
-            if not are_remote_args_compatible(
-                getattr(prev_op, "_ray_remote_args", {}),
-                getattr(op, "_ray_remote_args", {}),
-            ):
-                return op
+        if isinstance(prev_op, Repartition) and isinstance(op, Repartition):
+            # If one of the operators full shuffles, then new_op should too.
+            full_shuffle = op._full_shuffle or prev_op._full_shuffle
 
-            if getattr(prev_op, "_ray_remote_args_fn", None) or getattr(
-                op, "_ray_remote_args_fn", None
-            ):
-                return op
-
-            if isinstance(prev_op, Repartition) and isinstance(op, Repartition):
-                # If one of the operators full shuffles, then new_op should too.
-                full_shuffle = op._full_shuffle or prev_op._full_shuffle
-
-                return Repartition(
-                    name=op.name,
-                    input_op=prev_op.input_dependencies[0],
-                    num_outputs=op._num_outputs,
-                    full_shuffle=full_shuffle,
-                    keys=op._keys,
-                    sort=op._sort,
+            return Repartition(
+                name=op.name,
+                input_op=prev_op.input_dependencies[0],
+                num_outputs=op._num_outputs,
+                full_shuffle=full_shuffle,
+                keys=op._keys,
+                sort=op._sort,
                 )
 
         return op
