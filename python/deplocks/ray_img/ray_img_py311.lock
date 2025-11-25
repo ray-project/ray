@@ -387,19 +387,22 @@ cryptography==44.0.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   pyopenssl
-cupy-cuda12x==13.1.0 ; sys_platform != 'darwin' \
-    --hash=sha256:230f8a8e99c81a653baa0ed00819990c0ed1f0cf0298214786b5e323461dc61a \
-    --hash=sha256:2d16eaa2d086e416ac13467d4ff3184b9a081fe76b761ce51d4a46ec1c4bd28a \
-    --hash=sha256:432273fd4b61a284f7d705d08b8291403548fd422bcbd945635cc155bc6a923d \
-    --hash=sha256:4c51a1062a3c5a826b0425952d229ffe73b1791656a31de95b318117e67a9576 \
-    --hash=sha256:4c8e9fdb1f3ffc3151808f8bb8c871518d2783e1be8b53792b698a840543d60c \
-    --hash=sha256:51b1d6cb83d82dfa306c9efaeb4d57f24bad3041ebd8716d61072676abbcf67b \
-    --hash=sha256:52185a2cf95d3bac2c3fda95c9c8e06a985b5a00cd2e587d3caace337db33899 \
-    --hash=sha256:5afb6658faa22f21479ae2c0a07254df31c0aebc36907a64a1f6be4ecc9e96da \
-    --hash=sha256:d3dc91ef9c4104652195eea4b282d343ecad653021efe20d1c8dd8dfe8ccfd86 \
-    --hash=sha256:d60d1e124592cb82a5f3f45b3e7bee7bda7b72a743029f275e9d6b125f338c60 \
-    --hash=sha256:dac0284fecb90b5731f514e569a6fcf6674a730ae95b9490781a713b60a34423 \
-    --hash=sha256:e7a25ef1b44ae6276b5105affc2289edb34f1aa6676babd5bcd80907348c4cfa
+cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
+    --hash=sha256:297b4268f839de67ef7865c2202d3f5a0fb8d20bd43360bc51b6e60cb4406447 \
+    --hash=sha256:4d2dfd9bb4705d446f542739a3616b4c9eea98d674fce247402cc9bcec89a1e4 \
+    --hash=sha256:52d9e7f83d920da7d81ec2e791c2c2c747fdaa1d7b811971b34865ce6371e98a \
+    --hash=sha256:6ccd2fc75b0e0e24493531b8f8d8f978efecddb45f8479a48890c40d3805eb87 \
+    --hash=sha256:771f3135861b68199c18b49345210180d4fcdce4681b51c28224db389c4aac5d \
+    --hash=sha256:77ba6745a130d880c962e687e4e146ebbb9014f290b0a80dbc4e4634eb5c3b48 \
+    --hash=sha256:79b0cacb5e8b190ef409f9e03f06ac8de1b021b0c0dda47674d446f5557e0eb1 \
+    --hash=sha256:9e37f60f27ff9625dfdccc4688a09852707ec613e32ea9404f425dd22a386d14 \
+    --hash=sha256:a20b7acdc583643a623c8d8e3efbe0db616fbcf5916e9c99eedf73859b6133af \
+    --hash=sha256:a6970ceefe40f9acbede41d7fe17416bd277b1bd2093adcde457b23b578c5a59 \
+    --hash=sha256:c790d012fd4d86872b9c89af9f5f15d91c30b8e3a4aa4dd04c2610f45f06ac44 \
+    --hash=sha256:ca06fede7b8b83ca9ad80062544ef2e5bb8d4762d1c4fc3ac8349376de9c8a5e \
+    --hash=sha256:e5426ae3b1b9cf59927481e457a89e3f0b50a35b114a8034ec9110e7a833434c \
+    --hash=sha256:e78409ea72f5ac7d6b6f3d33d99426a94005254fa57e10617f430f9fd7c3a0a1 \
+    --hash=sha256:f33c9c975782ef7a42c79b6b4fb3d5b043498f9b947126d792592372b432d393
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ray

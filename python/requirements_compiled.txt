@@ -400,7 +400,7 @@ cryptography==44.0.3 ; sys_platform != "darwin"
     #   snowflake-connector-python
     #   sshpubkeys
     #   trustme
-cupy-cuda12x==13.1.0 ; sys_platform != "darwin"
+cupy-cuda12x==13.6.0 ; sys_platform != "darwin"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
