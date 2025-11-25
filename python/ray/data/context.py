@@ -213,7 +213,7 @@ DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
 )
 
 DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR = env_integer(
-    "RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR", 4
+    "RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR", 2
 )
 
 # Enable per node metrics reporting for Ray Data, disabled by default.
@@ -238,6 +238,11 @@ DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD: float = env_float(
 DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
     "RAY_DATA_DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD",
     0.5,
+)
+
+DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: int = env_integer(
+    "RAY_DATA_DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA",
+    1,
 )
 
 
@@ -265,6 +270,9 @@ class AutoscalingConfig:
             between autoscaling speed and resource efficiency (i.e.,
             making tasks wait instead of immediately triggering execution).
         actor_pool_util_downscaling_threshold: Actor Pool utilization threshold for downscaling.
+        actor_pool_max_upscaling_delta: Maximum number of actors to scale up in a single scaling decision.
+            This limits how many actors can be added at once to prevent resource contention
+            and scheduling pressure. Defaults to 1 for conservative scaling.
     """
 
     actor_pool_util_upscaling_threshold: float = (
@@ -275,6 +283,9 @@ class AutoscalingConfig:
     actor_pool_util_downscaling_threshold: float = (
         DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD
     )
+
+    # Maximum number of actors to scale up in a single scaling decision
+    actor_pool_max_upscaling_delta: int = DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA
 
 
 def _execution_options_factory() -> "ExecutionOptions":

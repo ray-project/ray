@@ -18,7 +18,6 @@ from ray._private.telemetry.metric_cardinality import (
     TASK_OR_ACTOR_NAME_TAG_KEY,
 )
 
-from ray._private.ray_constants import RAY_ENABLE_OPEN_TELEMETRY
 
 try:
     import prometheus_client
@@ -42,7 +41,6 @@ def _setup_cluster_for_test(request, ray_start_cluster):
             "metrics_report_interval_ms": 1000,
             "enable_metrics_collection": True,
             "metric_cardinality_level": core_metric_cardinality_level,
-            "enable_open_telemetry": RAY_ENABLE_OPEN_TELEMETRY,
         }
     )
     cluster.wait_for_nodes()
@@ -137,7 +135,7 @@ def _cardinality_level_test(_setup_cluster_for_test, cardinality_level, metric):
     "_setup_cluster_for_test,cardinality_level,metric",
     [
         (cardinality, cardinality, metric)
-        for cardinality in ["recommended", "legacy"]
+        for cardinality in ["low", "recommended", "legacy"]
         for metric in _TO_TEST_METRICS
     ],
     indirect=["_setup_cluster_for_test"],
@@ -145,22 +143,6 @@ def _cardinality_level_test(_setup_cluster_for_test, cardinality_level, metric):
 def test_cardinality_recommended_and_legacy_levels(
     _setup_cluster_for_test, cardinality_level, metric
 ):
-    _cardinality_level_test(_setup_cluster_for_test, cardinality_level, metric)
-
-
-# We only enable low cardinality test for open telemetry because the legacy opencensus
-# implementation doesn't support low cardinality.
-@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
-@pytest.mark.skipif(
-    not RAY_ENABLE_OPEN_TELEMETRY,
-    reason="OpenTelemetry is not enabled",
-)
-@pytest.mark.parametrize(
-    "_setup_cluster_for_test,cardinality_level,metric",
-    [("low", "low", metric) for metric in _TO_TEST_METRICS],
-    indirect=["_setup_cluster_for_test"],
-)
-def test_cardinality_low_levels(_setup_cluster_for_test, cardinality_level, metric):
     _cardinality_level_test(_setup_cluster_for_test, cardinality_level, metric)
 
 

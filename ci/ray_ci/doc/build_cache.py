@@ -1,17 +1,16 @@
 import os
 import pickle
 import subprocess
+import sys
 import tempfile
 from typing import Set
 
 import boto3
 
-from ci.ray_ci.utils import logger
-
-from ray_release.util import get_write_state_machine_aws_bucket
-
-AWS_CACHE_KEY = "doc_build"
 ENVIRONMENT_PICKLE = "_build/doctrees/environment.pickle"
+
+_BUILD_CACHE_S3_BUCKET = "ray-ci-results"
+_BUILD_CACHE_PATH_PREFIX = "doc_build/"
 
 
 class BuildCache:
@@ -28,26 +27,16 @@ class BuildCache:
         self._cache_dir = cache_dir
 
     def upload(self, dry_run: bool) -> None:
-        """
-        Upload the build artifacts to S3
-        """
-        logger.info("Massage the build artifacts to be used as a cache.")
+        """Upload the build artifacts to S3."""
         self._massage_cache(ENVIRONMENT_PICKLE)
-
-        logger.info("Obtaining the list of cache files.")
         cache_files = self._get_cache()
-
-        logger.info("Creating a tarball of the cache files.")
         doc_tarball = self._zip_cache(cache_files)
 
         if dry_run:
-            logger.info(f"Skipping upload of {doc_tarball} to S3.")
+            print(f"Skipping upload of {doc_tarball} to S3.", file=sys.stderr)
             return
 
-        logger.info("Upload the tarball to S3.")
         self._upload_cache(doc_tarball)
-
-        logger.info(f"Successfully uploaded {doc_tarball} to S3.")
 
     def _massage_cache(self, environment_cache_file: str) -> None:
         """
@@ -102,6 +91,6 @@ class BuildCache:
     def _upload_cache(self, doc_tarball: str) -> None:
         boto3.client("s3").upload_file(
             os.path.join(self._cache_dir, doc_tarball),
-            get_write_state_machine_aws_bucket(),
-            f"{AWS_CACHE_KEY}/{doc_tarball}",
+            _BUILD_CACHE_S3_BUCKET,
+            f"{_BUILD_CACHE_PATH_PREFIX}{doc_tarball}",
         )
