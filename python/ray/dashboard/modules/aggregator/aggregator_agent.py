@@ -31,39 +31,39 @@ from ray.dashboard.modules.aggregator.task_events_metadata_buffer import (
 
 logger = logging.getLogger(__name__)
 
-# Environment variables for the aggregator agent
-env_var_prefix = "RAY_DASHBOARD_AGGREGATOR_AGENT"
 # Max number of threads for the thread pool executor handling CPU intensive tasks
 THREAD_POOL_EXECUTOR_MAX_WORKERS = ray_constants.env_integer(
-    f"{env_var_prefix}_THREAD_POOL_EXECUTOR_MAX_WORKERS", 1
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_THREAD_POOL_EXECUTOR_MAX_WORKERS", 1
 )
 # Interval to check the main thread liveness
 CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS = ray_constants.env_float(
-    f"{env_var_prefix}_CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS", 0.1
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS", 0.1
 )
 # Maximum size of the event buffer in the aggregator agent
 MAX_EVENT_BUFFER_SIZE = ray_constants.env_integer(
-    f"{env_var_prefix}_MAX_EVENT_BUFFER_SIZE", 1000000
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE", 1000000
 )
 # Maximum number of events to send in a single batch to the destination
 MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
-    f"{env_var_prefix}_MAX_EVENT_SEND_BATCH_SIZE", 10000
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_SEND_BATCH_SIZE", 10000
 )
 # Address of the external service to send events with format of "http://<ip>:<port>"
-EVENTS_EXPORT_ADDR = os.environ.get(f"{env_var_prefix}_EVENTS_EXPORT_ADDR", "")
+EVENTS_EXPORT_ADDR = os.environ.get(
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR", ""
+)
 # flag to enable publishing events to the external HTTP service
 PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
-    f"{env_var_prefix}_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE", False
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE", False
 )
 # flag to enable publishing events to GCS
 PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
-    f"{env_var_prefix}_PUBLISH_EVENTS_TO_GCS", True
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", True
 )
 # flag to control whether preserve the proto field name when converting the events to
 # JSON. If True, the proto field name will be preserved. If False, the proto field name
 # will be converted to camel case.
 PRESERVE_PROTO_FIELD_NAME = ray_constants.env_bool(
-    f"{env_var_prefix}_PRESERVE_PROTO_FIELD_NAME", False
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_PRESERVE_PROTO_FIELD_NAME", False
 )
 
 
