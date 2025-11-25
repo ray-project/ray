@@ -151,7 +151,8 @@ class ProgressBar(AbstractProgressBar):
 
             enabled = DataContext.get_current().enable_progress_bars
 
-        self._use_logging = not sys.stdout.isatty()
+        # Use logging when in non-interactive terminal or when progress bars are disabled
+        self._use_logging = not enabled
 
         if not enabled:
             self._bar = None
@@ -196,6 +197,19 @@ class ProgressBar(AbstractProgressBar):
     def refresh(self):
         if self._bar:
             self._bar.refresh()
+        elif self._use_logging:
+            # Log progress periodically
+            current_time = time.time()
+            time_diff = current_time - self._last_logged_time
+            should_log = (self._last_logged_time == 0) or (
+                time_diff >= self._log_interval
+            )
+
+            if should_log:
+                logger.info(
+                    f"Progress ({self._desc}): {self._progress}/{self._total or 'unknown'}"
+                )
+                self._last_logged_time = current_time
 
     def update(self, increment: int = 0, total: Optional[int] = None) -> None:
         if self._bar and (increment != 0 or self._bar.total != total):
