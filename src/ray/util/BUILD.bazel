@@ -99,14 +99,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "function_traits",
-    hdrs = ["function_traits.h"],
-    deps = [
-        "@boost//:functional",
-    ],
-)
-
-ray_cc_library(
     name = "counter_map",
     hdrs = ["counter_map.h"],
     deps = [

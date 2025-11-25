@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/asio/postable.h"
+#include "ray/gcs/postable/postable.h"
 
 #include <gtest/gtest.h>
 
