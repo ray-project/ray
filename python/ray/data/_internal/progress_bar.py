@@ -201,9 +201,7 @@ class ProgressBar(AbstractProgressBar):
         """Log progress if the required time interval has passed."""
         current_time = time.time()
         time_diff = current_time - self._last_logged_time
-        should_log = (self._last_logged_time == 0) or (
-            time_diff >= self._log_interval
-        )
+        should_log = (self._last_logged_time == 0) or (time_diff >= self._log_interval)
 
         if should_log:
             # Remove leading hyphens from the description

@@ -183,6 +183,8 @@ def test_progress_bar_logging_in_non_interactive_terminal_without_total(mock_log
 
         # Verify logger.info was called with expected message for unknown total
         mock_logger.info.assert_called_once_with("test2: Progress Completed 3 / ?")
+
+
 if __name__ == "__main__":
     import sys
 
