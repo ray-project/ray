@@ -98,7 +98,6 @@ from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve._private.thirdparty.get_asgi_route_name import (
     extract_route_patterns,
-    get_asgi_route_name,
 )
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -724,36 +723,6 @@ class ReplicaBase(ABC):
         # A new request can be accepted if the semaphore is currently unlocked.
         return not self._semaphore.locked()
 
-    def _maybe_get_http_route(
-        self, request_metadata: RequestMetadata, request_args: Tuple[Any]
-    ) -> Optional[str]:
-        """Get the matched route string for ASGI apps to be used in logs & metrics.
-
-        If this replica does not wrap an ASGI app or there is no matching for the
-        request, returns the existing route from the request metadata.
-        """
-        route = request_metadata.route
-        if self._user_callable_asgi_app is not None:
-            req: StreamingHTTPRequest = request_args[0]
-            try:
-                matched_route = get_asgi_route_name(
-                    self._user_callable_asgi_app, req.asgi_scope
-                )
-            except Exception:
-                matched_route = None
-                logger.exception(
-                    "Failed unexpectedly trying to get route name for request. "
-                    "Routes in metric tags and log messages may be inaccurate. "
-                    "Please file a GitHub issue containing this traceback."
-                )
-
-            # If there is no match in the ASGI app, don't overwrite the route_prefix
-            # from the proxy.
-            if matched_route is not None:
-                route = matched_route
-
-        return route
-
     @contextmanager
     def _handle_errors_and_metrics(
         self, request_metadata: RequestMetadata
@@ -840,9 +809,6 @@ class ReplicaBase(ABC):
             )
 
             request_metadata._http_method = scope.get("method", "WS")
-            request_metadata.route = self._maybe_get_http_route(
-                request_metadata, request_args
-            )
 
             request_args = (scope, receive)
         elif request_metadata.is_grpc_request:

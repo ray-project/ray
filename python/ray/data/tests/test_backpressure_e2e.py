@@ -338,4 +338,4 @@ def test_streaming_backpressure_e2e(
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
