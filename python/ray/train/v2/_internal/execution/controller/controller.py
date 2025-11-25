@@ -67,6 +67,7 @@ from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
     ControllerError,
     TrainingFailedError,
+    WorkerGroupError,
 )
 from ray.train.v2.api.report_config import CheckpointConsistencyMode
 from ray.train.v2.api.result import Result
@@ -186,7 +187,15 @@ class TrainController:
             callback.before_controller_execute_resize_decision(decision)
 
         if self._worker_group:
-            self._shutdown_worker_group()
+            optional_worker_group_error = self._shutdown_worker_group()
+            if optional_worker_group_error:
+                failure_decision = self._failure_policy.make_decision(
+                    training_failed_error=optional_worker_group_error,
+                )
+                return self._execute_failure_decision(
+                    failure_decision,
+                    training_failed_error=optional_worker_group_error,
+                )
 
         optional_controller_error = self._start_worker_group(
             num_workers=decision.num_workers,
@@ -338,17 +347,24 @@ class TrainController:
         for callback in self._controller_callbacks:
             callback.after_controller_start(self._train_run_context)
 
-    def _shutdown(self):
+    def _shutdown(self) -> Optional[WorkerGroupError]:
         if self._worker_group:
-            self._shutdown_worker_group()
+            optional_worker_group_error = self._shutdown_worker_group()
+            if optional_worker_group_error:
+                return optional_worker_group_error
 
         for callback in self._controller_callbacks:
             callback.before_controller_shutdown()
 
-    def _shutdown_worker_group(self):
+    def _shutdown_worker_group(self) -> Optional[WorkerGroupError]:
         """Shutdown the worker group and set the worker group to None."""
-        self._worker_group.shutdown()
-        self._worker_group = None
+        try:
+            self._worker_group.shutdown()
+            self._worker_group = None
+            return None
+        except Exception as e:
+            self._worker_group = None
+            return WorkerGroupError(e)
 
     def get_worker_group(self) -> Optional[WorkerGroup]:
         return self._worker_group
@@ -475,7 +491,15 @@ class TrainController:
             )
         elif isinstance(controller_state, ShuttingDownState):
             # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
-            self._shutdown()
+            optional_worker_group_error = self._shutdown()
+            if optional_worker_group_error:
+                failure_decision = self._failure_policy.make_decision(
+                    training_failed_error=optional_worker_group_error,
+                )
+                return self._execute_failure_decision(
+                    failure_decision,
+                    training_failed_error=optional_worker_group_error,
+                )
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
