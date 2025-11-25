@@ -19,7 +19,7 @@ memray
 openskill
 orjson
 petastorm
-protobuf
+protobuf>=5.28.0
 pyarrow
 pydantic>=2.5.0
 pytest
@@ -41,3 +41,4 @@ xarray
 xgboost
 zarr
 gevent==25.8.1
+opentelemetry-proto

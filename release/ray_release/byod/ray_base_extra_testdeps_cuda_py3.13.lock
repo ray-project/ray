@@ -2948,6 +2948,10 @@ opentelemetry-exporter-prometheus==0.55b1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ray
+opentelemetry-proto==1.38.0 \
+    --hash=sha256:88b161e89d9d372ce723da289b7da74c3a8354a8e5359992be813942969ed468 \
+    --hash=sha256:b6ebe54d3217c42e45462e2a1ae28c3e2bf2ec5a5645236a490f55f45f1a0a18
+    # via -r release/ray_release/byod/requirements_byod_3.13.in
 opentelemetry-sdk==1.34.1 \
     --hash=sha256:308effad4059562f1d92163c61c8141df649da24ce361827812c40abb2a1e96e \
     --hash=sha256:8091db0d763fcd6098d4781bbc80ff0971f94e260739aa6afe6fd379cdf3aa4d
@@ -3530,6 +3534,7 @@ protobuf==5.29.5 \
     #   grpc-google-iam-v1
     #   grpcio-status
     #   grpcio-tools
+    #   opentelemetry-proto
     #   proto-plus
     #   tensorboard
     #   tensorboardx
