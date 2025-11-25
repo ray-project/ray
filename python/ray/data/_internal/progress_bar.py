@@ -184,9 +184,12 @@ class ProgressBar(AbstractProgressBar):
         from ray.data.context import DataContext
 
         self._log_interval = DataContext.get_current().progress_bar_log_interval
+        self._logged_once = False
 
     def set_description(self, name: str) -> None:
         name = truncate_operator_name(name, self.MAX_NAME_LENGTH)
+        if self._use_logging:
+            self._desc = name
         if self._bar and name != self._desc:
             self._desc = name
             self._bar.set_description(self._desc)
@@ -203,8 +206,14 @@ class ProgressBar(AbstractProgressBar):
         )
 
         if should_log:
+            # Remove leading hyphens from the description
+            clean_desc = self._desc.lstrip("- ").strip()
+            if not self._logged_once:
+                operation_name = clean_desc = clean_desc.split(":")[0]
+                logger.info(f"=== Ray Data Progress {{{operation_name}}} ===")
+                self._logged_once = True
             logger.info(
-                f"Progress ({self._desc}): {self._progress}/{self._total or 'unknown'}"
+                f"{clean_desc}: Progress {self._progress} / {self._total or '?'}"
             )
             self._last_logged_time = current_time
 

@@ -788,6 +788,7 @@ class _ClosingIterator(OutputIterator):
             # Update progress-bars
             using_rich = self._executor._use_rich_progress()
             if not using_rich and self._executor._global_info:
+                self._executor._refresh_progress_bars(self._executor._topology)
                 self._executor._global_info.update(
                     bundle.num_rows(), op.num_output_rows_total()
                 )
