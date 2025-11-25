@@ -534,8 +534,10 @@ fasteners==0.19
     #   gsutil
 fastjsonschema==2.19.0
     # via nbformat
-fastrlock==0.8.2
-    # via cupy-cuda12x
+fastrlock==0.8.3 ; sys_platform != "darwin"
+    # via
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   cupy-cuda12x
 feather-format==0.4.1
     # via -r python/requirements/test-requirements.txt
 ffmpy==0.3.1
@@ -562,8 +564,9 @@ flask-cors==4.0.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   moto
-flatbuffers==23.5.26
+flatbuffers==23.5.26 ; python_version < "3.13"
     # via
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   onnxruntime
     #   tensorflow
 fonttools==4.45.1
@@ -995,8 +998,10 @@ jupytext==1.16.3
     # via -r python/requirements/test-requirements.txt
 kafka-python==2.2.15
     # via -r python/requirements/ml/data-test-requirements.txt
-keras==2.15.0
-    # via tensorflow
+keras==2.15.0 ; python_version < "3.12"
+    # via
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   tensorflow
 kiwisolver==1.4.5
     # via matplotlib
 knack==0.11.0
@@ -1093,8 +1098,9 @@ mistune==0.8.4
     # via nbconvert
 ml-collections==0.1.1
     # via open-spiel
-ml-dtypes==0.3.2
+ml-dtypes==0.3.2 ; python_version < "3.13"
     # via
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   jax
     #   jaxlib
     #   tensorflow
