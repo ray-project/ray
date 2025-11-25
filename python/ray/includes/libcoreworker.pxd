@@ -2,7 +2,7 @@
 # distutils: language = c++
 # cython: embedsignature = True
 
-from libc.stdint cimport int64_t, uint64_t
+from libc.stdint cimport int32_t, int64_t, uint64_t
 from libcpp cimport bool as c_bool
 from libcpp.functional cimport function
 from libcpp.memory cimport shared_ptr, unique_ptr

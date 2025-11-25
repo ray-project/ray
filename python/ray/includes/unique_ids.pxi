@@ -431,7 +431,6 @@ cdef class PlacementGroupID(BaseID):
 
 
 cdef class ActorPoolID(BaseID):
-    cdef CActorPoolID data
 
     def __init__(self, id):
         check_id(id, CActorPoolID.Size())

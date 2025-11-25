@@ -1,7 +1,7 @@
-"""Ray Core Actor Pool API (C++-backed).
+"""Ray Core Actor Pool API.
 
-This module provides a C++-backed actor pool that enables cross-actor retries,
-load balancing, and efficient task scheduling across a pool of equivalent actors.
+This module provides an actor pool that enables cross-actor retries, load balancing,
+and efficient task scheduling across a pool of equivalent actors.
 
 Example usage:
     >>> import ray
@@ -18,7 +18,7 @@ Example usage:
     ...     retry=RetryPolicy(max_attempts=3),
     ... )
     >>>
-    >>> # Submit tasks to the pool (C++ picks the actor)
+    >>> # Submit tasks to the pool
     >>> refs = [pool.submit("process", i) for i in range(10)]
     >>> results = ray.get(refs)
     >>> pool.shutdown()
@@ -66,7 +66,7 @@ class RetryPolicy:
 
 
 class ActorPool:
-    """Ray Core Actor Pool (C++-backed).
+    """Ray Core Actor Pool.
 
     A pool of equivalent actors that tasks can run on. The pool handles:
     - Load balancing across actors
@@ -149,7 +149,7 @@ class ActorPool:
         # Get the core worker
         self._core_worker = ray._private.worker.global_worker.core_worker
 
-        # Register the pool in C++
+        # Register the pool
         self._pool_id: ActorPoolID = self._core_worker.register_actor_pool(
             max_retry_attempts=retry.max_attempts,
             retry_backoff_ms=retry.backoff_ms,
@@ -178,7 +178,6 @@ class ActorPool:
         actor = self._remote_cls.remote(*self._actor_args, **self._actor_kwargs)
         self._actor_handles.append(actor)
 
-        # Get actor ID and add to C++ pool
         actor_id = actor._actor_id
         # TODO: Get actual node location for locality-aware scheduling
         self._core_worker.add_actor_to_pool(self._pool_id, actor_id)
@@ -319,7 +318,7 @@ class ActorPool:
 
         self._actor_handles.clear()
 
-        # Unregister the pool in C++
+        # Unregister the pool
         self._core_worker.unregister_actor_pool(self._pool_id)
 
     def __del__(self):
@@ -340,4 +339,3 @@ class ActorPool:
 
 
 __all__ = ["ActorPool", "ActorPoolID", "OrderingMode", "RetryPolicy"]
-

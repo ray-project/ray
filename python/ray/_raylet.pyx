@@ -4720,7 +4720,7 @@ cdef class CoreWorker:
             CNodeID c_location
 
         if location is not None:
-            c_location = CNodeID.FromBinary(location.binary())
+            c_location = (<NodeID>location).native()
         else:
             c_location = CNodeID.Nil()
 
