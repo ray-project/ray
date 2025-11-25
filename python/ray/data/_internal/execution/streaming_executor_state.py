@@ -28,7 +28,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
-    InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShuffleProgressBarMixin,
@@ -307,10 +306,10 @@ class OpState:
         2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
         """
         external_queue_size = sum(q.num_blocks for q in self.input_queues)
+        # Internal queue size is now tracked by metrics
+
         internal_queue_size = (
-            self.op.internal_input_queue_num_blocks()
-            if isinstance(self.op, InternalQueueOperatorMixin)
-            else 0
+            self.op.metrics.get_object_store_usage_details().internal_inqueue_num_blocks
         )
         return external_queue_size + internal_queue_size
 
@@ -323,9 +322,7 @@ class OpState:
         2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
         """
         internal_queue_size_bytes = (
-            self.op.internal_input_queue_num_bytes()
-            if isinstance(self.op, InternalQueueOperatorMixin)
-            else 0
+            self.op.metrics.get_object_store_usage_details().internal_inqueue_memory
         )
         return self.input_queue_bytes() + internal_queue_size_bytes
 
@@ -341,10 +338,10 @@ class OpState:
         self.op_display_metrics.actors = self.op.get_actor_info().running
 
         self.op_display_metrics.task_backpressured = (
-            self.op._in_task_submission_backpressure
+            self.op.in_task_submission_backpressure()
         )
         self.op_display_metrics.output_backpressured = (
-            self.op._in_task_output_backpressure
+            self.op.in_task_output_backpressure()
         )
 
         self.op_display_metrics.extra_info = self.op.progress_str()
@@ -365,7 +362,6 @@ class OpState:
         self.output_queue.append(ref)
         self.num_completed_tasks += 1
 
-        actor_info = self.op.get_actor_info()
         if ref.num_rows() is not None:
             self.output_row_count += ref.num_rows()
             if self.progress_bar:
@@ -373,14 +369,12 @@ class OpState:
                     ref.num_rows(), self.op.num_output_rows_total()
                 )
 
-        self.op.metrics.num_alive_actors = actor_info.running
-        self.op.metrics.num_restarting_actors = actor_info.restarting
-        self.op.metrics.num_pending_actors = actor_info.pending
+        # Update metrics for output added to external queue
+        self.op.metrics.on_output_added_to_external_queue(ref)
+
         for next_op in self.op.output_dependencies:
-            next_op.metrics.num_external_inqueue_blocks += len(ref.blocks)
-            next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
-        self.op.metrics.num_external_outqueue_blocks += len(ref.blocks)
-        self.op.metrics.num_external_outqueue_bytes += ref.size_bytes()
+            # Update metrics for input received from external queue
+            next_op.metrics.on_input_added_from_external_queue(ref)
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
@@ -395,14 +389,14 @@ class OpState:
         active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: Tasks: {active}"
         if (
-            self.op._in_task_submission_backpressure
-            or self.op._in_task_output_backpressure
+            self.op.in_task_submission_backpressure()
+            or self.op.in_task_output_backpressure()
         ):
             backpressure_types = []
-            if self.op._in_task_submission_backpressure:
+            if self.op.in_task_submission_backpressure():
                 # The op is backpressured from submitting new tasks.
                 backpressure_types.append("tasks")
-            if self.op._in_task_output_backpressure:
+            if self.op.in_task_output_backpressure():
                 # The op is backpressured from producing new outputs.
                 backpressure_types.append("outputs")
             desc += f" [backpressured:{','.join(backpressure_types)}]"
@@ -427,13 +421,11 @@ class OpState:
             ref = inqueue.pop()
             if ref is not None:
                 self.op.add_input(ref, input_index=i)
-                self.op.metrics.num_external_inqueue_bytes -= ref.size_bytes()
-                self.op.metrics.num_external_inqueue_blocks -= len(ref.blocks)
+                # Update metrics when input is consumed from external queue
+                self.op.metrics.on_input_removed_from_external_queue(ref)
                 input_op = self.op.input_dependencies[i]
-                # TODO: This needs to be cleaned up.
-                # the input_op's output queue = curr_op's input queue
-                input_op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
-                input_op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
+                # Update the input operator's output queue metrics
+                input_op.metrics.on_output_removed_from_external_queue(ref)
                 return
 
         assert False, "Nothing to dispatch"
@@ -457,9 +449,7 @@ class OpState:
             ref = self.output_queue.pop(output_split_idx)
             if ref is not None:
                 # Update outqueue metrics when blocks are removed from this operator's outqueue
-                # TODO: Abstract queue-releated metrics to queue.
-                self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
-                self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
+                self.op.metrics.on_output_removed_from_external_queue(ref)
                 return ref
             time.sleep(0.01)
 
@@ -561,6 +551,7 @@ def process_completed_tasks(
                     max_bytes_to_read = min(max_bytes_to_read, policy_limit)
 
         # If no policy provides a limit, there's no limit
+        # Notify task output backpressure (no-op if not TaskOpMetrics)
         op.notify_in_task_output_backpressure(max_bytes_to_read == 0)
         if max_bytes_to_read is not None:
             max_bytes_to_read_per_op[state] = max_bytes_to_read
@@ -728,6 +719,7 @@ def get_eligible_operators(
 
         # Signal whether op in backpressure for stats collections
         # TODO(hchen): also report which policy triggers backpressure.
+        # Notify task submission backpressure (no-op if not TaskOpMetrics)
         op.notify_in_task_submission_backpressure(in_backpressure)
 
     # To ensure liveness, allow at least 1 operator to schedule tasks regardless of

@@ -40,6 +40,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskOpMetrics
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
@@ -50,7 +51,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
-from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data._internal.util import GiB, MiB
 from ray.data.block import (
@@ -393,7 +393,7 @@ class HashShuffleProgressBarMixin(SubProgressBarMixin):
             self.shuffle_name, self.num_output_rows_total(), position
         )
         progress_bars_created += 1
-        self.shuffle_metrics = OpRuntimeMetrics(self)
+        self.shuffle_metrics = TaskOpMetrics(self.data_context)
 
         # reduce
         self.reduce_bar = None
@@ -401,7 +401,7 @@ class HashShuffleProgressBarMixin(SubProgressBarMixin):
             self.reduce_name, self.num_output_rows_total(), position
         )
         progress_bars_created += 1
-        self.reduce_metrics = OpRuntimeMetrics(self)
+        self.reduce_metrics = TaskOpMetrics(self.data_context)
 
         return progress_bars_created
 
@@ -415,11 +415,11 @@ class HashShuffleProgressBarMixin(SubProgressBarMixin):
 
         # shuffle
         self.shuffle_bar = None
-        self.shuffle_metrics = OpRuntimeMetrics(self)
+        self.shuffle_metrics = TaskOpMetrics(self.data_context)
 
         # reduce
         self.reduce_bar = None
-        self.reduce_metrics = OpRuntimeMetrics(self)
+        self.reduce_metrics = TaskOpMetrics(self.data_context)
 
         return [self.shuffle_name, self.reduce_name]
 
@@ -626,6 +626,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         self._health_monitoring_started: bool = False
         self._health_monitoring_start_time: float = 0.0
         self._pending_aggregators_refs: Optional[List[ObjectRef[ActorHandle]]] = None
+        self._metrics = TaskOpMetrics(data_context)
 
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
@@ -768,7 +769,6 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
             # Update Shuffle progress bar
             _, _, num_rows = estimate_total_num_of_blocks(
-                cur_shuffle_task_idx + 1,
                 self.upstream_op_num_outputs(),
                 self.shuffle_metrics,
                 total_num_tasks=None,
@@ -838,7 +838,6 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
                 task_index=partition_id, output=bundle
             )
             _, num_outputs, num_rows = estimate_total_num_of_blocks(
-                partition_id + 1,
                 self.upstream_op_num_outputs(),
                 self.reduce_metrics,
                 total_num_tasks=self._num_partitions,

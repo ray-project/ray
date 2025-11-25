@@ -26,10 +26,10 @@ from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NODE_UNKNOWN,
+    BaseOpMetrics,
     MetricsGroup,
     MetricsType,
     NodeMetrics,
-    OpRuntimeMetrics,
 )
 from ray.data._internal.metadata_exporter import (
     DatasetMetadata,
@@ -194,51 +194,27 @@ class _StatsActor:
         # a dataset's metrics to 0 after each finishes execution.
         op_tags_keys = ("dataset", "operator")
 
-        # TODO(scottjlee): move these overvie metrics as fields in a
-        # separate dataclass, similar to OpRuntimeMetrics.
-        self.spilled_bytes = Gauge(
-            "data_spilled_bytes",
-            description="""Bytes spilled by dataset operators.
-                DataContext.enable_get_object_locations_for_metrics
-                must be set to True to report this metric""",
-            tag_keys=op_tags_keys,
-        )
-        self.freed_bytes = Gauge(
-            "data_freed_bytes",
-            description="Bytes freed by dataset operators",
-            tag_keys=op_tags_keys,
-        )
-        self.current_bytes = Gauge(
-            "data_current_bytes",
-            description="Bytes currently in memory store used by dataset operators",
-            tag_keys=op_tags_keys,
-        )
-        self.cpu_usage_cores = Gauge(
-            "data_cpu_usage_cores",
-            description="CPUs allocated to dataset operators",
-            tag_keys=op_tags_keys,
-        )
-        self.gpu_usage_cores = Gauge(
-            "data_gpu_usage_cores",
-            description="GPUs allocated to dataset operators",
-            tag_keys=op_tags_keys,
-        )
-        self.output_bytes = Gauge(
-            "data_output_bytes",
-            description="Bytes outputted by dataset operators",
-            tag_keys=op_tags_keys,
-        )
-        self.output_rows = Gauge(
-            "data_output_rows",
-            description="Rows outputted by dataset operators",
-            tag_keys=op_tags_keys,
+        # === Metrics from OpRuntimeMetrics ===
+        # Pending inputs-related metrics
+        self.execution_metrics_pending_inputs = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group=MetricsGroup.PENDING_INPUTS,
+                tag_keys=op_tags_keys,
+            )
         )
 
-        # === Metrics from OpRuntimeMetrics ===
         # Inputs-related metrics
         self.execution_metrics_inputs = (
             self._create_prometheus_metrics_for_execution_metrics(
                 metrics_group=MetricsGroup.INPUTS,
+                tag_keys=op_tags_keys,
+            )
+        )
+
+        # Pending outputs-related metrics
+        self.execution_metrics_pending_outputs = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group=MetricsGroup.PENDING_OUTPUTS,
                 tag_keys=op_tags_keys,
             )
         )
@@ -259,18 +235,18 @@ class _StatsActor:
             )
         )
 
-        # Object store memory-related metrics
-        self.execution_metrics_obj_store_memory = (
-            self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
-                tag_keys=op_tags_keys,
-            )
-        )
-
         # Actor related metrics
         self.execution_metrics_actors = (
             self._create_prometheus_metrics_for_execution_metrics(
                 metrics_group=MetricsGroup.ACTORS,
+                tag_keys=op_tags_keys,
+            )
+        )
+
+        # Object store memory-related metrics
+        self.execution_metrics_obj_store_memory = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group=MetricsGroup.RESOURCE_USAGE,
                 tag_keys=op_tags_keys,
             )
         )
@@ -431,7 +407,7 @@ class _StatsActor:
         self, metrics_group: MetricsGroup, tag_keys: Tuple[str, ...]
     ) -> Dict[str, Metric]:
         metrics = {}
-        for metric in OpRuntimeMetrics.get_metrics():
+        for metric in BaseOpMetrics.get_metrics():
             if not metric.metrics_group == metrics_group:
                 continue
             metric_name = f"data_{metric.name}"
@@ -498,28 +474,34 @@ class _StatsActor:
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
 
-            self.spilled_bytes.set(stats.get("obj_store_mem_spilled", 0), tags)
-            self.freed_bytes.set(stats.get("obj_store_mem_freed", 0), tags)
-            self.current_bytes.set(stats.get("obj_store_mem_used", 0), tags)
-            self.output_bytes.set(stats.get("bytes_task_outputs_generated", 0), tags)
-            self.output_rows.set(stats.get("row_outputs_taken", 0), tags)
-            self.cpu_usage_cores.set(stats.get("cpu_usage", 0), tags)
-            self.gpu_usage_cores.set(stats.get("gpu_usage", 0), tags)
+            for (
+                field_name,
+                prom_metric,
+            ) in self.execution_metrics_pending_inputs.items():
+                _record(prom_metric, stats.get(field_name, 0), tags)
+
             for field_name, prom_metric in self.execution_metrics_inputs.items():
                 _record(prom_metric, stats.get(field_name, 0), tags)
+
+            for (
+                field_name,
+                prom_metric,
+            ) in self.execution_metrics_pending_outputs.items():
+                _record(prom_metric, stats.get(field_name, 0), tags)
+
             for field_name, prom_metric in self.execution_metrics_outputs.items():
                 _record(prom_metric, stats.get(field_name, 0), tags)
 
             for field_name, prom_metric in self.execution_metrics_tasks.items():
                 _record(prom_metric, stats.get(field_name, 0), tags)
 
+            for field_name, prom_metric in self.execution_metrics_actors.items():
+                _record(prom_metric, stats.get(field_name, 0), tags)
+
             for (
                 field_name,
                 prom_metric,
             ) in self.execution_metrics_obj_store_memory.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
-
-            for field_name, prom_metric in self.execution_metrics_actors.items():
                 _record(prom_metric, stats.get(field_name, 0), tags)
 
             for field_name, prom_metric in self.execution_metrics_misc.items():
@@ -822,10 +804,10 @@ class _StatsManager:
 
     @staticmethod
     def _aggregate_per_node_metrics(
-        op_metrics: List[OpRuntimeMetrics],
+        op_metrics: List[BaseOpMetrics],
     ) -> Optional[Mapping[str, Mapping[str, Union[int, float]]]]:
         """
-        Aggregate per-node metrics from a list of OpRuntimeMetrics objects.
+        Aggregate per-node metrics from a list of BaseOpMetrics objects.
 
         If per-node metrics are disabled in the current DataContext, returns None.
         Otherwise, it sums up all NodeMetrics fields across the provided metrics and
@@ -836,7 +818,7 @@ class _StatsManager:
 
         aggregated_by_node = defaultdict(lambda: defaultdict(int))
         for metrics in op_metrics:
-            for node_id, node_metrics in metrics._per_node_metrics.items():
+            for node_id, node_metrics in metrics.get_per_node_metrics().items():
                 agg_node_metrics = aggregated_by_node[node_id]
                 for f in fields(NodeMetrics):
                     agg_node_metrics[f.name] += getattr(node_metrics, f.name)
@@ -846,7 +828,7 @@ class _StatsManager:
     @staticmethod
     def update_execution_metrics(
         dataset_tag: str,
-        op_metrics: List[OpRuntimeMetrics],
+        op_metrics: List[BaseOpMetrics],
         operator_tags: List[str],
         state: Dict[str, Any],
     ):

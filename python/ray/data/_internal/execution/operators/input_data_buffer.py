@@ -5,6 +5,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.interfaces.op_runtime_metrics import BaseOpMetrics
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
@@ -44,6 +45,7 @@ class InputDataBuffer(PhysicalOperator):
             self._is_input_initialized = False
         self._input_data_index = 0
         self.mark_execution_finished()
+        self._metrics = BaseOpMetrics(data_context)
 
     def start(self, options: ExecutionOptions) -> None:
         if not self._is_input_initialized:
@@ -57,6 +59,7 @@ class InputDataBuffer(PhysicalOperator):
         # so we record input metrics here
         for bundle in self._input_data:
             self._metrics.on_input_received(bundle)
+            self._metrics.on_input_queued(bundle)
         super().start(options)
 
     def has_next(self) -> bool:
@@ -67,6 +70,7 @@ class InputDataBuffer(PhysicalOperator):
         # references, and Ray won't be able to reconstruct downstream objects.
         bundle = self._input_data[self._input_data_index]
         self._input_data_index += 1
+        self._metrics.on_input_dequeued(bundle)
         return bundle
 
     def get_stats(self) -> StatsDict:

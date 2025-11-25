@@ -5,8 +5,8 @@ import pytest
 from ray.data._internal.execution.backpressure_policy.downstream_capacity_backpressure_policy import (
     DownstreamCapacityBackpressurePolicy,
 )
+from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskOpMetrics
 from ray.data._internal.execution.interfaces.physical_operator import (
-    OpRuntimeMetrics,
     PhysicalOperator,
 )
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
@@ -27,7 +27,7 @@ class TestDownstreamCapacityBackpressurePolicy:
     ):
         """Helper method to create mock operator."""
         mock_operator = MagicMock(spec=op_class)
-        mock_operator.metrics = MagicMock(spec=OpRuntimeMetrics)
+        mock_operator.metrics = MagicMock(spec=TaskOpMetrics)
         mock_operator.metrics.num_task_inputs_processed = num_task_inputs_processed
         mock_operator.metrics.num_tasks_finished = num_tasks_finished
         mock_operator.num_active_tasks.return_value = max_concurrent_tasks

@@ -212,18 +212,6 @@ class ActorPoolMapOperator(MapOperator):
 
         return ray_actor_task_remote_args
 
-    def internal_input_queue_num_blocks(self) -> int:
-        # NOTE: Internal queue size for ``ActorPoolMapOperator`` includes both
-        #   - Input blocks bundler, alas
-        #   - Own bundle's queue
-        return self._block_ref_bundler.num_blocks() + self._bundle_queue.num_blocks()
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return (
-            self._bundle_queue.estimate_size_bytes()
-            + self._block_ref_bundler.size_bytes()
-        )
-
     def start(self, options: ExecutionOptions):
         self._actor_locality_enabled = options.actor_locality_enabled
         super().start(options)
@@ -295,6 +283,7 @@ class ActorPoolMapOperator(MapOperator):
             if not has_actor:
                 # Actor has already been killed.
                 return
+
             # A new actor has started, we try to dispatch queued tasks.
             self._dispatch_tasks()
 
@@ -345,7 +334,7 @@ class ActorPoolMapOperator(MapOperator):
             def _task_done_callback(actor_to_return):
                 # Return the actor that was running the task to the pool.
                 self._actor_pool.on_task_completed(actor_to_return)
-                # Dipsatch more tasks.
+                # Dispatch more tasks.
                 self._dispatch_tasks()
 
             from functools import partial
@@ -518,9 +507,7 @@ class ActorPoolMapOperator(MapOperator):
         per_actor_resource_usage = self._actor_pool.per_actor_resource_usage()
         return per_actor_resource_usage.scale(1 / max_concurrency)
 
-    def min_scheduling_resources(
-        self: "PhysicalOperator",
-    ) -> ExecutionResources:
+    def min_scheduling_resources(self) -> ExecutionResources:
         return self._actor_pool.per_actor_resource_usage()
 
     def update_resource_usage(self) -> None:

@@ -4,6 +4,7 @@ from typing import Deque, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces.op_runtime_metrics import BaseOpMetrics
 from ray.data._internal.execution.operators.base_physical_operator import (
     OneToOneOperator,
 )
@@ -30,6 +31,7 @@ class LimitOperator(OneToOneOperator):
         self._output_blocks_stats: List[BlockStats] = []
         self._cur_output_bundles = 0
         super().__init__(self._name, input_op, data_context)
+        self._metrics = BaseOpMetrics(data_context)
         if self._limit <= 0:
             self.mark_execution_finished()
 

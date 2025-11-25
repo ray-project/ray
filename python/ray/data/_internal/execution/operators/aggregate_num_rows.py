@@ -1,6 +1,7 @@
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces.op_runtime_metrics import BaseOpMetrics
 from ray.data._internal.stats import StatsDict
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
@@ -31,6 +32,7 @@ class AggregateNumRows(PhysicalOperator):
         self._has_outputted = False
         self._estimated_num_output_bundles = 1
         self._estimated_output_num_rows = 1
+        self._metrics = BaseOpMetrics(data_context)
 
     def has_next(self) -> bool:
         return self._inputs_complete and not self._has_outputted

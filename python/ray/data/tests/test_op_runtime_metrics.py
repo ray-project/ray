@@ -7,7 +7,7 @@ import pytest
 import ray
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-    OpRuntimeMetrics,
+    TaskOpMetrics,
 )
 from ray.data._internal.util import KiB
 from ray.data.block import BlockExecStats, BlockMetadata
@@ -19,7 +19,7 @@ from ray.data.context import (
 
 def test_average_max_uss_per_task():
     # No tasks submitted yet.
-    metrics = OpRuntimeMetrics(MagicMock())
+    metrics = TaskOpMetrics(DataContext())
     assert metrics.average_max_uss_per_task is None
 
     def create_bundle(uss_bytes: int):
@@ -54,7 +54,7 @@ def test_average_max_uss_per_task():
 
 def test_task_completion_time_histogram():
     """Test task completion time histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    metrics = TaskOpMetrics(DataContext())
 
     # Test different completion times
     # Buckets: [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 25.0, 50.0, 75.0, 100.0, 150.0, 500.0, 1000.0, 2500.0, 5000.0]
@@ -74,7 +74,7 @@ def test_task_completion_time_histogram():
         metrics.on_task_submitted(i, input_bundle)
 
         # Manually adjust the start time to simulate the completion time
-        metrics._running_tasks[i].start_time = time.perf_counter() - completion_time
+        metrics.running_tasks[i].start_time = time.perf_counter() - completion_time
 
         # Complete the task
         metrics.on_task_finished(i, None)  # None means no exception
@@ -88,7 +88,7 @@ def test_task_completion_time_histogram():
 
 def test_block_completion_time_histogram():
     """Test block completion time histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    metrics = TaskOpMetrics(DataContext())
 
     # Test different block generation scenarios
     # Buckets: [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 25.0, 50.0, 75.0, 100.0, 150.0, 500.0, 1000.0, 2500.0, 5000.0]
@@ -107,8 +107,8 @@ def test_block_completion_time_histogram():
         metrics.on_task_submitted(i, input_bundle)
 
         # Manually set the task info to simulate the block generation
-        metrics._running_tasks[i].num_outputs = num_blocks
-        metrics._running_tasks[i].cum_block_gen_time = total_time
+        metrics.running_tasks[i].num_outputs = num_blocks
+        metrics.running_tasks[i].cum_block_gen_time = total_time
 
         # Complete the task
         metrics.on_task_finished(i, None)  # None means no exception
@@ -124,7 +124,7 @@ def test_block_completion_time_histogram():
 
 def test_block_size_bytes_histogram():
     """Test block size bytes histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    metrics = TaskOpMetrics(DataContext())
 
     def create_bundle_with_size(size_bytes):
         block = ray.put(pa.Table.from_pydict({}))
@@ -171,7 +171,7 @@ def test_block_size_bytes_histogram():
 
 def test_block_size_rows_histogram():
     """Test block size rows histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    metrics = TaskOpMetrics(DataContext())
 
     def create_bundle_with_rows(num_rows):
         block = ray.put(pa.Table.from_pydict({}))
@@ -226,7 +226,7 @@ def metrics_config_no_sample_with_target(restore_data_context):  # noqa: F811
 
     op = MagicMock()
     op.data_context = ctx
-    metrics = OpRuntimeMetrics(op)
+    metrics = TaskOpMetrics(op)
     return metrics
 
 
@@ -239,7 +239,7 @@ def metrics_config_no_sample_with_none(restore_data_context):  # noqa: F811
 
     op = MagicMock()
     op.data_context = ctx
-    metrics = OpRuntimeMetrics(op)
+    metrics = TaskOpMetrics(op)
     return metrics
 
 
@@ -252,7 +252,7 @@ def metrics_config_with_sample(restore_data_context):  # noqa: F811
 
     op = MagicMock()
     op.data_context = ctx
-    metrics = OpRuntimeMetrics(op)
+    metrics = TaskOpMetrics(op)
 
     # Simulate having samples: set bytes_task_outputs_generated and
     # num_task_outputs_generated to make average_bytes_per_output available
@@ -274,7 +274,7 @@ def metrics_config_pending_outputs_no_sample(
 
     op = MagicMock()
     op.data_context = ctx
-    metrics = OpRuntimeMetrics(op)
+    metrics = TaskOpMetrics(op)
     metrics.num_tasks_running = 3
     return metrics
 
@@ -288,7 +288,7 @@ def metrics_config_pending_outputs_none(restore_data_context):  # noqa: F811
 
     op = MagicMock()
     op.data_context = ctx
-    metrics = OpRuntimeMetrics(op)
+    metrics = TaskOpMetrics(op)
     metrics.num_tasks_running = 2
     return metrics
 

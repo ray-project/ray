@@ -25,7 +25,12 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
-from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
+from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    BaseOpMetrics,
+    TaskOpMetrics,
+)
+
+# Generic type variable for metrics
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.progress_bar import ProgressBar
@@ -339,8 +344,6 @@ class PhysicalOperator(Operator):
         )
         self._started = False
         self._shutdown = False
-        self._in_task_submission_backpressure = False
-        self._in_task_output_backpressure = False
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
         self._execution_finished = False
@@ -349,8 +352,7 @@ class PhysicalOperator(Operator):
         self._logical_operators: List[LogicalOperator] = []
         self._data_context = data_context
         self._id = str(uuid.uuid4())
-        # Initialize metrics after data_context is set
-        self._metrics = OpRuntimeMetrics(self)
+        self._metrics = BaseOpMetrics(data_context)
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
@@ -417,13 +419,10 @@ class PhysicalOperator(Operator):
             * The operator has finished execution (i.e., `execution_finished()` is True).
             * All outputs have been taken (i.e., `has_next()` is False) from it.
         """
-        from ..operators.base_physical_operator import InternalQueueOperatorMixin
 
-        internal_input_queue_num_blocks = 0
-        internal_output_queue_num_blocks = 0
-        if isinstance(self, InternalQueueOperatorMixin):
-            internal_input_queue_num_blocks = self.internal_input_queue_num_blocks()
-            internal_output_queue_num_blocks = self.internal_output_queue_num_blocks()
+        details = self.metrics.get_object_store_usage_details()
+        internal_input_queue_num_blocks = details.internal_inqueue_num_blocks
+        internal_output_queue_num_blocks = details.internal_outqueue_num_blocks
 
         if not self._execution_finished:
             if (
@@ -452,7 +451,7 @@ class PhysicalOperator(Operator):
         raise NotImplementedError
 
     @property
-    def metrics(self) -> OpRuntimeMetrics:
+    def metrics(self) -> BaseOpMetrics:
         """Returns the runtime metrics of this operator."""
         self._metrics._extra_metrics = self._extra_metrics()
         return self._metrics
@@ -727,29 +726,45 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources()
 
-    def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
-        """Called periodically from the executor to update internal in backpressure
-        status for stats collection purposes.
+    def in_task_submission_backpressure(self) -> bool:
+        """Check if the operator is currently in task submission backpressure.
 
-        Args:
-            in_backpressure: Value this operator's in_backpressure should be set to.
+        Task submission backpressure occurs when the operator is prevented from
+        submitting new tasks due to resource constraints or policy limits.
+
+        Returns:
+            True if in task submission backpressure, False otherwise.
         """
-        # only update on change to in_backpressure
-        if self._in_task_submission_backpressure != in_backpressure:
-            self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
-            self._in_task_submission_backpressure = in_backpressure
+        return False
+
+    def in_task_output_backpressure(self) -> bool:
+        """Check if the operator is currently in task output backpressure.
+
+        Task output backpressure occurs when the operator has too many pending
+        task outputs.
+
+        Returns:
+            True if in task output backpressure, False otherwise.
+        """
+        return False
+
+    def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
+        """Notify the operator about task submission backpressure state.
+        This is called by the executor to inform the operator whether it's currently
+        in task submission backpressure (i.e., prevented from submitting new tasks).
+        Args:
+            in_backpressure: True if currently in backpressure, False otherwise.
+        """
+        pass
 
     def notify_in_task_output_backpressure(self, in_backpressure: bool) -> None:
-        """Called periodically from the executor to update internal output backpressure
-        status for stats collection purposes.
-
+        """Notify the operator about task output backpressure state.
+        This is called by the executor to inform the operator whether it's currently
+        in task output backpressure (i.e., too many pending outputs not consumed).
         Args:
-            in_backpressure: Value this operator's output backpressure should be set to.
+            in_backpressure: True if currently in backpressure, False otherwise.
         """
-        # only update on change to in_backpressure
-        if self._in_task_output_backpressure != in_backpressure:
-            self._metrics.on_toggle_task_output_backpressure(in_backpressure)
-            self._in_task_output_backpressure = in_backpressure
+        pass
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""
@@ -827,9 +842,8 @@ class ReportsExtraResourceUsage(abc.ABC):
 
 
 def estimate_total_num_of_blocks(
-    num_tasks_submitted: int,
     upstream_op_num_outputs: int,
-    metrics: OpRuntimeMetrics,
+    metrics: TaskOpMetrics,
     total_num_tasks: Optional[int] = None,
 ) -> Tuple[int, int, int]:
     """This method is trying to estimate total number of blocks/rows based on

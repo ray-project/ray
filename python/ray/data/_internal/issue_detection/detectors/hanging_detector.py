@@ -91,8 +91,10 @@ class HangingExecutionIssueDetector(IssueDetector):
     def detect(self) -> List[Issue]:
         op_task_stats_map: Dict[str, "TaskDurationStats"] = {}
         for operator, op_state in self._executor._topology.items():
-            op_metrics = operator.metrics
-            op_task_stats_map[operator.id] = op_metrics._op_task_duration_stats
+            task_metrics = operator.metrics.task_metrics()
+            if task_metrics.op_task_duration_stats is None:
+                continue
+            op_task_stats_map[operator.id] = task_metrics.op_task_duration_stats
             self._op_id_to_name[operator.id] = operator.name
             if op_state._finished:
                 # Remove finished operators / tasks from the state map
@@ -103,7 +105,7 @@ class HangingExecutionIssueDetector(IssueDetector):
             else:
                 active_tasks_idx = set()
                 for task in operator.get_active_tasks():
-                    task_info = op_metrics._running_tasks.get(task.task_index(), None)
+                    task_info = task_metrics.running_tasks.get(task.task_index(), None)
                     if task_info is None:
                         # if the task is not in the running tasks map, it has finished
                         # remove it from the state map and hanging op tasks, if present

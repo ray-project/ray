@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces.op_runtime_metrics import BaseOpMetrics
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
     NAryOperator,
@@ -54,6 +55,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             data_context,
             *input_ops,
         )
+        self._metrics = BaseOpMetrics(data_context)
 
     def num_outputs_total(self) -> Optional[int]:
         num_outputs = None
@@ -78,20 +80,6 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             else:
                 num_rows = max(num_rows, input_num_rows)
         return num_rows
-
-    def internal_input_queue_num_blocks(self) -> int:
-        return sum(
-            len(bundle.block_refs) for buf in self._input_buffers for bundle in buf
-        )
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return sum(bundle.size_bytes() for buf in self._input_buffers for bundle in buf)
-
-    def internal_output_queue_num_blocks(self) -> int:
-        return sum(len(bundle.block_refs) for bundle in self._output_buffer)
-
-    def internal_output_queue_num_bytes(self) -> int:
-        return sum(bundle.size_bytes() for bundle in self._output_buffer)
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queues."""
