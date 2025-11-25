@@ -1,9 +1,12 @@
+import logging
 import pathlib
 import sys
-from urllib.parse import quote, unquote, urlparse
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from urllib.parse import quote, unquote, urlparse
 
 from ray.data._internal.util import RetryingPyFileSystem, _resolve_custom_scheme
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import fsspec.spec
@@ -163,21 +166,9 @@ def _resolve_single_path_with_fallback(
     except TypeError as e:
         raise ValueError(f"Invalid filesystem provided: {e}") from e
 
-    # Try with provided filesystem first (fast path for cached FS)
-    if filesystem is not None:
-        try:
-            resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
-                path, filesystem
-            )
-            return resolved_filesystem, resolved_path
-        except Exception:
-            # Fall through to full resolution without cached filesystem
-            pass
-
-    # Check scheme first to avoid relying on PyArrow error messages
+    # Check HTTP scheme FIRST - PyArrow doesn't support HTTP/HTTPS natively
     parsed = urlparse(path, allow_fragments=False)
     if parsed.scheme in ["http", "https"]:
-        # PyArrow doesn't support HTTP/HTTPS natively, use fsspec
         try:
             resolved_filesystem = _get_fsspec_http_filesystem()
             resolved_path = path
@@ -187,16 +178,29 @@ def _resolve_single_path_with_fallback(
                 f"Cannot resolve HTTP path '{path}': {import_error}"
             ) from import_error
 
+    # Try with provided filesystem (fast path for cached FS)
+    if filesystem is not None:
+        try:
+            _, resolved_path = _resolve_filesystem_and_path(path, filesystem)
+            # Return the wrapped filesystem we passed in.
+            return filesystem, resolved_path
+        except Exception:
+            # Fall through to full resolution without cached filesystem
+            pass
+
     # Full resolution without cached filesystem
     try:
         resolved_filesystem, resolved_path = _resolve_filesystem_and_path(path, None)
-    except (pa.lib.ArrowInvalid, ValueError) as e:
+    except (pa.lib.ArrowInvalid, ValueError) as original_error:
         # Try URL encoding for paths with special characters that may cause parsing issues
         try:
             resolved_filesystem, resolved_path = _try_resolve_with_encoding(path, None)
-        except (ValueError, TypeError) as e:
-            # If encoding doesn't help, raise the original error
-            raise ValueError(f"Failed to resolve path '{path}' after encoding: {e}") from e
+        except (ValueError, TypeError) as encoding_error:
+            # If encoding doesn't help, raise with both errors for full context
+            raise ValueError(
+                f"Failed to resolve path '{path}'. Initial error: {original_error}. "
+                f"URL encoding fallback also failed: {encoding_error}"
+            ) from original_error
     except TypeError as e:
         raise ValueError(f"The path: '{path}' has an invalid type {e}") from e
 
@@ -232,6 +236,9 @@ def _resolve_paths_and_filesystem(
     elif len(paths) == 0:
         raise ValueError("Must provide at least one path.")
 
+    # Validate/wrap filesystem upfront so we return a proper PyArrow filesystem
+    filesystem = _validate_and_wrap_filesystem(filesystem)
+
     resolved_paths = []
     for path in paths:
         try:
@@ -239,7 +246,7 @@ def _resolve_paths_and_filesystem(
                 path, filesystem
             )
         except (ValueError, ImportError) as e:
-            resolved_paths.append(path)
+            logger.warning(f"Failed to resolve path '{path}': {e}, skipping")
             continue
 
         if filesystem is None:
@@ -249,11 +256,17 @@ def _resolve_paths_and_filesystem(
         # scheme of paths should not be unwrapped/removed, because HTTPFileSystem
         # expects full file paths including protocol/scheme. This is different behavior
         # compared to other file system implementation in pyarrow.fs.FileSystem.
-        if not _is_http_filesystem(filesystem):
+        if not _is_http_filesystem(resolved_filesystem):
             resolved_path = _unwrap_protocol(resolved_path)
 
-        resolved_path = filesystem.normalize_path(resolved_path)
+        resolved_path = resolved_filesystem.normalize_path(resolved_path)
         resolved_paths.append(resolved_path)
+
+    # If no paths were successfully resolved, filesystem will be None
+    if filesystem is None:
+        raise ValueError(
+            f"Failed to resolve any paths. All {len(paths)} path(s) failed to resolve."
+        )
 
     return resolved_paths, filesystem
 
