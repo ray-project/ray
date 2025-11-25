@@ -151,8 +151,8 @@ class ProgressBar(AbstractProgressBar):
 
             enabled = DataContext.get_current().enable_progress_bars
 
-        # Use logging when in non-interactive terminal or when progress bars are disabled
-        self._use_logging = not enabled
+        # Use logging when in non-interactive terminal
+        self._use_logging = not sys.stdout.isatty()
 
         if not enabled:
             self._bar = None
