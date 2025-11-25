@@ -355,19 +355,6 @@ steps:
       - block-core-cpp-sanitizer-tests
       - corebuild
 
-  - label: ":ray: core: jjyao tests"
-    key: core_jjyao_flaky_tests
-    tags:
-      - python
-    instance_type: large
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_out_of_disk_space core
-        --install-mask all-ray-libraries
-        --except-tags multi_gpu,cgroup || true
-      - sleep 10000000
-    depends_on:
-      - corebuild
-
   - label: ":ray: core: flaky tests"
     key: core_flaky_tests
     tags:
@@ -380,8 +367,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... core
         --install-mask all-ray-libraries
         --run-flaky-tests
-        --except-tags multi_gpu,cgroup || true
-      - sleep 10000000
+        --except-tags multi_gpu,cgroup
     depends_on:
       - corebuild
 
