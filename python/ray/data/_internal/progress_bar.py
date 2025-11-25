@@ -209,7 +209,7 @@ class ProgressBar(AbstractProgressBar):
             # Remove leading hyphens from the description
             clean_desc = self._desc.lstrip("- ").strip()
             if not self._logged_once:
-                operation_name = clean_desc = clean_desc.split(":")[0]
+                operation_name = clean_desc.split(":")[0]
                 logger.info(f"=== Ray Data Progress {{{operation_name}}} ===")
                 self._logged_once = True
             logger.info(
