@@ -14,7 +14,7 @@ httpx
 importlib-metadata
 jsonschema
 lightgbm
-locust==2.18.0
+locust==2.32.0
 memray
 openskill
 orjson
@@ -40,3 +40,4 @@ typing-extensions
 xarray
 xgboost
 zarr
+gevent==25.8.1
