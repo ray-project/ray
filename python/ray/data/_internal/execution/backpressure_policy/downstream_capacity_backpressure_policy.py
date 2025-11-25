@@ -60,16 +60,13 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
     def _max_concurrent_tasks(self, op: "PhysicalOperator") -> int:
         # This should return values >= 1 to ensure we do not deadlock.
         if isinstance(op, ActorPoolMapOperator):
-            return max(
-                sum(
-                    [
-                        actor_pool.max_concurrent_tasks()
-                        for actor_pool in op.get_autoscaling_actor_pools()
-                    ]
-                ),
-                1,
+            return sum(
+                [
+                    actor_pool.max_concurrent_tasks()
+                    for actor_pool in op.get_autoscaling_actor_pools()
+                ]
             )
-        return max(op.num_active_tasks(), 1)
+        return op.num_active_tasks()
 
     def _estimate_max_downstream_capacity(
         self, downstream_op: "PhysicalOperator"
@@ -95,15 +92,13 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
 
         max_concurrent_tasks = self._max_concurrent_tasks(downstream_op)
 
-        # For ActorPoolMapOperator, multiply by max_concurrency per actor
-        # For TaskPoolMapOperator, max_concurrency is already in the task count
-        tasks_per_worker = 1
-        if isinstance(downstream_op, ActorPoolMapOperator):
-            tasks_per_worker = downstream_op._ray_remote_args.get("max_concurrency", 1)
+        # If there are no concurrent tasks, we should not backpressure or we
+        # might deadlock.
+        if max_concurrent_tasks == 0:
+            return None
 
         return int(
             max_concurrent_tasks
-            * tasks_per_worker
             * avg_num_inputs_per_task
             * self._downstream_capacity_outputs_ratio
         )
@@ -162,14 +157,19 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
                 return 0
 
             # Convert blocks to approximate bytes using metrics if available
-            avg_block_size = downstream_op.metrics.average_bytes_per_output
+            avg_block_size = op.metrics.average_bytes_per_output
 
             if avg_block_size is None or avg_block_size == 0:
                 # No block size info, skip byte-limiting
                 continue
 
-            remaining_capacity_bytes = remaining_capacity_blocks * avg_block_size
+            # Compute remaining capcity bytes and convert to an int, always be conservative
+            # so use int rather than round.
+            remaining_capacity_bytes = int(remaining_capacity_blocks * avg_block_size)
 
+            # The slowest consumer across all output dependencies should determine the rate
+            # of outputs to be taken so we do not overwhelm this slowest consumer. Thus we
+            # take the minimum of all remaining capacity bytes for the output dependencies.
             if min_capacity_bytes is None:
                 min_capacity_bytes = remaining_capacity_bytes
             else:

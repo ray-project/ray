@@ -154,6 +154,13 @@ DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ENFORCE_SCHEMAS", False)
 
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
+# This default value was chosen to be conservative but to limit runaway
+# queue accumulation when there is a bottleneck operator. The default value
+# essentially means we will allow the queue up to 25x more blocks than the
+# downsteam operator is consuming per unit time. This is done to prevent
+# OOMs on the head node if the queue size grows too large. If the head node
+# is very small or the capcity is relatively very large to the head node
+# memory amount, consider lowering this value.
 DEFAULT_DOWNSTREAM_CAPACITY_OUTPUTS_RATIO: int = env_float(
     "RAY_DATA_DOWNSTREAM_CAPACITY_OUTPUTS_RATIO", 25.0
 )
