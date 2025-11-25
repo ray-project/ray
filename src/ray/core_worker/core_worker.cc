@@ -453,10 +453,10 @@ CoreWorker::CoreWorker(
     periodical_runner_->RunFnPeriodically(
         [this] {
           RAY_LOG(INFO) << "Event stats:\n\n"
-                        << io_service_.stats().StatsString() << "\n\n"
+                        << io_service_.stats()->StatsString() << "\n\n"
                         << "-----------------\n"
                         << "Task execution event stats:\n"
-                        << task_execution_service_.stats().StatsString() << "\n\n"
+                        << task_execution_service_.stats()->StatsString() << "\n\n"
                         << "-----------------\n"
                         << "Task Event stats:\n"
                         << task_event_buffer_->DebugString() << "\n";
@@ -4183,7 +4183,7 @@ void CoreWorker::HandleLocalGC(rpc::LocalGCRequest request,
                                rpc::LocalGCReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
   if (options_.gc_collect != nullptr) {
-    options_.gc_collect(request.triggered_by_global_gc());
+    options_.gc_collect();
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     send_reply_callback(
