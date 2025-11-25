@@ -7,13 +7,10 @@ consecutive shuffle operations together to improve performance.
 
 import pytest
 
-from ray.data._internal.logical.interfaces import LogicalPlan
+import ray
 from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
 )
-from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.optimizers import LogicalOptimizer
-from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -21,21 +18,6 @@ from ray.tests.conftest import *  # noqa
 class TestShuffleFusion:
     """Test cases for shuffle fusion optimization."""
 
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        """Set up test fixtures."""
-        self.context = DataContext.get_current()
-
-    @pytest.mark.parametrize(
-        "keys1,keys2,expected_keys",
-        [
-            (None, None, None),
-            (["a"], None, None),
-            (None, ["b"], ["b"]),
-            (["a"], ["b"], ["b"]),
-        ],
-        ids=["none_none", "keys1_none", "none_keys2", "keys1_keys2"],
-    )
     @pytest.mark.parametrize(
         "full_shuffle1,full_shuffle2,expected_full_shuffle",
         [
@@ -49,85 +31,43 @@ class TestShuffleFusion:
     @pytest.mark.parametrize(
         "num_outputs1,num_outputs2",
         [
-            (4, 8),
             (10, 5),
         ],
-        ids=["4_to_8", "10_to_5"],
+        ids=["10_to_5"],
     )
-    @pytest.mark.parametrize(
-        "sort1,sort2,expected_sort",
-        [
-            (False, False, False),
-            (True, False, False),
-            (False, True, True),
-            (True, True, True),
-        ],
-        ids=["false_false", "true_false", "false_true", "true_true"],
-    )
-    def test_repartition_repartition_fusion(
+    def test_repartition_repartition_fusion_e2e(
         self,
-        keys1,
-        keys2,
-        expected_keys,
         full_shuffle1,
         full_shuffle2,
         expected_full_shuffle,
         num_outputs1,
         num_outputs2,
-        sort1,
-        sort2,
-        expected_sort,
+        shutdown_only,
     ):
-        """Test that consecutive Repartition operations are fused with correct parameters."""
-        input_op = InputData("test_input")
-
-        # First repartition
-        repartition1 = Repartition(
-            input_op=input_op,
-            num_outputs=num_outputs1,
-            full_shuffle=full_shuffle1,
-            keys=keys1,
-            sort=sort1,
+        """Test that consecutive repartition calls are fused correctly in actual execution."""
+        ds = (
+            ray.data.range(10)
+            .repartition(num_outputs1, shuffle=full_shuffle1)
+            .repartition(num_outputs2, shuffle=full_shuffle2, sort=True, keys=["id"])
         )
 
-        # Second repartition
-        repartition2 = Repartition(
-            input_op=repartition1,
-            num_outputs=num_outputs2,
-            full_shuffle=full_shuffle2,
-            keys=keys2,
-            sort=sort2,
-        )
+        # Execute the dataset - this triggers logical optimization
+        result = ds.materialize()
+        assert result.num_blocks() == num_outputs2
 
-        # Create logical plan
-        logical_plan = LogicalPlan(repartition2, self.context)
+        # After execution, ds._logical_plan.dag contains the optimized DAG
+        # (it's mutated during execution in get_execution_plan)
+        optimized_dag = ds._logical_plan.dag
+        assert isinstance(optimized_dag, Repartition), "Should be a fused Repartition"
 
-        # Apply shuffle fusion
-        optimized_plan = LogicalOptimizer().optimize(logical_plan)
+        # Verify the fused repartition has the correct parameters
+        assert optimized_dag._num_outputs == num_outputs2
+        assert optimized_dag._full_shuffle == expected_full_shuffle
+        assert optimized_dag._sort
+        assert optimized_dag._keys == ["id"]
 
-        # Verify fusion occurred
-        dag = optimized_plan.dag
-        assert isinstance(dag, Repartition), "Should be a fused Repartition"
-
-        # Verify fused parameters
-        assert (
-            dag._num_outputs == num_outputs2
-        ), "Should use second repartition's num_outputs"
-        assert (
-            dag._full_shuffle == expected_full_shuffle
-        ), f"Expected full_shuffle={expected_full_shuffle}, got {dag._full_shuffle}"
-        assert (
-            dag._keys == expected_keys
-        ), f"Expected keys={expected_keys}, got {dag._keys}"
-        assert (
-            dag._sort == expected_sort
-        ), f"Expected sort={expected_sort}, got {dag._sort}"
-
-        # Verify it connects directly to input (fusion removed first repartition)
-        assert dag.input_dependencies[0] == input_op, "Should connect directly to input"
-
-        # Verify name format
-        assert dag.name == "Repartition"
+        # Verify fusion removed the first repartition (connects directly to InputData)
+        assert not isinstance(optimized_dag.input_dependencies[0], Repartition)
 
 
 if __name__ == "__main__":

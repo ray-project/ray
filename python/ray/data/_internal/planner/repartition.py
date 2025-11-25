@@ -78,7 +78,7 @@ def generate_repartition_fn(
             target_shuffle_max_block_size=(
                 ctx.target_max_block_size_override or data_context.target_max_block_size
             ),
-            random_shuffle=random_permute,
+            random_shuffle=False,
         )
         scheduler = SplitRepartitionTaskScheduler(shuffle_spec)
         return scheduler.execute(refs, num_outputs, ctx)
