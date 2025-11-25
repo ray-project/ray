@@ -281,7 +281,7 @@ def _split_predicate_by_columns(
 class ParquetDatasource(Datasource):
     """Parquet datasource, for reading and writing Parquet files.
 
-    The primary difference from ParquetBulkDatasource is that this uses
+    The primary difference from read_parquet is that this uses
     PyArrow's `ParquetDataset` abstraction for dataset reads, and thus offers
     automatic Arrow dataset schema inference and row count collection at the
     cost of some potential performance and/or compatibility penalties.
