@@ -560,9 +560,9 @@ def train_fn():
         metrics = ...
         checkpoint = ...
         ray.train.report(metrics, checkpoint=checkpoint, validate_fn=..., validate_config=...)
-    uploaded_checkpoints = ray.train.get_all_reported_checkpoints()
-    validated_checkpoints = ray.train.get_all_reported_checkpoints(
-        consistency_mode=CheckpointConsistencyMode.VALIDATED)
+    committed_checkpoints = ray.train.get_all_reported_checkpoints(
+        consistency_mode=CheckpointConsistencyMode.COMMITTED)
+    validated_checkpoints = ray.train.get_all_reported_checkpoints()
     ...
 
 # __get_all_reported_checkpoints_example_end__
