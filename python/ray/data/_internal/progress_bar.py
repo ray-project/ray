@@ -194,22 +194,26 @@ class ProgressBar(AbstractProgressBar):
     def get_description(self) -> str:
         return self._desc
 
+    def _log_progress_if_needed(self):
+        """Log progress if the required time interval has passed."""
+        current_time = time.time()
+        time_diff = current_time - self._last_logged_time
+        should_log = (self._last_logged_time == 0) or (
+            time_diff >= self._log_interval
+        )
+
+        if should_log:
+            logger.info(
+                f"Progress ({self._desc}): {self._progress}/{self._total or 'unknown'}"
+            )
+            self._last_logged_time = current_time
+
     def refresh(self):
         if self._bar:
             self._bar.refresh()
         elif self._use_logging:
             # Log progress periodically
-            current_time = time.time()
-            time_diff = current_time - self._last_logged_time
-            should_log = (self._last_logged_time == 0) or (
-                time_diff >= self._log_interval
-            )
-
-            if should_log:
-                logger.info(
-                    f"Progress ({self._desc}): {self._progress}/{self._total or 'unknown'}"
-                )
-                self._last_logged_time = current_time
+            self._log_progress_if_needed()
 
     def update(self, increment: int = 0, total: Optional[int] = None) -> None:
         if self._bar and (increment != 0 or self._bar.total != total):
@@ -226,17 +230,7 @@ class ProgressBar(AbstractProgressBar):
                 self._total = total
 
             # Log progress periodically
-            current_time = time.time()
-            time_diff = current_time - self._last_logged_time
-            should_log = (self._last_logged_time == 0) or (
-                time_diff >= self._log_interval
-            )
-
-            if should_log:
-                logger.info(
-                    f"Progress ({self._desc}): {self._progress}/{self._total or 'unknown'}"
-                )
-                self._last_logged_time = current_time
+            self._log_progress_if_needed()
 
     def close(self):
         if self._bar:
