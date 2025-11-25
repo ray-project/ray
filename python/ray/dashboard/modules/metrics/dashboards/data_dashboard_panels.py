@@ -1050,6 +1050,21 @@ ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL = Panel(
     stack=False,
 )
 
+ITERATION_PREFETCHED_BYTES_PANEL = Panel(
+    id=90,
+    title="Iteration Prefetched Bytes",
+    description="Current bytes of prefetched blocks in the iterator",
+    unit="bytes",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_prefetched_bytes{{{global_filters}}}) by (dataset)",
+            legend="Prefetched Bytes: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
 ITERATION_TIME_TO_FIRST_BATCH_PANEL = Panel(
     id=120,
     title="Iteration Time to First Batch",
@@ -1420,6 +1435,7 @@ DATA_GRAFANA_ROWS = [
             ITERATION_BLOCKS_LOCAL_PANEL,
             ITERATION_BLOCKS_REMOTE_PANEL,
             ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL,
+            ITERATION_PREFETCHED_BYTES_PANEL,
             ITERATION_TIME_TO_FIRST_BATCH_PANEL,
             ITERATION_GET_REF_BUNDLES_PANEL,
         ],
