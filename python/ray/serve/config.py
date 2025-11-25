@@ -61,7 +61,7 @@ class AutoscalingContext:
         current_num_replicas: int,
         target_num_replicas: int,
         running_replicas: List[ReplicaID],
-        total_num_requests: float,
+        total_num_requests: Union[float, Callable[[], float]],
         total_queued_requests: Optional[Union[float, Callable[[], float]]],
         aggregated_metrics: Optional[
             Union[
@@ -205,7 +205,7 @@ class AutoscalingContext:
     def total_running_requests(self) -> float:
         # NOTE: for non additive aggregation functions, total_running_requests is not
         # accurate, consider this is a approximation.
-        return self.total_num_requests() - self.total_queued_requests()
+        return self.total_num_requests - self.total_queued_requests
 
 
 @PublicAPI(stability="alpha")
