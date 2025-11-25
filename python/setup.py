@@ -268,7 +268,7 @@ if setup_spec.type == SetupType.RAY:
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
         ],
         "observability": [
-            "memray; sys_platform != 'win32'",
+            "memray>=1.14.0; sys_platform != 'win32'",
         ],
         "serve": [
             "uvicorn[standard]",
