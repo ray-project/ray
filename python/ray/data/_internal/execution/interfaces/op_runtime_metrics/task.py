@@ -30,6 +30,11 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     node_id_from_block_metadata,
 )
 from ray.data._internal.memory_tracing import trace_allocation
+<<<<<<< HEAD:python/ray/data/_internal/execution/interfaces/op_runtime_metrics/task.py
+=======
+from ray.data.block import BlockMetadata
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
+>>>>>>> bceeaa48665578f8ecb7361319a38ce87a366673:python/ray/data/_internal/execution/interfaces/op_runtime_metrics.py
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
@@ -336,7 +341,12 @@ class TaskOpMetrics(BaseOpMetrics):
         if bytes_per_output is None:
             if context.target_max_block_size is None:
                 return None
-            bytes_per_output = context.target_max_block_size
+            else:
+                # Block size can be up to MAX_SAFE_BLOCK_SIZE_FACTOR larger before being sliced.
+                bytes_per_output = (
+                    context.target_max_block_size * MAX_SAFE_BLOCK_SIZE_FACTOR
+                )
+
 
         num_pending_outputs = context._max_num_blocks_in_streaming_gen_buffer
         if self.average_num_outputs_per_task is not None:
