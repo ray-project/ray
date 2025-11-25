@@ -398,13 +398,9 @@ class TaskInfoAccessor {
 
   /// Add ray events to GCS asynchronously.
   ///
-  /// \param request The AddEventsRequest containing ray events data to be added to GCS.
-  /// \param callback Callback that will be called when add is complete.
-  /// \param timeout_ms RPC timeout in milliseconds. -1 means the default.
-  virtual void AsyncAddEvents(rpc::events::AddEventsRequest &&request,
-                              const StatusCallback &callback,
-                              int64_t timeout_ms = -1);
-
+  /// \param serialized_request The serialized AddEventsRequest containing ray events data
+  /// to be added to GCS. \param callback Callback that will be called when add is
+  /// complete. \param timeout_ms RPC timeout in milliseconds. -1 means the default.
   virtual void AsyncAddEvents(const std::string &serialized_request,
                               const StatusCallback &callback,
                               int64_t timeout_ms = -1);
