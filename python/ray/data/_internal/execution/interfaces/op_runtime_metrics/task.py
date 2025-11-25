@@ -343,7 +343,6 @@ class TaskOpMetrics(BaseOpMetrics):
                     context.target_max_block_size * MAX_SAFE_BLOCK_SIZE_FACTOR
                 )
 
-
         num_pending_outputs = context._max_num_blocks_in_streaming_gen_buffer
         if self.average_num_outputs_per_task is not None:
             num_pending_outputs = min(

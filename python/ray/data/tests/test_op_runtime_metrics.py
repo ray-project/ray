@@ -1,4 +1,5 @@
 import time
+from unittest.mock import MagicMock
 
 import pyarrow as pa
 import pytest
@@ -10,14 +11,10 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
 )
 from ray.data._internal.util import KiB
 from ray.data.block import BlockExecStats, BlockMetadata
-<<<<<<< HEAD
-from ray.data.context import DataContext
-=======
 from ray.data.context import (
     MAX_SAFE_BLOCK_SIZE_FACTOR,
     DataContext,
 )
->>>>>>> bceeaa48665578f8ecb7361319a38ce87a366673
 
 
 def test_average_max_uss_per_task():
@@ -229,7 +226,7 @@ def metrics_config_no_sample_with_target(restore_data_context):  # noqa: F811
 
     op = MagicMock()
     op.data_context = ctx
-    metrics = OpRuntimeMetrics(op)
+    metrics = TaskOpMetrics(op)
     return metrics
 
 
@@ -242,7 +239,7 @@ def metrics_config_no_sample_with_none(restore_data_context):  # noqa: F811
 
     op = MagicMock()
     op.data_context = ctx
-    metrics = OpRuntimeMetrics(op)
+    metrics = TaskOpMetrics(op)
     return metrics
 
 
@@ -255,7 +252,7 @@ def metrics_config_with_sample(restore_data_context):  # noqa: F811
 
     op = MagicMock()
     op.data_context = ctx
-    metrics = OpRuntimeMetrics(op)
+    metrics = TaskOpMetrics(op)
 
     # Simulate having samples: set bytes_task_outputs_generated and
     # num_task_outputs_generated to make average_bytes_per_output available
@@ -277,7 +274,7 @@ def metrics_config_pending_outputs_no_sample(
 
     op = MagicMock()
     op.data_context = ctx
-    metrics = OpRuntimeMetrics(op)
+    metrics = TaskOpMetrics(op)
     metrics.num_tasks_running = 3
     return metrics
 
@@ -291,7 +288,7 @@ def metrics_config_pending_outputs_none(restore_data_context):  # noqa: F811
 
     op = MagicMock()
     op.data_context = ctx
-    metrics = OpRuntimeMetrics(op)
+    metrics = TaskOpMetrics(op)
     metrics.num_tasks_running = 2
     return metrics
 
