@@ -184,7 +184,7 @@ class TestOpenAiIngress:
     @pytest.mark.asyncio
     async def test_raw_request_passed_to_deployment_handle(self, llm_config: LLMConfig):
         """Test that raw_request is passed to the deployment handle."""
-        from ray.llm._internal.serve.configs.openai_api_models import (
+        from ray.llm._internal.serve.core.configs.openai_api_models import (
             ChatCompletionRequest,
             ChatCompletionResponse,
         )

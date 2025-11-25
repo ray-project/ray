@@ -441,7 +441,7 @@ class TestLLMServer:
     @pytest.mark.asyncio
     async def test_raw_request_reaches_vllm_engine(self, mock_llm_config):
         """Test that raw_request is passed to the vllm_engine."""
-        from ray.llm._internal.serve.configs.openai_api_models import (
+        from ray.llm._internal.serve.core.configs.openai_api_models import (
             ChatCompletionRequest,
         )
 
