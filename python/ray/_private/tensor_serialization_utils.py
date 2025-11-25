@@ -1,9 +1,8 @@
 import warnings
 from typing import TYPE_CHECKING, Any, Tuple
 
-import numpy as np
-
 if TYPE_CHECKING:
+    import numpy as np
     import torch
 
 
@@ -19,7 +18,7 @@ warnings.filterwarnings("once", category=ZeroCopyTensorsWarning)
 
 
 def _zero_copy_tensors_deserializer(
-    np_array: np.ndarray, dtype_str: str, shape: Tuple[int, ...], device_str: str
+    np_array: "np.ndarray", dtype_str: str, shape: Tuple[int, ...], device_str: str
 ) -> "torch.Tensor":
     """
     Reconstructs a torch.Tensor from a zero-copy NumPy byte array.
