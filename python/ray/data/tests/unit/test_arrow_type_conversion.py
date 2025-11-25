@@ -17,7 +17,6 @@ from ray.air.util.tensor_extensions.arrow import (
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray.data import DataContext
 from ray.data._internal.execution.util import memory_string
-from ray.data._internal.util import MiB
 from ray.tests.conftest import *  # noqa
 
 import psutil
@@ -139,14 +138,15 @@ def test_infer_type_does_not_leak_memory(dtype):
 
     # Call the function several times. If there's a memory leak, this loop will leak
     # as much as 1 GiB of memory. 8 was chosen arbitrarily.
-    for _ in range(8):
+    num_repetitions = 8
+    for _ in range(num_repetitions):
         _infer_pyarrow_type(ndarray)
 
     gc.collect()
     pa.default_memory_pool().release_unused()
     after = process.memory_info().rss
 
-    margin_of_error = 64 * MiB
+    margin_of_error = ndarray.nbytes * num_repetitions
     assert after - before < margin_of_error, memory_string(after - before)
 
 
