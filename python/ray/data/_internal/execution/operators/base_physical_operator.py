@@ -16,10 +16,25 @@ from ray.data.context import DataContext
 
 
 class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
-    """Mixin for operators with internal queues that need cleanup.
+    @abc.abstractmethod
+    def internal_input_queue_num_blocks(self) -> int:
+        """Returns Operator's internal input queue size (in blocks)"""
+        ...
 
-    This mixin provides abstract methods for clearing internal queues.
-    """
+    @abc.abstractmethod
+    def internal_input_queue_num_bytes(self) -> int:
+        """Returns Operator's internal input queue size (in bytes)"""
+        ...
+
+    @abc.abstractmethod
+    def internal_output_queue_num_blocks(self) -> int:
+        """Returns Operator's internal output queue size (in blocks)"""
+        ...
+
+    @abc.abstractmethod
+    def internal_output_queue_num_bytes(self) -> int:
+        """Returns Operator's internal output queue size (in bytes)"""
+        ...
 
     @abc.abstractmethod
     def clear_internal_input_queue(self) -> None:

@@ -81,6 +81,20 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                 num_rows = max(num_rows, input_num_rows)
         return num_rows
 
+    def internal_input_queue_num_blocks(self) -> int:
+        return sum(
+            len(bundle.block_refs) for buf in self._input_buffers for bundle in buf
+        )
+
+    def internal_input_queue_num_bytes(self) -> int:
+        return sum(bundle.size_bytes() for buf in self._input_buffers for bundle in buf)
+
+    def internal_output_queue_num_blocks(self) -> int:
+        return sum(len(bundle.block_refs) for bundle in self._output_buffer)
+
+    def internal_output_queue_num_bytes(self) -> int:
+        return sum(bundle.size_bytes() for bundle in self._output_buffer)
+
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queues."""
         for input_buffer in self._input_buffers:

@@ -201,6 +201,18 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def set_additional_split_factor(self, k: int):
         self._additional_split_factor = k
 
+    def internal_input_queue_num_blocks(self) -> int:
+        return self._block_ref_bundler.num_blocks()
+
+    def internal_input_queue_num_bytes(self) -> int:
+        return self._block_ref_bundler.size_bytes()
+
+    def internal_output_queue_num_blocks(self) -> int:
+        return self._output_queue.num_blocks()
+
+    def internal_output_queue_num_bytes(self) -> int:
+        return self._output_queue.size_bytes()
+
     def in_task_submission_backpressure(self) -> bool:
         """Check if the operator is currently in task submission backpressure."""
         return self._metrics._task_submission_backpressure_start_time != -1

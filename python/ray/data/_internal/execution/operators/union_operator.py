@@ -75,6 +75,18 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
             total_rows += input_num_rows
         return total_rows
 
+    def internal_input_queue_num_blocks(self) -> int:
+        return sum(q.num_blocks() for q in self._input_buffers)
+
+    def internal_input_queue_num_bytes(self) -> int:
+        return sum(q.estimate_size_bytes() for q in self._input_buffers)
+
+    def internal_output_queue_num_blocks(self) -> int:
+        return sum(len(q.blocks) for q in self._output_buffer)
+
+    def internal_output_queue_num_bytes(self) -> int:
+        return sum(q.size_bytes() for q in self._output_buffer)
+
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queues."""
         for input_buffer in self._input_buffers:

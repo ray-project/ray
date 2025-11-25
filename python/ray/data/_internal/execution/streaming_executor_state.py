@@ -28,6 +28,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
+    InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShuffleProgressBarMixin,
@@ -306,10 +307,10 @@ class OpState:
         2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
         """
         external_queue_size = sum(q.num_blocks for q in self.input_queues)
-        # Internal queue size is now tracked by metrics
-
         internal_queue_size = (
-            self.op.metrics.get_object_store_usage_details().internal_inqueue_num_blocks
+            self.op.internal_input_queue_num_blocks()
+            if isinstance(self.op, InternalQueueOperatorMixin)
+            else 0
         )
         return external_queue_size + internal_queue_size
 
@@ -322,7 +323,9 @@ class OpState:
         2. Operator's internal queues (like ``MapOperator``s ref-bundler, etc)
         """
         internal_queue_size_bytes = (
-            self.op.metrics.get_object_store_usage_details().internal_inqueue_memory
+            self.op.internal_input_queue_num_bytes()
+            if isinstance(self.op, InternalQueueOperatorMixin)
+            else 0
         )
         return self.input_queue_bytes() + internal_queue_size_bytes
 

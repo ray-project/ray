@@ -22,6 +22,9 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.operators.base_physical_operator import (
+    InternalQueueOperatorMixin,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.progress_manager import RichExecutionProgressManager
 from ray.data._internal.execution.resource_manager import (
@@ -563,23 +566,18 @@ class StreamingExecutor(Executor, threading.Thread):
         """
         error_msg = "Expected {} Queue for {} to be empty, but found {} bundles"
 
-        details = op.metrics.get_object_store_usage_details()
-        internal_input_queue_num_blocks = details.internal_inqueue_num_blocks
-        internal_output_queue_num_blocks = details.internal_outqueue_num_blocks
+        if isinstance(op, InternalQueueOperatorMixin):
+            # 1) Check Internal Input Queue is empty
+            assert op.internal_input_queue_num_blocks() == 0, error_msg.format(
+                "Internal Input", op.name, op.internal_input_queue_num_blocks()
+            )
 
-        # 1) Check Internal Input Queue is empty
-        assert internal_input_queue_num_blocks == 0, error_msg.format(
-            "Internal Input",
-            op.name,
-            internal_input_queue_num_blocks,
-        )
-
-        # 2) Check Internal Output Queue is empty
-        assert internal_output_queue_num_blocks == 0, error_msg.format(
-            "Internal Output",
-            op.name,
-            internal_output_queue_num_blocks,
-        )
+            # 2) Check Internal Output Queue is empty
+            assert op.internal_output_queue_num_blocks() == 0, error_msg.format(
+                "Internal Output",
+                op.name,
+                op.internal_output_queue_num_blocks(),
+            )
 
         # 3) Check that External Input Queue is empty
         for input_q in state.input_queues:

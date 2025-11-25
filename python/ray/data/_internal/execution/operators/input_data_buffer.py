@@ -59,7 +59,6 @@ class InputDataBuffer(PhysicalOperator):
         # so we record input metrics here
         for bundle in self._input_data:
             self._metrics.on_input_received(bundle)
-            self._metrics.on_input_queued(bundle)
         super().start(options)
 
     def has_next(self) -> bool:
@@ -70,7 +69,6 @@ class InputDataBuffer(PhysicalOperator):
         # references, and Ray won't be able to reconstruct downstream objects.
         bundle = self._input_data[self._input_data_index]
         self._input_data_index += 1
-        self._metrics.on_input_dequeued(bundle)
         return bundle
 
     def get_stats(self) -> StatsDict:
