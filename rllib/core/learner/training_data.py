@@ -133,7 +133,7 @@ class TrainingData:
                     try:
                         episodes.extend(ray.get(ref))
                     except ray.exceptions.OwnerDiedError as e:
-                        print(
+                        ray.logger.warning(
                             f"episode-ref {ref} died and can't be collected with error: {e}"
                         )
             self.episodes = episodes

@@ -814,8 +814,8 @@ class EnvRunnerGroup:
             self.foreach_env_runner(
                 lambda w: w.stop(), healthy_only=False, local_env_runner=True
             )
-        except Exception as e:
-            logger.exception(f"Failed to stop workers with {e}")
+        except Exception:
+            logger.exception("Failed to stop workers!")
         finally:
             self._worker_manager.clear()
 
@@ -1295,7 +1295,7 @@ class EnvRunnerGroup:
                 if spec is not None:
                     return True
             except (ModuleNotFoundError, ValueError) as e:
-                print(
+                logger.warning(
                     f"module {module_path} not found using input {class_path} with error: {e}"
                 )
         return False
