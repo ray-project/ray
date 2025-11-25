@@ -2837,6 +2837,16 @@ py_test(
     ],
 )
 
+py_test(
+    name = "tests/test_catalog",
+    size = "medium",
+    srcs = ["models/tests/test_catalog.py"],
+    tags = [
+        "models",
+        "team:rllib",
+    ],
+)
+
 # --------------------------------------------------------------------
 # Offline
 # rllib/offline/
