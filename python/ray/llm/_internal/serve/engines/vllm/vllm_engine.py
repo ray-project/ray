@@ -382,13 +382,12 @@ class VLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
         self._validate_openai_serving_chat()
 
-        # Create raw request from serializable request info
         raw_request = None
         if raw_request_headers is not None:
             raw_request = _create_raw_request_from_headers(raw_request_headers)
 
         chat_response = await self._oai_serving_chat.create_chat_completion(  # type: ignore[attr-defined]
-            request, raw_request
+            request, raw_request=raw_request
         )
 
         if isinstance(chat_response, AsyncGenerator):
@@ -411,13 +410,12 @@ class VLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         self._validate_openai_serving_completion()
 
-        # Create raw request from serializable request info
         raw_request = None
         if raw_request_headers is not None:
             raw_request = _create_raw_request_from_headers(raw_request_headers)
 
         completion_response = await self._oai_serving_completion.create_completion(  # type: ignore[attr-defined]
-            request, raw_request
+            request, raw_request=raw_request
         )
 
         if isinstance(completion_response, AsyncGenerator):
@@ -442,13 +440,12 @@ class VLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None]:
         self._validate_openai_serving_embedding()
 
-        # Create raw request from serializable request info
         raw_request = None
         if raw_request_headers is not None:
             raw_request = _create_raw_request_from_headers(raw_request_headers)
 
         embedding_response = await self._oai_serving_embedding.create_embedding(  # type: ignore[attr-defined]
-            request, raw_request
+            request, raw_request=raw_request
         )
 
         if isinstance(embedding_response, VLLMErrorResponse):
@@ -459,18 +456,15 @@ class VLLMEngine(LLMEngine):
             yield EmbeddingResponse(**embedding_response.model_dump())
 
     async def transcriptions(
-        self, request: TranscriptionRequest
+        self,
+        request: TranscriptionRequest,
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[Union[str, TranscriptionResponse, ErrorResponse], None]:
         self._validate_openai_serving_transcription()
 
-        # TODO (Kourosh): Remove when we upstream request_id attribute to vLLM.
-        # PR: https://github.com/vllm-project/vllm/pull/21009
-        # Create a fake starlette.Request object with the x-request-id header
-        # so that the create_transcription API can assign the request_id properly.
-        raw_request = _create_raw_request_from_headers(
-            {"x-request-id": getattr(request, "request_id", "")},
-            path="/audio/transcriptions",
-        )
+        raw_request = None
+        if raw_request_headers is not None:
+            raw_request = _create_raw_request_from_headers(raw_request_headers)
 
         # Extract audio data from the request file
         audio_data = await request.file.read()
@@ -503,13 +497,12 @@ class VLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[ScoreResponse, ErrorResponse], None]:
         self._validate_openai_serving_scores()
 
-        # Create raw request from serializable request info
         raw_request = None
         if raw_request_headers is not None:
             raw_request = _create_raw_request_from_headers(raw_request_headers)
 
         score_response = await self._oai_serving_scores.create_score(
-            request, raw_request
+            request, raw_request=raw_request
         )
 
         if isinstance(score_response, VLLMErrorResponse):

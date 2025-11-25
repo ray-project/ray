@@ -391,7 +391,9 @@ class LLMServer(LLMServerProtocol):
         )
 
     async def transcriptions(
-        self, request: "TranscriptionRequest"
+        self,
+        request: "TranscriptionRequest",
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[
         Union[List[Union[str, "ErrorResponse"]], "TranscriptionResponse"], None
     ]:
@@ -401,6 +403,7 @@ class LLMServer(LLMServerProtocol):
 
         Args:
             request: An TranscriptionRequest object.
+            raw_request_headers: Optional HTTP headers from the original request.
 
         Returns:
             An AsyncGenerator over the TranscriptionResponse object.
@@ -409,6 +412,7 @@ class LLMServer(LLMServerProtocol):
             request,
             engine_method="transcriptions",
             batch_output_stream=True,
+            raw_request_headers=raw_request_headers,
         )
 
     async def score(

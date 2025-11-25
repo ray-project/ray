@@ -131,7 +131,9 @@ class LLMEngine(abc.ABC):
 
     @abc.abstractmethod
     async def transcriptions(
-        self, request: "TranscriptionRequest"
+        self,
+        request: "TranscriptionRequest",
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[Union[str, "TranscriptionResponse", "ErrorResponse"], None]:
         """Run a Transcription with the engine.
 
@@ -147,6 +149,7 @@ class LLMEngine(abc.ABC):
 
         Args:
             request: The transcription request.
+            raw_request_headers: Optional headers from the original HTTP request.
 
         Yields:
             Union[str, TranscriptionResponse, ErrorResponse]: A string

@@ -146,7 +146,9 @@ class MockVLLMEngine(LLMEngine):
         yield response
 
     async def transcriptions(
-        self, request: TranscriptionRequest
+        self,
+        request: TranscriptionRequest,
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[Union[str, TranscriptionResponse, ErrorResponse], None]:
         """Mock transcription generation."""
         if not self.started:
