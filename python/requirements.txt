@@ -31,13 +31,13 @@ smart_open
 lz4
 numpy>=1.20 ; python_version < '3.13'
 aiorwlock
-scipy
+scipy>=1.11.4; python_version < '3.13'
 colorful
 rich
 opentelemetry-sdk>=1.30.0
 opentelemetry-api
 opentelemetry-exporter-prometheus
-opentelemetry-proto
+opentelemetry-proto>=1.27.0; python_version < '3.13'
 fastapi
 gymnasium==1.1.1
 virtualenv!=20.21.1,>=20.0.24

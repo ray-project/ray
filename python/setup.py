@@ -261,7 +261,7 @@ if setup_spec.type == SetupType.RAY:
             "opencensus",
             "opentelemetry-sdk >= 1.30.0",
             "opentelemetry-exporter-prometheus",
-            "opentelemetry-proto",
+            "opentelemetry-proto >= 1.27.0; python_version < '3.13'",
             pydantic_dep,
             "prometheus_client >= 0.7.1",
             "smart_open",
@@ -329,7 +329,7 @@ if setup_spec.type == SetupType.RAY:
         "lz4",
         "ormsgpack==1.7.0",
         "pyyaml",
-        "scipy",
+        "scipy >= 1.11.4; python_version < '3.13'",
     ]
 
     setup_spec.extras["train"] = setup_spec.extras["tune"] + [pydantic_dep]
@@ -407,7 +407,7 @@ if setup_spec.type == SetupType.RAY:
         "jsonschema",
         "msgpack >= 1.1.0, < 2.0.0",
         "packaging",
-        "protobuf>=3.20.3",
+        "protobuf>=3.20.3; python_version < '3.13'",
         "pyyaml",
         "requests",
     ]
