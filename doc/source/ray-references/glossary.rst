@@ -70,7 +70,9 @@ documentation, sorted alphabetically.
         data-parallel training for :ref:`Ray Train’s built-in trainers<train-api>`.
 
     Batch format
-        The way Ray Data represents batches of data.
+        The way Ray Data represents batches of data. The batch format is independent
+        from how Ray Data stores the underlying blocks, so you can use any batch format
+        regardless of the internal block representation.
 
         Set ``batch_format`` in methods like
         :meth:`Dataset.iter_batches() <ray.data.Dataset.iter_batches>` and

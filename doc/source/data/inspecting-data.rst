@@ -89,7 +89,9 @@ A batch contains data from multiple rows. To inspect batches, call
 `Dataset.take_batch() <ray.data.Dataset.take_batch>`.
 
 By default, Ray Data represents batches as dicts of NumPy ndarrays. To change the type
-of the returned batch, set ``batch_format``.
+of the returned batch, set ``batch_format``. The batch format is independent from how
+Ray Data stores the underlying blocks, so you can use any batch format regardless of
+the internal block representation.
 
 .. tab-set::
 
