@@ -14,17 +14,6 @@ build_arg_sets:
     - cu128
 
 depsets:
-  - name: llm_serve_llama_3dot1_8B_quantized_${PYTHON_VERSION}_${CUDA_CODE}
-    operation: expand
-    depsets:
-      - compiled_ray_llm_depset_${PYTHON_VERSION}_${CUDA_CODE}
-    <<: *common_settings
-    requirements:
-      - release/llm_tests/serve/requirements/requirements-llm-cache.txt
-    constraints:
-      - python/deplocks/llm/rayllm_${PYTHON_VERSION}_${CUDA_CODE}.lock
-    output: release/ray_release/byod/llm_serve/llm_serve_llama_3dot1_8B_quantized_${PYTHON_VERSION}_${CUDA_CODE}.lock
-
   - name: subset_rayllm_depset_${PYTHON_VERSION}_${CUDA_CODE}
     operation: subset
     source_depset: compiled_ray_llm_depset_${PYTHON_VERSION}_${CUDA_CODE}

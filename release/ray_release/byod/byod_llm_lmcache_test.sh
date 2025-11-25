@@ -4,4 +4,4 @@
 
 set -exo pipefail
 
-uv pip install -r python_depset.lock --system --no-deps --no-cache-dir --index-strategy unsafe-best-match
+pip3 install "lmcache==0.3.3"
