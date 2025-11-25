@@ -35,8 +35,8 @@ std::shared_ptr<RayClientBidiReactor> RayClientBidiReactor::Create(
                                                         remote_node_id,
                                                         local_node_id,
                                                         io_context,
-                                                        message_processor,
-                                                        cleanup_cb,
+                                                        std::move(message_processor),
+                                                        std::move(cleanup_cb),
                                                         std::move(stub),
                                                         max_batch_size,
                                                         max_batch_delay_ms);
@@ -58,7 +58,7 @@ RayClientBidiReactor::RayClientBidiReactor(
     : RaySyncerBidiReactorBase<ClientBidiReactor>(
           io_context,
           remote_node_id,
-          message_processor,
+          std::move(message_processor),
           cleanup_cb,
           /* max_batch_size */ max_batch_size,
           /* max_batch_delay_ms */ max_batch_delay_ms),

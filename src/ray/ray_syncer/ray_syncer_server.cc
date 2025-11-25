@@ -45,8 +45,8 @@ std::shared_ptr<RayServerBidiReactor> RayServerBidiReactor::Create(
                                                         server_context,
                                                         io_context,
                                                         local_node_id,
-                                                        message_processor,
-                                                        cleanup_cb,
+                                                        std::move(message_processor),
+                                                        std::move(cleanup_cb),
                                                         auth_token,
                                                         max_batch_size,
                                                         max_batch_delay_ms);
@@ -67,8 +67,8 @@ RayServerBidiReactor::RayServerBidiReactor(
     : RaySyncerBidiReactorBase<ServerBidiReactor>(
           io_context,
           GetNodeIDFromServerContext(server_context),
-          message_processor,
-          cleanup_cb,
+          std::move(message_processor),
+          std::move(cleanup_cb),
           max_batch_size,
           max_batch_delay_ms),
       server_context_(server_context),

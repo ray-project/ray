@@ -58,8 +58,8 @@ class RaySyncerBidiReactorBase
       uint64_t max_batch_delay_ms)
       : RaySyncerBidiReactor(std::move(remote_node_id)),
         io_context_(io_context),
-        message_processor_(message_processor),
-        cleanup_cb_(cleanup_cb),
+        message_processor_(std::move(message_processor)),
+        cleanup_cb_(std::move(cleanup_cb)),
         max_batch_size_(max_batch_size),
         max_batch_delay_ms_(std::chrono::milliseconds(max_batch_delay_ms)),
         batch_timer_(io_context),
