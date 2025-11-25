@@ -550,9 +550,10 @@ class FuseOperators(Rule):
               BlockRefBundler with min_rows_per_bundle set to the maximum of the two.
             - StreamingRepartitionRefBundler + StreamingRepartitionRefBundler: Only
               compatible if both have the same target_num_rows_per_block.
-            - BlockRefBundler + StreamingRepartitionRefBundler (mixed): Compatible
+            - StreamingRepartitionRefBundler + BlockRefBundler: Compatible
               if target_num_rows >= min_rows_per_bundle (or min_rows_per_bundle is None).
               Returns a StreamingRepartitionRefBundler.
+            - BlockRefBundler + StreamingRepartitionRefBundler: Incompatible.
 
         Note:
             This is a naive implementation that should be revisited once
@@ -581,21 +582,11 @@ class FuseOperators(Rule):
             else:
                 # TODO(xgui): Explore if we can use least common multiple of the two target_num_rows_per_block
                 return None
-        else:
-            supported_types = (BlockRefBundler, StreamingRepartitionRefBundler)
-            assert isinstance(up_ref_bundler, supported_types) and isinstance(
-                down_ref_bundler, supported_types
-            )
-            target_num_rows = (
-                up_ref_bundler._target_num_rows
-                if isinstance(up_ref_bundler, StreamingRepartitionRefBundler)
-                else down_ref_bundler._target_num_rows
-            )
-            min_rows_per_bundle = (
-                up_ref_bundler._min_rows_per_bundle
-                if isinstance(up_ref_bundler, BlockRefBundler)
-                else down_ref_bundler._min_rows_per_bundle
-            )
+        elif isinstance(up_ref_bundler, StreamingRepartitionRefBundler) and isinstance(
+            down_ref_bundler, BlockRefBundler
+        ):
+            target_num_rows = up_ref_bundler._target_num_rows
+            min_rows_per_bundle = down_ref_bundler._min_rows_per_bundle
             if min_rows_per_bundle is None or target_num_rows >= min_rows_per_bundle:
                 return StreamingRepartitionRefBundler(
                     target_num_rows_per_block=target_num_rows
@@ -603,7 +594,7 @@ class FuseOperators(Rule):
             else:
                 # TODO(xgui): Explore if we can use least multiple of target_num_rows_per_block that is greater than min_rows_per_bundle
                 return None
-            return None
+        return None
 
 
 @DeveloperAPI
