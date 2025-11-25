@@ -36,7 +36,7 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
     @routes.get("/api/local_raylet_healthz")
     async def health_check(self, req: Request) -> Response:
         try:
-            self.raylet_health()
+            await self.raylet_health()
         except Exception as e:
             return Response(status=503, text=str(e), content_type="application/text")
 
@@ -87,9 +87,7 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
         for name, result in checks.items():
             if isinstance(result, Exception):
                 status = 503
-                logger.warning(
-                    f"health check {name} failed: {result.status} {result.text}"
-                )
+                logger.warning(f"health check {name} failed: {result}")
 
         return Response(
             status=status,
