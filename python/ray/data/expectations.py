@@ -489,7 +489,8 @@ def _extract_boolean_result(result: Any) -> bool:
             return True
         non_null_values = [v for v in result if v is not None]
         if not non_null_values:
-            return True
+            # All values are null - treat as failed validation (consistent with PyArrow behavior)
+            return False
         return all(v is True for v in non_null_values)
     elif hasattr(result, "to_pylist"):
         values = result.to_pylist()
@@ -497,7 +498,8 @@ def _extract_boolean_result(result: Any) -> bool:
             return True
         non_null_values = [v for v in values if v is not None]
         if not non_null_values:
-            return True
+            # All values are null - treat as failed validation (consistent with PyArrow behavior)
+            return False
         return all(v is True for v in non_null_values)
     else:
         # Try to convert to bool (for scalar results)
@@ -551,14 +553,20 @@ def _create_validator_from_expression(expr: "Expr") -> Callable[[Any], bool]:
             return _extract_boolean_result(result)
 
         except Exception as e:
-            # If evaluation fails, consider it a validation failure
+            # If evaluation fails, preserve the original exception type but add context
             # Include the expression in error message for debugging
             error_msg = f"Failed to evaluate expression {expr} on batch"
             if hasattr(e, "__cause__") and e.__cause__:
                 error_msg += f": {e.__cause__}"
             elif str(e):
                 error_msg += f": {e}"
-            raise ValueError(error_msg) from e
+
+            # Preserve the original exception type if it's informative
+            if isinstance(e, (ValueError, TypeError, AttributeError, KeyError)):
+                raise type(e)(error_msg) from e
+            else:
+                # For other exceptions, wrap in ValueError but preserve original
+                raise ValueError(error_msg) from e
 
     return validator_fn
 
@@ -673,6 +681,11 @@ def expect_column_range(
 
     This is a convenience function for the common pattern of checking value ranges.
 
+    Args:
+        column: Name of the column to validate.
+        min_value: Minimum allowed value (inclusive). Must be <= max_value.
+        max_value: Maximum allowed value (inclusive). Must be >= min_value.
+
     Examples:
         >>> from ray.data.expectations import expect_column_range
         >>> exp = expect_column_range("age", 0, 120)
@@ -691,6 +704,12 @@ def expect_column_range(
         An Expectation object that can be used with Dataset.expect().
     """
     from ray.data.expressions import col
+
+    if min_value > max_value:
+        raise ValueError(
+            f"min_value ({min_value}) must be <= max_value ({max_value}) "
+            f"for expect_column_range"
+        )
 
     if name is None:
         name = f"Column '{column}' in range [{min_value}, {max_value}]"
@@ -763,6 +782,10 @@ def expect_column_in(
 
     This is a convenience function for the common pattern of checking allowed values.
 
+    .. note::
+        If `values` is empty, no values will be allowed (validation will always fail).
+        This may not be the intended behavior - ensure `values` is not empty.
+
     Examples:
         >>> from ray.data.expectations import expect_column_in
         >>> exp = expect_column_in("status", ["active", "inactive", "pending"])
@@ -787,6 +810,15 @@ def expect_column_in(
         )
 
     values_set = set(values)
+    if not values_set:
+        import warnings
+        warnings.warn(
+            "expect_column_in called with empty values list. "
+            "This will cause all rows to fail validation. "
+            "Ensure this is the intended behavior.",
+            UserWarning,
+            stacklevel=2
+        )
     if name is None:
         name = f"Column '{column}' in allowed values"
     if description is None:
@@ -810,8 +842,14 @@ def expect_column_unique(
 ) -> Expectation:
     """Create an expectation that a column has unique values.
 
-    Note: This checks that all values in the column are unique. For large datasets,
-    this may be expensive as it requires checking all values.
+    .. warning::
+        This function currently only checks uniqueness **within each batch**, not across
+        the entire dataset. A value duplicated across different batches will still pass
+        validation. For true dataset-wide uniqueness checking, use a different approach
+        (e.g., groupby().count() and check for counts > 1).
+
+    Note: This checks that all values in the column are unique within each batch.
+    For large datasets, this may be expensive as it requires checking all values.
 
     Examples:
         >>> from ray.data.expectations import expect_column_unique

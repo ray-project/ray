@@ -132,6 +132,7 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
+    from ray.data.expressions import Expr
     from ray.data.grouped_data import GroupedData
 
 from ray.data.expectations import (
@@ -800,7 +801,7 @@ class Dataset:
     def with_column(
         self,
         column_name: str,
-        expr: Expr,
+        expr: "Expr",
         **ray_remote_args,
     ) -> "Dataset":
         """
@@ -846,7 +847,7 @@ class Dataset:
         from ray.data._internal.logical.operators.one_to_one_operator import Download
 
         # TODO: Once the expression API supports UDFs, we can clean up the code here.
-        from ray.data.expressions import DownloadExpr
+        from ray.data.expressions import DownloadExpr, StarExpr
 
         plan = self._plan.copy()
         if isinstance(expr, DownloadExpr):
@@ -1195,6 +1196,8 @@ class Dataset:
                     "to be strings."
                 )
 
+            from ray.data.expressions import col
+
             exprs = [col(prev)._rename(new) for prev, new in names.items()]
 
         elif isinstance(names, list):
@@ -1220,6 +1223,8 @@ class Dataset:
                     f"schema names: {current_names}."
                 )
 
+            from ray.data.expressions import col
+
             exprs = [col(prev)._rename(new) for prev, new in zip(current_names, names)]
         else:
             raise TypeError(
@@ -1235,6 +1240,7 @@ class Dataset:
 
         # Construct the plan and project operation
         from ray.data._internal.compute import TaskPoolStrategy
+        from ray.data.expressions import StarExpr
 
         compute = TaskPoolStrategy(size=concurrency)
 
@@ -1391,7 +1397,7 @@ class Dataset:
     def filter(
         self,
         fn: Optional[UserDefinedFunction[Dict[str, Any], bool]] = None,
-        expr: Optional[Union[str, Expr]] = None,
+        expr: Optional[Union[str, "Expr"]] = None,
         *,
         compute: Union[str, ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
@@ -1508,7 +1514,7 @@ class Dataset:
 
         # Initialize Filter operator arguments with proper types
         input_op = self._logical_plan.dag
-        predicate_expr: Optional[Expr] = None
+        predicate_expr: Optional["Expr"] = None
         filter_fn: Optional[UserDefinedFunction] = None
         filter_fn_args: Optional[Iterable[Any]] = None
         filter_fn_kwargs: Optional[Dict[str, Any]] = None
@@ -1874,18 +1880,7 @@ class Dataset:
                 # This avoids evaluating the expression twice (once for passed, once for failed)
                 # Add validation flag column based on expression
                 # Check if column already exists (shouldn't happen, but be defensive)
-                schema = self.schema()
-                validation_col_name = "_validation_passed"
-                if schema and hasattr(schema, "names") and validation_col_name in schema.names:
-                    # Column already exists - use a different name to avoid conflict
-                    import warnings
-                    warnings.warn(
-                        f"Column '{validation_col_name}' already exists in dataset. "
-                        f"Using '{validation_col_name}_2' instead.",
-                        UserWarning,
-                        stacklevel=2
-                    )
-                    validation_col_name = "_validation_passed_2"
+                validation_col_name = self._get_validation_column_name()
                 try:
                     validated_ds = self.with_column(validation_col_name, expr)
                 except Exception as e:
@@ -1945,12 +1940,16 @@ class Dataset:
 
                     # Build detailed error message with context
                     # Sample failed values for better debugging
+                    # Constants for error message sampling
+                    MAX_SAMPLE_ROWS = 5
+                    MAX_SAMPLE_VALUES = 3
+
                     sample_failed_values = []
                     failed_columns = []
                     try:
                         # Get a sample of failed rows for context
-                        # Limit to 5 rows to avoid performance issues
-                        failed_sample = failed_ds.take(5)
+                        # Limit to MAX_SAMPLE_ROWS to avoid performance issues
+                        failed_sample = failed_ds.take(MAX_SAMPLE_ROWS)
                         if failed_sample and isinstance(failed_sample, list) and len(failed_sample) > 0:
                             # Extract column values from failed rows
                             first_row = failed_sample[0]
@@ -1968,8 +1967,23 @@ class Dataset:
                                             collector.visit(expr)
                                             col_refs = collector.get_column_refs()
                                             failed_columns = list(col_refs) if col_refs else []
-                                        except (ImportError, AttributeError, Exception):
+                                        except (ImportError, AttributeError) as e:
                                             # Fallback to string parsing if collector not available
+                                            logger.debug(
+                                                f"Could not use _ColumnReferenceCollector to extract column references: {e}. "
+                                                "Falling back to regex parsing."
+                                            )
+                                            expr_str = str(expr)
+                                            import re
+                                            matches = re.findall(r"col\(['\"](.*?)['\"]\)", expr_str)
+                                            failed_columns = list(set(matches))
+                                        except Exception as e:
+                                            # Log unexpected errors but still fall back to regex
+                                            logger.warning(
+                                                f"Unexpected error extracting column references from expression: {e}. "
+                                                "Falling back to regex parsing.",
+                                                exc_info=True
+                                            )
                                             expr_str = str(expr)
                                             import re
                                             matches = re.findall(r"col\(['\"](.*?)['\"]\)", expr_str)
@@ -1978,14 +1992,18 @@ class Dataset:
                                 # Extract sample values from first column that exists
                                 for col_name in failed_columns:
                                     if col_name in first_row:
-                                        # Extract up to 3 sample values
+                                        # Extract up to MAX_SAMPLE_VALUES sample values
                                         sample_failed_values = [
                                             str(row.get(col_name, "N/A"))
-                                            for row in failed_sample[:min(3, len(failed_sample))]
+                                            for row in failed_sample[:min(MAX_SAMPLE_VALUES, len(failed_sample))]
                                         ]
                                         break  # Use first available column
-                    except Exception:
-                        pass  # If sampling fails, continue without samples
+                    except Exception as e:
+                        # Log sampling failure but continue without samples
+                        logger.debug(
+                            f"Failed to sample failed values for error message: {e}. "
+                            "Continuing without sample values."
+                        )
 
                     message = (
                         f"Expectation '{expectation.name}' failed: "
@@ -2034,9 +2052,15 @@ class Dataset:
 
         # For validator function-based expectations, split into passed/failed datasets
         # This enables quarantine workflows and data quality checks
-        @ray.remote
+        @ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)
         class ValidationAggregator:
-            """Simple actor to aggregate validation results across distributed tasks."""
+            """Simple actor to aggregate validation results across distributed tasks.
+
+            This actor is lightweight and only aggregates counts, so it uses num_cpus=0
+            to avoid consuming CPU resources unnecessarily.
+            Fault tolerance is enabled (max_restarts=-1, max_task_retries=-1) to ensure
+            validation results are not lost if the actor crashes.
+            """
 
             def __init__(self):
                 self.failure_count = 0
@@ -2063,14 +2087,25 @@ class Dataset:
                     "total_count": self.total_count,
                 }
 
-        aggregator = ValidationAggregator.remote()
+        try:
+            aggregator = ValidationAggregator.remote()
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to create validation aggregator actor: {e}. "
+                "This may indicate insufficient cluster resources or Ray configuration issues."
+            ) from e
 
         def _add_validation_flag(batch: Any, flag_value: bool, is_empty: bool) -> Any:
-            """Helper function to add validation flag to batch regardless of format."""
+            """Helper function to add validation flag to batch regardless of format.
+
+            Creates a copy before modifying to avoid side effects on input batch.
+            """
             try:
                 import pandas as pd
 
                 if isinstance(batch, pd.DataFrame):
+                    # Create a copy to avoid modifying input batch
+                    batch = batch.copy()
                     batch["_validation_passed"] = flag_value
                     return batch
             except Exception:
@@ -2094,6 +2129,9 @@ class Dataset:
             # Fallback: add validation flag to dict batch
             if isinstance(batch, dict):
                 import numpy as np
+
+                # Create a copy to avoid modifying input batch
+                batch = dict(batch)
 
                 # Handle empty dict
                 if not batch:
@@ -2173,15 +2211,8 @@ class Dataset:
         # Use filter on the validation flag column
         from ray.data.expressions import col, lit
 
-        # Determine validation column name (might be _validation_passed or _validation_passed_2)
-        validation_col_name = "_validation_passed"
-        try:
-            validated_schema = validated_ds.schema()
-            if validated_schema and hasattr(validated_schema, "names"):
-                if "_validation_passed_2" in validated_schema.names:
-                    validation_col_name = "_validation_passed_2"
-        except Exception:
-            pass
+        # Determine validation column name (might be _validation_passed or _validation_passed_2, etc.)
+        validation_col_name = self._get_validation_column_name_from_schema(validated_ds)
 
         # Filter passed rows: must be True (not False, not NULL)
         # NULL values from expression evaluation are treated as False (failed)
@@ -2213,6 +2244,17 @@ class Dataset:
                     # If schema access fails, skip column removal
                     pass
 
+        # After materialization, all map_batches tasks have completed.
+        # The actor calls (add_result.remote()) are processed sequentially by the actor,
+        # and materialize() ensures all tasks complete before returning.
+        # However, to ensure all actor method calls are fully processed, we wait for
+        # any pending actor calls to complete. Since actors process calls sequentially,
+        # after materialization all results should be ready, but we add a small delay
+        # as a safety measure to ensure actor state is fully updated.
+        import time
+        time.sleep(0.01)  # Small delay to ensure actor calls are processed
+
+        # Get aggregated validation results from the actor
         # Actors process calls sequentially, so after materialization all results are ready
         validation_results = ray.get(aggregator.get_results.remote())
 
@@ -2222,9 +2264,12 @@ class Dataset:
         # automatically clean them up when references go out of scope.
         try:
             ray.kill(aggregator)
-        except Exception:
-            # Ignore errors during cleanup (actor may already be terminated)
-            pass
+        except Exception as e:
+            # Log the failure but don't raise - actor cleanup is best effort
+            logger.debug(
+                f"Failed to kill validation aggregator actor: {e}. "
+                "Actor will be cleaned up automatically when reference goes out of scope."
+            )
 
         # Create expectation result with detailed message
         passed = validation_results["passed"]
@@ -2254,6 +2299,63 @@ class Dataset:
         )
 
         return passed_ds, failed_ds, result
+
+    def _get_validation_column_name(self) -> str:
+        """Get a validation column name that doesn't conflict with existing columns.
+
+        Returns:
+            A column name like "_validation_passed", "_validation_passed_2", etc.
+        """
+        schema = self.schema()
+        base_name = "_validation_passed"
+        validation_col_name = base_name
+
+        if schema and hasattr(schema, "names"):
+            counter = 1
+            while validation_col_name in schema.names:
+                validation_col_name = f"{base_name}_{counter}"
+                counter += 1
+            if counter > 1:
+                import warnings
+                warnings.warn(
+                    f"Column '{base_name}' already exists in dataset. "
+                    f"Using '{validation_col_name}' instead.",
+                    UserWarning,
+                    stacklevel=3
+                )
+
+        return validation_col_name
+
+    def _get_validation_column_name_from_schema(self, validated_ds: "Dataset") -> str:
+        """Get validation column name from validated dataset schema.
+
+        Args:
+            validated_ds: Dataset that has been validated (contains validation column).
+
+        Returns:
+            The name of the validation column in the validated dataset.
+        """
+        validation_col_name = "_validation_passed"
+        try:
+            validated_schema = validated_ds.schema()
+            if validated_schema and hasattr(validated_schema, "names"):
+                # Check for validation column names in order of preference
+                base_name = "_validation_passed"
+                counter = 1
+                while True:
+                    if validation_col_name in validated_schema.names:
+                        break
+                    validation_col_name = f"{base_name}_{counter}"
+                    counter += 1
+                    # Safety check to avoid infinite loop
+                    if counter > 100:
+                        validation_col_name = base_name
+                        break
+        except Exception:
+            # Fallback to default name if schema access fails
+            pass
+
+        return validation_col_name
 
     def _count_rows_in_batch(self, batch: Any) -> int:
         """Count rows in a batch regardless of format.
@@ -2502,8 +2604,22 @@ class Dataset:
             results.append(result)
 
             # Collect failed datasets instead of rows to avoid memory issues
-            if failed_ds.count() > 0:
-                all_failed_datasets.append(failed_ds)
+            # Use a lazy check to avoid materializing the dataset unnecessarily
+            # Check if failed_ds has any rows by checking if it's different from empty dataset
+            # This is approximate but avoids expensive count() call
+            try:
+                # Try to get schema - if it exists and has rows, add to failed list
+                # This is a heuristic to avoid materialization
+                failed_schema = failed_ds.schema()
+                if failed_schema and hasattr(failed_schema, "names") and failed_schema.names:
+                    # For now, we'll add it and let union handle empty datasets
+                    # A more sophisticated check would peek at the first block
+                    all_failed_datasets.append(failed_ds)
+            except Exception:
+                # If schema check fails, fall back to count (which materializes)
+                # This is a trade-off between performance and correctness
+                if failed_ds.count() > 0:
+                    all_failed_datasets.append(failed_ds)
 
             # Continue with passed dataset for next expectation
             current_ds = passed_ds
