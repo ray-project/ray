@@ -142,7 +142,7 @@ batches is more performant than transforming rows.
 Configuring batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data represents batches as dicts of NumPy ndarrays or pandas DataFrames. By
+Ray Data represents batches as dicts of NumPy ndarrays, pandas DataFrames or pyarrow Tables. By
 default, Ray Data represents batches as dicts of NumPy ndarrays. To configure the batch type,
 specify ``batch_format`` in :meth:`~ray.data.Dataset.map_batches`. You can return either
 format from your function, but ``batch_format`` should match the input of your function.
