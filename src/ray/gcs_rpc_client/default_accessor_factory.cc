@@ -15,6 +15,7 @@
 #include "ray/gcs_rpc_client/default_accessor_factory.h"
 
 #include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
+#include "ray/gcs_rpc_client/accessors/internal_kv_accessor.h"
 
 namespace ray {
 namespace gcs {
@@ -24,5 +25,9 @@ DefaultAccessorFactory::CreateActorInfoAccessor(GcsClientContext *context) {
   return std::make_unique<ActorInfoAccessor>(context);
 }
 
+std::unique_ptr<InternalKVAccessorInterface>
+DefaultAccessorFactory::CreateInternalKVAccessor(GcsClientContext *context) {
+  return std::make_unique<InternalKVAccessor>(context);
+}
 }  // namespace gcs
 }  // namespace ray
