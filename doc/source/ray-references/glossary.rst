@@ -80,7 +80,7 @@ documentation, sorted alphabetically.
         .. doctest::
 
             >>> import ray
-            >>> dataset = ray.data.range(10)
+            >>> dataset = ray.data.range(15)
             >>> next(iter(dataset.iter_batches(batch_format="numpy", batch_size=5)))
             {'id': array([0, 1, 2, 3, 4])}
             >>> next(iter(dataset.iter_batches(batch_format="pandas", batch_size=5)))
@@ -90,6 +90,10 @@ documentation, sorted alphabetically.
             2   2
             3   3
             4   4
+            >>> next(iter(dataset.iter_batches(batch_format="pyarrow", batch_size=5)))
+            id: int64                                                                                                                          
+            ----                                                                                                                               
+            id: [[0],[1],...,[3],[4]]                                                                                                         
 
         To learn more about batch formats, read
         :ref:`Configuring batch formats <configure_batch_format>`.
