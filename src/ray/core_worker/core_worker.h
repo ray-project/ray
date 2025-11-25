@@ -259,6 +259,8 @@ class CoreWorker {
 
   WorkerContext &GetWorkerContext() { return *worker_context_; }
 
+  ActorPoolManager &GetActorPoolManager() { return *actor_pool_manager_; }
+
   const TaskID &GetCurrentTaskId() const { return worker_context_->GetCurrentTaskID(); }
 
   const std::string GetCurrentTaskName() const {

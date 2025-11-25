@@ -144,3 +144,15 @@ class PlacementGroupID(BaseID):
 
     @classmethod
     def nil(cls: type[_PGID]) -> _PGID: ...
+
+
+_APID = TypeVar("_APID", bound=ActorPoolID)
+class ActorPoolID(BaseID):
+
+    def __init__(self, id: bytes) -> None: ...
+
+    @classmethod
+    def from_random(cls: type[_APID]) -> _APID: ...
+
+    @classmethod
+    def nil(cls: type[_APID]) -> _APID: ...

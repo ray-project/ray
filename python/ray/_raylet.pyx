@@ -141,6 +141,7 @@ from ray.includes.common cimport (
 )
 from ray.includes.unique_ids cimport (
     CActorID,
+    CActorPoolID,
     CClusterID,
     CNodeID,
     CObjectID,
@@ -150,9 +151,13 @@ from ray.includes.unique_ids cimport (
 from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
     CActorCreationOptions,
+    CActorPoolConfig,
+    CActorPoolManager,
     CPlacementGroupCreationOptions,
     CCoreWorkerOptions,
     CCoreWorkerProcess,
+    CPoolOrderingMode,
+    CPoolStats,
     CTaskOptions,
     ResourceMappingType,
     CFiberEvent,
@@ -4631,6 +4636,183 @@ cdef class CoreWorker:
                     c_object_ref_and_is_ready_pair.first.object_id(),
                     c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), # noqa
                 c_object_ref_and_is_ready_pair.second)
+
+    # ========== Actor Pool Methods ==========
+
+    def register_actor_pool(
+            self,
+            int32_t max_retry_attempts=3,
+            int32_t retry_backoff_ms=1000,
+            float retry_backoff_multiplier=2.0,
+            int32_t max_retry_backoff_ms=60000,
+            c_bool retry_on_system_errors=True,
+            int ordering_mode=0,  # 0=UNORDERED, 1=PER_KEY_FIFO, 2=GLOBAL_FIFO
+            int32_t min_size=1,
+            int32_t max_size=-1,
+            int32_t initial_size=1,
+            initial_actor_ids=None):
+        """Register a new actor pool.
+
+        Args:
+            max_retry_attempts: Maximum number of retry attempts for failed tasks.
+            retry_backoff_ms: Initial backoff in milliseconds between retries.
+            retry_backoff_multiplier: Multiplier for exponential backoff.
+            max_retry_backoff_ms: Maximum backoff in milliseconds.
+            retry_on_system_errors: Whether to retry on system errors.
+            ordering_mode: Task ordering mode (0=UNORDERED, 1=PER_KEY_FIFO, 2=GLOBAL_FIFO).
+            min_size: Minimum pool size for autoscaling.
+            max_size: Maximum pool size (-1 for unbounded).
+            initial_size: Initial pool size.
+            initial_actor_ids: Optional list of ActorID to add to the pool.
+
+        Returns:
+            ActorPoolID: The ID of the newly created pool.
+        """
+        cdef:
+            CActorPoolConfig config
+            c_vector[CActorID] c_initial_actors
+            CActorPoolID c_pool_id
+
+        config.max_retry_attempts = max_retry_attempts
+        config.retry_backoff_ms = retry_backoff_ms
+        config.retry_backoff_multiplier = retry_backoff_multiplier
+        config.max_retry_backoff_ms = max_retry_backoff_ms
+        config.retry_on_system_errors = retry_on_system_errors
+        config.ordering_mode = <CPoolOrderingMode>ordering_mode
+        config.min_size = min_size
+        config.max_size = max_size
+        config.initial_size = initial_size
+
+        if initial_actor_ids:
+            for actor_id in initial_actor_ids:
+                c_initial_actors.push_back((<ActorID>actor_id).native())
+
+        with nogil:
+            c_pool_id = CCoreWorkerProcess.GetCoreWorker().GetActorPoolManager(
+                ).RegisterPool(config, c_initial_actors)
+
+        return ActorPoolID(c_pool_id.Binary())
+
+    def unregister_actor_pool(self, ActorPoolID pool_id):
+        """Unregister an actor pool.
+
+        Args:
+            pool_id: The ID of the pool to unregister.
+        """
+        cdef CActorPoolID c_pool_id = pool_id.native()
+
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().GetActorPoolManager(
+                ).UnregisterPool(c_pool_id)
+
+    def add_actor_to_pool(self, ActorPoolID pool_id, ActorID actor_id,
+                          NodeID location=None):
+        """Add an actor to a pool.
+
+        Args:
+            pool_id: The ID of the pool.
+            actor_id: The ID of the actor to add.
+            location: Optional node ID where the actor is located.
+        """
+        cdef:
+            CActorPoolID c_pool_id = pool_id.native()
+            CActorID c_actor_id = actor_id.native()
+            CNodeID c_location
+
+        if location is not None:
+            c_location = CNodeID.FromBinary(location.binary())
+        else:
+            c_location = CNodeID.Nil()
+
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().GetActorPoolManager(
+                ).AddActorToPool(c_pool_id, c_actor_id, c_location)
+
+    def remove_actor_from_pool(self, ActorPoolID pool_id, ActorID actor_id):
+        """Remove an actor from a pool.
+
+        Args:
+            pool_id: The ID of the pool.
+            actor_id: The ID of the actor to remove.
+        """
+        cdef:
+            CActorPoolID c_pool_id = pool_id.native()
+            CActorID c_actor_id = actor_id.native()
+
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().GetActorPoolManager(
+                ).RemoveActorFromPool(c_pool_id, c_actor_id)
+
+    def get_pool_actors(self, ActorPoolID pool_id):
+        """Get all actor IDs in a pool.
+
+        Args:
+            pool_id: The ID of the pool.
+
+        Returns:
+            List of ActorID in the pool.
+        """
+        cdef:
+            CActorPoolID c_pool_id = pool_id.native()
+            c_vector[CActorID] c_actors
+            c_vector[CActorID].iterator it
+
+        with nogil:
+            c_actors = CCoreWorkerProcess.GetCoreWorker().GetActorPoolManager(
+                ).GetPoolActors(c_pool_id)
+
+        result = []
+        it = c_actors.begin()
+        while it != c_actors.end():
+            result.append(ActorID(dereference(it).Binary()))
+            postincrement(it)
+
+        return result
+
+    def get_pool_stats(self, ActorPoolID pool_id):
+        """Get statistics for a pool.
+
+        Args:
+            pool_id: The ID of the pool.
+
+        Returns:
+            Dictionary with pool statistics.
+        """
+        cdef:
+            CActorPoolID c_pool_id = pool_id.native()
+            CPoolStats c_stats
+
+        with nogil:
+            c_stats = CCoreWorkerProcess.GetCoreWorker().GetActorPoolManager(
+                ).GetPoolStats(c_pool_id)
+
+        return {
+            "total_tasks_submitted": c_stats.total_tasks_submitted,
+            "total_tasks_failed": c_stats.total_tasks_failed,
+            "total_tasks_retried": c_stats.total_tasks_retried,
+            "num_actors": c_stats.num_actors,
+            "backlog_size": c_stats.backlog_size,
+            "total_in_flight": c_stats.total_in_flight,
+        }
+
+    def has_pool(self, ActorPoolID pool_id):
+        """Check if a pool exists.
+
+        Args:
+            pool_id: The ID of the pool.
+
+        Returns:
+            True if the pool exists, False otherwise.
+        """
+        cdef:
+            CActorPoolID c_pool_id = pool_id.native()
+            c_bool exists
+
+        with nogil:
+            exists = CCoreWorkerProcess.GetCoreWorker().GetActorPoolManager(
+                ).HasPool(c_pool_id)
+
+        return exists
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,
