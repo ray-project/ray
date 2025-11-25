@@ -213,7 +213,7 @@ class ProgressBar(AbstractProgressBar):
                 logger.info(f"=== Ray Data Progress {{{operation_name}}} ===")
                 self._logged_once = True
             logger.info(
-                f"{clean_desc}: Progress {self._progress} / {self._total or '?'}"
+                f"{clean_desc}: Progress Completed {self._progress} / {self._total or '?'}"
             )
             self._last_logged_time = current_time
 
