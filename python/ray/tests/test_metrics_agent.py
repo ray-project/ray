@@ -75,7 +75,7 @@ _METRICS = [
     "ray_object_directory_added_locations",
     "ray_object_directory_removed_locations",
     "ray_internal_num_processes_started",
-    "ray_internal_num_spilled_tasks",
+    "ray_internal_num_spilled_tasks_total",
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
     "ray_grpc_server_req_process_time_ms_sum",

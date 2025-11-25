@@ -28,7 +28,7 @@ TEST(NodeInfoAccessorTest, TestHandleNotification) {
 
   NodeInfoAccessor accessor;
   int num_notifications = 0;
-  accessor.node_change_callback_ = [&](NodeID, const rpc::GcsNodeInfo &) {
+  accessor.node_change_callback_ = [&](NodeID, const rpc::GcsNodeInfo &, const bool) {
     num_notifications++;
   };
   NodeID node_id = NodeID::FromRandom();

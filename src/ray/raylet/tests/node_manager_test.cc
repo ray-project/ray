@@ -598,15 +598,17 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
           });
 
   // Save the publish_node_change_callback for publishing a node failure event later.
-  std::function<void(const NodeID &id, rpc::GcsNodeAddressAndLiveness &&node_info)>
+  std::function<void(
+      const NodeID &id, rpc::GcsNodeAddressAndLiveness &&node_info, const bool)>
       publish_node_change_callback;
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
               AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
-      .WillOnce([&](const gcs::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
-                        &subscribe,
-                    const gcs::StatusCallback &done) {
-        publish_node_change_callback = subscribe;
-      });
+      .WillOnce(
+          [&](const std::function<void(
+                  NodeID, const rpc::GcsNodeAddressAndLiveness &, const bool)> &subscribe,
+              const gcs::StatusCallback &done) {
+            publish_node_change_callback = subscribe;
+          });
   node_manager_->RegisterGcs();
 
   // Preparing a detached actor creation task spec for the later RequestWorkerLease rpc.
@@ -641,7 +643,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   // The leased worker should not be killed by this because it is a detached actor.
   rpc::GcsNodeAddressAndLiveness node_info;
   node_info.set_state(GcsNodeInfo::DEAD);
-  publish_node_change_callback(owner_node_id, std::move(node_info));
+  publish_node_change_callback(owner_node_id, std::move(node_info), false);
   // The worker should still be alive because it should not be killed by
   // publish_node_change_callback.
   EXPECT_FALSE(worker->IsKilled());
@@ -1326,15 +1328,16 @@ TEST_P(NodeManagerDeathTest, TestGcsPublishesSelfDead) {
   //    started
   const bool shutting_down_during_death_publish = GetParam();
 
-  gcs::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
+  std::function<void(const NodeID &, rpc::GcsNodeAddressAndLiveness &&, const bool)>
       publish_node_change_callback;
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
               AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
-      .WillOnce([&](const gcs::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
-                        &subscribe,
-                    const gcs::StatusCallback &done) {
-        publish_node_change_callback = subscribe;
-      });
+      .WillOnce(
+          [&](const std::function<void(
+                  NodeID, const rpc::GcsNodeAddressAndLiveness &, const bool)> &subscribe,
+              const gcs::StatusCallback &done) {
+            publish_node_change_callback = subscribe;
+          });
   node_manager_->RegisterGcs();
 
   shutting_down_ = shutting_down_during_death_publish;
@@ -1344,10 +1347,11 @@ TEST_P(NodeManagerDeathTest, TestGcsPublishesSelfDead) {
   dead_node_info.set_state(rpc::GcsNodeInfo::DEAD);
 
   if (shutting_down_during_death_publish) {
-    publish_node_change_callback(raylet_node_id_, std::move(dead_node_info));
+    publish_node_change_callback(raylet_node_id_, std::move(dead_node_info), false);
   } else {
-    ASSERT_DEATH(publish_node_change_callback(raylet_node_id_, std::move(dead_node_info)),
-                 ".*Exiting because this node manager has.*");
+    ASSERT_DEATH(
+        publish_node_change_callback(raylet_node_id_, std::move(dead_node_info), false),
+        ".*Exiting because this node manager has.*");
   }
 }
 

@@ -338,7 +338,9 @@ void NodeInfoAccessor::AsyncSubscribeToNodeChange(
 }
 
 void NodeInfoAccessor::AsyncSubscribeToNodeAddressAndLivenessChange(
-    std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
+    std::function<void(NodeID,
+                       const rpc::GcsNodeAddressAndLiveness &,
+                       const bool is_initializing)> subscribe,
     StatusCallback done) {
   /**
   1. Subscribe to node info
@@ -366,7 +368,7 @@ void NodeInfoAccessor::AsyncSubscribeToNodeAddressAndLivenessChange(
                 const Status &status,
                 std::vector<rpc::GcsNodeAddressAndLiveness> &&node_info_list) {
               for (auto &node_info : node_info_list) {
-                HandleNotification(std::move(node_info));
+                HandleNotification(std::move(node_info), true);
               }
               if (done_callback) {
                 done_callback(status);
@@ -512,7 +514,8 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
   }
 }
 
-void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info) {
+void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info,
+                                          const bool is_initializing) {
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == rpc::GcsNodeInfo::ALIVE);
   auto entry = node_cache_address_and_liveness_.find(node_id);
@@ -553,8 +556,8 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_
 
   // If the notification is new, call registered callback.
   if (is_notif_new && node_change_callback_address_and_liveness_ != nullptr) {
-    node_change_callback_address_and_liveness_(node_id,
-                                               node_cache_address_and_liveness_[node_id]);
+    node_change_callback_address_and_liveness_(
+        node_id, node_cache_address_and_liveness_[node_id], is_initializing);
   }
 }
 
