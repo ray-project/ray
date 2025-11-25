@@ -80,6 +80,11 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
                int64_t timeout_ms,
                const std::vector<NodeID> &node_ids),
               (override));
+  MOCK_METHOD(void,
+              AsyncSubscribeToNodeChange,
+              (std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
+               StatusCallback done),
+              (override));
   MOCK_METHOD(
       void,
       AsyncSubscribeToNodeAddressAndLivenessChange,

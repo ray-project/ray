@@ -170,6 +170,16 @@ class NodeInfoAccessor {
       int64_t timeout_ms,
       const std::vector<NodeID> &node_ids = {});
 
+  /// Subscribe to node addition and removal events from GCS and cache those information.
+  ///
+  /// \param subscribe Callback that will be called if a node is
+  /// added or a node is removed. The callback needs to be idempotent because it will also
+  /// be called for existing nodes.
+  /// \param done Callback that will be called when subscription is complete.
+  virtual void AsyncSubscribeToNodeChange(
+      std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
+      StatusCallback done);
+
   /// Get node information from local cache.
   /// Non-thread safe.
   /// Note, the local cache is only available if `AsyncSubscribeToNodeChange`
@@ -267,12 +277,16 @@ class NodeInfoAccessor {
   /// server.
   virtual void AsyncResubscribe();
 
+  /// Add a node to accessor cache.
+  virtual void HandleNotification(rpc::GcsNodeInfo &&node_info);
+
   /// Add rpc::GcsNodeAddressAndLiveness information to accessor cache.
   virtual void HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info,
                                   const bool is_initializing = false);
 
   virtual bool IsSubscribedToNodeChange() const {
-    return node_change_callback_address_and_liveness_ != nullptr;
+    return node_change_callback_ != nullptr ||
+           node_change_callback_address_and_liveness_ != nullptr;
   }
 
  private:
@@ -282,6 +296,9 @@ class NodeInfoAccessor {
   FetchDataOperation fetch_node_address_and_liveness_data_operation_;
 
   GcsClient *client_impl_;
+
+  /// The callback to call when a new node is added or a node is removed.
+  std::function<void(NodeID, const rpc::GcsNodeInfo &)> node_change_callback_ = nullptr;
 
   /// A cache for information about all nodes.
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_cache_;

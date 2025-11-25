@@ -295,6 +295,48 @@ void NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &ca
       timeout_ms);
 }
 
+void NodeInfoAccessor::AsyncSubscribeToNodeChange(
+    std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
+    StatusCallback done) {
+  /**
+  1. Subscribe to node info
+  2. Once the subscription is made, ask for all node info.
+  3. Once all node info is received, call done callback.
+  4. HandleNotification can handle conflicts between the subscription updates and
+     GetAllNodeInfo because nodes can only go from alive to dead, never back to alive.
+     Note that this only works because state is the only mutable field, otherwise we'd
+     have to queue processing subscription updates until the initial population from
+     AsyncGetAll is done.
+  */
+  RAY_CHECK(node_change_callback_address_and_liveness_ == nullptr)
+      << "Subscriber is already subscribed to GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL, "
+         "subscribing to GCS_NODE_INFO_CHANNEL in addition is a waste of resources and "
+         "likely a bug.";
+  RAY_CHECK(node_change_callback_ == nullptr);
+  node_change_callback_ = std::move(subscribe);
+  RAY_CHECK(node_change_callback_ != nullptr);
+
+  fetch_node_data_operation_ = [this](const StatusCallback &done_callback) {
+    AsyncGetAll(
+        [this, done_callback](const Status &status,
+                              std::vector<rpc::GcsNodeInfo> &&node_info_list) {
+          for (auto &node_info : node_info_list) {
+            HandleNotification(std::move(node_info));
+          }
+          if (done_callback) {
+            done_callback(status);
+          }
+        },
+        /*timeout_ms=*/-1);
+  };
+
+  client_impl_->GetGcsSubscriber().SubscribeAllNodeInfo(
+      /*subscribe=*/[this](
+                        rpc::GcsNodeInfo &&data) { HandleNotification(std::move(data)); },
+      /*done=*/[this, done = std::move(done)](
+                   const Status &) { fetch_node_data_operation_(done); });
+}
+
 void NodeInfoAccessor::AsyncSubscribeToNodeAddressAndLivenessChange(
     std::function<void(NodeID,
                        const rpc::GcsNodeAddressAndLiveness &,
@@ -310,6 +352,11 @@ void NodeInfoAccessor::AsyncSubscribeToNodeAddressAndLivenessChange(
      have to queue processing subscription updates until the initial population from
      AsyncGetAll is done.
   */
+  RAY_CHECK(node_change_callback_ == nullptr)
+      << "Subscriber is already subscribed to GCS_NODE_INFO_CHANNEL, "
+         "subscribing to GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL in addition is a waste of "
+         "resources and "
+         "likely a bug.";
   RAY_CHECK(node_change_callback_address_and_liveness_ == nullptr);
   node_change_callback_address_and_liveness_ = std::move(subscribe);
   RAY_CHECK(node_change_callback_address_and_liveness_ != nullptr);
@@ -405,9 +452,66 @@ Status NodeInfoAccessor::CheckAlive(const std::vector<NodeID> &node_ids,
 }
 
 bool NodeInfoAccessor::IsNodeDead(const NodeID &node_id) const {
-  auto node_iter = node_cache_address_and_liveness_.find(node_id);
-  return node_iter != node_cache_address_and_liveness_.end() &&
-         node_iter->second.state() == rpc::GcsNodeInfo::DEAD;
+  if (node_change_callback_ != nullptr) {
+    auto node_iter = node_cache_.find(node_id);
+    return node_iter != node_cache_.end() &&
+           node_iter->second.state() == rpc::GcsNodeInfo::DEAD;
+  } else {
+    auto node_iter = node_cache_address_and_liveness_.find(node_id);
+    return node_iter != node_cache_address_and_liveness_.end() &&
+           node_iter->second.state() == rpc::GcsNodeInfo::DEAD;
+  }
+}
+
+void NodeInfoAccessor::HandleNotification(rpc::GcsNodeInfo &&node_info) {
+  NodeID node_id = NodeID::FromBinary(node_info.node_id());
+  bool is_alive = (node_info.state() == rpc::GcsNodeInfo::ALIVE);
+  auto entry = node_cache_.find(node_id);
+  bool is_notif_new;
+  if (entry == node_cache_.end()) {
+    // If the entry is not in the cache, then the notification is new.
+    is_notif_new = true;
+  } else {
+    // If the entry is in the cache, then the notification is new if the node
+    // was alive and is now dead or resources have been updated.
+    bool was_alive = (entry->second.state() == rpc::GcsNodeInfo::ALIVE);
+    is_notif_new = was_alive && !is_alive;
+
+    // Once a node with a given ID has been removed, it should never be added
+    // again. If the entry was in the cache and the node was deleted, we should check
+    // that this new notification is not an insertion.
+    // However, when a new node(node-B) registers with GCS, it subscribes to all node
+    // information. It will subscribe to redis and then get all node information from GCS
+    // through RPC. If node-A fails after GCS replies to node-B, GCS will send another
+    // message(node-A is dead) to node-B through redis publish. Because RPC and redis
+    // subscribe are two different sessions, node-B may process node-A dead message first
+    // and then node-A alive message. So we use `RAY_LOG` instead of `RAY_CHECK ` as a
+    // workaround.
+    if (!was_alive && is_alive) {
+      RAY_LOG(INFO) << "Notification for addition of a node that was already removed:"
+                    << node_id;
+      return;
+    }
+  }
+
+  // Add the notification to our cache.
+  RAY_LOG(INFO).WithField(node_id)
+      << "Received notification for node, IsAlive = " << is_alive;
+
+  auto &node = node_cache_[node_id];
+  if (is_alive) {
+    node = std::move(node_info);
+  } else {
+    node.set_node_id(node_info.node_id());
+    node.set_state(rpc::GcsNodeInfo::DEAD);
+    node.mutable_death_info()->CopyFrom(node_info.death_info());
+    node.set_end_time_ms(node_info.end_time_ms());
+  }
+
+  // If the notification is new, call registered callback.
+  if (is_notif_new && node_change_callback_ != nullptr) {
+    node_change_callback_(node_id, node_cache_[node_id]);
+  }
 }
 
 void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info,
@@ -459,6 +563,17 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_
 
 void NodeInfoAccessor::AsyncResubscribe() {
   RAY_LOG(DEBUG) << "Reestablishing subscription for node info.";
+  if (node_change_callback_ != nullptr) {
+    client_impl_->GetGcsSubscriber().SubscribeAllNodeInfo(
+        /*subscribe=*/[this](rpc::GcsNodeInfo
+                                 &&data) { HandleNotification(std::move(data)); },
+        /*done=*/
+        [this](const Status &) {
+          fetch_node_data_operation_([](const Status &) {
+            RAY_LOG(INFO) << "Finished fetching all node information for resubscription.";
+          });
+        });
+  }
   if (node_change_callback_address_and_liveness_ != nullptr) {
     client_impl_->GetGcsSubscriber().SubscribeAllNodeAddressAndLiveness(
         /*subscribe=*/[this](rpc::GcsNodeAddressAndLiveness
