@@ -180,6 +180,22 @@ format from your function, but ``batch_format`` should match the input of your f
                 ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
                 .map_batches(drop_nas, batch_format="pandas")
             )
+    .. tab-item:: pyarrow
+
+        .. testcode::
+
+            import pyarrow as pa
+            import pyarrow.compute as pc
+            import ray
+
+            def drop_nas(batch: pa.Table) -> pa.Table:
+                return pc.drop_null(batch)
+
+            ds = (
+                ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+                .map_batches(drop_nas, batch_format="pyarrow")
+            )
+
 
 The user defined function you pass to :meth:`~ray.data.Dataset.map_batches` is more flexible. Because you can represent batches
 in multiple ways (see :ref:`Configuring batch format <configure_batch_format>`), the function should be of type
