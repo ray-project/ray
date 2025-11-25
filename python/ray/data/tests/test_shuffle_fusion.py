@@ -55,16 +55,6 @@ class TestShuffleFusion:
         ids=["4_to_8", "10_to_5"],
     )
     @pytest.mark.parametrize(
-        "random_permute1,random_permute2,expected_random_permute",
-        [
-            (False, False, False),
-            (True, False, True),
-            (False, True, True),
-            (True, True, True),
-        ],
-        ids=["false_false", "true_false", "false_true", "true_true"],
-    )
-    @pytest.mark.parametrize(
         "sort1,sort2,expected_sort",
         [
             (False, False, False),
@@ -84,9 +74,6 @@ class TestShuffleFusion:
         expected_full_shuffle,
         num_outputs1,
         num_outputs2,
-        random_permute1,
-        random_permute2,
-        expected_random_permute,
         sort1,
         sort2,
         expected_sort,
@@ -99,7 +86,6 @@ class TestShuffleFusion:
             input_op=input_op,
             num_outputs=num_outputs1,
             full_shuffle=full_shuffle1,
-            random_permute=random_permute1,
             keys=keys1,
             sort=sort1,
         )
@@ -109,7 +95,6 @@ class TestShuffleFusion:
             input_op=repartition1,
             num_outputs=num_outputs2,
             full_shuffle=full_shuffle2,
-            random_permute=random_permute2,
             keys=keys2,
             sort=sort2,
         )
@@ -131,9 +116,6 @@ class TestShuffleFusion:
         assert (
             dag._full_shuffle == expected_full_shuffle
         ), f"Expected full_shuffle={expected_full_shuffle}, got {dag._full_shuffle}"
-        assert (
-            dag._random_permute == expected_random_permute
-        ), f"Expected random_permute={expected_random_permute}, got {dag._random_permute}"
         assert (
             dag._keys == expected_keys
         ), f"Expected keys={expected_keys}, got {dag._keys}"

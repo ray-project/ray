@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -82,14 +82,12 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
         self,
         input_op: LogicalOperator,
         name: str = "RandomShuffle",
-        num_outputs: Optional[int] = None,
         seed: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
             name,
             input_op,
-            num_outputs=num_outputs,
             sub_progress_bar_names=[
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
@@ -126,8 +124,7 @@ class Repartition(
         input_op: LogicalOperator,
         num_outputs: int,
         full_shuffle: bool,
-        name: str = "Repartition",
-        random_permute: bool = False,
+        name: Literal[str] = "Repartition",
         keys: Optional[List[str]] = None,
         sort: bool = False,
     ):
@@ -148,8 +145,6 @@ class Repartition(
         )
         # If True, performs all-to-all shuffling.
         self._full_shuffle = full_shuffle
-        # If True, will randomly permute the order of blocks and rows within blocks.
-        self._random_permute = random_permute
         self._keys = keys
         self._sort = sort
 
@@ -177,7 +172,7 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
         self,
         input_op: LogicalOperator,
         sort_key: SortKey,
-        name: str = "Sort",
+        name: Literal[str] = "Sort",
         batch_format: Optional[str] = "default",
     ):
         super().__init__(
@@ -217,7 +212,7 @@ class Aggregate(AbstractAllToAll):
         input_op: LogicalOperator,
         key: Optional[Union[str, List[str]]],
         aggs: List[AggregateFn],
-        name: str = "Aggregate",
+        name: Literal[str] = "Aggregate",
         num_partitions: Optional[int] = None,
         batch_format: Optional[str] = "default",
     ):
