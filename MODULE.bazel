@@ -1,0 +1,11 @@
+module(
+    name = "io_ray",
+    repo_name = "io_ray",
+    version = "0.1",
+)
+
+bazel_dep(name = "protobuf", version = "23.1")
+single_version_override(
+    module_name = "protobuf",
+    version = "23.1",
+)

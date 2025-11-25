@@ -10,7 +10,7 @@ import yaml
 
 from ci.pipeline.determine_tests_to_run import TagRule, TagRuleSet
 
-_REPO_NAME = "io_ray"
+_REPO_NAME = "_main"
 _runfiles = runfiles.Create()
 
 
@@ -107,7 +107,10 @@ def test_conditional_testing_pull_request():
             tags.update(value.split())
         test_cases.append(FileToTags(file=file, tags=set(tags)))
 
-    with tempfile.TemporaryDirectory() as origin, tempfile.TemporaryDirectory() as workdir:
+    with (
+        tempfile.TemporaryDirectory() as origin,
+        tempfile.TemporaryDirectory() as workdir,
+    ):
         subprocess.check_call(["git", "init", "--bare"], cwd=origin)
         subprocess.check_call(["git", "init"], cwd=workdir)
         subprocess.check_call(

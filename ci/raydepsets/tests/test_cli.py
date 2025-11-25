@@ -33,7 +33,7 @@ from ci.raydepsets.workspace import (
     Depset,
 )
 
-_REPO_NAME = "io_ray"
+_REPO_NAME = "_main"
 _runfiles = runfiles.Create()
 
 
