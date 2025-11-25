@@ -2,7 +2,7 @@ import io
 import logging
 import re
 import time
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -27,9 +27,7 @@ from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.interfaces.physical_operator import (
-        PhysicalOperator,
-    )
+    pass
 
 
 class TestHangingExecutionIssueDetector:
