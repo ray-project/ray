@@ -364,7 +364,7 @@ class TrainController:
             return None
         except Exception as e:
             self._worker_group = None
-            return WorkerGroupError(e)
+            return WorkerGroupError(error_message=str(e), worker_failures={})
 
     def get_worker_group(self) -> Optional[WorkerGroup]:
         return self._worker_group
