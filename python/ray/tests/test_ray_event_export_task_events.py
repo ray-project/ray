@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import textwrap
 from typing import Optional
 
 import grpc
@@ -247,15 +248,17 @@ class TestNormalTaskEvents:
         httpserver,
         preserve_proto_field_name,
     ):
-        script = """
-import ray
-ray.init()
+        script = textwrap.dedent(
+            """
+            import ray
+            ray.init()
 
-@ray.remote
-def normal_task():
-    pass
-ray.get(normal_task.remote())
-    """
+            @ray.remote
+            def normal_task():
+                pass
+            ray.get(normal_task.remote())
+            """
+        )
 
         def validate_events(events, head_node_id):
             (
@@ -431,19 +434,21 @@ ray.get(normal_task.remote())
         httpserver,
         preserve_proto_field_name,
     ):
-        script = """
-import ray
+        script = textwrap.dedent(
+            """
+            import ray
 
-ray.init()
+            ray.init()
 
-@ray.remote(max_retries=1, retry_exceptions=[Exception])
-def normal_task():
-    raise Exception("test error")
-try:
-    ray.get(normal_task.remote())
-except Exception as e:
-    pass
-        """
+            @ray.remote(max_retries=1, retry_exceptions=[Exception])
+            def normal_task():
+                raise Exception("test error")
+            try:
+                ray.get(normal_task.remote())
+            except Exception as e:
+                pass
+            """
+        )
 
         def validate_events(events: json, head_node_id):
             (
@@ -656,21 +661,24 @@ except Exception as e:
         cluster = ray_start_cluster_head_with_env_vars
         node = cluster.add_node(num_cpus=2)
 
-        script = """
-import ray
-ray.init()
+        script = textwrap.dedent(
+            """
+            import ray
+            ray.init()
 
-@ray.remote(num_cpus=2, max_retries=0)
-def sleep():
-    import time
-    time.sleep(999)
+            @ray.remote(num_cpus=2, max_retries=0)
+            def sleep():
+                import time
+                time.sleep(999)
 
-x = sleep.options(name="node-killed").remote()
-try:
-    ray.get(x)
-except Exception as e:
-    pass
-        """
+            x = sleep.options(name="node-killed").remote()
+            try:
+                ray.get(x)
+            except Exception as e:
+                pass
+            """
+        )
+
         # Run the driver script and wait for the sleep task to be executing
         def validate_task_running(events: json, head_node_id):
             # Obtain the task id of the sleep task
@@ -914,22 +922,24 @@ class TestActorTaskEvents:
         httpserver,
         preserve_proto_field_name,
     ):
-        script = """
-import ray
-ray.init()
+        script = textwrap.dedent(
+            """
+            import ray
+            ray.init()
 
-@ray.remote(num_cpus=1)
-class Actor:
-    def __init__(self):
-        pass
+            @ray.remote(num_cpus=1)
+            class Actor:
+                def __init__(self):
+                    pass
 
-    def task(self, arg):
-        pass
+                def task(self, arg):
+                    pass
 
-actor = Actor.remote()
-obj = ray.put("test")
-ray.get(actor.task.remote(obj))
-        """
+            actor = Actor.remote()
+            obj = ray.put("test")
+            ray.get(actor.task.remote(obj))
+            """
+        )
 
         def validate_events(events: json, head_node_id):
             (
@@ -1217,25 +1227,27 @@ ray.get(actor.task.remote(obj))
         httpserver,
         preserve_proto_field_name,
     ):
-        script = """
-import ray
-import ray.util.state
-from ray._common.test_utils import wait_for_condition
-import time
+        script = textwrap.dedent(
+            """
+            import ray
+            import ray.util.state
+            from ray._common.test_utils import wait_for_condition
+            import time
 
-@ray.remote(num_cpus=1)
-class Actor:
-    def __init__(self):
-        time.sleep(1)
-        raise Exception("actor creation error")
+            @ray.remote(num_cpus=1)
+            class Actor:
+                def __init__(self):
+                    time.sleep(1)
+                    raise Exception("actor creation error")
 
-    def task(self):
-        pass
+                def task(self):
+                    pass
 
-actor = Actor.remote()
-wait_for_condition(lambda: ray.util.state.list_actors(filters=[("class_name", "=", "Actor")])[0]["state"] == "DEAD")
-ray.get(actor.task.options().remote())
-        """
+            actor = Actor.remote()
+            wait_for_condition(lambda: ray.util.state.list_actors(filters=[("class_name", "=", "Actor")])[0]["state"] == "DEAD")
+            ray.get(actor.task.options().remote())
+            """
+        )
 
         def validate_events(events: json, head_node_id):
             (
@@ -1535,21 +1547,23 @@ ray.get(actor.task.options().remote())
         httpserver,
         preserve_proto_field_name,
     ):
-        script = """
-import ray
-ray.init()
+        script = textwrap.dedent(
+            """
+            import ray
+            ray.init()
 
-@ray.remote(num_cpus=2)
-class Actor:
-    def __init__(self):
-        pass
+            @ray.remote(num_cpus=2)
+            class Actor:
+                def __init__(self):
+                    pass
 
-    def task(self):
-        pass
+                def task(self):
+                    pass
 
-actor = Actor.remote()
-ray.kill(actor)
-        """
+            actor = Actor.remote()
+            ray.kill(actor)
+            """
+        )
 
         def validate_events(events: json, head_node_id):
             (
@@ -1740,22 +1754,24 @@ ray.kill(actor)
         httpserver,
         preserve_proto_field_name,
     ):
-        script = """
-import ray
-import time
-ray.init()
+        script = textwrap.dedent(
+            """
+            import ray
+            import time
+            ray.init()
 
-@ray.remote(num_cpus=2, max_restarts=-1, max_task_retries=-1)
-class Actor:
-    def __init__(self):
-        pass
+            @ray.remote(num_cpus=2, max_restarts=-1, max_task_retries=-1)
+            class Actor:
+                def __init__(self):
+                    pass
 
-    def actor_task(self):
-        pass
+                def actor_task(self):
+                    pass
 
-actor = Actor.remote()
-time.sleep(999) # Keep the actor alive
-        """
+            actor = Actor.remote()
+            time.sleep(999) # Keep the actor alive
+            """
+        )
 
         actor_creation_task_id = None
 
@@ -1943,7 +1959,6 @@ time.sleep(999) # Keep the actor alive
         # Add a node to the cluster and wait for it to be registered
         cluster = ray_start_cluster_head_with_env_vars
         node = cluster.add_node(num_cpus=2)
-        cluster.wait_for_nodes()
 
         # Run the driver script for the actor to be created and actor task to be executed
         run_driver_script_and_wait_for_events(
@@ -1955,7 +1970,6 @@ time.sleep(999) # Keep the actor alive
 
         # Add a second node to the cluster for the actor to be restarted on
         cluster.add_node(num_cpus=2)
-        cluster.wait_for_nodes()
 
         # Kill the first node
         cluster.remove_node(node)
