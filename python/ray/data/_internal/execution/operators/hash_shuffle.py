@@ -1585,7 +1585,7 @@ class HashShuffleAggregator:
         # Also check _preserve_hash_shuffle_finalize_blocks config.
         if (
             target_max_block_size is not None
-            or not self._data_context._preserve_hash_shuffle_finalize_blocks
+            and not self._data_context._preserve_hash_shuffle_finalize_blocks
         ):
             # Creating a block output buffer per partition finalize task because
             # retrying finalize tasks cause stateful output_bufer to be
