@@ -80,7 +80,8 @@ class DashboardAgent:
         node_info = self.gcs_client.get_all_node_info().get(
             NodeID.from_hex(self.node_id)
         )
-        self.is_head = node_info is not None and node_info.is_head_node
+        assert node_info is not None
+        self.is_head = node_info.is_head_node
 
         if not self.minimal:
             self._init_non_minimal()
