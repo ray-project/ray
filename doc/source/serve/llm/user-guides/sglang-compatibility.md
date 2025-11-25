@@ -23,7 +23,7 @@ Server
 ```python
 from ray import serve
 from ray.serve.llm import LLMConfig
-from ray.llm._internal.serve.core.ingress.builder import build_sglang_openai_app
+from ray.llm.examples.sglang.ingress_builder import build_sglang_openai_app
 
 llm_config = LLMConfig(
     model_loading_config={
@@ -36,7 +36,6 @@ llm_config = LLMConfig(
             "max_replicas": 2,
         }
     },
-    llm_engine = 'SGLang',
     # Pass the desired accelerator type (e.g. A10G, L4, etc.)
     accelerator_type="H100",
     # for ROCm device ex: MI300X uses: "AMD-Instinct-MI300X-OAM",

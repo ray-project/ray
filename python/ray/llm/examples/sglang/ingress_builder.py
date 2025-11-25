@@ -13,9 +13,8 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
-from ray.llm._internal.serve.core.server.builder import (
-    build_llm_deployment,
-    build_sglang_deployment,
+from ray.llm.examples.sglang.server_builder import (
+    build_sglang_deployment
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve.deployment import Application
@@ -102,7 +101,7 @@ class LLMServingArgs(BaseModelExtended):
         return self
 
 
-def build_openai_app(builder_config: dict) -> Application:
+def build_sglang_openai_app(builder_config: dict) -> Application:
     """Build an OpenAI compatible app with the llm deployment setup from
     the given builder configuration.
 
@@ -117,7 +116,7 @@ def build_openai_app(builder_config: dict) -> Application:
     builder_config = LLMServingArgs.model_validate(builder_config)
     llm_configs = builder_config.llm_configs
 
-    llm_deployments = [build_llm_deployment(c) for c in llm_configs]
+    llm_deployments = [build_sglang_deployment(c) for c in llm_configs]
 
     ingress_cls_config = builder_config.ingress_cls_config
     ingress_options = ingress_cls_config.ingress_cls.get_deployment_options(llm_configs)
@@ -135,3 +134,4 @@ def build_openai_app(builder_config: dict) -> Application:
     return serve.deployment(ingress_cls, **ingress_options).bind(
         llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs
     )
+   
