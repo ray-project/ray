@@ -394,6 +394,13 @@ bool NodeInfoAccessor::IsNodeDead(const NodeID &node_id) const {
          node_iter->second.state() == rpc::GcsNodeInfo::DEAD;
 }
 
+bool NodeInfoAccessor::IsNodeAlive(const NodeID &node_id) const {
+  absl::MutexLock lock(&node_cache_address_and_liveness_mutex_);
+  auto node_iter = node_cache_address_and_liveness_.find(node_id);
+  return node_iter != node_cache_address_and_liveness_.end() &&
+         node_iter->second.state() == rpc::GcsNodeInfo::ALIVE;
+}
+
 void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info) {
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == rpc::GcsNodeInfo::ALIVE);

@@ -101,6 +101,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
                std::vector<bool> &nodes_alive),
               (override));
   MOCK_METHOD(bool, IsNodeDead, (const NodeID &node_id), (const, override));
+  MOCK_METHOD(bool, IsNodeAlive, (const NodeID &node_id), (const, override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
 };
 

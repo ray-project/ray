@@ -79,7 +79,7 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   void SetUp() {
     gcs_client_ = std::make_unique<gcs::MockGcsClient>();
     is_node_available_fn_ = [this](scheduling::NodeID node_id) {
-      return !gcs_client_->Nodes().IsNodeDead(NodeID::FromBinary(node_id.Binary()));
+      return gcs_client_->Nodes().IsNodeAlive(NodeID::FromBinary(node_id.Binary()));
     };
     EXPECT_CALL(*gcs_client_->mock_node_accessor,
                 GetNodeAddressAndLiveness(::testing::_, ::testing::_))

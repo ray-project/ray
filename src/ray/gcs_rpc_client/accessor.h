@@ -243,10 +243,16 @@ class NodeInfoAccessor {
   /// 2. The node is alive and we have that information in the cache.
   /// 3. The GCS has evicted the node from its dead node cache based on
   ///    maximum_gcs_dead_node_cached_count
+  /// Hence we only return true if we're confident that the node is dead.
   /// Thread-safe.
   /// Note, the local cache is only available if
   /// `AsyncSubscribeToNodeAddressAndLivenessChange` is called before.
   virtual bool IsNodeDead(const NodeID &node_id) const;
+
+  /// NOTE: This is NOT equivalent to !IsNodeDead(node_id) due to the gray area mentioned
+  /// in the comment above. Thus we only return true if we're confident that the node is
+  /// alive.
+  virtual bool IsNodeAlive(const NodeID &node_id) const;
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
