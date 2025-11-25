@@ -2766,7 +2766,7 @@ opentelemetry-exporter-prometheus==0.59b0 \
     --hash=sha256:71ced23207abd15b30d1fe4e7e910dcaa7c2ff1f24a6ffccbd4fdded676f541b \
     --hash=sha256:d64f23c49abb5a54e271c2fbc8feacea0c394a30ec29876ab5ef7379f08cf3d7
     # via ray
-opentelemetry-proto==1.38.0 \
+opentelemetry-proto==1.38.0 ; python_full_version < '3.13' \
     --hash=sha256:88b161e89d9d372ce723da289b7da74c3a8354a8e5359992be813942969ed468 \
     --hash=sha256:b6ebe54d3217c42e45462e2a1ae28c3e2bf2ec5a5645236a490f55f45f1a0a18
     # via ray
