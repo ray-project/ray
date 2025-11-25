@@ -53,7 +53,7 @@ class TestHangingExecutionIssueDetector:
         ctx.issue_detectors_config.hanging_detector_config = custom_config
 
         detector = HangingExecutionIssueDetector(
-            dataset_id="id", get_operators_fn=lambda: [], config=custom_config
+            dataset_id="id", operators=[], config=custom_config
         )
         assert detector._op_task_stats_min_count == min_count
         assert detector._op_task_stats_std_factor_threshold == std_factor
@@ -169,12 +169,11 @@ def test_high_memory_detection(
     map_operator._metrics = MagicMock(average_max_uss_per_task=actual_memory)
     topology = {input_data_buffer: MagicMock(), map_operator: MagicMock()}
 
-    def get_operators_fn() -> List["PhysicalOperator"]:
-        return list(topology.keys())
+    operators = list(topology.keys())
 
     detector = HighMemoryIssueDetector(
         dataset_id="id",
-        get_operators_fn=get_operators_fn,
+        operators=operators,
         config=ctx.issue_detectors_config.high_memory_detector_config,
     )
     issues = detector.detect()

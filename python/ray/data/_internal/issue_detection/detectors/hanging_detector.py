@@ -1,7 +1,7 @@
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable, Dict, List, Set
+from typing import TYPE_CHECKING, Dict, List, Set
 
 from ray.data._internal.issue_detection.issue_detector import (
     Issue,
@@ -45,11 +45,11 @@ class HangingExecutionIssueDetector(IssueDetector):
     def __init__(
         self,
         dataset_id: str,
-        get_operators_fn: Callable[[], List["PhysicalOperator"]],
-        config: "HangingExecutionIssueDetectorConfig",
+        operators: List["PhysicalOperator"],
+        config: HangingExecutionIssueDetectorConfig,
     ):
         self._dataset_id = dataset_id
-        self._get_operators = get_operators_fn
+        self._operators = operators
         self._detector_cfg = config
 
         self._op_task_stats_min_count = self._detector_cfg.op_task_stats_min_count
@@ -77,16 +77,11 @@ class HangingExecutionIssueDetector(IssueDetector):
         Returns:
             An instance of HangingExecutionIssueDetector.
         """
-
-        def get_operators_fn() -> List["PhysicalOperator"]:
-            if not executor._topology:
-                return []
-            return list(executor._topology.keys())
-
+        operators = list(executor._topology.keys()) if executor._topology else []
         ctx = executor._data_context
         return cls(
             dataset_id=executor._dataset_id,
-            get_operators_fn=get_operators_fn,
+            operators=operators,
             config=ctx.issue_detectors_config.hanging_detector_config,
         )
 
@@ -122,7 +117,7 @@ class HangingExecutionIssueDetector(IssueDetector):
 
     def detect(self) -> List[Issue]:
         op_task_stats_map: Dict[str, "TaskDurationStats"] = {}
-        for operator in self._get_operators():
+        for operator in self._operators:
             op_metrics = operator.metrics
             op_task_stats_map[operator.id] = op_metrics._op_task_duration_stats
             self._op_id_to_name[operator.id] = operator.name

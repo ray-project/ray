@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, List
+from typing import TYPE_CHECKING, List
 
 import ray
 from ray.data._internal.execution.operators.hash_shuffle import (
@@ -35,11 +35,11 @@ class HashShuffleAggregatorIssueDetector(IssueDetector):
     def __init__(
         self,
         dataset_id: str,
-        get_operators_fn: Callable[[], List["PhysicalOperator"]],
-        config: "HashShuffleAggregatorIssueDetectorConfig",
+        operators: List["PhysicalOperator"],
+        config: HashShuffleAggregatorIssueDetectorConfig,
     ):
         self._dataset_id = dataset_id
-        self._get_operators = get_operators_fn
+        self._operators = operators
         self._detector_cfg = config
         self._last_warning_times = {}  # Track per-operator warning times
 
@@ -55,16 +55,11 @@ class HashShuffleAggregatorIssueDetector(IssueDetector):
         Returns:
             An instance of HashShuffleAggregatorIssueDetector.
         """
-
-        def get_operators_fn() -> List["PhysicalOperator"]:
-            if not executor._topology:
-                return []
-            return list(executor._topology.keys())
-
+        operators = list(executor._topology.keys()) if executor._topology else []
         ctx = executor._data_context
         return cls(
             dataset_id=executor._dataset_id,
-            get_operators_fn=get_operators_fn,
+            operators=operators,
             config=ctx.issue_detectors_config.hash_shuffle_detector_config,
         )
 
@@ -73,7 +68,7 @@ class HashShuffleAggregatorIssueDetector(IssueDetector):
         current_time = time.time()
 
         # Find all hash shuffle operators in the topology
-        for op in self._get_operators():
+        for op in self._operators:
             if not isinstance(op, HashShuffleOperator):
                 continue
 

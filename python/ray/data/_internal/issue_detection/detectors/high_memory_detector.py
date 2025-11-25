@@ -1,6 +1,6 @@
 import textwrap
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Dict, List
+from typing import TYPE_CHECKING, Dict, List
 
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import memory_string
@@ -44,15 +44,15 @@ class HighMemoryIssueDetector(IssueDetector):
     def __init__(
         self,
         dataset_id: str,
-        get_operators_fn: Callable[[], List["PhysicalOperator"]],
-        config: "HighMemoryIssueDetectorConfig",
+        operators: List["PhysicalOperator"],
+        config: HighMemoryIssueDetectorConfig,
     ):
         self._dataset_id = dataset_id
         self._detector_cfg = config
-        self._get_operators = get_operators_fn
+        self._operators = operators
 
         self._initial_memory_requests: Dict[MapOperator, int] = {}
-        for op in get_operators_fn():
+        for op in operators:
             if isinstance(op, MapOperator):
                 self._initial_memory_requests[op] = (
                     op._get_dynamic_ray_remote_args().get("memory") or 0
@@ -68,33 +68,22 @@ class HighMemoryIssueDetector(IssueDetector):
         Returns:
             An instance of HighMemoryIssueDetector.
         """
-
-        def get_operators_fn() -> List["PhysicalOperator"]:
-            if not executor._topology:
-                return []
-            return list(executor._topology.keys())
-
+        operators = list(executor._topology.keys()) if executor._topology else []
         ctx = executor._data_context
         return cls(
             dataset_id=executor._dataset_id,
-            get_operators_fn=get_operators_fn,
+            operators=operators,
             config=ctx.issue_detectors_config.high_memory_detector_config,
         )
 
     def detect(self) -> List[Issue]:
         issues = []
-        for op in self._get_operators():
+        for op in self._operators:
             if not isinstance(op, MapOperator):
                 continue
 
             if op.metrics.average_max_uss_per_task is None:
                 continue
-
-            # Track if new operators are added after initialization
-            if op not in self._initial_memory_requests:
-                self._initial_memory_requests[op] = (
-                    op._get_dynamic_ray_remote_args().get("memory") or 0
-                )
 
             remote_args = op._get_dynamic_ray_remote_args()
             num_cpus_per_task = remote_args.get("num_cpus", 1)
