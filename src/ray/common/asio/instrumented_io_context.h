@@ -19,8 +19,6 @@
 #include <string>
 
 #include "ray/common/event_stats.h"
-#include "ray/common/ray_config.h"
-#include "ray/util/logging.h"
 
 /// A proxy for boost::asio::io_context that collects statistics about posted handlers.
 class instrumented_io_context : public boost::asio::io_context {

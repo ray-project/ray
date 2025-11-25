@@ -18,9 +18,10 @@ ray_cc_library(
         "ray_syncer_server.h",
     ],
     deps = [
-        "//src/ray/common:asio",
         "//src/ray/common:constants",
         "//src/ray/common:id",
+        "//src/ray/common/asio:instrumented_io_context",
+        "//src/ray/common/asio:periodical_runner",
         "//src/ray/protobuf:ray_syncer_cc_grpc",
         "//src/ray/rpc/authentication:authentication_token",
         "//src/ray/rpc/authentication:authentication_token_loader",

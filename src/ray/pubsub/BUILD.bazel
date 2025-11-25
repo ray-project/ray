@@ -15,7 +15,7 @@ ray_cc_library(
     srcs = ["publisher.cc"],
     hdrs = ["publisher.h"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/common/asio:periodical_runner",
         "//src/ray/protobuf:pubsub_cc_grpc",
         "//src/ray/pubsub:publisher_interface",
         "//src/ray/rpc:rpc_callback_types",
@@ -41,7 +41,7 @@ ray_cc_library(
     srcs = ["subscriber.cc"],
     hdrs = ["subscriber.h"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/common/asio:instrumented_io_context",
         "//src/ray/protobuf:pubsub_cc_grpc",
         "//src/ray/pubsub:subscriber_interface",
         "//src/ray/rpc:rpc_callback_types",
@@ -67,7 +67,7 @@ ray_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":publisher_interface",
-        "//src/ray/common:asio",
+        "//src/ray/common/asio:instrumented_io_context",
     ],
 )
 

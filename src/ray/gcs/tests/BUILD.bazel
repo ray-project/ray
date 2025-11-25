@@ -257,9 +257,9 @@ ray_cc_test(
     ],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:asio",
         "//src/ray/common:runtime_env",
         "//src/ray/common:test_utils",
+        "//src/ray/common/asio:instrumented_io_context",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/gcs:gcs_actor",
         "//src/ray/gcs:gcs_actor_manager",
@@ -349,9 +349,9 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:asio",
         "//src/ray/common:protobuf_utils",
         "//src/ray/common:test_utils",
+        "//src/ray/common/asio:instrumented_io_context",
         "//src/ray/gcs:gcs_autoscaler_state_manager",
         "//src/ray/gcs:gcs_init_data",
         "//src/ray/gcs:gcs_resource_manager",
@@ -388,8 +388,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:asio",
         "//src/ray/common:test_utils",
+        "//src/ray/common/asio:instrumented_io_context",
         "//src/ray/gcs:gcs_usage_stats_client",
         "@com_google_googletest//:gtest_main",
     ],
@@ -425,9 +425,9 @@ ray_cc_test(
     ],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:asio",
         "//src/ray/common:runtime_env",
         "//src/ray/common:test_utils",
+        "//src/ray/common/asio:instrumented_io_context",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/gcs:gcs_actor",

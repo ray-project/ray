@@ -19,6 +19,7 @@
 
 #include "ray/common/asio/asio_chaos.h"
 #include "ray/common/asio/asio_util.h"
+#include "ray/common/ray_config.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_defs.h"
 

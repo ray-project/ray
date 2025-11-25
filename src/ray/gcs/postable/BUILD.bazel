@@ -8,7 +8,7 @@ ray_cc_library(
     visibility = ["//src/ray/gcs:__subpackages__"],
     deps = [
         ":function_traits",
-        "//src/ray/common:asio",
+        "//src/ray/common/asio:instrumented_io_context",
     ],
 )
 
