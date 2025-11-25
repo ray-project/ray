@@ -146,7 +146,7 @@ def test_local_cluster_generates_token():
             f"Files in {default_token_path.parent}: {list(default_token_path.parent.iterdir()) if default_token_path.parent.exists() else 'directory does not exist'}"
         )
         token = default_token_path.read_text().strip()
-        assert len(token) == 32
+        assert len(token) == 64
         assert all(c in "0123456789abcdef" for c in token)
 
         # Verify cluster is working
@@ -190,7 +190,7 @@ def test_cluster_token_authentication(tokens_match, setup_cluster_with_token_aut
     if tokens_match:
         client_token = cluster_token  # Same token - should succeed
     else:
-        client_token = "b" * 32  # Different token - should fail
+        client_token = "b" * 64  # Different token - should fail
 
     set_env_auth_token(client_token)
     reset_auth_token_state()
@@ -263,7 +263,7 @@ def test_ray_start_without_token_raises_error(is_head, request):
 def test_ray_start_head_with_token_succeeds():
     """Test that ray start --head succeeds when token auth is enabled with a valid token."""
     # Set up environment with token auth and a valid token
-    test_token = "a" * 32
+    test_token = "a" * 64
     env = os.environ.copy()
     env["RAY_AUTH_TOKEN"] = test_token
     env["RAY_AUTH_MODE"] = "token"
@@ -326,7 +326,7 @@ def test_ray_start_address_with_token(token_match, setup_cluster_with_token_auth
         env["RAY_AUTH_TOKEN"] = cluster_token
         expect_success = True
     else:
-        env["RAY_AUTH_TOKEN"] = "b" * 32
+        env["RAY_AUTH_TOKEN"] = "b" * 64
         expect_success = False
 
     # Start worker node
@@ -422,10 +422,9 @@ def test_e2e_operations_with_token_auth(setup_cluster_with_token_auth):
 @pytest.mark.parametrize("use_generate", [True, False])
 def test_get_auth_token_cli(use_generate):
     """Test ray get-auth-token CLI command."""
-    test_token = "a" * 32
+    test_token = "a" * 64
 
     with authentication_env_guard():
-        set_auth_mode("token")
         if use_generate:
             # Test --generate flag (no token set)
             clear_auth_token_sources(remove_default=True)
@@ -452,7 +451,7 @@ def test_get_auth_token_cli(use_generate):
 
         # Verify token is printed to stdout
         token = result.stdout.strip()
-        assert len(token) == 32, f"Token should be 32 chars, got {len(token)}"
+        assert len(token) == 64, token
         assert all(c in "0123456789abcdef" for c in token), "Token should be hex"
 
         if not use_generate:
@@ -473,7 +472,6 @@ def test_get_auth_token_cli(use_generate):
 def test_get_auth_token_cli_no_token_no_generate():
     """Test ray get-auth-token fails without token and without --generate."""
     with authentication_env_guard():
-        set_auth_mode("token")
         reset_auth_token_state()
         clear_auth_token_sources(remove_default=True)
         env = os.environ.copy()
@@ -497,10 +495,9 @@ def test_get_auth_token_cli_no_token_no_generate():
 )
 def test_get_auth_token_cli_piping():
     """Test that ray get-auth-token output can be piped."""
-    test_token = "b" * 32
+    test_token = "b" * 64
 
     with authentication_env_guard():
-        set_auth_mode("token")
         set_env_auth_token(test_token)
         reset_auth_token_state()
         env = os.environ.copy()
@@ -516,9 +513,8 @@ def test_get_auth_token_cli_piping():
         )
 
         assert result.returncode == 0
-        # Should be 32 chars (no newline with nl=False)
         char_count = int(result.stdout.strip())
-        assert char_count == 32, f"Expected 32 chars (no newline), got {char_count}"
+        assert char_count == 64, f"Expected 64 chars (no newline), got {char_count}"
 
 
 if __name__ == "__main__":

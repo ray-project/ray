@@ -47,7 +47,8 @@ RayletClient::RayletClient(const rpc::Address &address,
           ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_max_s(),
           /*server_unavailable_timeout_callback=*/
           std::move(raylet_unavailable_timeout_callback),
-          /*server_name=*/std::string("Raylet ") + address.ip_address())) {}
+          /*server_name=*/std::string("Raylet ") + address.ip_address())),
+      pins_in_flight_(std::make_shared<std::atomic<int64_t>>(0)) {}
 
 void RayletClient::RequestWorkerLease(
     const rpc::LeaseSpec &lease_spec,
@@ -335,11 +336,13 @@ void RayletClient::PinObjectIDs(
   if (!generator_id.IsNil()) {
     request.set_generator_id(generator_id.Binary());
   }
-  auto self = shared_from_this();
-  pins_in_flight_++;
-  auto rpc_callback = [self, callback = std::move(callback)](
+
+  // NOTE: this callback can execute after the RayletClient instance is destroyed, so
+  // we capture the shared_ptr to `pins_in_flight_` instead of `this`.
+  pins_in_flight_->fetch_add(1);
+  auto rpc_callback = [callback, pins_in_flight = pins_in_flight_](
                           Status status, rpc::PinObjectIDsReply &&reply) {
-    self->pins_in_flight_--;
+    pins_in_flight->fetch_sub(1);
     callback(status, std::move(reply));
   };
   INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
