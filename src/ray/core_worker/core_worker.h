@@ -1199,6 +1199,25 @@ class CoreWorker {
   /// \return Pool statistics.
   PoolStats GetActorPoolStats(const ActorPoolID &pool_id) const;
 
+ private:
+  /// Submit an actor task on behalf of an actor pool.
+  /// This is used by ActorPoolManager to delegate TaskSpec building to CoreWorker.
+  /// The task is submitted with max_retries=0 because the pool handles retries.
+  ///
+  /// \param actor_id The actor to submit the task to.
+  /// \param function The function to execute.
+  /// \param args The task arguments.
+  /// \param task_options Task options.
+  /// \param on_complete Callback to invoke when the task completes.
+  /// \return Object references for the task's return values.
+  std::vector<rpc::ObjectReference> SubmitActorTaskForPool(
+      const ActorID &actor_id,
+      const RayFunction &function,
+      std::vector<std::unique_ptr<TaskArg>> args,
+      const TaskOptions &task_options,
+      TaskCompletionCallback on_complete);
+
+ public:
   /// Get the expected return ids of the next task.
   std::vector<ObjectID> GetCurrentReturnIds(int num_returns,
                                             const ActorID &callee_actor_id);

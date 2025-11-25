@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,6 +25,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/task_spec.h"
@@ -39,6 +41,28 @@ namespace core {
 class ActorManager;
 class ActorTaskSubmitterInterface;
 class TaskManagerInterface;
+
+/// Callback type for task completion (success or failure).
+/// \param status The status of the task.
+/// \param error_info Error information if the task failed (nullptr on success).
+using TaskCompletionCallback =
+    std::function<void(const Status &status, const rpc::RayErrorInfo *error_info)>;
+
+/// Callback type for submitting an actor task via CoreWorker.
+/// This allows ActorPoolManager to delegate TaskSpec building to CoreWorker.
+///
+/// \param actor_id The actor to submit the task to.
+/// \param function The function to execute.
+/// \param args The task arguments.
+/// \param task_options Task options.
+/// \param on_complete Callback to invoke when the task completes.
+/// \return Object references for the task's return values.
+using SubmitActorTaskCallback = std::function<std::vector<rpc::ObjectReference>(
+    const ActorID &actor_id,
+    const RayFunction &function,
+    std::vector<std::unique_ptr<TaskArg>> args,
+    const TaskOptions &task_options,
+    TaskCompletionCallback on_complete)>;
 
 /// Ordering mode for actor pool work queue.
 enum class PoolOrderingMode {
@@ -141,7 +165,7 @@ struct PoolStats {
 /// This class is thread-safe.
 class ActorPoolManager {
  public:
-  /// Constructor.
+  /// Constructor (minimal, for testing without full CoreWorker integration).
   ///
   /// \param actor_manager Reference to the ActorManager.
   /// \param task_submitter Reference to the ActorTaskSubmitter.
@@ -149,6 +173,19 @@ class ActorPoolManager {
   ActorPoolManager(ActorManager &actor_manager,
                    ActorTaskSubmitterInterface &task_submitter,
                    TaskManagerInterface &task_manager);
+  
+  /// Constructor with full CoreWorker integration.
+  ///
+  /// \param actor_manager Reference to the ActorManager.
+  /// \param task_submitter Reference to the ActorTaskSubmitter.
+  /// \param task_manager Reference to the TaskManager.
+  /// \param io_service Reference to the IO service for delayed retry scheduling.
+  /// \param submit_actor_task_fn Callback to submit actor tasks via CoreWorker.
+  ActorPoolManager(ActorManager &actor_manager,
+                   ActorTaskSubmitterInterface &task_submitter,
+                   TaskManagerInterface &task_manager,
+                   instrumented_io_context &io_service,
+                   SubmitActorTaskCallback submit_actor_task_fn);
   
   ~ActorPoolManager() = default;
   
@@ -312,6 +349,10 @@ class ActorPoolManager {
   void FailWorkItem(const TaskID &work_item_id, const rpc::RayErrorInfo &error_info)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   
+  /// Clone task arguments for retry (since we need to keep a copy).
+  std::vector<std::unique_ptr<TaskArg>> CloneArgs(
+      const std::vector<std::unique_ptr<TaskArg>> &args) const;
+  
   /// Reference to the actor manager.
   ActorManager &actor_manager_;
   
@@ -320,6 +361,14 @@ class ActorPoolManager {
   
   /// Reference to the task manager.
   TaskManagerInterface &task_manager_;
+  
+  /// Reference to the IO service for delayed retry scheduling.
+  /// May be nullptr if using the minimal constructor.
+  instrumented_io_context *io_service_ = nullptr;
+  
+  /// Callback to submit actor tasks via CoreWorker.
+  /// May be nullptr if using the minimal constructor.
+  SubmitActorTaskCallback submit_actor_task_fn_;
   
   /// Mutex protecting all pool state.
   mutable absl::Mutex mu_;

@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <memory>
 
+#include "boost/asio/steady_timer.hpp"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/task_manager_interface.h"
 #include "ray/util/logging.h"
@@ -29,8 +30,23 @@ ActorPoolManager::ActorPoolManager(ActorManager &actor_manager,
                                    TaskManagerInterface &task_manager)
     : actor_manager_(actor_manager),
       task_submitter_(task_submitter),
-      task_manager_(task_manager) {
-  RAY_LOG(INFO) << "ActorPoolManager initialized";
+      task_manager_(task_manager),
+      io_service_(nullptr),
+      submit_actor_task_fn_(nullptr) {
+  RAY_LOG(INFO) << "ActorPoolManager initialized (minimal mode, no callbacks)";
+}
+
+ActorPoolManager::ActorPoolManager(ActorManager &actor_manager,
+                                   ActorTaskSubmitterInterface &task_submitter,
+                                   TaskManagerInterface &task_manager,
+                                   instrumented_io_context &io_service,
+                                   SubmitActorTaskCallback submit_actor_task_fn)
+    : actor_manager_(actor_manager),
+      task_submitter_(task_submitter),
+      task_manager_(task_manager),
+      io_service_(&io_service),
+      submit_actor_task_fn_(std::move(submit_actor_task_fn)) {
+  RAY_LOG(INFO) << "ActorPoolManager initialized (full mode with CoreWorker callbacks)";
 }
 
 ActorPoolID ActorPoolManager::RegisterPool(const ActorPoolConfig &config,
@@ -333,23 +349,53 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
   actor_state.num_tasks_in_flight++;
   pool_info.total_tasks_submitted++;
   
-  RAY_LOG(DEBUG) << "Submitting work item " << work_item.work_item_id 
+  TaskID work_item_id = work_item.work_item_id;
+  int32_t attempt_number = work_item.attempt_number;
+  
+  RAY_LOG(DEBUG) << "Submitting work item " << work_item_id 
                  << " to actor " << actor_id << " in pool " << pool_id
-                 << " (attempt " << work_item.attempt_number << ")";
+                 << " (attempt " << attempt_number << ")";
   
-  // TODO(Phase 1, To-do #10): Full implementation requires CoreWorker integration
-  // Will need to:
-  // 1. Get actor handle from actor_manager_
-  // 2. Build TaskSpec with pool metadata (actor_pool_id, actor_pool_work_item_id)
-  // 3. Register task callback for failure handling
-  // 4. Submit via task_submitter_
-  // 5. Return object references
-  //
-  // Stub for now - this will be implemented when ActorPoolManager is integrated
-  // into CoreWorker (To-do #10)
+  // Check if we have the submit callback (full CoreWorker integration)
+  if (!submit_actor_task_fn_) {
+    RAY_LOG(WARNING) << "SubmitToActor called without submit callback (minimal mode)";
+    // Store work item for potential retry tracking even in minimal mode
+    work_items_[work_item_id] = std::move(work_item);
+    return {};
+  }
   
-  RAY_LOG(WARNING) << "SubmitToActor is a stub pending CoreWorker integration";
-  return {};
+  // Clone args before moving work_item into work_items_ (we need args for submission)
+  auto args_for_submit = CloneArgs(work_item.args);
+  RayFunction function = work_item.function;
+  TaskOptions options = work_item.options;
+  
+  // Store work item for retry tracking
+  work_items_[work_item_id] = std::move(work_item);
+  
+  // Create completion callback that handles success/failure
+  // Capture pool_id, work_item_id, actor_id by value for the callback
+  TaskCompletionCallback on_complete = 
+      [this, pool_id, work_item_id, actor_id](
+          const Status &status, const rpc::RayErrorInfo *error_info) {
+        absl::MutexLock lock(&mu_);
+        if (status.ok()) {
+          OnTaskSucceeded(pool_id, actor_id);
+          // Remove work item on success
+          work_items_.erase(work_item_id);
+        } else if (error_info) {
+          OnTaskFailed(pool_id, work_item_id, actor_id, *error_info);
+        } else {
+          // Create a generic error info if none provided
+          rpc::RayErrorInfo generic_error;
+          generic_error.set_error_type(rpc::ErrorType::ACTOR_DIED);
+          generic_error.set_error_message("Task failed with unknown error");
+          OnTaskFailed(pool_id, work_item_id, actor_id, generic_error);
+        }
+      };
+  
+  // Submit via CoreWorker callback (which builds TaskSpec properly)
+  return submit_actor_task_fn_(
+      actor_id, function, std::move(args_for_submit), options, std::move(on_complete));
 }
 
 void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
@@ -448,11 +494,34 @@ void ActorPoolManager::ScheduleRetry(const ActorPoolID &pool_id,
     return;
   }
   
-  // TODO(To-do #10): Schedule delayed retry using io_service
-  // For now, immediate retry (will add delay scheduling in CoreWorker integration)
+  // Check if we have io_service for delayed scheduling
+  if (!io_service_) {
+    RAY_LOG(DEBUG) << "No io_service available, performing immediate retry for work item "
+                   << work_item.work_item_id;
+    RetryWorkItem(pool_id, std::move(work_item));
+    return;
+  }
+  
   RAY_LOG(DEBUG) << "Scheduling retry for work item " << work_item.work_item_id
-                 << " with backoff " << backoff_ms << "ms (immediate for now)";
-  RetryWorkItem(pool_id, std::move(work_item));
+                 << " with backoff " << backoff_ms << "ms";
+  
+  // Create a shared_ptr to the timer so it stays alive until the callback fires
+  auto timer = std::make_shared<boost::asio::steady_timer>(
+      *io_service_, std::chrono::milliseconds(backoff_ms));
+  
+  // Schedule the delayed retry
+  // Note: We capture 'this' and rely on ActorPoolManager outliving the timer
+  // In practice, ActorPoolManager lives as long as CoreWorker
+  timer->async_wait(
+      [this, pool_id, work_item = std::move(work_item), timer](
+          const boost::system::error_code &ec) mutable {
+        if (ec) {
+          RAY_LOG(WARNING) << "Timer error during retry scheduling: " << ec.message();
+          return;
+        }
+        absl::MutexLock lock(&mu_);
+        RetryWorkItem(pool_id, std::move(work_item));
+      });
 }
 
 void ActorPoolManager::RetryWorkItem(const ActorPoolID &pool_id,
@@ -556,8 +625,58 @@ void ActorPoolManager::FailWorkItem(const TaskID &work_item_id,
   RAY_LOG(INFO) << "Work item " << work_item_id << " failed permanently. Error: "
                 << error_info.error_message();
   
-  // TODO(To-do #10): Fail the task in TaskManager when integrated with CoreWorker
-  // For now, just log the failure
+  // Note: The actual task failure is handled by the TaskManager via the completion
+  // callback. We just need to clean up our tracking state here.
+}
+
+std::vector<std::unique_ptr<TaskArg>> ActorPoolManager::CloneArgs(
+    const std::vector<std::unique_ptr<TaskArg>> &args) const {
+  std::vector<std::unique_ptr<TaskArg>> cloned_args;
+  cloned_args.reserve(args.size());
+  
+  for (const auto &arg : args) {
+    // Serialize to proto and create a new TaskArg from it
+    rpc::TaskArg arg_proto;
+    arg->ToProto(&arg_proto);
+    
+    if (arg_proto.has_object_ref()) {
+      // By-reference argument
+      cloned_args.push_back(std::make_unique<TaskArgByReference>(
+          ObjectID::FromBinary(arg_proto.object_ref().object_id()),
+          rpc::Address(arg_proto.object_ref().owner_address()),
+          arg_proto.object_ref().call_site()));
+    } else if (!arg_proto.data().empty() || !arg_proto.metadata().empty()) {
+      // By-value argument (has data or metadata)
+      std::shared_ptr<LocalMemoryBuffer> data = nullptr;
+      if (!arg_proto.data().empty()) {
+        data = std::make_shared<LocalMemoryBuffer>(
+            reinterpret_cast<uint8_t *>(const_cast<char *>(arg_proto.data().data())),
+            arg_proto.data().size(),
+            /*copy_data=*/true);
+      }
+      
+      std::shared_ptr<LocalMemoryBuffer> metadata = nullptr;
+      if (!arg_proto.metadata().empty()) {
+        metadata = std::make_shared<LocalMemoryBuffer>(
+            reinterpret_cast<uint8_t *>(const_cast<char *>(arg_proto.metadata().data())),
+            arg_proto.metadata().size(),
+            /*copy_data=*/true);
+      }
+      
+      // Extract nested refs (as ObjectReference, not ObjectID)
+      std::vector<rpc::ObjectReference> nested_refs;
+      nested_refs.reserve(arg_proto.nested_inlined_refs_size());
+      for (const auto &nested_ref : arg_proto.nested_inlined_refs()) {
+        nested_refs.push_back(nested_ref);
+      }
+      
+      cloned_args.push_back(
+          std::make_unique<TaskArgByValue>(std::make_shared<RayObject>(
+              data, metadata, nested_refs, /*copy_data=*/true)));
+    }
+  }
+  
+  return cloned_args;
 }
 
 }  // namespace core
