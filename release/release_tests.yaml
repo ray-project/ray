@@ -3072,6 +3072,31 @@
 # Core Chaos tests
 ##################
 
+- name: chaos_many_tasks_baseline
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    script: python chaos_test/test_chaos.py --workload=tasks --disable-resource-killer
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
 - name: chaos_many_tasks_kill_raylet
   python: "3.10"
   group: core-nightly-test
@@ -3088,7 +3113,7 @@
     wait_for_nodes:
       num_nodes: 10
     prepare: python setup_chaos.py --no-start
-    script: python chaos_test/test_chaos_basic.py --workload=tasks
+    script: python chaos_test/test_chaos.py --workload=tasks
 
   variations:
     - __suffix__: aws
@@ -3114,10 +3139,66 @@
     wait_for_nodes:
       num_nodes: 10
     prepare: python setup_chaos.py --no-start --chaos TerminateEC2Instance
-    script: python chaos_test/test_chaos_basic.py --workload=tasks
+    script: python chaos_test/test_chaos.py --workload=tasks
 
   variations:
     - __suffix__: aws
+
+- name: chaos_many_tasks_iptable_failure_injection
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_health_check_period_ms=10000
+        - RAY_health_check_timeout_ms=100000
+        - RAY_health_check_failure_threshold=10
+        - RAY_gcs_rpc_server_connect_timeout_s=60
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    script: >
+      python simulate_cross_az_network_failure.py --network-failure-interval 60 --network-failure-duration 5 --command python chaos_test/test_chaos.py --workload=tasks --disable-resource-killer
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
+- name: chaos_many_actors_baseline
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 4200
+    wait_for_nodes:
+      num_nodes: 10
+    script: python chaos_test/test_chaos.py --workload=actors --disable-resource-killer
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_many_actors_kill_raylet
   python: "3.10"
@@ -3135,7 +3216,7 @@
     wait_for_nodes:
       num_nodes: 10
     prepare: python setup_chaos.py --no-start
-    script: python chaos_test/test_chaos_basic.py --workload=actors
+    script: python chaos_test/test_chaos.py --workload=actors
 
   variations:
     - __suffix__: aws
@@ -3161,10 +3242,247 @@
     wait_for_nodes:
       num_nodes: 10
     prepare: python setup_chaos.py --no-start --chaos TerminateEC2Instance
-    script: python chaos_test/test_chaos_basic.py --workload=actors
+    script: python chaos_test/test_chaos.py --workload=actors
 
   variations:
     - __suffix__: aws
+
+- name: chaos_many_actors_iptable_failure_injection
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_health_check_period_ms=10000
+        - RAY_health_check_timeout_ms=100000
+        - RAY_health_check_failure_threshold=10
+        - RAY_gcs_rpc_server_connect_timeout_s=60
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 4200
+    wait_for_nodes:
+      num_nodes: 10
+    script: >
+      python simulate_cross_az_network_failure.py --network-failure-interval 60 --network-failure-duration 5 --command python chaos_test/test_chaos.py --workload=actors --disable-resource-killer
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
+- name: chaos_streaming_generator_baseline
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    script: python chaos_test/test_chaos.py --workload=streaming --disable-resource-killer
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
+- name: chaos_streaming_generator_kill_raylet
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    prepare: python setup_chaos.py --no-start --max-to-kill 10
+    script: python chaos_test/test_chaos.py --workload=streaming
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
+- name: chaos_streaming_generator_terminate_instance
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    prepare: python setup_chaos.py --no-start --chaos TerminateEC2Instance --max-to-kill 10
+    script: python chaos_test/test_chaos.py --workload=streaming
+
+  variations:
+    - __suffix__: aws
+
+- name: chaos_streaming_generator_iptable_failure_injection
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_health_check_period_ms=10000
+        - RAY_health_check_timeout_ms=100000
+        - RAY_health_check_failure_threshold=10
+        - RAY_gcs_rpc_server_connect_timeout_s=60
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    script: >
+      python simulate_cross_az_network_failure.py --network-failure-interval 60 --network-failure-duration 5 --command python chaos_test/test_chaos.py --workload=streaming --disable-resource-killer
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
+- name: chaos_object_ref_borrowing_baseline
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    script: python chaos_test/test_chaos.py --workload=borrowing --disable-resource-killer
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
+- name: chaos_object_ref_borrowing_kill_raylet
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    prepare: python setup_chaos.py --no-start
+    script: python chaos_test/test_chaos.py --workload=borrowing
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
+- name: chaos_object_ref_borrowing_terminate_instance
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    prepare: python setup_chaos.py --no-start --chaos TerminateEC2Instance
+    script: python chaos_test/test_chaos.py --workload=borrowing
+
+  variations:
+    - __suffix__: aws
+
+- name: chaos_object_ref_borrowing_iptable_failure_injection
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_health_check_period_ms=10000
+        - RAY_health_check_timeout_ms=100000
+        - RAY_health_check_failure_threshold=10
+        - RAY_gcs_rpc_server_connect_timeout_s=60
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    script: >
+      python simulate_cross_az_network_failure.py --network-failure-interval 60 --network-failure-duration 5 --command python chaos_test/test_chaos.py --workload=borrowing --disable-resource-killer
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
   python: "3.10"
@@ -3895,6 +4213,7 @@
       pytest -sv test_batch_multi_node_vllm.py
 
 - name: llm_batch_single_node_baseline_benchmark
+  python: "3.11"
   group: llm-batch
   working_dir: llm_tests/batch
   frequency: weekly
@@ -3904,7 +4223,9 @@
     byod:
       runtime_env:
         - VLLM_DISABLE_COMPILE_CACHE=1
-      type: gpu
+      type: llm-cu128
+      post_build_script: byod_llm_single_node_baseline_benchmark.sh
+      python_depset: llm_batch/llm_batch_single_node_benchmark_py311_cu128.lock
     cluster_compute: llm_single_node_benchmark_l4.yaml
 
   run:
