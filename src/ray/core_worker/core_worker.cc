@@ -397,6 +397,10 @@ CoreWorker::CoreWorker(
         [this] { return raylet_ipc_client_->ActorCreationTaskDone(); });
   }
 
+  // Initialize the actor pool manager for cross-actor retry support.
+  actor_pool_manager_ = std::make_unique<ActorPoolManager>(
+      *actor_manager_, *actor_task_submitter_, *task_manager_);
+
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
   SubscribeToNodeChanges();
@@ -2672,6 +2676,57 @@ CoreWorker::ListNamedActorsLocalMode() {
     actors.emplace_back(/*namespace=*/"", it->first);
   }
   return std::make_pair(std::move(actors), Status::OK());
+}
+
+///
+/// Actor Pool methods implementation.
+///
+
+ActorPoolID CoreWorker::RegisterActorPool(const ActorPoolConfig &config,
+                                          const std::vector<ActorID> &initial_actors) {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  return actor_pool_manager_->RegisterPool(config, initial_actors);
+}
+
+void CoreWorker::UnregisterActorPool(const ActorPoolID &pool_id) {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  actor_pool_manager_->UnregisterPool(pool_id);
+}
+
+void CoreWorker::AddActorToPool(const ActorPoolID &pool_id, const ActorID &actor_id) {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  // Get the actor's location from the owner address (best effort)
+  // The actual location will be updated when the actor reports its address
+  auto actor_handle = actor_manager_->GetActorHandle(actor_id);
+  NodeID location = NodeID::FromBinary(actor_handle->GetOwnerAddress().node_id());
+  actor_pool_manager_->AddActorToPool(pool_id, actor_id, location);
+}
+
+void CoreWorker::RemoveActorFromPool(const ActorPoolID &pool_id,
+                                     const ActorID &actor_id) {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  actor_pool_manager_->RemoveActorFromPool(pool_id, actor_id);
+}
+
+std::vector<rpc::ObjectReference> CoreWorker::SubmitTaskToActorPool(
+    const ActorPoolID &pool_id,
+    const RayFunction &function,
+    std::vector<std::unique_ptr<TaskArg>> args,
+    const TaskOptions &task_options,
+    const std::string &key) {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  return actor_pool_manager_->SubmitTaskToPool(
+      pool_id, function, std::move(args), task_options, key);
+}
+
+std::vector<ActorID> CoreWorker::GetActorPoolActors(const ActorPoolID &pool_id) const {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  return actor_pool_manager_->GetPoolActors(pool_id);
+}
+
+PoolStats CoreWorker::GetActorPoolStats(const ActorPoolID &pool_id) const {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  return actor_pool_manager_->GetPoolStats(pool_id);
 }
 
 std::string CoreWorker::GetActorName() const {
