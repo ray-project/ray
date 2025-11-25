@@ -17,6 +17,7 @@ from ray.air.util.tensor_extensions.arrow import (
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray.data import DataContext
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.util import MiB
 from ray.tests.conftest import *  # noqa
 
 import psutil
@@ -146,7 +147,7 @@ def test_infer_type_does_not_leak_memory(dtype):
     pa.default_memory_pool().release_unused()
     after = process.memory_info().rss
 
-    margin_of_error = ndarray.nbytes * num_repetitions
+    margin_of_error = 64 * MiB
     assert after - before < margin_of_error, memory_string(after - before)
 
 
