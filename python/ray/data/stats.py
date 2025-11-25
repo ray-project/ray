@@ -7,6 +7,7 @@ import pyarrow as pa
 from ray.data.aggregate import (
     AggregateFnV2,
     ApproximateQuantile,
+    ApproximateTopK,
     Count,
     Max,
     Mean,
@@ -60,6 +61,7 @@ def categorical_aggregators(column: str) -> List[AggregateFnV2]:
     This function returns a list of aggregators that compute the following metrics:
     - count
     - MissingValuePercentage
+    - ApproximateTopK
 
     Args:
         column: The name of the categorical column to compute metrics for.
@@ -70,6 +72,7 @@ def categorical_aggregators(column: str) -> List[AggregateFnV2]:
     return [
         Count(on=column, ignore_nulls=False),
         MissingValuePercentage(on=column),
+        ApproximateTopK(on=column, k=10),
     ]
 
 

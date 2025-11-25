@@ -1,7 +1,7 @@
 from ray.rllib.algorithms.impala.impala import (
     IMPALA,
-    IMPALAConfig,
     Impala,
+    IMPALAConfig,
     ImpalaConfig,
 )
 from ray.rllib.algorithms.impala.impala_tf_policy import (

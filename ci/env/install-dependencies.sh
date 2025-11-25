@@ -79,12 +79,12 @@ install_shellcheck() {
     local name="shellcheck-v${shellcheck_version}"
     if [[ "${osname}" == "linux" || "${osname}" == "darwin" ]]; then
       sudo mkdir -p /usr/local/bin || true
-      curl -f -s -L "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.${osname}.x86_64.tar.xz" | {
+      curl -sSfL "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.${osname}.x86_64.tar.xz" | {
         sudo tar -C /usr/local/bin -x -v -J --strip-components=1 "${name}/shellcheck"
       }
     else
       mkdir -p /usr/local/bin
-      curl -f -s -L -o "${name}.zip" "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.zip"
+      curl -sSfL -o "${name}.zip" "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.zip"
       unzip "${name}.zip" "${name}.exe"
       mv -f "${name}.exe" "/usr/local/bin/shellcheck.exe"
     fi
@@ -108,7 +108,7 @@ install_nvm() {
       (
         cd "${NVM_HOME}"
         local target="./nvm-${ver}.zip"
-        curl -f -s -L -o "${target}" \
+        curl -sSfL -o "${target}" \
           "https://github.com/coreybutler/nvm-windows/releases/download/${ver}/nvm-noinstall.zip"
         unzip -q -- "${target}"
         rm -f -- "${target}"
@@ -133,7 +133,9 @@ install_upgrade_pip() {
   fi
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
-    "${python}" -m pip install --upgrade pip
+    # 25.3 has breaking change where other Python packages like "click" does not work
+    # with it anymore. pip-compile will fail to work with the package's setup code.
+    "${python}" -m pip install pip==25.2
 
     # If we're in a CI environment, do some configuration
     if [[ "${CI-}" == "true" ]]; then
@@ -154,13 +156,13 @@ install_node() {
   if [[ -n "${BUILDKITE-}" ]] ; then
     if [[ "${OSTYPE}" = darwin* ]]; then
       if [[ "$(uname -m)" == "arm64" ]]; then
-        curl -sSL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+        curl -sSfL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
       else
-        curl -sSL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+        curl -sSfL -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
       fi
     else
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
-      curl -sSL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+      curl -sSfL https://deb.nodesource.com/setup_14.x | sudo -E bash -
       sudo apt-get install -y nodejs
       return
     fi

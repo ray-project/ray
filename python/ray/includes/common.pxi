@@ -35,6 +35,7 @@ from ray.exceptions import (
     ActorDiedError,
     RayError,
     RaySystemError,
+    AuthenticationError,
     RayTaskError,
     ObjectStoreFullError,
     OutOfDiskError,
@@ -105,6 +106,8 @@ cdef int check_status(const CRayStatus& status) except -1 nogil:
         raise ValueError(message)
     elif status.IsIOError():
         raise IOError(message)
+    elif status.IsUnauthenticated():
+        raise AuthenticationError(message)
     elif status.IsRpcError():
         raise RpcError(message, rpc_code=status.rpc_code())
     elif status.IsIntentionalSystemExit():
@@ -166,3 +169,31 @@ RAY_INTERNAL_NAMESPACE_PREFIX = kRayInternalNamespacePrefix.decode()
 # Jobs within these namespaces should be hidden from users
 # and should not be considered user activity.
 RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
+
+# Util functions for async handling
+
+cdef incremented_fut():
+    fut = concurrent.futures.Future()
+    cpython.Py_INCREF(fut)
+    return fut
+
+cdef void assign_and_decrement_fut(result, fut) noexcept with gil:
+    assert isinstance(fut, concurrent.futures.Future)
+
+    assert not fut.done()
+    try:
+        ret, exc = result
+        if exc:
+            fut.set_exception(exc)
+        else:
+            fut.set_result(ret)
+    finally:
+        # We INCREFed it in `incremented_fut` to keep it alive during the async wait,
+        # and we DECREF it here to balance it.
+        cpython.Py_DECREF(fut)
+
+cdef raise_or_return(tup):
+    ret, exc = tup
+    if exc:
+        raise exc
+    return ret

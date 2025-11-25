@@ -133,6 +133,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsUnexpectedSystemExit()
         c_bool IsChannelError()
         c_bool IsChannelTimeoutError()
+        c_bool IsUnauthenticated()
 
         c_string ToString()
         c_string CodeAsString()
@@ -239,6 +240,17 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CLineageReconstructionTask()
         const c_string &SerializeAsString() const
 
+cdef extern from "ray/common/scheduling/label_selector.h" namespace "ray":
+    cdef cppclass CLabelSelector "ray::LabelSelector":
+        CLabelSelector() nogil except +
+        void AddConstraint(const c_string& key, const c_string& value) nogil except +
+
+cdef extern from "ray/common/scheduling/fallback_strategy.h" namespace "ray":
+    cdef cppclass CFallbackOption "ray::FallbackOption":
+        CLabelSelector label_selector
+
+        CFallbackOption() nogil except +
+        CFallbackOption(CLabelSelector) nogil except +
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
@@ -346,8 +358,9 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      c_string serialized_runtime_env,
                      c_bool enable_task_events,
                      const unordered_map[c_string, c_string] &labels,
-                     const unordered_map[c_string, c_string] &label_selector,
-                     CTensorTransport tensor_transport)
+                     CLabelSelector label_selector,
+                     CTensorTransport tensor_transport,
+                     c_vector[CFallbackOption] fallback_strategy)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -368,7 +381,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool enable_tensor_transport,
             c_bool enable_task_events,
             const unordered_map[c_string, c_string] &labels,
-            const unordered_map[c_string, c_string] &label_selector)
+            CLabelSelector label_selector,
+            c_vector[CFallbackOption] fallback_strategy)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
@@ -391,7 +405,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const CNodeID &GetSpilledNodeID() const
         const c_bool GetDidSpill() const
 
-cdef extern from "ray/gcs_rpc_client/python_callbacks.h" namespace "ray::gcs":
+cdef extern from "ray/common/python_callbacks.h" namespace "ray":
     cdef cppclass MultiItemPyCallback[T]:
         MultiItemPyCallback(
             object (*)(CRayStatus, c_vector[T]) nogil,
@@ -410,8 +424,8 @@ cdef extern from "ray/gcs_rpc_client/python_callbacks.h" namespace "ray::gcs":
             void (object, object) nogil,
             object) nogil
 
-cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
-    cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
+cdef extern from "ray/gcs_rpc_client/accessors/actor_info_accessor_interface.h" nogil:
+    cdef cppclass CActorInfoAccessorInterface "ray::gcs::ActorInfoAccessorInterface":
         void AsyncGetAllByFilter(
             const optional[CActorID] &actor_id,
             const optional[CJobID] &job_id,
@@ -425,6 +439,7 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
                                   const StatusPyCallback &callback,
                                   int64_t timeout_ms)
 
+cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
     cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
         CRayStatus GetAll(
             const optional[c_string] &job_or_submission_id,
@@ -636,7 +651,7 @@ cdef extern from "ray/gcs_rpc_client/gcs_client.h" nogil:
         c_pair[c_string, int] GetGcsServerAddress() const
         CClusterID GetClusterId() const
 
-        CActorInfoAccessor& Actors()
+        CActorInfoAccessorInterface& Actors()
         CJobInfoAccessor& Jobs()
         CInternalKVAccessor& InternalKV()
         CNodeInfoAccessor& Nodes()
