@@ -685,8 +685,9 @@ google-resumable-media==2.6.0
     # via
     #   google-cloud-bigquery
     #   google-cloud-storage
-googleapis-common-protos==1.61.0
+googleapis-common-protos==1.61.0 ; python_version < "3.13"
     # via
+    #   -r python/requirements/ml/data-test-requirements.txt
     #   google-api-core
     #   grpcio-status
     #   tensorflow-metadata
