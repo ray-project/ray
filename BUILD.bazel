@@ -283,6 +283,20 @@ pkg_files(
 )
 
 pkg_files(
+    name = "metrics_fast_so_files",
+    srcs = ["//python/ray/serve/_private:metrics_fast"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/serve/_private/",
+    renames = select({
+        "@platforms//os:windows": {
+            "metrics_fast.so": "metrics_fast.pyd",
+        },
+        "//conditions:default": {},
+    }),
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
     name = "core_py_proto_files",
     srcs = ["//src/ray/protobuf:core_py_proto"],
     prefix = "ray/core/generated",
@@ -349,6 +363,7 @@ pkg_zip(
     name = "ray_pkg_zip",
     srcs = [
         ":gcs_server_files",
+        ":metrics_fast_so_files",
         ":raylet_files",
         ":raylet_so_files",
     ] + select({

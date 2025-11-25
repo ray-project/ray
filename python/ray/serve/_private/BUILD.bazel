@@ -1,0 +1,15 @@
+load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
+load("//bazel:ray.bzl", "COPTS", "PYX_COPTS")
+
+# Cython-optimized metrics functions for autoscaling
+pyx_library(
+    name = "metrics_fast",
+    srcs = ["metrics_fast.pyx"],
+    cc_kwargs = dict(
+        copts = COPTS + PYX_COPTS + [
+            "-O3",  # Maximum optimization
+            "-ffast-math",  # Fast floating point math
+        ],
+    ),
+    visibility = ["//visibility:public"],
+)
