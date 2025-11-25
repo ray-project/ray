@@ -2,7 +2,6 @@ import io
 import logging
 import re
 import time
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -25,9 +24,6 @@ from ray.data._internal.issue_detection.detectors.high_memory_detector import (
 )
 from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
-
-if TYPE_CHECKING:
-    pass
 
 
 class TestHangingExecutionIssueDetector:
