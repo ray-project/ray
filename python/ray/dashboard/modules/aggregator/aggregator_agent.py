@@ -48,7 +48,9 @@ MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
     "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_SEND_BATCH_SIZE", 10000
 )
 # Address of the external service to send events with format of "http://<ip>:<port>"
-EVENTS_EXPORT_ADDR = os.environ.get("RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR", "")
+EVENTS_EXPORT_ADDR = os.environ.get(
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR", ""
+)
 # flag to enable publishing events to the external HTTP service
 PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
     "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE", True
