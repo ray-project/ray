@@ -30,11 +30,7 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     node_id_from_block_metadata,
 )
 from ray.data._internal.memory_tracing import trace_allocation
-<<<<<<< HEAD:python/ray/data/_internal/execution/interfaces/op_runtime_metrics/task.py
-=======
-from ray.data.block import BlockMetadata
 from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
->>>>>>> bceeaa48665578f8ecb7361319a38ce87a366673:python/ray/data/_internal/execution/interfaces/op_runtime_metrics.py
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
