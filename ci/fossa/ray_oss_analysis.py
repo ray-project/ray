@@ -7,7 +7,7 @@ import re
 import subprocess
 from typing import Dict, List, Optional, Set, Tuple
 import glob
-
+import shutil
 import yaml
 
 logger = logging.getLogger("ray_oss_analysis")
@@ -105,10 +105,12 @@ def get_bazel_dependencies(package_name: str) -> Tuple[List[str], Set[str]]:
 def copy_files(file_paths):
     for file_path in file_paths:
         logger.debug(f"Copying file: {file_path}")
-        subprocess.run(
-            f"mkdir -p $(dirname {output_folder}/{file_path}) && cp {bazel_output_base}/external/{file_path} {output_folder}/{file_path}",
-            shell=True,
-        )
+        source = os.path.join(bazel_output_base, "external", file_path)
+        destination = os.path.join(output_folder, file_path)
+        # Create parent directories if they don't exist
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
+        # Copy the file
+        shutil.copy(source, destination)
 
 
 def copy_licenses(package_names):
