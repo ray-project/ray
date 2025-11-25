@@ -121,7 +121,6 @@ def plan_all_to_all_op(
         fn = generate_repartition_fn(
             op._num_outputs,
             op._full_shuffle,
-            op._random_permute,
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
         )

@@ -26,7 +26,6 @@ from ray.data.context import DataContext, ShuffleStrategy
 def generate_repartition_fn(
     num_outputs: int,
     full_shuffle: bool,
-    random_permute: bool,
     data_context: DataContext,
     _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
@@ -53,7 +52,7 @@ def generate_repartition_fn(
             target_shuffle_max_block_size=(
                 ctx.target_max_block_size_override or data_context.target_max_block_size
             ),
-            random_shuffle=random_permute,
+            random_shuffle=False,
             upstream_map_fn=upstream_map_fn,
         )
 
