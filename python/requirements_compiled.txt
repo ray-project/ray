@@ -1021,6 +1021,8 @@ linear-operator==0.4.0
     # via
     #   botorch
     #   gpytorch
+linkify-it-py==2.0.3
+    # via markdown-it-py
 llvmlite==0.42.0
     # via
     #   -r python/requirements/test-requirements.txt
@@ -1055,6 +1057,7 @@ markdown-it-py==2.2.0
     #   mdit-py-plugins
     #   myst-parser
     #   rich
+    #   textual
 markupsafe==2.1.3
     # via
     #   gradio
@@ -1076,10 +1079,11 @@ matplotlib-inline==0.1.6
 mdit-py-plugins==0.3.5
     # via
     #   jupytext
+    #   markdown-it-py
     #   myst-parser
 mdurl==0.1.2
     # via markdown-it-py
-memray==1.10.0 ; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != "aarch64"
+memray==1.19.1 ; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != "aarch64"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1529,6 +1533,7 @@ platformdirs==3.11.0
     #   black
     #   jupyter-core
     #   snowflake-connector-python
+    #   textual
     #   virtualenv
     #   wandb
 plotly==5.23.0
@@ -1981,7 +1986,7 @@ rfc3986-validator==0.1.1
     # via
     #   jsonschema
     #   jupyter-events
-rich==13.3.2
+rich==13.3.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -1990,6 +1995,7 @@ rich==13.3.2
     #   memray
     #   pyiceberg
     #   semgrep
+    #   textual
     #   typer
 rpds-py==0.22.3
     # via
@@ -2279,6 +2285,8 @@ testcontainers==4.13.3
     # via -r python/requirements/ml/data-test-requirements.txt
 testfixtures==7.0.0
     # via -r python/requirements/test-requirements.txt
+textual==4.0.0
+    # via memray
 threadpoolctl==3.1.0
     # via
     #   -r python/requirements/test-requirements.txt
@@ -2466,6 +2474,7 @@ typing-extensions==4.12.2
     #   sqlalchemy
     #   tensorflow
     #   testcontainers
+    #   textual
     #   torch
     #   typer
     #   typing-inspection
@@ -2475,6 +2484,8 @@ tzdata==2025.2
     # via kombu
 tzlocal==5.3
     # via -r python/requirements/cloud-requirements.txt
+uc-micro-py==1.0.3
+    # via linkify-it-py
 ujson==5.10.0
     # via python-lsp-jsonrpc
 uri-template==1.3.0
