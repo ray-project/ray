@@ -812,9 +812,7 @@ int main(int argc, char *argv[]) {
         node_manager_config.resource_config.GetResourceMap(),
         /*is_node_available_fn*/
         [&](ray::scheduling::NodeID id) {
-          return gcs_client->Nodes()
-              .GetNodeAddressAndLiveness(ray::NodeID::FromBinary(id.Binary()))
-              .has_value();
+          return !gcs_client->Nodes().IsNodeDead(ray::NodeID::FromBinary(id.Binary()));
         },
         /*get_used_object_store_memory*/
         [&]() {

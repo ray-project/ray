@@ -173,6 +173,7 @@ class NodeInfoAccessor {
       const std::vector<NodeID> &node_ids = {});
 
   /// Get node information from local cache.
+  /// Thread-safe.
   /// Note, the local cache is only available if
   /// `AsyncSubscribeToNodeAddressAndLivenessChange` is called before.
   ///
@@ -184,6 +185,7 @@ class NodeInfoAccessor {
       const NodeID &node_id, bool filter_dead_nodes = true) const;
 
   /// Get information of all nodes from local cache.
+  /// Thread-safe.
   /// Note, the local cache is only available if
   /// `AsyncSubscribeToNodeAddressAndLivenessChange` is called before.
   ///

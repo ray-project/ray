@@ -354,9 +354,8 @@ class NodeManagerTest : public ::testing::Test {
         node_manager_config.resource_config.GetResourceMap(),
         /*is_node_available_fn*/
         [&](ray::scheduling::NodeID node_id) {
-          return mock_gcs_client_->Nodes()
-              .GetNodeAddressAndLiveness(NodeID::FromBinary(node_id.Binary()))
-              .has_value();
+          return !mock_gcs_client_->Nodes().IsNodeDead(
+              NodeID::FromBinary(node_id.Binary()));
         },
         /*get_used_object_store_memory*/
         [&]() {

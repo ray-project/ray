@@ -100,8 +100,6 @@ class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
 
   bool IsSubscribedToNodeChange() const override { return is_subscribed_to_node_change_; }
 
-  MOCK_METHOD(const rpc::GcsNodeInfo *, Get, (const NodeID &, bool), (const, override));
-
   MOCK_METHOD(std::optional<rpc::GcsNodeAddressAndLiveness>,
               GetNodeAddressAndLiveness,
               (const NodeID &, bool),
