@@ -14,6 +14,7 @@
 
 #include "ray/rpc/server_call.h"
 
+#include <atomic>
 #include <memory>
 
 #include "ray/common/ray_config.h"
@@ -22,9 +23,17 @@ namespace ray {
 namespace rpc {
 namespace {
 
+std::atomic<ServerCallThreadPoolMode> &ThreadPoolMode() {
+  static std::atomic<ServerCallThreadPoolMode> mode(
+      ServerCallThreadPoolMode::SYSTEM_COMPONENT);
+  return mode;
+}
+
 std::unique_ptr<boost::asio::thread_pool> &_GetServerCallExecutor() {
   static auto thread_pool = std::make_unique<boost::asio::thread_pool>(
-      ::RayConfig::instance().num_server_call_thread());
+      ThreadPoolMode().load() == ServerCallThreadPoolMode::CORE_WORKER
+          ? ::RayConfig::instance().core_worker_num_server_call_thread()
+          : ::RayConfig::instance().num_server_call_thread());
   return thread_pool;
 }
 
@@ -36,7 +45,13 @@ void DrainServerCallExecutor() { GetServerCallExecutor().join(); }
 
 void ResetServerCallExecutor() {
   _GetServerCallExecutor() = std::make_unique<boost::asio::thread_pool>(
-      ::RayConfig::instance().num_server_call_thread());
+      ThreadPoolMode().load() == ServerCallThreadPoolMode::CORE_WORKER
+          ? ::RayConfig::instance().core_worker_num_server_call_thread()
+          : ::RayConfig::instance().num_server_call_thread());
+}
+
+void SetServerCallThreadPoolMode(ServerCallThreadPoolMode mode) {
+  ThreadPoolMode().store(mode);
 }
 
 }  // namespace rpc
