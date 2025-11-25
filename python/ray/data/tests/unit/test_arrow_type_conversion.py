@@ -138,7 +138,7 @@ def test_infer_type_does_not_leak_memory(dtype):
     before = process.memory_info().rss
 
     # Call the function several times. If there's a memory leak, this loop will leak
-    # as much as 1 GiB of memory.
+    # as much as 1 GiB of memory. 8 was chosen arbitrarily.
     for _ in range(8):
         _infer_pyarrow_type(ndarray)
 
@@ -146,7 +146,8 @@ def test_infer_type_does_not_leak_memory(dtype):
     pa.default_memory_pool().release_unused()
     after = process.memory_info().rss
 
-    assert after - before < 64 * MiB, memory_string(after - before)
+    margin_of_error = 64 * MiB
+    assert after - before < margin_of_error, memory_string(after - before)
 
 
 def test_pa_infer_type_failing_to_infer():
