@@ -20,6 +20,7 @@ from ray._raylet import (
     AuthenticationTokenLoader,
     get_authentication_mode,
 )
+from ray.exceptions import AuthenticationError
 
 logger = logging.getLogger(__name__)
 
@@ -97,4 +98,6 @@ def ensure_token_if_auth_enabled(
             # Reload the cache so subsequent calls to token_loader read the new token.
             token_loader.reset_cache()
         else:
-            raise RuntimeError(TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE)
+            raise AuthenticationError(
+                TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE
+            )
