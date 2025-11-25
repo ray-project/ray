@@ -195,13 +195,20 @@ format from your function, but ``batch_format`` should match the input of your f
                 ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
                 .map_batches(drop_nas, batch_format="pyarrow")
             )
+            
+Choosing the right batch format
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+* Use NumPy in ``map_batches`` when your batch function needs numeric or tensor-style operations.
+* Use pandas in ``map_batches`` when your batch function needs a DataFrame API, such as for tabular cleaning, joins, grouping, or row/column-wise transforms.
+* Use pyarrow in ``map_batches`` when your batch function benefits from columnar processing, high-performance I/O, or zero-copy conversion to other systems.
 
 
 The user defined function you pass to :meth:`~ray.data.Dataset.map_batches` is more flexible. Because you can represent batches
 in multiple ways (see :ref:`Configuring batch format <configure_batch_format>`), the function should be of type
 ``Callable[DataBatch, DataBatch]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``. In
 other words, your function should take as input and output a batch of data which you can represent as a
-pandas DataFrame or a dictionary with string keys and NumPy ndarrays values. For example, your function might look like:
+pandas DataFrame, pyarrow Table or a dictionary with string keys and NumPy ndarrays values. For example, your function might look like:
 
 .. testcode::
 
