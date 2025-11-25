@@ -1180,7 +1180,8 @@ def _process_option_dict(actor_options, has_tensor_transport_methods):
         if _filled_options.get("concurrency_groups", None) is None:
             _filled_options["concurrency_groups"] = {}
         _filled_options["concurrency_groups"]["_ray_system"] = 1
-        _filled_options["concurrency_groups"]["_ray_system_error"] = 1
+        _filled_options["concurrency_groups"]["_ray_system_rdt_metadata"] = 1
+        _filled_options["concurrency_groups"]["_ray_system_rdt_error"] = 1
 
     return _filled_options
 

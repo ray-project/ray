@@ -86,9 +86,9 @@ class CollectiveTensorTransport(TensorTransportManager):
         # NOTE(swang): We put this task on the background thread to avoid tasks
         # executing on the main thread blocking this task.
 
-        return src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-            __ray_get_tensor_transport_metadata__, obj_id
-        )
+        return src_actor.__ray_call__.options(
+            concurrency_group="_ray_system_rdt_metadata"
+        ).remote(__ray_get_tensor_transport_metadata__, obj_id)
 
     @staticmethod
     def get_communicator_metadata(
