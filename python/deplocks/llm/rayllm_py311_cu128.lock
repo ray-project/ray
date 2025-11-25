@@ -3603,9 +3603,9 @@ tqdm==4.67.1 \
     #   openai
     #   transformers
     #   vllm
-transformers==4.55.2 \
-    --hash=sha256:097e3c2e2c0c9681db3da9d748d8f9d6a724c644514673d0030e8c5a1109f1f1 \
-    --hash=sha256:a45ec60c03474fd67adbce5c434685051b7608b3f4f167c25aa6aeb1cad16d4f
+transformers==4.57.3 \
+    --hash=sha256:c77d353a4851b1880191603d36acb313411d3577f6e2897814f333841f7003f4 \
+    --hash=sha256:df4945029aaddd7c09eec5cad851f30662f8bd1746721b34cc031d70c65afebc
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
     #   compressed-tensors
