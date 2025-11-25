@@ -5640,6 +5640,7 @@ class TestGetOutboundDeployments:
         # Set outbound deployments on the mock replica
         running_replicas = ds._replicas.get([ReplicaState.RUNNING])
         assert len(running_replicas) == 1
+
         d1 = DeploymentID(name="dep1", app_name="test_app")
         d2 = DeploymentID(name="dep2", app_name="test_app")
         running_replicas[0]._actor._outbound_deployments = [d1, d2]

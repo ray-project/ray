@@ -18,7 +18,7 @@ billiard==4.2.1
 boltons @ file:///home/conda/feedstock_root/build_artifacts/boltons_1733827268945/work
 boto3==1.29.7
 botocore==1.32.7
-Brotli @ file:///home/conda/feedstock_root/build_artifacts/brotli-split_1749229842835/work
+Brotli @ file:///home/conda/feedstock_root/build_artifacts/brotli-split_1761591974641/work
 cachetools==5.5.2
 celery==5.5.3
 certifi==2025.1.31
@@ -31,7 +31,7 @@ click-repl==0.3.0
 cloudpickle==2.2.0
 colorama @ file:///home/conda/feedstock_root/build_artifacts/colorama_1733218098505/work
 colorful==0.5.5
-conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1754405245494/work/conda-src
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1760108586898/work/conda-src
 conda-libmamba-solver @ file:///home/conda/feedstock_root/build_artifacts/conda-libmamba-solver_1745834476052/work/src
 conda-package-handling @ file:///home/conda/feedstock_root/build_artifacts/conda-package-handling_1736345463896/work
 conda_package_streaming @ file:///home/conda/feedstock_root/build_artifacts/conda-package-streaming_1729004031731/work
@@ -47,7 +47,7 @@ fastapi==0.115.12
 fastrlock==0.8.2
 filelock==3.17.0
 flatbuffers==23.5.26
-frozendict @ file:///home/conda/feedstock_root/build_artifacts/frozendict_1728841359971/work
+frozendict @ file:///home/conda/feedstock_root/build_artifacts/frozendict_1763082794572/work
 frozenlist==1.4.1
 fsspec==2023.12.1
 google-api-core==2.24.2
@@ -60,7 +60,7 @@ google-crc32c==1.5.0
 google-oauth==1.0.1
 google-resumable-media==2.6.0
 googleapis-common-protos==1.61.0
-grpcio==1.76.0
+grpcio==1.74.0
 gymnasium==1.1.1
 h11==0.16.0
 h2 @ file:///home/conda/feedstock_root/build_artifacts/h2_1733298745555/work
@@ -74,17 +74,17 @@ isodate==0.6.1
 Jinja2==3.1.6
 jmespath==1.0.1
 jsonpatch @ file:///home/conda/feedstock_root/build_artifacts/jsonpatch_1733814567314/work
-jsonpointer @ file:///home/conda/feedstock_root/build_artifacts/jsonpointer_1725302957584/work
+jsonpointer @ file:///home/conda/feedstock_root/build_artifacts/jsonpointer_1756754132747/work
 jsonschema==4.23.0
 jsonschema-specifications==2024.10.1
 kombu==5.5.4
-libmambapy @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_libmambapy_1753776969/work/libmambapy
+libmambapy @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_libmambapy_1760729597/work/libmambapy
 lz4==4.3.3
 markdown-it-py==2.2.0
 MarkupSafe==2.1.3
 mdurl==0.1.2
 memray==1.10.0
-menuinst @ file:///home/conda/feedstock_root/build_artifacts/menuinst_1753546271769/work
+menuinst @ file:///home/conda/feedstock_root/build_artifacts/menuinst_1761299740801/work
 msal==1.28.1
 msal-extensions==1.2.0b1
 msgpack==1.0.7
@@ -113,7 +113,7 @@ py-spy==0.4.0
 pyarrow==19.0.1
 pyasn1==0.5.1
 pyasn1-modules==0.3.0
-pycosat @ file:///home/conda/feedstock_root/build_artifacts/pycosat_1732588390546/work
+pycosat @ file:///home/conda/feedstock_root/build_artifacts/pycosat_1757744612102/work
 pycparser==2.21
 pydantic==2.11.7
 pydantic_core==2.33.2
@@ -126,14 +126,14 @@ python-dateutil==2.8.2
 python-dotenv==1.2.1
 pytz==2022.7.1
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=eb6888cbfab286d0e1d1fe592cbae82f72a0a3c040c087b35037daa5d1e7ad5b
+ray @ file:///home/ray/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl#sha256=c096db8428166779cf10817e3698d3fdf50e11e45911cc95f6feeb2b44cdc481
 referencing==0.36.2
 requests @ file:///home/conda/feedstock_root/build_artifacts/requests_1733217035951/work
 rich==13.3.2
 rpds-py==0.22.3
 rsa==4.7.2
-ruamel.yaml @ file:///home/conda/feedstock_root/build_artifacts/ruamel.yaml_1755625023823/work
-ruamel.yaml.clib @ file:///home/conda/feedstock_root/build_artifacts/ruamel.yaml.clib_1728724456970/work
+ruamel.yaml @ file:///home/conda/feedstock_root/build_artifacts/ruamel.yaml_1761160605807/work
+ruamel.yaml.clib @ file:///home/conda/feedstock_root/build_artifacts/ruamel.yaml.clib_1760564169911/work
 s3transfer==0.8.0
 scipy==1.11.4
 six==1.16.0
@@ -142,6 +142,7 @@ sniffio==1.3.1
 starlette==0.46.2
 tensorboardX==2.6.2.2
 tqdm @ file:///home/conda/feedstock_root/build_artifacts/tqdm_1735661334605/work
+truststore @ file:///home/conda/feedstock_root/build_artifacts/truststore_1729762363021/work
 typing-inspection==0.4.1
 typing_extensions==4.12.2
 tzdata==2025.2
@@ -156,4 +157,4 @@ wcwidth==0.2.13
 websockets==11.0.3
 yarl==1.18.3
 zipp==3.19.2
-zstandard==0.23.0
+zstandard==0.25.0

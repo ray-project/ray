@@ -271,7 +271,7 @@ class ClientCallManager {
       const ClientCallback<Reply> &callback,
       std::string call_name,
       int64_t method_timeout_ms = -1) {
-    auto stats_handle = main_service_.stats().RecordStart(std::move(call_name));
+    auto stats_handle = main_service_.stats()->RecordStart(std::move(call_name));
     if (method_timeout_ms == -1) {
       method_timeout_ms = call_timeout_ms_;
     }
@@ -349,7 +349,7 @@ class ClientCallManager {
               // Implement the delay of the rpc client call as the
               // delay of OnReplyReceived().
               ray::asio::testing::GetDelayUs(stats_handle->event_name));
-          EventTracker::RecordEnd(std::move(stats_handle));
+          main_service_.stats()->RecordEnd(std::move(stats_handle));
         } else {
           delete tag;
         }

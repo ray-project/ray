@@ -381,6 +381,11 @@ class _StatsActor:
             description="Number of blocks that have unknown locations",
             tag_keys=iter_tag_keys,
         )
+        self.iter_prefetched_bytes = Gauge(
+            "data_iter_prefetched_bytes",
+            description="Current bytes of prefetched blocks in the iterator",
+            tag_keys=iter_tag_keys,
+        )
 
         # === Dataset and Operator Metadata Metrics ===
         dataset_tags = ("dataset", "job_id", "start_time")
@@ -568,6 +573,7 @@ class _StatsActor:
         self.iter_blocks_local.set(stats.iter_blocks_local, tags)
         self.iter_blocks_remote.set(stats.iter_blocks_remote, tags)
         self.iter_unknown_location.set(stats.iter_unknown_location, tags)
+        self.iter_prefetched_bytes.set(stats.iter_prefetched_bytes, tags)
 
         self.iter_block_fetching_s.set(stats.iter_get_s.get(), tags)
         self.iter_batch_shaping_s.set(stats.iter_next_batch_s.get(), tags)
@@ -976,6 +982,7 @@ class DatasetStats:
         self.iter_blocks_local: int = 0
         self.iter_blocks_remote: int = 0
         self.iter_unknown_location: int = 0
+        self.iter_prefetched_bytes: int = 0
 
         # Memory usage stats
         self.global_bytes_spilled: int = 0
@@ -1018,6 +1025,7 @@ class DatasetStats:
             self.iter_blocks_local,
             self.iter_blocks_remote,
             self.iter_unknown_location,
+            self.iter_prefetched_bytes,
         )
 
         stats_summary_parents = []
@@ -1730,6 +1738,8 @@ class IterStatsSummary:
     iter_blocks_remote: int
     # Num of blocks with unknown locations
     iter_unknown_location: int
+    # Current bytes of prefetched blocks in the iterator
+    iter_prefetched_bytes: int
 
     def __str__(self) -> str:
         return self.to_string()
@@ -1830,6 +1840,8 @@ class IterStatsSummary:
                 out += "    * Num blocks unknown location: {}\n".format(
                     self.iter_unknown_location
                 )
+            if self.iter_prefetched_bytes:
+                out += "    * Prefetched bytes: {}\n".format(self.iter_prefetched_bytes)
             if self.streaming_split_coord_time.get() != 0:
                 out += "Streaming split coordinator overhead time: "
                 out += f"{fmt(self.streaming_split_coord_time.get())}\n"
@@ -1846,6 +1858,7 @@ class IterStatsSummary:
             f"{indent}   iter_blocks_local={self.iter_blocks_local or None},\n"
             f"{indent}   iter_blocks_remote={self.iter_blocks_remote or None},\n"
             f"{indent}   iter_unknown_location={self.iter_unknown_location or None},\n"
+            f"{indent}   iter_prefetched_bytes={self.iter_prefetched_bytes or None},\n"
             f"{indent}   next_time={fmt(self.next_time.get()) or None},\n"
             f"{indent}   format_time={fmt(self.format_time.get()) or None},\n"
             f"{indent}   user_time={fmt(self.user_time.get()) or None},\n"

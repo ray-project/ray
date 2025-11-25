@@ -69,6 +69,7 @@ class ErrorActor:
     def recv(self, tensor):
         return tensor
 
+    @ray.method(concurrency_group="_ray_system")
     def clear_gpu_object_store(self):
         gpu_object_store = (
             ray._private.worker.global_worker.gpu_object_manager.gpu_object_store

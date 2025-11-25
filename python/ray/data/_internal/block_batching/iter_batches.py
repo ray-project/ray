@@ -373,6 +373,8 @@ def prefetch_batches_locally(
     current_window_size = 0
 
     if num_batches_to_prefetch <= 0:
+        if stats:
+            stats.iter_prefetched_bytes = 0
         for ref_bundle in ref_bundles:
             for block_ref in ref_bundle.block_refs:
                 yield block_ref
@@ -398,6 +400,10 @@ def prefetch_batches_locally(
             break
 
     prefetcher.prefetch_blocks([block_ref for block_ref, _ in list(sliding_window)])
+    if stats:
+        stats.iter_prefetched_bytes = sum(
+            metadata.size_bytes or 0 for _, metadata in sliding_window
+        )
 
     while sliding_window:
         block_ref, metadata = sliding_window.popleft()
@@ -413,6 +419,10 @@ def prefetch_batches_locally(
                 )
             except StopIteration:
                 pass
+        if stats:
+            stats.iter_prefetched_bytes = sum(
+                metadata.size_bytes or 0 for _, metadata in sliding_window
+            )
         yield block_ref
         trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
     prefetcher.stop()

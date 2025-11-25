@@ -23,6 +23,7 @@ from ray.serve._private.proxy_router import (
     ProxyRouter,
 )
 from ray.serve._private.test_utils import FakeGrpcContext, MockDeploymentHandle
+from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
 from ray.serve.generated import serve_pb2
 from ray.serve.grpc_util import RayServegRPCContext
 
@@ -829,9 +830,9 @@ class TestProxyRouterMatchRoutePattern:
                 DeploymentID("api", "default"): EndpointInfo(
                     route="/api",
                     route_patterns=[
-                        "/api/",
-                        "/api/users/{user_id}",
-                        "/api/items/{item_id}/details",
+                        RoutePattern(methods=None, path="/api/"),
+                        RoutePattern(methods=None, path="/api/users/{user_id}"),
+                        RoutePattern(methods=None, path="/api/items/{item_id}/details"),
                     ],
                 )
             }
@@ -859,7 +860,9 @@ class TestProxyRouterMatchRoutePattern:
             {
                 DeploymentID("api", "default"): EndpointInfo(
                     route="/api",
-                    route_patterns=["/api/users/{user_id}"],
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/users/{user_id}")
+                    ],
                 )
             }
         )
@@ -885,7 +888,9 @@ class TestProxyRouterMatchRoutePattern:
             {
                 DeploymentID("api", "default"): EndpointInfo(
                     route="/api",
-                    route_patterns=["/api/users/{user_id}"],
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/users/{user_id}")
+                    ],
                 )
             }
         )
@@ -899,7 +904,9 @@ class TestProxyRouterMatchRoutePattern:
             {
                 DeploymentID("api", "default"): EndpointInfo(
                     route="/api",
-                    route_patterns=["/api/items/{item_id}"],
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/items/{item_id}")
+                    ],
                 )
             }
         )
@@ -927,7 +934,9 @@ class TestProxyRouterMatchRoutePattern:
             {
                 DeploymentID("api", "default"): EndpointInfo(
                     route="/api",
-                    route_patterns=["/api/users/{user_id}"],
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/users/{user_id}")
+                    ],
                 )
             }
         )

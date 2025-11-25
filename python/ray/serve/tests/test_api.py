@@ -1219,6 +1219,64 @@ def test_max_constructor_retry_count(serve_instance):
     wait_for_condition(lambda: ray.get(counter.get_count.remote()) == 9)
 
 
+def test_run_with_external_scaler_enabled(serve_instance):
+    """Test that serve.run correctly passes external_scaler_enabled parameter.
+
+    This test verifies that when serve.run is called with external_scaler_enabled=True
+    or external_scaler_enabled=False, the application state manager correctly stores
+    the external_scaler_enabled value.
+    """
+    controller = serve_instance._controller
+
+    @serve.deployment
+    class Model:
+        def __call__(self):
+            return "model response"
+
+    # Test with external_scaler_enabled=True
+    handle = serve.run(
+        Model.bind(),
+        name="app_with_scaler",
+        route_prefix="/with_scaler",
+        external_scaler_enabled=True,
+    )
+    assert handle.remote().result() == "model response"
+
+    # Verify that external_scaler_enabled is set to True
+    assert (
+        ray.get(controller.get_external_scaler_enabled.remote("app_with_scaler"))
+        is True
+    )
+
+    # Test with external_scaler_enabled=False (explicit)
+    handle = serve.run(
+        Model.bind(),
+        name="app_without_scaler",
+        route_prefix="/without_scaler",
+        external_scaler_enabled=False,
+    )
+    assert handle.remote().result() == "model response"
+
+    # Verify that external_scaler_enabled is set to False
+    assert (
+        ray.get(controller.get_external_scaler_enabled.remote("app_without_scaler"))
+        is False
+    )
+
+    # Test with default value (should be False)
+    handle = serve.run(
+        Model.bind(),
+        name="app_default",
+        route_prefix="/default",
+    )
+    assert handle.remote().result() == "model response"
+
+    # Verify that external_scaler_enabled defaults to False
+    assert (
+        ray.get(controller.get_external_scaler_enabled.remote("app_default")) is False
+    )
+
+
 if __name__ == "__main__":
     import sys
 

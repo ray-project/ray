@@ -37,13 +37,17 @@ class AuthenticationTokenLoader {
 
   /// Get the authentication token.
   /// If token authentication is enabled but no token is found, fails with RAY_CHECK.
+  /// \param ignore_auth_mode If true, bypass auth mode check and attempt to load token
+  ///                         regardless of RAY_AUTH_MODE setting.
   /// \return The authentication token, or std::nullopt if auth is disabled.
-  std::optional<AuthenticationToken> GetToken();
+  std::optional<AuthenticationToken> GetToken(bool ignore_auth_mode = false);
 
   /// Check if a token exists without crashing.
   /// Caches the token if it loads it afresh.
+  /// \param ignore_auth_mode If true, bypass auth mode check and attempt to load token
+  ///                         regardless of RAY_AUTH_MODE setting.
   /// \return true if a token exists, false otherwise.
-  bool HasToken();
+  bool HasToken(bool ignore_auth_mode = false);
 
   void ResetCache() {
     std::lock_guard<std::mutex> lock(token_mutex_);
