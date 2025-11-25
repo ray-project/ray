@@ -45,6 +45,8 @@ depsets:
       - docker/base-extra/requirements.in
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
+    constraints:
+      - /tmp/ray-deps/requirements_compiled.txt
     output: release/ray_release/byod/ray_base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
       - --unsafe-package ray
@@ -65,6 +67,8 @@ depsets:
       - docker/base-extra/requirements.in
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
+    constraints:
+      - /tmp/ray-deps/requirements_compiled.txt
     output: release/ray_release/byod/ray_base_extra_testdeps_cuda_py${PYTHON_VERSION}.lock
     append_flags:
       - --extra-index-url https://download.pytorch.org/whl/cu128
@@ -144,6 +148,8 @@ depsets:
     source_depset: ray_base_extra_testdeps_${PYTHON_SHORT}
     requirements:
       - docker/base-deps/requirements.in
+    constraints:
+      - /tmp/ray-deps/requirements_compiled.txt
     output: python/deplocks/base_deps/ray_base_deps_py${PYTHON_VERSION}.lock
     append_flags:
       - --unsafe-package ray
@@ -165,6 +171,8 @@ depsets:
     requirements:
       - docker/base-deps/requirements.in
       - docker/base-extra/requirements.in
+    constraints:
+      - /tmp/ray-deps/requirements_compiled.txt
     output: python/deplocks/base_extra/ray_base_extra_py${PYTHON_VERSION}.lock
     append_flags:
       - --unsafe-package ray

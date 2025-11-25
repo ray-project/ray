@@ -22,7 +22,7 @@ feather-format==0.4.1
 # Keep compatible with Werkzeug
 flask==2.1.3
 freezegun==1.1.0
-google-api-python-client==2.111.0
+google-api-python-client==2.111.0 ; python_version < '3.13'
 google-cloud-storage==2.14.0
 gradio==3.50.2; platform_system != "Windows"
 graphviz==0.20.3
@@ -94,7 +94,7 @@ importlib-metadata==6.11.0
 # Some packages have downstream dependencies that we have to specify here to resolve conflicts.
 # Feel free to add (or remove!) packages here liberally.
 tensorboardX
-tensorboard
+tensorboard>=2.15.2; python_version < '3.12'
 tensorboard-data-server==0.7.2
 h11>=0.16.0
 markdown-it-py

@@ -605,9 +605,7 @@ google-auth==2.23.4 \
 googleapis-common-protos==1.61.0 \
     --hash=sha256:22f1915393bb3245343f6efe87f6fe868532efc12aa26b391b15132e1279f1c0 \
     --hash=sha256:8a64866a97f6304a7179873a465d6eee97b7a24ec6cfd78e0f575e96b821240b
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   google-api-core
+    # via google-api-core
 grpcio==1.74.0 \
     --hash=sha256:0f87bddd6e27fc776aacf7ebfec367b6d49cad0455123951e4488ea99d9b9b8f \
     --hash=sha256:136b53c91ac1d02c8c24201bfdeb56f8b3ac3278668cbb8e0ba49c88069e1bdc \
@@ -1140,11 +1138,9 @@ numpy==1.26.4 \
     --hash=sha256:f870204a840a60da0b12273ef34f7051e98c3b5961b61b0c2c1be6dfd64fbcd3 \
     --hash=sha256:ffa75af20b44f8dba823498024771d5ac50620e6915abac414251bd971b4529f
     # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   cupy-cuda12x
     #   gymnasium
     #   pandas
-    #   ray
     #   scipy
     #   tensorboardx
 opencensus==0.11.4 \
@@ -1176,9 +1172,7 @@ opentelemetry-exporter-prometheus==0.55b1 \
 opentelemetry-proto==1.27.0 \
     --hash=sha256:33c9345d91dafd8a74fc3d7576c5a38f18b7fdf8d02983ac67485386132aedd6 \
     --hash=sha256:b133873de5581a50063e1e4b29cdcf0c5e253a8c2d8dc1229add20a4c3830ace
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   ray
+    # via ray
 opentelemetry-sdk==1.34.1 \
     --hash=sha256:308effad4059562f1d92163c61c8141df649da24ce361827812c40abb2a1e96e \
     --hash=sha256:8091db0d763fcd6098d4781bbc80ff0971f94e260739aa6afe6fd379cdf3aa4d
@@ -1429,7 +1423,6 @@ protobuf==4.25.8 \
     --hash=sha256:d552c53d0415449c8d17ced5c341caba0d89dbf433698e1436c8fa0aae7808a3 \
     --hash=sha256:f4510b93a3bec6eba8fd8f1093e9d7fb0d4a24d1a81377c10c0e5bbfe9e4ed24
     # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   google-api-core
     #   googleapis-common-protos
     #   opentelemetry-proto
@@ -1869,9 +1862,7 @@ scipy==1.11.4 \
     --hash=sha256:ee410e6de8f88fd5cf6eadd73c135020bfbbbdfcd0f6162c36a7638a1ea8cc65 \
     --hash=sha256:f313b39a7e94f296025e3cffc2c567618174c0b1dde173960cf23808f9fae4be \
     --hash=sha256:f3cd9e7b3c2c1ec26364856f9fbe78695fe631150f94cd1c22228456404cf1ec
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   ray
+    # via ray
 six==1.16.0 \
     --hash=sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926 \
     --hash=sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254

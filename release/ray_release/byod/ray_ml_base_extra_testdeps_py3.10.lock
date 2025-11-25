@@ -5180,8 +5180,6 @@ scikit-learn==1.3.2 \
     --hash=sha256:ed932ea780517b00dae7431e031faae6b49b20eb6950918eb83bd043237950e0 \
     --hash=sha256:fc4144a5004a676d5022b798d9e573b05139e77f271253a4703eed295bde0433
     # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.10.in
     #   lm-eval
 scipy==1.11.4 \

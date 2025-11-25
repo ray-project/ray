@@ -13,7 +13,7 @@ filelock
 jsonschema
 msgpack<2.0.0,>=1.1.0
 packaging
-protobuf>=3.20.3
+protobuf>=3.20.3; python_version < '3.13'
 pyyaml
 requests
 watchfiles
@@ -24,14 +24,12 @@ grpcio >= 1.42.0; python_version >= '3.10'
 # Version used in mac CI; needs upgrade.
 grpcio == 1.54.2; sys_platform == "darwin"
 
-numpy>=1.20
-
 pyarrow >= 9.0.0
 
 # ray[all]
 smart_open
 lz4
-numpy>=1.20
+numpy>=1.20 ; python_version < '3.13'
 aiorwlock
 scipy
 colorful
