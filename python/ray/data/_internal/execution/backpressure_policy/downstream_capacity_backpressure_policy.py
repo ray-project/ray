@@ -58,7 +58,6 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         )
 
     def _max_concurrent_tasks(self, op: "PhysicalOperator") -> int:
-        # This should return values >= 1 to ensure we do not deadlock.
         if isinstance(op, ActorPoolMapOperator):
             return sum(
                 [
