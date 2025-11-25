@@ -3,4 +3,4 @@
 set -exo pipefail
 
 # Install runtime deps
-pip install unstructured
+pip install unstructured[pdf]
