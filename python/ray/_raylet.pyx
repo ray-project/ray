@@ -2665,7 +2665,7 @@ cdef class CoreWorker:
         options.enable_logging = True
         options.log_dir = log_dir.encode("utf-8")
         options.install_failure_signal_handler = (
-            os.environ.get("RAY_DISABLE_FAILURE_SIGNAL_HANDLER", "0") != "1"
+            not ray_constants.RAY_DISABLE_FAILURE_SIGNAL_HANDLER
         )
         # https://stackoverflow.com/questions/2356399/tell-if-python-is-in-interactive-mode
         options.interactive = hasattr(sys, "ps1")
