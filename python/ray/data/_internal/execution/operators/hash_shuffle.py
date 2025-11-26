@@ -1213,7 +1213,6 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
         preserve_finalize_blocks: bool = False,
     ):
-        self._preserve_finalize_blocks = preserve_finalize_blocks
         super().__init__(
             name_factory=(
                 lambda num_partitions: f"Shuffle(key_columns={key_columns}, num_partitions={num_partitions})"
