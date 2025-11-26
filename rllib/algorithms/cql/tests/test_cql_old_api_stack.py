@@ -34,7 +34,7 @@ class TestCQL(unittest.TestCase):
         #   --config='{"output": "/tmp/out"}'
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
-        data_file = os.path.join(rllib_dir, "tests/data/pendulum/small.json")
+        data_file = os.path.join(rllib_dir, "offline/tests/data/pendulum/small.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
         config = (
