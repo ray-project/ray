@@ -24,9 +24,12 @@ ndarray(s)?
 Predibase('s)?
 [Pp]refetch
 [Pp]refetching
+[Pp]ostprocess
+[Pp]ostprocessor(s)?
 [Pp]reprocess
 [Pp]reprocessor(s)?
 [Pp]ushdown
+[Rr]eformat(s)?
 RGB
 runai
 [Ss]calers
