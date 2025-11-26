@@ -5,12 +5,12 @@ import logging
 import os
 import signal
 import sys
-import time
 
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.network_utils import build_address, is_localhost
+from ray._common.retry import call_with_retry
 from ray._common.utils import get_or_create_event_loop
 from ray._private import logging_utils
 from ray._private.process_watcher import create_check_raylet_task
@@ -78,15 +78,12 @@ class DashboardAgent:
         )
 
         # Fetch node info and save is_head.
-        node_info = None
-        for _ in range(30):
-            node_info = self.gcs_client.get_all_node_info().get(
-                NodeID.from_hex(self.node_id)
-            )
-            if node_info is not None:
-                break
-            time.sleep(1)
-        assert node_info is not None
+        node_info = call_with_retry(
+            lambda: self.gcs_client.get_all_node_info()[NodeID.from_hex(self.node_id)],
+            description="get self node info",
+            max_attempts=30,
+            max_backoff_s=1,
+        )
         self.is_head = node_info.is_head_node
 
         if not self.minimal:
