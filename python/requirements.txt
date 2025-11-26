@@ -32,7 +32,7 @@ pyarrow >= 9.0.0
 smart_open
 lz4
 aiorwlock
-scipy>=1.11.4; python_version < '3.13'
+scipy; python_version < '3.13'
 colorful
 rich
 opentelemetry-sdk>=1.30.0
