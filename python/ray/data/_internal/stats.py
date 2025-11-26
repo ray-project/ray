@@ -1205,7 +1205,7 @@ class DatasetStatsSummary:
             if self.num_rows_per_s:
                 out += "\n"
                 out += "Dataset throughput:\n"
-                out += "\t* Ray Data throughput:" f" {self.num_rows_per_s} " "rows/s\n"
+                out += f"\t* Ray Data throughput: {self.num_rows_per_s} rows/s\n"
         if verbose_stats_logs and add_global_stats:
             out += "\n" + self.runtime_metrics()
 
