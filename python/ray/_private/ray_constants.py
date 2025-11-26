@@ -55,6 +55,13 @@ def env_set_by_user(key):
 # Whether event logging to driver is enabled. Set to 0 to disable.
 AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
 
+# Whether to disable the C++ failure signal handler that provides stack traces
+# on crashes. Disabling this is necessary when using Java libraries
+# because Ray's signal handler conflicts with the JVM's signal handling.
+RAY_DISABLE_FAILURE_SIGNAL_HANDLER = env_bool(
+    "RAY_DISABLE_FAILURE_SIGNAL_HANDLER", False
+)
+
 RAY_LOG_TO_DRIVER = env_bool("RAY_LOG_TO_DRIVER", True)
 
 # Filter level under which events will be filtered out, i.e. not printing to driver
@@ -582,4 +589,29 @@ RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", True)
 # NOTE: This is a tenth of `RayConfig::fetch_fail_timeout_milliseconds` by default as RDT transfers are expected to be much faster.
 RDT_FETCH_FAIL_TIMEOUT_SECONDS = (
     env_integer("RAY_rdt_fetch_fail_timeout_milliseconds", 60000) / 1000
+)
+
+# Whether to enable zero-copy serialization for PyTorch tensors.
+# When enabled, Ray serializes PyTorch tensors by converting them to NumPy arrays
+# and leveraging pickle5's zero-copy buffer sharing. This avoids copying the
+# underlying tensor data, which can improve performance when passing large tensors
+# across tasks or actors. Note that this is experimental and should be used with caution
+# as we won't copy and allow a write to shared memory. One process changing a tensor
+# after ray.get could be reflected in another process.
+#
+# This feature is experimental and works best under the following conditions:
+# - The tensor has `requires_grad=False` (i.e., is detached from the autograd graph).
+# - The tensor is contiguous in memory
+# - Performance benefits from this are larger if the tensor resides in CPU memory
+# - You are not using Ray Direct Transport
+#
+# Tensors on GPU or non-contiguous tensors are still supported: Ray will
+# automatically move them to CPU and/or make them contiguous as needed.
+# While this incurs an initial copy, subsequent serialization may still benefit
+# from reduced overhead compared to the default path.
+#
+# Use with caution and ensure tensors meet the above criteria before enabling.
+# Default: False.
+RAY_ENABLE_ZERO_COPY_TORCH_TENSORS = env_bool(
+    "RAY_ENABLE_ZERO_COPY_TORCH_TENSORS", False
 )
