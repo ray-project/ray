@@ -34,13 +34,7 @@ def _setup_logger(log_file: Optional[str] = None, enable_debug: bool = False):
 
     logger.info(f"Log Level Set to {logging.getLevelName(logger.level)}")
 
-
-def clean_bazel_line(line: str) -> Tuple[str, str]:
-    # split the line by whitespace, but only split at @ or //
-    return re.split(r"\s+(?=@|//)", line.strip(), maxsplit=1)
-
-
-def isExcludedKind(kind_str: str) -> bool:
+def _isExcludedKind(kind_str: str) -> bool:
     # split the kind_str by whitespace and get the first element as the kind
     kind = kind_str.split(" ")[0]
     # list of non-target rule kinds
@@ -62,7 +56,7 @@ def isExcludedKind(kind_str: str) -> bool:
     return kind in target_rule_kinds
 
 
-def isBuildTool(label: str) -> bool:
+def _isBuildTool(label: str) -> bool:
     # list of build package labels that are present in dependencies but not part of the target code
     build_package_labels = ["bazel_tools", "local_config_python", "cython"]
     return any(
@@ -97,6 +91,11 @@ def _get_dependency_info(line_json: Dict) -> Tuple[str, str, str, str]:
         case _:
             return type, type, "unknown", "unknown"
 
+def _clean_path(path: str) -> str:
+    # Remove location information (e.g., :line:column) from the path
+    # Format is typically: /path/to/file.ext:line:column
+    return path.split(':')[0]
+
 def _get_bazel_dependencies(package_name: str) -> Tuple[List[str], Set[str], List[str]]:
     bazel_dependencies = []
     debug_dependencies = []
@@ -110,17 +109,17 @@ def _get_bazel_dependencies(package_name: str) -> Tuple[List[str], Set[str], Lis
         line_json = json.loads(line)
         debug_dependencies.append(line_json)
         type, kind, label, location = _get_dependency_info(line_json)
-        logger.debug(f"Dependency type: {type}, kind: {kind}, Label: {label}, Location: {location}")
-        # logger.debug(f"pwd: {os.environ.get('PWD')}, {os.getcwd()}, {os.environ.get('BUILD_WORKING_DIRECTORY')}")
-        # print(f"{kind} is excluded {isExcludedKind(kind)},\n label: {label}, \n is own code: {isOwnCode(line_json)},is build tools {isBuildTool(label)}, \n location {location}")
-        if isExcludedKind(kind) or isBuildTool(label) or _isOwnCode(location):
+        logger.debug(f"Dependency type: {type},  Label: {label}, Location: {location}")
+
+        if _isBuildTool(label) or _isOwnCode(location):
             logger.debug(f"Skipping dependency: {line} because it is a bad kind")
             continue
         elif _isCppCode(label):
             bazel_dependencies.append(label)
-            file_paths.add(location)
+            file_paths.add(_clean_path(location))
             package_name = re.search(r"(?:@([^/]+))?//", label).group(1)
             package_names.add(package_name)
+
     if logger.isEnabledFor(logging.DEBUG):
         with open(f"{output_folder}/debug_dependencies.json", "w") as file:
             json.dump(debug_dependencies, file, indent=4)
@@ -137,20 +136,15 @@ def _get_bazel_dependencies(package_name: str) -> Tuple[List[str], Set[str], Lis
 def _copy_files(file_paths: Set[str]):
     for file_path in file_paths:
         logger.debug(f"Copying file: {file_path}")
-        # Remove location information (e.g., :line:column) from the path
-        # Format is typically: /path/to/file.ext:line:column
-        clean_path = file_path.split(':')[0]
-        
-        source = clean_path
-        destination = os.path.join(output_folder, clean_path.split("external/")[-1])
+        destination = os.path.join(output_folder, file_path.split("external/")[-1])
 
         # Create parent directories if they don't exist
         os.makedirs(os.path.dirname(destination), exist_ok=True)
         # Copy the file
         try:
-            shutil.copy(source, destination)
+            shutil.copy(file_path, destination)
         except FileNotFoundError:
-            logger.warning(f"File not found, skipping: {source}")
+            logger.warning(f"File not found, skipping: {file_path}")
 
 def _copy_licenses(package_names: Set[str]):
     for package_name in package_names:
@@ -195,7 +189,7 @@ def _expand_and_crawl(path: str, patterns: List[str] = None) -> List[Dict]:
 
     return all_licenses
 
-def get_askalono_results(dependencies: List[str]) -> List[Dict]:
+def _get_askalono_results(dependencies: List[str]) -> List[Dict]:
     license_info = []
     for dependency in dependencies:
         dependency_path = f"{bazel_output_base}/external/{dependency}"
@@ -226,7 +220,7 @@ def get_askalono_results(dependencies: List[str]) -> List[Dict]:
             )
     return license_info
 
-def generate_fossa_deps_file(askalono_results: List[Dict]) -> Dict:
+def _generate_fossa_deps_file(askalono_results: List[Dict]) -> Dict:
     # Group licenses and file paths by dependency
     dependency_data = {}
     for result in askalono_results:
@@ -274,7 +268,7 @@ def generate_fossa_deps_file(askalono_results: List[Dict]) -> Dict:
 
     return fossa_deps_file
 
-def change_working_directory():
+def _change_working_directory():
     # change working directory to the workspace in case being executed as bazel py_binary
     workspace = os.environ.get("BUILD_WORKING_DIRECTORY")
     if workspace:
@@ -316,7 +310,7 @@ Examples:
 
     args = parser.parse_args()
 
-    change_working_directory()
+    _change_working_directory()
 
     _setup_logger(args.log_file, args.verbose)
     bazel_command = args.bazel_cmd
@@ -335,7 +329,7 @@ Examples:
         _copy_files(file_paths)
         _copy_licenses(package_names)
 
-    askalono_results = get_askalono_results(package_names)
+    askalono_results = _get_askalono_results(package_names)
     with open(f"{output_folder}/askalono_results.json", "w") as file:
         json.dump(askalono_results, file, indent=4)
-    generate_fossa_deps_file(askalono_results)
+    _generate_fossa_deps_file(askalono_results)
