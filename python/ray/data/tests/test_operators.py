@@ -1313,6 +1313,32 @@ def test_block_ref_bundler_uniform(
     assert flat_out == list(range(n))
 
 
+def test_block_ref_bundler_finalize_drains_all():
+    # Use a min_rows_per_bundle threshold
+    target = 100
+    bundler = BlockRefBundler(target)
+
+    # Add many small bundles WITHOUT draining between adds
+    # This simulates the scenario in all_inputs_done() where bundles
+    # accumulate before finalization
+    bundle_sizes = [80, 60, 50, 40, 30]  # Total: 260 rows
+    pre_bundles = [[i] * size for i, size in enumerate(bundle_sizes)]
+    bundles = make_ref_bundles(pre_bundles)
+
+    # Add all bundles WITHOUT draining (no while loop here)
+    for bundle in bundles:
+        bundler.add_bundle(bundle)
+
+    # Now finalize
+    bundler.done_adding_bundles()
+
+    total_num_rows: int = 0
+    while bundler.has_bundle():
+        _ , bundle = bundler.get_next_bundle()
+        total_num_rows += bundle.num_rows()
+
+    assert total_num_rows == sum(bundle_sizes)
+
 def test_operator_metrics():
     NUM_INPUTS = 100
     NUM_BLOCKS_PER_TASK = 5

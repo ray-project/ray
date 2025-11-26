@@ -748,6 +748,7 @@ class BlockRefBundler(BaseRefBundler):
                 output_buffer_size += bundle_size
             else:
                 remainder = self._bundle_buffer[idx:]
+                break
 
         self._bundle_buffer = remainder
         self._bundle_buffer_size = sum(
