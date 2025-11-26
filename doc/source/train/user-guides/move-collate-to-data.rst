@@ -51,7 +51,8 @@ Baseline implementation
 
 The following example shows a typical collate function that runs on the training worker:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from transformers import AutoTokenizer
     import torch
@@ -106,7 +107,8 @@ To address the return type mismatch, you need a way to serialize PyTorch tensors
 
 You can use this reference implementation or adapt it to your needs:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from dataclasses import dataclass
     from typing import Dict, List, Tuple, Union
@@ -234,7 +236,8 @@ The following example moves the collate function to Ray Data preprocessing.
 
 First, define the collate functions that will run in Ray Data and on the training worker:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from transformers import AutoTokenizer
     import torch
@@ -271,7 +274,8 @@ First, define the collate functions that will run in Ray Data and on the trainin
 
 Then, update your training function and dataset pipeline:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import ray
     from ray.train.torch import TorchTrainer
@@ -347,7 +351,8 @@ Complete runnable example
 
 The following is a complete, self-contained example that you can copy and run. It includes the tensor serialization utility, mock dataset generation, and the optimized collate function implementation:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from dataclasses import dataclass
     from typing import Dict, List, Tuple, Union
