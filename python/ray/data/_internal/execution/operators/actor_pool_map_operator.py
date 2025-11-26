@@ -401,6 +401,28 @@ class ActorPoolMapOperator(MapOperator):
                 "configuring `override_num_blocks` earlier in the pipeline."
             )
 
+    def clear_internal_input_queue(self) -> None:
+        """Clear internal input queues for the actor-pool map operator.
+
+        This includes:
+        * The local bundle queue used to stage input bundles for actors.
+        * The shared block ref bundler inherited from MapOperator.
+        """
+        while self._bundle_queue.has_next():
+            bundle = self._bundle_queue.get_next()
+            self._metrics.on_input_dequeued(bundle)
+
+        while self._block_ref_bundler.has_bundle():
+            input_bundles, _ = self._block_ref_bundler.get_next_bundle()
+            for input_bundle in input_bundles:
+                self._metrics.on_input_dequeued(input_bundle)
+
+    def clear_internal_output_queue(self) -> None:
+        """Clear internal output queue for the actor-pool map operator."""
+        while self._output_queue.has_next():
+            bundle = self._output_queue.get_next()
+            self._metrics.on_output_dequeued(bundle)
+
     def _do_shutdown(self, force: bool = False):
         self._actor_pool.shutdown(force=force)
         # NOTE: It's critical for Actor Pool to release actors before calling into
