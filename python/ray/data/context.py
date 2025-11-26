@@ -396,7 +396,9 @@ class DataContext:
         enable_rich_progress_bars: Whether to use the new rich progress bars instead
             of the tqdm TUI.
         enable_get_object_locations_for_metrics: Whether to enable
-            ``get_object_locations`` for metrics.
+            ``get_object_locations`` for metrics. This is useful for tracking whether
+            the object input of a task is local (cache hit) or not local (cache miss)
+            to the node that task is running on.
         write_file_retry_on_errors: A list of substrings of error messages that should
             trigger a retry when writing files. This is useful for handling transient
             errors when writing to remote storage systems.
@@ -631,6 +633,15 @@ class DataContext:
         # the DataContext from the plugin implementations, as well as to avoid
         # circular dependencies.
         self._kv_configs: Dict[str, Any] = {}
+
+        # Sync hash shuffle aggregator fields to its detector config
+        self.issue_detectors_config.hash_shuffle_detector_config.detection_time_interval_s = (
+            self.hash_shuffle_aggregator_health_warning_interval_s
+        )
+        self.issue_detectors_config.hash_shuffle_detector_config.min_wait_time_s = (
+            self.min_hash_shuffle_aggregator_wait_time_in_s
+        )
+
         self._max_num_blocks_in_streaming_gen_buffer = (
             DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
         )

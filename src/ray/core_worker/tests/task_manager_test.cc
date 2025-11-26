@@ -2889,7 +2889,7 @@ TEST_F(TaskManagerTest, TestTaskRetriedOnNodePreemption) {
       rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
               GetNodeAddressAndLiveness(node_id, false))
-      .WillOnce(::testing::Return(&node_info));
+      .WillOnce(::testing::Return(node_info));
 
   // Task should be retried because the node was preempted, even with 0 retries left
   rpc::RayErrorInfo node_died_error;
