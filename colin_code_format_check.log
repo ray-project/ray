@@ -1,0 +1,415 @@
++ pre_commit code_format
++ pip install -c python/requirements_compiled.txt pre-commit clang-format
+Looking in indexes: https://pypi.org/simple, https://download.pytorch.org/whl/cpu
+Looking in links: https://data.pyg.org/whl/torch-2.3.0+cpu.html
+Requirement already satisfied: pre-commit in /opt/venv/lib/python3.10/site-packages (3.5.0)
+Requirement already satisfied: clang-format in /opt/venv/lib/python3.10/site-packages (12.0.1)
+Requirement already satisfied: cfgv>=2.0.0 in /opt/venv/lib/python3.10/site-packages (from pre-commit) (3.4.0)
+Requirement already satisfied: identify>=1.0.0 in /opt/venv/lib/python3.10/site-packages (from pre-commit) (2.6.1)
+Requirement already satisfied: nodeenv>=0.11.1 in /opt/venv/lib/python3.10/site-packages (from pre-commit) (1.9.1)
+Requirement already satisfied: pyyaml>=5.1 in /opt/venv/lib/python3.10/site-packages (from pre-commit) (6.0.1)
+Requirement already satisfied: virtualenv>=20.10.0 in /opt/venv/lib/python3.10/site-packages (from pre-commit) (20.29.1)
+Requirement already satisfied: distlib<1,>=0.3.7 in /opt/venv/lib/python3.10/site-packages (from virtualenv>=20.10.0->pre-commit) (0.3.7)
+Requirement already satisfied: filelock<4,>=3.12.2 in /opt/venv/lib/python3.10/site-packages (from virtualenv>=20.10.0->pre-commit) (3.17.0)
+Requirement already satisfied: platformdirs<5,>=3.9.1 in /opt/venv/lib/python3.10/site-packages (from virtualenv>=20.10.0->pre-commit) (3.11.0)
+
+[notice] A new release of pip is available: 25.2 -> 25.3
+[notice] To update, run: pip install --upgrade pip
++ HOOKS=(python-no-log-warn ruff check-added-large-files check-ast check-toml black prettier mypy rst-directive-colons rst-inline-touching-normal python-check-mock-methods clang-format shellcheck docstyle check-import-order check-cpp-files-inclusion end-of-file-fixer check-json trailing-whitespace cpplint buildifier buildifier-lint eslint)
++ for HOOK in "${HOOKS[@]}"
++ pre-commit run python-no-log-warn --all-files --show-diff-on-failure
+use logger.warning(......................................................Passed
++ for HOOK in "${HOOKS[@]}"
++ pre-commit run ruff --all-files --show-diff-on-failure
+ruff.....................................................................Passed
+ruff.....................................................................Passed
++ for HOOK in "${HOOKS[@]}"
++ pre-commit run check-added-large-files --all-files --show-diff-on-failure
+[INFO] Installing environment for https://github.com/pre-commit/pre-commit-hooks.
+[INFO] Once installed this environment will be reused.
+[INFO] This may take a few minutes...
+check for added large files..............................................Passed
++ for HOOK in "${HOOKS[@]}"
++ pre-commit run check-ast --all-files --show-diff-on-failure
+check python ast.........................................................Passed
++ for HOOK in "${HOOKS[@]}"
++ pre-commit run check-toml --all-files --show-diff-on-failure
+check toml...............................................................Passed
++ for HOOK in "${HOOKS[@]}"
++ pre-commit run black --all-files --show-diff-on-failure
+[INFO] Installing environment for https://github.com/psf/black.
+[INFO] Once installed this environment will be reused.
+[INFO] This may take a few minutes...
+black....................................................................Failed
+- hook id: black
+- files were modified by this hook
+
+reformatted python/ray/llm/_internal/serve/core/server/builder.py
+reformatted python/ray/llm/examples/sglang/ingress_builder.py
+reformatted python/ray/llm/examples/sglang/sglang_engine.py
+
+All done! ✨ 🍰 ✨
+3 files reformatted, 2728 files left unchanged.
+All done! ✨ 🍰 ✨
+1097 files left unchanged.
+
+pre-commit hook(s) made changes.
+If you are seeing this message in CI, reproduce locally with: `pre-commit run --all-files`.
+To run `pre-commit` as part of git workflow, use `pre-commit install`.
+All changes made by hooks:
+diff --git a/python/ray/llm/_internal/serve/core/ingress/builder.py b/python/ray/llm/_internal/serve/core/ingress/builder.py
+index 0403c98d6d..b083b7133f 100644
+--- a/python/ray/llm/_internal/serve/core/ingress/builder.py
++++ b/python/ray/llm/_internal/serve/core/ingress/builder.py
+@@ -15,7 +15,6 @@ from ray.llm._internal.serve.core.ingress.ingress import (
+ )
+ from ray.llm._internal.serve.core.server.builder import (
+     build_llm_deployment,
+-    build_sglang_deployment,
+ )
+ from ray.llm._internal.serve.observability.logging import get_logger
+ from ray.serve.deployment import Application
+diff --git a/python/ray/llm/_internal/serve/core/server/builder.py b/python/ray/llm/_internal/serve/core/server/builder.py
+index a8091890d5..032e195784 100644
+--- a/python/ray/llm/_internal/serve/core/server/builder.py
++++ b/python/ray/llm/_internal/serve/core/server/builder.py
+@@ -12,7 +12,6 @@ from ray.llm._internal.serve.core.configs.llm_config import (
+     LLMConfig,
+ )
+ from ray.llm._internal.serve.core.server.llm_server import LLMServer
+-from ray.llm._internal.serve.engines.sglang.sglang_engine import SGLangServer
+ from ray.llm._internal.serve.observability.logging import get_logger
+ from ray.serve.deployment import Application
+ 
+@@ -77,4 +76,3 @@ def build_llm_deployment(
+     return serve.deployment(deployment_cls, **deployment_options).bind(
+         llm_config=llm_config, **bind_kwargs
+     )
+-
+diff --git a/python/ray/llm/examples/sglang/ingress_builder.py b/python/ray/llm/examples/sglang/ingress_builder.py
+index 74855e0365..cb099a8dac 100644
+--- a/python/ray/llm/examples/sglang/ingress_builder.py
++++ b/python/ray/llm/examples/sglang/ingress_builder.py
+@@ -13,10 +13,8 @@ from ray.llm._internal.serve.core.ingress.ingress import (
+     OpenAiIngress,
+     make_fastapi_ingress,
+ )
+-from ray.llm.examples.sglang.server_builder import (
+-    build_sglang_deployment
+-)
+ from ray.llm._internal.serve.observability.logging import get_logger
++from ray.llm.examples.sglang.server_builder import build_sglang_deployment
+ from ray.serve.deployment import Application
+ 
+ logger = get_logger(__name__)
+@@ -134,4 +132,3 @@ def build_sglang_openai_app(builder_config: dict) -> Application:
+     return serve.deployment(ingress_cls, **ingress_options).bind(
+         llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs
+     )
+-   
+diff --git a/python/ray/llm/examples/sglang/server_builder.py b/python/ray/llm/examples/sglang/server_builder.py
+index 292477f393..827ad39860 100644
+--- a/python/ray/llm/examples/sglang/server_builder.py
++++ b/python/ray/llm/examples/sglang/server_builder.py
+@@ -1,5 +1,5 @@
+ import pprint
+-from typing import Optional, Type
++from typing import Optional
+ 
+ from ray import serve
+ from ray.llm._internal.common.dict_utils import deep_merge_dicts
+@@ -11,8 +11,8 @@ from ray.llm._internal.serve.constants import (
+ from ray.llm._internal.serve.core.configs.llm_config import (
+     LLMConfig,
+ )
+-from ray.llm.examples.sglang.sglang_engine import SGLangServer
+ from ray.llm._internal.serve.observability.logging import get_logger
++from ray.llm.examples.sglang.sglang_engine import SGLangServer
+ from ray.serve.deployment import Application
+ 
+ logger = get_logger(__name__)
+@@ -36,7 +36,7 @@ def build_sglang_deployment(
+     bind_kwargs: Optional[dict] = None,
+     override_serve_options: Optional[dict] = None,
+ ) -> Application:
+-    """Build an LLMServer deployment.
++    """Build a SGLang Server deployment.
+ 
+     Args:
+         llm_config: The LLMConfig to build the deployment.
+@@ -45,10 +45,9 @@ def build_sglang_deployment(
+             Used for customizing the deployment.
+         override_serve_options: The optional serve options to override the
+             default options.
+-        deployment_cls: The deployment class to use. Defaults to LLMServer.
+ 
+     Returns:
+-        The Ray Serve Application for the LLMServer deployment.
++        The Ray Serve Application for SGLang deployment.
+     """
+     deployment_cls = SGLangServer
+     name_prefix = name_prefix or f"{deployment_cls.__name__}:"
+diff --git a/python/ray/llm/examples/sglang/sglang_engine.py b/python/ray/llm/examples/sglang/sglang_engine.py
+index b0c7102cb0..7069396997 100644
+--- a/python/ray/llm/examples/sglang/sglang_engine.py
++++ b/python/ray/llm/examples/sglang/sglang_engine.py
+@@ -1,43 +1,43 @@
+-import ray
++import copy
+ import signal
+-from ray import serve
+-from pydantic import BaseModel
+-from ray.serve.handle import DeploymentHandle
+-from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+ import time
+-import copy
+ from enum import Enum
+ from typing import (
+-    TYPE_CHECKING,
+     Any,
+     AsyncGenerator,
+-    Dict,
+     List,
+     Optional,
+-    Type,
+-    TypeVar,
+     Union,
+ )
+ 
+-class CompletionUsage(BaseModel): # Assuming you have this defined
++from pydantic import BaseModel
++
++from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
++
++
++class CompletionUsage(BaseModel):  # Assuming you have this defined
+     prompt_tokens: int
+     completion_tokens: int
+     total_tokens: int
+ 
++
+ class ChatRole(str, Enum):
+     user = "user"
+     assistant = "assistant"
+     system = "system"
+ 
++
+ class ChatMessage(BaseModel):
+     role: ChatRole
+     content: Optional[str] = None
+ 
++
+ class ChatCompletionChoice(BaseModel):
+     index: int
+     message: ChatMessage
+     finish_reason: Optional[str] = None
+ 
++
+ class ChatCompletionResponse(BaseModel):
+     id: str
+     object: str = "chat.completion"
+@@ -46,12 +46,14 @@ class ChatCompletionResponse(BaseModel):
+     choices: List[ChatCompletionChoice]
+     usage: Optional[CompletionUsage] = None
+ 
++
+ class CompletionChoice(BaseModel):
+     index: int
+     text: str
+     logprobs: Optional[Any] = None
+     finish_reason: Optional[str] = None
+ 
++
+ class CompletionResponse(BaseModel):
+     id: str
+     object: str = "text_completion"
+@@ -60,6 +62,7 @@ class CompletionResponse(BaseModel):
+     choices: List[CompletionChoice]
+     usage: Optional[CompletionUsage] = None
+ 
++
+ class ChatCompletionRequest(BaseModel):
+     model: str
+     messages: List[ChatMessage]
+@@ -75,20 +78,21 @@ class ChatCompletionRequest(BaseModel):
+     def normalize_batch_and_arguments(self):
+         pass
+ 
++
+ def format_messages_to_prompt(messages: List[ChatMessage]) -> str:
+     prompt = "A conversation between a user and an assistant.\n"
+-    
++
+     for message in messages:
+         if isinstance(message, dict):
+             role = message.get("role")
+             content = message.get("content", "")
+         else:
+             role = message.role
+-            content = message.content or "" 
+-            
++            content = message.content or ""
++
+         role_str = str(role)
+ 
+-        if role_str == ChatRole.system.value: # Use .value for enum comparison
++        if role_str == ChatRole.system.value:  # Use .value for enum comparison
+             prompt += f"### System: {content.strip()}\n"
+         elif role_str == ChatRole.user.value:
+             prompt += f"### User: {content.strip()}\n"
+@@ -98,6 +102,7 @@ def format_messages_to_prompt(messages: List[ChatMessage]) -> str:
+     prompt += "### Assistant:"
+     return prompt
+ 
++
+ class CompletionRequest(BaseModel):
+     model: str
+     prompt: Union[str, List[str]]
+@@ -110,12 +115,13 @@ class CompletionRequest(BaseModel):
+     def text(self) -> str:
+         prompt = self.prompt
+         if isinstance(prompt, list):
+-            return prompt[0] # Assuming non-batched completions
++            return prompt[0]  # Assuming non-batched completions
+         return prompt
+ 
+     def normalize_batch_and_arguments(self):
+         pass
+ 
++
+ class SGLangServer:
+     def __init__(self, _llm_config: LLMConfig):
+ 
+@@ -134,6 +140,7 @@ class SGLangServer:
+ 
+         def noop_signal_handler(sig, action):
+             pass
++
+         try:
+             # Override signal.signal with our no-op function
+             signal.signal = noop_signal_handler
+@@ -151,11 +158,11 @@ class SGLangServer:
+             temp = 0.7
+         top_p = request.top_p
+         if top_p is None:
+-            top_p = 1.0 
++            top_p = 1.0
+         max_tokens = request.max_tokens
+         if max_tokens is None:
+             max_tokens = 128
+-        
++
+         sampling_params = {
+             "temperature": temp,
+             "max_new_tokens": max_tokens,
+@@ -168,7 +175,7 @@ class SGLangServer:
+             sampling_params=sampling_params,
+             stream=False,
+         )
+-        
++
+         if isinstance(raw, list):
+             raw = raw[0]
+ 
+@@ -177,9 +184,9 @@ class SGLangServer:
+         finish_reason_info = meta.get("finish_reason", {}) or {}
+ 
+         if isinstance(finish_reason_info, dict):
+-             finish_reason = finish_reason_info.get("type", "length")
++            finish_reason = finish_reason_info.get("type", "length")
+         else:
+-             finish_reason = str(finish_reason_info)
++            finish_reason = str(finish_reason_info)
+ 
+         prompt_tokens = int(meta.get("prompt_tokens", 0))
+         completion_tokens = int(meta.get("completion_tokens", 0))
+@@ -191,10 +198,7 @@ class SGLangServer:
+             total_tokens=total_tokens,
+         )
+ 
+-        assistant_message = ChatMessage(
+-            role=ChatRole.assistant,
+-            content=text.strip()
+-        )
++        assistant_message = ChatMessage(role=ChatRole.assistant, content=text.strip())
+ 
+         choice = ChatCompletionChoice(
+             index=0,
+@@ -215,12 +219,12 @@ class SGLangServer:
+ 
+     async def completions(self, request) -> AsyncGenerator[CompletionResponse, None]:
+         prompt_input = request.prompt
+-        
++
+         if isinstance(prompt_input, list):
+-            prompt_string = prompt_input[0] 
++            prompt_string = prompt_input[0]
+         else:
+-            prompt_string = prompt_input 
+-        
++            prompt_string = prompt_input
++
+         temp = getattr(request, "temperature", None)
+         if temp is None:
+             temp = 0.7
+@@ -247,7 +251,7 @@ class SGLangServer:
+             sampling_params=sampling_params,
+             stream=False,
+         )
+-        
++
+         if isinstance(raw, list):
+             raw = raw[0]
+ 
+@@ -256,9 +260,9 @@ class SGLangServer:
+         finish_reason_info = meta.get("finish_reason", {}) or {}
+ 
+         if isinstance(finish_reason_info, dict):
+-             finish_reason = finish_reason_info.get("type", "length")
++            finish_reason = finish_reason_info.get("type", "length")
+         else:
+-             finish_reason = str(finish_reason_info)
++            finish_reason = str(finish_reason_info)
+ 
+         prompt_tokens = int(meta.get("prompt_tokens", 0))
+         completion_tokens = int(meta.get("completion_tokens", 0))
+@@ -281,7 +285,9 @@ class SGLangServer:
+             id=meta.get("id", f"sglang-comp-{int(time.time())}"),
+             object="text_completion",
+             created=int(time.time()),
+-            model=getattr(request, "model", "default_model"), # Use default if model isn't present
++            model=getattr(
++                request, "model", "default_model"
++            ),  # Use default if model isn't present
+             choices=[choice],
+             usage=usage,
+         )
+@@ -293,14 +299,14 @@ class SGLangServer:
+ 
+     @classmethod
+     def get_deployment_options(cls, llm_config: "LLMConfig"):
+-        
++
+         deployment_options = copy.deepcopy(llm_config.deployment_config)
+         pg_config = llm_config.placement_group_config or {}
+-        
++
+         if "placement_group_bundles" not in pg_config:
+             pg_bundles = [
+-                {'CPU': 1, 'GPU': 1},
+-                {'GPU': 1},
++                {"CPU": 1, "GPU": 1},
++                {"GPU": 1},
+             ]
+             pg_strategy = "PACK"
+         else:
+@@ -319,7 +325,8 @@ class SGLangServer:
+         runtime_env = ray_actor_options.setdefault("runtime_env", {})
+ 
+         runtime_env.setdefault(
+-             "worker_process_setup_hook", "ray.llm._internal.serve._worker_process_setup_hook"
++            "worker_process_setup_hook",
++            "ray.llm._internal.serve._worker_process_setup_hook",
+         )
+ 
+         if llm_config.runtime_env:

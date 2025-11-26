@@ -1,5 +1,5 @@
 import pprint
-from typing import Optional, Type
+from typing import Optional
 
 from ray import serve
 from ray.llm._internal.common.dict_utils import deep_merge_dicts
@@ -11,8 +11,8 @@ from ray.llm._internal.serve.constants import (
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
 )
-from ray.llm.examples.sglang.sglang_engine import SGLangServer
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm.examples.sglang.sglang_engine import SGLangServer
 from ray.serve.deployment import Application
 
 logger = get_logger(__name__)
@@ -36,7 +36,7 @@ def build_sglang_deployment(
     bind_kwargs: Optional[dict] = None,
     override_serve_options: Optional[dict] = None,
 ) -> Application:
-    """Build an LLMServer deployment.
+    """Build a SGLang Server deployment.
 
     Args:
         llm_config: The LLMConfig to build the deployment.
@@ -45,10 +45,9 @@ def build_sglang_deployment(
             Used for customizing the deployment.
         override_serve_options: The optional serve options to override the
             default options.
-        deployment_cls: The deployment class to use. Defaults to LLMServer.
 
     Returns:
-        The Ray Serve Application for the LLMServer deployment.
+        The Ray Serve Application for SGLang deployment.
     """
     deployment_cls = SGLangServer
     name_prefix = name_prefix or f"{deployment_cls.__name__}:"

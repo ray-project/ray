@@ -13,10 +13,8 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
-from ray.llm.examples.sglang.server_builder import (
-    build_sglang_deployment
-)
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm.examples.sglang.server_builder import build_sglang_deployment
 from ray.serve.deployment import Application
 
 logger = get_logger(__name__)
@@ -134,4 +132,3 @@ def build_sglang_openai_app(builder_config: dict) -> Application:
     return serve.deployment(ingress_cls, **ingress_options).bind(
         llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs
     )
-   

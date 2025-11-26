@@ -15,7 +15,6 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 )
 from ray.llm._internal.serve.core.server.builder import (
     build_llm_deployment,
-    build_sglang_deployment,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve.deployment import Application

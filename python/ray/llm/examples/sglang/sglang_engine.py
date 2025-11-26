@@ -1,42 +1,42 @@
-import ray
-import signal
-from ray import serve
-from pydantic import BaseModel
-from ray.serve.handle import DeploymentHandle
-from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
-import time
 import copy
+import signal
+import time
 from enum import Enum
 from typing import (
-    TYPE_CHECKING,
     Any,
     AsyncGenerator,
-    Dict,
     List,
     Optional,
-    Type,
-    TypeVar,
     Union,
 )
 
-class CompletionUsage(BaseModel): # Assuming you have this defined
+from pydantic import BaseModel
+
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+
+
+class CompletionUsage(BaseModel):  # Assuming you have this defined
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
+
 
 class ChatRole(str, Enum):
     user = "user"
     assistant = "assistant"
     system = "system"
 
+
 class ChatMessage(BaseModel):
     role: ChatRole
     content: Optional[str] = None
+
 
 class ChatCompletionChoice(BaseModel):
     index: int
     message: ChatMessage
     finish_reason: Optional[str] = None
+
 
 class ChatCompletionResponse(BaseModel):
     id: str
@@ -46,11 +46,13 @@ class ChatCompletionResponse(BaseModel):
     choices: List[ChatCompletionChoice]
     usage: Optional[CompletionUsage] = None
 
+
 class CompletionChoice(BaseModel):
     index: int
     text: str
     logprobs: Optional[Any] = None
     finish_reason: Optional[str] = None
+
 
 class CompletionResponse(BaseModel):
     id: str
@@ -59,6 +61,7 @@ class CompletionResponse(BaseModel):
     model: str
     choices: List[CompletionChoice]
     usage: Optional[CompletionUsage] = None
+
 
 class ChatCompletionRequest(BaseModel):
     model: str
@@ -75,20 +78,21 @@ class ChatCompletionRequest(BaseModel):
     def normalize_batch_and_arguments(self):
         pass
 
+
 def format_messages_to_prompt(messages: List[ChatMessage]) -> str:
     prompt = "A conversation between a user and an assistant.\n"
-    
+
     for message in messages:
         if isinstance(message, dict):
             role = message.get("role")
             content = message.get("content", "")
         else:
             role = message.role
-            content = message.content or "" 
-            
+            content = message.content or ""
+
         role_str = str(role)
 
-        if role_str == ChatRole.system.value: # Use .value for enum comparison
+        if role_str == ChatRole.system.value:  # Use .value for enum comparison
             prompt += f"### System: {content.strip()}\n"
         elif role_str == ChatRole.user.value:
             prompt += f"### User: {content.strip()}\n"
@@ -97,6 +101,7 @@ def format_messages_to_prompt(messages: List[ChatMessage]) -> str:
 
     prompt += "### Assistant:"
     return prompt
+
 
 class CompletionRequest(BaseModel):
     model: str
@@ -110,11 +115,12 @@ class CompletionRequest(BaseModel):
     def text(self) -> str:
         prompt = self.prompt
         if isinstance(prompt, list):
-            return prompt[0] # Assuming non-batched completions
+            return prompt[0]  # Assuming non-batched completions
         return prompt
 
     def normalize_batch_and_arguments(self):
         pass
+
 
 class SGLangServer:
     def __init__(self, _llm_config: LLMConfig):
@@ -134,6 +140,7 @@ class SGLangServer:
 
         def noop_signal_handler(sig, action):
             pass
+
         try:
             # Override signal.signal with our no-op function
             signal.signal = noop_signal_handler
@@ -151,11 +158,11 @@ class SGLangServer:
             temp = 0.7
         top_p = request.top_p
         if top_p is None:
-            top_p = 1.0 
+            top_p = 1.0
         max_tokens = request.max_tokens
         if max_tokens is None:
             max_tokens = 128
-        
+
         sampling_params = {
             "temperature": temp,
             "max_new_tokens": max_tokens,
@@ -168,7 +175,7 @@ class SGLangServer:
             sampling_params=sampling_params,
             stream=False,
         )
-        
+
         if isinstance(raw, list):
             raw = raw[0]
 
@@ -177,9 +184,9 @@ class SGLangServer:
         finish_reason_info = meta.get("finish_reason", {}) or {}
 
         if isinstance(finish_reason_info, dict):
-             finish_reason = finish_reason_info.get("type", "length")
+            finish_reason = finish_reason_info.get("type", "length")
         else:
-             finish_reason = str(finish_reason_info)
+            finish_reason = str(finish_reason_info)
 
         prompt_tokens = int(meta.get("prompt_tokens", 0))
         completion_tokens = int(meta.get("completion_tokens", 0))
@@ -191,10 +198,7 @@ class SGLangServer:
             total_tokens=total_tokens,
         )
 
-        assistant_message = ChatMessage(
-            role=ChatRole.assistant,
-            content=text.strip()
-        )
+        assistant_message = ChatMessage(role=ChatRole.assistant, content=text.strip())
 
         choice = ChatCompletionChoice(
             index=0,
@@ -215,12 +219,12 @@ class SGLangServer:
 
     async def completions(self, request) -> AsyncGenerator[CompletionResponse, None]:
         prompt_input = request.prompt
-        
+
         if isinstance(prompt_input, list):
-            prompt_string = prompt_input[0] 
+            prompt_string = prompt_input[0]
         else:
-            prompt_string = prompt_input 
-        
+            prompt_string = prompt_input
+
         temp = getattr(request, "temperature", None)
         if temp is None:
             temp = 0.7
@@ -247,7 +251,7 @@ class SGLangServer:
             sampling_params=sampling_params,
             stream=False,
         )
-        
+
         if isinstance(raw, list):
             raw = raw[0]
 
@@ -256,9 +260,9 @@ class SGLangServer:
         finish_reason_info = meta.get("finish_reason", {}) or {}
 
         if isinstance(finish_reason_info, dict):
-             finish_reason = finish_reason_info.get("type", "length")
+            finish_reason = finish_reason_info.get("type", "length")
         else:
-             finish_reason = str(finish_reason_info)
+            finish_reason = str(finish_reason_info)
 
         prompt_tokens = int(meta.get("prompt_tokens", 0))
         completion_tokens = int(meta.get("completion_tokens", 0))
@@ -281,7 +285,9 @@ class SGLangServer:
             id=meta.get("id", f"sglang-comp-{int(time.time())}"),
             object="text_completion",
             created=int(time.time()),
-            model=getattr(request, "model", "default_model"), # Use default if model isn't present
+            model=getattr(
+                request, "model", "default_model"
+            ),  # Use default if model isn't present
             choices=[choice],
             usage=usage,
         )
@@ -293,14 +299,14 @@ class SGLangServer:
 
     @classmethod
     def get_deployment_options(cls, llm_config: "LLMConfig"):
-        
+
         deployment_options = copy.deepcopy(llm_config.deployment_config)
         pg_config = llm_config.placement_group_config or {}
-        
+
         if "placement_group_bundles" not in pg_config:
             pg_bundles = [
-                {'CPU': 1, 'GPU': 1},
-                {'GPU': 1},
+                {"CPU": 1, "GPU": 1},
+                {"GPU": 1},
             ]
             pg_strategy = "PACK"
         else:
@@ -319,7 +325,8 @@ class SGLangServer:
         runtime_env = ray_actor_options.setdefault("runtime_env", {})
 
         runtime_env.setdefault(
-             "worker_process_setup_hook", "ray.llm._internal.serve._worker_process_setup_hook"
+            "worker_process_setup_hook",
+            "ray.llm._internal.serve._worker_process_setup_hook",
         )
 
         if llm_config.runtime_env:
