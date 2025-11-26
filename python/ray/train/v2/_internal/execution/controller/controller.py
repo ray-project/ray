@@ -310,10 +310,6 @@ class TrainController:
             bundle_label_selector = [
                 scaling_config.bundle_label_selector.copy() for _ in range(num_workers)
             ]
-        elif scaling_config.bundle_label_selector is not None:
-            raise ValueError(
-                "`bundle_label_selector` must be a list of dictionaries or a single dictionary."
-            )
         try:
             for callback in self._controller_callbacks:
                 selector = callback.on_controller_start_worker_group(
