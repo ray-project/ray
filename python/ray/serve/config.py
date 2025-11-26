@@ -159,8 +159,8 @@ class AutoscalingContext:
 
     @property
     def total_running_requests(self) -> float:
-        # NOTE: for non additive aggregation functions, total_running_requests is not
-        # accurate, consider this is a approximation.
+        # NOTE: for non-additive aggregation functions, total_running_requests is not
+        # accurate, consider this is an approximation.
         return self.total_num_requests - self.total_queued_requests
 
 
