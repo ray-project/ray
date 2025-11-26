@@ -8,7 +8,6 @@ from ray.data._internal.logical.interfaces import (
 from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
 )
-from ray.data._internal.logical.rules.operator_fusion import are_remote_args_compatible
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +42,6 @@ class ShuffleFusion(Rule):
                 full_shuffle=full_shuffle,
                 keys=op._keys,
                 sort=op._sort,
-                )
+            )
 
         return op
