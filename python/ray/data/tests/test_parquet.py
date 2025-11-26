@@ -238,38 +238,6 @@ def test_parquet_read_random_shuffle(
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
         (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
-        ),  # Path contains space.
-        (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-        ),
-    ],
-)
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
-        ),  # Path contains space.
-        (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-        ),
-    ],
-)
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (
             lazy_fixture("s3_fs_with_anonymous_crendential"),
             lazy_fixture("s3_path_with_anonymous_crendential"),
         ),
