@@ -72,8 +72,11 @@ doctest(
             "**/examples/**",
             "**/tests/**",
             "**/test_*.py",
-            # Exclude `tuned_examples` *.py files.
             "**/tuned_examples/**",
+            # Deprecated stub files that raise ValueError on import.
+            "offline/off_policy_estimator.py",
+            "offline/estimators/feature_importance.py",
+            "utils/memory.py",
         ],
     ),
     tags = ["team:rllib"],
