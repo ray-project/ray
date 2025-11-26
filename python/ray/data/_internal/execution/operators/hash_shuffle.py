@@ -575,7 +575,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             aggregation_factory=partition_aggregation_factory,
             aggregator_ray_remote_args=ray_remote_args,
             data_context=data_context,
-            preserve_block_size=preserve_finalize_blocks,
+            preserve_finalize_blocks=preserve_finalize_blocks,
         )
 
         # We track the running usage total because iterating
@@ -1300,7 +1300,7 @@ class AggregatorPool:
         aggregation_factory: StatefulShuffleAggregationFactory,
         aggregator_ray_remote_args: Dict[str, Any],
         data_context: DataContext,
-        preserve_block_size: bool = False,
+        preserve_finalize_blocks: bool,
     ):
         assert (
             num_partitions >= 1
@@ -1309,7 +1309,7 @@ class AggregatorPool:
         self._data_context = data_context
         self._num_partitions = num_partitions
         self._num_aggregators: int = num_aggregators
-        self._preserve_block_size = preserve_block_size
+        self._preserve_finalize_blocks = preserve_finalize_blocks
         self._aggregator_partition_map: Dict[
             int, List[int]
         ] = self._allocate_partitions(
@@ -1350,7 +1350,7 @@ class AggregatorPool:
                 target_partition_ids,
                 self._aggregation_factory_ref,
                 self._data_context,
-                self._preserve_block_size,
+                self._preserve_finalize_blocks,
             )
 
             self._aggregators.append(aggregator)
@@ -1564,14 +1564,14 @@ class HashShuffleAggregator:
         target_partition_ids: List[int],
         agg_factory: StatefulShuffleAggregationFactory,
         data_context: DataContext,
-        preserve_block_size: bool = False,
+        preserve_finalize_blocks: bool,
     ):
         self._lock = threading.Lock()
         self._agg: StatefulShuffleAggregation = agg_factory(
             aggregator_id, target_partition_ids
         )
         self._data_context = data_context
-        self._preserve_block_size = preserve_block_size
+        self._preserve_finalize_blocks = preserve_finalize_blocks
 
     def submit(self, input_seq_id: int, partition_id: int, partition_shard: Block):
         with self._lock:
@@ -1593,7 +1593,7 @@ class HashShuffleAggregator:
         # None means the user wants to preserve the block distribution,
         # so we do not break the block down further.
         # Also check preserve_block_size parameter.
-        if target_max_block_size is not None and not self._preserve_block_size:
+        if target_max_block_size is not None and not self._preserve_finalize_blocks:
             # Creating a block output buffer per partition finalize task because
             # retrying finalize tasks cause stateful output_bufer to be
             # fragmented (ie, adding duplicated blocks, calling finalize 2x)
