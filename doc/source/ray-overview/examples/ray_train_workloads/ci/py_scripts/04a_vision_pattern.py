@@ -73,6 +73,9 @@ from ray.train import (
 # Dataset Access
 # ————————————————————————
 from datasets import load_dataset  # Hugging Face Datasets
+from ray.data import DataContext
+DataContext.get_current().use_streaming_executor = False
+
 
 # 02. Load 10% of food101 (~7,500 images)
 ds = load_dataset("food101", split="train[:10%]")
@@ -312,7 +315,6 @@ trainer = TorchTrainer(
         storage_path="/mnt/cluster_storage/food101_lite/results",
         checkpoint_config=CheckpointConfig(
             num_to_keep=5, 
-            checkpoint_frequency=1,
             checkpoint_score_attribute="val_loss",
             checkpoint_score_order="min"
         ),
@@ -450,7 +452,8 @@ parquet_path = "/mnt/cluster_storage/food101_lite/val.parquet"
 # Which item to visualize
 idx = 2
 
-# Build a Ray Data inference pipeline (model is loaded once per GPU actor)
+import itertools
+
 pred_ds = build_inference_dataset(
     checkpoint_path=best_ckpt_path,
     parquet_path=parquet_path,
@@ -458,10 +461,11 @@ pred_ds = build_inference_dataset(
     batch_size=64,      # adjust for throughput
 )
 
-# Materialize predictions up to the desired index and grab the row
-pred_rows = pred_ds.take(idx + 1)
-inference_row = pred_rows[-1]  # {"predicted_label": ..., "label": ...}
-print(inference_row)
+# Avoid .take() / limit(); stream rows and grab the idx-th one.
+row_iter = pred_ds.iter_rows()
+inference_row = next(itertools.islice(row_iter, idx, idx + 1))
+print(inference_row)   # {"predicted_label": ..., "label": ...}
+
 
 # Load label map from Hugging Face (for pretty titles)
 ds_tmp = load_dataset("food101", split="train[:1%]")  # just to get label names

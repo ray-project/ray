@@ -307,7 +307,6 @@ trainer = TorchTrainer(
         name="food101_diffusion_ft",
         storage_path="/mnt/cluster_storage/generative_cv/food101_diffusion_results",
         checkpoint_config=CheckpointConfig(
-            checkpoint_frequency=1,          # Ray keeps N most recent Lightning ckpts
             num_to_keep=5,
             checkpoint_score_attribute="epoch",
             checkpoint_score_order="max",

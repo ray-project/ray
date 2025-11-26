@@ -220,7 +220,6 @@ trainer = TorchTrainer(
         name="pendulum_diffusion_ft",
         storage_path="/mnt/cluster_storage/pendulum_diffusion/pendulum_diffusion_results",
         checkpoint_config=CheckpointConfig(
-            checkpoint_frequency=1,
             num_to_keep=5,
             checkpoint_score_attribute="epoch",
             checkpoint_score_order="max",

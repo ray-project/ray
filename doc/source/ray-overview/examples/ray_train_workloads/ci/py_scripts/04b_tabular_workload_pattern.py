@@ -166,7 +166,6 @@ trainer = XGBoostTrainer(
         name="covtype_xgb_cpu",
         storage_path="/mnt/cluster_storage/covtype/results",
         checkpoint_config=CheckpointConfig(
-            checkpoint_frequency=10,
             num_to_keep=1,
             checkpoint_score_attribute="validation-mlogloss",  # score by val loss
             checkpoint_score_order="min",
