@@ -115,6 +115,7 @@ class PlacementGroupCleaner:
             remove_placement_group(placement_group)
         except Exception as e:
             logger.warning(f"Failed to clean up placement group: {e}")
+            return
 
         logger.debug(
             f"Placement group = [{placement_group.id}] cleaned up successfully"

@@ -86,6 +86,7 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
                 f"Failed to register placement group with cleaner: {e}. "
                 "Placement group may not be cleaned up if controller dies ungracefully."
             )
+            return
 
         self._cleaner.start_monitoring.remote()
 
