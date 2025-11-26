@@ -470,5 +470,139 @@ def test_concurrent_submission_and_cancellation(shutdown_only):
     print(f"All {NUM_TASKS} tasks were cancelled successfully.")
 
 
+def test_is_canceled_sync_actor_task(shutdown_only):
+    """Test that is_canceled() works correctly for sync actor tasks."""
+    ray.init()
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            self.is_canceled = False
+
+        def task_with_cancel_check(self):
+            import time
+
+            for _ in range(100):
+                if ray.get_runtime_context().is_canceled():
+                    self.is_canceled = True
+                    return "canceled"
+
+                time.sleep(0.1)
+            return "completed"
+
+        def is_canceled(self):
+            return self.is_canceled
+
+    actor = Actor.remote()
+
+    ref = actor.task_with_cancel_check.remote()
+    task_id = ref.task_id().hex()
+    wait_for_condition(
+        lambda: len(list_tasks(filters=[("task_id", "=", task_id)])) > 0
+        and list_tasks(filters=[("task_id", "=", task_id)])[0].state == "RUNNING"
+    )
+    # Cancel the task
+    ray.cancel(ref)
+    with pytest.raises(TaskCancelledError):
+        ray.get(ref)
+
+    # Verify the actor state is changed
+    assert ray.get(actor.is_canceled.remote())
+
+
+def test_is_canceled_concurrent_actor_task(shutdown_only):
+    """Test that is_canceled() works correctly for concurrent actor tasks."""
+    ray.init()
+
+    @ray.remote
+    class ConcurrentActor:
+        def __init__(self):
+            self.canceled_tasks = set()
+
+        def task_with_cancel_check(self, task_id):
+            import time
+
+            for _ in range(100):
+                if ray.get_runtime_context().is_canceled():
+                    self.canceled_tasks.add(task_id)
+                    return f"task_{task_id}_canceled"
+                time.sleep(0.1)
+            return f"task_{task_id}_completed"
+
+        def get_canceled_tasks(self):
+            return self.canceled_tasks
+
+    actor = ConcurrentActor.options(max_concurrency=3).remote()
+
+    # Submit multiple tasks concurrently
+    refs = [actor.task_with_cancel_check.remote(i) for i in range(3)]
+
+    # Wait for tasks to start running
+    for ref in refs:
+        task_id = ref.task_id().hex()
+        wait_for_condition(
+            lambda: len(list_tasks(filters=[("task_id", "=", task_id)])) > 0
+            and list_tasks(filters=[("task_id", "=", task_id)])[0].state == "RUNNING"
+        )
+
+    # Cancel one of the task
+    ray.cancel(refs[1])
+
+    # Canceled tasks should raise TaskCancelledError
+    with pytest.raises(TaskCancelledError):
+        ray.get(refs[1])
+
+    # Other tasks should complete normally
+    for i in [0, 2]:
+        result = ray.get(refs[i])
+        assert result == f"task_{i}_completed"
+
+    # Verify that task 1 is marked canceled
+    canceled_tasks = ray.get(actor.get_canceled_tasks.remote())
+    assert canceled_tasks == set([1])
+
+
+def test_is_canceled_not_supported_in_async_actor(shutdown_only):
+    """Test that is_canceled() for async actors."""
+    ray.init()
+
+    @ray.remote
+    class AsyncActor:
+        def __init__(self):
+            self.is_canceled = False
+
+        async def async_task(self):
+            import asyncio
+
+            for _ in range(100):
+                # is_canceled() doesn't work for async actors
+                if ray.get_runtime_context().is_canceled():
+                    self.is_canceled = True
+                    return "canceled"
+                await asyncio.sleep(0.1)
+            return "completed"
+
+        def is_canceled(self):
+            return self.is_canceled
+
+    actor = AsyncActor.remote()
+    ref = actor.async_task.remote()
+
+    task_id = ref.task_id().hex()
+    wait_for_condition(
+        lambda: len(list_tasks(filters=[("task_id", "=", task_id)])) > 0
+        and list_tasks(filters=[("task_id", "=", task_id)])[0].state == "RUNNING"
+    )
+
+    # Cancel the async actor task
+    ray.cancel(ref)
+    with pytest.raises(TaskCancelledError):
+        ray.get(ref)
+
+    # Verify the state for async actor does NOT change as there's no graceful
+    # termination for async actor task
+    assert not ray.get(actor.is_canceled.remote())
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

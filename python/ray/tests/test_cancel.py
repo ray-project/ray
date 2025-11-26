@@ -623,5 +623,106 @@ def test_ray_task_cancel_and_retry_race_condition(ray_start_cluster):
         ray.get(consumer.remote([producer_ref]))
 
 
+def test_is_canceled_normal_task(ray_start_regular):
+    """Test is_canceled() for normal tasks.
+
+    For normal tasks, ray.cancel() kills the worker process, so is_canceled()
+    typically won't return True before the process is terminated
+    """
+
+    @ray.remote
+    def check_cancel_status():
+        import time
+
+        for _ in range(100):
+            # NOTE: This check typically won't execute before the process is killed
+            # is_canceled() is not reliable for normal tasks
+            if ray.get_runtime_context().is_canceled():
+                return "canceled"
+            time.sleep(0.1)
+        return "completed"
+
+    ref = check_cancel_status.remote()
+    task_id = ref.task_id().hex()
+    wait_for_condition(
+        lambda: len(list_tasks(filters=[("task_id", "=", task_id)])) > 0
+        and list_tasks(filters=[("task_id", "=", task_id)])[0].state == "RUNNING"
+    )
+
+    # Cancel normal task will kills the worker process and raises TaskCancelledError
+    ray.cancel(ref)
+    with pytest.raises(TaskCancelledError):
+        ray.get(ref)
+
+
+def test_is_canceled_with_keyboard_interrupt(ray_start_regular):
+    """Test checking is_canceled() within KeyboardInterrupt in normal tasks.
+
+    is_canceled() will be True in KeyboardInterrupt exception block.
+    """
+
+    @ray.remote
+    def task_handling_keyboard_interrupt():
+        import time
+
+        try:
+            for _ in range(100):
+                time.sleep(0.1)
+        except KeyboardInterrupt:
+            # is_canceled() should be true here
+            if ray.get_runtime_context().is_canceled():
+                return "canceled_via_keyboard_interrupt"
+        return "completed"
+
+    ref = task_handling_keyboard_interrupt.remote()
+    task_id = ref.task_id().hex()
+    wait_for_condition(
+        lambda: len(list_tasks(filters=[("task_id", "=", task_id)])) > 0
+        and list_tasks(filters=[("task_id", "=", task_id)])[0].state == "RUNNING"
+    )
+
+    # We will get the return value
+    ray.cancel(ref)
+    assert ray.get(ref) == "canceled_via_keyboard_interrupt"
+
+
+def test_is_canceled_streaming_generator(ray_start_regular):
+    """Test is_canceled() for streaming generators.
+
+    streaming generators are killed when canceled, so is_canceled()
+    will not be True before the process is terminated
+    """
+
+    @ray.remote(num_returns="streaming")
+    def streaming_task():
+        """Streaming generator that checks cancellation status."""
+        import time
+
+        for i in range(100):
+            if ray.get_runtime_context().is_canceled():
+                # Generator was canceled
+                return
+            yield i
+            time.sleep(0.1)
+
+    # Test cancellation during streaming
+    gen_ref = streaming_task.remote()
+
+    # Get a few values
+    results = []
+    count = 0
+    for ref in gen_ref:
+        if count >= 3:
+            break
+        results.append(ray.get(ref))
+        count += 1
+
+    # Cancel the generator, raise TaskCancelledError
+    ray.cancel(gen_ref)
+    with pytest.raises(TaskCancelledError):
+        for ref in gen_ref:
+            ray.get(ref)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
