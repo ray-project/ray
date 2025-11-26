@@ -142,7 +142,7 @@ batches is more performant than transforming rows.
 Configuring batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data represents batches as dicts of NumPy ndarrays, pandas DataFrames or pyarrow Tables. By
+Ray Data represents batches as dicts of NumPy ndarrays, pandas DataFrames or Arrow Tables. By
 default, Ray Data represents batches as dicts of NumPy ndarrays. To configure the batch type,
 specify ``batch_format`` in :meth:`~ray.data.Dataset.map_batches`. You can return either
 format from your function, but ``batch_format`` should match the input of your function.
@@ -199,16 +199,22 @@ format from your function, but ``batch_format`` should match the input of your f
 Choosing the right batch format
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-* Use numpy in ``map_batches`` when your batch function needs numeric or tensor-style operations.
-* Use pandas in ``map_batches`` when your batch function needs a DataFrame API, such as for tabular cleaning, joins, grouping, or row/column-wise transforms.
-* Use pyarrow in ``map_batches`` when your batch function benefits from columnar processing, high-performance I/O, or zero-copy conversion to other systems.
+    When choosing the appropriate batch format for your ``map_batches`` operation, the primary consideration is the trade-off between convenience and performance:
+
+    1. Batches serve as a sliding window into the underlying block—Ray Data invokes your UDF with a subset of rows (a batch) from the underlying block.
+
+    2. Depending on the batch format, this view is either zero-copy (when the batch format matches the block type) or requires copying (when the batch format differs from the block type).
+
+    For example, if you prefer to work with pandas or NumPy batches, you can specify ``batch_format="pandas"`` or ``batch_format="numpy"`` (default). Ray Data might copy the underlying data when converting it from the underlying block type (such as Arrow).
+
+    By default, the block type is Arrow (which most Ray Data readers produce). However, Ray Data minimizes data conversions. For example, if your ``map_batches`` operation returns pandas batches, Ray Data combines these batches into blocks **without** conversion and propagates them as pandas blocks.
 
 
 The user defined function you pass to :meth:`~ray.data.Dataset.map_batches` is more flexible. Because you can represent batches
 in multiple ways (see :ref:`Configuring batch format <configure_batch_format>`), the function should be of type
 ``Callable[DataBatch, DataBatch]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``. In
 other words, your function should take as input and output a batch of data which you can represent as a
-pandas DataFrame, pyarrow Table or a dictionary with string keys and NumPy ndarrays values. For example, your function might look like:
+pandas DataFrame, Arrow Table or a dictionary with string keys and NumPy ndarrays values. For example, your function might look like:
 
 .. testcode::
 
