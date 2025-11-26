@@ -503,7 +503,6 @@ RAY_ALLOWED_CACHED_PORTS = {
     "metrics_export_port",
     "dashboard_agent_listen_port",
     "runtime_env_agent_port",
-    "gcs_server_port",  # the `port` option for gcs port.
 }
 
 # Turn this on if actor task log's offsets are expected to be recorded.

@@ -30,6 +30,7 @@ from ray._common.network_utils import (
 )
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
+from ray._private.pipe import Pipe
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
@@ -327,8 +328,9 @@ class Node:
             gcs_server_port = os.getenv(ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
             if gcs_server_port:
                 ray_params.update_if_absent(gcs_server_port=int(gcs_server_port))
-            if ray_params.gcs_server_port is None or ray_params.gcs_server_port == 0:
-                ray_params.gcs_server_port = self._get_cached_port("gcs_server_port")
+            if ray_params.gcs_server_port is None:
+                # 0 means let the GCS pick a free port.
+                ray_params.gcs_server_port = 0
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
@@ -1125,32 +1127,43 @@ class Node:
 
     def start_gcs_server(self):
         """Start the gcs server."""
-        gcs_server_port = self._ray_params.gcs_server_port
-        assert gcs_server_port > 0
         assert self._gcs_address is None, "GCS server is already running."
         assert self._gcs_client is None, "GCS client is already connected."
 
-        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
-            "gcs_server", unique=True, create_out=True, create_err=True
-        )
-        process_info = ray._private.services.start_gcs_server(
-            self.redis_address,
-            log_dir=self._logs_dir,
-            stdout_filepath=stdout_log_fname,
-            stderr_filepath=stderr_log_fname,
-            session_name=self.session_name,
-            redis_username=self._ray_params.redis_username,
-            redis_password=self._ray_params.redis_password,
-            config=self._config,
-            fate_share=self.kernel_fate_share,
-            gcs_server_port=gcs_server_port,
-            metrics_agent_port=self._ray_params.metrics_agent_port,
-            node_ip_address=self._node_ip_address,
-        )
-        assert ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes
-        self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
-            process_info,
-        ]
+        with Pipe() as gcs_port_pipe:
+            stdout_log_fname, stderr_log_fname = self.get_log_file_names(
+                "gcs_server", unique=True, create_out=True, create_err=True
+            )
+            process_info = ray._private.services.start_gcs_server(
+                self.redis_address,
+                log_dir=self._logs_dir,
+                stdout_filepath=stdout_log_fname,
+                stderr_filepath=stderr_log_fname,
+                session_name=self.session_name,
+                redis_username=self._ray_params.redis_username,
+                redis_password=self._ray_params.redis_password,
+                config=self._config,
+                fate_share=self.kernel_fate_share,
+                gcs_server_port=self._ray_params.gcs_server_port,
+                metrics_agent_port=self._ray_params.metrics_agent_port,
+                node_ip_address=self._node_ip_address,
+                gcs_port_pipe_handle=gcs_port_pipe.write_handle,
+            )
+
+            assert ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes
+            self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
+                process_info,
+            ]
+
+            gcs_port_pipe.close_write()
+            try:
+                gcs_server_port_string = gcs_port_pipe.read().strip()
+            except RuntimeError as e:
+                raise RuntimeError(f"Failed to read GCS server port: {e}") from e
+        gcs_server_port = int(gcs_server_port_string)
+        # This is to make sure using the same port when restarting GCS server.
+        self._ray_params.gcs_server_port = gcs_server_port
+
         # Connecting via non-localhost address may be blocked by firewall rule,
         # e.g. https://github.com/ray-project/ray/issues/15780
         # TODO(mwtian): figure out a way to use 127.0.0.1 for local connection

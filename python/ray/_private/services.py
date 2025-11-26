@@ -808,6 +808,7 @@ def start_ray_process(
     stdout_file: Optional[IO[AnyStr]] = None,
     stderr_file: Optional[IO[AnyStr]] = None,
     pipe_stdin: bool = False,
+    pass_handles: Optional[List[int]] = None,
 ):
     """Start one of the Ray processes.
 
@@ -839,6 +840,8 @@ def start_ray_process(
             no redirection should happen, then this should be None.
         pipe_stdin: If true, subprocess.PIPE will be passed to the process as
             stdin.
+        pass_handles: File descriptors (POSIX) or inheritable handles (Windows) to
+            allow the child process to inherit.
 
     Returns:
         Information about the process that was started including a handle to
@@ -991,6 +994,10 @@ def start_ray_process(
         stdin=subprocess.PIPE if pipe_stdin else None,
         preexec_fn=preexec_fn if sys.platform != "win32" else None,
         creationflags=CREATE_SUSPENDED if win32_fate_sharing else 0,
+        pass_fds=pass_handles if pass_handles and sys.platform != "win32" else (),
+        # On Windows we rely on inheritable descriptors/handles (e.g., for the
+        # GCS port reporting pipe). Ensure handles marked inheritable propagate.
+        close_fds=False if pass_handles and sys.platform == "win32" else True,
     )
 
     if win32_fate_sharing:
@@ -1444,6 +1451,7 @@ def start_gcs_server(
     gcs_server_port: Optional[int] = None,
     metrics_agent_port: Optional[int] = None,
     node_ip_address: Optional[str] = None,
+    gcs_port_pipe_handle: Optional[int] = None,
 ):
     """Start a gcs server.
 
@@ -1462,11 +1470,13 @@ def start_gcs_server(
         gcs_server_port: Port number of the gcs server.
         metrics_agent_port: The port where metrics agent is bound to.
         node_ip_address: IP Address of a node where gcs server starts.
+        gcs_port_pipe_handle: Pipe endpoint (fd on POSIX, HANDLE on Windows) passed to
+            the child so it can report the chosen port.
 
     Returns:
         ProcessInfo for the process that was started.
     """
-    assert gcs_server_port > 0
+    assert gcs_server_port >= 0
 
     command = [
         GCS_SERVER_EXECUTABLE,
@@ -1478,6 +1488,8 @@ def start_gcs_server(
         f"--session-name={session_name}",
         f"--ray-commit={ray.__commit__}",
     ]
+    if gcs_port_pipe_handle is not None:
+        command.append(f"--report-gcs-port-pipe-handle={gcs_port_pipe_handle}")
 
     if stdout_filepath:
         command += [f"--stdout_filepath={stdout_filepath}"]
@@ -1511,6 +1523,9 @@ def start_gcs_server(
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share,
+        pass_handles=[gcs_port_pipe_handle]
+        if gcs_port_pipe_handle is not None
+        else None,
     )
     return process_info
 

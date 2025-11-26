@@ -560,6 +560,7 @@ ray_cc_binary(
         "//src/ray/observability:metrics",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:event",
+        "//src/ray/util:pipe",
         "//src/ray/util:raii",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
