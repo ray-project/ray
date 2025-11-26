@@ -139,7 +139,9 @@ class SGLangServer:
         original_signal_func = signal.signal
 
         def noop_signal_handler(sig, action):
-            pass
+            # Return SIG_DFL (default handler) to simulate
+            # a valid return value for signal.signal()
+            return signal.SIG_DFL
 
         try:
             # Override signal.signal with our no-op function
