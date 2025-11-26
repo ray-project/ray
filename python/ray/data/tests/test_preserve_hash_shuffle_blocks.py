@@ -64,7 +64,7 @@ class TestPreserveHashShuffleBlocks:
         ).materialize()
 
         # Should have more than 2 blocks due to block splitting
-        assert result.num_blocks() >= 2
+        assert result.num_blocks() >= 3
 
 
 if __name__ == "__main__":
