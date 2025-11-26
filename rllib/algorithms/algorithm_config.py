@@ -6155,9 +6155,8 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
                 ]
             )
         )
-        # Similar to `AlgorithmConfig` the config using differentiable Learners can be
-        # used to build a respective `Algorithm`.
-        algo = config.build()
+        # The config is then used to configure a MetaLearner, see
+        # `rllib/examples/algorithms/maml_lr_supervised_learning.py` for a full example.
 
 
     """
