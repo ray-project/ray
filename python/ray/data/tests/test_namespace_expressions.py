@@ -599,6 +599,30 @@ def _make_fixed_size_list_table() -> pa.Table:
     return pa.Table.from_arrays([fixed], names=["features"])
 
 
+def _make_nested_fixed_size_list_table() -> pa.Table:
+    # Build a nested FixedSizeListArray with 3 rows:
+    #
+    # row0 -> [[1, 2], [3, 4]]
+    # row1 -> [[5, 6], [7, 8]]
+    # row2 -> [[9, 10], [11, 12]]
+    #
+    # Type is: fixed_size_list(list<int64>, 2)
+    inner_type = pa.list_(pa.int64())
+    inner_values = pa.array(
+        [
+            [1, 2],
+            [3, 4],
+            [5, 6],
+            [7, 8],
+            [9, 10],
+            [11, 12],
+        ],
+        type=inner_type,
+    )
+    fixed_nested = pa.FixedSizeListArray.from_arrays(inner_values, list_size=2)
+    return pa.Table.from_arrays([fixed_nested], names=["features"])
+
+
 def test_arr_to_list(ray_start_regular):
     table = _make_fixed_size_list_table()
     ds = ray.data.from_arrow(table)
@@ -613,16 +637,15 @@ def test_arr_to_list(ray_start_regular):
 
 
 def test_arr_flatten(ray_start_regular):
-    table = _make_fixed_size_list_table()
+    table = _make_nested_fixed_size_list_table()
     ds = ray.data.from_arrow(table)
 
     result = ds.select(col("features").arr.flatten().alias("features")).take(3)
 
-    # For a simple FixedSizeListArray, flatten should behave like to_list
     assert result == [
-        {"features": [1, 2]},
-        {"features": [3, 4]},
-        {"features": [5, 6]},
+        {"features": [1, 2, 3, 4]},
+        {"features": [5, 6, 7, 8]},
+        {"features": [9, 10, 11, 12]},
     ]
 
 
