@@ -743,7 +743,7 @@ h11==0.16.0
     #   -r python/requirements/test-requirements.txt
     #   httpcore
     #   uvicorn
-h5py==3.10.0
+h5py==3.12.1
     # via
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   tensorflow
@@ -1346,7 +1346,7 @@ oauthlib==3.2.2
     # via requests-oauthlib
 onnx==1.15.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r python/requirements/ml/rllib-requirements.txt
-onnxruntime==1.18.0 ; sys_platform != "darwin" or platform_machine != "arm64"
+onnxruntime==1.18.0 ; python_version < "3.13" and (sys_platform != "darwin" or platform_machine != "arm64")
     # via -r python/requirements/ml/rllib-requirements.txt
 open-spiel==1.4
     # via -r python/requirements/ml/rllib-test-requirements.txt
