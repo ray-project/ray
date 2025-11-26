@@ -21,6 +21,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     CompletionResponse,
 )
 
+from ray.llm._internal.serve.constants import ENABLE_WORKER_PROCESS_SETUP_HOOK
 
 class ChatRole(str, Enum):
     user = "user"
@@ -263,7 +264,7 @@ class SGLangServer:
 
         runtime_env = ray_actor_options.setdefault("runtime_env", {})
         
-        if getattr(llm_config, "ENABLE_WORKER_PROCESS_SETUP_HOOK", False):
+        if ENABLE_WORKER_PROCESS_SETUP_HOOK:
             runtime_env.setdefault(
                 "worker_process_setup_hook",
                 "ray.llm._internal.serve._worker_process_setup_hook",
