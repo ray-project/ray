@@ -545,7 +545,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
     def all_inputs_done(self):
         self._block_ref_bundler.done_adding_bundles()
-        if self._block_ref_bundler.has_bundle():
+        while self._block_ref_bundler.has_bundle():
             # Handle any leftover bundles in the bundler.
             (
                 _,
