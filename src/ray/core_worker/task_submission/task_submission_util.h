@@ -34,9 +34,6 @@ namespace core {
 /// (and the GCS if it's not in the cache which is rare) instead of polluting the hot
 /// path.
 ///
-/// Note: This function must be called from the io_service thread because it accesses
-/// the GCS node cache which is not thread-safe.
-///
 /// \param gcs_client GCS client to query node information.
 /// \param node_id The local node ID of where the task is executing on
 /// \param cancel_callback Callback containing CancelLocalTask RPC to invoke if the node
@@ -46,10 +43,10 @@ inline void SendCancelLocalTask(
     const NodeID &node_id,
     std::function<void(const rpc::Address &)> cancel_callback) {
   // Check GCS node cache. If node info is not in the cache, query the GCS instead.
-  auto *node_info =
+  auto node_info =
       gcs_client->Nodes().GetNodeAddressAndLiveness(node_id,
                                                     /*filter_dead_nodes=*/false);
-  if (node_info == nullptr) {
+  if (!node_info) {
     gcs_client->Nodes().AsyncGetAllNodeAddressAndLiveness(
         [cancel_callback = std::move(cancel_callback), node_id](
             const Status &status,

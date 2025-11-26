@@ -1046,15 +1046,7 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
               }
             });
       };
-
-  // Cancel can execute on the user's python thread, but the GCS node cache is updated on
-  // the io service thread and is not thread-safe. Hence we need to post the entire
-  // cache access to the io service thread.
-  io_service_.post(
-      [this, node_id, do_cancel_local_task = std::move(do_cancel_local_task)]() mutable {
-        SendCancelLocalTask(gcs_client_, node_id, std::move(do_cancel_local_task));
-      },
-      "ActorTaskSubmitter.CancelTask");
+  SendCancelLocalTask(gcs_client_, node_id, std::move(do_cancel_local_task));
 }
 
 bool ActorTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {
