@@ -201,13 +201,11 @@ Choosing the right batch format
 
     When choosing the appropriate batch format for your ``map_batches`` operation, the primary consideration is the trade-off between convenience and performance:
 
-    1. Batches serve as a sliding window into the underlying block—Ray Data invokes your UDF with a subset of rows (a batch) from the underlying block.
+    * Use numpy in ``map_batches`` when your batch function needs fast numeric or tensor-style operations.
+    * Use pandas in ``map_batches`` when your batch function needs a DataFrame API, such as for tabular cleaning, joins, grouping, or row/column-wise transforms.
+    * Use pyarrow in ``map_batches`` when your batch function benefits from columnar processing, high-performance I/O, or zero-copy conversion to other systems.
 
-    2. Depending on the batch format, this view is either zero-copy (when the batch format matches the block type) or requires copying (when the batch format differs from the block type).
-
-    For example, if you prefer to work with pandas or NumPy batches, you can specify ``batch_format="pandas"`` or ``batch_format="numpy"`` (default). Ray Data might copy the underlying data when converting it from the underlying block type (such as Arrow).
-
-    By default, the block type is Arrow (which most Ray Data readers produce). However, Ray Data minimizes data conversions. For example, if your ``map_batches`` operation returns pandas batches, Ray Data combines these batches into blocks **without** conversion and propagates them as pandas blocks.
+    Note that Ray Data uses zero-copy when the batch format matches the underlying block type (for example, Arrow blocks with ``batch_format="pyarrow"``). When they differ, Ray Data copies the data during conversion.
 
 
 The user defined function you pass to :meth:`~ray.data.Dataset.map_batches` is more flexible. Because you can represent batches
