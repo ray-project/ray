@@ -1,6 +1,6 @@
 import logging
+import queue
 import threading
-import time
 from typing import Optional
 
 import ray
@@ -20,9 +20,10 @@ class PlacementGroupCleaner:
 
     def __init__(self, check_interval_s: float = 1.0):
         self._check_interval_s = check_interval_s
-        self._stopped: bool = False
+        self._pg_queue: queue.Queue = queue.Queue()
+        self._stop_event = threading.Event()
         self._controller_actor_id: Optional[str] = None
-        self._placement_group: Optional[PlacementGroup] = None
+        self._curr_placement_group: Optional[PlacementGroup] = None
         self._monitor_thread: Optional[threading.Thread] = None
         self._get_actor_timeout_s = GET_ACTOR_TIMEOUT_S
         self._exiting: bool = False
@@ -31,30 +32,20 @@ class PlacementGroupCleaner:
         self, controller_actor_id: str, placement_group: PlacementGroup
     ):
         self._controller_actor_id = controller_actor_id
-        self._placement_group = placement_group
         logger.debug(
             "PlacementGroupCleaner registered controller %s with placement group %s",
             controller_actor_id,
             placement_group.id,
         )
+        # Send placement group update to the monitor thread via queue
+        self._pg_queue.put(placement_group)
 
     def start_monitoring(self):
         """Start monitoring the controller and placement group."""
-        if not self._controller_actor_id or not self._placement_group:
-            logger.warning(
-                "Cannot start monitoring: controller or placement group missing"
-            )
-            return False
-
-        monitor_thread = self._active_monitor_thread()
-        if monitor_thread is not None:
-            raise RuntimeError(
-                "Cannot start monitoring: monitor thread reference is not None."
-            )
-
-        if self._stopped:
-            logger.warning("Cannot start monitoring: stop already requested")
-            return False
+        if self._monitor_thread is not None and self._monitor_thread.is_alive():
+            # Thread already running, just return True
+            logger.debug("Monitor thread already running")
+            return True
 
         self._monitor_thread = threading.Thread(
             target=self._monitor_loop,
@@ -69,57 +60,63 @@ class PlacementGroupCleaner:
         """Monitor controller; remove PG when controller is gone.
 
         This runs continuously until controller dies or stop() is called.
+        Uses a queue to receive placement group updates.
         """
-        while not self._stopped and self._controller_actor_id:
+        while not self._stop_event.is_set():
+            # Check for new placement group updates from queue
+            try:
+                pg = self._pg_queue.get(timeout=self._check_interval_s)
+                self._curr_placement_group = pg
+                logger.debug(f"Updated current placement group to {pg.id}")
+            except queue.Empty:
+                pass  # continue to monitor current placement group
+
+            # Skip monitoring if no placement group registered
+            if not self._curr_placement_group:
+                continue
+
+            # Check if controller is still alive
             try:
                 alive = is_actor_alive(
                     actor_id=self._controller_actor_id,
                     timeout=self._get_actor_timeout_s,
                 )
             except ray.util.state.exception.RayStateApiException:
-                logger.exception(
-                    "Failed to query Ray Train Controller actor state. Attempting cleanup."
+                logger.warning(
+                    "Failed to query Ray Train Controller actor state. "
+                    "State API may be temporarily unavailable. Continuing to monitor."
                 )
-                break
+                continue
 
+            # Cleanup if controller is dead
             if not alive:
-                placement_group = self._placement_group
-                if placement_group is None:
-                    logger.debug(
-                        "Controller actor died but no placement group is currently tracked; "
-                        "skipping cleanup."
-                    )
-                    break
-                if not self._is_placement_group_removed():
-                    logger.warning(
-                        f"Detected that the Ray Train controller actor ({self._controller_actor_id}) is dead. "
-                        "Cleaning up placement group created by this run."
-                    )
-                    try:
-                        logger.debug(
-                            f"Cleaning up placement group: {placement_group.id}"
-                        )
-                        remove_placement_group(placement_group)
-                        logger.debug("Placement group cleanup successful")
-                    except Exception as e:
-                        logger.warning(f"Failed to clean up placement group: {e}")
-                else:
-                    logger.debug(
-                        "Controller actor died but placement group already removed; "
-                        "skipping cleanup."
-                    )
+                self._cleanup_placement_group()
                 break
 
-            time.sleep(self._check_interval_s)
-
+        # Exit the actor after cleanup since controller is dead
+        self._exit()
         self._monitor_thread = None
 
-        if self._stopped:
-            # Stop was requested; clear the flag so future monitoring can start.
-            self._stopped = False
+    def _cleanup_placement_group(self):
+        """Clean up the current placement group if it hasn't been removed."""
+        placement_group = self._curr_placement_group
+        if self._is_placement_group_removed(placement_group):
+            logger.debug(
+                "Controller actor died but placement group already removed; "
+                "skipping cleanup."
+            )
             return
 
-        self._exit()
+        logger.warning(
+            f"Detected that the Ray Train controller actor ({self._controller_actor_id}) is dead. "
+            "Cleaning up placement group = [{placement_group.id}] created by this run."
+        )
+        try:
+            remove_placement_group(placement_group)
+        except Exception as e:
+            logger.warning(f"Failed to clean up placement group: {e}")
+
+        logger.debug("Placement group = [{placement_group.id}] cleaned up successfully")
 
     def _stop_monitor_thread(self):
         """Stop the monitor thread and wait for it to exit.
@@ -127,63 +124,44 @@ class PlacementGroupCleaner:
         Returns:
             bool: True if the thread was stopped, False if there was no active thread.
         """
-        monitor_thread = self._active_monitor_thread()
-        if monitor_thread is None:
+        if self._monitor_thread is None or not self._monitor_thread.is_alive():
             return False
 
-        self._stopped = True
+        # Signal stop and wait for thread to exit
+        self._stop_event.set()
         join_timeout = max(2.0, self._check_interval_s * 2)
-        monitor_thread.join(timeout=join_timeout)
-        if monitor_thread.is_alive():
+        self._monitor_thread.join(timeout=join_timeout)
+        if self._monitor_thread.is_alive():
             logger.warning(
                 "Monitor thread did not exit within %.2f seconds", join_timeout
             )
-            # Stop request failed; clear the flag so future restarts are allowed.
-            self._stopped = False
             return False
 
-        if self._monitor_thread is monitor_thread:
-            self._monitor_thread = None
+        self._monitor_thread = None
         return True
-
-    def stop_monitoring(self):
-        """Stop monitoring the current placement group without exiting the actor.
-
-        This is called when a worker group shuts down gracefully, so we stop
-        monitoring the old placement group. The cleaner actor remains alive
-        to monitor possible future placement groups.
-        """
-        if not self._stop_monitor_thread():
-            logger.debug("No active monitoring to stop")
-            return
-
-        logger.debug("Stopping monitoring for placement group shutdown")
-        # Reset stopped flag so we can start monitoring again later
-        self._stopped = False
-        # Clear the monitored placement group
-        self._placement_group = None
 
     def stop(self):
         """Request the cleaner to stop monitoring and exit."""
-        self._stopped = True
         self._stop_monitor_thread()
         self._exit()
 
-    def _is_placement_group_removed(self) -> bool:
+    def _is_placement_group_removed(
+        self, placement_group: Optional[PlacementGroup]
+    ) -> bool:
         """Check if a placement group has been removed."""
-        if not self._placement_group:
+        if not placement_group:
             return True
         try:
-            table = ray.util.placement_group_table(self._placement_group)
-            if "state" not in table:
-                return True
-            return table["state"] == "REMOVED"
+            table = ray.util.placement_group_table(placement_group)
         except Exception as e:
             logger.warning(
                 f"Failed to query placement group table: {e}. "
                 "Assuming placement group is not removed."
             )
             return False
+        if "state" not in table:
+            return True
+        return table["state"] == "REMOVED"
 
     def _exit(self):
         """Exit the actor."""
@@ -195,14 +173,3 @@ class PlacementGroupCleaner:
         except Exception as e:
             # If exit fails for any reason, just log it.
             logger.warning(f"Failed to exit actor: {e}")
-
-    def _active_monitor_thread(self) -> Optional[threading.Thread]:
-        """Return the running monitor thread, clearing stale references."""
-        monitor_thread = self._monitor_thread
-        if monitor_thread is None:
-            return None
-        if monitor_thread.is_alive():
-            return monitor_thread
-        if self._monitor_thread is monitor_thread:
-            self._monitor_thread = None
-        return None

@@ -49,24 +49,8 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
                 get_if_exists=False,
             ).remote(check_interval_s=self._check_interval_s)
 
-            try:
-                core_context = ray.runtime_context.get_runtime_context()
-                self._controller_actor_id = core_context.get_actor_id()
-            except Exception as e:
-                logger.warning(
-                    f"Failed to get controller actor id: {e}. "
-                    "PlacementGroupCleaner will not be able to monitor controller liveness."
-                )
-                self._stop_cleaner()
-                return
-
-            if not self._controller_actor_id:
-                logger.warning(
-                    "Controller actor id is unavailable. "
-                    "PG cleaner will not monitor controller liveness."
-                )
-                self._stop_cleaner()
-                return
+            core_context = ray.runtime_context.get_runtime_context()
+            self._controller_actor_id = core_context.get_actor_id()
 
             logger.debug(
                 f"PlacementGroupCleaner launched for run_id={train_run_context.run_id}"
@@ -83,32 +67,17 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
 
         This is called after a worker group is successfully started.
         """
-        if not self._cleaner:
-            logger.debug("No PlacementGroupCleaner to register placement group with")
-            return
+        assert (
+            self._cleaner and self._controller_actor_id
+        ), "PlacementGroupCleaner and controller actor id must be set"
+        worker_group_state = worker_group.get_worker_group_state()
+        placement_group = worker_group_state.placement_group
 
         try:
-            worker_group_state = worker_group.get_worker_group_state()
-            placement_group = worker_group_state.placement_group
-
-            # Placement group for worker group is created after worker group start.
-            # Only one placement group for worker group exists at a time.
-            if not self._controller_actor_id:
-                logger.warning(
-                    "Controller actor id unavailable; cannot register placement group."
-                )
-                return
-
             ray.get(
                 self._cleaner.register_controller_and_placement_group.remote(
                     self._controller_actor_id, placement_group
                 )
-            )
-
-            self._cleaner.start_monitoring.remote()
-
-            logger.debug(
-                f"Registered placement group {placement_group.id} with PlacementGroupCleaner."
             )
         except Exception as e:
             logger.warning(
@@ -116,25 +85,11 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
                 "Placement group may not be cleaned up if controller dies ungracefully."
             )
 
-    def before_worker_group_shutdown(self, worker_group: "WorkerGroup"):
-        """Stop monitoring the worker group's placement group when it shuts down.
+        self._cleaner.start_monitoring.remote()
 
-        This is called when a worker group shuts down (e.g., during restart/resize).
-        We stop monitoring the old placement group so that when a new worker group
-        starts, we can start monitoring the new placement group.
-        """
-        if not self._cleaner:
-            return
-
-        try:
-            ray.get(self._cleaner.stop_monitoring.remote(), timeout=2.0)
-            logger.debug("Stopped monitoring placement group for worker group shutdown")
-        except RayActorError:
-            logger.debug(
-                "PlacementGroupCleaner exited before stop_monitoring completed; ignoring."
-            )
-        except Exception:
-            logger.exception("Failed to stop monitoring placement group gracefully.")
+        logger.debug(
+            f"Registered placement group {placement_group.id} with PlacementGroupCleaner."
+        )
 
     def before_controller_shutdown(self):
         self._stop_cleaner()
