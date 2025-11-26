@@ -206,13 +206,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def internal_output_queue_num_bytes(self) -> int:
         return self._output_queue.size_bytes()
 
-    @property
-    def name(self) -> str:
-        name = super().name
-        if self._additional_split_factor is not None:
-            name += f"->SplitBlocks({self._additional_split_factor})"
-        return name
-
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queue (block ref bundler)."""
         self._block_ref_bundler.done_adding_bundles()
@@ -226,6 +219,13 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         while self._output_queue.has_next():
             bundle = self._output_queue.get_next()
             self._metrics.on_output_dequeued(bundle)
+
+    @property
+    def name(self) -> str:
+        name = super().name
+        if self._additional_split_factor is not None:
+            name += f"->SplitBlocks({self._additional_split_factor})"
+        return name
 
     @classmethod
     def create(
