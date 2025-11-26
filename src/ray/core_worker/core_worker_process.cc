@@ -588,9 +588,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     if (object_locations.has_value()) {
       locations.reserve(object_locations->size());
       for (const auto &node_id : *object_locations) {
-        auto *node_info = core_worker->gcs_client_->Nodes().GetNodeAddressAndLiveness(
+        auto node_info = core_worker->gcs_client_->Nodes().GetNodeAddressAndLiveness(
             node_id, /*filter_dead_nodes=*/false);
-        if (node_info == nullptr) {
+        if (!node_info) {
           // Unsure if the node is dead, so we need to confirm with the GCS. This should
           // be rare, the only foreseeable reasons are:
           // 1. We filled our cache after the GCS cleared the node info due to

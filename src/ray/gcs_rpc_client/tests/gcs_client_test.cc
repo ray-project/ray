@@ -368,10 +368,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return actors;
   }
 
-  bool SubscribeToNodeChange(
-      std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe) {
+  bool SubscribeToNodeAddressAndLivenessChange(
+      std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe) {
     std::promise<bool> promise;
-    gcs_client_->Nodes().AsyncSubscribeToNodeChange(
+    gcs_client_->Nodes().AsyncSubscribeToNodeAddressAndLivenessChange(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -608,15 +608,16 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   // Subscribe to node addition and removal events from GCS.
   std::atomic<int> register_count(0);
   std::atomic<int> unregister_count(0);
-  auto on_subscribe = [&register_count, &unregister_count](const NodeID &node_id,
-                                                           const rpc::GcsNodeInfo &data) {
+  auto on_subscribe = [&register_count, &unregister_count](
+                          const NodeID &node_id,
+                          const rpc::GcsNodeAddressAndLiveness &data) {
     if (data.state() == rpc::GcsNodeInfo::ALIVE) {
       ++register_count;
     } else if (data.state() == rpc::GcsNodeInfo::DEAD) {
       ++unregister_count;
     }
   };
-  ASSERT_TRUE(SubscribeToNodeChange(on_subscribe));
+  ASSERT_TRUE(SubscribeToNodeAddressAndLivenessChange(on_subscribe));
 
   // Register local node to GCS.
   RegisterSelf(*gcs_node1_info);
@@ -631,9 +632,9 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   // Get information of all nodes from GCS.
   std::vector<rpc::GcsNodeInfo> node_list = GetNodeInfoList();
   EXPECT_EQ(node_list.size(), 2);
-  ASSERT_TRUE(gcs_client_->Nodes().Get(node1_id));
-  ASSERT_TRUE(gcs_client_->Nodes().Get(node2_id));
-  EXPECT_EQ(gcs_client_->Nodes().GetAll().size(), 2);
+  ASSERT_TRUE(gcs_client_->Nodes().GetNodeAddressAndLiveness(node1_id).has_value());
+  ASSERT_TRUE(gcs_client_->Nodes().GetNodeAddressAndLiveness(node2_id).has_value());
+  EXPECT_EQ(gcs_client_->Nodes().GetAllNodeAddressAndLiveness().size(), 2);
 }
 
 TEST_P(GcsClientTest, TestUnregisterNode) {
@@ -801,11 +802,12 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   // Test that subscription of the node table can still work when GCS server restarts.
   // Subscribe to node addition and removal events from GCS and cache those information.
   std::atomic<int> node_change_count(0);
-  auto node_subscribe = [&node_change_count](const NodeID &id,
-                                             const rpc::GcsNodeInfo &result) {
+  auto node_subscribe = [&node_change_count](
+                            const NodeID &id,
+                            const rpc::GcsNodeAddressAndLiveness &result) {
     ++node_change_count;
   };
-  ASSERT_TRUE(SubscribeToNodeChange(node_subscribe));
+  ASSERT_TRUE(SubscribeToNodeAddressAndLivenessChange(node_subscribe));
 
   auto node_info = GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));
