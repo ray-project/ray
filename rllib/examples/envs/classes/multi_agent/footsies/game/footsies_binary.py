@@ -16,6 +16,7 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
     footsies_service_pb2 as footsies_pb2,
     footsies_service_pb2_grpc as footsies_pb2_grpc,
 )
+from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +93,14 @@ class FootsiesBinary:
             self._add_executable_permission(game_binary_path)
         logger.info(f"Game binary path: {game_binary_path}")
 
-        # The underlying game can be quite spammy. So when we are not debugging it, we can suppress the output or at least redirect it to a file.
-        suppress_output = self.config.get("suppress_unity_output", False)
+        # The underlying game can be quite spammy. So when we are not debugging it, we can suppress the output.
+        suppress_output = self.config.get("suppress_unity_output")
+        if suppress_output is None:
+            if log_once("suppress_unity_output_not_set"):
+                logger.warning(
+                    "`suppress_unity_output` not set in environment config, suppressing output by default"
+                )
+            suppress_output = True
 
         if suppress_output:
             stdout_dest = stderr_dest = subprocess.DEVNULL

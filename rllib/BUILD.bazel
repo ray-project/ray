@@ -4317,9 +4317,9 @@ py_test(
 )
 
 py_test(
-    name = "test_footsies_env",
+    name = "footsies_suppress_unity_logs",
     size = "large",
-    srcs = ["examples/envs/classes/multi_agent/footsies/test/test_footsies.py"],
+    srcs = ["examples/envs/classes/multi_agent/footsies/test/footsies_suppress_unity_logs.py"],
     tags = [
         "examples",
         "team:rllib",

@@ -1,6 +1,5 @@
 import os
 import platform
-import sys
 import tempfile
 import time
 import unittest
