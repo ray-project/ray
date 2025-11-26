@@ -225,7 +225,6 @@ class GroupedData:
         #     same key values)
 
         # Validate _preserve_hash_shuffle_finalize_blocks config for hash shuffle
-        self._dataset.context._preserve_hash_shuffle_finalize_blocks = True
         if self._key is None:
             shuffled_ds = self._dataset.repartition(1)
         elif self._dataset.context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
