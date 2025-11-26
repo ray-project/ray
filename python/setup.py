@@ -324,12 +324,12 @@ if setup_spec.type == SetupType.RAY:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
-        "dm_tree",
+        "dm_tree; python_version < '3.13'",
         "gymnasium==1.1.1",
         "lz4",
         "ormsgpack==1.7.0",
         "pyyaml",
-        "scipy",
+        "scipy>=1.11.4; python_version < '3.13'",
     ]
 
     setup_spec.extras["train"] = setup_spec.extras["tune"] + [pydantic_dep]
@@ -405,9 +405,9 @@ if setup_spec.type == SetupType.RAY:
         "click>=7.0",
         "filelock",
         "jsonschema",
-        "msgpack >= 1.0.0, < 2.0.0",
+        "msgpack >= 1.1.0, < 2.0.0",
         "packaging",
-        "protobuf>=3.20.3",
+        "protobuf>=3.20.3; python_version < '3.13'",
         "pyyaml",
         "requests",
     ]

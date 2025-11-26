@@ -11,9 +11,9 @@ click>=7.0
 cupy-cuda12x; sys_platform != 'darwin'
 filelock
 jsonschema
-msgpack<2.0.0,>=1.0.0
+msgpack<2.0.0,>=1.1.0
 packaging
-protobuf>=3.20.3
+protobuf>=3.20.3; python_version < '3.13'
 pyyaml
 requests
 watchfiles
@@ -24,28 +24,27 @@ grpcio >= 1.42.0; python_version >= '3.10'
 # Version used in mac CI; needs upgrade.
 grpcio == 1.54.2; sys_platform == "darwin"
 
-numpy>=1.20
+numpy>=1.20; python_version < '3.13'
 
 pyarrow >= 9.0.0
 
 # ray[all]
 smart_open
 lz4
-numpy>=1.20
 aiorwlock
-scipy
+scipy>=1.11.4; python_version < '3.13'
 colorful
 rich
 opentelemetry-sdk>=1.30.0
 opentelemetry-api
 opentelemetry-exporter-prometheus
-opentelemetry-proto
+opentelemetry-proto>=1.27.0; python_version < '3.13'
 fastapi
 gymnasium==1.1.1
 virtualenv!=20.21.1,>=20.0.24
 opencensus
 aiohttp_cors
-dm_tree
+dm_tree; python_version < "3.13"
 uvicorn
 scikit-image>=0.21.0
 prometheus_client>=0.7.1
