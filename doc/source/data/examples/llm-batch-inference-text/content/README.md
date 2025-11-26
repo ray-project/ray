@@ -52,9 +52,9 @@ print("\nSample rows:")
 ds.show(limit=2)
 ```
 
-For this initial example, limit the dataset to 10,000 rows for faster processing and testing. Later, you can scale up to process the full dataset.
+For this initial example, limit the dataset to 10,000 rows so you can process and test faster. Later, you can scale up to the full dataset.
 
-By default, a large remote file might be read into few blocks, limiting parallelism in the next steps. Instead, you can repartition the data into a specified number of blocks to ensure good enough parallelization in rest of the pipeline.
+If you don't repartition, the system might read a large file into only a few blocks, which limits parallelism in later steps. For example, you might see that only 4 out of 8 GPUs in your cluster are being used. To address this, you can repartition the data into a specific number of blocks so the system can better parallelize work across all available GPUs in the pipeline.
 
 
 ```python
@@ -331,11 +331,11 @@ Larger batch sizes may improve throughput but increase memory usage.
 Use `repartition()` to control parallelism during your preprocessing stage. On the other hand, the number of inference tasks is determined by `dataset_size / batch_size`, where `batch_size` controls how many rows are grouped for each vLLM engine call. Ensure you have enough tasks to keep all workers busy and enable efficient load balancing.
 
 **Use quantization to reduce memory footprint**  
-Quantization reduces model precision to save GPU memory and improve throughput. vLLM supports multiple quantization formats through the `quantization` parameter in `engine_kwargs`. Common options include FP8 (8-bit floating point) and INT4 (4-bit integer), which can reduce memory usage by 2-4x with minimal accuracy loss. For example:
+Quantization reduces model precision to save GPU memory and improve throughput. vLLM supports multiple quantization formats through the `quantization` parameter in `engine_kwargs`. A common option is FP8 (8-bit floating point), which can reduce memory usage by 2-4x with minimal accuracy loss. For example:
 
 ```python
 processor_config = vLLMEngineProcessorConfig(
-    model_source="meta-llama/Llama-3.1-70B-Instruct",
+    model_source="facebook/opt-125m",
     engine_kwargs={
         "quantization": "fp8",  # Or "awq", "gptq", etc.
         "max_model_len": 8192,

@@ -61,9 +61,9 @@ for i, item in enumerate(sample):
     image.show()
 ```
 
-For this initial example, limit the dataset to 10,000 rows for faster processing and testing. Later, you can scale up to process the full dataset.
+For this initial example, limit the dataset to 10,000 rows so you can process and test faster. Later, you can scale up to the full dataset.
 
-By default, a large file might be read into few blocks, limiting parallelism in the next steps. Instead, you can repartition the data into a specified number of blocks to ensure good enough parallelization in rest of the pipeline.
+If you don't repartition, the system might read a large file into only a few blocks, which limits parallelism in later steps. For example, you might see that only 4 out of 8 GPUs in your cluster are being used. To address this, you can repartition the data into a specific number of blocks so the system can better parallelize work across all available GPUs in the pipeline.
 
 
 ```python
@@ -331,27 +331,34 @@ pprint(processed_large.take(3))
 When scaling to larger datasets, consider these optimizations:
 
 **Analyze your pipeline**
-Use *stats()* to analyze each steps in your pipeline and identify any bottlenecks.
+You can use *stats()* to examine the throughput and timing at every step in your pipeline and spot potential bottlenecks.
+The *stats()* output reports how long each operator took and its throughput, so you can compare these values to expected throughput for your hardware. If you see a step with significantly lower throughput or much higher task durations than others, that's likely a bottleneck.
+The following example shows how to print pipeline stats:
 ```python
 processed = processor(ds).materialize()
 print(processed.stats())
 ```
-The outputs contains detailed description of each step in your pipeline.
+The outputs include detailed timing, throughput, and resource utilization for each pipeline operator.
+For example:
 ```text
 Operator 0 ...
 
 ...
 
 Operator 8 MapBatches(vLLMEngineStageUDF): 3908 tasks executed, 3908 blocks produced in 340.21s
-    * Remote wall time: ...
+    * Remote wall time: 340.21s 
+    * Input/output rows: ...
+    * Throughput: 2,900 rows/s
     ...
 
 ...
 
 Dataset throughput:
-	* Ray Data throughput: ...
-	* Estimated single node throughput: ...
+    * Ray Data throughput: 2,500 rows/s
+    * Estimated single node throughput: 5,000 rows/s
 ```
+
+Review the per-operator throughput numbers and durations to spot slowest stages or unexpected bottlenecks. You can then adjust batch size, concurrency, or optimize resource usage for affected steps.
 
 **Adjust concurrency**  
 Increase the `concurrency` parameter to add more parallel workers and GPUs.
@@ -366,21 +373,7 @@ Pre-resize images to a consistent size to reduce memory usage and improve throug
 Use `repartition()` to control parallelism during your preprocessing stage. On the other hand, the number of inference tasks is determined by `dataset_size / batch_size`, where `batch_size` controls how many rows are grouped for each vLLM engine call. Ensure you have enough tasks to keep all workers busy and enable efficient load balancing.
 
 **Use quantization to reduce memory footprint**  
-Quantization reduces model precision to save GPU memory and improve throughput. vLLM supports multiple quantization formats through the `quantization` parameter in `engine_kwargs`. Common options include FP8 (8-bit floating point) and INT4 (4-bit integer), which can reduce memory usage by 2-4x with minimal accuracy loss. For example:
-
-```python
-processor_config = vLLMEngineProcessorConfig(
-    model_source="Qwen/Qwen2.5-VL-3B-Instruct",
-    engine_kwargs={
-        "quantization": "fp8",  # Or "awq", "gptq", etc.
-        "max_model_len": 8192,
-    },
-    batch_size=16,
-    accelerator_type="L4",
-    concurrency=4,
-    has_image=True,
-)
-```
+Quantization reduces model precision to save GPU memory and improve throughput. vLLM supports multiple quantization formats through the `quantization` parameter in `engine_kwargs`. A common option is FP8 (8-bit floating point), which can reduce memory usage by 2-4x with minimal accuracy loss.
 
 **Scale to larger models with model parallelism**  
 Model parallelism distributes large models across multiple GPUs when they don't fit on a single GPU. Use tensor parallelism to split model layers horizontally across multiple GPUs within a single node and use pipeline parallelism to split model layers vertically across multiple nodes, with each node processing different layers of the model.
