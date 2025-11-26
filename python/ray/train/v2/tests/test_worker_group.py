@@ -342,7 +342,7 @@ def test_group_workers_by_ip():
         ]
 
     workers = create_workers(["2", "3", "1", "4", "2", "1", "3", "3", "4", "2"])
-    workers = WorkerGroup._sort_workers_by_node_id_and_gpu_id(workers)
+    workers = WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(workers)
     expected = ["2", "2", "2", "3", "3", "3", "1", "1", "4", "4"]
     ips = [w.metadata.node_id for w in workers]
     assert ips == expected, (
@@ -351,7 +351,9 @@ def test_group_workers_by_ip():
     )
 
     workers = create_workers(["2", "3", "1", "4", "2", "1", "3", "3", "4", "2"])
-    workers = WorkerGroup._sort_workers_by_node_id_and_gpu_id(workers, _first_id="1")
+    workers = WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(
+        workers, _first_id="1"
+    )
     expected = ["1", "1", "2", "2", "2", "3", "3", "3", "4", "4"]
     ips = [w.metadata.node_id for w in workers]
     assert (
@@ -388,7 +390,7 @@ def test_local_rank_assignment():
                 expected local rank.
         """
         workers = create_workers(pids=pids, node_ids=node_ids, gpu_ids=gpu_ids)
-        workers = WorkerGroup._sort_workers_by_node_id_and_gpu_id(workers)
+        workers = WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(workers)
 
         # Build local ranks according to the logics in
         # TODO: Replace this with the actual implementation later
