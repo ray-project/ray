@@ -85,7 +85,14 @@ ctx.enable_progress_bars = False
 ctx.enable_operator_progress_bars = False
 
 # Initialize Ray cluster connection to set the Ray Data context
-ray.init(ignore_reinit_error=True)
+# Use runtime env to install dependencies across all workers
+runtime_env = dict(
+    pip= {
+        "packages": ["unstructured[all-docs]==0.18.21", "pandas==2.3.3"],
+        "pip_install_options": ["--force-reinstall", "--no-cache-dir"]
+    }
+)
+ray.init(ignore_reinit_error=True, runtime_env= runtime_env)
 ```
 
 ## Step 1: Data Lake Document Discovery
