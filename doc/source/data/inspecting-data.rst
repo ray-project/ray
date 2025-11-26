@@ -143,8 +143,8 @@ the internal block representation.
 
         .. testoutput::
 
-            pyarrow.Table                                                                                                              
-            sepal length (cm): double                                                                                                      
+            pyarrow.Table
+            sepal length (cm): double
             sepal width (cm): double
             petal length (cm): double
             petal width (cm): double
