@@ -142,7 +142,6 @@ the internal block representation.
             print(batch)
 
         .. testoutput::
-            :options: +MOCK
 
             pyarrow.Table                                                                                                              
             sepal length (cm): double                                                                                                      
