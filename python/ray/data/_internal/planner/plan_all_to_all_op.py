@@ -41,7 +41,6 @@ def _plan_hash_shuffle_repartition(
         num_partitions=logical_op._num_outputs,
         should_sort=logical_op._sort,
         # TODO wire in aggregator args overrides
-        preserve_finalize_blocks=True,
     )
 
 

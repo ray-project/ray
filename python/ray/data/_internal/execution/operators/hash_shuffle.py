@@ -1211,7 +1211,6 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         num_partitions: Optional[int] = None,
         should_sort: bool = False,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
-        preserve_finalize_blocks: bool = False,
     ):
         super().__init__(
             name_factory=(
@@ -1231,7 +1230,9 @@ class HashShuffleOperator(HashShufflingOperatorBase):
                 )
             ),
             shuffle_progress_bar_name="Shuffle",
-            preserve_finalize_blocks=preserve_finalize_blocks,
+            # NOTE: This is set to True because num_partitions (aka, # of output blocks)
+            # must be preserved.
+            preserve_finalize_blocks=True,
         )
 
     def _get_operator_num_cpus_override(self) -> float:
