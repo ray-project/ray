@@ -284,6 +284,7 @@ class SingleAgentEpisode:
                 lookback=len_lookback_buffer,
             )
         self.observation_space = observation_space
+
         # Infos: t0 (initial info) to T.
         if isinstance(infos, InfiniteLookbackBuffer):
             self.infos = infos
@@ -292,6 +293,7 @@ class SingleAgentEpisode:
                 data=infos,
                 lookback=len_lookback_buffer,
             )
+
         # Actions: t1 to T.
         self._action_space = None
         if isinstance(actions, InfiniteLookbackBuffer):
@@ -302,6 +304,7 @@ class SingleAgentEpisode:
                 lookback=len_lookback_buffer,
             )
         self.action_space = action_space
+
         # Rewards: t1 to T.
         if isinstance(rewards, InfiniteLookbackBuffer):
             self.rewards = rewards
