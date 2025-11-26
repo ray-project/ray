@@ -35,6 +35,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
     instance_type: builder-arm64
     env:
       PYTHON_VERSION: "{{matrix}}"

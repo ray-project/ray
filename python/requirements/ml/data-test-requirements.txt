@@ -11,6 +11,7 @@ google-cloud-bigquery
 google-cloud-core
 google-cloud-bigquery-storage
 google-api-core>=2.24.2
+proto-plus==1.25.0
 googleapis-common-protos>=1.61.0 ; python_version < '3.13'
 webdataset
 raydp==1.7.0b20250423.dev0

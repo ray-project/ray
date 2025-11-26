@@ -1057,7 +1057,7 @@ grpcio==1.74.0 \
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
     #   grpcio-tools
-grpcio-tools==1.62.3 \
+grpcio-tools==1.62.3 ; python_full_version < '3.13' \
     --hash=sha256:0a52cc9444df978438b8d2332c0ca99000521895229934a59f94f37ed896b133 \
     --hash=sha256:0a8c0c4724ae9c2181b7dbc9b186df46e4f62cb18dc184e46d06c0ebeccf569e \
     --hash=sha256:0cb3a3436ac119cbd37a7d3331d9bdf85dad21a6ac233a3411dff716dcbf401e \
@@ -2297,9 +2297,9 @@ propcache==0.3.0 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aiohttp
     #   yarl
-proto-plus==1.22.3 \
-    --hash=sha256:a49cd903bc0b6ab41f76bf65510439d56ca76f868adf0274e738bfdd096894df \
-    --hash=sha256:fdcd09713cbd42480740d2fe29c990f7fbd885a67efc328aa8be6ee3e9f76a6b
+proto-plus==1.25.0 \
+    --hash=sha256:c91fc4a65074ade8e458e95ef8bac34d4008daa7cce4a12d6707066fca648961 \
+    --hash=sha256:fbb17f57f7bd05a68b7707e745e26528b0b3c34e378db91eef93912c54982d91
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   google-api-core
