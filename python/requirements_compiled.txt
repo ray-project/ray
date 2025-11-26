@@ -1066,8 +1066,9 @@ markdown-it-py==2.2.0
     #   myst-parser
     #   rich
     #   textual
-markupsafe==2.1.3
+markupsafe==2.1.5
     # via
+    #   -r python/requirements/test-requirements.txt
     #   gradio
     #   jinja2
     #   mako
@@ -1524,7 +1525,7 @@ pexpect==4.8.0
     #   ipython
 pickleshare==0.7.5
     # via ipython
-pillow==10.3.0 ; platform_system != "Windows"
+pillow==10.4.0 ; platform_system != "Windows"
     # via
     #   -r python/requirements/test-requirements.txt
     #   aim
