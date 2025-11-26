@@ -637,7 +637,9 @@ def _create_bundle_with_single_row(row):
 
 
 @pytest.mark.parametrize("min_rows_per_bundle", [2, None])
-def test_internal_input_queue_is_empty_after_early_completion(min_rows_per_bundle):
+def test_internal_input_queue_is_empty_after_early_completion(
+    ray_start_regular_shared, min_rows_per_bundle
+):
     data_context = ray.data.DataContext.get_current()
     op = ActorPoolMapOperator(
         map_transformer=MagicMock(),
