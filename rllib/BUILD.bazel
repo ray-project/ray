@@ -59,13 +59,13 @@ load("//bazel:python.bzl", "doctest", "py_test_module_list")
 
 filegroup(
     name = "cartpole-v1_large",
-    data = glob(["tests/data/cartpole/cartpole-v1_large/*.parquet"]),
+    data = glob(["offline/tests/data/cartpole/cartpole-v1_large/*.parquet"]),
     visibility = ["//visibility:public"],
 )
 
 doctest(
     size = "enormous",
-    data = glob(["tests/data/cartpole/cartpole-v1_large/*.parquet"]),
+    data = glob(["offline/tests/data/cartpole/cartpole-v1_large/*.parquet"]),
     files = glob(
         ["**/*.py"],
         exclude = [
@@ -73,43 +73,32 @@ doctest(
             "**/tests/**",
             "**/test_*.py",
             # Deprecated modules
-            "utils/window_stat.py",
-            "utils/timer.py",
             "utils/memory.py",
             "offline/off_policy_estimator.py",
             "offline/estimators/feature_importance.py",
-            "env/remote_vector_env.py",
             # Missing imports
             "algorithms/dreamerv3/**",
             # FIXME: These modules contain broken examples that weren't previously
             # tested.
             "algorithms/algorithm_config.py",
-            "algorithms/alpha_star/alpha_star.py",
-            "algorithms/r2d2/r2d2.py",
-            "algorithms/sac/rnnsac.py",
-            "algorithms/simple_q/simple_q.py",
             "core/distribution/torch/torch_distribution.py",
             "core/models/base.py",
             "core/models/specs/specs_base.py",
             "core/models/specs/specs_dict.py",
             "env/wrappers/pettingzoo_env.py",
             "evaluation/collectors/sample_collector.py",
-            "evaluation/episode.py",
             "evaluation/metrics.py",
             "evaluation/observation_function.py",
             "evaluation/postprocessing.py",
             "execution/buffers/mixin_replay_buffer.py",
-            "models/base_model.py",
             "models/catalog.py",
             "models/preprocessors.py",
             "models/repeated_values.py",
-            "models/torch/model.py",
             "policy/rnn_sequencing.py",
             "utils/actor_manager.py",
             "utils/filter.py",
             "utils/from_config.py",
             "utils/metrics/window_stat.py",
-            "utils/nested_dict.py",
             "utils/pre_checks/env.py",
             "utils/replay_buffers/multi_agent_mixin_replay_buffer.py",
             "utils/spaces/space_utils.py",
@@ -496,10 +485,10 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_w_100_policies_appo_old_api_stack",
     size = "large",
-    srcs = ["tests/run_regression_tests.py"],
+    srcs = ["algorithms/tests/run_regression_tests.py"],
     args = ["--dir=examples/_old_api_stack/algorithms/"],
     data = ["examples/_old_api_stack/algorithms/multi-agent-cartpole-w-100-policies-appo.py"],
-    main = "tests/run_regression_tests.py",
+    main = "talgorithms/ests/run_regression_tests.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -520,7 +509,7 @@ py_test(
     ],
     # Include the offline data files.
     data = [
-        "tests/data/cartpole/cartpole-v1_large",
+        "offline/tests/data/cartpole/cartpole-v1_large",
     ],
     main = "examples/algorithms/bc/cartpole_bc.py",
     tags = [
@@ -543,7 +532,7 @@ py_test(
     ],
     # Include the offline data files.
     data = [
-        "tests/data/cartpole/cartpole-v1_large",
+        "offline/tests/data/cartpole/cartpole-v1_large",
     ],
     main = "examples/algorithms/bc/cartpole_bc.py",
     tags = [
@@ -570,7 +559,7 @@ py_test(
     ],
     # Include the offline data files.
     data = [
-        "tests/data/cartpole/cartpole-v1_large",
+        "offline/tests/data/cartpole/cartpole-v1_large",
     ],
     main = "examples/algorithms/bc/cartpole_bc_with_offline_evaluation.py",
     tags = [
@@ -596,7 +585,7 @@ py_test(
     ],
     # Include the offline data files.
     data = [
-        "tests/data/cartpole/cartpole-v1_large",
+        "offline/tests/data/cartpole/cartpole-v1_large",
     ],
     main = "examples/algorithms/bc/cartpole_bc_with_offline_evaluation.py",
     tags = [
@@ -621,7 +610,7 @@ py_test(
     ],
     # Include the zipped json data file as well.
     data = [
-        "tests/data/pendulum/pendulum-v1_enormous",
+        "offline/tests/data/pendulum/pendulum-v1_enormous",
     ],
     main = "examples/algorithms/cql/pendulum_cql.py",
     tags = [
@@ -648,7 +637,7 @@ py_test(
     ],
     # Include the zipped json data file as well.
     data = [
-        "tests/data/pendulum/pendulum-v1_enormous",
+        "offline/tests/data/pendulum/pendulum-v1_enormous",
     ],
     main = "examples/algorithms/cql/pendulum_cql.py",
     tags = [
@@ -1106,7 +1095,7 @@ py_test(
     ],
     # Include the offline data files.
     data = [
-        "tests/data/pendulum/pendulum-v1_enormous",
+        "offline/tests/data/pendulum/pendulum-v1_enormous",
     ],
     main = "examples/algorithms/iql/pendulum_iql.py",
     tags = [
@@ -1131,7 +1120,7 @@ py_test(
     ],
     # Include the offline data files.
     data = [
-        "tests/data/pendulum/pendulum-v1_enormous",
+        "offline/tests/data/pendulum/pendulum-v1_enormous",
     ],
     main = "examples/algorithms/iql/pendulum_iql.py",
     tags = [
@@ -1156,7 +1145,7 @@ py_test(
     ],
     # Include the offline data files.
     data = [
-        "tests/data/cartpole/cartpole-v1_large",
+        "offline/tests/data/cartpole/cartpole-v1_large",
     ],
     main = "examples/algorithms/marwil/cartpole_marwil.py",
     tags = [
@@ -1180,7 +1169,7 @@ py_test(
     ],
     # Include the offline data files.
     data = [
-        "tests/data/cartpole/cartpole-v1_large",
+        "offline/tests/data/cartpole/cartpole-v1_large",
     ],
     main = "examples/algorithms/marwil/cartpole_marwil.py",
     tags = [
@@ -2025,7 +2014,7 @@ py_test(
     name = "test_algorithm",
     size = "large",
     srcs = ["algorithms/tests/test_algorithm.py"],
-    data = ["tests/data/cartpole/small.json"],
+    data = ["offline/tests/data/cartpole/small.json"],
     tags = [
         "algorithms_dir",
         "algorithms_dir_generic",
@@ -2163,7 +2152,7 @@ py_test(
     size = "medium",
     srcs = ["algorithms/bc/tests/test_bc.py"],
     # Include the offline data files.
-    data = ["tests/data/cartpole/cartpole-v1_large"],
+    data = ["offline/tests/data/cartpole/cartpole-v1_large"],
     tags = [
         "algorithms_dir",
         "team:rllib",
@@ -2176,7 +2165,7 @@ py_test(
     name = "test_cql_old_api_stack",
     size = "large",
     srcs = ["algorithms/cql/tests/test_cql_old_api_stack.py"],
-    data = ["tests/data/pendulum/small.json"],
+    data = ["offline/tests/data/pendulum/small.json"],
     tags = [
         "algorithms_dir",
         "team:rllib",
@@ -2244,8 +2233,8 @@ py_test(
     srcs = ["algorithms/marwil/tests/test_marwil.py"],
     # Include the offline data files.
     data = [
-        "tests/data/cartpole/cartpole-v1_large",
-        "tests/data/pendulum/pendulum-v1_large",
+        "offline/tests/data/cartpole/cartpole-v1_large",
+        "offline/tests/data/pendulum/pendulum-v1_large",
     ],
     tags = [
         "algorithms_dir",
@@ -2259,7 +2248,7 @@ py_test(
     srcs = ["algorithms/marwil/tests/test_marwil_rl_module.py"],
     # Include the json data file.
     data = [
-        "tests/data/cartpole/large.json",
+        "offline/tests/data/cartpole/large.json",
     ],
     tags = [
         "algorithms_dir",
@@ -2303,6 +2292,87 @@ py_test(
     name = "test_sac",
     size = "large",
     srcs = ["algorithms/sac/tests/test_sac.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
+# Generic testing
+py_test(
+    name = "algorithms/tests/test_custom_resource",
+    size = "large",  # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+    srcs = ["algorithms/tests/test_custom_resource.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "algorithms/tests/test_dependency_tf",
+    size = "small",
+    srcs = ["algorithms/tests/test_dependency_tf.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "algorithms/tests/test_dependency_torch",
+    size = "small",
+    srcs = ["algorithms/tests/test_dependency_torch.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "algorithms/tests/test_local",
+    size = "small",
+    srcs = ["algorithms/tests/test_local.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "algorithms/tests/test_ray_client",
+    size = "medium",
+    srcs = ["algorithms/tests/test_ray_client.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "algorithms/tests/test_telemetry",
+    size = "small",
+    srcs = ["algorithms/tests/test_telemetry.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "algorithms/tests/test_nn_framework_import_errors",
+    size = "small",
+    srcs = ["algorithms/tests/test_nn_framework_import_errors.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "algorithms/tests/test_placement_groups",
+    size = "large",  # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+    srcs = ["algorithms/tests/test_placement_groups.py"],
     tags = [
         "algorithms_dir",
         "team:rllib",
@@ -2439,6 +2509,16 @@ py_test(
 )
 
 py_test(
+    name = "env/tests/test_pettingzoo_env",
+    size = "medium",
+    srcs = ["env/tests/test_pettingzoo_env.py"],
+    tags = [
+        "env",
+        "team:rllib",
+    ],
+)
+
+py_test(
     name = "env/wrappers/tests/test_group_agents_wrapper",
     size = "small",
     srcs = ["env/wrappers/tests/test_group_agents_wrapper.py"],
@@ -2535,6 +2615,7 @@ py_test(
     srcs = ["core/models/tests/test_catalog.py"],
     tags = [
         "core",
+        "models",
         "team:rllib",
     ],
 )
@@ -2546,6 +2627,7 @@ py_test(
     srcs = ["core/models/tests/test_base_models.py"],
     tags = [
         "core",
+        "models",
         "team:rllib",
     ],
 )
@@ -2754,6 +2836,16 @@ py_test(
     ],
 )
 
+py_test(
+    name = "tests/test_catalog",
+    size = "medium",
+    srcs = ["models/tests/test_catalog.py"],
+    tags = [
+        "models",
+        "team:rllib",
+    ],
+)
+
 # --------------------------------------------------------------------
 # Offline
 # rllib/offline/
@@ -2766,8 +2858,8 @@ py_test(
     size = "small",
     srcs = ["offline/tests/test_dataset_reader.py"],
     data = [
-        "tests/data/pendulum/enormous.zip",
-        "tests/data/pendulum/large.json",
+        "offline/tests/data/pendulum/enormous.zip",
+        "offline/tests/data/pendulum/large.json",
     ],
     tags = [
         "offline",
@@ -2790,7 +2882,7 @@ py_test(
     name = "test_json_reader",
     size = "small",
     srcs = ["offline/tests/test_json_reader.py"],
-    data = ["tests/data/pendulum/large.json"],
+    data = ["offline/tests/data/pendulum/large.json"],
     tags = [
         "offline",
         "team:rllib",
@@ -2801,7 +2893,7 @@ py_test(
     name = "test_ope",
     size = "medium",
     srcs = ["offline/estimators/tests/test_ope.py"],
-    data = ["tests/data/cartpole/small.json"],
+    data = ["offline/tests/data/cartpole/small.json"],
     tags = [
         "offline",
         "ray_data",
@@ -2855,8 +2947,8 @@ py_test(
     srcs = ["offline/tests/test_offline_data.py"],
     # Include the offline data files.
     data = [
-        "tests/data/cartpole/cartpole-v1_large",
-        "tests/data/cartpole/large.json",
+        "offline/tests/data/cartpole/cartpole-v1_large",
+        "offline/tests/data/cartpole/large.json",
     ],
     tags = [
         "offline",
@@ -2870,7 +2962,7 @@ py_test(
     srcs = ["offline/tests/test_offline_evaluation_runner.py"],
     # Include the offline data files.
     data = [
-        "tests/data/cartpole/cartpole-v1_large",
+        "offline/tests/data/cartpole/cartpole-v1_large",
     ],
     tags = [
         "offline",
@@ -2884,7 +2976,7 @@ py_test(
     srcs = ["offline/tests/test_offline_evaluation_runner_group.py"],
     # Include the offline data files.
     data = [
-        "tests/data/cartpole/cartpole-v1_large",
+        "offline/tests/data/cartpole/cartpole-v1_large",
     ],
     tags = [
         "offline",
@@ -2900,8 +2992,8 @@ py_test(
     srcs = ["offline/tests/test_offline_prelearner.py"],
     # Include the offline data files.
     data = [
-        "tests/data/cartpole/cartpole-v1_large",
-        "tests/data/cartpole/large.json",
+        "offline/tests/data/cartpole/cartpole-v1_large",
+        "offline/tests/data/cartpole/large.json",
     ],
     tags = [
         "offline",
@@ -3002,6 +3094,37 @@ py_test(
     name = "policy/tests/test_view_requirement",
     size = "small",
     srcs = ["policy/tests/test_view_requirement.py"],
+    tags = [
+        "policy",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "policy/tests/test_policy_checkpoint_restore",
+    size = "large",
+    srcs = ["policy/tests/test_policy_checkpoint_restore.py"],
+    main = "policy/tests/test_policy_checkpoint_restore.py",
+    tags = [
+        "policy",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "policy/tests/test_timesteps",
+    size = "small",
+    srcs = ["policy/tests/test_timesteps.py"],
+    tags = [
+        "policy",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "policy/tests/test_lstm",
+    size = "medium",
+    srcs = ["policy/tests/test_lstm.py"],
     tags = [
         "policy",
         "team:rllib",
@@ -3308,148 +3431,6 @@ py_test(
         "exclusive",
         "team:rllib",
         "utils",
-    ],
-)
-
-# --------------------------------------------------------------------
-# rllib/tests/ directory
-#
-# Tag: tests_dir
-#
-# NOTE: Add tests alphabetically into this list.
-# --------------------------------------------------------------------
-
-py_test(
-    name = "tests/test_catalog",
-    size = "medium",
-    srcs = ["tests/test_catalog.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "policy/tests/test_policy_checkpoint_restore",
-    size = "large",
-    srcs = ["policy/tests/test_policy_checkpoint_restore.py"],
-    data = glob([
-        "tests/data/checkpoints/APPO_CartPole-v1-connector-enabled/**",
-    ]),
-    main = "policy/tests/test_policy_checkpoint_restore.py",
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_custom_resource",
-    size = "large",  # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/test_custom_resource.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_dependency_tf",
-    size = "small",
-    srcs = ["tests/test_dependency_tf.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_dependency_torch",
-    size = "small",
-    srcs = ["tests/test_dependency_torch.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_local",
-    size = "small",
-    srcs = ["tests/test_local.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_lstm",
-    size = "medium",
-    srcs = ["tests/test_lstm.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_nn_framework_import_errors",
-    size = "small",
-    srcs = ["tests/test_nn_framework_import_errors.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_pettingzoo_env",
-    size = "medium",
-    srcs = ["tests/test_pettingzoo_env.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_placement_groups",
-    size = "large",  # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/test_placement_groups.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_timesteps",
-    size = "small",
-    srcs = ["tests/test_timesteps.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_ray_client",
-    size = "medium",
-    srcs = ["tests/test_ray_client.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
-    ],
-)
-
-py_test(
-    name = "tests/test_telemetry",
-    size = "small",
-    srcs = ["tests/test_telemetry.py"],
-    tags = [
-        "team:rllib",
-        "tests_dir",
     ],
 )
 
@@ -5248,7 +5229,7 @@ py_test(
         "--framework=torch",
     ],
     # Include the offline data files.
-    data = ["tests/data/cartpole/cartpole-v1_large"],
+    data = ["offline/tests/data/cartpole/cartpole-v1_large"],
     main = "examples/offline_rl/train_w_bc_finetune_w_ppo.py",
     tags = [
         "examples",
@@ -5264,7 +5245,7 @@ py_test(
 #     tags = ["team:rllib", "exclusive", "examples"],
 #     size = "large",
 #     srcs = ["examples/offline_rl/pretrain_bc_single_agent_evaluate_as_multi_agent.py"],
-#     data = ["tests/data/cartpole/large.json"],
+#     data = ["offline/tests/data/cartpole/large.json"],
 #     args = ["--as-test"]
 # )
 

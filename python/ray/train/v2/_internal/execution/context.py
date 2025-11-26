@@ -258,6 +258,12 @@ class TrainContext:
                 persisted_checkpoint = checkpoint_upload_fn(
                     checkpoint, checkpoint_dir_name
                 )
+                if persisted_checkpoint is None or not isinstance(
+                    persisted_checkpoint, ray.train.Checkpoint
+                ):
+                    raise ValueError(
+                        "checkpoint_upload_fn must return a `ray.train.Checkpoint`."
+                    )
             else:
                 persisted_checkpoint = self.storage_context.persist_current_checkpoint(
                     checkpoint, checkpoint_dir_name
