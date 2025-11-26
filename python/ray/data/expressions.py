@@ -502,7 +502,7 @@ class Expr(ABC):
 
         return _ArrayNamespace(self)
 
-    @property  
+    @property
     def dt(self) -> "_DatetimeNamespace":
         """Access datetime operations for this expression."""
         from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
