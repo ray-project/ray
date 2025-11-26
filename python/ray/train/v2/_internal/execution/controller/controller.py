@@ -195,8 +195,8 @@ class TrainController:
                 return self._execute_failure_decision(
                     failure_decision,
                     training_failed_error=optional_worker_group_error,
-                    # Shutdown failures during resize come from a running worker group,
-                    # so treat them as running failures to trigger a restart.
+                    # Worker Group Shutdown failures during resize come from a running worker group,
+                    # so treat them as running failures to trigger a restart instead of rescheduling.
                     failure_context_state=RunningState(),
                 )
 
