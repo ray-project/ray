@@ -8,8 +8,6 @@ import re
 import shutil
 import subprocess
 from typing import Dict, List, Optional, Set, Tuple
-import glob
-import shutil
 import yaml
 
 logger = logging.getLogger("ray_oss_analysis")
@@ -185,7 +183,7 @@ def _expand_and_crawl(path: str) -> List[Dict]:
 def _get_askalono_results(dependencies: Set[str], bazel_output_base: str) -> List[Dict]:
     license_info = []
     for dependency in dependencies:
-        dependency_path = f"{bazel_output_base}/external/{dependency}"
+        dependency_path = os.path.join(bazel_output_base, "external", dependency)
         license_json = _askalono_crawl(dependency_path)
         if not license_json:
             logger.warning(f"No license text found for {dependency}, trying to crawl licenses and copying files manually")
@@ -256,7 +254,7 @@ def _generate_fossa_deps_file(askalono_results: List[Dict], output_folder: str):
     fossa_deps_file = {"custom-dependencies": custom_dependencies}
 
     # Write to YAML file
-    with open(f"{output_folder}/fossa_deps.yaml", "w") as file:
+    with open(os.path.join(output_folder, "fossa_deps.yaml"), "w") as file:
         yaml.dump(fossa_deps_file, file, indent=4, sort_keys=False)
 
 def _change_working_directory():
@@ -314,6 +312,6 @@ Examples:
         _copy_licenses(package_names, bazel_output_base, args.output)
 
     askalono_results = _get_askalono_results(package_names, bazel_output_base)
-    with open(f"{args.output}/askalono_results.json", "w") as file:
+    with open(os.path.join(args.output, "askalono_results.json"), "w") as file:
         json.dump(askalono_results, file, indent=4)
     _generate_fossa_deps_file(askalono_results, args.output)
