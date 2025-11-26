@@ -223,8 +223,6 @@ class GroupedData:
         #   - In case when hash-shuffle strategy is employed -- perform `repartition_and_sort`
         #   - Otherwise we perform "global" sort of the dataset (to co-locate rows with the
         #     same key values)
-
-        # Validate _preserve_hash_shuffle_finalize_blocks config for hash shuffle
         if self._key is None:
             shuffled_ds = self._dataset.repartition(1)
         elif self._dataset.context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:

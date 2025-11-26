@@ -537,7 +537,7 @@ class DataContext:
 
     # Whether to preserve block structure during hash shuffle finalization.
     # If True, blocks won't be broken down to target_max_block_size during finalization.
-    # This is set to `True` for the `map_groups` operation.
+    # This is set to `True` for the `map_groups` and `repartition` operations.
     _preserve_hash_shuffle_finalize_blocks: bool = False
 
     # (Advanced) Following configuration allows to override `num_cpus` allocation for the
