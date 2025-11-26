@@ -1617,7 +1617,7 @@ py_test(
         "--num-env-runners=6",
         "--evaluation-num-env-runners=2",
     ],
-    main = "tuned_examples/ppo/multi_agent_footsies_appo.py",
+    main = "tuned_examples/appo/multi_agent_footsies_appo.py",
     tags = [
         "exclusive",
         "learning_tests",
