@@ -62,9 +62,9 @@ logger = logging.getLogger(__name__)
 
 def add_rllib_example_script_args(
     parser: Optional[argparse.ArgumentParser] = None,
-    default_reward: float = 100.0,
-    default_iters: int = 200,
-    default_timesteps: int = 100000,
+    default_reward: Optional[float] = None,
+    default_iters: Optional[int] = None,
+    default_timesteps: Optional[int] = None,
 ) -> argparse.ArgumentParser:
     """Adds RLlib-typical (and common) examples scripts command line args to a parser.
 
@@ -73,9 +73,15 @@ def add_rllib_example_script_args(
 
     Args:
         parser: The parser to add the arguments to. If None, create a new one.
-        default_reward: The default value for the --stop-reward option.
-        default_iters: The default value for the --stop-iters option.
-        default_timesteps: The default value for the --stop-timesteps option.
+        default_reward: The default value for the --stop-reward option. If None,
+            no reward-based stopping criterion will be used unless explicitly
+            specified via --stop-reward.
+        default_iters: The default value for the --stop-iters option. If None,
+            no iteration-based stopping criterion will be used unless explicitly
+            specified via --stop-iters.
+        default_timesteps: The default value for the --stop-timesteps option. If None,
+            no timestep-based stopping criterion will be used unless explicitly
+            specified via --stop-timesteps.
 
     Returns:
         The altered (or newly created) parser object.
@@ -1139,13 +1145,16 @@ def run_rllib_example_script_experiment(
 
     # Define one or more stopping criteria.
     if stop is None:
-        stop = {
-            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
-            f"{ENV_RUNNER_RESULTS}/{NUM_ENV_STEPS_SAMPLED_LIFETIME}": (
-                args.stop_timesteps
-            ),
-            TRAINING_ITERATION: args.stop_iters,
-        }
+        stop = {}
+        # Only add stop criteria if explicitly specified.
+        if args.stop_timesteps is not None:
+            stop[
+                f"{ENV_RUNNER_RESULTS}/{NUM_ENV_STEPS_SAMPLED_LIFETIME}"
+            ] = args.stop_timesteps
+        if args.stop_iters is not None:
+            stop[TRAINING_ITERATION] = args.stop_iters
+        if args.stop_reward is not None:
+            stop[f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"] = args.stop_reward
 
     config = base_config
 
