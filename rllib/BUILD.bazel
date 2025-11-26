@@ -163,6 +163,7 @@ py_test(
         "--as-test",
         "--num-cpus=7",
         "--num-env-runners=5",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/appo/cartpole_appo.py",
     tags = [
@@ -192,6 +193,7 @@ py_test(
         "--num-learners=2",
         "--num-cpus=9",
         "--num-env-runners=6",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/appo/cartpole_appo.py",
     tags = [
@@ -214,6 +216,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--num-cpus=7",
         "--num-env-runners=6",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/appo/cartpole_appo.py",
     tags = [
@@ -237,6 +240,7 @@ py_test(
         "--num-agents=2",
         "--num-cpus=8",
         "--num-env-runners=6",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/appo/multi_agent_cartpole_appo.py",
     tags = [
@@ -258,6 +262,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--num-cpus=7",
         "--num-env-runners=5",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/appo/multi_agent_cartpole_appo.py",
     tags = [
@@ -281,6 +286,7 @@ py_test(
         "--num-learners=2",
         "--num-cpus=9",
         "--num-env-runners=6",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/appo/multi_agent_cartpole_appo.py",
     tags = [
@@ -306,6 +312,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--num-cpus=7",
         "--num-env-runners=6",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/appo/multi_agent_cartpole_appo.py",
     tags = [
@@ -328,6 +335,7 @@ py_test(
         "--as-test",
         "--num-cpus=8",
         "--num-env-runners=6",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/appo/stateless_cartpole_appo.py",
     tags = [
@@ -350,6 +358,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--num-cpus=7",
         "--num-env-runners=5",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/appo/stateless_cartpole_appo.py",
     tags = [
@@ -372,6 +381,7 @@ py_test(
         "--num-learners=2",
         "--num-cpus=9",
         "--num-env-runners=6",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/appo/stateless_cartpole_appo.py",
     tags = [
@@ -394,6 +404,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--num-cpus=7",
         "--num-env-runners=6",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/appo/stateless_cartpole_appo.py",
     tags = [
@@ -449,6 +460,7 @@ py_test(
         "--as-test",
         "--num-cpus=6",
         "--num-env-runners=4",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/appo/pendulum_appo.py",
     tags = [
@@ -471,6 +483,7 @@ py_test(
         "--num-learners=2",
         "--num-gpus-per-learner=1",
         "--num-aggregator-actors-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/appo/multi_agent_pong_appo.py",
     tags = [
@@ -511,6 +524,7 @@ py_test(
     ],
     # Include the offline data files.
     data = [
+        "--cli-max-report-freq=30",
         "offline/tests/data/cartpole/cartpole-v1_large",
     ],
     main = "tuned_examples/bc/cartpole_bc.py",
@@ -534,6 +548,7 @@ py_test(
     ],
     # Include the offline data files.
     data = [
+        "--cli-max-report-freq=30",
         "offline/tests/data/cartpole/cartpole-v1_large",
     ],
     main = "tuned_examples/bc/cartpole_bc.py",
@@ -561,6 +576,7 @@ py_test(
     ],
     # Include the offline data files.
     data = [
+        "--cli-max-report-freq=30",
         "offline/tests/data/cartpole/cartpole-v1_large",
     ],
     main = "tuned_examples/bc/cartpole_bc_with_offline_evaluation.py",
@@ -587,6 +603,7 @@ py_test(
     ],
     # Include the offline data files.
     data = [
+        "--cli-max-report-freq=30",
         "offline/tests/data/cartpole/cartpole-v1_large",
     ],
     main = "tuned_examples/bc/cartpole_bc_with_offline_evaluation.py",
@@ -612,6 +629,7 @@ py_test(
     ],
     # Include the zipped json data file as well.
     data = [
+        "--cli-max-report-freq=30",
         "offline/tests/data/pendulum/pendulum-v1_enormous",
     ],
     main = "tuned_examples/cql/pendulum_cql.py",
@@ -639,6 +657,7 @@ py_test(
     ],
     # Include the zipped json data file as well.
     data = [
+        "--cli-max-report-freq=30",
         "offline/tests/data/pendulum/pendulum-v1_enormous",
     ],
     main = "tuned_examples/cql/pendulum_cql.py",
@@ -664,6 +683,7 @@ py_test(
     srcs = ["tuned_examples/dqn/cartpole_dqn.py"],
     args = [
         "--as-test",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/dqn/cartpole_dqn.py",
     tags = [
@@ -684,6 +704,7 @@ py_test(
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/dqn/cartpole_dqn.py",
     tags = [
@@ -704,6 +725,7 @@ py_test(
     args = [
         "--as-test",
         "--num-learners=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/dqn/cartpole_dqn.py",
     tags = [
@@ -724,6 +746,7 @@ py_test(
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/dqn/cartpole_dqn.py",
     tags = [
@@ -748,6 +771,7 @@ py_test(
         "--as-test",
         "--num-agents=2",
         "--num-cpus=4",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
     tags = [
@@ -770,6 +794,7 @@ py_test(
         "--num-cpus=4",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
     tags = [
@@ -792,6 +817,7 @@ py_test(
         "--num-agents=2",
         "--num-cpus=5",
         "--num-learners=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
     tags = [
@@ -814,6 +840,7 @@ py_test(
         "--num-cpus=4",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
     tags = [
@@ -860,6 +887,7 @@ py_test(
     srcs = ["tuned_examples/impala/cartpole_impala.py"],
     args = [
         "--as-test",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/impala/cartpole_impala.py",
     tags = [
@@ -878,6 +906,7 @@ py_test(
     args = [
         "--as-test",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/impala/cartpole_impala.py",
     tags = [
@@ -898,6 +927,7 @@ py_test(
     args = [
         "--as-test",
         "--num-learners=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/impala/cartpole_impala.py",
     tags = [
@@ -918,6 +948,7 @@ py_test(
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/impala/cartpole_impala.py",
     tags = [
@@ -940,6 +971,7 @@ py_test(
         "--as-test",
         "--num-agents=2",
         "--num-cpus=6",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
     tags = [
@@ -961,6 +993,7 @@ py_test(
         "--num-agents=2",
         "--num-gpus-per-learner=1",
         "--num-cpus=6",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
     tags = [
@@ -983,6 +1016,7 @@ py_test(
         "--num-agents=2",
         "--num-learners=2",
         "--num-cpus=7",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
     tags = [
@@ -1005,6 +1039,7 @@ py_test(
         "--num-learners=2",
         "--num-gpus-per-learner=1",
         "--num-cpus=7",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
     tags = [
@@ -1025,6 +1060,7 @@ py_test(
     srcs = ["tuned_examples/impala/stateless_cartpole_impala.py"],
     args = [
         "--as-test",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/impala/stateless_cartpole_impala.py",
     tags = [
@@ -1045,6 +1081,7 @@ py_test(
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/impala/stateless_cartpole_impala.py",
     tags = [
@@ -1065,6 +1102,7 @@ py_test(
     srcs = ["tuned_examples/impala/multi_agent_stateless_cartpole_impala.py"],
     args = [
         "--as-test",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/impala/multi_agent_stateless_cartpole_impala.py",
     tags = [
@@ -1097,6 +1135,7 @@ py_test(
     ],
     # Include the offline data files.
     data = [
+        "--cli-max-report-freq=30",
         "offline/tests/data/pendulum/pendulum-v1_enormous",
     ],
     main = "tuned_examples/iql/pendulum_iql.py",
@@ -1122,6 +1161,7 @@ py_test(
     ],
     # Include the offline data files.
     data = [
+        "--cli-max-report-freq=30",
         "offline/tests/data/pendulum/pendulum-v1_enormous",
     ],
     main = "tuned_examples/iql/pendulum_iql.py",
@@ -1147,6 +1187,7 @@ py_test(
     ],
     # Include the offline data files.
     data = [
+        "--cli-max-report-freq=30",
         "offline/tests/data/cartpole/cartpole-v1_large",
     ],
     main = "tuned_examples/marwil/cartpole_marwil.py",
@@ -1171,6 +1212,7 @@ py_test(
     ],
     # Include the offline data files.
     data = [
+        "--cli-max-report-freq=30",
         "offline/tests/data/cartpole/cartpole-v1_large",
     ],
     main = "tuned_examples/marwil/cartpole_marwil.py",
@@ -1193,6 +1235,7 @@ py_test(
     srcs = ["tuned_examples/ppo/cartpole_ppo.py"],
     args = [
         "--as-test",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/cartpole_ppo.py",
     tags = [
@@ -1212,6 +1255,7 @@ py_test(
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/cartpole_ppo.py",
     tags = [
@@ -1232,6 +1276,7 @@ py_test(
     args = [
         "--as-test",
         "--num-learners=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/cartpole_ppo.py",
     tags = [
@@ -1252,6 +1297,7 @@ py_test(
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/cartpole_ppo.py",
     tags = [
@@ -1273,6 +1319,7 @@ py_test(
     args = [
         "--as-test",
         "--num-agents=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
     tags = [
@@ -1293,6 +1340,7 @@ py_test(
         "--num-agents=2",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
     tags = [
@@ -1314,6 +1362,7 @@ py_test(
         "--as-test",
         "--num-agents=2",
         "--num-learners=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
     tags = [
@@ -1335,6 +1384,7 @@ py_test(
         "--num-agents=2",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
     tags = [
@@ -1355,6 +1405,7 @@ py_test(
     srcs = ["tuned_examples/ppo/cartpole_truncated_ppo.py"],
     args = [
         "--as-test",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/cartpole_truncated_ppo.py",
     tags = [
@@ -1373,6 +1424,7 @@ py_test(
     srcs = ["tuned_examples/ppo/stateless_cartpole_ppo.py"],
     args = [
         "--as-test",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/stateless_cartpole_ppo.py",
     tags = [
@@ -1392,6 +1444,7 @@ py_test(
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/stateless_cartpole_ppo.py",
     tags = [
@@ -1412,6 +1465,7 @@ py_test(
     args = [
         "--as-test",
         "--num-learners=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/stateless_cartpole_ppo.py",
     tags = [
@@ -1432,6 +1486,7 @@ py_test(
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/stateless_cartpole_ppo.py",
     tags = [
@@ -1453,6 +1508,7 @@ py_test(
     args = [
         "--as-test",
         "--num-agents=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
     tags = [
@@ -1473,6 +1529,7 @@ py_test(
         "--num-agents=2",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
     tags = [
@@ -1494,6 +1551,7 @@ py_test(
         "--as-test",
         "--num-agents=2",
         "--num-learners=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
     tags = [
@@ -1515,6 +1573,7 @@ py_test(
         "--num-agents=2",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
     tags = [
@@ -1537,6 +1596,7 @@ py_test(
         "--as-test",
         "--num-env-runners=6",
         "--evaluation-num-env-runners=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
     tags = [
@@ -1557,6 +1617,7 @@ py_test(
         "--evaluation-num-env-runners=3",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
     tags = [
@@ -1577,6 +1638,7 @@ py_test(
         "--num-env-runners=6",
         "--evaluation-num-env-runners=2",
         "--num-learners=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
     tags = [
@@ -1597,6 +1659,7 @@ py_test(
         "--evaluation-num-env-runners=3",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
     tags = [
@@ -1615,6 +1678,7 @@ py_test(
     srcs = ["tuned_examples/ppo/pendulum_ppo.py"],
     args = [
         "--as-test",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/pendulum_ppo.py",
     tags = [
@@ -1634,6 +1698,7 @@ py_test(
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/pendulum_ppo.py",
     tags = [
@@ -1654,6 +1719,7 @@ py_test(
     args = [
         "--as-test",
         "--num-learners=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/pendulum_ppo.py",
     tags = [
@@ -1674,6 +1740,7 @@ py_test(
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/pendulum_ppo.py",
     tags = [
@@ -1695,6 +1762,7 @@ py_test(
     args = [
         "--as-test",
         "--num-agents=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/multi_agent_pendulum_ppo.py",
     tags = [
@@ -1715,6 +1783,7 @@ py_test(
         "--num-agents=2",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/multi_agent_pendulum_ppo.py",
     tags = [
@@ -1736,6 +1805,7 @@ py_test(
         "--as-test",
         "--num-agents=2",
         "--num-learners=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/multi_agent_pendulum_ppo.py",
     tags = [
@@ -1757,6 +1827,7 @@ py_test(
         "--num-agents=2",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/ppo/multi_agent_pendulum_ppo.py",
     tags = [
@@ -1778,6 +1849,7 @@ py_test(
     srcs = ["tuned_examples/sac/mountaincar_sac.py"],
     args = [
         "--as-test",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/sac/mountaincar_sac.py",
     tags = [
@@ -1797,6 +1869,7 @@ py_test(
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/sac/mountaincar_sac.py",
     tags = [
@@ -1816,6 +1889,7 @@ py_test(
     args = [
         "--as-test",
         "--num-learners=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/sac/mountaincar_sac.py",
     tags = [
@@ -1835,6 +1909,7 @@ py_test(
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/sac/mountaincar_sac.py",
     tags = [
@@ -1854,6 +1929,7 @@ py_test(
     srcs = ["tuned_examples/sac/pendulum_sac.py"],
     args = [
         "--as-test",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/sac/pendulum_sac.py",
     tags = [
@@ -1873,6 +1949,7 @@ py_test(
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/sac/pendulum_sac.py",
     tags = [
@@ -1892,6 +1969,7 @@ py_test(
     args = [
         "--as-test",
         "--num-learners=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/sac/pendulum_sac.py",
     tags = [
@@ -1911,6 +1989,7 @@ py_test(
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/sac/pendulum_sac.py",
     tags = [
@@ -1932,6 +2011,7 @@ py_test(
         "--as-test",
         "--num-agents=2",
         "--num-cpus=4",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
     tags = [
@@ -1953,6 +2033,7 @@ py_test(
         "--num-cpus=4",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
     tags = [
@@ -1972,6 +2053,7 @@ py_test(
     args = [
         "--num-agents=2",
         "--num-learners=2",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
     tags = [
@@ -1991,6 +2073,7 @@ py_test(
         "--num-agents=2",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--cli-max-report-freq=30",
     ],
     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
     tags = [
