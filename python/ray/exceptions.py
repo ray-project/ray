@@ -510,16 +510,14 @@ class AuthenticationError(RayError):
                 f" Note: RAY_AUTH_MODE is currently '{mode_name}' (not 'token')."
             )
 
-        return (
-            self.message
-            + "."
-            + auth_mode_note
-            + " Ensure that the token for the cluster is available in a local file (e.g., ~/.ray/auth_token or via "
+        help_text = (
+            " Ensure that the token for the cluster is available in a local file (e.g., ~/.ray/auth_token or via "
             "RAY_AUTH_TOKEN_PATH) or as the `RAY_AUTH_TOKEN` environment variable. "
             "To generate a token for local development, use `ray get-auth-token --generate` "
             "For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled. "
             "For more information, see: https://docs.ray.io/en/latest/ray-security/auth.html"
         )
+        return self.message + "." + auth_mode_note + help_text
 
 
 @DeveloperAPI
