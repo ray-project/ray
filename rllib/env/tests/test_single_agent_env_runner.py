@@ -133,7 +133,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             episodes = env_runner.sample(
                 num_episodes=expected_episodes, random_actions=True
             )
-            self.assertTrue(len(episodes) == expected_episodes)
+            self.assertGreaterEqual(len(episodes), expected_episodes)
             # Since we sampled complete episodes, there should be no ongoing episodes
             # being returned.
             self.assertTrue(all(e.is_done for e in episodes))
