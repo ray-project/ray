@@ -321,9 +321,9 @@ class TrainController:
                 )
                 if selector:
                     if bundle_label_selector:
-                        raise ValueError(
-                            "Cannot set `ScalingConfig.bundle_label_selector` and "
-                            "add a callback that returns a bundle_label_selector."
+                        logger.warning(
+                            f"Overriding `ScalingConfig.bundle_label_selector` {bundle_label_selector} "
+                            f"with bundle_label_selector returned by user-specified callback {selector}"
                         )
                     bundle_label_selector = [
                         selector.copy() for _ in range(num_workers)
