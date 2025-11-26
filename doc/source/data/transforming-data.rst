@@ -205,9 +205,6 @@ Choosing the right batch format
     * Use ``pandas`` in ``map_batches`` when your batch function needs a DataFrame API, such as for tabular cleaning, joins, grouping, or row/column-wise transforms.
     * Use ``pyarrow`` in ``map_batches`` when your batch function benefits from columnar processing, high-performance I/O, or zero-copy conversion to other systems.
 
-    Note that Ray Data uses zero-copy when the batch format matches the underlying block type (for example, Arrow blocks with ``batch_format="pyarrow"``). When they differ, Ray Data copies the data during conversion.
-
-
 The user defined function you pass to :meth:`~ray.data.Dataset.map_batches` is more flexible. Because you can represent batches
 in multiple ways (see :ref:`Configuring batch format <configure_batch_format>`), the function should be of type
 ``Callable[DataBatch, DataBatch]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``. In
