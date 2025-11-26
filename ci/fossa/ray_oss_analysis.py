@@ -96,7 +96,7 @@ def _clean_path(path: str) -> str:
     # Format is typically: /path/to/file.ext:line:column
     return path.split(':')[0]
 
-def _get_bazel_dependencies(package_name: str) -> Tuple[List[str], Set[str], List[str]]:
+def _get_bazel_dependencies(package_name: str, bazel_command: str, output_folder: str) -> Tuple[List[str], Set[str], Set[str]]:
     bazel_dependencies = []
     debug_dependencies = []
     package_names = set()
@@ -133,7 +133,7 @@ def _get_bazel_dependencies(package_name: str) -> Tuple[List[str], Set[str], Lis
     return bazel_dependencies, package_names, file_paths
 
 
-def _copy_files(file_paths: Set[str]):
+def _copy_files(file_paths: Set[str], output_folder: str):
     for file_path in file_paths:
         logger.debug(f"Copying file: {file_path}")
         destination = os.path.join(output_folder, file_path.split("external/")[-1])
@@ -146,7 +146,7 @@ def _copy_files(file_paths: Set[str]):
         except FileNotFoundError:
             logger.warning(f"File not found, skipping: {file_path}")
 
-def _copy_licenses(package_names: Set[str]):
+def _copy_licenses(package_names: Set[str], bazel_output_base: str, output_folder: str):
     for package_name in package_names:
         subprocess.run(
             f"cp {bazel_output_base}/external/{package_name}/**LICENSE* {output_folder}/{package_name}/",
@@ -189,7 +189,7 @@ def _expand_and_crawl(path: str, patterns: List[str] = None) -> List[Dict]:
 
     return all_licenses
 
-def _get_askalono_results(dependencies: List[str]) -> List[Dict]:
+def _get_askalono_results(dependencies: Set[str], bazel_output_base: str) -> List[Dict]:
     license_info = []
     for dependency in dependencies:
         dependency_path = f"{bazel_output_base}/external/{dependency}"
@@ -220,7 +220,7 @@ def _get_askalono_results(dependencies: List[str]) -> List[Dict]:
             )
     return license_info
 
-def _generate_fossa_deps_file(askalono_results: List[Dict]) -> Dict:
+def _generate_fossa_deps_file(askalono_results: List[Dict], output_folder: str) -> Dict:
     # Group licenses and file paths by dependency
     dependency_data = {}
     for result in askalono_results:
@@ -275,10 +275,6 @@ def _change_working_directory():
         os.chdir(workspace)
 
 if __name__ == "__main__":
-    global bazel_command
-    global bazel_output_base
-    global output_folder
-
     parser = argparse.ArgumentParser(description="OSS Analysis Combo Tool")
 
     parser.add_argument(
@@ -313,12 +309,10 @@ Examples:
     _change_working_directory()
 
     _setup_logger(args.log_file, args.verbose)
-    bazel_command = args.bazel_cmd
-    bazel_output_base = subprocess.run(
-        f"{bazel_command} info output_base", shell=True, capture_output=True, text=True
-    ).stdout.strip()
-    output_folder = args.output
-    bazel_dependencies, package_names, file_paths = _get_bazel_dependencies(args.package)
+    bazel_output_base = subprocess.check_output(
+        [args.bazel_cmd, "info", "output_base"], text=True
+    ).strip()
+    bazel_dependencies, package_names, file_paths = _get_bazel_dependencies(args.package, args.bazel_cmd, args.output)
 
     logger.info(f"Found {len(bazel_dependencies)} dependencies")
     logger.info(f"Found {len(file_paths)} file paths")
@@ -326,10 +320,10 @@ Examples:
 
 
     if args.copy_files_for_fossa:
-        _copy_files(file_paths)
-        _copy_licenses(package_names)
+        _copy_files(file_paths, args.output)
+        _copy_licenses(package_names, bazel_output_base, args.output)
 
-    askalono_results = _get_askalono_results(package_names)
-    with open(f"{output_folder}/askalono_results.json", "w") as file:
+    askalono_results = _get_askalono_results(package_names, bazel_output_base)
+    with open(f"{args.output}/askalono_results.json", "w") as file:
         json.dump(askalono_results, file, indent=4)
-    _generate_fossa_deps_file(askalono_results)
+    _generate_fossa_deps_file(askalono_results, args.output)
