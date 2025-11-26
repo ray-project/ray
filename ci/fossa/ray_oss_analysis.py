@@ -101,7 +101,7 @@ def _get_bazel_dependencies(package_name: str) -> Tuple[List[str], Set[str], Lis
     bazel_dependencies = []
     debug_dependencies = []
     package_names = set()
-    file_paths = []
+    file_paths = set()
     command = [bazel_command, "query", "--output=streamed_jsonproto", f"kind('source file', deps({package_name}))"] # works for c, cpp, not sure if the kind based filter works for other languages
     logger.debug(f"Running command: {command}")
     lines = subprocess.check_output(command, text=True).splitlines()
@@ -118,7 +118,7 @@ def _get_bazel_dependencies(package_name: str) -> Tuple[List[str], Set[str], Lis
             continue
         elif _isCppCode(label):
             bazel_dependencies.append(label)
-            file_paths.append(location)
+            file_paths.add(location)
             package_name = re.search(r"(?:@([^/]+))?//", label).group(1)
             package_names.add(package_name)
     if logger.isEnabledFor(logging.DEBUG):
@@ -134,17 +134,25 @@ def _get_bazel_dependencies(package_name: str) -> Tuple[List[str], Set[str], Lis
     return bazel_dependencies, package_names, file_paths
 
 
-def copy_files(file_paths: List[str]):
+def _copy_files(file_paths: Set[str]):
     for file_path in file_paths:
         logger.debug(f"Copying file: {file_path}")
+        # Remove location information (e.g., :line:column) from the path
+        # Format is typically: /path/to/file.ext:line:column
+        clean_path = file_path.split(':')[0]
+        
+        source = clean_path
+        destination = os.path.join(output_folder, clean_path.split("external/")[-1])
 
-        destination = os.path.join(output_folder, file_path.split("external/")[-1])
         # Create parent directories if they don't exist
         os.makedirs(os.path.dirname(destination), exist_ok=True)
         # Copy the file
-        shutil.copy(file_path, destination)
+        try:
+            shutil.copy(source, destination)
+        except FileNotFoundError:
+            logger.warning(f"File not found, skipping: {source}")
 
-def copy_licenses(package_names):
+def _copy_licenses(package_names: Set[str]):
     for package_name in package_names:
         subprocess.run(
             f"cp {bazel_output_base}/external/{package_name}/**LICENSE* {output_folder}/{package_name}/",
@@ -324,8 +332,8 @@ Examples:
 
 
     if args.copy_files_for_fossa:
-        copy_files(file_paths)
-        copy_licenses(package_names)
+        _copy_files(file_paths)
+        _copy_licenses(package_names)
 
     askalono_results = get_askalono_results(package_names)
     with open(f"{output_folder}/askalono_results.json", "w") as file:
