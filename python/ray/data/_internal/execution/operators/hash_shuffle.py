@@ -1230,8 +1230,8 @@ class HashShuffleOperator(HashShufflingOperatorBase):
                 )
             ),
             shuffle_progress_bar_name="Shuffle",
-            # NOTE: This is set to True because num_partitions (aka, # of output blocks)
-            # must be preserved.
+            # NOTE: In cases like ``groupby`` blocks can't be split as this might violate an invariant that all rows
+            #             with the same key are in the same group (block)
             disallow_block_splitting=True,
         )
 
@@ -1306,10 +1306,11 @@ class AggregatorPool:
             num_partitions >= 1
         ), f"Number of partitions has to be >= 1 (got {num_partitions})"
 
-        self._data_context = data_context
+        self._data_context = data_context.copy()
+        if disallow_block_splitting:
+            self._data_context.target_max_block_size = None
         self._num_partitions = num_partitions
         self._num_aggregators: int = num_aggregators
-        self._disallow_block_splitting = disallow_block_splitting
         self._aggregator_partition_map: Dict[
             int, List[int]
         ] = self._allocate_partitions(
@@ -1350,7 +1351,6 @@ class AggregatorPool:
                 target_partition_ids,
                 self._aggregation_factory_ref,
                 self._data_context,
-                self._disallow_block_splitting,
             )
 
             self._aggregators.append(aggregator)
@@ -1564,14 +1564,12 @@ class HashShuffleAggregator:
         target_partition_ids: List[int],
         agg_factory: StatefulShuffleAggregationFactory,
         data_context: DataContext,
-        disallow_block_splitting: bool,
     ):
         self._lock = threading.Lock()
         self._agg: StatefulShuffleAggregation = agg_factory(
             aggregator_id, target_partition_ids
         )
         self._data_context = data_context
-        self._disallow_block_splitting = disallow_block_splitting
 
     def submit(self, input_seq_id: int, partition_id: int, partition_shard: Block):
         with self._lock:
@@ -1592,8 +1590,7 @@ class HashShuffleAggregator:
         target_max_block_size = self._data_context.target_max_block_size
         # None means the user wants to preserve the block distribution,
         # so we do not break the block down further.
-        # Also check _disallow_block_splitting parameter.
-        if target_max_block_size is not None and not self._disallow_block_splitting:
+        if target_max_block_size is not None:
             # Creating a block output buffer per partition finalize task because
             # retrying finalize tasks cause stateful output_bufer to be
             # fragmented (ie, adding duplicated blocks, calling finalize 2x)
