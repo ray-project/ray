@@ -208,6 +208,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queue (block ref bundler)."""
+        self._block_ref_bundler.done_adding_bundles()
         while self._block_ref_bundler.has_bundle():
             (input_bundles, _) = self._block_ref_bundler.get_next_bundle()
             for input_bundle in input_bundles:

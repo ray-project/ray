@@ -50,7 +50,7 @@ assert (
 ), "This tuned example works only with `CartPole-v1`."
 
 # Define the data paths.
-data_path = "tests/data/cartpole/cartpole-v1_large"
+data_path = "offline/tests/data/cartpole/cartpole-v1_large"
 base_path = Path(__file__).parents[2]
 print(f"base_path={base_path}")
 data_path = "local://" / base_path / data_path
