@@ -493,7 +493,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
         shuffle_progress_bar_name: Optional[str] = None,
         finalize_progress_bar_name: Optional[str] = None,
-        preserve_finalize_blocks: bool = False,
+        disallow_block_splitting: bool = False,
     ):
         input_logical_ops = [
             input_physical_op._logical_operators[0] for input_physical_op in input_ops
@@ -575,7 +575,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             aggregation_factory=partition_aggregation_factory,
             aggregator_ray_remote_args=ray_remote_args,
             data_context=data_context,
-            preserve_finalize_blocks=preserve_finalize_blocks,
+            disallow_block_splitting=disallow_block_splitting,
         )
 
         # We track the running usage total because iterating
@@ -1232,7 +1232,7 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             shuffle_progress_bar_name="Shuffle",
             # NOTE: This is set to True because num_partitions (aka, # of output blocks)
             # must be preserved.
-            preserve_finalize_blocks=True,
+            disallow_block_splitting=True,
         )
 
     def _get_operator_num_cpus_override(self) -> float:
@@ -1300,7 +1300,7 @@ class AggregatorPool:
         aggregation_factory: StatefulShuffleAggregationFactory,
         aggregator_ray_remote_args: Dict[str, Any],
         data_context: DataContext,
-        preserve_finalize_blocks: bool,
+        disallow_block_splitting: bool,
     ):
         assert (
             num_partitions >= 1
@@ -1309,7 +1309,7 @@ class AggregatorPool:
         self._data_context = data_context
         self._num_partitions = num_partitions
         self._num_aggregators: int = num_aggregators
-        self._preserve_finalize_blocks = preserve_finalize_blocks
+        self._disallow_block_splitting = disallow_block_splitting
         self._aggregator_partition_map: Dict[
             int, List[int]
         ] = self._allocate_partitions(
@@ -1350,7 +1350,7 @@ class AggregatorPool:
                 target_partition_ids,
                 self._aggregation_factory_ref,
                 self._data_context,
-                self._preserve_finalize_blocks,
+                self._disallow_block_splitting,
             )
 
             self._aggregators.append(aggregator)
@@ -1564,14 +1564,14 @@ class HashShuffleAggregator:
         target_partition_ids: List[int],
         agg_factory: StatefulShuffleAggregationFactory,
         data_context: DataContext,
-        preserve_finalize_blocks: bool,
+        disallow_block_splitting: bool,
     ):
         self._lock = threading.Lock()
         self._agg: StatefulShuffleAggregation = agg_factory(
             aggregator_id, target_partition_ids
         )
         self._data_context = data_context
-        self._preserve_finalize_blocks = preserve_finalize_blocks
+        self._disallow_block_splitting = disallow_block_splitting
 
     def submit(self, input_seq_id: int, partition_id: int, partition_shard: Block):
         with self._lock:
@@ -1592,8 +1592,8 @@ class HashShuffleAggregator:
         target_max_block_size = self._data_context.target_max_block_size
         # None means the user wants to preserve the block distribution,
         # so we do not break the block down further.
-        # Also check _preserve_finalize_blocks parameter.
-        if target_max_block_size is not None and not self._preserve_finalize_blocks:
+        # Also check _disallow_block_splitting parameter.
+        if target_max_block_size is not None and not self._disallow_block_splitting:
             # Creating a block output buffer per partition finalize task because
             # retrying finalize tasks cause stateful output_bufer to be
             # fragmented (ie, adding duplicated blocks, calling finalize 2x)

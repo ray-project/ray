@@ -58,7 +58,7 @@ class TestPreserveHashShuffleBlocks:
         # Create a dataset with one large block
         ds = ray.data.range(10, override_num_blocks=2)
 
-        # Join operation uses hash shuffle but doesn't set preserve_finalize_blocks
+        # Join operation uses hash shuffle but doesn't set disallow_block_splitting
         result = ds.join(
             ds, on=("id",), join_type="inner", num_partitions=2
         ).materialize()
