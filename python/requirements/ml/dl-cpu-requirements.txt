@@ -9,9 +9,9 @@ tensorflow-datasets; python_version < '3.12'
 array-record==0.5.1; python_version < '3.12' and sys_platform != 'darwin' and platform_system != 'Windows'
 etils==1.5.2; python_version < '3.12'
 # tensorflow dependencies
-keras==2.15.0; python_version < '3.12'
-ml-dtypes==0.3.2; python_version < '3.13'
-flatbuffers>=23.5.26; python_version < '3.13'
+keras==2.15.0
+ml-dtypes==0.3.2
+flatbuffers>=23.5.26
 
 # If you make changes below this line, please also make the corresponding changes to `dl-gpu-requirements.txt`
 # and to `install-dependencies.sh`!
