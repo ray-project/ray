@@ -407,6 +407,8 @@ def test_streaming_repartition_with_target_max_block_size_zero(
     table = [{"id": n} for n in range(num_rows)]
     ds = ray.data.from_items(table)
 
+    # mess up with the block size
+    ds = ds.repartition(target_num_rows_per_block=30)
     # Repartition with target_num_rows_per_block should produce 5 blocks of 20 rows each
     ds = ds.repartition(target_num_rows_per_block=20)
 

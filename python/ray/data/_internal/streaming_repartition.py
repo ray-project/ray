@@ -21,7 +21,7 @@ from ray.data._internal.execution.operators.map_operator import BaseRefBundler
     5. Batcher inside the MapOperator will create blocks with exactly the target number of rows.
     6. Once upstream input is exhausted, flush any leftover pending bundles and repeat steps 1‑5 for the tail.
     7. The resulting blocks have lengths `[target, …, target, (total_rows % target)]`; ordering isn’t guaranteed, but the
-       remainder block should appear near the end.
+       remainder block should appear at the end.
 
 """
 

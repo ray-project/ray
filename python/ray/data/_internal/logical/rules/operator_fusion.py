@@ -587,7 +587,7 @@ class FuseOperators(Rule):
         ):
             target_num_rows = up_ref_bundler._target_num_rows
             min_rows_per_bundle = down_ref_bundler._min_rows_per_bundle
-            if min_rows_per_bundle is None or target_num_rows >= min_rows_per_bundle:
+            if min_rows_per_bundle is None or target_num_rows == min_rows_per_bundle:
                 return StreamingRepartitionRefBundler(
                     target_num_rows_per_block=target_num_rows
                 )
