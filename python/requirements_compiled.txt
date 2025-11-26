@@ -862,10 +862,10 @@ isoduration==20.11.0
     # via jsonschema
 itsdangerous==2.1.2
     # via flask
-jax==0.4.25
-    # via -r python/requirements/ml/train-test-requirements.txt
-jaxlib==0.4.25
-    # via -r python/requirements/ml/train-test-requirements.txt
+jax==0.4.13 ; python_version < "3.12" and sys_platform != "darwin"
+    # via -r python/requirements/ml/dl-cpu-requirements.txt
+jaxlib==0.4.13 ; python_version < "3.12" and sys_platform != "darwin"
+    # via -r python/requirements/ml/dl-cpu-requirements.txt
 jedi==0.19.1
     # via ipython
 jinja2==3.1.6
@@ -1031,7 +1031,7 @@ locket==1.0.0
     #   partd
 log-symbols==0.0.14
     # via halo
-lxml==4.9.4
+lxml==6.0.2
     # via
     #   -r python/requirements/test-requirements.txt
     #   dm-control

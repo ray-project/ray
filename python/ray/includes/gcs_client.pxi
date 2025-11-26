@@ -417,28 +417,6 @@ cdef class InnerGcsClient:
                 timeout_ms)
         return asyncio.wrap_future(fut)
 
-    def async_kill_actor(
-        self, actor_id: ActorID, c_bool force_kill, c_bool no_restart,
-        timeout: Optional[int | float] = None
-    ) -> ConcurrentFuture[None]:
-        """
-        On success: returns None.
-        On failure: raises an exception.
-        """
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            fut = incremented_fut()
-            CActorID c_actor_id = actor_id.native()
-
-        with nogil:
-            self.inner.get().Actors().AsyncKillActor(
-                c_actor_id,
-                force_kill,
-                no_restart,
-                StatusPyCallback(convert_status, assign_and_decrement_fut, fut),
-                timeout_ms
-            )
-        return asyncio.wrap_future(fut)
     #############################################################
     # Job methods
     #############################################################
