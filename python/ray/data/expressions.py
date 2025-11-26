@@ -24,6 +24,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.namespace_expressions.arr_namespace import _ArrayNamespace
+    from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
     from ray.data.namespace_expressions.list_namespace import _ListNamespace
     from ray.data.namespace_expressions.string_namespace import _StringNamespace
     from ray.data.namespace_expressions.struct_namespace import _StructNamespace
@@ -500,6 +501,13 @@ class Expr(ABC):
         from ray.data.namespace_expressions.arr_namespace import _ArrayNamespace
 
         return _ArrayNamespace(self)
+
+    @property  
+    def dt(self) -> "_DatetimeNamespace":
+        """Access datetime operations for this expression."""
+        from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
+
+        return _DatetimeNamespace(self)
 
     def _unalias(self) -> "Expr":
         return self
@@ -1077,6 +1085,7 @@ __all__ = [
     "_StringNamespace",
     "_StructNamespace",
     "_ArrayNamespace",
+    "_DatetimeNamespace",
 ]
 
 
@@ -1098,4 +1107,8 @@ def __getattr__(name: str):
         from ray.data.namespace_expressions.arr_namespace import _ArrayNamespace
 
         return _ArrayNamespace
+    elif name == "_DatetimeNamespace":
+        from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
+
+        return _DatetimeNamespace
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
