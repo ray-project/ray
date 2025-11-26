@@ -34,6 +34,7 @@ def _setup_logger(log_file: Optional[str] = None, enable_debug: bool = False):
 
     logger.info(f"Log Level Set to {logging.getLevelName(logger.level)}")
 
+# not being used since we moved to filtering only for source files to get c, cpp libraries
 def _isExcludedKind(kind_str: str) -> bool:
     # split the kind_str by whitespace and get the first element as the kind
     kind = kind_str.split(" ")[0]
@@ -62,7 +63,6 @@ def _isBuildTool(label: str) -> bool:
     return any(
         build_package_label in label for build_package_label in build_package_labels
     )
-
 
 def _isOwnCode(location: str) -> bool:
     # check if it is own code or not
@@ -119,16 +119,6 @@ def _get_bazel_dependencies(package_name: str, bazel_command: str, output_folder
             file_paths.add(_clean_path(location))
             package_name = re.search(r"(?:@([^/]+))?//", label).group(1)
             package_names.add(package_name)
-
-    if logger.isEnabledFor(logging.DEBUG):
-        with open(f"{output_folder}/debug_dependencies.json", "w") as file:
-            json.dump(debug_dependencies, file, indent=4)
-        with open(f"{output_folder}/package_names.txt", "w") as file:
-            file.write("\n".join(package_names))
-        with open(f"{output_folder}/file_paths.txt", "w") as file:
-            file.write("\n".join(file_paths))
-        with open(f"{output_folder}/bazel_dependencies.txt", "w") as file:
-            file.write("\n".join(bazel_dependencies))
 
     return bazel_dependencies, package_names, file_paths
 
