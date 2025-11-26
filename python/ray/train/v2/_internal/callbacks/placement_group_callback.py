@@ -41,6 +41,8 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
 
         This is called when the controller starts, before the control loop begins.
         """
+        core_context = ray.runtime_context.get_runtime_context()
+        self._controller_actor_id = core_context.get_actor_id()
         try:
             # Launch the cleaner as a detached actor so it survives controller death
             cleaner_actor_cls = ray.remote(num_cpus=0)(PlacementGroupCleaner)
@@ -48,9 +50,6 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
                 lifetime="detached",
                 get_if_exists=False,
             ).remote(check_interval_s=self._check_interval_s)
-
-            core_context = ray.runtime_context.get_runtime_context()
-            self._controller_actor_id = core_context.get_actor_id()
 
             logger.debug(
                 f"PlacementGroupCleaner launched for run_id={train_run_context.run_id}"
@@ -67,9 +66,12 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
 
         This is called after a worker group is successfully started.
         """
-        assert (
-            self._cleaner and self._controller_actor_id
-        ), "PlacementGroupCleaner and controller actor id must be set"
+        if not self._cleaner or not self._controller_actor_id:
+            logger.warning(
+                "PlacementGroupCleaner not available. "
+                "Placement groups may not be cleaned up if controller exits ungracefully."
+            )
+            return
         worker_group_state = worker_group.get_worker_group_state()
         placement_group = worker_group_state.placement_group
 

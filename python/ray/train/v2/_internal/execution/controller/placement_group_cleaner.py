@@ -109,14 +109,16 @@ class PlacementGroupCleaner:
 
         logger.warning(
             f"Detected that the Ray Train controller actor ({self._controller_actor_id}) is dead. "
-            "Cleaning up placement group = [{placement_group.id}] created by this run."
+            f"Cleaning up placement group = [{placement_group.id}] created by this run."
         )
         try:
             remove_placement_group(placement_group)
         except Exception as e:
             logger.warning(f"Failed to clean up placement group: {e}")
 
-        logger.debug("Placement group = [{placement_group.id}] cleaned up successfully")
+        logger.debug(
+            f"Placement group = [{placement_group.id}] cleaned up successfully"
+        )
 
     def _stop_monitor_thread(self):
         """Stop the monitor thread and wait for it to exit.
