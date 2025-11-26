@@ -942,12 +942,7 @@ def start(
                 )
 
         # Ensure auth token is available if authentication mode is token
-        try:
-            ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
-        except ray.exceptions.AuthenticationError:
-            raise RuntimeError(
-                "Failed to load authentication token. To generate a token for local development, use `ray get-auth-token --generate`. For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled."
-            )
+        ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
 
         node = ray._private.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
