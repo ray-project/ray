@@ -111,7 +111,7 @@ class AlgorithmConfig(_Config):
     .. testcode::
 
         from ray.rllib.algorithms.ppo import PPOConfig
-        from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
+        from ray.rllib.callbacks.callbacks import MemoryTrackingCallbacks
         # Construct a generic config object, specifying values within different
         # sub-categories, e.g. "training".
         config = (
@@ -6134,7 +6134,13 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
 
     .. testcode::
 
-        from ray.rllib.algorithm.algorithm_config import DifferentiableAlgorithmConfig
+        from ray.rllib.algorithms.algorithm_config import DifferentiableAlgorithmConfig
+        from ray.rllib.core.learner.differentiable_learner_config import (
+            DifferentiableLearnerConfig,
+        )
+        from ray.rllib.core.learner.torch.torch_differentiable_learner import (
+            TorchDifferentiableLearner,
+        )
         # Construct a generic config for an algorithm that needs differentiable Learners.
         config = (
             DifferentiableAlgorithmConfig()
@@ -6143,7 +6149,7 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
             .learners(
                 differentiable_learner_configs=[
                     DifferentiableLearnerConfig(
-                        DifferentiableTorchLearner,
+                        TorchDifferentiableLearner,
                         lr=1e-4,
                     )
                 ]
