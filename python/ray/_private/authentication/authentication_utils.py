@@ -42,6 +42,7 @@ def validate_request_token(auth_header: str) -> bool:
     # and performs equality comparison via C++ layer
     return validate_authentication_token(auth_header)
 
+
 def get_authentication_mode_name(mode) -> str:
     """Convert AuthenticationMode enum value to string name.
 

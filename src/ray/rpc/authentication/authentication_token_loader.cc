@@ -137,7 +137,7 @@ AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
                        << path_str;
       }
       RAY_LOG(INFO) << "Loaded authentication token from file (RAY_AUTH_TOKEN_PATH): "
-                       << path_str;
+                    << path_str;
       return AuthenticationToken(token_str);
     }
   }

@@ -1,7 +1,7 @@
 """Tests for Ray exceptions."""
-from enum import Enum
 import sys
-from unittest.mock import patch, MagicMock
+from enum import Enum
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -47,10 +47,12 @@ class TestAuthenticationError:
         """Test that error message includes auth mode note when not in token mode."""
         with patch.dict(
             "sys.modules",
-            {"ray._raylet": MagicMock(
-                AuthenticationMode=FakeAuthMode,
-                get_authentication_mode=lambda: auth_mode
-            )}
+            {
+                "ray._raylet": MagicMock(
+                    AuthenticationMode=FakeAuthMode,
+                    get_authentication_mode=lambda: auth_mode,
+                )
+            },
         ):
             error = AuthenticationError("Token is missing")
             error_str = str(error)

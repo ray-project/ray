@@ -506,7 +506,9 @@ class AuthenticationError(RayError):
         current_mode = get_authentication_mode()
         if current_mode != AuthenticationMode.TOKEN:
             mode_name = get_authentication_mode_name(current_mode)
-            auth_mode_note = f" Note: RAY_AUTH_MODE is currently '{mode_name}' (not 'token')."
+            auth_mode_note = (
+                f" Note: RAY_AUTH_MODE is currently '{mode_name}' (not 'token')."
+            )
 
         return (
             self.message

@@ -431,7 +431,9 @@ def test_e2e_operations_with_token_auth(setup_cluster_with_token_auth):
     actors = list_actors()
     assert len(actors) >= 1, f"Expected at least 1 actor, got {len(actors)}"
     actor_classes = [a.class_name for a in actors]
-    assert "SimpleActor" in actor_classes[0], f"SimpleActor not found in {actor_classes}"
+    assert (
+        "SimpleActor" in actor_classes[0]
+    ), f"SimpleActor not found in {actor_classes}"
 
     # List tasks - should include completed tasks
     tasks = list_tasks()
