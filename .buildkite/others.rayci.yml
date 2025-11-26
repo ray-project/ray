@@ -74,7 +74,7 @@ steps:
       - skip-on-premerge
       - fossa
       - oss
-    instance_type: large
+    instance_type: small
     commands:
       - bash ci/fossa/analyze.sh
     depends_on: fossa-base
