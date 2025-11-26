@@ -198,12 +198,12 @@ format from your function, but ``batch_format`` should match the input of your f
             
 Choosing the right batch format
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
+.. tip::
     When choosing the appropriate batch format for your ``map_batches`` operation, the primary consideration is the trade-off between convenience and performance:
 
-    * If your batch function needs fast numeric or tensor-style operations, use numpy
-    * If your batch function needs a DataFrame API, such as for tabular cleaning, joins, grouping, or row/column-wise transforms, use pandas 
-    * If your batch function benefits from columnar processing, high-performance I/O, or zero-copy conversion to other systems, use pyarrow
+    * Use ``numpy`` in ``map_batches`` when your batch function needs fast numeric or tensor-style operations.
+    * Use ``pandas`` in ``map_batches`` when your batch function needs a DataFrame API, such as for tabular cleaning, joins, grouping, or row/column-wise transforms.
+    * Use ``pyarrow`` in ``map_batches`` when your batch function benefits from columnar processing, high-performance I/O, or zero-copy conversion to other systems.
 
     Note that Ray Data uses zero-copy when the batch format matches the underlying block type (for example, Arrow blocks with ``batch_format="pyarrow"``). When they differ, Ray Data copies the data during conversion.
 
