@@ -1325,7 +1325,6 @@ def test_block_ref_bundler_finalize_drains_all():
     pre_bundles = [[i] * size for i, size in enumerate(bundle_sizes)]
     bundles = make_ref_bundles(pre_bundles)
 
-    # Add all bundles WITHOUT draining (no while loop here)
     for bundle in bundles:
         bundler.add_bundle(bundle)
 
