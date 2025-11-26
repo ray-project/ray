@@ -23,7 +23,7 @@ class TestDatasetReader(unittest.TestCase):
         #  credentials issues, using a local file instead for now.
 
         # cls.dset_path = "s3://air-example-data/rllib/cartpole/large.json"
-        cls.dset_path = "tests/data/pendulum/large.json"
+        cls.dset_path = "offline/tests/data/pendulum/large.json"
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -161,10 +161,8 @@ class TestUnzipIfNeeded(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.s3_path = "s3://air-example-data/rllib/pendulum"
-        cls.relative_path = "tests/data/pendulum"
-        cls.absolute_path = str(
-            Path(__file__).parent.parent.parent / "tests" / "data" / "pendulum"
-        )
+        cls.relative_path = "offline/tests/data/pendulum"
+        cls.absolute_path = str(Path(__file__).parent / "data" / "pendulum")
 
     # @TODO: unskip when this is fixed
     @pytest.mark.skip(reason="Shouldn't hit S3 in CI")

@@ -8,7 +8,7 @@ exclude: |
     python/ray/_private/runtime_env/_clonevirtualenv.py|
     python/ray/data/examples/data/|
     release/release_logs/|
-    rllib/tests/data|
+    rllib/offline/tests/data|
     thirdparty/patches/|
     src/ray/thirdparty/|
     doc/external/|
@@ -30,10 +30,7 @@ repos:
         exclude: |
           (?x)^(
             # Intentionally bad json schema
-            python/ray/tests/unit/test_runtime_env_validation_bad_schema.json|
-            # json5 comments prevent parsing
-            python/asv.conf.json|
-            rllib/asv.conf.json
+            python/ray/tests/unit/test_runtime_env_validation_bad_schema.json
           )
       - id: check-toml
 

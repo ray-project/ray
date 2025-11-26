@@ -19,6 +19,10 @@ def reduce_health_check_interval(monkeypatch):
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="JAX GPU not supported on macOS")
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version is not supported in python 3.12+",
+)
 def test_jax_distributed_gpu_training(ray_start_4_cpus_2_gpus, tmp_path):
     """Test multi-GPU JAX distributed training.
 
