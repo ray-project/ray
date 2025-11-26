@@ -481,23 +481,6 @@ py_test(
     ],
 )
 
-#@OldAPIStack
-py_test(
-    name = "learning_tests_multi_agent_cartpole_w_100_policies_appo_old_api_stack",
-    size = "large",
-    srcs = ["algorithms/tests/run_regression_tests.py"],
-    args = ["--dir=examples/_old_api_stack/algorithms/"],
-    data = ["examples/_old_api_stack/algorithms/multi-agent-cartpole-w-100-policies-appo.py"],
-    main = "talgorithms/ests/run_regression_tests.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "team:rllib",
-    ],
-)
-
 # BC
 # CartPole
 py_test(
