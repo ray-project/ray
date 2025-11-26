@@ -55,6 +55,13 @@ def env_set_by_user(key):
 # Whether event logging to driver is enabled. Set to 0 to disable.
 AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
 
+# Whether to disable the C++ failure signal handler that provides stack traces
+# on crashes. Disabling this is necessary when using Java libraries
+# because Ray's signal handler conflicts with the JVM's signal handling.
+RAY_DISABLE_FAILURE_SIGNAL_HANDLER = env_bool(
+    "RAY_DISABLE_FAILURE_SIGNAL_HANDLER", False
+)
+
 RAY_LOG_TO_DRIVER = env_bool("RAY_LOG_TO_DRIVER", True)
 
 # Filter level under which events will be filtered out, i.e. not printing to driver
