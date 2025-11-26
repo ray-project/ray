@@ -464,10 +464,10 @@ The following is a complete, self-contained example that you can copy and run. I
             for name, features in self.metadata.features.items():
                 batch[name] = []
                 for dtype, shape, _ in features:
-                    tensor = torch.tensor(
-                        storage_buffer[offsets[offset_id]:offsets[offset_id + 1]],
-                        dtype=dtype,
-                        device=storage_buffer.device
+                    # Create a zero-copy view of the byte slice.
+                    byte_slice = self.buffer[offsets[offset_id]:offsets[offset_id + 1]]
+                    tensor = torch.frombuffer(
+                        byte_slice.numpy().data, dtype=dtype
                     ).view(shape)
                     if pin_memory:
                         tensor = tensor.pin_memory()
