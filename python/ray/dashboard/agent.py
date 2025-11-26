@@ -5,6 +5,7 @@ import logging
 import os
 import signal
 import sys
+import time
 
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
@@ -77,9 +78,14 @@ class DashboardAgent:
         )
 
         # Fetch node info and save is_head.
-        node_info = self.gcs_client.get_all_node_info().get(
-            NodeID.from_hex(self.node_id)
-        )
+        node_info = None
+        for _ in range(30):
+            node_info = self.gcs_client.get_all_node_info().get(
+                NodeID.from_hex(self.node_id)
+            )
+            if node_info is not None:
+                break
+            time.sleep(1)
         assert node_info is not None
         self.is_head = node_info.is_head_node
 
