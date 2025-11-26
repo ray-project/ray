@@ -166,6 +166,14 @@ Next, configure the VLM processor with the essential settings:
     :start-after: __vlm_config_example_start__
     :end-before: __vlm_config_example_end__
 
+Define preprocessing and postprocessing functions to convert dataset rows into
+the format expected by the VLM and extract model responses:
+
+.. literalinclude:: doc_code/working-with-llms/vlm_example.py
+    :language: python
+    :start-after: __vlm_preprocess_example_start__
+    :end-before: __vlm_preprocess_example_end__
+
 For a more comprehensive VLM configuration with advanced options:
 
 .. literalinclude:: doc_code/working-with-llms/vlm_example.py
