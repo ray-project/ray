@@ -7,8 +7,8 @@ jupyter nbconvert "$nb_filename" --to markdown --output "README.md"
 # Unstructured Data Ingestion and Processing With Ray Data
 
 <div align="left">
-<a target="_blank" href="https://console.anyscale.com/template-preview/unstructured-data-ingestion"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
-<a href="https://github.com/ray-project/ray/tree/master/doc/source/data/examples/unstructured-data-ingestion" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+<a target="_blank" href="https://console.anyscale.com/template-preview/unstructured_data_ingestion"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/data/examples/unstructured_data_ingestion/content" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
 **Time to complete**: 35 min | **Difficulty**: Advanced | **Prerequisites**: Data engineering experience, document processing, basic natural language processing (NLP) knowledge
