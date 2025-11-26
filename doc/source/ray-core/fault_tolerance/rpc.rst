@@ -154,9 +154,12 @@ The retryable gRPC client works as follows:
   it pushes the callback into a queue.
 - Two checks are done on a periodic basis:
   
-  - **Cheap gRPC channel check**: 
-    `Happens every second <https://github.com/ray-project/ray/blob/885e34f4029f8956a0440f3cdfc89c9fe8f3d395/src/ray/rpc/retryable_grpc_client.cc#L74>`_. 
-    This checks the state of the channel to see whether the system can start sending messages again.
+  - **Cheap check**: 
+    This checks the state of the 
+    `gRPC channel <https://github.com/ray-project/ray/blob/885e34f4029f8956a0440f3cdfc89c9fe8f3d395/src/ray/rpc/retryable_grpc_client.cc#L74>`_ 
+    to see whether the system can start sending messages again. This check happens every second by default, 
+    but is configurable through 
+    `check_channel_status_interval_milliseconds <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/common/ray_config_def.h#L449>`_.
   - **Expensive check**: If the exponential backoff period has passed and the channel is still down, we call a 
     `server_unavailable_timeout_callback_ <https://github.com/ray-project/ray/blob/885e34f4029f8956a0440f3cdfc89c9fe8f3d395/src/ray/rpc/retryable_grpc_client.cc#L84>`_. 
     This callback is set in the client pool classes 
@@ -164,7 +167,7 @@ The retryable gRPC client works as follows:
     `core_worker_client_pool <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/core_worker_rpc_client/core_worker_client_pool.cc#L28>`_). 
     It checks if the client is subscribed for node status updates, and then checks the local subscriber cache 
     to see whether a node death notification from the GCS has been received. If the client isn't subscribed 
-    or if there's no status for the node, it makes an RPC to the GCS.
+    or if there's no status for the node in the cache, it makes an RPC to the GCS.
 
 - There's a 
   `third timeout check <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/rpc/retryable_grpc_client.cc#L57>`_ 
