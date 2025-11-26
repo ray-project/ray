@@ -1592,7 +1592,7 @@ class HashShuffleAggregator:
         target_max_block_size = self._data_context.target_max_block_size
         # None means the user wants to preserve the block distribution,
         # so we do not break the block down further.
-        # Also check preserve_block_size parameter.
+        # Also check _preserve_finalize_blocks parameter.
         if target_max_block_size is not None and not self._preserve_finalize_blocks:
             # Creating a block output buffer per partition finalize task because
             # retrying finalize tasks cause stateful output_bufer to be
