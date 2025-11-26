@@ -154,10 +154,10 @@ def _askalono_crawl(path: str) -> List[Dict]:
     cleaned_licenses = [license for license in licenses if "error" not in license]
     error_licenses = [license for license in licenses if "error" in license]
     for error_license in error_licenses:
-        logger.warning(f"License Crawl failed for {error_license['path']}: {error_license['error']}")
+        logger.debug(f"License Crawl failed for {error_license['path']}: {error_license['error']}")
     return cleaned_licenses
 
-def _expand_license_files(path: str) -> List[Dict]:
+def _expand_license_files(path: str) -> List[str]:
     patterns = [
         "**/[Ll][Ii][Cc][Ee][Nn][Ss][Ee]*", # LICENSE
         "**/[Cc][Oo][Pp][Yy][Ii][Nn][Gg]*", # COPYING
@@ -170,7 +170,8 @@ def _expand_license_files(path: str) -> List[Dict]:
         full_pattern = os.path.join(path, pattern)
         matching_paths = glob.glob(full_pattern, recursive=True)
         logger.debug(f"Pattern {full_pattern} matched {len(matching_paths)} files")
-        all_paths.update(matching_paths)
+        # Only include files, not directories
+        all_paths.update(p for p in matching_paths if os.path.isfile(p))
     return list(all_paths)
 
 def _expand_and_crawl(path: str) -> List[Dict]:
