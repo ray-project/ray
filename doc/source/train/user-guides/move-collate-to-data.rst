@@ -408,11 +408,3 @@ The optimized implementation should show substantial speedup from higher collate
 
 - The collate function is computationally expensive (such as tokenization for long sequences)
 - Ray Data can parallelize preprocessing across multiple CPU cores or nodes
-
-Next steps
-----------
-
-- Explore :ref:`Ray Data preprocessing operations <transforming_data>` for more complex data pipelines
-- Learn about :ref:`Ray Data performance tuning <data_performance_tips>` to optimize your preprocessing
-- Review :ref:`Ray Train scaling configurations <train-scaling-config>` to balance training and preprocessing resources
-
