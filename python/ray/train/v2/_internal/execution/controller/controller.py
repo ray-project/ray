@@ -259,11 +259,20 @@ class TrainController:
             )
 
         if failure_decision == FailureDecision.RETRY:
-            return TrainControllerLoopIterationResult(
-                run_attempt_id=self._get_run_attempt_id(),
-                previous_state=controller_state,
-                next_state=self._get_retry_state(context_state, training_failed_error),
-            )
+            if isinstance(context_state, ShuttingDownState):
+                logger.warning(
+                    "Ignoring RETRY failure decision while in ShuttingDownState; "
+                    "escalating to RAISE."
+                )
+                failure_decision = FailureDecision.RAISE
+            else:
+                return TrainControllerLoopIterationResult(
+                    run_attempt_id=self._get_run_attempt_id(),
+                    previous_state=controller_state,
+                    next_state=self._get_retry_state(
+                        context_state, training_failed_error
+                    ),
+                )
         elif failure_decision == FailureDecision.RAISE:
             errored_state = ErroredState(
                 training_failed_error=training_failed_error,
