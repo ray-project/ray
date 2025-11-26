@@ -148,7 +148,7 @@ You can use this reference implementation or adapt it to your needs:
         def from_batch(cls, batch: Dict[str, Union[List[torch.Tensor], torch.Tensor]]) -> '_TensorBatch':
             """Serialize a batch of tensors into a single buffer."""
             features: Dict[str, List[FEATURE_TYPE]] = {}
-            flattenned_binary_tensors = []
+            flattened_binary_tensors = []
             total_buffer_size = 0
             
             for name, tensors in batch.items():
@@ -157,13 +157,13 @@ You can use this reference implementation or adapt it to your needs:
                     tensors = [tensors]
                 for tensor in tensors:
                     flattened_tensor = tensor.flatten().contiguous().view(TORCH_BYTE_ELEMENT_TYPE)
-                    flattenned_binary_tensors.append(flattened_tensor)
+                    flattened_binary_tensors.append(flattened_tensor)
                     features[name].append((tensor.dtype, tensor.shape, total_buffer_size))
                     total_buffer_size += flattened_tensor.shape[0]
             
             buffer = torch.empty(total_buffer_size, dtype=TORCH_BYTE_ELEMENT_TYPE)
             cur_offset = 0
-            for flattened_tensor in flattenned_binary_tensors:
+            for flattened_tensor in flattened_binary_tensors:
                 buffer[cur_offset:cur_offset + flattened_tensor.shape[0]] = flattened_tensor
                 cur_offset += flattened_tensor.shape[0]
             
