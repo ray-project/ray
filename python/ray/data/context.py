@@ -451,10 +451,6 @@ class DataContext:
         max_hash_shuffle_finalization_batch_size: Maximum batch size for concurrent
             hash-shuffle finalization tasks. If `None`, defaults to
             `max_hash_shuffle_aggregators`.
-        _preserve_hash_shuffle_finalize_blocks: Whether to preserve block structure
-            during hash shuffle finalization. If `True`, blocks won't be broken down
-            to `target_max_block_size` during finalization. This is set to `True`
-            for the `map_groups` and `repartition` operation.
         join_operator_actor_num_cpus_per_partition_override: Override CPU allocation
             per partition for join operator actors.
         hash_shuffle_operator_actor_num_cpus_per_partition_override: Override CPU
@@ -534,11 +530,6 @@ class DataContext:
     #
     # When unset defaults to `DataContext.max_hash_shuffle_aggregators`
     max_hash_shuffle_finalization_batch_size: Optional[int] = None
-
-    # Whether to preserve block structure during hash shuffle finalization.
-    # If True, blocks won't be broken down to target_max_block_size during finalization.
-    # This is set to `True` for the `map_groups` and `repartition` operations.
-    _preserve_hash_shuffle_finalize_blocks: bool = False
 
     # (Advanced) Following configuration allows to override `num_cpus` allocation for the
     # Join/Aggregate/Shuffle workers (utilizing hash-shuffle)

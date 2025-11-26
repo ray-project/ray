@@ -30,9 +30,6 @@ def _plan_hash_shuffle_repartition(
     )
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
-    # NOTE: We set this here to enforce the number of output blocks
-    data_context._preserve_hash_shuffle_finalize_blocks = True
-
     normalized_key_columns = SortKey(logical_op._keys).get_columns()
 
     return HashShuffleOperator(
@@ -44,6 +41,7 @@ def _plan_hash_shuffle_repartition(
         num_partitions=logical_op._num_outputs,
         should_sort=logical_op._sort,
         # TODO wire in aggregator args overrides
+        preserve_finalize_blocks=True,
     )
 
 
