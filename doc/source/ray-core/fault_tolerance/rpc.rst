@@ -195,12 +195,13 @@ A few important points to keep in mind:
   fails due to a transient network error, the queue will have two items: RPC A then RPC B. 
   There isn't a separate queue on an RPC basis, but on a client basis.
 
-- **Independent timeouts**: Each timeout doesn't take into account the prior timeouts. If both 
+- **Client-level timeouts**: Each timeout needs to wait for the previous timeout to complete. If both 
   RPC A and RPC B are submitted in short succession, then RPC A will wait in total for 1 second, 
   and RPC B will wait in total for 1 + 2 = 3 seconds. Different RPCs don't matter and are treated 
   the same. The reasoning is that transient network errors aren't RPC specific. If RPC A sees a 
   network failure, you can assume that RPC B, if sent to the same client, will experience the 
-  same failure.
+  same failure. Hence, the time that an RPC waits is the sum of the timeouts of all the previous RPCs in the queue
+  and it's own timeout.
 
 - **Destructor behavior**: In the destructor for ``RetryableGrpcClient``, the system fails all 
   pending RPCs by posting their I/O contexts. These callbacks should ideally never modify state 
