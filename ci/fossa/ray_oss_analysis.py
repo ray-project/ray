@@ -121,32 +121,30 @@ def _get_bazel_dependencies(package_name: str, bazel_command: str) -> Tuple[List
 
     return package_names, file_paths
 
+def _copy_single_file(source: str, destination: str):
+    # Create parent directories if they don't exist
+    os.makedirs(os.path.dirname(destination), exist_ok=True)
+    # Copy the file
+    try:
+        shutil.copy(source, destination)
+    except FileNotFoundError:
+        logger.warning(f"File not found, skipping: {source}")
 
 def _copy_files(file_paths: Set[str], output_folder: str):
     for file_path in file_paths:
         logger.debug(f"Copying file: {file_path}")
         destination = os.path.join(output_folder, file_path.split("external/")[-1])
 
-        # Create parent directories if they don't exist
-        os.makedirs(os.path.dirname(destination), exist_ok=True)
-        # Copy the file
-        try:
-            shutil.copy(file_path, destination)
-        except FileNotFoundError:
-            logger.warning(f"File not found, skipping: {file_path}")
+        _copy_single_file(file_path, destination)
 
 def _copy_licenses(package_names: Set[str], bazel_output_base: str, output_folder: str):
     for package_name in package_names:
-        subprocess.run(
-            f"cp {bazel_output_base}/external/{package_name}/**LICENSE* {output_folder}/{package_name}/",
-            shell=True,
-        )
-        subprocess.run(
-            f"cp {bazel_output_base}/external/{package_name}/**COPYING* {output_folder}/{package_name}/",
-            shell=True,
-        )
+        license_paths = _expand_license_files(os.path.join(bazel_output_base, "external", package_name))
+        for license_path in license_paths:
+            _copy_single_file(license_path, os.path.join(output_folder, license_path.split("external/")[-1]))
 
-def _askalono_crawl(path: str) -> str:
+
+def _askalono_crawl(path: str) -> List[Dict]:
     license_text = subprocess.run(
         ["askalono", "--format=json","crawl", path],
         capture_output=True,
@@ -159,23 +157,28 @@ def _askalono_crawl(path: str) -> str:
         logger.warning(f"License Crawl failed for {error_license['path']}: {error_license['error']}")
     return cleaned_licenses
 
-def _expand_and_crawl(path: str, patterns: List[str] = None) -> List[Dict]:
-    """Expand glob patterns and crawl matching files"""
-    if patterns is None:
-        patterns = ["**LICENSE*", "**COPYING*", "**NOTICE*"]
-
-    all_licenses = []
+def _expand_license_files(path: str) -> List[Dict]:
+    patterns = [
+        "**/[Ll][Ii][Cc][Ee][Nn][Ss][Ee]*", # LICENSE
+        "**/[Cc][Oo][Pp][Yy][Ii][Nn][Gg]*", # COPYING
+        "**/[Nn][Oo][Tt][Ii][Cc][Ee]*", # NOTICE
+        "**/[Cc][Oo][Pp][Yy][Rr][Ii][Gg][Hh][Tt]*", # COPYRIGHT
+        "**/[Rr][Ee][Aa][Dd][Mm][Ee]*", # README
+    ]
+    all_paths = set()
     for pattern in patterns:
         full_pattern = os.path.join(path, pattern)
         matching_paths = glob.glob(full_pattern, recursive=True)
         logger.debug(f"Pattern {full_pattern} matched {len(matching_paths)} files")
-        for matched_path in matching_paths:
-            licenses = _askalono_crawl(matched_path)
-            all_licenses.extend(licenses)
+        all_paths.update(matching_paths)
+    return list(all_paths)
 
-    if not all_licenses:
-        logger.debug(f"No license files found in {path} matching patterns: {patterns}")
-
+def _expand_and_crawl(path: str) -> List[Dict]:
+    license_paths = _expand_license_files(path)
+    all_licenses = []
+    for license_path in license_paths:
+        licenses = _askalono_crawl(license_path)
+        all_licenses.extend(licenses)
     return all_licenses
 
 def _get_askalono_results(dependencies: Set[str], bazel_output_base: str) -> List[Dict]:
