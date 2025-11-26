@@ -1,6 +1,6 @@
-.. _fault-tolerance-rpc:
+.. _rpc-fault-tolerance:
 
-RPC fault tolerance
+RPC Fault Tolerance
 ===================
 
 All RPCs added to Ray Core should be fault tolerant and use the retryable gRPC client. 
@@ -34,8 +34,8 @@ Solution
 ~~~~~~~~
 
 To implement idempotency, a unique identifier called ``LeaseID`` was added in 
-`PR #55469 <https://github.com/ray-project/ray/pull/55469>`_, which allowed deduplication of 
-incoming lease requests. Once leases are granted, they're tracked in a ``leased_workers`` map 
+`PR #55469 <https://github.com/ray-project/ray/pull/55469>`_, which allowed for the deduplication 
+of incoming lease requests. Once leases are granted, they're tracked in a ``leased_workers`` map 
 which maps lease IDs to workers. If the new lease request is already present in the 
 ``leased_workers`` map, the system knows for sure this lease request is a retry and can simply 
 respond with the already leased worker address.
@@ -116,11 +116,11 @@ Chaos network release tests
 IP table blackout
 ^^^^^^^^^^^^^^^^^
 
-The IP table blackout approach involves SSH-ing into each node and blacking out the IP tables 
-for a small amount of time (5 seconds) to simulate transient network errors. The IP table script 
-runs in the background, periodically (60 seconds) causing network blackouts while the test script 
-executes. 
-For core release tests, we've added the IP table blackout approach to all existing chaos release 
+The IP table blackout approach involves SSH-ing into each node and blacking out the IP tables
+for a small amount of time (5 seconds) to simulate transient network errors. The IP table script
+runs in the background, periodically (60 seconds) causing network blackouts while the test script
+executes.
+For core release tests, we've added the IP table blackout approach to all existing chaos release
 tests in `PR #58868 <https://github.com/ray-project/ray/pull/58868>`_.
 
 .. note::
@@ -152,36 +152,35 @@ The retryable gRPC client works as follows:
 - If the client encounters a 
   `gRPC transient network error <https://github.com/ray-project/ray/blob/78082d65fa7081172d2848ced56d68cc612f8fd1/src/ray/common/grpc_util.h#L130>`_, 
   it pushes the callback into a queue.
-- Two checks are done on a periodic basis:
-  
-  - **Cheap check**: 
+- Several checks are done on a periodic basis:
+
+  - **Cheap gRPC channel state check**: 
     This checks the state of the 
     `gRPC channel <https://github.com/ray-project/ray/blob/885e34f4029f8956a0440f3cdfc89c9fe8f3d395/src/ray/rpc/retryable_grpc_client.cc#L74>`_ 
     to see whether the system can start sending messages again. This check happens every second by default, 
     but is configurable through 
     `check_channel_status_interval_milliseconds <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/common/ray_config_def.h#L449>`_.
-  - **Expensive check**: If the exponential backoff period has passed and the channel is still down, we call a 
+  - **Potentially expensive GCS node status check**: If the exponential backoff period has passed and the channel is still down, we call a 
     `server_unavailable_timeout_callback_ <https://github.com/ray-project/ray/blob/885e34f4029f8956a0440f3cdfc89c9fe8f3d395/src/ray/rpc/retryable_grpc_client.cc#L84>`_. 
     This callback is set in the client pool classes 
     (`raylet_client_pool <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/raylet_rpc_client/raylet_client_pool.cc#L24>`_, 
     `core_worker_client_pool <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/core_worker_rpc_client/core_worker_client_pool.cc#L28>`_). 
     It checks if the client is subscribed for node status updates, and then checks the local subscriber cache 
     to see whether a node death notification from the GCS has been received. If the client isn't subscribed 
-    or if there's no status for the node in the cache, it makes an RPC to the GCS.
-
-- There's a 
-  `third timeout check <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/rpc/retryable_grpc_client.cc#L57>`_ 
-  that's customizable per RPC, but it's functionally disabled because it's 
-  `always set to -1 <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/core_worker_rpc_client/core_worker_client.h#L72>`_ 
-  (infinity) for each RPC.
-- With each additional failed RPC, the 
-  `exponential backoff period is increased <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/rpc/retryable_grpc_client.cc#L95>`_, 
+    or if there's no status for the node in the cache, it makes a RPC to the GCS.
+  - **Per-RPC timeout check**: There's a 
+    `timeout check <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/rpc/retryable_grpc_client.cc#L57>`_ 
+    that's customizable per RPC, but it's functionally disabled because it's 
+    `always set to -1 <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/core_worker_rpc_client/core_worker_client.h#L72>`_ 
+    (infinity) for each RPC.
+- With each additional failed RPC, the
+  `exponential backoff period is increased <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/rpc/retryable_grpc_client.cc#L95>`_,
   agnostic of the type of RPC that fails.
-- Once the channel check succeeds, the 
+- Once the channel check succeeds, the
   `exponential backoff period is reset and all RPCs in the queue are retried <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/rpc/retryable_grpc_client.cc#L117>`_.
-- If the system successfully receives a node death notification (either through subscription or 
-  querying the GCS directly), it destroys the RPC client, which posts each callback to the I/O 
-  context with a 
+- If the system successfully receives a node death notification (either through subscription or
+  querying the GCS directly), it destroys the RPC client, which posts each callback to the I/O
+  context with a
   `gRPC Disconnected error <https://github.com/ray-project/ray/blob/75f8562759d4a5ef84163bb68ae9f7401b85728f/src/ray/rpc/retryable_grpc_client.cc#L32>`_.
 
 Important considerations
@@ -195,18 +194,18 @@ A few important points to keep in mind:
   fails due to a transient network error, the queue will have two items: RPC A then RPC B. 
   There isn't a separate queue on an RPC basis, but on a client basis.
 
-- **Client-level timeouts**: Each timeout needs to wait for the previous timeout to complete. If both 
-  RPC A and RPC B are submitted in short succession, then RPC A will wait in total for 1 second, 
-  and RPC B will wait in total for 1 + 2 = 3 seconds. Different RPCs don't matter and are treated 
-  the same. The reasoning is that transient network errors aren't RPC specific. If RPC A sees a 
-  network failure, you can assume that RPC B, if sent to the same client, will experience the 
+- **Client-level timeouts**: Each timeout needs to wait for the previous timeout to complete. If both
+  RPC A and RPC B are submitted in short succession, then RPC A will wait in total for 1 second,
+  and RPC B will wait in total for 1 + 2 = 3 seconds. Different RPCs don't matter and are treated
+  the same. The reasoning is that transient network errors aren't RPC specific. If RPC A sees a
+  network failure, you can assume that RPC B, if sent to the same client, will experience the
   same failure. Hence, the time that an RPC waits is the sum of the timeouts of all the previous RPCs in the queue
-  and it's own timeout.
+  and its own timeout.
 
-- **Destructor behavior**: In the destructor for ``RetryableGrpcClient``, the system fails all 
-  pending RPCs by posting their I/O contexts. These callbacks should ideally never modify state 
-  held by the client classes such as ``RayletClient``. If absolutely necessary, they must check 
-  if the client is still alive somehow, such as using a weak pointer. An example of this is in 
-  `PR #58744 <https://github.com/ray-project/ray/pull/58744>`_. The application code should 
-  also take into account the 
+- **Destructor behavior**: In the destructor for ``RetryableGrpcClient``, the system fails all
+  pending RPCs by posting their I/O contexts. These callbacks should ideally never modify state
+  held by the client classes such as ``RayletClient``. If absolutely necessary, they must check
+  if the client is still alive somehow, such as using a weak pointer. An example of this is in
+  `PR #58744 <https://github.com/ray-project/ray/pull/58744>`_. The application code should
+  also take into account the
   `Disconnected error <https://github.com/ray-project/ray/blob/75f8562759d4a5ef84163bb68ae9f7401b85728f/src/ray/rpc/retryable_grpc_client.cc#L32>`_.
