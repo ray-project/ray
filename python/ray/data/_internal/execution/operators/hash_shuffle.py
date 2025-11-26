@@ -1254,16 +1254,16 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         )  # Estimated byte size of a single partition
 
         aggregator_total_memory_required: int = (
-            max_partitions_for_aggregator * partition_byte_size_estimate * 2
-        )
+            partition_byte_size_estimate * max_partitions_for_aggregator * 2
+        )  # Shuffle and output memory required both are max_partitions_for_aggregator * partition_byte_size_estimate
 
         logger.info(
             f"Estimated memory requirement for shuffling aggregator "
             f"(partitions={num_partitions}, "
             f"aggregators={num_aggregators}, "
             f"dataset (estimate)={estimated_dataset_bytes / GiB:.1f}GiB): "
-            f"max partitions per aggregator={max_partitions_for_aggregator}, "
-            f"partition byte size estimate={partition_byte_size_estimate}, "
+            f"shuffle={max_partitions_for_aggregator * partition_byte_size_estimate / MiB:.1f}MiB, "
+            f"output={max_partitions_for_aggregator * partition_byte_size_estimate / MiB:.1f}MiB, "
             f"total={aggregator_total_memory_required / MiB:.1f}MiB, "
         )
 
