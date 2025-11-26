@@ -177,6 +177,11 @@ class SGLangServer:
         )
 
         if isinstance(raw, list):
+            if not raw:
+                # Handle empty list to prevent IndexError
+                raise RuntimeError(
+                    "SGLang engine returned an empty response list during text completion."
+                )
             raw = raw[0]
 
         text: str = raw.get("text", "")
@@ -253,6 +258,11 @@ class SGLangServer:
         )
 
         if isinstance(raw, list):
+            if not raw:
+                # Handle empty list to prevent IndexError
+                raise RuntimeError(
+                    "SGLang engine returned an empty response list during text completion."
+                )
             raw = raw[0]
 
         text: str = raw.get("text", "")
