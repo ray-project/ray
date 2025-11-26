@@ -664,6 +664,12 @@ message Bundle {
   map<string, string> label_selector = 4;
 }
 
+// Represents a specific configuration option in the placement group fallback strategy.
+// Each option defines a complete set of bundles that replaces the primary set.
+message PlacementGroupSchedulingOption {
+  repeated Bundle bundles = 1;
+}
+
 message PlacementGroupSpec {
   // ID of the PlacementGroup.
   bytes placement_group_id = 1;
@@ -688,6 +694,9 @@ message PlacementGroupSpec {
   // Otherwise, the bundles can be placed elsewhere.
   // This only applies to STRICT_PACK pg.
   bytes soft_target_node_id = 11;
+  // A list of fallback options. If the primary `bundles` cannot be scheduled,
+  // the scheduler will attempt these options in order.
+  repeated PlacementGroupSchedulingOption fallback_options = 12;
 }
 
 message ObjectReference {
