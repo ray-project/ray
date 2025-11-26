@@ -551,7 +551,7 @@ class FuseOperators(Rule):
             - StreamingRepartitionRefBundler + StreamingRepartitionRefBundler: Only
               compatible if both have the same target_num_rows_per_block.
             - StreamingRepartitionRefBundler + BlockRefBundler: Compatible
-              if target_num_rows >= min_rows_per_bundle (or min_rows_per_bundle is None).
+              if target_num_rows == min_rows_per_bundle (or min_rows_per_bundle is None).
               Returns a StreamingRepartitionRefBundler.
             - BlockRefBundler + StreamingRepartitionRefBundler: Incompatible.
 
