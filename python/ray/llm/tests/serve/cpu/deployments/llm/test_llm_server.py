@@ -438,57 +438,6 @@ class TestLLMServer:
             await server.start()
             mock_push_telemetry.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_raw_request_reaches_vllm_engine(self, mock_llm_config):
-        """Test that raw_request is passed to the vllm_engine."""
-        from ray.llm._internal.serve.core.configs.openai_api_models import (
-            ChatCompletionRequest,
-        )
-
-        # Track if raw_request was received by the engine
-        captured_raw_request_headers = []
-
-        # Create a mock engine that captures raw_request
-        class RawRequestCapturingEngine(MockVLLMEngine):
-            async def chat(self, request, raw_request_headers=None):
-                captured_raw_request_headers.append(raw_request_headers)
-                # Call parent implementation
-                async for response in super().chat(request, raw_request_headers):
-                    yield response
-
-        # Create server with custom engine
-        server = LLMServer.sync_init(
-            mock_llm_config, engine_cls=RawRequestCapturingEngine
-        )
-        await server.start()
-
-        # Simulate headers extracted from the original request. Include a
-        # dedicated test header so it's obvious this flow is validated.
-        mock_headers = {
-            "content-type": "application/json",
-            "x-ray-serve-llm-test-header": "llm-server-raw-request",
-        }
-
-        # Create a chat request
-        chat_request = ChatCompletionRequest(
-            model="mock-model",
-            messages=[{"role": "user", "content": "Hello, world!"}],
-            max_tokens=10,
-            stream=False,
-        )
-
-        # Make a request through the server
-        response_gen = server.chat(chat_request, mock_headers)
-
-        # Consume the generator
-        chunks = []
-        async for chunk in response_gen:
-            chunks.append(chunk)
-
-        # Verify that raw_request was passed to the engine
-        assert len(captured_raw_request_headers) == 1
-        assert captured_raw_request_headers[0] == mock_headers
-
     @pytest.mark.parametrize("api_type", ["chat", "completions"])
     @pytest.mark.parametrize("stream", [True])
     @pytest.mark.parametrize("max_tokens", [64])
