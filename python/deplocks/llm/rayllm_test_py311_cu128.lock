@@ -4532,22 +4532,22 @@ tinycss2==1.3.0 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
     #   nbconvert
-tokenizers==0.21.1 \
-    --hash=sha256:0f0dcbcc9f6e13e675a66d7a5f2f225a736745ce484c1a4e07476a89ccdad382 \
-    --hash=sha256:1039a3a5734944e09de1d48761ade94e00d0fa760c0e0551151d4dd851ba63e3 \
-    --hash=sha256:28da6b72d4fb14ee200a1bd386ff74ade8992d7f725f2bde2c495a9a98cf4d9f \
-    --hash=sha256:2dd9a0061e403546f7377df940e866c3e678d7d4e9643d0461ea442b4f89e61a \
-    --hash=sha256:2fdbd4c067c60a0ac7eca14b6bd18a5bebace54eb757c706b47ea93204f7a37c \
-    --hash=sha256:34d8cfde551c9916cb92014e040806122295a6800914bab5865deb85623931cf \
-    --hash=sha256:9ac78b12e541d4ce67b4dfd970e44c060a2147b9b2a21f509566d556a509c67d \
-    --hash=sha256:a1bb04dc5b448985f86ecd4b05407f5a8d97cb2c0532199b2a302a604a0165ab \
-    --hash=sha256:a21a15d5c8e603331b8a59548bbe113564136dc0f5ad8306dd5033459a226da0 \
-    --hash=sha256:aaa852d23e125b73d283c98f007e06d4595732104b65402f46e8ef24b588d9f8 \
-    --hash=sha256:cd51cd0a91ecc801633829fcd1fda9cf8682ed3477c6243b9a095539de4aecf3 \
-    --hash=sha256:db9484aeb2e200c43b915a1a0150ea885e35f357a5a8fabf7373af333dcc8dbf \
-    --hash=sha256:e5a69c1a4496b81a5ee5d2c1f3f7fbdf95e90a0196101b0ee89ed9956b8a168f \
-    --hash=sha256:e78e413e9e668ad790a29456e677d9d3aa50a9ad311a40905d6861ba7692cf41 \
-    --hash=sha256:ed248ab5279e601a30a4d67bdb897ecbe955a50f1e7bb62bd99f07dd11c2f5b6
+tokenizers==0.22.1 \
+    --hash=sha256:19d2962dd28bc67c1f205ab180578a78eef89ac60ca7ef7cbe9635a46a56422a \
+    --hash=sha256:331d6d149fa9c7d632cde4490fb8bbb12337fa3a0232e77892be656464f4b446 \
+    --hash=sha256:38201f15cdb1f8a6843e6563e6e79f4abd053394992b9bbdf5213ea3469b4ae7 \
+    --hash=sha256:59fdb013df17455e5f950b4b834a7b3ee2e0271e6378ccb33aa74d178b513c73 \
+    --hash=sha256:607989f2ea68a46cb1dfbaf3e3aabdf3f21d8748312dbeb6263d1b3b66c5010a \
+    --hash=sha256:61de6522785310a309b3407bac22d99c4db5dba349935e99e4d15ea2226af2d9 \
+    --hash=sha256:65fd6e3fb11ca1e78a6a93602490f134d1fdeb13bcef99389d5102ea318ed138 \
+    --hash=sha256:8d4e484f7b0827021ac5f9f71d4794aaef62b979ab7608593da22b1d2e3c4edc \
+    --hash=sha256:a0f307d490295717726598ef6fa4f24af9d484809223bbc253b201c740a06390 \
+    --hash=sha256:afd7594a56656ace95cdd6df4cca2e4059d294c5cfb1679c57824b605556cb2f \
+    --hash=sha256:b5120eed1442765cd90b903bb6cfef781fd8fe64e34ccaecbae4c619b7b12a82 \
+    --hash=sha256:ba0a64f450b9ef412c98f6bcd2a50c6df6e2443b560024a09fa6a03189726879 \
+    --hash=sha256:d1cbe5454c9a15df1b3443c726063d930c16f047a3cc724b9e6e1a91140e5a21 \
+    --hash=sha256:e2ef6063d7a84994129732b47e7915e8710f27f99f3a3260b8a38fc7ccd083f4 \
+    --hash=sha256:e7d094ae6312d69cc2a872b54b91b309f4f6fbce871ef28eb27b52a98e4d0214
     # via
     #   transformers
     #   vllm
@@ -4670,10 +4670,11 @@ traitlets==5.14.3 \
     #   nbconvert
     #   nbformat
     #   notebook
-transformers==4.55.2 \
-    --hash=sha256:097e3c2e2c0c9681db3da9d748d8f9d6a724c644514673d0030e8c5a1109f1f1 \
-    --hash=sha256:a45ec60c03474fd67adbce5c434685051b7608b3f4f167c25aa6aeb1cad16d4f
+transformers==4.57.3 \
+    --hash=sha256:c77d353a4851b1880191603d36acb313411d3577f6e2897814f333841f7003f4 \
+    --hash=sha256:df4945029aaddd7c09eec5cad851f30662f8bd1746721b34cc031d70c65afebc
     # via
+    #   -r python/requirements/llm/llm-requirements.txt
     #   compressed-tensors
     #   vllm
     #   xgrammar

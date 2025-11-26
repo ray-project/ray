@@ -8,6 +8,7 @@ from dataclasses import replace
 from typing import Any, Callable, Dict, Optional, Tuple
 from unittest.mock import MagicMock
 
+import pyarrow as pa
 import pytest
 from freezegun import freeze_time
 
@@ -39,7 +40,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
 
@@ -625,6 +626,38 @@ def test_setting_initial_size_for_actor_pool():
         running=0, pending=2, restarting=0
     )
     ray.shutdown()
+
+
+def _create_bundle_with_single_row(row):
+    block = pa.Table.from_pylist([row])
+    block_ref = ray.put(block)
+    metadata = BlockAccessor.for_block(block).get_metadata()
+    schema = BlockAccessor.for_block(block).schema()
+    return RefBundle([(block_ref, metadata)], owns_blocks=False, schema=schema)
+
+
+@pytest.mark.parametrize("min_rows_per_bundle", [2, None])
+def test_internal_input_queue_is_empty_after_early_completion(
+    ray_start_regular_shared, min_rows_per_bundle
+):
+    data_context = ray.data.DataContext.get_current()
+    op = ActorPoolMapOperator(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=ray.data.ActorPoolStrategy(size=1),
+        min_rows_per_bundle=min_rows_per_bundle,
+    )
+    op.start(ExecutionOptions())
+
+    ref_bundle = _create_bundle_with_single_row({"id": 0})
+    op.add_input(ref_bundle, 0)
+
+    op.mark_execution_finished()
+
+    assert (
+        op.internal_input_queue_num_blocks() == 0
+    ), op.internal_input_queue_num_blocks()
 
 
 def test_min_max_resource_requirements(restore_data_context):
