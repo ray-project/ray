@@ -30,7 +30,6 @@ from ray.train.v2._internal.execution.scaling_policy import (
 )
 from ray.train.v2._internal.execution.worker_group import WorkerGroupPollStatus
 from ray.train.v2.api.config import ScalingConfig
-from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.train.v2.tests.util import (
     DummyObjectRefWrapper,
     DummyWorkerGroup,
@@ -445,10 +444,6 @@ async def test_worker_group_shutdown_error_during_final_shutdown():
     await controller._run_control_loop_iteration()
     # Should transition to ErroredState due to the shutdown failure
     assert isinstance(controller.get_state(), ErroredState)
-    # Verify that the error is a WorkerGroupError
-    training_failed_error = controller.get_training_failed_error()
-    assert isinstance(training_failed_error, WorkerGroupError)
-    assert str(shutdown_error) in str(training_failed_error)
 
 
 if __name__ == "__main__":

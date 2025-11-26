@@ -195,6 +195,9 @@ class TrainController:
                 return self._execute_failure_decision(
                     failure_decision,
                     training_failed_error=optional_worker_group_error,
+                    # Shutdown failures during resize come from a running worker group,
+                    # so treat them as running failures to trigger a restart.
+                    failure_context_state=RunningState(),
                 )
 
         optional_controller_error = self._start_worker_group(
@@ -235,10 +238,12 @@ class TrainController:
         self,
         failure_decision: FailureDecision,
         training_failed_error: TrainingFailedError,
+        failure_context_state: Optional[TrainControllerState] = None,
     ) -> TrainControllerLoopIterationResult:
         """Executes failure handling decisions for a scheduling or poll error."""
 
         controller_state = self.get_state()
+        context_state = failure_context_state or controller_state
 
         for callback in self._controller_callbacks:
             callback.before_controller_execute_failure_decision(failure_decision)
@@ -257,16 +262,17 @@ class TrainController:
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
-                next_state=self._get_retry_state(
-                    controller_state, training_failed_error
-                ),
+                next_state=self._get_retry_state(context_state, training_failed_error),
             )
         elif failure_decision == FailureDecision.RAISE:
-            next_state = ShuttingDownState(
-                next_state=ErroredState(
-                    training_failed_error=training_failed_error,
-                ),
+            errored_state = ErroredState(
+                training_failed_error=training_failed_error,
             )
+            if isinstance(controller_state, ShuttingDownState):
+                # If the error occurs during shutdown, propagate the error immediately to errored state.
+                next_state = errored_state
+            else:
+                next_state = ShuttingDownState(next_state=errored_state)
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
