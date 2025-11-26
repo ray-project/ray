@@ -16,6 +16,10 @@ from ray.data._internal.actor_autoscaler import (
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolScalingRequest,
 )
+from ray.data._internal.execution.operators.actor_removal_strategy import (
+    ActorRemovalStrategy,
+    DefaultActorRemovalStrategy,
+)
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.bundle_queue.bundle_queue import BundleQueue
@@ -144,24 +148,10 @@ class ActorPoolMapOperator(MapOperator):
 
         max_actor_concurrency = self._ray_remote_args.get("max_concurrency", 1)
 
-        self._actor_pool = _ActorPool(
-            self._start_actor,
-            per_actor_resource_usage,
-            min_size=compute_strategy.min_size,
-            max_size=compute_strategy.max_size,
-            initial_size=compute_strategy.initial_size,
+        self._actor_pool = self._create_actor_pool(
+            compute_strategy=compute_strategy,
+            per_actor_resource_usage=per_actor_resource_usage,
             max_actor_concurrency=max_actor_concurrency,
-            max_tasks_in_flight_per_actor=(
-                # Unless explicitly overridden by the user, max tasks-in-flight config
-                # will fall back to be:
-                #
-                #   DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR * max_concurrency,
-                compute_strategy.max_tasks_in_flight_per_actor
-                or data_context.max_tasks_in_flight_per_actor
-                or max_actor_concurrency
-                * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
-            ),
-            _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
         )
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
@@ -548,6 +538,42 @@ class ActorPoolMapOperator(MapOperator):
     def get_max_concurrency_limit(self) -> Optional[int]:
         return self._actor_pool.max_size() * self._actor_pool.max_actor_concurrency()
 
+    def _create_actor_pool(
+        self,
+        compute_strategy: ActorPoolStrategy,
+        per_actor_resource_usage: ExecutionResources,
+        max_actor_concurrency: int,
+    ) -> "_ActorPool":
+        """创建 actor pool,根据配置选择 actor removal strategy"""
+        # 根据 DataContext 配置选择 removal strategy
+        actor_removal_strategy = None
+        if self.data_context.enable_node_aware_actor_removal:
+            from ray.data._internal.execution.operators.actor_removal_strategy import (
+                NodeAwareActorRemovalStrategy
+            )
+            actor_removal_strategy = NodeAwareActorRemovalStrategy()
+
+        return _ActorPool(
+            self._start_actor,
+            per_actor_resource_usage,
+            min_size=compute_strategy.min_size,
+            max_size=compute_strategy.max_size,
+            initial_size=compute_strategy.initial_size,
+            max_actor_concurrency=max_actor_concurrency,
+            max_tasks_in_flight_per_actor=(
+                # Unless explicitly overridden by the user, max tasks-in-flight config
+                # will fall back to be:
+                #
+                #   DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR * max_concurrency,
+                compute_strategy.max_tasks_in_flight_per_actor
+                or self.data_context.max_tasks_in_flight_per_actor
+                or max_actor_concurrency
+                * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
+            ),
+            _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
+            actor_removal_strategy=actor_removal_strategy,  # 新增参数
+        )
+
 
 class _MapWorker:
     """An actor worker for MapOperator."""
@@ -771,6 +797,8 @@ class _ActorPool(AutoscalingActorPool):
         max_actor_concurrency: int,
         max_tasks_in_flight_per_actor: int,
         _enable_actor_pool_on_exit_hook: bool = False,
+        # 新增参数,默认为 None 保持向后兼容
+        actor_removal_strategy: Optional["ActorRemovalStrategy"] = None,
     ):
         """Initialize the actor pool.
 
@@ -824,6 +852,7 @@ class _ActorPool(AutoscalingActorPool):
         self._num_restarting_actors: int = 0
         self._num_active_actors: int = 0
         self._total_num_tasks_in_flight: int = 0
+        self._actor_removal_strategy = actor_removal_strategy or DefaultActorRemovalStrategy()
 
     # === Overriding methods of AutoscalingActorPool ===
 
@@ -1070,13 +1099,13 @@ class _ActorPool(AutoscalingActorPool):
         return False
 
     def _try_remove_idle_actor(self) -> bool:
-        for actor, state in self._running_actors.items():
-            if state.num_tasks_in_flight == 0:
-                # At least one idle actor, so kill first one found.
-                # NOTE: This is a fire-and-forget op
-                self._release_running_actor(actor)
-                return True
-        # No idle actors, so indicate to the caller that no actors were killed.
+        # 使用策略模式选择要移除的 actor
+        actor_to_remove = self._actor_removal_strategy.select_actor_to_remove(
+            self._running_actors
+        )
+        if actor_to_remove:
+            self._release_running_actor(actor_to_remove)
+            return True
         return False
 
     def shutdown(self, force: bool = False):

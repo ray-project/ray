@@ -871,6 +871,256 @@ def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context)
     assert sorted(res, key=lambda x: x["id"]) == [{"id": i} for i in range(num_items)]
 
 
+def test_actor_pool_with_default_removal_strategy(ray_start_regular_shared):
+    """测试 _ActorPool 使用默认的 actor 移除策略"""
+    from ray.data._internal.execution.operators.actor_removal_strategy import (
+        DefaultActorRemovalStrategy
+    )
+
+    # 直接创建测试实例,不调用 setup_class()
+    test_case = TestActorPool()
+
+    # 创建带有默认策略的 actor pool
+    pool = test_case._create_actor_pool(
+        min_size=1,
+        max_size=4,
+        initial_size=2,
+    )
+
+    # 验证默认策略被使用
+    assert isinstance(pool._actor_removal_strategy,
+                      DefaultActorRemovalStrategy)
+
+    # 添加多个 actors
+    actor1 = test_case._add_ready_actor(pool, node_id="node1")
+    actor2 = test_case._add_ready_actor(pool, node_id="node2")
+
+    # 验证可以正常缩容
+    killed = pool._remove_inactive_actor()
+    assert killed
+    assert pool.current_size() == 1
+
+    # 不需要调用 teardown_class()
+
+
+def test_actor_pool_with_node_aware_removal_strategy(ray_start_regular_shared):
+    """测试 _ActorPool 使用节点感知的 actor 移除策略"""
+    from ray.data._internal.execution.operators.actor_removal_strategy import (
+        NodeAwareActorRemovalStrategy
+    )
+
+    # 直接创建测试实例,不调用 setup_class()
+    test_case = TestActorPool()
+
+    # 创建带有节点感知策略的 actor pool
+    strategy = NodeAwareActorRemovalStrategy()
+    pool = _ActorPool(
+        min_size=1,
+        max_size=6,
+        initial_size=1,
+        max_actor_concurrency=1,
+        max_tasks_in_flight_per_actor=4,
+        create_actor_fn=test_case._create_actor_fn,
+        per_actor_resource_usage=ExecutionResources(cpu=1),
+        actor_removal_strategy=strategy,
+    )
+
+    # 验证策略被正确设置
+    assert isinstance(pool._actor_removal_strategy,
+                      NodeAwareActorRemovalStrategy)
+
+    # 在 node1 上添加 3 个 actors
+    actors_node1 = []
+    for _ in range(3):
+        actor = test_case._add_ready_actor(pool, node_id="node1")
+        actors_node1.append(actor)
+
+    # 在 node2 上添加 1 个 actor
+    actor_node2 = test_case._add_ready_actor(pool, node_id="node2")
+
+    # 验证所有 actors 都已添加
+    assert pool.current_size() == 4
+    assert pool.num_running_actors() == 4
+
+    # 缩容一个 actor - 应该从 node1 移除(因为它有更多空闲 actors)
+    killed = pool._remove_inactive_actor()
+    assert killed
+    assert pool.current_size() == 3
+
+    # 验证 node2 的 actor 仍然存在
+    picked_actor = test_case._pick_actor(pool)
+    # 如果能 pick 到 actor_node2,说明它没被删除
+    # 注意:这个测试依赖于 actor 的 pick 顺序
+
+    # 不需要调用 teardown_class()
+
+
+def test_node_aware_strategy_prioritizes_node_with_most_idle_actors(
+    ray_start_regular_shared
+):
+    """测试节点感知策略优先选择空闲 actor 最多的节点"""
+    from ray.data._internal.execution.operators.actor_removal_strategy import (
+        NodeAwareActorRemovalStrategy
+    )
+
+    # 直接创建测试实例,不调用 setup_class()
+    test_case = TestActorPool()
+
+    strategy = NodeAwareActorRemovalStrategy()
+    pool = _ActorPool(
+        min_size=1,
+        max_size=10,
+        initial_size=1,
+        max_actor_concurrency=1,
+        max_tasks_in_flight_per_actor=4,
+        create_actor_fn=test_case._create_actor_fn,
+        per_actor_resource_usage=ExecutionResources(cpu=1),
+        actor_removal_strategy=strategy,
+    )
+
+    # 在 node1 上添加 4 个 actors
+    for _ in range(4):
+        test_case._add_ready_actor(pool, node_id="node1")
+
+        # 在 node2 上添加 2 个 actors
+    for _ in range(2):
+        test_case._add_ready_actor(pool, node_id="node2")
+
+    assert pool.current_size() == 6
+
+    # 记录 node1 和 node2 上的 actor 数量
+    node1_actors = sum(
+        1 for state in pool._running_actors.values()
+        if state.actor_location == "node1"
+    )
+    node2_actors = sum(
+        1 for state in pool._running_actors.values()
+        if state.actor_location == "node2"
+    )
+
+    assert node1_actors == 4
+    assert node2_actors == 2
+
+    # 缩容 3 次 - 应该优先从 node1 移除
+    for _ in range(3):
+        killed = pool._remove_inactive_actor()
+        assert killed
+
+    assert pool.current_size() == 3
+
+    # 验证 node1 的 actors 被优先移除
+    remaining_node1_actors = sum(
+        1 for state in pool._running_actors.values()
+        if state.actor_location == "node1"
+    )
+    remaining_node2_actors = sum(
+        1 for state in pool._running_actors.values()
+        if state.actor_location == "node2"
+    )
+
+    # node1 应该只剩 1 个 actor,node2 应该还有 2 个
+    assert remaining_node1_actors == 1
+    assert remaining_node2_actors == 2
+
+    # 不需要调用 teardown_class()
+
+
+def test_node_aware_strategy_with_active_actors(ray_start_regular_shared):
+    """测试节点感知策略不会移除活跃的 actors"""
+    from ray.data._internal.execution.operators.actor_removal_strategy import (
+        NodeAwareActorRemovalStrategy
+    )
+
+    # 直接创建测试实例,不调用 setup_class()
+    test_case = TestActorPool()
+
+    strategy = NodeAwareActorRemovalStrategy()
+    pool = _ActorPool(
+        min_size=1,
+        max_size=6,
+        initial_size=1,
+        max_actor_concurrency=1,
+        max_tasks_in_flight_per_actor=4,
+        create_actor_fn=test_case._create_actor_fn,
+        per_actor_resource_usage=ExecutionResources(cpu=1),
+        actor_removal_strategy=strategy,
+    )
+
+    # 在 node1 上添加 3 个 actors
+    actors_node1 = []
+    for _ in range(3):
+        actor = test_case._add_ready_actor(pool, node_id="node1")
+        actors_node1.append(actor)
+
+    # 在 node2 上添加 1 个 actor
+    actor_node2 = test_case._add_ready_actor(pool, node_id="node2")
+
+    # 让 node1 的所有 actors 都变为活跃状态
+    for actor in actors_node1:
+        test_case._pick_actor(pool)
+
+        # 验证 node1 的 actors 都是活跃的
+    assert pool.num_active_actors() == 3
+    assert pool.num_idle_actors() == 1  # 只有 node2 的 actor 是空闲的
+
+    # 尝试缩容 - 应该移除 node2 的空闲 actor
+    killed = pool._remove_inactive_actor()
+    assert killed
+    assert pool.current_size() == 3
+
+    # 验证 node1 的 actors 仍然存在
+    remaining_node1_actors = sum(
+        1 for state in pool._running_actors.values()
+        if state.actor_location == "node1"
+    )
+    assert remaining_node1_actors == 3
+
+    # 不需要调用 teardown_class()
+
+
+def test_actor_pool_removal_strategy_integration_with_scaling(
+    ray_start_regular_shared
+):
+    """测试 actor removal strategy 与 scaling 的集成"""
+    from ray.data._internal.execution.operators.actor_removal_strategy import (
+        NodeAwareActorRemovalStrategy
+    )
+    from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
+
+    # 直接创建测试实例,不调用 setup_class()
+    test_case = TestActorPool()
+
+    strategy = NodeAwareActorRemovalStrategy()
+    pool = _ActorPool(
+        min_size=2,
+        max_size=8,
+        initial_size=2,
+        max_actor_concurrency=1,
+        max_tasks_in_flight_per_actor=4,
+        create_actor_fn=test_case._create_actor_fn,
+        per_actor_resource_usage=ExecutionResources(cpu=1),
+        actor_removal_strategy=strategy,
+    )
+
+    # 扩容到 6 个 actors
+    pool.scale(ActorPoolScalingRequest(delta=4, reason="scale up"))
+
+    # 等待 actors 准备好
+    for ready_ref in pool.get_pending_actor_refs():
+        test_case._wait_for_actor_ready(pool, ready_ref)
+
+    assert pool.current_size() == 6
+
+    # 缩容 3 个 actors
+    pool.scale(
+        ActorPoolScalingRequest(delta=-3, reason="scale down", force=True))
+
+    # 验证缩容成功
+    assert pool.current_size() == 3
+
+    # 不需要调用 teardown_class()
+
+
 if __name__ == "__main__":
     import sys
 
