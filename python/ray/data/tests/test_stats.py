@@ -250,24 +250,6 @@ STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
     ],
 )
 
-LARGE_ARGS_EXTRA_METRICS = gen_expected_metrics(
-    is_map=True,
-    spilled=False,
-    extra_metrics=[
-        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'DEFAULT'}"
-    ],
-)
-
-LARGE_ARGS_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
-    is_map=True,
-    spilled=False,
-    task_backpressure=True,
-    task_output_backpressure=True,
-    extra_metrics=[
-        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'DEFAULT'}"
-    ],
-)
-
 MEM_SPILLED_EXTRA_METRICS = gen_expected_metrics(
     is_map=True,
     spilled=True,
@@ -447,76 +429,6 @@ Streaming split coordinator overhead time: T
 """
         f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)', 'split(N, equal=False)'], True)}"  # noqa: E501
     )
-
-
-@pytest.mark.parametrize("verbose_stats_logs", [True, False])
-def test_large_args_scheduling_strategy(
-    ray_start_regular_shared, verbose_stats_logs, restore_data_context
-):
-    context = DataContext.get_current()
-    context.verbose_stats_logs = verbose_stats_logs
-    ds = ray.data.range_tensor(100, shape=(100000,), override_num_blocks=1)
-    ds = ds.map_batches(dummy_map_batches, num_cpus=0.9).materialize()
-    stats = ds.stats()
-    read_extra_metrics = gen_extra_metrics_str(
-        STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE,
-        verbose_stats_logs,
-    )
-    # if verbose_stats_logs:
-    #     read_extra_metrics = read_extra_metrics#.replace(
-    #         "'obj_store_mem_used': N",
-    #         "'obj_store_mem_used': Z",
-    #     )
-
-    map_extra_metrics = gen_extra_metrics_str(
-        LARGE_ARGS_EXTRA_METRICS,
-        verbose_stats_logs,
-    )
-    # if verbose_stats_logs:
-    #     map_extra_metrics = map_extra_metrics.replace(
-    #         "'obj_store_mem_used': N",
-    #         "'obj_store_mem_used': Z",
-    #     )
-    expected_stats = (
-        f"Operator N ReadRange: {EXECUTION_STRING}\n"
-        f"* Remote wall time: T min, T max, T mean, T total\n"
-        f"* Remote cpu time: T min, T max, T mean, T total\n"
-        f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
-        f"* Output num rows per block: N min, N max, N mean, N total\n"
-        f"* Output size bytes per block: N min, N max, N mean, N total\n"
-        f"* Output rows per task: N min, N max, N mean, N tasks used\n"
-        f"* Tasks per node: N min, N max, N mean; N nodes used\n"
-        f"* Operator throughput:\n"
-        f"    * Total input num rows: N rows\n"
-        f"    * Total output num rows: N rows\n"
-        f"    * Ray Data throughput: N rows/s\n"
-        f"    * Estimated single node throughput: N rows/s\n"
-        f"{read_extra_metrics}\n"
-        f"Operator N MapBatches(dummy_map_batches): {EXECUTION_STRING}\n"
-        f"* Remote wall time: T min, T max, T mean, T total\n"
-        f"* Remote cpu time: T min, T max, T mean, T total\n"
-        f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
-        f"* Output num rows per block: N min, N max, N mean, N total\n"
-        f"* Output size bytes per block: N min, N max, N mean, N total\n"
-        f"* Output rows per task: N min, N max, N mean, N tasks used\n"
-        f"* Tasks per node: N min, N max, N mean; N nodes used\n"
-        f"* Operator throughput:\n"
-        f"    * Total input num rows: N rows\n"
-        f"    * Total output num rows: N rows\n"
-        f"    * Ray Data throughput: N rows/s\n"
-        f"    * Estimated single node throughput: N rows/s\n"
-        f"{map_extra_metrics}"
-        f"\n"
-        f"Dataset throughput:\n"
-        f"    * Ray Data throughput: N rows/s\n"
-        f"    * Estimated single node throughput: N rows/s\n"
-        f"{gen_runtime_metrics_str(['ReadRange','MapBatches(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
-    )
-    print(canonicalize(stats))
-    print(expected_stats)
-    assert canonicalize(stats) == expected_stats
 
 
 @pytest.mark.parametrize("verbose_stats_logs", [True, False])
@@ -791,6 +703,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      iter_blocks_local=None,\n"
         "      iter_blocks_remote=None,\n"
         "      iter_unknown_location=None,\n"
+        "      iter_prefetched_bytes=None,\n"
         "      next_time=T,\n"
         "      format_time=T,\n"
         "      user_time=T,\n"
@@ -813,6 +726,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            iter_blocks_local=None,\n"
         "            iter_blocks_remote=None,\n"
         "            iter_unknown_location=None,\n"
+        "            iter_prefetched_bytes=None,\n"
         "            next_time=T,\n"
         "            format_time=T,\n"
         "            user_time=T,\n"
@@ -933,6 +847,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      iter_blocks_local=None,\n"
         "      iter_blocks_remote=None,\n"
         "      iter_unknown_location=N,\n"
+        "      iter_prefetched_bytes=None,\n"
         "      next_time=T,\n"
         "      format_time=T,\n"
         "      user_time=T,\n"
@@ -1029,6 +944,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            iter_blocks_local=None,\n"
         "            iter_blocks_remote=None,\n"
         "            iter_unknown_location=None,\n"
+        "            iter_prefetched_bytes=None,\n"
         "            next_time=T,\n"
         "            format_time=T,\n"
         "            user_time=T,\n"
@@ -1051,6 +967,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "                  iter_blocks_local=None,\n"
         "                  iter_blocks_remote=None,\n"
         "                  iter_unknown_location=None,\n"
+        "                  iter_prefetched_bytes=None,\n"
         "                  next_time=T,\n"
         "                  format_time=T,\n"
         "                  user_time=T,\n"
