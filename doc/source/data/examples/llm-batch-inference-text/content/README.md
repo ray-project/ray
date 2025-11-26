@@ -85,7 +85,7 @@ This example uses the `unsloth/Llama-3.1-8B-Instruct` model. The configuration s
 - `engine_kwargs`: vLLM engine parameters such as tensor parallelism and memory settings.
 - `batch_size`: Number of requests to batch together (set to 256 for small prompts and outputs).
 - `accelerator_type`: GPU type to use (L4 in this case).
-- `concurrency`: Number of parallel workers.
+- `concurrency`: Number of parallel workers (4 in this case).
 
 **Note:** Because the input prompts and expected output token lengths are small, `batch_size=256` is appropriate. However, depending on your workload, a large batch size can lead to increased idle GPU time when decoding long sequences. Adjust this value to find the optimal trade-off between throughput and latency.
 
@@ -371,7 +371,7 @@ Each inference worker allocates GPUs based on `tensor_parallel_size × pipeline_
 **Monitor GPU utilization**  
 Use the Ray Dashboard to identify bottlenecks and adjust parameters.
 
-For performance tuning, see the [Ray Data performance guide](https://docs.ray.io/en/latest/data/performance-tips.html) or the [throughput optimization guide with Anyscale](https://docs.anyscale.com/llm/batch-inference/throughput-optimization). To configure your inference engine, see the [vLLM configuration options](https://docs.vllm.ai/en/latest/serving/engine_args.html).
+For performance tuning, see the [Ray Data performance guide](https://docs.ray.io/en/latest/data/performance-tips.html) or the [throughput optimization guide with Anyscale](https://docs.anyscale.com/llm/batch-inference/throughput-optimization). For all available engine parameters, see the [vLLM Engine Arguments documentation](https://docs.vllm.ai/en/stable/serving/engine_args.html).
 
 
 ## Summary

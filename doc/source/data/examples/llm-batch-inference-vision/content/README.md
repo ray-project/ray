@@ -91,10 +91,9 @@ Configure the model and compute resources needed for inference using `vLLMEngine
 This example uses the `Qwen/Qwen2.5-VL-3B-Instruct` model, a vision-language model. The configuration specifies:
 - `model_source`: The Hugging Face model identifier.
 - `engine_kwargs`: vLLM engine parameters such as memory settings and batching.
-- `runtime_env`: Environment variables needed for the vLLM vision API (V1).
 - `batch_size`: Number of requests to batch together (set to 16 for vision models).
 - `accelerator_type`: GPU type to use (L4 in this case).
-- `concurrency`: Number of parallel workers (4 replicas).
+- `concurrency`: Number of parallel workers (4 in this case).
 - `has_image`: Enable image input support.
 
 **Note:** Vision models typically require smaller batch sizes than text-only models due to the additional memory needed for image processing. Adjust batch size based on your image resolution and GPU memory.
@@ -408,7 +407,7 @@ Each inference worker allocates GPUs based on `tensor_parallel_size × pipeline_
 **Monitor GPU utilization**  
 Use the Ray Dashboard to identify bottlenecks and adjust parameters.
 
-For performance tuning, see the [Ray Data performance guide](https://docs.ray.io/en/latest/data/performance-tips.html) or the [throughput optimization guide with Anyscale](https://docs.anyscale.com/llm/batch-inference/throughput-optimization). To configure your inference engine, see the [vLLM configuration options](https://docs.vllm.ai/en/latest/serving/engine_args.html).
+For performance tuning, see the [Ray Data performance guide](https://docs.ray.io/en/latest/data/performance-tips.html) or the [throughput optimization guide with Anyscale](https://docs.anyscale.com/llm/batch-inference/throughput-optimization). For all available engine parameters, see the [vLLM Engine Arguments documentation](https://docs.vllm.ai/en/stable/serving/engine_args.html).
 
 
 ## Summary
