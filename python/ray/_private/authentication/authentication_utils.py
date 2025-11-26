@@ -43,7 +43,7 @@ def validate_request_token(auth_header: str) -> bool:
     return validate_authentication_token(auth_header)
 
 
-def get_authentication_mode_name(mode) -> str:
+def get_authentication_mode_name(mode: AuthenticationMode) -> str:
     """Convert AuthenticationMode enum value to string name.
 
     Args:
