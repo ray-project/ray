@@ -8,17 +8,18 @@ from typing import (
     List,
     Optional,
     Union,
+    Dict,
 )
-
-from pydantic import BaseModel
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 
 
-class CompletionUsage(BaseModel):  # Assuming you have this defined
-    prompt_tokens: int
-    completion_tokens: int
-    total_tokens: int
+from ray.llm._internal.serve.core.configs.openai_api_models import (
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+    CompletionRequest,
+    CompletionResponse,
+)
 
 
 class ChatRole(str, Enum):
@@ -27,72 +28,22 @@ class ChatRole(str, Enum):
     system = "system"
 
 
-class ChatMessage(BaseModel):
-    role: ChatRole
-    content: Optional[str] = None
-
-
-class ChatCompletionChoice(BaseModel):
-    index: int
-    message: ChatMessage
-    finish_reason: Optional[str] = None
-
-
-class ChatCompletionResponse(BaseModel):
-    id: str
-    object: str = "chat.completion"
-    created: int
-    model: str
-    choices: List[ChatCompletionChoice]
-    usage: Optional[CompletionUsage] = None
-
-
-class CompletionChoice(BaseModel):
-    index: int
-    text: str
-    logprobs: Optional[Any] = None
-    finish_reason: Optional[str] = None
-
-
-class CompletionResponse(BaseModel):
-    id: str
-    object: str = "text_completion"
-    created: int
-    model: str
-    choices: List[CompletionChoice]
-    usage: Optional[CompletionUsage] = None
-
-
-class ChatCompletionRequest(BaseModel):
-    model: str
-    messages: List[ChatMessage]
-    temperature: Optional[float] = 1.0
-    top_p: Optional[float] = 1.0
-    max_tokens: Optional[int] = 16
-    stop: Optional[Union[str, List[str]]] = None
-
-    @property
-    def text(self) -> str:
-        return format_messages_to_prompt(self.messages)
-
-    def normalize_batch_and_arguments(self):
-        pass
-
-
-def format_messages_to_prompt(messages: List[ChatMessage]) -> str:
+def format_messages_to_prompt(messages: List[Any]) -> str:
     prompt = "A conversation between a user and an assistant.\n"
 
     for message in messages:
+        # Handle dicts (standard OpenAI format) or objects (if Ray passes wrappers)
         if isinstance(message, dict):
             role = message.get("role")
             content = message.get("content", "")
         else:
-            role = message.role
-            content = message.content or ""
+            # Fallback for object access if it's a Pydantic model
+            role = getattr(message, "role", "user")
+            content = getattr(message, "content", "") or ""
 
         role_str = str(role)
 
-        if role_str == ChatRole.system.value:  # Use .value for enum comparison
+        if role_str == ChatRole.system.value:
             prompt += f"### System: {content.strip()}\n"
         elif role_str == ChatRole.user.value:
             prompt += f"### User: {content.strip()}\n"
@@ -101,25 +52,6 @@ def format_messages_to_prompt(messages: List[ChatMessage]) -> str:
 
     prompt += "### Assistant:"
     return prompt
-
-
-class CompletionRequest(BaseModel):
-    model: str
-    prompt: Union[str, List[str]]
-    temperature: Optional[float] = 1.0
-    top_p: Optional[float] = 1.0
-    max_tokens: Optional[int] = 16
-    stop: Optional[Union[str, List[str]]] = None
-
-    @property
-    def text(self) -> str:
-        prompt = self.prompt
-        if isinstance(prompt, list):
-            return prompt[0]  # Assuming non-batched completions
-        return prompt
-
-    def normalize_batch_and_arguments(self):
-        pass
 
 
 class SGLangServer:
@@ -139,8 +71,7 @@ class SGLangServer:
         original_signal_func = signal.signal
 
         def noop_signal_handler(sig, action):
-            # Return SIG_DFL (default handler) to simulate
-            # a valid return value for signal.signal()
+            # Returns default handler to satisfy signal.signal() return signature
             return signal.SIG_DFL
 
         try:
@@ -153,6 +84,8 @@ class SGLangServer:
     async def chat(
         self, request: ChatCompletionRequest
     ) -> AsyncGenerator[ChatCompletionResponse, None]:
+        
+        # Format prompts (handles dicts or objects in request.messages)
         prompt_string = format_messages_to_prompt(request.messages)
 
         temp = request.temperature
@@ -180,10 +113,7 @@ class SGLangServer:
 
         if isinstance(raw, list):
             if not raw:
-                # Handle empty list to prevent IndexError
-                raise RuntimeError(
-                    "SGLang engine returned an empty response list during text completion."
-                )
+                raise RuntimeError("SGLang engine returned an empty response list during chat generation.")
             raw = raw[0]
 
         text: str = raw.get("text", "")
@@ -199,32 +129,34 @@ class SGLangServer:
         completion_tokens = int(meta.get("completion_tokens", 0))
         total_tokens = prompt_tokens + completion_tokens
 
-        usage = CompletionUsage(
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=total_tokens,
-        )
+        usage_data = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+        }
 
-        assistant_message = ChatMessage(role=ChatRole.assistant, content=text.strip())
-
-        choice = ChatCompletionChoice(
-            index=0,
-            message=assistant_message,
-            finish_reason=finish_reason,
-        )
+        choice_data = {
+            "index": 0,
+            "message": {
+                "role": ChatRole.assistant.value,
+                "content": text.strip()
+            },
+            "finish_reason": finish_reason,
+        }
 
         resp = ChatCompletionResponse(
             id=meta.get("id", f"sglang-chat-{int(time.time())}"),
             object="chat.completion",
             created=int(time.time()),
             model=request.model,
-            choices=[choice],
-            usage=usage,
+            choices=[choice_data],
+            usage=usage_data,
         )
+        
 
         yield resp
 
-    async def completions(self, request) -> AsyncGenerator[CompletionResponse, None]:
+    async def completions(self, request: CompletionRequest) -> AsyncGenerator[CompletionResponse, None]:
         prompt_input = request.prompt
 
         if isinstance(prompt_input, list):
@@ -261,10 +193,7 @@ class SGLangServer:
 
         if isinstance(raw, list):
             if not raw:
-                # Handle empty list to prevent IndexError
-                raise RuntimeError(
-                    "SGLang engine returned an empty response list during text completion."
-                )
+                raise RuntimeError("SGLang engine returned an empty response list during text completion.")
             raw = raw[0]
 
         text: str = raw.get("text", "")
@@ -280,28 +209,26 @@ class SGLangServer:
         completion_tokens = int(meta.get("completion_tokens", 0))
         total_tokens = prompt_tokens + completion_tokens
 
-        usage = CompletionUsage(
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=total_tokens,
-        )
+        usage_data = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+        }
 
-        choice = CompletionChoice(
-            index=0,
-            text=text,
-            logprobs=None,
-            finish_reason=finish_reason,
-        )
+        choice_data = {
+            "index": 0,
+            "text": text,
+            "logprobs": None,
+            "finish_reason": finish_reason,
+        }
 
         resp = CompletionResponse(
             id=meta.get("id", f"sglang-comp-{int(time.time())}"),
             object="text_completion",
             created=int(time.time()),
-            model=getattr(
-                request, "model", "default_model"
-            ),  # Use default if model isn't present
-            choices=[choice],
-            usage=usage,
+            model=getattr(request, "model", "default_model"),
+            choices=[choice_data],
+            usage=usage_data,
         )
 
         yield resp
