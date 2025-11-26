@@ -2,6 +2,7 @@ import json
 import logging
 import warnings
 from enum import Enum
+from functools import cached_property
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray import cloudpickle
@@ -106,19 +107,10 @@ class AutoscalingContext:
         self._total_queued_requests_value = (
             total_queued_requests  #: Number of requests currently queued.
         )
-        self._total_num_requests_cached = None
-        self._total_queued_requests_cached = None
-        self._total_num_requests_evaluated = False
-        self._total_queued_requests_evaluated = False
 
         # Custom metrics - store potentially lazy callables privately
         self._aggregated_metrics_value = aggregated_metrics
-        self._aggregated_metrics_cached = None
-        self._aggregated_metrics_evaluated = False
-
         self._raw_metrics_value = raw_metrics
-        self._raw_metrics_cached = None
-        self._raw_metrics_evaluated = False
 
         # Capacity and bounds
         self.capacity_adjusted_min_replicas = capacity_adjusted_min_replicas  #: Minimum replicas adjusted for cluster capacity.
@@ -141,65 +133,29 @@ class AutoscalingContext:
         # Config
         self.config = config  #: Autoscaling configuration for this deployment.
 
-    @property
+    @cached_property
     def aggregated_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, float]]]:
         if callable(self._aggregated_metrics_value):
-            if not self._aggregated_metrics_evaluated:
-                self._aggregated_metrics_cached = self._aggregated_metrics_value()
-                self._aggregated_metrics_evaluated = True
-            return self._aggregated_metrics_cached
+            return self._aggregated_metrics_value()
         return self._aggregated_metrics_value
 
-    @aggregated_metrics.setter
-    def aggregated_metrics(self, value: Optional[Dict[str, Dict[ReplicaID, float]]]):
-        self._aggregated_metrics_value = value
-        self._aggregated_metrics_evaluated = False
-        self._aggregated_metrics_cached = None
-
-    @property
+    @cached_property
     def raw_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, TimeSeries]]]:
         if callable(self._raw_metrics_value):
-            if not self._raw_metrics_evaluated:
-                self._raw_metrics_cached = self._raw_metrics_value()
-                self._raw_metrics_evaluated = True
-            return self._raw_metrics_cached
+            return self._raw_metrics_value()
         return self._raw_metrics_value
 
-    @raw_metrics.setter
-    def raw_metrics(self, value: Optional[Dict[str, Dict[ReplicaID, TimeSeries]]]):
-        self._raw_metrics_value = value
-        self._raw_metrics_evaluated = False
-        self._raw_metrics_cached = None
-
-    @property
+    @cached_property
     def total_num_requests(self) -> float:
         if callable(self._total_num_requests_value):
-            if not self._total_num_requests_evaluated:
-                self._total_num_requests_cached = self._total_num_requests_value()
-                self._total_num_requests_evaluated = True
-            return self._total_num_requests_cached
+            return self._total_num_requests_value()
         return self._total_num_requests_value
 
-    @total_num_requests.setter
-    def total_num_requests(self, value: float):
-        self._total_num_requests_value = value
-        self._total_num_requests_evaluated = False
-        self._total_num_requests_cached = None
-
-    @property
+    @cached_property
     def total_queued_requests(self) -> float:
         if callable(self._total_queued_requests_value):
-            if not self._total_queued_requests_evaluated:
-                self._total_queued_requests_cached = self._total_queued_requests_value()
-                self._total_queued_requests_evaluated = True
-            return self._total_queued_requests_cached
+            return self._total_queued_requests_value()
         return self._total_queued_requests_value
-
-    @total_queued_requests.setter
-    def total_queued_requests(self, value: float):
-        self._total_queued_requests_value = value
-        self._total_queued_requests_evaluated = False
-        self._total_queued_requests_cached = None
 
     @property
     def total_running_requests(self) -> float:
