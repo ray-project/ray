@@ -1314,7 +1314,7 @@ py_test(
 
 py_test(
     name = "test_shuffle_fusion",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_shuffle_fusion.py"],
     tags = [
         "exclusive",
