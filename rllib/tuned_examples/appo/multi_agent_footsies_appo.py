@@ -151,7 +151,7 @@ config = (
         num_learners=1,
         num_cpus_per_learner=1,
         num_gpus_per_learner=0,
-        num_aggregator_actors_per_learner=0,
+        num_aggregator_actors_per_learner=2,
     )
     .env_runners(
         env_runner_cls=MultiAgentEnvRunner,
@@ -168,7 +168,6 @@ config = (
         * (args.num_env_runners or 1),
         lr=1e-4,
         entropy_coeff=0.01,
-        num_epochs=10,
         minibatch_size=128,
     )
     .multi_agent(
