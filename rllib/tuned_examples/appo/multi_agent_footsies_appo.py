@@ -25,13 +25,11 @@ Evaluation:
 
 """
 import functools
-import re
+from pathlib import Path
 
-from ray import tune
-from ray.air.constants import TRAINING_ITERATION
-from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.core.rl_module import MultiRLModuleSpec, RLModuleSpec
+from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent.footsies.fixed_rlmodules import (
     BackFixedRLModule,
     NoopFixedRLModule,
@@ -57,12 +55,72 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
 )
 from ray.tune.registry import register_env
+from ray.tune.result import TRAINING_ITERATION
 
 NUM_ENV_RUNNERS = 10
 
 parser = add_rllib_example_script_args(
     default_iters=500,
     default_timesteps=5_000_000,
+)
+
+parser.add_argument(
+    "--train-start-port",
+    type=int,
+    default=45001,
+    help="First port number for the Footsies training environment server (default: 45001). Each server gets its own port.",
+)
+parser.add_argument(
+    "--eval-start-port",
+    type=int,
+    default=55001,
+    help="First port number for the Footsies evaluation environment server (default: 55001) Each server gets its own port.",
+)
+parser.add_argument(
+    "--binary-download-dir",
+    type=Path,
+    default="/tmp/ray/binaries/footsies",
+    help="Directory to download Footsies binaries (default: /tmp/ray/binaries/footsies)",
+)
+parser.add_argument(
+    "--binary-extract-dir",
+    type=Path,
+    default="/tmp/ray/binaries/footsies",
+    help="Directory to extract Footsies binaries (default: /tmp/ray/binaries/footsies)",
+)
+parser.add_argument(
+    "--binary-to-download",
+    type=str,
+    choices=["linux_server", "linux_windowed", "mac_headless", "mac_windowed"],
+    default="linux_server",
+    help="Target binary for Footsies environment (default: linux_server). Linux and Mac machines are supported. "
+    "'linux_server' and 'mac_headless' choices are the default options for the training. Game will run in the batchmode, without initializing the graphics. "
+    "'linux_windowed' and 'mac_windowed' choices are for the local run only, because "
+    "game will be rendered in the OS window. To use this option effectively, set up: "
+    "--no-tune --num-env-runners 0 --evaluation-num-env-runners 0",
+)
+parser.add_argument(
+    "--win-rate-threshold",
+    type=float,
+    default=0.8,
+    help="The main policy should have at least 'win-rate-threshold' win rate against the "
+    "other policy to advance to the next level. Moving to the next level "
+    "means adding a new policy to the mix.",
+)
+parser.add_argument(
+    "--target-mix-size",
+    type=int,
+    default=5,
+    help="Target number of policies (RLModules) in the mix to consider the test passed. "
+    "The initial mix size is 2: 'main policy' vs. 'other'. "
+    "`--target-mix-size=5` means that 3 new policies will be added to the mix. "
+    "Whether to add new policy is decided by checking the '--win-rate-threshold' condition. ",
+)
+parser.add_argument(
+    "--rollout-fragment-length",
+    type=int,
+    default=256,
+    help="The length of each rollout fragment to be collected by the EnvRunners when sampling.",
 )
 
 main_policy = "lstm"
@@ -80,12 +138,12 @@ config = (
             "max_t": 1000,
             "frame_skip": 4,
             "observation_delay": 16,
-            "train_start_port": 45001,
-            "eval_start_port": 55001,
+            "train_start_port": args.train_start_port,
+            "eval_start_port": args.eval_start_port,
             "host": "localhost",
-            "binary_download_dir": "/tmp/ray/binaries/footsies",
-            "binary_extract_dir": "/tmp/ray/binaries/footsies",
-            "binary_to_download": "mac_headless",
+            "binary_download_dir": args.binary_download_dir,
+            "binary_extract_dir": args.binary_extract_dir,
+            "binary_to_download": args.binary_to_download,
             "suppress_unity_output": True,
         },
     )
@@ -96,19 +154,22 @@ config = (
         num_aggregator_actors_per_learner=0,
     )
     .env_runners(
-        num_env_runners=1,
-        num_cpus_per_env_runner=1,
+        env_runner_cls=MultiAgentEnvRunner,
+        num_env_runners=args.num_env_runners or 1,
+        num_cpus_per_env_runner=0.5,
         num_envs_per_env_runner=1,
         batch_mode="truncate_episodes",
-        rollout_fragment_length=512,
-        episodes_to_numpy=True,
-        create_env_on_local_worker=False,
+        rollout_fragment_length=args.rollout_fragment_length,
+        episodes_to_numpy=False,
+        create_env_on_local_worker=True,
     )
     .training(
-        train_batch_size_per_learner=4096 * NUM_ENV_RUNNERS,
+        train_batch_size_per_learner=args.rollout_fragment_length
+        * (args.num_env_runners or 1),
         lr=1e-4,
         entropy_coeff=0.01,
         num_epochs=10,
+        minibatch_size=128,
     )
     .multi_agent(
         policies={
@@ -144,7 +205,7 @@ config = (
         )
     )
     .evaluation(
-        evaluation_num_env_runners=1,
+        evaluation_num_env_runners=args.evaluation_num_env_runners or 1,
         evaluation_sample_timeout_s=120,
         evaluation_interval=1,
         evaluation_duration=10,  # 10 episodes is enough to get a good win rate estimate
@@ -165,9 +226,9 @@ config = (
             ),
             functools.partial(
                 MixManagerCallback,
-                win_rate_threshold=0.8,
+                win_rate_threshold=args.win_rate_threshold,
                 main_policy=main_policy,
-                target_mix_size=5,
+                target_mix_size=args.target_mix_size,
                 starting_modules=[main_policy, "noop"],
                 fixed_modules_progression_sequence=(
                     "noop",
@@ -180,38 +241,21 @@ config = (
 
 
 stop = {
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward
+    * args.num_env_runners,
     f"{ENV_RUNNER_RESULTS}/{NUM_ENV_STEPS_SAMPLED_LIFETIME}": (args.stop_timesteps),
     TRAINING_ITERATION: args.stop_iters,
-    "mix_size": 5,
+    "mix_size": args.target_mix_size,
 }
 
-# Log results using WandB.
-tune_callbacks = []
-if args.wandb_key is not None:
-    project = args.wandb_project or (
-        args.algo.lower() + "-" + re.sub("\\W+", "-", str(config.env).lower())
-    )
-    tune_callbacks.append(
-        WandbLoggerCallback(
-            api_key=args.wandb_key,
-            project=project,
-            upload_checkpoints=True,
-            **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
-        )
-    )
+if __name__ == "__main__":
+    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-
-results = tune.Tuner(
-    config.algo_class,
-    param_space=config,
-    run_config=tune.RunConfig(
+    results = run_rllib_example_script_experiment(
+        base_config=config,
+        args=args,
         stop=stop,
-        verbose=args.verbose,
-        callbacks=tune_callbacks,
-        checkpoint_config=tune.CheckpointConfig(
-            checkpoint_frequency=args.checkpoint_freq,
-            checkpoint_at_end=args.checkpoint_at_end,
-        ),
-    ),
-).fit()
+        success_metric={
+            "mix_size": args.target_mix_size
+        },  # pass the success metric for RLlib's testing framework
+    )
