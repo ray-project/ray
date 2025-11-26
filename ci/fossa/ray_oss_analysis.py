@@ -96,18 +96,18 @@ def _clean_path(path: str) -> str:
     # Format is typically: /path/to/file.ext:line:column
     return path.split(':')[0]
 
-def _get_bazel_dependencies(package_name: str, bazel_command: str, output_folder: str) -> Tuple[List[str], Set[str], Set[str]]:
-    bazel_dependencies = []
-    debug_dependencies = []
+def _get_bazel_dependencies(package_name: str, bazel_command: str) -> Tuple[List[str], Set[str], Set[str]]:
     package_names = set()
     file_paths = set()
-    command = [bazel_command, "query", "--output=streamed_jsonproto", f"kind('source file', deps({package_name}))"] # works for c, cpp, not sure if the kind based filter works for other languages
+
+    # works for c, cpp, not sure if the kind based filter works for other languages
+    command = [bazel_command, "query", "--output=streamed_jsonproto", f"kind('source file', deps({package_name}))"]
+
     logger.debug(f"Running command: {command}")
     lines = subprocess.check_output(command, text=True).splitlines()
     logger.debug(f"Found {len(lines)} dependencies")
     for line in lines:
         line_json = json.loads(line)
-        debug_dependencies.append(line_json)
         type, kind, label, location = _get_dependency_info(line_json)
         logger.debug(f"Dependency type: {type},  Label: {label}, Location: {location}")
 
@@ -115,12 +115,11 @@ def _get_bazel_dependencies(package_name: str, bazel_command: str, output_folder
             logger.debug(f"Skipping dependency: {line} because it is a bad kind")
             continue
         elif _isCppCode(label):
-            bazel_dependencies.append(label)
             file_paths.add(_clean_path(location))
             package_name = re.search(r"(?:@([^/]+))?//", label).group(1)
             package_names.add(package_name)
 
-    return bazel_dependencies, package_names, file_paths
+    return package_names, file_paths
 
 
 def _copy_files(file_paths: Set[str], output_folder: str):
@@ -210,7 +209,7 @@ def _get_askalono_results(dependencies: Set[str], bazel_output_base: str) -> Lis
             )
     return license_info
 
-def _generate_fossa_deps_file(askalono_results: List[Dict], output_folder: str) -> Dict:
+def _generate_fossa_deps_file(askalono_results: List[Dict], output_folder: str):
     # Group licenses and file paths by dependency
     dependency_data = {}
     for result in askalono_results:
@@ -256,8 +255,6 @@ def _generate_fossa_deps_file(askalono_results: List[Dict], output_folder: str) 
     with open(f"{output_folder}/fossa_deps.yaml", "w") as file:
         yaml.dump(fossa_deps_file, file, indent=4, sort_keys=False)
 
-    return fossa_deps_file
-
 def _change_working_directory():
     # change working directory to the workspace in case being executed as bazel py_binary
     workspace = os.environ.get("BUILD_WORKING_DIRECTORY")
@@ -302,9 +299,8 @@ Examples:
     bazel_output_base = subprocess.check_output(
         [args.bazel_cmd, "info", "output_base"], text=True
     ).strip()
-    bazel_dependencies, package_names, file_paths = _get_bazel_dependencies(args.package, args.bazel_cmd, args.output)
+    package_names, file_paths = _get_bazel_dependencies(args.package, args.bazel_cmd)
 
-    logger.info(f"Found {len(bazel_dependencies)} dependencies")
     logger.info(f"Found {len(file_paths)} file paths")
     logger.info(f"Found {len(package_names)} package names")
 
