@@ -2014,7 +2014,7 @@
 # APPO
 # --------------------------
 - name: rllib_learning_tests_pong_appo_torch
-  python: "3.12"
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2034,7 +2034,7 @@
     script: python example_algorithms/appo/pong_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
 
 - name: rllib_learning_tests_halfcheetah_appo_torch
-  python: "3.12"
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
