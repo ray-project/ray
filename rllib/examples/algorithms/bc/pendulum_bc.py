@@ -1,4 +1,3 @@
-import warnings
 from pathlib import Path
 
 from ray.rllib.algorithms.bc import BCConfig
@@ -15,43 +14,17 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.result import TRAINING_ITERATION
 
 parser = add_rllib_example_script_args()
-
-parser.add_argument(
-    "--offline-evaluation-interval",
-    type=int,
-    default=1,
-    help=(
-        "The interval in which offline evaluation should run in relation "
-        "to training iterations, e.g. if 1 offline evaluation runs in each "
-        "iteration, if 3 it runs each 3rd training iteration."
-    ),
-)
-parser.add_argument(
-    "--num-offline-eval-runners",
-    type=int,
-    default=2,
-    help=("The number of offline evaluation runners to be used in offline evaluation."),
-)
-parser.add_argument(
-    "--num-gpus-per-offline-eval-runner",
-    type=float,
-    default=0.0,
-    help=(
-        "The number of GPUs to be used in offline evaluation per offline "
-        "evaluation runner. Can be fractional."
-    ),
-)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 assert (
-    args.env == "CartPole-v1" or args.env is None
-), "This tuned example works only with `CartPole-v1`."
+    args.env == "Pendulum-v1" or args.env is None
+), "This tuned example works only with `Pendulum-v1`."
 
 # Define the data paths.
-data_path = "offline/tests/data/cartpole/cartpole-v1_large"
-base_path = Path(__file__).parents[2]
+data_path = "offline/tests/data/pendulum/pendulum-v1_large"
+base_path = Path(__file__).parents[3]
 print(f"base_path={base_path}")
 data_path = "local://" / base_path / data_path
 print(f"data_path={data_path}")
@@ -59,8 +32,16 @@ print(f"data_path={data_path}")
 # Define the BC config.
 config = (
     BCConfig()
-    .environment(
-        "CartPole-v1",
+    .environment(env="Pendulum-v1")
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
+    .evaluation(
+        evaluation_interval=3,
+        evaluation_num_env_runners=1,
+        evaluation_duration=5,
+        evaluation_parallel_to_training=True,
     )
     # Note, the `input_` argument is the major argument for the
     # new offline API. Via the `input_read_method_kwargs` the
@@ -72,51 +53,35 @@ config = (
         # Concurrency defines the number of processes that run the
         # `map_batches` transformations. This should be aligned with the
         # 'prefetch_batches' argument in 'iter_batches_kwargs'.
-        map_batches_kwargs={"concurrency": 2, "num_cpus": 1},
+        map_batches_kwargs={"concurrency": 2, "num_cpus": 2},
         # This data set is small so do not prefetch too many batches and use no
         # local shuffle.
-        iter_batches_kwargs={"prefetch_batches": 1},
+        iter_batches_kwargs={
+            "prefetch_batches": 1,
+        },
         # The number of iterations to be run per learner when in multi-learner
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
-        # iteration.
-        dataset_num_iters_per_learner=5,
+        # iteration. For single-learner mode, 1 is the only option.
+        dataset_num_iters_per_learner=1 if not args.num_learners else None,
     )
     .training(
-        train_batch_size_per_learner=1024,
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
         lr=0.0008 * (args.num_learners or 1) ** 0.5,
+        train_batch_size_per_learner=1024,
     )
     .rl_module(
         model_config=DefaultModelConfig(
             fcnet_hiddens=[256, 256],
         ),
     )
-    .evaluation(
-        evaluation_interval=1,
-        evaluation_parallel_to_training=False,
-        offline_evaluation_interval=1,
-        offline_evaluation_type="eval_loss",
-        num_offline_eval_runners=args.num_offline_eval_runners,
-        num_gpus_per_offline_eval_runner=args.num_gpus_per_offline_eval_runner,
-        offline_eval_batch_size_per_runner=128,
-    )
 )
 
-if not args.no_tune:
-    warnings.warn(
-        "You are running the example with Ray Tune. Offline RL uses "
-        "Ray Data, which doesn't interact seamlessly with Ray Tune. "
-        "If you encounter difficulties try to run the example without "
-        "Ray Tune using `--no-tune`."
-    )
-
 stop = {
-    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 350.0,
+    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -200.0,
     TRAINING_ITERATION: 350,
 }
-
 
 if __name__ == "__main__":
     run_rllib_example_script_experiment(config, args, stop=stop)
