@@ -865,6 +865,9 @@ class CoreWorker {
 
   /// Create an actor.
   ///
+  /// NOTE: RAY CHECK fails if an actor handle with the same actor id has already been
+  /// added, or if the scheduling strategy for actor creation is not set.
+  ///
   /// \param[in] caller_id ID of the task submitter.
   /// \param[in] function The remote function that generates the actor object.
   /// \param[in] args Arguments of this task.
@@ -1942,7 +1945,7 @@ class CoreWorker {
   // the shutdown procedure without exposing additional public APIs.
   friend class CoreWorkerShutdownExecutor;
 
-  /// Used to block in certain spots if the GCS node cache is needed.
+  /// Used to block in certain spots if the GCS node address and liveness cache is needed.
   std::mutex gcs_client_node_cache_populated_mutex_;
   std::condition_variable gcs_client_node_cache_populated_cv_;
   bool gcs_client_node_cache_populated_ = false;
