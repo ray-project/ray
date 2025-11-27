@@ -52,27 +52,6 @@ SupportsRichComparisonType = TypeVar(
 AggOutputType = TypeVar("AggOutputType")
 
 
-__all__ = [
-    "AggregateFn",
-    "AggregateFnV2",
-    "Count",
-    "Sum",
-    "Min",
-    "Max",
-    "Mean",
-    "Std",
-    "AbsMax",
-    "Quantile",
-    "Unique",
-    "ValueCounter",
-    "MissingValuePercentage",
-    "ZeroPercentage",
-    "ApproximateQuantile",
-    "ApproximateTopK",
-    "CountDistinct",  # Added Distinct to public API
-]
-
-
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
 @PublicAPI
 class AggregateFn:
@@ -983,7 +962,7 @@ class CountDistinct(Unique):
         .. testcode::
 
             import ray
-            from ray.data.aggregate import Distinct
+            from ray.data.aggregate import CountDistinct
 
             # Create a dataset with repeated values
             ds = ray.data.from_items([
@@ -992,17 +971,17 @@ class CountDistinct(Unique):
             ])
 
             # Count distinct categories
-            result = ds.aggregate(Distinct(on="category"))
-            # result: {'distinct(category)': 3}
+            result = ds.aggregate(CountDistinct(on="category"))
+            # result: {'count_distinct(category)': 3}
 
             # Using with groupby
             ds = ray.data.from_items([
                 {"group": "X", "category": "A"}, {"group": "X", "category": "B"},
                 {"group": "Y", "category": "A"}, {"group": "Y", "category": "A"}
             ])
-            result = ds.groupby("group").aggregate(Distinct(on="category")).take_all()
-            # result: [{'group': 'X', 'distinct(category)': 2},
-            #          {'group': 'Y', 'distinct(category)': 1}]
+            result = ds.groupby("group").aggregate(CountDistinct(on="category")).take_all()
+            # result: [{'group': 'X', 'count_distinct(category)': 2},
+            #          {'group': 'Y', 'count_distinct(category)': 1}]
 
     Args:
         on: The name of the column to count distinct values on.
