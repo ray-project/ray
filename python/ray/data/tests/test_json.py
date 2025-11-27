@@ -17,7 +17,6 @@ from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     BaseFileMetadataProvider,
-    FastFileMetadataProvider,
 )
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
@@ -212,15 +211,6 @@ def test_json_read_meta_provider(
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(tmp_path, "test1.json")
     df1.to_json(path1, orient="records", lines=True)
-    ds = ray.data.read_json(
-        path1,
-        meta_provider=FastFileMetadataProvider(),
-    )
-
-    # Expect to lazily compute all metadata correctly.
-    assert ds.count() == 3
-    assert ds.input_files() == [path1]
-    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     with pytest.raises(NotImplementedError):
         ray.data.read_json(

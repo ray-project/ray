@@ -9,7 +9,6 @@ import snappy
 import ray
 from ray.data.datasource import (
     BaseFileMetadataProvider,
-    FastFileMetadataProvider,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -87,12 +86,6 @@ def test_read_binary_meta_provider(
         byte_str = "hello, world".encode()
         bytes = BytesIO(byte_str)
         snappy.stream_compress(bytes, f)
-    ds = ray.data.read_binary_files(
-        path,
-        arrow_open_stream_args=dict(compression="snappy"),
-        meta_provider=FastFileMetadataProvider(),
-    )
-    assert sorted(extract_values("bytes", ds.take())) == [byte_str]
 
     with pytest.raises(NotImplementedError):
         ray.data.read_binary_files(

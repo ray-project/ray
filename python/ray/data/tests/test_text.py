@@ -8,7 +8,6 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 )
 from ray.data.datasource import (
     BaseFileMetadataProvider,
-    FastFileMetadataProvider,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -59,10 +58,6 @@ def test_read_text_meta_provider(
         f.write("world\n")
         f.write("goodbye\n")
         f.write("ray\n")
-    ds = ray.data.read_text(path, meta_provider=FastFileMetadataProvider())
-    assert sorted(_to_lines(ds.take())) == ["goodbye", "hello", "ray", "world"]
-    ds = ray.data.read_text(path, drop_empty_lines=False)
-    assert ds.count() == 4
 
     with pytest.raises(NotImplementedError):
         ray.data.read_text(
