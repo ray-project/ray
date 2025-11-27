@@ -481,6 +481,9 @@ def test_worker_group_callback():
         def before_worker_group_shutdown(self, worker_group):
             self.shutdown_hook_called = True
 
+        def after_worker_group_shutdown(self, worker_group_context):
+            self.after_worker_group_shutdown_hook_called = True
+
         def after_worker_group_poll_status(self, worker_group_status):
             assert len(worker_group_status.worker_statuses) == 4
             self.poll_status_hook_called = True
@@ -495,6 +498,7 @@ def test_worker_group_callback():
     assert hooks.poll_status_hook_called
     wg.shutdown()
     assert hooks.shutdown_hook_called
+    assert hooks.after_worker_group_shutdown_hook_called
 
 
 def test_worker_log_file_paths():
@@ -519,6 +523,9 @@ def test_worker_group_abort(monkeypatch):
         def before_worker_group_abort(self, worker_group_context):
             self.abort_hook_called = True
 
+        def after_worker_group_abort(self, worker_group_context):
+            self.after_worker_group_abort_hook_called = True
+
     hooks = AssertCallback()
     wg = _default_inactive_worker_group(callbacks=[hooks])
 
@@ -540,6 +547,7 @@ def test_worker_group_abort(monkeypatch):
         shutdown_call_count == 1
     ), f"Expected shutdown to be called once, but was called {shutdown_call_count} times"
     assert hooks.abort_hook_called
+    assert hooks.after_worker_group_abort_hook_called
 
     # Bypass _assert_active method, allowing for shutdown
     monkeypatch.setattr(wg, "_assert_active", lambda: None)
