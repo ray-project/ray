@@ -4618,6 +4618,31 @@
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
+- name: unstructured_data_ingestion  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: data
+  working_dir: //doc/source/data/examples/unstructured-data-ingestion  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: cpu  # ["gpu", "cpu", "cu123", "llm-cu128"]
+      post_build_script: byod_unstructured_data_ingestion.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
 - name: llamafactory_llm_fine_tune  # do not use dashes (regex sensitive)
   frequency: weekly
   python: "3.11"
