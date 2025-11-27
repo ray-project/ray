@@ -476,8 +476,9 @@ class DataContext:
 
     autoscaling_config: AutoscalingConfig = field(default_factory=AutoscalingConfig)
 
-    # 新增配置:启用节点感知的 actor 移除策略
+    # Enable node-aware actor removal strategy
     enable_node_aware_actor_removal: bool = False
+    # Enable resource-based autoscaling for actor pools
     enable_resource_based_autoscaling: bool = False
 
     ################################################################

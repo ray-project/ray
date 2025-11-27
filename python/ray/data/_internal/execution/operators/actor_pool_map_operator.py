@@ -16,10 +16,6 @@ from ray.data._internal.actor_autoscaler import (
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolScalingRequest,
 )
-from ray.data._internal.execution.operators.actor_removal_strategy import (
-    ActorRemovalStrategy,
-    DefaultActorRemovalStrategy,
-)
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.bundle_queue.bundle_queue import BundleQueue
@@ -36,6 +32,10 @@ from ray.data._internal.execution.interfaces.physical_operator import _ActorPool
 from ray.data._internal.execution.node_trackers.actor_location import (
     ActorLocationTracker,
     get_or_create_actor_location_tracker,
+)
+from ray.data._internal.execution.operators.actor_removal_strategy import (
+    ActorRemovalStrategy,
+    DefaultActorRemovalStrategy,
 )
 from ray.data._internal.execution.operators.map_operator import (
     BaseRefBundler,
@@ -544,13 +544,14 @@ class ActorPoolMapOperator(MapOperator):
         per_actor_resource_usage: ExecutionResources,
         max_actor_concurrency: int,
     ) -> "_ActorPool":
-        """创建 actor pool,根据配置选择 actor removal strategy"""
-        # 根据 DataContext 配置选择 removal strategy
+        """Create actor pool, and select actor removal strategy based on configuration"""
+        # Select removal strategy based on DataContext configuration
         actor_removal_strategy = None
         if self.data_context.enable_node_aware_actor_removal:
             from ray.data._internal.execution.operators.actor_removal_strategy import (
-                NodeAwareActorRemovalStrategy
+                NodeAwareActorRemovalStrategy,
             )
+
             actor_removal_strategy = NodeAwareActorRemovalStrategy()
 
         return _ActorPool(
@@ -571,7 +572,7 @@ class ActorPoolMapOperator(MapOperator):
                 * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
             ),
             _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
-            actor_removal_strategy=actor_removal_strategy,  # 新增参数
+            actor_removal_strategy=actor_removal_strategy,
         )
 
 
@@ -797,7 +798,6 @@ class _ActorPool(AutoscalingActorPool):
         max_actor_concurrency: int,
         max_tasks_in_flight_per_actor: int,
         _enable_actor_pool_on_exit_hook: bool = False,
-        # 新增参数,默认为 None 保持向后兼容
         actor_removal_strategy: Optional["ActorRemovalStrategy"] = None,
     ):
         """Initialize the actor pool.
@@ -821,6 +821,7 @@ class _ActorPool(AutoscalingActorPool):
                 be submitted to a single actor at any given time.
             _enable_actor_pool_on_exit_hook: Whether to enable the actor pool
                 on exit hook.
+            actor_removal_strategy: The actor removal strategy to use.
         """
 
         self._min_size: int = min_size
@@ -852,7 +853,9 @@ class _ActorPool(AutoscalingActorPool):
         self._num_restarting_actors: int = 0
         self._num_active_actors: int = 0
         self._total_num_tasks_in_flight: int = 0
-        self._actor_removal_strategy = actor_removal_strategy or DefaultActorRemovalStrategy()
+        self._actor_removal_strategy = (
+            actor_removal_strategy or DefaultActorRemovalStrategy()
+        )
 
     # === Overriding methods of AutoscalingActorPool ===
 
@@ -1099,7 +1102,7 @@ class _ActorPool(AutoscalingActorPool):
         return False
 
     def _try_remove_idle_actor(self) -> bool:
-        # 使用策略模式选择要移除的 actor
+        # remove the idle actors
         actor_to_remove = self._actor_removal_strategy.select_actor_to_remove(
             self._running_actors
         )

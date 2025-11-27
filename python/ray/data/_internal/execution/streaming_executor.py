@@ -216,7 +216,7 @@ class StreamingExecutor(Executor, threading.Thread):
         data_context = DataContext.get_current()
         if data_context.enable_resource_based_autoscaling:
             from ray.data._internal.actor_autoscaler.resource_based_actor_autoscaler import (
-                ResourceBasedActorAutoscaler
+                ResourceBasedActorAutoscaler,
             )
 
             self._actor_autoscaler = ResourceBasedActorAutoscaler(
@@ -704,23 +704,22 @@ class StreamingExecutor(Executor, threading.Thread):
     def update_job_resource_limits(
         self,
         min_resources: Optional[ExecutionResources] = None,
-        max_resources: Optional[ExecutionResources] = None
+        max_resources: Optional[ExecutionResources] = None,
     ) -> None:
-        """更新 job 级别的资源限制,自动计算所有 actor pools 的 size
+        """Update job-level resource limits, automatically calculating all actor pool sizes.
 
         Args:
-            min_resources: Job 级别的最小资源(可选)
-            max_resources: Job 级别的最大资源(可选)
+            min_resources: Job-level minimum resources (optional).
+            max_resources: Job-level maximum resources (optional).
 
         Raises:
-            ValueError: 如果当前 autoscaler 不支持资源调整
+            ValueError: If the current autoscaler does not support resource-based sizing.
         """
         from ray.data._internal.actor_autoscaler.resource_based_actor_autoscaler import (
-            ResourceBasedActorAutoscaler
+            ResourceBasedActorAutoscaler,
         )
 
-        if not isinstance(self._actor_autoscaler,
-                          ResourceBasedActorAutoscaler):
+        if not isinstance(self._actor_autoscaler, ResourceBasedActorAutoscaler):
             raise ValueError(
                 "Current autoscaler does not support resource-based sizing. "
                 "Please enable resource_based_autoscaling in DataContext."
@@ -728,19 +727,19 @@ class StreamingExecutor(Executor, threading.Thread):
 
         self._actor_autoscaler.update_job_resource_limits(
             min_resources=min_resources,
-            max_resources=max_resources
+            max_resources=max_resources,
         )
 
     def get_job_resource_limits(
-        self
+        self,
     ) -> tuple[Optional[ExecutionResources], Optional[ExecutionResources]]:
-        """获取当前的 job 级别资源限制
+        """Get the current job-level resource limits
 
         Returns:
-            (min_resources, max_resources) 元组
+            Tuple of (min_resources, max_resources)
         """
         from ray.data._internal.actor_autoscaler.resource_based_actor_autoscaler import (
-            ResourceBasedActorAutoscaler
+            ResourceBasedActorAutoscaler,
         )
 
         if isinstance(self._actor_autoscaler, ResourceBasedActorAutoscaler):
