@@ -195,32 +195,6 @@ format from your function, but ``batch_format`` should match the input of your f
                 ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
                 .map_batches(drop_nas, batch_format="pyarrow")
             )
-            
-Choosing the right batch format
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. tip::
-    When choosing the appropriate batch format for your ``map_batches`` operation, the primary consideration is the trade-off between convenience and performance:
-
-    * Use ``numpy`` in ``map_batches`` when your batch function needs fast numeric or tensor-style operations.
-    * Use ``pandas`` in ``map_batches`` when your batch function needs a DataFrame API, such as for tabular cleaning, joins, grouping, or row/column-wise transforms.
-    * Use ``pyarrow`` in ``map_batches`` when your batch function benefits from columnar processing, high-performance I/O, or zero-copy conversion to other systems.
-
-The user defined function you pass to :meth:`~ray.data.Dataset.map_batches` is more flexible. Because you can represent batches
-in multiple ways (see :ref:`Configuring batch format <configure_batch_format>`), the function should be of type
-``Callable[DataBatch, DataBatch]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``. In
-other words, your function should take as input and output a batch of data which you can represent as a
-pandas DataFrame, Arrow Table or a dictionary with string keys and NumPy ndarrays values. For example, your function might look like:
-
-.. testcode::
-
-    import pandas as pd
-
-    def fn(batch: pd.DataFrame) -> pd.DataFrame:
-        # modify batch
-        batch = ...
-
-        # return batch
-        return batch
 
 The user defined function can also be a Python generator that yields batches, so the function can also
 be of type ``Callable[DataBatch, Iterator[[DataBatch]]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``.
@@ -235,6 +209,18 @@ In this case, your function would look like:
         # yield the same batch multiple times
         for _ in range(10):
             yield batch
+            
+Choosing the right batch format
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When choosing the appropriate batch format for your ``map_batches`` operation, the primary consideration is the trade-off between performance and convenience.
+
+    * Use ``numpy`` in ``map_batches`` when your batch function needs fast numeric or tensor-style operations .
+    * Use ``pandas`` in ``map_batches`` when your batch function needs a DataFrame API, such as for tabular cleaning, joins, grouping, or row/column-wise transforms.
+    * Use ``pyarrow`` in ``map_batches`` when your batch function benefits from columnar processing, high-performance I/O, or zero-copy conversion to other systems.
+
+You'll also want to take note of the current block type. If you choose an batch format that doesn't match the current block type, the operation will incur an extra copy between formats (for example, if you have one map_batches using the pandas format, then another using the numpy format), 
+
 
 Configuring batch size
 ~~~~~~~~~~~~~~~~~~~~~~
