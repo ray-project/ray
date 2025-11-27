@@ -317,13 +317,20 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   mock_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
-  actor->UpdateAddress(RandomAddress());
+  auto address = RandomAddress();
+  auto node_id = NodeID::FromBinary(address.node_id());
+  auto worker_id = WorkerID::FromBinary(address.worker_id());
+  actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(finished_actors.size(), 1);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 1);
 
   ASSERT_TRUE(worker_client_->Reply());
+  io_service_.run_one();
+  // Complete graceful shutdown by confirming worker exit
+  gcs_actor_manager_->OnWorkerDead(node_id, worker_id);
+  io_service_.poll();
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 0);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::DEAD, ""), 1);
