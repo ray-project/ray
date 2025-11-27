@@ -30,7 +30,7 @@ struct TokenLoadResult {
   std::optional<AuthenticationToken> token;
   std::string error_message;
 
-  /// Returns true if no error occurred.
+  /// Returns true if an error occurred.
   bool hasError() const { return !error_message.empty(); }
 };
 
