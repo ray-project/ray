@@ -627,26 +627,32 @@ def test_arr_to_list(ray_start_regular):
     table = _make_fixed_size_list_table()
     ds = ray.data.from_arrow(table)
 
-    result = ds.select(col("features").arr.to_list().alias("features")).take(3)
+    result = ds.select(col("features").arr.to_list().alias("features")).to_pandas()
+    expected = pd.DataFrame(
+        [
+            {"features": [1, 2]},
+            {"features": [3, 4]},
+            {"features": [5, 6]},
+        ]
+    )
 
-    assert result == [
-        {"features": [1, 2]},
-        {"features": [3, 4]},
-        {"features": [5, 6]},
-    ]
+    assert rows_same(result, expected)
 
 
 def test_arr_flatten(ray_start_regular):
     table = _make_nested_fixed_size_list_table()
     ds = ray.data.from_arrow(table)
 
-    result = ds.select(col("features").arr.flatten().alias("features")).take(3)
+    result = ds.select(col("features").arr.flatten().alias("features")).to_pandas()
+    expected = pd.DataFrame(
+        [
+            {"features": [1, 2, 3, 4]},
+            {"features": [5, 6, 7, 8]},
+            {"features": [9, 10, 11, 12]},
+        ]
+    )
 
-    assert result == [
-        {"features": [1, 2, 3, 4]},
-        {"features": [5, 6, 7, 8]},
-        {"features": [9, 10, 11, 12]},
-    ]
+    assert rows_same(result, expected)
 
 
 # ──────────────────────────────────────
