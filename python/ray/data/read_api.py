@@ -2310,6 +2310,8 @@ def read_webdataset(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    num_cpus: Optional[float] = None,
+    memory: Optional[float] = None,
     expand_json: bool = False,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from
@@ -2351,6 +2353,8 @@ def read_webdataset(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
         expand_json: If ``True``, expand JSON objects into individual samples.
             Defaults to ``False``.
 
@@ -2386,6 +2390,8 @@ def read_webdataset(
     return read_datasource(
         datasource,
         parallelism=parallelism,
+        num_cpus=num_cpus,
+        memory=memory,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
