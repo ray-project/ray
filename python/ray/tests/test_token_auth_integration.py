@@ -425,20 +425,19 @@ def test_e2e_operations_with_token_auth(setup_cluster_with_token_auth):
     from ray.util.state import list_actors, list_nodes, list_tasks
 
     # List nodes - should include at least the head node
-    nodes = list_nodes()
-    assert len(nodes) >= 1, f"Expected at least 1 node, got {len(nodes)}"
+    wait_for_condition(lambda: len(list_nodes()) >= 1)
 
     # List actors - should include our SimpleActor
-    actors = list_actors()
-    assert len(actors) >= 1, f"Expected at least 1 actor, got {len(actors)}"
-    actor_classes = [a.class_name for a in actors]
-    assert (
-        "SimpleActor" in actor_classes[0]
-    ), f"SimpleActor not found in {actor_classes}"
+    def check_actors():
+        actors = list_actors()
+        if len(actors) < 1:
+            return False
+        return "SimpleActor" in actors[0].class_name
+
+    wait_for_condition(check_actors)
 
     # List tasks - should include completed tasks
-    tasks = list_tasks()
-    assert len(tasks) >= 1, f"Expected at least 1 task, got {len(tasks)}"
+    wait_for_condition(lambda: len(list_tasks()) >= 1)
 
     # Test 4: Submit a job and wait for completion
     from ray.job_submission import JobSubmissionClient
