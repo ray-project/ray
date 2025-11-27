@@ -139,9 +139,9 @@ class TestRayOssAnalysis(unittest.TestCase):
             paths = ray_oss_analysis._expand_license_files("/path")
             self.assertEqual(paths, ["/path/LICENSE"])
 
-    @patch("ci.fossa.ray_oss_analysis.subprocess.run")
-    def test_askalono_crawl(self, mock_run):
-        mock_run.return_value.stdout = (
+    @patch("ci.fossa.ray_oss_analysis.subprocess.check_output")
+    def test_askalono_crawl(self, mock_check_output):
+        mock_check_output.return_value = (
             '{"path": "p", "result": {"score": 1.0, "license": {"name": "MIT"}}}\n'
         )
         results = ray_oss_analysis._askalono_crawl("/path")
