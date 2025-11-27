@@ -13,9 +13,12 @@ import yaml
 logger = logging.getLogger("ray_oss_analysis")
 
 
-def _setup_logger(log_file: Optional[str] = None, enable_debug: bool = False):
-    # you can either use default console logger or enable additional file logger if needed by passing the log_file.
-    # setting the log level to debug if enable_debug is true
+def _setup_logger(log_file: Optional[str] = None, enable_debug: bool = False) -> None:
+    """
+    Setup logger for the script.
+    You can either use default console logger or enable additional file logger if needed by passing the log_file.
+    Setting the log level to debug if enable_debug is true.
+    """
     logger.setLevel(logging.DEBUG if enable_debug else logging.INFO)
 
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
@@ -34,6 +37,9 @@ def _setup_logger(log_file: Optional[str] = None, enable_debug: bool = False):
 
 # not being used since we moved to filtering only for source files to get c, cpp libraries
 def _isExcludedKind(kind_str: str) -> bool:
+    """
+    Check if the kind is excluded.
+    """
     # split the kind_str by whitespace and get the first element as the kind
     kind = kind_str.split(" ")[0]
     # list of non-target rule kinds
@@ -56,6 +62,9 @@ def _isExcludedKind(kind_str: str) -> bool:
 
 
 def _isBuildTool(label: str) -> bool:
+    """
+    Check if the label is a build tool.
+    """
     # list of build package labels that are present in dependencies but not part of the target code
     build_package_labels = ["bazel_tools", "local_config_python", "cython"]
     return any(
@@ -63,7 +72,9 @@ def _isBuildTool(label: str) -> bool:
     )
 
 def _isOwnCode(location: str) -> bool:
-    # check if it is own code or not
+    """
+    Check if it is own code or not.
+    """
     if location is None:
         return False
     else:
@@ -71,11 +82,20 @@ def _isOwnCode(location: str) -> bool:
 
 
 def _isCppCode(label: str) -> bool:
+    """
+    Check if the label is C/C++ code.
+    """
     # list of C/C++ file extensions
     cExternsions = [".c", ".cc", ".cpp", ".cxx", ".c++", ".h", ".hpp", ".hxx"]
     return any(path in label for path in cExternsions)
 
 def _get_dependency_info(line_json: Dict) -> Tuple[str, str, str, str]:
+    """
+    Get dependency info from the json line.
+    """
+    # earlier when we were getting all types of packages there was a need to get the type of the package,
+    #  but now we are only getting source files and we are not interested in the type of the package
+    # Yet we are keeping the code here, for future needs
     type = line_json['type']
     match type:
         case "SOURCE_FILE":
@@ -90,11 +110,21 @@ def _get_dependency_info(line_json: Dict) -> Tuple[str, str, str, str]:
             return type, type, "unknown", "unknown"
 
 def _clean_path(path: str) -> str:
+    """
+    Clean the path by removing location info.
+    """
     # Remove location information (e.g., :line:column) from the path
     # Format is typically: /path/to/file.ext:line:column
     return path.split(':')[0]
 
 def _get_bazel_dependencies(package_name: str, bazel_command: str) -> Tuple[List[str], Set[str], Set[str]]:
+    """
+    Returns the package names and file paths of the dependencies minus build tools and own code.
+    Currently works only for c, cpp.
+    """
+    # package names of dependencies
+    # file paths for actual files used
+
     package_names = set()
     file_paths = set()
 
@@ -119,7 +149,10 @@ def _get_bazel_dependencies(package_name: str, bazel_command: str) -> Tuple[List
 
     return package_names, file_paths
 
-def _copy_single_file(source: str, destination: str):
+def _copy_single_file(source: str, destination: str) -> None:
+    """
+    Copy a single file from source to destination.
+    """
     # Create parent directories if they don't exist
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     # Copy the file
@@ -128,14 +161,20 @@ def _copy_single_file(source: str, destination: str):
     except FileNotFoundError:
         logger.warning(f"File not found, skipping: {source}")
 
-def _copy_files(file_paths: Set[str], output_folder: str):
+def _copy_files(file_paths: Set[str], output_folder: str) -> None:
+    """
+    Copy files to output folder.
+    """
     for file_path in file_paths:
         logger.debug(f"Copying file: {file_path}")
         destination = os.path.join(output_folder, file_path.split("external/")[-1])
 
         _copy_single_file(file_path, destination)
 
-def _copy_licenses(package_names: Set[str], bazel_output_base: str, output_folder: str):
+def _copy_licenses(package_names: Set[str], bazel_output_base: str, output_folder: str) -> None:
+    """
+    Copy licenses to output folder.
+    """
     for package_name in package_names:
         license_paths = _expand_license_files(os.path.join(bazel_output_base, "external", package_name))
         for license_path in license_paths:
@@ -143,6 +182,9 @@ def _copy_licenses(package_names: Set[str], bazel_output_base: str, output_folde
 
 
 def _askalono_crawl(path: str) -> List[Dict]:
+    """
+    Crawl licenses using askalono.
+    """
     license_text = subprocess.run(
         ["askalono", "--format=json","crawl", path],
         capture_output=True,
@@ -156,6 +198,9 @@ def _askalono_crawl(path: str) -> List[Dict]:
     return cleaned_licenses
 
 def _expand_license_files(path: str) -> List[str]:
+    """
+    Expand license files using glob patterns.
+    """
     patterns = [
         "**/[Ll][Ii][Cc][Ee][Nn][Ss][Ee]*", # LICENSE
         "**/[Cc][Oo][Pp][Yy][Ii][Nn][Gg]*", # COPYING
@@ -173,6 +218,10 @@ def _expand_license_files(path: str) -> List[str]:
     return list(all_paths)
 
 def _expand_and_crawl(path: str) -> List[Dict]:
+    """
+    Given a path, crawl licenses using askalono.
+    Works recursively for all licenses in the path.
+    """
     license_paths = _expand_license_files(path)
     all_licenses = []
     for license_path in license_paths:
@@ -181,6 +230,9 @@ def _expand_and_crawl(path: str) -> List[Dict]:
     return all_licenses
 
 def _get_askalono_results(dependencies: Set[str], bazel_output_base: str) -> List[Dict]:
+    """
+    Get askalono results for all dependencies.
+    """
     license_info = []
     for dependency in dependencies:
         dependency_path = os.path.join(bazel_output_base, "external", dependency)
@@ -211,7 +263,10 @@ def _get_askalono_results(dependencies: Set[str], bazel_output_base: str) -> Lis
             )
     return license_info
 
-def _generate_fossa_deps_file(askalono_results: List[Dict], output_folder: str):
+def _generate_fossa_deps_file(askalono_results: List[Dict], output_folder: str) -> None:
+    """
+    Generate fossa dependencies file from askalono results.
+    """
     # Group licenses and file paths by dependency
     dependency_data = {}
     for result in askalono_results:
@@ -257,8 +312,10 @@ def _generate_fossa_deps_file(askalono_results: List[Dict], output_folder: str):
     with open(os.path.join(output_folder, "fossa_deps.yaml"), "w") as file:
         yaml.dump(fossa_deps_file, file, indent=4, sort_keys=False)
 
-def _change_working_directory():
-    # change working directory to the workspace in case being executed as bazel py_binary
+def _change_working_directory() -> None:
+    """
+    Change working directory to the workspace in case being executed as bazel py_binary.
+    """
     workspace = os.environ.get("BUILD_WORKING_DIRECTORY")
     if workspace:
         os.chdir(workspace)
