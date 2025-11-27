@@ -24,6 +24,7 @@ from ray._private.authentication_test_utils import (
     clear_auth_token_sources,
     reset_auth_token_state,
     set_auth_mode,
+    set_auth_token_path,
     set_env_auth_token,
 )
 
@@ -563,6 +564,74 @@ def test_get_auth_token_cli_piping():
         assert result.returncode == 0
         char_count = int(result.stdout.strip())
         assert char_count == 64, f"Expected 64 chars (no newline), got {char_count}"
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Tests AuthenticationTokenLoader directly, no benefit testing this in client mode",
+)
+def test_missing_token_file_raises_authentication_error():
+    """Test that RAY_AUTH_TOKEN_PATH pointing to missing file raises AuthenticationError."""
+    with authentication_env_guard():
+        # Clear first, then set up the specific test scenario
+        clear_auth_token_sources(remove_default=True)
+        set_auth_mode("token")
+        set_auth_token_path(None, "/nonexistent/path/to/token")
+        reset_auth_token_state()
+
+        token_loader = AuthenticationTokenLoader.instance()
+
+        with pytest.raises(ray.exceptions.AuthenticationError) as exc_info:
+            token_loader.has_token()
+
+        # Verify error message is informative
+        assert "/nonexistent/path/to/token" in str(exc_info.value)
+        assert "RAY_AUTH_TOKEN_PATH" in str(exc_info.value)
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Tests AuthenticationTokenLoader directly, no benefit testing this in client mode",
+)
+def test_empty_token_file_raises_authentication_error(tmp_path):
+    """Test that RAY_AUTH_TOKEN_PATH pointing to empty file raises AuthenticationError."""
+    with authentication_env_guard():
+        # Clear first, then set up the specific test scenario
+        clear_auth_token_sources(remove_default=True)
+        set_auth_mode("token")
+        set_auth_token_path("", "empty_token_file.txt")
+        reset_auth_token_state()
+
+        token_loader = AuthenticationTokenLoader.instance()
+
+        with pytest.raises(ray.exceptions.AuthenticationError) as exc_info:
+            token_loader.has_token()
+
+        assert "empty" in str(exc_info.value).lower() or "empty_token_file.txt" in str(
+            exc_info.value
+        )
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Tests AuthenticationTokenLoader directly, no benefit testing this in client mode",
+)
+def test_no_token_with_auth_enabled_returns_false():
+    """Test that has_token(ignore_auth_mode=True) returns False when no token exists.
+
+    This allows the caller (ensure_token_if_auth_enabled) to decide whether
+    to generate a new token or raise an error.
+    """
+    with authentication_env_guard():
+        set_auth_mode("token")
+        clear_auth_token_sources(remove_default=True)
+        reset_auth_token_state()
+
+        token_loader = AuthenticationTokenLoader.instance()
+
+        # has_token(ignore_auth_mode=True) should return False, not raise an exception
+        result = token_loader.has_token(ignore_auth_mode=True)
+        assert result is False
 
 
 if __name__ == "__main__":

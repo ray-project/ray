@@ -24,6 +24,16 @@
 namespace ray {
 namespace rpc {
 
+/// Result of attempting to load a token.
+/// Contains either a token or an error message (not both).
+struct TokenLoadResult {
+  std::optional<AuthenticationToken> token;
+  std::string error_message;
+
+  /// Returns true if no error occurred.
+  bool hasError() const { return !error_message.empty(); }
+};
+
 /// Singleton class for loading and caching authentication tokens.
 /// Supports loading tokens from multiple sources with precedence:
 /// 1. RAY_AUTH_TOKEN environment variable
@@ -42,12 +52,11 @@ class AuthenticationTokenLoader {
   /// \return The authentication token, or std::nullopt if auth is disabled.
   std::optional<AuthenticationToken> GetToken(bool ignore_auth_mode = false);
 
-  /// Check if a token exists without crashing.
-  /// Caches the token if it loads it afresh.
-  /// \param ignore_auth_mode If true, bypass auth mode check and attempt to load token
-  ///                         regardless of RAY_AUTH_MODE setting.
-  /// \return true if a token exists, false otherwise.
-  bool HasToken(bool ignore_auth_mode = false);
+  /// Try to load a token, returning error message instead of crashing.
+  /// Use this for Python entry points where we want to raise AuthenticationError.
+  /// \param ignore_auth_mode If true, bypass auth mode check.
+  /// \return TokenLoadResult with token or error_message.
+  TokenLoadResult TryLoadToken(bool ignore_auth_mode = false);
 
   void ResetCache() {
     std::lock_guard<std::mutex> lock(token_mutex_);
@@ -64,8 +73,8 @@ class AuthenticationTokenLoader {
   /// Read and trim token from file.
   std::string ReadTokenFromFile(const std::string &file_path);
 
-  /// Load token from environment or file.
-  AuthenticationToken LoadTokenFromSources();
+  /// Try to load token from environment or file, returning error instead of crashing.
+  TokenLoadResult TryLoadTokenFromSources();
 
   /// Default token file path (~/.ray/auth_token or %USERPROFILE%\.ray\auth_token).
   std::string GetDefaultTokenPath();
