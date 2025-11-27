@@ -718,20 +718,28 @@ def concat(
             f"{schemas_to_unify}"
         ) from e
 
-    # Backfill at the table level first
+    # Backfill missing columns
     blocks = list(blocks)
     for i, block in enumerate(blocks):
-        block_columns = set(block.schema.names)
-        blocks[i] = pa.table(
-            {
-                field.name: (
-                    block[field.name]
-                    if field.name in block_columns
-                    else pa.nulls(len(block), type=field.type)
-                )
-                for field in schema
-            }
-        )
+        # Fast path: if there is no missing column and column order matches, skip
+        # Struct field alignment is handled separately in _align_struct_fields.
+        if block.schema.names == schema.names:
+            continue
+
+        # 1. Find fields that are in the target schema but missing from the block
+        block_names = set(block.schema.names)
+        missing_fields = [f for f in schema if f.name not in block_names]
+
+        # 2. Create and append null columns for missing fields
+        # This avoids rebuilding the whole table and only adds what's needed
+        if missing_fields:
+            for field in missing_fields:
+                # pa.nulls creates a null array of the correct length and type efficiently
+                null_col = pa.nulls(len(block), type=field.type)
+                block = block.append_column(field.name, null_col)
+
+        # 3. Reorder columns to match the target schema
+        blocks[i] = block.select(schema.names)
 
     # Handle alignment of struct type columns.
     blocks = _align_struct_fields(blocks, schema)
