@@ -143,18 +143,22 @@ def _clean_path(path: str) -> str:
     return path.split(":")[0]
 
 
-def _get_package_name(label: str) -> str:
+def _get_package_name(label: str) -> Optional[str]:
     """
     Extract package name from bazel label.
     matches @repo//pkg:target to repo. regex breaks the string into groups and we return the first group.
     separated out so that this can be tested.
+    Returns None if the label doesn't have an external package name (e.g., local targets like //pkg:target).
     """
-    return re.search(r"(?:@([^/]+))?//", label).group(1)
+    match = re.search(r"(?:@([^/]+))?//", label)
+    if match:
+        return match.group(1)
+    return None
 
 
 def _get_bazel_dependencies(
     package_name: str, bazel_command: str
-) -> Tuple[List[str], Set[str], Set[str]]:
+) -> Tuple[Set[str], Set[str]]:
     """
     Returns the package names and file paths of the dependencies minus build tools and own code.
     Currently works only for c, cpp.
@@ -187,7 +191,8 @@ def _get_bazel_dependencies(
         elif _isCppCode(label):
             file_paths.add(_clean_path(location))
             package_name = _get_package_name(label)
-            package_names.add(package_name)
+            if package_name is not None:
+                package_names.add(package_name)
 
     return package_names, file_paths
 
