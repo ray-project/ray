@@ -19,7 +19,7 @@ from ray_release.test import Test, TestState
 GLOBAL_CONFIG_FILE = (
     os.environ.get("RAYCI_GLOBAL_CONFIG") or "ci/ray_ci/oss_config.yaml"
 )
-RAY_VERSION = "2.52.0"
+RAY_VERSION = "2.52.1"
 
 
 def ci_init() -> None:
