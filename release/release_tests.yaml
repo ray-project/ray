@@ -843,7 +843,7 @@
 - name: long_running_impala
   python: "3.10"
   group: Long running tests
-  working_dir: long_running_tests`
+  working_dir: long_running_tests
 
   frequency: weekly
   team: rllib
