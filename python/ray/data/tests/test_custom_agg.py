@@ -538,7 +538,7 @@ class TestUnique:
         ds = ray.data.from_items(data)
         result = ds.aggregate(Unique(on="id"))
 
-        assert result["unique(id)"][0] == ("a", "b", "c")
+        assert result["unique(id)"][0] == ["a", "b", "c"]
 
     def test_unique_encode_lists(self, ray_start_regular_shared_2_cpus):
         """Test Unique works when encode_lists is True."""

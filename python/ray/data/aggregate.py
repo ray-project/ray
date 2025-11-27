@@ -967,6 +967,10 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         if isinstance(x, set):
             return x
         elif isinstance(x, list):
+            if len(x) > 0 and isinstance(x[0], list):
+                # necessary because pyarrow converts all tuples to
+                # list internally.
+                x = map(tuple, x)
             return set(x)
         else:
             return {x}
