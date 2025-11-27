@@ -182,10 +182,6 @@ class HttpServerDashboardHead:
 
     @aiohttp.web.middleware
     async def browsers_no_post_put_middleware(self, request, handler):
-        # Allow whitelisted paths
-        if request.path in whitelisted_paths:
-            return await handler(request)
-
         if (
             # Deny mutating requests from browsers.
             # See `is_browser_request` for details of the check.
