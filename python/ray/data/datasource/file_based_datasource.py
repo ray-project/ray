@@ -84,12 +84,17 @@ class FileShuffleConfig:
         >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea", shuffle=shuffle)
     """  # noqa: E501
 
-    seed: Optional[int] = None
+    base_seed: Optional[int] = None
 
     def __post_init__(self):
         """Ensure that the seed is either None or an integer."""
         if self.seed is not None and not isinstance(self.seed, int):
             raise ValueError("Seed must be an integer or None.")
+
+    def get_seed(self, epoch_idx: int) -> Optional[int]:
+        if self.base_seed is None:
+            return None
+        return self.base_seed + epoch_idx
 
 
 @DeveloperAPI
