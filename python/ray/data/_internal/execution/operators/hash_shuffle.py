@@ -1256,21 +1256,40 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             estimated_dataset_bytes / num_partitions
         )  # Estimated byte size of a single partition
 
-        aggregator_total_memory_required: int = (
-            partition_byte_size_estimate * max_partitions_for_aggregator * 2
-        )  # Shuffle and output memory required both are max_partitions_for_aggregator * partition_byte_size_estimate
+        # Add 30% buffer to account for data skew
+        SKEW_FACTOR = 1.3
 
+        # Inputs (object store) - memory for receiving shuffled partitions
+        aggregator_shuffle_object_store_memory_required = math.ceil(
+            partition_byte_size_estimate * max_partitions_for_aggregator
+        )
+
+        # Output (object store) - memory for output partitions
+        output_object_store_memory_required = math.ceil(
+            partition_byte_size_estimate * max_partitions_for_aggregator
+        )
+
+        aggregator_total_memory_required: int = (
+            # Inputs (object store)
+            aggregator_shuffle_object_store_memory_required
+            +
+            # Output (object store)
+            output_object_store_memory_required
+        )
+        total_with_skew = aggregator_total_memory_required * SKEW_FACTOR
         logger.info(
             f"Estimated memory requirement for shuffling aggregator "
             f"(partitions={num_partitions}, "
             f"aggregators={num_aggregators}, "
             f"dataset (estimate)={estimated_dataset_bytes / GiB:.1f}GiB): "
-            f"shuffle={max_partitions_for_aggregator * partition_byte_size_estimate / MiB:.1f}MiB, "
-            f"output={max_partitions_for_aggregator * partition_byte_size_estimate / MiB:.1f}MiB, "
-            f"total={aggregator_total_memory_required / MiB:.1f}MiB, "
+            f"shuffle={aggregator_shuffle_object_store_memory_required / MiB:.1f}MiB, "
+            f"output={output_object_store_memory_required / MiB:.1f}MiB, "
+            f"total_base={aggregator_total_memory_required / MiB:.1f}MiB, "
+            f"skew_factor={SKEW_FACTOR}, "
+            f"total_with_skew={total_with_skew / MiB:.1f}MiB"
         )
 
-        return aggregator_total_memory_required
+        return total_with_skew
 
 
 @dataclass
