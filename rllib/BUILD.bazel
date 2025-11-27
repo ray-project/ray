@@ -153,9 +153,15 @@ py_test(
 # For ingle to multi-learner tests, the expected output should change,
 #   either reducing the maximum iterations or samples, or increasing the max return
 #   to ensure that the multi-learner is achieving something that the single shouldn’t be able to normally achieve.
+#
+# Compute Config
+#   - local = 7 CPUs, 0 GPU, 5 Env Runners
+#   - single (CPU) = 7 CPUs, 0 GPU, 5 Env Runner
+#   - single (GPU) = 7 CPUs, 1 GPU, 5 Env Runner
+#   - multi GPU = 7 CPUs, 2 GPUs, 5 Env Runners
 # --------------------------------------------------------------------
 
-# | APPO (12 total tests)      |                 Number of Learners (Device)                |
+# | APPO (12 total tests)      |                Number of Learners (Device)                 |
 # | Environment                | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) |
 # |----------------------------|-------------|-----------------|--------------|-------------|
 # | (SA/D) Cartpole            | ✅          | ✅              | ❌           | ❌         |
@@ -231,6 +237,7 @@ py_test(
         "--num-cpus=7",
         "--num-env-runners=5",
         "--num-learners=1",
+        "--num-gpus-per-learner=1",
     ],
     main = "examples/algorithms/appo/multi_agent_connect4_appo.py",
     tags = [
@@ -251,6 +258,7 @@ py_test(
         "--num-cpus=7",
         "--num-env-runners=5",
         "--num-learners=2",
+        "--num-gpus-per-learner=1",
     ],
     main = "examples/algorithms/appo/multi_agent_connect4_appo.py",
     tags = [
@@ -271,6 +279,7 @@ py_test(
         "--num-cpus=7",
         "--num-env-runners=5",
         "--num-learners=1",
+        "--num-gpus-per-learner=1",
     ],
     main = "examples/algorithms/appo/atari_appo.py",
     tags = [
@@ -291,6 +300,7 @@ py_test(
         "--num-cpus=7",
         "--num-env-runners=5",
         "--num-learners=2",
+        "--num-gpus-per-learner=1",
     ],
     main = "examples/algorithms/appo/atari_appo.py",
     tags = [
@@ -324,14 +334,15 @@ py_test(
 py_test(
     name = "learning_test_appo_mujoco_multi_gpu",
     size = "large",
-    srcs = ["examples/algorithms/appo/multi_agent_mujoco_appo.py"],
+    srcs = ["examples/algorithms/appo/mujoco_appo.py"],
     args = [
         "--as-test",
         "--num-cpus=7",
         "--num-env-runners=5",
         "--num-learners=2",
+        "--num-gpus-per-learner=1",
     ],
-    main = "examples/algorithms/appo/multi_agent_mujoco_appo.py",
+    main = "examples/algorithms/appo/mujoco_appo.py",
     tags = [
         "learning_tests",
         "learning_tests_continuous",
