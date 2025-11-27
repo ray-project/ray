@@ -898,17 +898,10 @@ RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)
 /// The threshold to consider a node dead.
 RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 
-/// Thread pool size for sending replies in grpc server (system components: raylet, GCS).
+/// The pool size for grpc server call.
 RAY_CONFIG(int64_t,
            num_server_call_thread,
            std::max((int64_t)1, (int64_t)(std::thread::hardware_concurrency() / 4U)))
-
-/// Thread pool size for sending replies in grpc server (CoreWorkers).
-/// https://github.com/ray-project/ray/issues/58351 shows the
-/// reply path is light enough that 2 threads is sufficient.
-RAY_CONFIG(int64_t,
-           core_worker_num_server_call_thread,
-           std::thread::hardware_concurrency() >= 8 ? 2 : 1);
 
 /// Use madvise to prevent worker/raylet coredumps from including
 /// the mapped plasma pages.
@@ -978,13 +971,13 @@ RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
 // Whether the task events from the core worker are sent to GCS directly.
 // TODO(myan): #54515 Remove this flag after the task events to GCS path is fully
 // migrated to the event aggregator.
-RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
+RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, false)
 
 // Whether to enable the ray event to send to the event aggregator.
 // Currently, only task events are supported.
 // TODO(myan): #54515 Remove this flag after the task events are fully migrated to the
 // event aggregator.
-RAY_CONFIG(bool, enable_core_worker_ray_event_to_aggregator, false)
+RAY_CONFIG(bool, enable_core_worker_ray_event_to_aggregator, true)
 
 // Configuration for pipe logger buffer size.
 RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)

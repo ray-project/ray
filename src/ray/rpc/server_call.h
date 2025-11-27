@@ -50,8 +50,6 @@ enum class ClusterIdAuthType {
 /// This pool is shared across gRPC servers.
 boost::asio::thread_pool &GetServerCallExecutor();
 
-enum class ServerCallThreadPoolMode { SYSTEM_COMPONENT = 0, CORE_WORKER = 1 };
-
 /// Drain the executor.
 void DrainServerCallExecutor();
 
@@ -60,10 +58,6 @@ void DrainServerCallExecutor();
 /// you need to regenerate the executor
 /// because they are global.
 void ResetServerCallExecutor();
-
-/// Set which config this process uses for the global reply thread pool.
-/// Call before the first GetServerCallExecutor().
-void SetServerCallThreadPoolMode(ServerCallThreadPoolMode mode);
 
 /// Represents state of a `ServerCall`.
 enum class ServerCallState {
