@@ -52,6 +52,27 @@ SupportsRichComparisonType = TypeVar(
 AggOutputType = TypeVar("AggOutputType")
 
 
+__all__ = [
+    "AggregateFn",
+    "AggregateFnV2",
+    "Count",
+    "Sum",
+    "Min",
+    "Max",
+    "Mean",
+    "Std",
+    "AbsMax",
+    "Quantile",
+    "Unique",
+    "ValueCounter",
+    "MissingValuePercentage",
+    "ZeroPercentage",
+    "ApproximateQuantile",
+    "ApproximateTopK",
+    "CountDistinct",  # Added Distinct to public API
+]
+
+
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
 @PublicAPI
 class AggregateFn:
@@ -948,6 +969,64 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
             return set(x)
         else:
             return {x}
+
+
+@PublicAPI
+class CountDistinct(Unique):
+    """Defines distinct count aggregation.
+
+    This aggregation computes the count of distinct values in a column.
+    It is similar to SQL's COUNT(DISTINCT column_name) operation.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import Distinct
+
+            # Create a dataset with repeated values
+            ds = ray.data.from_items([
+                {"category": "A"}, {"category": "B"}, {"category": "A"},
+                {"category": "C"}, {"category": "A"}, {"category": "B"}
+            ])
+
+            # Count distinct categories
+            result = ds.aggregate(Distinct(on="category"))
+            # result: {'distinct(category)': 3}
+
+            # Using with groupby
+            ds = ray.data.from_items([
+                {"group": "X", "category": "A"}, {"group": "X", "category": "B"},
+                {"group": "Y", "category": "A"}, {"group": "Y", "category": "A"}
+            ])
+            result = ds.groupby("group").aggregate(Distinct(on="category")).take_all()
+            # result: [{'group': 'X', 'distinct(category)': 2},
+            #          {'group': 'Y', 'distinct(category)': 1}]
+
+    Args:
+        on: The name of the column to count distinct values on.
+        ignore_nulls: Whether to ignore null values when counting distinct items.
+                      Default is True (nulls are excluded from the count).
+        alias_name: Optional name for the resulting column. If not provided,
+            defaults to "distinct({column_name})".
+    """
+
+    def __init__(
+        self,
+        on: str,
+        ignore_nulls: bool = True,
+        alias_name: Optional[str] = None,
+    ):
+        super().__init__(
+            on=on,
+            ignore_nulls=ignore_nulls,
+            alias_name=alias_name if alias_name else f"count_distinct({str(on)})",
+        )
+
+    def finalize(self, accumulator: Set[Any]) -> int:
+        """Return the count of distinct values."""
+        return len(accumulator)
 
 
 @PublicAPI

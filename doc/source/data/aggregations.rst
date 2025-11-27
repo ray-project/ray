@@ -17,6 +17,7 @@ Ray Data provides several built-in aggregation functions like:
 * :class:`~ray.data.aggregate.Max`
 * :class:`~ray.data.aggregate.Std`
 * :class:`~ray.data.aggregate.Quantile`
+* :class:`~ray.data.aggregate.CountDistinct`
  
 These can be used directly with datasets like shown below:
 
