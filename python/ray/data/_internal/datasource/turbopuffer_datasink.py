@@ -10,6 +10,7 @@ import os
 import random
 import time
 import uuid
+from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 
 import pyarrow as pa
@@ -345,9 +346,9 @@ class TurbopufferDatasink(Datasink):
             )
 
         # Build index groups per namespace value in a single pass.
-        index_groups: Dict[Any, list[int]] = {}
+        index_groups: Dict[Any, list[int]] = defaultdict(list)
         for idx, value in enumerate(namespace_col.to_pylist()):
-            index_groups.setdefault(value, []).append(idx)
+            index_groups[value].append(idx)
 
         logger.debug(f"Writing to {len(index_groups)} namespaces")
 
